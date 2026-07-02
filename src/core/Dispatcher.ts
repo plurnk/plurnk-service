@@ -1,0 +1,864 @@
+import { parsePath } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { Db, PrepMethod } from "./Db.ts";
+import type SchemeRegistry from "./SchemeRegistry.ts";
+import type ExecutorRegistry from "./ExecutorRegistry.ts";
+import type TelemetryChannel from "./TelemetryChannel.ts";
+import type ProposalLifecycle from "./ProposalLifecycle.ts";
+import type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
+import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
+import { foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
+import Fork from "./fork.ts";
+import RunCap from "./run-cap.ts";
+import { decodePathParens } from "./path-decode.ts";
+import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
+import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
+import type { StreamEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
+import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
+import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
+
+// SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
+// OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
+const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL"]);
+
+const pathnameFromPath = (path: ParsedPath): string => {
+    if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
+    return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
+};
+
+// Why a terminal SEND is refused: a [200] while the run holds a live thing, or with a READ submitted
+// this turn whose result the model hasn't observed (§send-premature-terminate); a [202] with no wake
+// edge — nothing held, nothing opened this turn — that could ever resume it (§send-groundless-hibernate).
+export type PrematureReason = "live-thing" | "submitted-read" | "groundless-hibernate";
+
+export type DispatchContext = {
+    statement: PlurnkStatement;
+    sessionId: number;
+    runId: number;
+    loopId: number;
+    turnId: number;
+    sequence: number;
+    origin: WriterTier;
+    onDispatch?: (logEntryId: number) => void;
+    // Set by runTurn for THIS turn's terminal SEND when it's refused (§send-premature-terminate,
+    // §send-groundless-hibernate) — the reason: a live thing the run holds (open stream/spawn or
+    // non-terminal child), a READ submitted THIS turn whose result the model can't have seen yet, or
+    // a [202] with no wake edge. Threaded — never re-checked at dispatch — so a same-turn
+    // fire-and-forget spawn isn't miscounted: the snapshot precedes the turn's ops.
+    prematureRefusal?: PrematureReason;
+};
+
+export type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
+
+import type { SchemeHandler } from "@plurnk/plurnk-schemes";
+// In-tree dispatch type (PlurnkSchemeContext/DispatchResult); the imported SchemeHandler
+// is the external contract (SchemeCtx) — #run borrows its op-key set, not its ctx shape.
+type SchemeMethod = (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult>;
+
+interface SchemeWithCrud {
+    readEntry?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
+    writeEntry?: (pathname: string, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
+    deleteEntry?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<DeleteEntryResult>;
+}
+
+// Op dispatch (§op-methods-op-dispatch): gates (writableBy, loop flags), the
+// engine-owned op orchestrations (COPY/MOVE/KILL/SEND/READ-fanout), scheme
+// routing, the durable log write, and the proposal pause.
+export default class Dispatcher {
+    #db: Db;
+    #schemes: SchemeRegistry;
+    #mimetypes: Mimetypes;
+    #tokenize: (text: string) => number;
+    #telemetry: TelemetryChannel;
+    #proposals: ProposalLifecycle;
+    // Boot-discovered runtime executors, late-injected on Engine — thunked.
+    #executors: () => ExecutorRegistry | undefined;
+    // Per-loop abort signal, owned by Engine.runLoop — thunked.
+    #loopSignal: (loopId: number) => AbortSignal | undefined;
+    #streamEventNotify: StreamEventNotify | undefined;
+    #wakeRunNotify: WakeRunNotify | undefined;
+    #injectRun: InjectRunNotify | undefined;
+    #cancelRun: CancelRunNotify | undefined;
+
+    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeRunNotify, injectRun, cancelRun }: {
+        db: Db;
+        schemes: SchemeRegistry;
+        mimetypes: Mimetypes;
+        tokenize: (text: string) => number;
+        telemetry: TelemetryChannel;
+        proposals: ProposalLifecycle;
+        executors: () => ExecutorRegistry | undefined;
+        loopSignal: (loopId: number) => AbortSignal | undefined;
+        streamEventNotify?: StreamEventNotify;
+        wakeRunNotify?: WakeRunNotify;
+        injectRun?: InjectRunNotify;
+        cancelRun?: CancelRunNotify;
+    }) {
+        this.#db = db;
+        this.#schemes = schemes;
+        this.#mimetypes = mimetypes;
+        this.#tokenize = tokenize;
+        this.#telemetry = telemetry;
+        this.#proposals = proposals;
+        this.#executors = executors;
+        this.#loopSignal = loopSignal;
+        this.#streamEventNotify = streamEventNotify;
+        this.#wakeRunNotify = wakeRunNotify;
+        this.#injectRun = injectRun;
+        this.#cancelRun = cancelRun;
+    }
+
+    async dispatch(context: DispatchContext): Promise<DispatchResult> {
+        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, prematureRefusal } = context;
+        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin });
+        let result: DispatchResult;
+        let denial = this.#checkWritable(statement, origin);
+        if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
+        if (denial !== null) {
+            result = denial;
+        } else if (Dispatcher.#readFansOut(statement)) {
+            // READ honors FIND: a glob/folder scope or a matcher fans out to one log row per MATCH
+            // (its own writeLogs), returning early. A READ never proposes, so it bypasses the
+            // single-row path below. A bare entry, body-less, falls through to the direct read. #286
+            return await this.#handleReadFanout(statement, schemeCtx, { runId, loopId, turnId, sequence, origin, onDispatch });
+        } else {
+            // SPEC §scheme-surface + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
+            // exceptions become the action-entry's outcome (status 500), not a
+            // thrown bubble. The log_entry is the durable record; engine never
+            // skips it. Logging failures (#writeLog throws) are NOT caught —
+            // those are system failures.
+            try {
+                if (statement.op === "SEND" && statement.target === null) {
+                    result = await this.#handleSendBroadcast(statement, loopId, prematureRefusal);
+                } else if (statement.op === "COPY") {
+                    result = await this.#handleCopy(statement, schemeCtx);
+                } else if (statement.op === "MOVE") {
+                    result = await this.#handleMove(statement, schemeCtx);
+                } else if (statement.op === "KILL") {
+                    result = await this.#handleKill(statement, schemeCtx);
+                } else if (statement.op === "PLAN") {
+                    result = this.#handlePlan(statement);
+                } else if (statement.op === "EXEC") {
+                    // EXEC's target slot is `cwd`, not a scheme address.
+                    // Per plurnk.md the op routes unconditionally to the
+                    // exec scheme; the scheme handler reads runtime
+                    // (signal), cwd (target), and command (body).
+                    result = await this.#run("exec", statement, schemeCtx);
+                } else {
+                    result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // §op-methods-op-dispatch
+                }
+            } catch (err) { // a scheme exception becomes the op's 500 outcome — §scheme-surface-exception-500
+                result = {
+                    status: 500,
+                    error: err instanceof Error ? err.message : String(err),
+                };
+            }
+        }
+        const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
+        onDispatch?.(logEntryId);
+        // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve; §proposal-202-pauses). When a
+        // side-effecting op returns status 202 (a broadcast SEND[202] park is model
+        // speech, not a proposal — #isProposal, #255), the entry is written
+        // state='proposed'; dispatch then PAUSES on a per-entry waiter until
+        // resolution arrives via Engine.resolveProposal (from the loop/resolve RPC,
+        // YOLO listener, or timeout). The post-resolution status replaces 202 in the
+        // result the caller sees, so runTurn never branches on a pending state.
+        if (Dispatcher.#isProposal(statement, result)) {
+            // Effect-gated auto-run (read/pure runtimes, plurnk-service#182):
+            // no human gate, no loop/proposal notification. Accept + apply
+            // in-process; the model sees the outcome directly, never a review.
+            if ((result.attrs as { inline?: boolean } | undefined)?.inline === true) {
+                const effective = await this.#proposals.runApply(statement, result, { decision: "accept" }, { sessionId, runId, loopId, turnId });
+                return this.#proposals.applyResolution(logEntryId, effective);
+            }
+            // Register the resolution waiter SYNCHRONOUSLY before any await
+            // yields. A same-tick resolveProposal() (e.g. from a test that
+            // awaits the onDispatch callback and immediately resolves) must
+            // find the waiter registered — adding an await between insert
+            // and waiter-registration would open a race window.
+            const resolutionPromise = this.#proposals.awaitResolution(logEntryId);
+            // Notify external listeners (Daemon broadcasts loop/proposal;
+            // YOLO listener auto-resolves) BEFORE awaiting — they may
+            // resolve synchronously inside their handlers.
+            const target = this.#extractTarget(statement.target);
+            const flags = await this.#loadLoopFlags(loopId); // the loop/proposal notification carries flags (yolo) — §dual-yolo-proposal-carries-flags
+            // #note10 — if the target diverged on disk this turn, the model's EDIT is based
+            // on a stale read; flag it so a YOLO auto-accept rejects instead of clobbering.
+            const diverged = await (this.#db.engine_target_diverged_this_turn as PrepMethod).get<{ hit: number }>({ run_id: runId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
+            const event: ProposalPendingEvent = {
+                logEntryId, sessionId, runId, loopId, turnId,
+                op: statement.op,
+                target: { scheme: target.scheme, pathname: target.pathname },
+                body: typeof result.body === "string" ? result.body : "",
+                attrs: (result.attrs ?? {}) as object,
+                flags,
+                staleClobberRisk: diverged !== undefined,
+            };
+            this.#proposals.notifyPending(event);
+            const resolution = await resolutionPromise;
+            // Run the scheme's applyResolution hook on accept (writes the
+            // file, spawns the process, etc.). If applyResolution returns a
+            // 4xx/5xx or throws, the resolution is downgraded to a reject
+            // with the failure outcome — engine treats it like a client
+            // rejection.
+            const effective = await this.#proposals.runApply(statement, result, resolution, { sessionId, runId, loopId, turnId });
+            // MOVE into a proposed dest: the deferred source-delete fires ONLY now,
+            // after the dest write landed (accept). On reject the source survives.
+            if (effective.decision === "accept") {
+                const moveSource = (result.attrs as { moveSource?: { scheme: string; pathname: string } } | undefined)?.moveSource;
+                if (moveSource !== undefined) {
+                    const srcHandler = this.#schemes.get(moveSource.scheme) as SchemeWithCrud | undefined;
+                    if (srcHandler !== undefined && typeof srcHandler.deleteEntry === "function") await srcHandler.deleteEntry(moveSource.pathname, schemeCtx);
+                }
+            }
+            const post = await this.#proposals.applyResolution(logEntryId, effective);
+            return post;
+        }
+        return result;
+    }
+
+    // op.look (#283) — resolve a READ and return its content WITHOUT writing a
+    // log_entries row: the client's off-run inspection primitive (LOOK → READ,
+    // invisible to the model). READ never mutates and never proposes, so this is
+    // dispatch's resolve path minus #writeLog. Runs on the client loop, so the
+    // human's inspection is never constrained by a model loop's flags. {§op-look}
+    async look(context: {
+        statement: PlurnkStatement;
+        sessionId: number; runId: number; loopId: number;
+        origin?: WriterTier;
+    }): Promise<DispatchResult> {
+        const { statement, sessionId, runId, loopId, origin = "client" } = context;
+        if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
+        // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
+        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId: 0, origin });
+        const denial = await this.#checkFlagsGate(statement, loopId);
+        if (denial !== null) return denial;
+        return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
+    }
+
+    #buildSchemeCtx(ids: { sessionId: number; runId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
+        const { sessionId, runId, loopId, turnId, origin } = ids;
+        return {
+            db: this.#db,
+            sessionId, runId, loopId, turnId,
+            writer: origin,
+            signal: this.#loopSignal(loopId),
+            streamEventNotify: this.#streamEventNotify,
+            wakeRunNotify: this.#wakeRunNotify,
+            injectRun: this.#injectRun,
+            mimetypes: this.#mimetypes,
+            tokenize: this.#tokenize,
+            pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
+            executors: this.#executors(),
+        };
+    }
+
+    // Loads loops.flags (json column) and merges over DEFAULT_LOOP_FLAGS so
+    // missing keys read as their documented defaults. Single read site —
+    // ProposalPendingEvent.flags is constructed from this, and listeners
+    // (Daemon broadcast, YOLO auto-accept) share the result.
+    async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
+        const row = await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId });
+        if (row === undefined) return DEFAULT_LOOP_FLAGS;
+        try {
+            const parsed = JSON.parse(row.flags) as Partial<LoopFlags>;
+            return { ...DEFAULT_LOOP_FLAGS, ...parsed };
+        } catch {
+            return DEFAULT_LOOP_FLAGS;
+        }
+    }
+
+    // SPEC §scheme-surface: engine rejects writes whose origin is outside the target
+    // scheme's manifest.writableBy.
+    // - Read-side ops (READ, FIND, OPEN, FOLD) are not gated.
+    // - SEND broadcast (path=null) has no target scheme; not gated.
+    // - COPY: dst scheme writableBy applies.
+    // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
+    // - Schemes without a manifest are not gated (legacy / future allowance).
+    #checkWritable(statement: PlurnkStatement, origin: WriterTier): DispatchResult | null {
+        if (!MUTATING_OPS.has(statement.op)) return null;
+        if (statement.op === "SEND" && statement.target === null) return null;
+
+        // EXEC's target slot is `cwd`, not a scheme address. The op's
+        // authority always belongs to the exec scheme regardless of cwd.
+        if (statement.op === "EXEC") {
+            return this.#denyIfDisallowed("exec", origin);
+        }
+
+        // Run control (COPY target=run://, spawn or fork) is gated by run://'s writableBy — its
+        // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
+        // §machine-processes
+        if (this.#isRunCopy(statement)) return this.#denyIfDisallowed("run", origin);
+
+        if (statement.op === "COPY" || statement.op === "MOVE") {
+            const dst = statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body;
+            const dstScheme = schemeNameOf(dst);
+            const dstDenial = this.#denyIfDisallowed(dstScheme, origin);
+            if (dstDenial !== null) return dstDenial;
+            if (statement.op === "MOVE") {
+                const srcScheme = schemeNameOf(statement.target);
+                if (srcScheme !== dstScheme) {
+                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin);
+                    if (srcDenial !== null) return srcDenial;
+                }
+            }
+            return null;
+        }
+
+        const target = schemeNameOf(statement.target);
+        return this.#denyIfDisallowed(target, origin);
+    }
+
+    #denyIfDisallowed(schemeName: string | null, origin: WriterTier): DispatchResult | null {
+        if (schemeName === null) return null;
+        const handler = this.#schemes.get(schemeName);
+        if (handler === undefined) return null;
+        const manifest = (handler.constructor as { manifest?: SchemeManifest }).manifest;
+        if (manifest === undefined) return null;
+        if (manifest.writableBy.includes(origin)) return null;
+        return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` }; // §scheme-surface-writableby-403
+    }
+
+    // Per-loop flag gating. Schemes self-declare their flag affinity in
+    // their manifest (excludedInAsk / requiresWeb /
+    // requiresInteraction); SchemeRegistry.resolveForLoop returns the
+    // active set under the loop's persisted flags. Anything outside the
+    // set returns 403 — action-entry-as-outcome carries the rejection.
+    async #checkFlagsGate(statement: PlurnkStatement, loopId: number): Promise<DispatchResult | null> {
+        // Broadcast SEND has no scheme to gate.
+        if (statement.op === "SEND" && statement.target === null) return null;
+
+        const flags = await this.#loadLoopFlags(loopId);
+        // Fast path: default flags gate nothing. (yolo never gates.)
+        if (!flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
+
+        const active = this.#schemes.resolveForLoop(flags);
+        const check = (target: PlurnkStatement["target"]): DispatchResult | null => {
+            const scheme = schemeNameOf(target);
+            if (scheme === null) return null;
+            if (active.has(scheme)) return null;
+            return { status: 403, error: `scheme '${scheme}' is inactive under current loop flags` };
+        };
+
+        if (this.#isRunCopy(statement)) return check(statement.target); // body is a spawn/fork prompt, not a dst path
+        if (statement.op === "COPY" || statement.op === "MOVE") {
+            return check(statement.target) ?? check(statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body);
+        }
+        return check(statement.target);
+    }
+
+    // A COPY whose TARGET is run:// is run control (spawn/fork), not an entry-copy — its body
+    // is the new run's seed prompt, not a destination path. The COPY gates and #handleCopy
+    // branch on this so they never parse the prompt as a dst path.
+    #isRunCopy(statement: PlurnkStatement): boolean {
+        return statement.op === "COPY" && schemeNameOf(statement.target) === "run";
+    }
+
+    // COPY(run://<dst>):prompt — run control via COPY (grammar 0.74.41 OP×resource matrix):
+    //   • run://self   → FORK: deep-copy the current run's log into a new sister (Fork), then
+    //     continue it with the prompt (§machine-processes-fork-copies-the-log).
+    //   • run://<name> → SPAWN: a fresh sister (empty log) named <name>, started on the prompt.
+    //     A LIVE sister already holding <name> is a 409 conflict; a free or terminated name is
+    //     reclaimed (§run-scheme-spawn). The self form is fork; only a name spawns.
+    // Both ride the daemon inject and obey the active-runs cap (508, §run-scheme-cap).
+    async #handleRunCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        const target = statement.target;
+        if (target === null) return { status: 400, error: "run:// control requires a run target" };
+        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY (run://<name>), not the path
+        if (name === "") return { status: 400, error: "run:// control requires a run name or 'self' (run://<name>)" };
+        if (ctx.injectRun === undefined) throw new Error("run copy: injectRun capability absent");
+        const denied = await RunCap.deny(this.#db, ctx.sessionId);
+        if (denied !== null) return denied;
+        const prompt = typeof statement.body === "string" ? statement.body : "";
+
+        if (name === "self") {
+            // FORK — branch the current run's log into a new sister.
+            const branchRunId = await Fork.fork(this.#db, ctx.runId);
+            const branch = await (this.#db.fork_get_run as PrepMethod).get<{ name: string }>({ id: branchRunId });
+            await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt });
+            return { status: 200, body: branch?.name ?? "" };
+        }
+
+        // SPAWN — a fresh sister named <name>. A name is frozen per run but reclaimable across time
+        // (§machine-processes-run-origin): a LIVE sister holding it is a 409 conflict (legible, never
+        // a raw UNIQUE 500); a free or terminated name is reclaimed (the resolver picks newest).
+        const live = await (this.#db.run_live_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
+        if (live !== undefined) return { status: 409, error: `run '${name}' is already running` };
+        const row = await (this.#db.fork_insert_run as PrepMethod).get<{ id: number }>({
+            session_id: ctx.sessionId, name, parent_run_id: ctx.runId, origin: ctx.writer,
+        });
+        if (row === undefined) throw new Error("run spawn: run insert returned no row");
+        await ctx.injectRun({ sessionId: ctx.sessionId, runId: row.id, prompt });
+        return { status: 200, body: name };
+    }
+
+    async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        if (statement.op !== "COPY") throw new Error("unreachable");
+        if (this.#isRunCopy(statement)) return await this.#handleRunCopy(statement, ctx);
+        const srcPath = statement.target;
+        // Past the run-control branch above, COPY's body is a dest path (grammar §COPY).
+        // Parse it; an unparseable dest surfaces as a 400.
+        const dstPath = statement.body === null ? null : parsePath(statement.body);
+        if (srcPath === null) return { status: 400, error: "COPY requires source path" };
+        if (dstPath === null) return { status: 400, error: "COPY destination must be a parseable path in the body slot" };
+        return await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
+    }
+
+    async #handleMove(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        if (statement.op !== "MOVE") throw new Error("unreachable");
+        const srcPath = statement.target;
+        const dstPath = statement.body;
+        if (srcPath === null) return { status: 400, error: "MOVE requires source path" };
+        // MOVE is relocation only — deletion is KILL's job (§move, §move-dev-null-not-special). The /dev/null
+        // and null-body delete-by-MOVE back-compat is retired: no silent debt.
+        if (dstPath === null) return { status: 400, error: "MOVE requires a destination; use KILL to delete" }; // §move-null-body-400
+
+        const srcSchemeName = schemeNameOf(srcPath);
+        if (srcSchemeName === null) return { status: 400, error: "MOVE source must be a URL path with a scheme" };
+        const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
+        if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
+
+        // Relocation: COPY then DELETE source (§move-relocation-deletes-source).
+        const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
+        if (copyResult.status >= 400) return copyResult;
+        const srcPathname = pathnameFromPath(srcPath);
+        // If the dest write is a pending proposal (file dest → §membership review), the
+        // source-delete MUST wait until the dest actually lands — a rejected
+        // proposal would otherwise lose the source. Thread it into the resolution:
+        // dispatch deletes the source AFTER the dest applies on accept.
+        if (copyResult.status === 202) {
+            return { ...copyResult, attrs: { ...(copyResult.attrs as Record<string, unknown>), moveSource: { scheme: srcSchemeName, pathname: srcPathname } } };
+        }
+        const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
+        if (delResult.status >= 400) return { status: delResult.status };
+        return copyResult;
+    }
+
+    // KILL — scheme-polymorphic destroy (plurnk-grammar#203 / 0.28.0). Entry-KILL
+    // permanently deletes the entry: the canonical delete now, MOVE→/dev/null
+    // retired from the model's vocabulary. Process-KILL (exec:///) aborts the
+    // running spawn's controller (the same teardown loop.cancel rides), addressed
+    // by coordinate pathname (#203). The KILL body is an opaque
+    // annotation with no runtime meaning; it survives into the log row's tx for
+    // free via the statement serialization. Status: 200 killed · 404 unknown ·
+    // 405 log:/// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
+    // MUTATING_OPS) · 200/410/304/404 exec (killed / killed-earlier / exited / unknown) · 501 no-kill/delete scheme.
+    async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        if (statement.op !== "KILL") throw new Error("unreachable");
+        const path = statement.target;
+        if (path === null) return { status: 400, error: "KILL requires a target path" };
+        const schemeName = schemeNameOf(path);
+        if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
+        // KILL on log:/// erases the log row(s) — the model's DB-storage curation lever
+        // (plurnk.md:36, :98), routed to Log.kill below via the killable.kill path. The old
+        // "append-only" 405 forbade what the grammar requires; FOLD only collapses the render.
+        // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
+        // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
+        // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec
+        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
+        if (killable !== undefined && typeof killable.kill === "function") {
+            return await killable.kill(pathnameFromPath(path), statement.signal, ctx);
+        }
+        if (schemeName === "run") {
+            // Entry-path present → KILL a run-scope scratch ENTRY (delete it), self-only —
+            // NOT run cancellation. The authority (hostname) names the owner, the pathname the
+            // entry; only the path-ABSENT form (run://<name>) terminates the run-as-actor. §run-scheme
+            const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
+            if (entryPath !== "" && entryPath !== "/") {
+                const runHandler = this.#schemes.get("run") as { deleteEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
+                return await runHandler.deleteEntry(statement, ctx);
+            }
+            // terminate — abort any run by address; whoever holds it may end it.
+            // `run://self` = self. cancelRun (→ Daemon.cancelDrain) aborts the run's signal
+            // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
+            const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY
+            if (name === "") return { status: 400, error: "run:// kill requires a run name or 'self' (run://<name>)" };
+            let runId = ctx.runId;
+            if (name !== "self") {
+                const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
+                if (row === undefined) return { status: 404, error: `run://${name} not found in this session` };
+                runId = row.id;
+            }
+            if (this.#cancelRun === undefined) throw new Error("run kill: cancelRun capability absent");
+            this.#cancelRun(runId);
+            return { status: 200 };
+        }
+        const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
+        if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };
+        const delResult = await handler.deleteEntry(pathnameFromPath(path), ctx);
+        return { status: delResult.status };
+    }
+
+    // Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey"). A glob
+    // READ target resolves to MANY files; READ returns one log row per file that matches, each
+    // holding that file's matching lines. The matched SET is exactly FIND's survey (which files
+    // + where — matchLines), so we reuse the scheme's own find, then READ each matched file. One
+    // model command, N log rows — each row addresses its concrete file, so it folds/kills/re-READs
+    // on its own. The running sequence counter in runTurn advances by rowsWritten.
+    // A READ fans out (honors FIND) when it resolves to more than the single exact entry: a glob
+    // or folder scope, OR a matcher (which selects per-match within whatever the target resolved).
+    // A bare entry, body-less, is the one direct read. #286
+    static #readFansOut(statement: PlurnkStatement): boolean {
+        if (statement.op !== "READ") return false;
+        if ("body" in statement && (statement as ReadStatement).body !== null) return true;  // a matcher → per-match fan-out
+        const t = statement.target;
+        const p = t === null ? "" : (t.kind === "url" ? t.pathname : t.raw);
+        return p.includes("*") || p.endsWith("/");  // glob/folder scope → fan out its contents
+    }
+
+    // Clone the READ onto one concrete match — the FIND already matched, so the per-match READ
+    // delivers content at the span: strip the body (no re-match) and set <L> to the span. A null
+    // span (body-less folder/glob fan-out) reads the whole entry. #286
+    static #retargetRead(statement: PlurnkStatement, pathname: string, span: { lineStart: number; lineEnd: number } | null): PlurnkStatement {
+        const t = statement.target;
+        const target = t !== null && t.kind === "url"
+            ? { ...t, pathname, raw: `${t.scheme}://${pathname}` }
+            : { ...(t as { raw: string }), raw: pathname };
+        const lineMarker = span !== null ? { marks: [span.lineStart, span.lineEnd] } : null;
+        return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body: null } as PlurnkStatement;
+    }
+
+    async #handleReadFanout(
+        statement: PlurnkStatement,
+        ctx: PlurnkSchemeContext,
+        ids: { runId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier; onDispatch?: (id: number) => void },
+    ): Promise<DispatchResult> {
+        const { runId, loopId, turnId, sequence, origin, onDispatch } = ids;
+        const schemeName = schemeNameOf(statement.target);
+        const found = await this.#run(schemeName, { ...statement, op: "FIND" } as PlurnkStatement, ctx);
+        const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number } | null }> | undefined) ?? [];
+        // Find-less scheme, a matcher/scope error, or zero matches → a single row carrying the
+        // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
+        if (found.status !== 200 || matches.length === 0) {
+            const result: DispatchResult = { status: found.status === 200 ? 204 : found.status };
+            const id = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
+            onDispatch?.(id);
+            return { ...result, rowsWritten: 1 };
+        }
+        // One READ row per MATCH — the span's source lines (or the whole entry for a body-less
+        // folder/glob). The match span is SOURCE LINES, so deliver via a raw line-slice — NOT the
+        // scheme's <L> (which is item-index for application/json, structural for xml). Read each
+        // distinct entry's content once, then line-slice per match. #286
+        const wholeByPath = new Map<string, DispatchResult>();
+        const fannedStatuses: number[] = [];
+        let written = 0;
+        for (const m of matches) {
+            let whole = wholeByPath.get(m.pathname);
+            if (whole === undefined) {
+                whole = await this.#run(schemeName, Dispatcher.#retargetRead(statement, m.pathname, null), ctx);
+                wholeByPath.set(m.pathname, whole);
+            }
+            const result = Dispatcher.#sliceMatch(whole, m.span);
+            const id = await this.#writeLog({ statement: Dispatcher.#retargetRead(statement, m.pathname, m.span), result, runId, loopId, turnId, sequence: sequence + written, origin });
+            onDispatch?.(id);
+            fannedStatuses.push(result.status);
+            written++;
+        }
+        return { status: 200, rowsWritten: written, fannedStatuses };
+    }
+
+    // Deliver one match: the whole entry (body-less, span null) or the source lines at the span —
+    // a RAW line-slice, so a structural mimetype (json item-index / xml) doesn't mis-slice a span
+    // that is, by construction, source line numbers (#286).
+    static #sliceMatch(whole: DispatchResult, span: { lineStart: number; lineEnd: number } | null): DispatchResult {
+        if (whole.status !== 200 || span === null) return whole;
+        const sliced = LineMarkerOps.sliceLines(typeof whole.content === "string" ? whole.content : "", { marks: [span.lineStart, span.lineEnd] });
+        if (sliced.status !== 200) return { status: sliced.status, error: sliced.error };
+        return { status: 200, content: sliced.text ?? "", mimetype: "text/markdown", startLine: sliced.startLine ?? span.lineStart };
+    }
+
+    // §model-entry — mirror a verbatim model emission back as an actionless `model` log row, so
+    // the model can finally SEE its own prior output (and reason through its own syntax errors).
+    // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
+    // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
+    async writeModelEntry({ verbatim, runId, loopId, turnId, sequence, folded, origin = "model" }: {
+        verbatim: string; runId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
+    }): Promise<number> {
+        const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
+            run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
+            origin, source: null, op: "model", suffix: "", signal: null,
+            scheme: null, username: null, password: null, hostname: null, port: null,
+            pathname: null, params: null, fragment: null, lineMarker: null,
+            tx: "", mimetype_tx: "text/vnd.plurnk",
+            rx: JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" }),
+            mimetype_rx: "application/json",
+            status_rx: 200, tokens: this.#tokenize(verbatim), state: "resolved", outcome: null, attrs: "{}",
+        });
+        if (row === undefined) throw new Error("Dispatcher.writeModelEntry: insert returned no row");
+        if (folded) await (this.#db.engine_fold_log_entry as PrepMethod).run({ id: row.id });
+        return row.id;
+    }
+
+    // PLAN — the model's reasoning op (the 11th op). An ordinary op: dispatched like any
+    // other, logged, and broadcast to the client as a log entry — but a pure no-op for
+    // state (PLAN ∉ MUTATING_OPS); its body serializes into the log row's tx, no effect.
+    #handlePlan(statement: PlurnkStatement): DispatchResult {
+        if (statement.op !== "PLAN") throw new Error("unreachable");
+        return { status: 200 };
+    }
+
+    // Same- and cross-scheme COPY share one orchestrator — §copy-cross-scheme-copy §move-cross-scheme-move
+    async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {
+        statement: PlurnkStatement;
+        srcPath: ParsedPath;
+        dstPath: ParsedPath;
+        ctx: PlurnkSchemeContext;
+    }): Promise<DispatchResult> {
+        const srcSchemeName = schemeNameOf(srcPath);
+        const dstSchemeName = schemeNameOf(dstPath);
+        if (srcSchemeName === null || dstSchemeName === null) return { status: 400, error: "COPY/MOVE require URL paths with schemes" };
+
+        const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
+        const dstHandler = this.#schemes.get(dstSchemeName) as SchemeWithCrud | undefined;
+        if (srcHandler === undefined || dstHandler === undefined) return { status: 501 };
+        if (typeof srcHandler.readEntry !== "function" || typeof dstHandler.writeEntry !== "function") return { status: 501 };
+
+        const srcPathname = pathnameFromPath(srcPath);
+        const dstPathname = pathnameFromPath(dstPath);
+
+        const srcResult = await srcHandler.readEntry(srcPathname, ctx);
+        if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };  // §copy-missing-source-404 §move-missing-source-404
+        const entry = srcResult.entry;
+
+        // Destination read — the conflict/no-op verdict is deferred until the
+        // to-be-written content is known (after <L> slice + tag resolution below),
+        // so an identical re-copy resolves to 304 instead of a phantom 409.
+        const dstExisting = typeof dstHandler.readEntry === "function"
+            ? await dstHandler.readEntry(dstPathname, ctx)
+            : null;
+
+        // Mimetype compatibility check against the destination scheme's manifest
+        const dstManifest = (dstHandler.constructor as { manifest?: SchemeManifest }).manifest;
+        const dstChannels = dstManifest?.channels ?? {};
+        for (const [channelName, channelData] of Object.entries(entry.channels)) {
+            const expectedMimetype = dstChannels[channelName];
+            if (expectedMimetype !== undefined && expectedMimetype !== channelData.mimetype) {
+                return { status: 415, error: `mimetype mismatch on channel '${channelName}': ${channelData.mimetype} vs ${expectedMimetype}` }; // cross-mimetype COPY/MOVE → 415, never coerce — §channel-mimetype-cross-mimetype-415
+            }
+        }
+
+        // `<L>` source range slicing per SPEC.md §op-invariants (symmetric with READ
+        // `<L>` — source range, no line-number prefix).
+        // Applied to every channel of the source entry. Binary channels return
+        // 415 since line semantics don't apply.
+        const lineMarker = (statement as { lineMarker?: LineMarker | null }).lineMarker ?? null;
+        let channels = entry.channels;
+        if (lineMarker !== null) {
+            const sliced: typeof entry.channels = {};
+            for (const [channelName, channelData] of Object.entries(entry.channels)) {
+                if (MimetypeBinary.isBinaryMimetype(channelData.mimetype)) {
+                    return { status: 415, error: `cannot slice <L> on binary channel '${channelName}' (${channelData.mimetype})` };
+                }
+                const r = LineMarkerOps.sliceLinesRaw(channelData.content ?? "", lineMarker);
+                if (r.status !== 200) return { status: r.status, error: r.error };
+                sliced[channelName] = { ...channelData, content: r.text ?? "" };
+            }
+            channels = sliced;
+        }
+
+        // Tag resolution: signal = replace (§copy-signal-replaces-source-tags); absent/empty = carry from source (§copy-no-signal-carries-source-tags)
+        const tags = (Array.isArray(statement.signal) && statement.signal.length > 0)
+            ? statement.signal
+            : entry.tags;
+
+        // 304/409 on an existing destination (SPEC §copy): a re-copy that would write
+        // exactly what's already there — same channel contents, same tags — is a no-op
+        // (304), mirroring EDIT's 304-on-noop (§edit). A divergent destination is a real
+        // collision (409); COPY/MOVE never clobbers.
+        if (dstExisting !== null && dstExisting.status === 200 && dstExisting.entry !== null) {
+            const dstChannels = dstExisting.entry.channels;
+            const writeNames = Object.keys(channels).sort();
+            const dstNames = Object.keys(dstChannels).sort();
+            const sameContent = writeNames.length === dstNames.length
+                && writeNames.every((n, i) => n === dstNames[i] && (channels[n]?.content ?? "") === (dstChannels[n]?.content ?? ""));
+            const sameTags = [...tags].sort().join("") === [...dstExisting.entry.tags].sort().join("");
+            if (sameContent && sameTags) return { status: 304 };  // identical → §copy-noop-304
+            return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };  // §copy-conflict-409
+        }
+
+        const writeResult = await dstHandler.writeEntry(dstPathname, { channels, tags }, ctx);
+        // A file dest returns 202 (disk write → §membership review): propagate the
+        // proposal so dispatch runs the gate + routes applyResolution to the dest.
+        if (writeResult.status === 202) return { status: 202, attrs: writeResult.attrs, body: writeResult.body };
+        return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
+    }
+
+    async #handleSendBroadcast(statement: PlurnkStatement, loopId: number, prematureRefusal: PrematureReason | undefined): Promise<DispatchResult> {
+        if (statement.op !== "SEND") throw new Error("unreachable");
+        const status = statement.signal;
+        if (status === null) return { status: 400 };
+        // Premature terminate (§send-premature-terminate): a terminal SEND[200] is REFUSED 409 — the row
+        // keeps the [200] emission + body (faithful, never erased), the loop never goes terminal. The
+        // decision is the runTurn PRE-DISPATCH snapshot (threaded), so a same-turn fire-and-forget spawn
+        // isn't miscounted. Two reasons, two terse signals: a live thing the run holds, or a READ
+        // submitted this turn whose result the model can't have seen (it folds back next turn).
+        if (status === 200 && prematureRefusal === "live-thing") {
+            return { status: 409, error: "Attempted [200] termination despite active streams or worker runs. You may either hibernate [202] to wait or KILL them before terminating." };
+        }
+        if (status === 200 && prematureRefusal === "submitted-read") {
+            return { status: 409, error: "Attempted termination with submitted READ operation(s)." };
+        }
+        // Groundless hibernation (§send-groundless-hibernate): a SEND[202] alongside a same-turn READ,
+        // with no wake edge — the READ's result folds back on a next turn this park would never reach,
+        // so the model is sleeping on its own unanswered question. Refused 409 on the record, same
+        // shape as the premature 200 — the row keeps the [202] attempt, the loop stays a continue, the
+        // steer strikes. (A bare park holding nothing is legal — the voice door; never refused here.)
+        if (status === 202 && prematureRefusal === "groundless-hibernate") {
+            return { status: 409, error: "Attempted [202] hibernation with submitted READ operation(s) and nothing to wake you — the result arrives on your next turn, which this park would never reach. SEND[102] to receive it, then act." };
+        }
+        if (status === 200 || status === 202 || status === 499) {
+            // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance
+            // the loop; each carries its body as the loop's terminal message — the deliverable.
+            const body = statement.body;
+            const message = body === null ? null : typeof body === "string" ? body : body.raw;
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ status, loop_id: loopId, message });
+        }
+        return { status };
+    }
+
+    async #run(
+        schemeName: string | null,
+        statement: PlurnkStatement,
+        ctx: PlurnkSchemeContext,
+    ): Promise<DispatchResult> {
+        if (schemeName === null) return { status: 400 };
+        const handler = this.#schemes.get(schemeName) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
+        if (handler === undefined) return { status: 501 };
+        const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
+        const method = handler[methodName];
+        if (typeof method !== "function") return { status: 501 };
+        // External @plurnk/plurnk-schemes-* siblings receive the DB-free SchemeCtx
+        // (caps), never the raw PlurnkSchemeContext (schemes SPEC §channels). The dynamic
+        // dispatch is typed for in-tree schemes; the cast bridges the ctx shapes —
+        // the sibling reads caps, the in-tree handler reads db.
+        if (this.#schemes.isExternal(schemeName)) {
+            return method.call(handler, statement, new SchemeCtxImpl(ctx, schemeName) as unknown as PlurnkSchemeContext);
+        }
+        return method.call(handler, statement, ctx);
+    }
+
+    // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/
+    // directed write — paused for client resolution) UNLESS it is a broadcast SEND.
+    // A broadcast SEND[202] is the model PARKING the loop (a terminal disposition,
+    // plurnk.md), never a side-effect — #255: gating the propose/await path on the
+    // bare 202 surfaced model speech as a loop/proposal and froze clients. The 202
+    // is overloaded (proposal-pause vs parked-terminal); the op disambiguates it.
+    static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
+        return result.status === 202 && !(statement.op === "SEND" && statement.target === null);
+    }
+
+    async #writeLog({
+        statement, result, runId, loopId, turnId, sequence, origin,
+    }: {
+        statement: PlurnkStatement; result: DispatchResult;
+        runId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
+    }): Promise<number> {
+        const target = this.#extractTarget(statement.target);
+        const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
+            ? JSON.stringify(statement.lineMarker as LineMarker)
+            : null;
+        // A proposal (status 202 from a side-effecting op) is written to the log in
+        // state='proposed' until the proposal lifecycle resolves it; attrs holds the
+        // scheme-supplied payload (file diff, exec command, etc.) the client renders
+        // for review and the scheme consumes on accept. A broadcast SEND[202] is a
+        // parked-terminal, NOT a proposal (#isProposal / #255) → state='resolved'.
+        const isProposed = Dispatcher.#isProposal(statement, result);
+        let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
+            ? { ...(result.attrs as Record<string, unknown>) }
+            : {};
+        // EXEC produces a stream entry addressed by RUNTIME TAG as authority (§exec): it lives
+        // at <runtime>:///<loop_seq>/<turn_seq>/<sequence> (e.g. sh:///1/1/2). That address is a
+        // SEPARATE `stream` link in attrs — NOT an overload of `target`, which stays faithful to
+        // the EXEC's own slot (the cwd, or the path to the executable). The log:/// coordinate
+        // shares the trailing <loop>/<turn>/<seq>, so the op still correlates to its stream.
+        // Runtime comes from statement.signal (EXEC's runtime slot), resolvable for failed execs
+        // too; empty/absent = the default shell.
+        if (statement.op === "EXEC") {
+            const seqs = await (this.#db.engine_loop_turn_seqs as PrepMethod).get<{ loop_seq: number; turn_seq: number }>({
+                loop_id: loopId, turn_id: turnId,
+            });
+            if (seqs === undefined) throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
+            const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
+            const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
+            attrsObj.pathname = coordPathname;
+            attrsObj.stream = `${runtime}://${coordPathname}`;
+            // Mutate the in-memory result.attrs too: the dispatch path
+            // hands originalResult.attrs to handler.applyResolution after
+            // proposal accept (see ProposalLifecycle.runApply). Both views —
+            // the stored row AND the in-memory proposal — need the same
+            // pathname so applyResolution writes the entry at the same URI.
+            if (result.attrs !== undefined && result.attrs !== null) {
+                (result.attrs as Record<string, unknown>).pathname = coordPathname;
+            }
+        }
+        const attrs = JSON.stringify(attrsObj);
+        const txJson = JSON.stringify(statement);
+        const rxJson = JSON.stringify(result);
+        const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
+            run_id: runId,
+            loop_id: loopId,
+            turn_id: turnId,
+            sequence: sequence,
+            origin,
+            source: null,  // dispatch entries are self-authored; §env-delta deltas set this
+            op: statement.op,
+            suffix: statement.suffix,
+            signal: this.#signalToJson(statement.signal),
+            scheme: target.scheme,
+            username: target.username,
+            password: target.password,
+            hostname: target.hostname,
+            port: target.port,
+            pathname: target.pathname,
+            params: target.params,
+            fragment: target.fragment,
+            lineMarker: lineMarkerJson,
+            tx: txJson,
+            mimetype_tx: "application/json",
+            rx: rxJson,
+            mimetype_rx: "application/json",
+            status_rx: result.status,
+            tokens: this.#tokenize(txJson) + this.#tokenize(rxJson),
+            state: isProposed ? "proposed" : "resolved",
+            outcome: null,
+            attrs,
+        });
+        if (row === undefined) throw new Error("Dispatcher.#writeLog: INSERT ... RETURNING produced no row");
+        return row.id;
+    }
+
+    // Normalize a parsed path for storage. The `file` scheme is a routing
+    // internal — never stored, never rendered to the model. Both bare paths
+    // and `file:///...` inputs collapse to scheme=null at this boundary, so
+    // entries.scheme / log_entries.scheme never carry the string "file".
+    #extractTarget(path: ParsedPath | null): {
+        scheme: string | null; username: string | null; password: string | null;
+        hostname: string | null; port: number | null; pathname: string | null;
+        params: string | null; fragment: string | null;
+    } {
+        if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, params: null, fragment: null };
+        // `local` (bare path) and `regex` (grammar 0.46 `#pattern#flags` target) carry no URL parts — store the raw text as the pathname for the log record, scheme=null.
+        if (path.kind === "regex") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null }; // regex source — no decode
+        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: decodePathParens(path.raw), params: null, fragment: null }; // #239 item 4
+        const scheme = path.scheme === "file" ? null : path.scheme;
+        // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
+        // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
+        // the entry (/prompt/<loop>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
+        // namespace: keep it in hostname. run:// is the one registered EXCEPTION — its authority IS the
+        // run selector (§run-scheme), and run://self must stay distinct from run://name, so Run.ts
+        // folds the owner into the storage path itself, never here.
+        const foldNs = scheme !== null && scheme !== "run" && this.#schemes.has(scheme);
+        return {
+            scheme, username: path.username, password: path.password,
+            hostname: foldNs ? null : path.hostname, port: path.port,
+            pathname: decodePathParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // #239 item 4
+            params: JSON.stringify(path.params), fragment: path.fragment,
+        };
+    }
+
+    #signalToJson(signal: unknown): string | null {
+        if (signal === null || signal === undefined) return null;
+        return JSON.stringify(signal);
+    }
+}

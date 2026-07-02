@@ -25,7 +25,7 @@ interface ExecAttrs {
     cwd: string | null;     // process working directory = the session workspace (project_root), or null (headless). A relative target resolves against it. (execs 0.4.26 §2)
     target: string | null;  // the parsed (target) slot — the executor's DATA SOURCE (jq input file / sqlite db / wasm module); null = no source (subprocess ignores it). (#15)
     command: string;        // body of the EXEC op
-    pathname: string;       // stamped by Engine.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), §exec/#240. exec:// is process-control only.
+    pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), §exec/#240. exec:// is process-control only.
     inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
@@ -59,7 +59,7 @@ const schemeTargetOf = (target: ExecStatement["target"]): { scheme: string; path
 };
 
 // EXEC's pathname is <runtime>/<loop_seq>/<turn_seq>/<sequence> (stamped by
-// Engine.#writeLog). Exec owns this convention, so it — not the client — turns
+// Dispatcher.#writeLog). Exec owns this convention, so it — not the client — turns
 // the pathname into the entry's coordinate, mirrored onto stream payloads so
 // waterfall clients read fields instead of parsing the URI (#224). The
 // coordinate is the trailing three segments (runtime-agnostic); a pathname that
@@ -176,7 +176,7 @@ export default class Exec {
         // against it (so EXEC[jq](data/x.json) finds the workspace file, not one at the daemon's cwd).
         const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
         const cwd: string | null = sessionRow?.project_root ?? null;
-        // Pathname is assigned by Engine.#writeLog as <runtime>/<loop_seq>/
+        // Pathname is assigned by Dispatcher.#writeLog as <runtime>/<loop_seq>/
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
         // `pathname` is stamped into attrs at log-write time; applyResolution
         // reads it back here.

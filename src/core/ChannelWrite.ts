@@ -75,11 +75,11 @@ export type InjectRunNotify = (args: {
 // Abort a run's in-flight work by id — the run:// op family's KILL primitive
 // (terminate). The daemon wires this to Daemon.cancelDrain: aborts the run's
 // signal, so its active loop closes at 499 and any background streams tear down.
-// Sync; returns whether there was work. KILL routes through Engine.#handleKill
+// Sync; returns whether there was work. KILL routes through Dispatcher.#handleKill
 // (not a scheme handler), so this is an Engine field, never a ctx capability.
 export type CancelRunNotify = (runId: number) => boolean;
 
-// Telemetry event fan-out. Engine.#pushTelemetry fires this for every
+// Telemetry event fan-out. TelemetryChannel.push fires this for every
 // TelemetryEvent (parse_error, strike, cycle, sudden_death, no_ops,
 // max_commands_exceeded, action_failure) it pushes to a loop's buffer.
 // Daemon broadcasts as `telemetry/event` scoped to the loop's session.

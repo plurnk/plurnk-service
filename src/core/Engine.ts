@@ -1,5 +1,5 @@
-import { PlurnkParser, PlurnkParseError, parsePath } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, EditStatement, ReadStatement, UrlPath, FindStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
+import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // TelemetryEvent envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
@@ -8,72 +8,42 @@ type ParseErrorInfo = { message: string; line: number; column: number; source: s
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
-import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
+import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
-import { foldAuthorityIntoPath, renderAddress } from "./plurnk-uri.ts";
-import GitState, { type GitStatus } from "./git-state.ts";
-import Fork from "./fork.ts";
-import RunCap from "./run-cap.ts";
-import { teachingLine, docsExcludeSet } from "./teaching.ts";
-import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
+import GitState from "./git-state.ts";
 import SessionSettings from "./session-settings.ts";
-import { decodePathParens } from "./path-decode.ts";
-import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
+import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
-import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
-import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
+import { editedSpan } from "../content/index.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import Paths from "../Paths.ts";
-import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
-import PacketWire, { type PacketSection } from "./packet-wire.ts";
+// Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
+import PacketWire from "./packet-wire.ts";
 
-// SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
-// OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
-const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL"]);
+// The engine's collaborators — each owns one machine; Engine owns the loop/turn
+// lifecycle and wires them together as the public facade.
+import TelemetryChannel, { type EngineErrorKind } from "./TelemetryChannel.ts";
+import StrikeRail from "./StrikeRail.ts";
+import PacketBuilder, { type ChatMessage, type PacketAssistant } from "./PacketBuilder.ts";
+import ProposalLifecycle from "./ProposalLifecycle.ts";
+import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
+import Dispatcher from "./Dispatcher.ts";
+import type { DispatchContext, DispatchResult, PrematureReason } from "./Dispatcher.ts";
+
+// Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
+// their definitions live with the lifecycle.
+export type { ProposalDecision, ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
 
 const DEFAULT_MAX_STRIKES = 3;
 const DEFAULT_MAX_COMMANDS = 99;
-const DEFAULT_BUDGET_CEILING = 0.9;
-
-// §telemetry — the uniform error channel. Every engine failure is a terse op='error'
-// log row: a status code + the canonical term, no prose (the packet teaches recovery).
-// Each surfaces as a LogCoordinate TelemetryEvent derived from log≥400 — one channel,
-// no per-kind handling. {§telemetry-uniform-error-channel}
-const ENGINE_ERRORS = Object.freeze({
-    budget_overflow: { status: 413, term: "Budget Overflow: newest log items automatically FOLDed" },
-    max_commands_exceeded: { status: 429, term: "Max Commands Exceeded" },
-    // premature-terminate is NOT a terse engine-error: it's a SEND op-result (409 + an actionable
-    // outcome, §send-premature-terminate) — the SEND row records the [200] attempt faithfully and
-    // auto-surfaces (status≥400) like any op failure, never an erasure to 102.
-    idle_turn: { status: 409, term: "Idle Turn" },
-} as const);
-type EngineErrorKind = keyof typeof ENGINE_ERRORS;
-
-// Substituted into the budget readout after the assembled packet is measured
-// (the figure depends on the packet's own rendered size — chicken/egg).
-const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
-const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
-const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
-
-// PLURNK_BUDGET_CEILING is dual-mode: <=1 is a fraction of the provider's
-// context window, >1 is an absolute token wall — lets a demo pin a tiny
-// ceiling regardless of the model's real window to force the grinder.
-const readCeiling = (): number => {
-    const raw = process.env.PLURNK_BUDGET_CEILING;
-    if (raw === undefined || raw.length === 0) return DEFAULT_BUDGET_CEILING;
-    const n = Number.parseFloat(raw);
-    if (!Number.isFinite(n) || n <= 0) return DEFAULT_BUDGET_CEILING;
-    return n;
-};
 
 const readMaxStrikes = (): number => {
     const raw = process.env.PLURNK_MAX_STRIKES;
@@ -100,38 +70,9 @@ const readFilesItems = (): number | null => {
     return normalizeFilesItems(Number.parseInt(raw, 10));
 };
 
-type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { Provider, ProviderResponse, ProviderAssistant, ProviderUsage } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
 import { ProviderError } from "@plurnk/plurnk-providers";
-
-// packet.assistant shape per plurnk-grammar 0.6.0 Packet.json. Wire-level
-// call-metadata (usage, finishReason, model) is NOT here — those are
-// properties of the call and live on the Turn row, alongside Turn.usage.
-type PacketAssistant = {
-    content: string;
-    ops: PlurnkStatement[];
-    reasoning: string | null;
-};
-
-// The request half of the packet — an ordered list of sections — sans the
-// assistant + assistantRaw fields, which aren't known until the provider
-// responds. Engine builds this before the call (so the wire projection has a
-// source) and completes it with the response after. Two consumers: serialized
-// to ChatMessage[] via #packetToWireMessages, and stored in turns.packet (via
-// #completePacket) as the canonical record of the exchange.
-type RequestPacket = {
-    tokens: number;
-    sections: PacketSection[];
-    // The turn's structured telemetry events (parse errors, budget_overflow,
-    // strikes, …) — the engine's alert record, ALSO stored on the completed
-    // packet (packet.telemetryErrors). The buffer is ephemeral (drains on read),
-    // so the packet is their only persistent home; the `errors` SECTION is their
-    // rendered, model-facing view. The grinder threads them through its rebuild
-    // so a destructive re-drain can't swallow them.
-    telemetryErrors: object[];
-};
 
 // Split-out call-metadata that travels with the parsed packet but lands in
 // Turn columns instead of packet.assistant.
@@ -139,102 +80,6 @@ type TurnCallMetadata = {
     usage: ProviderUsage;
     finishReason: string | null;
     model: string;
-};
-
-type DispatchContext = {
-    statement: PlurnkStatement;
-    sessionId: number;
-    runId: number;
-    loopId: number;
-    turnId: number;
-    sequence: number;
-    origin: WriterTier;
-    onDispatch?: (logEntryId: number) => void;
-    // Set by runTurn for THIS turn's terminal SEND when it's premature (§send-premature-terminate) —
-    // the reason: a live thing the run holds (open stream/spawn or non-terminal child), or a READ
-    // submitted THIS turn whose result the model can't have seen yet. Threaded — never re-checked at
-    // dispatch — so a same-turn fire-and-forget spawn isn't miscounted: the snapshot precedes the turn's ops.
-    prematureRefusal?: PrematureReason;
-};
-
-// Why a terminal SEND[200] is refused (§send-premature-terminate): the run holds a live thing, or the
-// turn submitted a READ whose result the model hasn't observed (results fold back next turn).
-type PrematureReason = "live-thing" | "submitted-read";
-
-type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
-
-// Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
-// to propose; engine writes a state='proposed' log entry, registers a waiter
-// in #pendingProposals, and awaits resolution. Resolution arrives via
-// Engine.resolveProposal(id, decision, body?) — from the loop/resolve RPC
-// (Phase E.2), the in-tree YOLO listener (Phase E.3), or a timeout.
-export type ProposalDecision = "accept" | "reject" | "cancel";
-export interface ProposalResolution {
-    decision: ProposalDecision;
-    // Final body the resolver wants written/applied (e.g., reviewer-
-    // edited content). INPUT to applyResolution; not in the model-facing
-    // rx — the model sees the result via the entry/index now (post-F.5
-    // and EDIT-registers-entry), not via input echoes.
-    body?: string;
-    // Operational reason (rejected / timeout / policy_veto / etc.).
-    // Stored on log_entries.outcome COLUMN for forensics; NOT included
-    // in the rx body — model doesn't need to know administratively how
-    // a proposal was resolved (per AGENTS.md hygiene rule).
-    outcome?: string;
-}
-interface ProposalWaiter {
-    resolve: (resolution: ProposalResolution) => void;
-    timeoutHandle: ReturnType<typeof setTimeout>;
-}
-
-// External observers of pending-proposal events. sessionId is included so
-// Daemon can scope its WS broadcast. attrs is the scheme-supplied payload
-// (file diff, exec command, etc.) the client needs to render review UI.
-// flags carries the loop's persisted flags so listeners (YOLO auto-accept,
-// the client-facing notification) can decide policy without a second DB
-// roundtrip — loaded once in Engine, shared with all listeners.
-export interface ProposalPendingEvent {
-    logEntryId: number;
-    sessionId: number;
-    runId: number;
-    loopId: number;
-    turnId: number;
-    op: string;
-    target: { scheme: string | null; pathname: string | null };
-    body: string;
-    attrs: object;
-    flags: LoopFlags;
-    // #note10 — the target entry diverged on disk this turn (ambient change since the
-    // model's prior turn), so the model's EDIT is based on a stale read. A server-YOLO
-    // auto-accept would silently clobber the ambient change; YOLO rejects when set.
-    staleClobberRisk: boolean;
-}
-
-// Resolution timeout — proposed entries auto-cancel if nothing arrives
-// within this window. SPEC.md §engine-rails (proposal lifecycle) + §methods (loop.resolve).
-const PROPOSAL_TIMEOUT_DEFAULT_MS = 300000;
-const readProposalTimeoutMs = (): number => {
-    const raw = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
-    if (raw === undefined || raw.length === 0) return PROPOSAL_TIMEOUT_DEFAULT_MS;
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) return PROPOSAL_TIMEOUT_DEFAULT_MS;
-    return n;
-};
-
-import type { SchemeHandler } from "@plurnk/plurnk-schemes";
-// In-tree dispatch type (PlurnkSchemeContext/DispatchResult); the imported SchemeHandler
-// is the external contract (SchemeCtx) — #run borrows its op-key set, not its ctx shape.
-type SchemeMethod = (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult>;
-
-interface SchemeWithCrud {
-    readEntry?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
-    writeEntry?: (pathname: string, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
-    deleteEntry?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<DeleteEntryResult>;
-}
-
-const pathnameFromPath = (path: ParsedPath): string => {
-    if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
-    return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
 };
 
 // Default turn.status when ops were emitted but no SEND. Model is implicitly
@@ -245,11 +90,6 @@ const TURN_STATUS_IMPLICIT_CONTINUE = 102;
 // Status assigned to a turn that emitted NO ops at all. Strike-worthy; the
 // action routes through telemetry.errors[] (§telemetry, §telemetry-no-error-scheme — never an error:// scheme).
 const TURN_STATUS_NO_OPS = 422;
-
-// Rail #38: action-entry statuses that DON'T accumulate strikes. Model adapted
-// to a finding (not_found, op_not_supported); no penalty. Rummy parallel:
-// SOFT_FAILURE_OUTCOMES = {"not_found", "unparsed"}.
-const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 501]);
 
 const DEFAULT_MIN_CYCLES = 3;
 const DEFAULT_MAX_CYCLE_PERIOD = 4;
@@ -262,102 +102,26 @@ const readPositiveInt = (envVar: string, fallback: number): number => {
     return n;
 };
 
-// Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
-// where the activity isn't fully captured by target alone:
-//   - EDIT/COPY/MOVE: body excluded — re-writing the same target with varied
-//     content IS cycling (the model is producing different versions of the
-//     same artifact instead of progressing).
-//   - FIND/READ/OPEN/FOLD: body IS the search/selection pattern; varied
-//     matchers on the same target ARE different activities (the model is
-//     exploring different queries, not repeating one).
-const fingerprintOp = (stmt: PlurnkStatement): string => {
-    const path = stmt.target;
-    const matcherDiscriminator = (): string => {
-        // For matcher-bearing ops, the body's `raw` (matcher source) plus
-        // any lineMarker forms the activity discriminator.
-        const parts: string[] = [];
-        const body = (stmt as { body?: { raw?: unknown } | string | null }).body;
-        if (body !== null && typeof body === "object" && typeof body.raw === "string") {
-            parts.push(`body:${body.raw.slice(0, 64)}`);
-        }
-        const lm = (stmt as { lineMarker?: LineMarker | null }).lineMarker;
-        if (lm !== null && lm !== undefined) parts.push(`L:${lm.marks.join(",")}`);
-        return parts.length > 0 ? `|${parts.join("|")}` : "";
-    };
-    if (path === null) {
-        // Path-less ops need an activity-defining discriminator other
-        // than `target`. Picked per op so the cycle detector reflects
-        // intent rather than syntax:
-        //   - EXEC: the command body IS the activity. Without a body
-        //     digest, varied shell commands (find / ls / wc) collapse to
-        //     one fingerprint and the detector mislabels exploration
-        //     as a loop.
-        //   - SEND: the status code (signal) IS the activity. Different
-        //     SEND[X] are different intentions; same SEND[X] with
-        //     different message bodies is the same termination signal.
-        if (stmt.op === "EXEC") {
-            const body = typeof stmt.body === "string" ? stmt.body : "";
-            return `EXEC|(no-path)${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
-        }
-        if (stmt.op === "SEND") {
-            const signal = typeof stmt.signal === "number" ? stmt.signal : "";
-            return `SEND|(no-path)|signal:${signal}`;
-        }
-        return `${stmt.op}|(no-path)`;
-    }
-    const base = path.kind === "url"
-        ? `${stmt.op}|${path.scheme}://${path.pathname}`
-        : `${stmt.op}|local:${path.raw}`;
-    if (stmt.op === "FIND" || stmt.op === "READ" || stmt.op === "OPEN" || stmt.op === "FOLD") {
-        return `${base}${matcherDiscriminator()}`;
-    }
-    return base;
-};
-
 export default class Engine {
     static computeCeiling(contextSize: number | null, config: number): number | null {
-        // Absolute wall (config > 1) is window-independent — the point of the >1
-        // mode is to pin a ceiling even when the provider reports no window; cap at
-        // the real window when one is known. Ratio mode needs a window to scale.
-        if (config > 1) return contextSize === null ? Math.floor(config) : Math.min(Math.floor(config), contextSize);
-        return contextSize === null ? null : Math.floor(contextSize * config);
+        return PacketBuilder.computeCeiling(contextSize, config);
     }
 
-    // Per-turn fingerprint: sorted set of per-op fingerprints, joined. Order
-    // within a turn doesn't matter — we want the SET of activities.
     static fingerprintTurn(ops: ReadonlyArray<PlurnkStatement>): string {
-        return ops.map(fingerprintOp).toSorted().join(",");
+        return StrikeRail.fingerprintTurn(ops);
     }
 
-    // Rail #39 cycle detector. For each candidate period k in [1, maxCyclePeriod],
-    // check whether the last k*minCycles entries form minCycles repetitions of the
-    // same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny. Rummy
-    // parallel: src/plugins/error/error.js detectCycle.
     static detectCycle(
         history: ReadonlyArray<string>,
         minCycles: number,
         maxCyclePeriod: number,
     ): { detected: false } | { detected: true; period: number; cycles: number } {
-        for (let k = 1; k <= maxCyclePeriod; k++) {
-            const needed = k * minCycles;
-            if (history.length < needed) continue;
-            const tail = history.slice(-needed);
-            const cycle = tail.slice(0, k);
-            let match = true;
-            outer: for (let rep = 0; rep < minCycles; rep++) {
-                for (let j = 0; j < k; j++) {
-                    if (tail[rep * k + j] !== cycle[j]) { match = false; break outer; }
-                }
-            }
-            if (match) return { detected: true, period: k, cycles: minCycles };
-        }
-        return { detected: false };
+        return StrikeRail.detectCycle(history, minCycles, maxCyclePeriod);
     }
 
     #db: Db;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
-    #budgetCeiling: number;
     // Write-time tokenizer (SPEC §tokenomics). Synchronous per the provider
     // contract (§provider-surface). Populated from the active provider's countTokens via
     // the Daemon; a divisor tripwire stands in only for bare/standalone
@@ -367,26 +131,15 @@ export default class Engine {
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
-    // Per-loop transient buffer of actionless failures pending surface in the
-    // NEXT packet's user.telemetry.errors[]. Drained by #buildTelemetryErrors.
-    // Map<loopId, TelemetryError[]>. SPEC §telemetry.
-    #telemetryBuffer = new Map<number, object[]>();
-    // Rail #38 strike state per loop. `streak` = consecutive struck turns;
-    // resets on a clean turn. `turnErrors` is bumped externally by per-turn
-    // rails (cycle detection #39, etc.) — read and reset at end of each turn.
-    // `history` holds per-turn fingerprints for rail #39 cycle detection.
-    #strikeState = new Map<number, { streak: number; turnErrors: number; history: string[] }>();
-    // Proposal lifecycle: pending dispatch pauses waiting for resolution.
-    // Engine.runTurn awaits the promise when a scheme returns status 202;
-    // Engine.resolveProposal feeds the resolution back in. Map is per-log-
-    // entry-id; entries clear on resolution. SPEC.md §engine-rails + §methods (loop.resolve).
-    #pendingProposals = new Map<number, ProposalWaiter>();
-    // External observers of proposal lifecycle events. Daemon subscribes
-    // here to push `loop/proposal` notifications when an entry enters
-    // pending state. YOLO listener (Phase E.3) subscribes here too. Lean
-    // event emitter — no priority, no veto chain at this layer; filter
-    // chains come later if a real consumer needs them.
-    #proposalPendingListeners: Array<(payload: ProposalPendingEvent) => void> = [];
+
+    // The collaborators. Engine constructs them (they share its deps via
+    // thunks where the value is late-injected — executors, loop signals)
+    // and fronts their public surface.
+    #telemetry: TelemetryChannel;
+    #strikes: StrikeRail;
+    #packets: PacketBuilder;
+    #proposals: ProposalLifecycle;
+    #dispatcher: Dispatcher;
 
     // Per-loop AbortController for cancellation propagation into scheme
     // ctx.signal. runLoop creates one at entry, cleans up at end. Engine
@@ -397,14 +150,6 @@ export default class Engine {
 
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeRunNotify: WakeRunNotify | undefined;
-    #injectRun: InjectRunNotify | undefined;
-    #cancelRun: CancelRunNotify | undefined;
-    // Telemetry event fan-out: every TelemetryEvent pushed to the loop's
-    // buffer is also broadcast live to the connected client(s) on the
-    // session. Without this, the client sees `loop/terminated` with a
-    // status code but has no way to surface why the loop degraded.
-    // Per-grammar 0.17.0 protocol — see SPEC §telemetry.
-    #telemetryEventNotify: TelemetryEventNotify | undefined;
 
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
     #gbnfCache: string | null = null;
@@ -424,9 +169,6 @@ export default class Engine {
         this.#schemes = schemes;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeRunNotify = wakeRunNotify;
-        this.#injectRun = injectRun;
-        this.#cancelRun = cancelRun;
-        this.#telemetryEventNotify = telemetryEventNotify;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
         // raw-content fitContent fallback. Daemon-managed Engine receives a
@@ -434,11 +176,28 @@ export default class Engine {
         this.#mimetypes = mimetypes ?? new Mimetypes({
             discovery: { registry: emptyRegistry(), handlers: new Map() },
         });
-        this.#budgetCeiling = readCeiling();
         // Tripwire default matches the Mimetypes boot affordance (SPEC §mimetype-surface):
         // the divisor stands in only until the provider-backed tokenizer is
         // wired by the Daemon. Real counts come from provider.countTokens.
         this.#tokenize = tokenize ?? ((text) => Math.ceil(text.length / 4));
+
+        const executors = (): ExecutorRegistry | undefined => this.#executors;
+        const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopAborts.get(loopId)?.signal;
+        this.#telemetry = new TelemetryChannel({ db, notify: telemetryEventNotify });
+        this.#strikes = new StrikeRail();
+        this.#packets = new PacketBuilder({ db, schemes, telemetry: this.#telemetry, executors });
+        this.#proposals = new ProposalLifecycle({
+            db, schemes, telemetry: this.#telemetry,
+            streamEventNotify, wakeRunNotify,
+            tokenize: this.#tokenize, executors, loopSignal,
+        });
+        this.#dispatcher = new Dispatcher({
+            db, schemes, mimetypes: this.#mimetypes,
+            tokenize: this.#tokenize,
+            telemetry: this.#telemetry, proposals: this.#proposals,
+            executors, loopSignal,
+            streamEventNotify, wakeRunNotify, injectRun, cancelRun,
+        });
     }
 
     // Late injection: the executor registry is async-built at daemon start()
@@ -504,24 +263,6 @@ export default class Engine {
         };
     }
 
-    #pushTelemetry(sessionId: number, loopId: number, event: TelemetryEvent): void {
-        const existing = this.#telemetryBuffer.get(loopId);
-        if (existing === undefined) this.#telemetryBuffer.set(loopId, [event]);
-        else existing.push(event);
-        // Live fan-out: client sees the event the moment it lands in the
-        // model's buffer (not at the next packet build). Same envelope on
-        // both sides per the grammar 0.17.0 TelemetryEvent protocol.
-        this.#telemetryEventNotify?.(sessionId, { loopId, event });
-    }
-
-    // Telemetry drains as it's read into the packet — each event surfaces once. §telemetry-drain-on-read
-    #drainTelemetry(loopId: number): object[] {
-        const buf = this.#telemetryBuffer.get(loopId);
-        if (buf === undefined) return [];
-        this.#telemetryBuffer.delete(loopId);
-        return buf;
-    }
-
     // A @plurnk/gbnf divergence position (providers#24) is a CODE-POINT offset into the
     // model's content; the snippet/telemetry surface speaks 1-based line + 0-based column.
     // Convert over code points (not UTF-16 units) so an astral char doesn't skew the line,
@@ -583,8 +324,8 @@ export default class Engine {
                 loopAbort.abort(reason ?? "loop_forceful_termination");
             }
             this.#loopAborts.delete(loopId);
-            this.#strikeState.delete(loopId);
-            this.#telemetryBuffer.delete(loopId);
+            this.#strikes.delete(loopId);
+            this.#telemetry.delete(loopId);
         };
 
         while (true) {
@@ -632,56 +373,26 @@ export default class Engine {
                 return { turnIds, finalStatus: 413, hitMaxTurns: false, reason: "budget_overflow" };
             }
 
-            // Rail #39: cycle detection. Push this turn's fingerprint to
-            // history, scan for repetition patterns. Detection bumps
-            // turnErrors so the strike system handles abandonment
-            // naturally — same internal-only role rummy gave it
-            // (plugins/error/error.js#verdict). Intentionally NOT a
-            // model-facing telemetry kind: model sees the strike pile-up
-            // (which IS the actionable signal); cycle is the engine's
-            // reason for treating the turn as a failure, not its own alert.
-            const state = this.#strikeState.get(loopId) ?? { streak: 0, turnErrors: 0, history: [] };
-            state.history.push(turn.fingerprint);
-            const cycle = Engine.detectCycle(state.history, minCycles, maxCyclePeriod);
-            if (cycle.detected) state.turnErrors++;
-            // SPEC §grinder: a non-soft grinder fire counts toward the strike streak.
-            if (turn.budgetStruck) state.turnErrors++; // a grinder fire bumps the strike streak — §grinder-strike-coupling
-            if (turn.steerStruck) state.turnErrors++; // idle / premature-terminate steer struck — §send the terminal contract
-            this.#strikeState.set(loopId, state);
-
-            // Rail #38: strike accounting. Three sources strike a turn:
-            //  1. recordedFailed — any action-entry at hard failure status
-            //     (>= 400 and not in SOFT_FAILURE_STATUSES).
-            //  2. noOps — turn.status === TURN_STATUS_NO_OPS (per #41).
-            //  3. turnErrors — externally bumped by per-turn rails (#39 cycle).
-            // Struck → streak++; clean → streak = 0. Threshold → abandon.
-            // Strike accounting is engine-internal bookkeeping. Per rummy
-            // precedent (plugins/error/error.js#verdict) and SPEC §telemetry
-            // policy: model sees errors that happened (parse_error,
-            // action_failure), never the engine's accounting about them
-            // (strike counts, cycle detection, sudden-death threshold).
-            // Surfacing internal state to the model creates a gamification
-            // surface — model optimizes for engine metrics rather than
-            // task progress.
-            const recordedFailed = turn.statuses.some((s) => s >= 400 && !SOFT_FAILURE_STATUSES.has(s));
-            const noOps = turn.status === TURN_STATUS_NO_OPS;
-            const struck = noOps || recordedFailed || state.turnErrors > 0;
-            if (struck) {
-                state.streak++;
-                if (state.streak >= maxStrikes) {
-                    // §loop-terminals — a cycle-driven strike is the model spinning in place
-                    // (508 Loop Detected); a failure/no-op strike is the model failing (500
-                    // Internal Server Error). The straw that crossed the threshold picks it.
-                    const status = cycle.detected ? 508 : 500;
-                    await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status, message: "strike_threshold" });
-                    cleanup("forceful", "strike_threshold");
-                    return { turnIds, finalStatus: status, hitMaxTurns: false, reason: "strike_threshold" };
-                }
-            } else {
-                state.streak = 0;
+            // Rails #38/#39 — per-turn strike accounting (cycle detection, the
+            // grinder/steer coupling, hard-failure statuses). StrikeRail owns the
+            // bookkeeping; runLoop owns abandonment.
+            const verdict = this.#strikes.assess(loopId, {
+                fingerprint: turn.fingerprint,
+                statuses: turn.statuses,
+                noOps: turn.status === TURN_STATUS_NO_OPS,
+                budgetStruck: turn.budgetStruck,
+                steerStruck: turn.steerStruck,
+                minCycles, maxCyclePeriod, maxStrikes,
+            });
+            if (verdict.thresholdCrossed) {
+                // §loop-terminals — a cycle-driven strike is the model spinning in place
+                // (508 Loop Detected); a failure/no-op strike is the model failing (500
+                // Internal Server Error). The straw that crossed the threshold picks it.
+                const status = verdict.cycleDetected ? 508 : 500;
+                await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status, message: "strike_threshold" });
+                cleanup("forceful", "strike_threshold");
+                return { turnIds, finalStatus: status, hitMaxTurns: false, reason: "strike_threshold" };
             }
-            state.turnErrors = 0;
-            this.#strikeState.set(loopId, state);
 
             // Sudden-death threshold is engine-internal — abandonment
             // happens at maxTurns regardless. Per gamification policy:
@@ -820,7 +531,7 @@ export default class Engine {
             tokenize: this.#tokenize,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
+            pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
         };
         // SPEC §membership D4/D5 — git-ls-files workspace membership, resolved at
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
@@ -935,7 +646,7 @@ export default class Engine {
             // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
             if (runFirstLoop) {
                 const emission = ["<<PLAN:Initialize:PLAN", ...turnZeroMoves, "<<SEND[102]:Initialized:SEND"].join("\n");
-                await this.#writeModelEntry({ verbatim: emission, runId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
+                await this.#dispatcher.writeModelEntry({ verbatim: emission, runId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
         }
 
@@ -956,15 +667,15 @@ export default class Engine {
         // rebuild too so it isn't re-shelled on overflow.
         const gitStatus = await GitState.status(this.#db, sessionId, this.#loopAborts.get(loopId)?.signal);
 
-        // Build the spec'd packet (Packet.json) request half. #buildLog
+        // Build the spec'd packet (Packet.json) request half. The log build
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
-        let requestPacket = await this.#buildRequestPacket({
+        let requestPacket = await this.#packets.buildRequestPacket({
             initialMessages: messages, requirements, sessionId, runId, loopId,
             currentTurnSeq: seq, provider, gitStatus,
         });
         // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
-        const enforced = await this.#enforceBudget({
+        const enforced = await this.#packets.enforceBudget({
             packet: requestPacket, provider, runId, loopId, turnId,
             // The overflow error row is minted at the turn's running sequence (nextActionIndex), pre-generate;
             // runTurn advances the counter past it below so the post-generate dispatch rows never collide.
@@ -972,7 +683,7 @@ export default class Engine {
             // No preset telemetry — the rebuild RE-DERIVES the errors section from log≥400 so the
             // overflow row just minted surfaces THIS turn (§grinder-overflow-error-row). Safe: the
             // ephemeral buffer is empty pre-generate (events drain on the next turn's build).
-            rebuild: () => this.#buildRequestPacket({
+            rebuild: () => this.#packets.buildRequestPacket({
                 initialMessages: messages, requirements, sessionId, runId, loopId,
                 currentTurnSeq: seq, provider, gitStatus,
             }),
@@ -982,7 +693,7 @@ export default class Engine {
         if (!enforced.fit) {
             // Hard 413: won't fit even with only the manifest left. Skip the LLM,
             // close the turn, and let runLoop abandon (499).
-            const hardPacket = this.#completePacket(requestPacket, { content: "", ops: [], reasoning: null }, null, provider);
+            const hardPacket = this.#packets.completePacket(requestPacket, { content: "", ops: [], reasoning: null }, null, provider);
             await (this.#db.engine_close_turn as PrepMethod).run({
                 id: turnId, status: 413, packet: JSON.stringify(hardPacket),
                 usage_prompt: 0, usage_completion: 0, usage_cached: 0, usage_cost_pico: 0,
@@ -991,7 +702,7 @@ export default class Engine {
             });
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
         }
-        const modelMessages = this.#packetToWireMessages(requestPacket);
+        const modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
         // No decode cap. Our budget governs the TRANSMISSION packet (the grinder folds
         // the input under the ceiling); the model's decode — reasoning + emission — is
         // out of band, owned by the provider's own context window. Deriving a maxTokens
@@ -1014,9 +725,9 @@ export default class Engine {
             // so a client can show "awaiting model" the instant the turn starts and flip to "parsing" when
             // ops are about to land. Base telemetry/event channel (the embed_progress precedent, §tokenomics
             // clients already render it unconditionally); the abort guard keeps a cancelled loop silent.
-            if (!signal?.aborted) this.#pushTelemetry(sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
+            if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
             response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
-            if (!signal?.aborted) this.#pushTelemetry(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
+            if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // Every provider error surfaces as telemetry (the client/model sees the cause). #256:
             // grammar_unenforced is the one the MODEL can recover from — the backend didn't
@@ -1028,7 +739,7 @@ export default class Engine {
             // In GBNF-filter mode the provider returns the bytes with a grammar_unenforced telemetry
             // event instead — recovered on the success path below (response.telemetry), no empty turn.
             if (err instanceof ProviderError) {
-                this.#pushTelemetry(sessionId, loopId, { source: "provider", kind: err.kind, message: err.message, level: "error" });
+                this.#telemetry.push(sessionId, loopId, { source: "provider", kind: err.kind, message: err.message, level: "error" });
                 if (err.kind !== "grammar_unenforced") throw err;
                 response = {
                     assistant: { content: "", reasoning: null, usage: { prompt: requestPacket.tokens, completion: 0, reasoning: 0, cached: 0, total: requestPacket.tokens }, finishReason: null, model: provider.model },
@@ -1073,7 +784,7 @@ export default class Engine {
                 ? this.#offsetToLineColumn(packetAssistant.content, event.position)
                 : null;
             if (located !== null) hadContentOffsetNotice = true;
-            this.#pushTelemetry(sessionId, loopId, {
+            this.#telemetry.push(sessionId, loopId, {
                 source: event.source,
                 kind: event.kind,
                 message: event.message ?? "",
@@ -1106,28 +817,42 @@ export default class Engine {
         // Premature terminate: a SEND[200] while the run still holds a live thing — an open stream/spawn
         // OR a non-terminal child run (§run-lifecycle: children and streams are the same kind of "live
         // thing a run holds"). The model declared done with work running. The SEND is REFUSED 409 at
-        // dispatch (#handleSendBroadcast) — the row records the [200] attempt + body faithfully (no
-        // erasure to 102) and auto-surfaces (status≥400); the loop never goes terminal. Here we only
-        // flag it so the turn stays a continue and the strike couples to the grinder (steerStruck →
-        // turnErrors): a model that won't stop premature-200ing escalates out via the rails.
+        // dispatch (Dispatcher's send-broadcast handler) — the row records the [200] attempt + body
+        // faithfully (no erasure to 102) and auto-surfaces (status≥400); the loop never goes terminal.
+        // Here we only flag it so the turn stays a continue and the strike couples to the grinder
+        // (steerStruck → turnErrors): a model that won't stop premature-200ing escalates out via the rails.
         // A terminal SEND[200] is premature when the run still holds a live thing (open stream/spawn or
         // a non-terminal child), OR when the model submitted a READ THIS turn whose result it cannot have
         // seen — results fold back on the NEXT turn, so terminating now means terminating on data it
         // doesn't have (the classic "READ + SEND[200] in one turn" that ends mid-sentence). Both refuse
         // 409 + strike; live-thing takes precedence when both hold.
-        const isTerminalSend = sendOp?.signal === 200;
-        const prematureReason: PrematureReason | undefined =
-            !isTerminalSend ? undefined
-                : (await this.#runHoldsLiveThing(runId)) ? "live-thing"
-                    : packetAssistant.ops.some((op) => op.op === "READ") ? "submitted-read"
-                        : undefined;
+        let prematureReason: PrematureReason | undefined;
+        if (sendOp?.signal === 200) {
+            prematureReason = (await this.#runHoldsLiveThing(runId)) ? "live-thing"
+                : packetAssistant.ops.some((op) => op.op === "READ") ? "submitted-read"
+                    : undefined;
+        } else if (sendOp?.signal === 202) {
+            // §send-groundless-hibernate — a park is refused only when it ORPHANS work: the turn
+            // submitted a READ (its result folds back on a next turn this park may never have) AND no
+            // wake edge exists — nothing held (the pre-dispatch snapshot) and nothing wake-capable
+            // opened this turn (a spawn takes effect mid-turn, after the snapshot — the same
+            // emission-scan shape as submitted-read). A bare park holding nothing stays LEGAL — the
+            // voice door: a sibling irc / operator inject wakes it (§actor-boundary-passive-wake) and
+            // the daemon surfaces it as loop/quiesced (§run-lifecycle-quiesced), so it is never refused.
+            if (packetAssistant.ops.some((op) => op.op === "READ")) {
+                const wakeEdge = (await this.#runHoldsLiveThing(runId))
+                    || packetAssistant.ops.some((op) => Engine.#opCanOpenWakeEdge(op));
+                if (!wakeEdge) prematureReason = "groundless-hibernate";
+            }
+        }
         const prematureTerminate = prematureReason !== undefined;
         if (prematureTerminate) steerStruck = true;
 
         // Rail #41 (revised): the per-turn requirement is "emit at least one op," not "emit a terminal
         // SEND." SEND is purely a signal verb; many turns pass without one. An empty op list strikes.
-        // A refused premature-terminate keeps the turn a continue (102) though the SEND's signal stays
-        // 200 (the un-erased record) — the loop never went terminal, so the turn didn't either.
+        // A refused terminal (premature [200] or groundless [202]) keeps the turn a continue (102)
+        // though the SEND's signal stays on the row (the un-erased record) — the loop never went
+        // terminal, so the turn didn't either.
         const turnStatus = prematureTerminate
             ? TURN_STATUS_IMPLICIT_CONTINUE
             : sendOp !== undefined
@@ -1143,7 +868,7 @@ export default class Engine {
         }
 
         // Close the turn with the final packet, status, and usage stats.
-        const packet = this.#completePacket(requestPacket, packetAssistant, response.assistantRaw, provider);
+        const packet = this.#packets.completePacket(requestPacket, packetAssistant, response.assistantRaw, provider);
         const { usage, finishReason, model } = callMetadata;
         await (this.#db.engine_close_turn as PrepMethod).run({
             id: turnId,
@@ -1206,7 +931,7 @@ export default class Engine {
         let errSeq = rowSeq;
         // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
-        for (const kind of pendingEngineErrors) await this.#mintEngineError(kind, { runId, loopId, turnId, sequence: errSeq++ });
+        for (const kind of pendingEngineErrors) await this.#telemetry.mintEngineError(kind, { runId, loopId, turnId, sequence: errSeq++ });
         // Parse errors carry the parser message + a content-offset line:col (a ContentOffset position),
         // resolved against the model's born-OPEN emission (§model-entry) — origin 'model', not engine.
         for (const { message, line, column, source } of parseErrors ?? []) {
@@ -1233,7 +958,7 @@ export default class Engine {
         // struck/silent turn) write nothing — no prior output to mirror.
         if (packetAssistant.content.trim().length > 0) {
             const hadEmissionError = (parseErrors?.length ?? 0) > 0 || hadContentOffsetNotice;
-            await this.#writeModelEntry({ verbatim: packetAssistant.content, runId, loopId, turnId, sequence: errSeq++, folded: !hadEmissionError });
+            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, runId, loopId, turnId, sequence: errSeq++, folded: !hadEmissionError });
         }
 
         // Zero ops is NOT an error to report — the model knows it emitted
@@ -1241,7 +966,7 @@ export default class Engine {
         // struck turn; the model just sees an empty packet next turn.
         // Per SPEC §telemetry gamification policy.
 
-        return { turnId, status: turnStatus, statuses, fingerprint: Engine.fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false, steerStruck };
+        return { turnId, status: turnStatus, statuses, fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false, steerStruck };
     }
 
     // Split the wire-level ProviderResponse into the two destinations:
@@ -1307,378 +1032,10 @@ export default class Engine {
         };
     }
 
-    // Assemble the request half of the spec'd packet (Packet.json §system
-    // and §user) BEFORE the provider call. The same packet object is then
-    // completed with assistant + assistantRaw after the model responds, so
-    // the stored packet and the wire payload share one source of truth.
-    async #buildRequestPacket({
-        initialMessages, requirements, sessionId, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
-    }: {
-        initialMessages: ChatMessage[];
-        // Optional requirements override. Empty in practice — callers don't thread it;
-        // the engine sources Paths.defaultRequirements itself (a non-empty value wins).
-        requirements: string;
-        gitStatus: GitStatus | null;
-        sessionId: number; runId: number; loopId: number;
-        // DB-level turn sequence for "look at the previous turn" queries
-        // (e.g. telemetry errors).
-        currentTurnSeq: number;
-        provider: Provider;
-        // Pre-drained telemetry — the grinder passes the first build's errors
-        // through its rebuilds so a destructive re-drain can't swallow them.
-        telemetryErrors?: object[];
-    }): Promise<RequestPacket> {
-        const byRole = (role: ChatMessage["role"]): string =>
-            initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
-        // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
-        // The scheme catalogue is its own `schemes` section below tools (§schemes-directory),
-        // NOT appended here: grammar 0.49+ is scheme-agnostic, so the service advertises
-        // the scheme set at packet-time (grammar#239 item 7) via SchemeRegistry.teach().
-        const system_definition = byRole("system");
-        // the prompt section sources from the loop's most recent prompt entry first
-        // (plurnk:///prompt/<loop_id>/<N> for the highest N written to date).
-        // This is what inject + the turn-1 foist write into. Falls back to
-        // the runLoop caller's messages.user for tests that bypass the
-        // foist mechanism entirely.
-        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${loopId}/%` }))
-            .filter((r) => typeof r.content === "string" && r.content.length > 0);
-        const promptCap = Number.parseInt(process.env.PLURNK_PROMPT_PREVIEW_CHARS ?? "", 10);
-        const prompt = promptRows.length > 0
-            ? PacketWire.renderActivePrompts(promptRows, Number.isInteger(promptCap) ? promptCap : -1)
-            : byRole("user");
-        // Requirements is engine-sourced, NOT threaded from callers — that threading is
-        // exactly how it went missing (callers read the sysprompt but never the
-        // requirements). Read Paths.defaultRequirements (PLURNK_REQUIREMENTS env →
-        // requirements.md) fresh each build so edits take effect; a non-empty param wins.
-        const baseRequirements = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
-        // No injected syntax line: the grammar already headlines the system definition (§Syntax) and
-        // leads requirements.md, so a third copy here was pure duplication in the model's packet. PLAN
-        // is mandated unconditionally by plurnk.md §Imperatives (grammar 0.70 requires every turn to
-        // lead with PLAN), so the service injects no separate plan directive either (the former
-        // PLURNK_PLAN gating is retired — PLURNK_PLAN is no longer a flag).
-        const log = await this.#buildLog(runId);
-        const telemetryErrors = presetTelemetry ?? await this.#buildTelemetryErrors(loopId, currentTurnSeq);
-        const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
-        const tools = this.#collectTools();
-        // Budget readout (SPEC.md §tokenomics). Two-pass: render the budget from
-        // the structured log's subtotals with a {{tokensFree}} placeholder, build
-        // the section list, measure the assembled total, resolve free, substitute.
-        // Subtotals come from the real log render — meta and fences included — not
-        // a serialized approximation. ceiling is the provider's window ×
-        // PLURNK_BUDGET_CEILING (null when no window is reported → headline
-        // omitted, section lines still shown). §tokenomics-render-weight-budget
-        const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
-        const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
-        // The default packet: an ordered list of addressable sections (§packet-construction).
-        // `slot` is a TRUST boundary (and the prompt-cache boundary): system holds only
-        // framework-authored, non-injectable sections — the static head (definition/tools/
-        // schemes/policy) forms the cached prefix, then the volatile-but-trusted tail of
-        // errors/git/budget; user holds injectable content (the log, the operator prompt) plus
-        // the requirements footer. The budget section carries its {{tokensFree}} placeholders
-        // here; they resolve below once the assembled total is known.
-        const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
-        const sessionRoot = (await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId }))?.project_root ?? null;
-        const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_POLICY)
-        const projectPolicy = await readProjectPolicy(sessionRoot); // <projectRoot>/AGENTS.md (or PLURNK_PROJECT)
-        // Child-orientation (§child-orientation): the live things THIS run holds — open streams +
-        // unconcluded child runs — surfaced every turn as terse `* <status> <path>` pointers (same shape
-        // as errors) just above the errors section. Orienting STATE so the model never loses track of
-        // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
-        const childStreams = (await (this.#db.engine_child_streams_open as PrepMethod).all<{ scheme: string; pathname: string }>({ run_id: runId }))
-            .map((s) => ({ status: "active", path: renderAddress(s.scheme, s.pathname) }));
-        const childRuns = (await (this.#db.engine_child_runs_live as PrepMethod).all<{ name: string; status: number }>({ run_id: runId }))
-            .map((r) => ({ status: r.status, path: `run://${r.name}` }));
-        const defaults: PacketSection[] = [
-            { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
-            { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
-            { name: "schemes", slot: "system", header: "Plurnk Service Schemes", content: this.#schemes.teach(), tokens: 0 },
-            ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Plurnk Operator Notes", content: inject, tokens: 0 }] : []),
-            // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
-            { name: "system-policy", slot: "system", header: "Plurnk Service Policy", content: systemPolicy ?? "", tokens: 0 },
-            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "", tokens: 0 },
-            // The packet split is a TRUST boundary: system carries only framework-authored, non-injectable
-            // sections; anything that could carry attacker-reachable text (a READ result, exec output, the
-            // model's own mirrored bytes) stays in user. errors + git are framework status — the errors
-            // section is uri+status POINTERS (the error item + body live in the log), git is counts — so
-            // neither is an injection surface; both sit at the bottom of system, just above budget-the-law.
-            // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
-            // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
-            { name: "child-streams", slot: "system", header: "Plurnk Service Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
-            { name: "child-runs", slot: "system", header: "Plurnk Service Child Runs", content: PacketWire.renderChildPointers(childRuns), tokens: 0 },
-            { name: "errors", slot: "system", header: "Plurnk Service Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
-            { name: "git", slot: "system", header: "Plurnk Service Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
-            // budget is the very last system line — LAW (a hard ceiling the model must obey), the final word before the model acts.
-            { name: "budget", slot: "system", header: "Plurnk Service Budget", content: budgetReadout, tokens: 0 },
-            // log in the user slot: injectable content (READ results, exec output, the model's own mirror) — data, never rules — kept at the action point so the model consults its history.
-            { name: "log", slot: "user", header: "Plurnk Service Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
-            // the ACTIVE user prompts (all the current loop holds, in order — a loop admits injected
-            // prompts) render at the BOTTOM, just above requirements — at the action point, closest to
-            // the model's turn. Each is a bare heredoc (the fence is the link); §prompt-fold.
-            { name: "prompt", slot: "user", header: "Plurnk Service Active User Prompts", content: prompt, tokens: 0 },
-            // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
-            { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: baseRequirements, tokens: 0 },
-        ];
-        // Plugin packet control (§packet-construction): trusted schemes rewrite the
-        // default list — add, remove, reorder — in-process, before measurement.
-        const sections = await this.#schemes.transformSections(defaults);
-        // Pass 1: measure the assembled total with the placeholder budget in
-        // place, resolve free/percent, substitute into the budget section.
-        const total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
-        const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
-        const percent = ceiling === null ? null : Math.round((total / ceiling) * 100); // usage as % of the ceiling — §tokenomics-context-percent
-        if (tokensFree !== null) {
-            const budgetSec = sections.find((s) => s.name === "budget"); // a plugin may have removed it
-            if (budgetSec) {
-                budgetSec.content = budgetSec.content
-                    .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
-                    .replace(TOKEN_PERCENT_PLACEHOLDER, percent === 0 && total > 0 ? "<1" : String(percent))
-                    .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
-            }
-        }
-        // Pass 2: per-section render-weight + the assembled packet total (post
-        // substitution — the placeholder/number length delta is negligible).
-        for (const s of sections) s.tokens = countTokens(PacketWire.renderSection(s));
-        const packetTokens = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
-        return { tokens: packetTokens, sections, telemetryErrors };
-    }
-
-    // Budget readout body, rendered into the `## Plurnk Service Budget` section.
-    // Headline `ceiling/free` only when a ceiling exists; section lines for the
-    // curatable index/log weight the model can FOLD back. tokensFree is a
-    // placeholder here — buildSystem substitutes it after measuring the packet.
-    #renderBudget(
-        log: {
-            entries: number; tokens: number;
-            byTurn: Array<{ turn: string; tokens: number }>;
-            largest: Array<{ path: string; tokens: number }>;
-        },
-        ceiling: number | null,
-    ): string {
-        const lines: string[] = [];
-        if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
-        if (log.entries > 0) {
-            if (lines.length > 0) lines.push("");
-            lines.push(`Log entries: ${log.entries} entries, ${log.tokens} tokens`);
-            // Per-turn weight — chronological (oldest first); the turn is the grinder's
-            // rollback unit and the rail folds the newest first (§tokenomics {§tokenomics-turn-totals}).
-            if (log.byTurn.length > 0) {
-                lines.push("", "Turns:", "| turn | tokens |", "|---|--:|");
-                for (const t of log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
-            }
-            // The heaviest individual log items — the FOLD targets behind the weight
-            // (§tokenomics {§tokenomics-largest-entries}). "items", not "entries": the readout
-            // lists log:/// rows (log items), distinct from catalog entries (plurnk.md: "EDIT
-            // is only for entries. Do not attempt to edit log items.").
-            if (log.largest.length > 0) {
-                lines.push("", "Heaviest items:", "| item | tokens |", "|---|--:|");
-                for (const e of log.largest) lines.push(`| ${e.path} | ${e.tokens} |`);
-            }
-        }
-        return lines.join("\n");
-    }
-
-    // The ## Plurnk Service Tools capability sheet (SPEC §tools). A hook: each enabled
-    // capability contributes one line, rendered above Requirements so the model sees what
-    // it can do before the rules. Each available executor tag contributes its self-documenting
-    // example (plurnk-execs#7), retiring the blind EXEC.
-    // The capability sheet — the live tool surface (wired executor tags). §tools-capability-sheet
-    #collectTools(): string[] {
-        const tools: string[] = [];
-        // Each available runtime tag contributes its self-documenting example —
-        // the example carries syntax + purpose, so there's no prose line. Tags
-        // with no example (sh/node, covered by the core prompt) contribute
-        // nothing; available-only, so the model never sees an unusable tag. `* `
-        // bullets + bare op forms match the packet's list/op rendering (no `- `,
-        // no backticks — see packet-wire.ts).
-        if (this.#executors !== undefined) {
-            const excluded = docsExcludeSet();
-            for (const tag of this.#executors.availableRuntimes()) {
-                if (excluded.has(tag)) continue; // #240 — PLURNK_DOCS_EXCLUDE drops the oneliner + the doc
-                const entry = this.#executors.entry(tag);
-                // #240 — identical treatment with the scheme directory: the example IS the oneliner,
-                // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose
-                // token cost lives on that manifest entry. No example → no line (like a provisional scheme).
-                if (entry?.example) tools.push(teachingLine(entry.example));
-            }
-        }
-        return tools;
-    }
-
     // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
-    // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
-    // catalogue's doc-links READ and the manifest carries each doc's token cost.
+    // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs).
     docEntries(): Array<{ name: string; content: string }> {
-        const out = this.#schemes.docs(); // scheme docs already drop PLURNK_DOCS_EXCLUDE names
-        if (this.#executors !== undefined) {
-            const excluded = docsExcludeSet();
-            for (const tag of this.#executors.availableRuntimes()) {
-                if (excluded.has(tag)) continue; // #240 — exec docs honor the same exclude
-                const doc = this.#executors.entry(tag)?.documentation;
-                if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });
-            }
-        }
-        return out;
-    }
-
-    // SPEC §grinder — the budget grinder. Runs pre-LLM (in runTurn, after the packet
-    // is built, before provider.generate); fires only on actual overflow. Two
-    // passes, re-measuring between. Folds (never deletes) — the prior turn's logs,
-    // then the catalog except the manifest lifeline. The strike it raises and the
-    // hard-stop it can signal are returned to runLoop, which owns abandonment.
-    // §grinder-overflow-only — fires only on actual overflow, never speculatively
-    async #enforceBudget({ packet, provider, runId, loopId, turnId, mintSequence, rebuild }: {
-        packet: RequestPacket; provider: Provider;
-        runId: number; loopId: number; turnId: number; mintSequence: number;
-        rebuild: () => Promise<RequestPacket>;
-    }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
-        const ceiling = Engine.computeCeiling(provider.contextSize, this.#budgetCeiling);
-        const measure = (p: RequestPacket): number => p.tokens;
-        if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
-
-        // The grinder may compact ONLY the newest turn — the immediately-prior turn's emissions
-        // (turn N>1), or, when there is no prior turn (turn 1), THIS turn's own foists. It NEVER
-        // reaches older history; the model alone curates history via FOLD/KILL, and the engine never
-        // janitors stale context. §grinder-newest-turn-only
-        let foldedAny = false;
-        const priorLogs = await (this.#db.engine_grinder_prior_turn_logs as PrepMethod).all<{ id: number }>({ loop_id: loopId, turn_id: turnId });
-        if (priorLogs.length > 0) {
-            await (this.#db.engine_grinder_fold_prior_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
-            foldedAny = true;
-        } else {
-            // Turn 1 — no prior turn: fold THIS turn's own foists (the catalog/prompt that overflowed). §grinder-turn-1-self-fold (#2)
-            const curLogs = await (this.#db.engine_grinder_current_turn_logs as PrepMethod).all<{ id: number }>({ loop_id: loopId, turn_id: turnId });
-            if (curLogs.length > 0) {
-                await (this.#db.engine_grinder_fold_current_turn_logs as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
-                foldedAny = true;
-            }
-        }
-        if (!foldedAny) return { packet, fit: measure(packet) <= ceiling, struck: false };
-
-        // Mint the overflow as a terse op='error' log row BEFORE the rebuild, so the rebuild's
-        // re-derived errors section surfaces it THIS turn — the warning lands at strike 1, not a
-        // turn late. The row is grinder-exempt, so it stacks into a visible recurrence trail. It
-        // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
-        // post-generate dispatch rows. §telemetry-uniform-error-channel, §grinder-overflow-error-row
-        await this.#mintEngineError("budget_overflow", { runId, loopId, turnId, sequence: mintSequence });
-        const current = await rebuild();
-        // Every compaction is a strike — including turn 0/1 (no soft exemption, #4). §grinder-compaction-strikes
-        return { packet: current, fit: measure(current) <= ceiling, struck: true };
-    }
-
-    // Mint an engine failure as a uniform op='error' log row (§telemetry-uniform-error-channel):
-    // a terse status + canonical term keyed by `kind` (the packet teaches recovery, not the row),
-    // origin engine:rail. The errors section derives its LogCoordinate pointer from log≥400 — one
-    // channel, no per-kind handling.
-    async #mintEngineError(kind: EngineErrorKind, { runId, loopId, turnId, sequence }: { runId: number; loopId: number; turnId: number; sequence: number }): Promise<void> {
-        const { status, term } = ENGINE_ERRORS[kind];
-        await (this.#db.engine_insert_log_entry as PrepMethod).get({
-            run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
-            origin: "plurnk", source: "rail", op: "error", suffix: "", signal: null,
-            scheme: null, username: null, password: null, hostname: null, port: null,
-            pathname: null, params: null, fragment: null, lineMarker: null,
-            tx: "", mimetype_tx: "text/plain",
-            rx: JSON.stringify({ kind, message: term }),
-            mimetype_rx: "application/json",
-            status_rx: status, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
-        });
-    }
-
-    // Wire projection lives in ./packet-wire.ts so Engine and
-    // bin/digest.ts import the exact same function — structurally one
-    // implementation, no drift between wire and digest possible.
-    // Format: markdown (user pick over rummy's XML alternative, 2026-05-22).
-    #packetToWireMessages(packet: RequestPacket): ChatMessage[] {
-        return PacketWire.packetToWireMessages(packet) as ChatMessage[];
-    }
-
-    // Complete the packet by adding the model's response. After this the
-    // packet matches Packet.json fully and is ready for storage.
-    #completePacket(requestPacket: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown, provider: Provider): object {
-        const assistantTokens = provider.countTokens(assistant.content);
-        return {
-            tokens: requestPacket.tokens + assistantTokens,
-            sections: requestPacket.sections,
-            telemetryErrors: requestPacket.telemetryErrors,
-            assistant,
-            assistantRaw,
-        };
-    }
-
-    // Render-time mimetype invocation (SPEC §mimetype {§mimetype-handlers-fire-render-time},
-    // §per-entry-channels {§per-entry-channels-preview-is-handler-output}). For each (run, entry, channel)
-    // with expanded=1, pass the channel's current content through
-    // mimetype.preview(content, budget). State is included verbatim — engine
-    // does NOT branch on it (§channel-state {§channel-state-engine-does-not-branch-on-state}).
-    // SPEC §telemetry: model-facing alert surface.
-    // Two sources, merged on each packet build:
-    //   1. Previous-turn action-bound failures (status_rx >= 400 on log_entries).
-    //   2. Engine-buffered actionless failures (no_send, parse, watchdog, rails).
-    // Buffer drains on read — each error appears in exactly one packet.
-    async #buildTelemetryErrors(loopId: number, currentTurnSeq: number): Promise<object[]> {
-        // The uniform error channel (§telemetry-uniform-error-channel): every 4xx/5xx log row
-        // becomes a LogCoordinate-positioned TelemetryEvent — a terse pointer; the model READs the
-        // row for its term + detail. Buffer events that point at the model's own emission keep their
-        // ContentOffset position. info-level notices (progress) are not errors and never surface here.
-        const rows = await (this.#db.engine_render_telemetry_errors as PrepMethod).all<{
-            op: string; sequence: number; status_rx: number;
-            turn_seq: number; loop_seq: number;
-        }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
-        const logErrors = rows.map((r) => ({
-            source: "engine:rail",
-            kind: "log_error",
-            level: "error",
-            status: r.status_rx,
-            position: { type: "log-coordinate", coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}/${r.op}` },
-        }));
-        const bufferEvents = this.#drainTelemetry(loopId).filter((e) => (e as { level?: string }).level !== "info");
-        return [...bufferEvents, ...logErrors];
-    }
-
-    // SPEC §packet the log section — chronological action-entries for the loop.
-    // Snapshot is taken at packet build (pre-dispatch this turn), so it
-    // reflects "what has happened before this turn." Each row carries a
-    // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(runId: number): Promise<object[]> {
-        // SPEC §packet-terms: runs own log entries — log is the run's history,
-        // not the loop's. Span all loops in the run so the model sees
-        // earlier loops' work as conversational memory.
-        //
-        // User prompts are first-class log entries: runTurn writes a
-        // client-origin SEND[200] row at sequence=0 of each new
-        // turn-1. Prompts thus surface naturally in this query — no
-        // synthetic / shim layer.
-        const rows = await (this.#db.engine_render_log as PrepMethod).all<{
-            loop_seq: number; turn_seq: number; sequence: number;
-            origin: string; op: string; suffix: string; signal: string | null;
-            scheme: string | null; username: string | null; password: string | null;
-            hostname: string | null; port: number | null; pathname: string | null;
-            params: string | null; fragment: string | null;
-            status_rx: number; rx: string; mimetype_rx: string;
-            tx: string; mimetype_tx: string; expanded: number; source: string | null; attrs: string | null;
-        }>({ run_id: runId });
-        return rows.map((r) => ({
-            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
-            origin: r.origin,
-            op: r.op,
-            suffix: r.suffix,
-            signal: r.signal === null ? null : JSON.parse(r.signal),
-            target: {
-                scheme: r.scheme,
-                username: r.username, password: r.password,
-                hostname: r.hostname, port: r.port,
-                pathname: r.pathname,
-                params: r.params === null ? null : JSON.parse(r.params),
-                fragment: r.fragment,
-            },
-            status: r.status_rx,
-            rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
-            mimetype_rx: r.mimetype_rx,
-            tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
-            mimetype_tx: r.mimetype_tx,
-            folded: r.expanded === 0,
-            source: r.source,
-            attrs: r.attrs === null ? null : JSON.parse(r.attrs),
-        }));
+        return this.#packets.docEntries();
     }
 
     // §env-delta (§actor-boundary-no-mutex: runs share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
@@ -1806,237 +1163,35 @@ export default class Engine {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, prematureRefusal } = context;
-        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin });
-        let result: DispatchResult;
-        let denial = this.#checkWritable(statement, origin);
-        if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
-        if (denial !== null) {
-            result = denial;
-        } else if (Engine.#readFansOut(statement)) {
-            // READ honors FIND: a glob/folder scope or a matcher fans out to one log row per MATCH
-            // (its own writeLogs), returning early. A READ never proposes, so it bypasses the
-            // single-row path below. A bare entry, body-less, falls through to the direct read. #286
-            return await this.#handleReadFanout(statement, schemeCtx, { runId, loopId, turnId, sequence, origin, onDispatch });
-        } else {
-            // SPEC §scheme-surface + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
-            // exceptions become the action-entry's outcome (status 500), not a
-            // thrown bubble. The log_entry is the durable record; engine never
-            // skips it. Logging failures (#writeLog throws) are NOT caught —
-            // those are system failures.
-            try {
-                if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, loopId, prematureRefusal);
-                } else if (statement.op === "COPY") {
-                    result = await this.#handleCopy(statement, schemeCtx);
-                } else if (statement.op === "MOVE") {
-                    result = await this.#handleMove(statement, schemeCtx);
-                } else if (statement.op === "KILL") {
-                    result = await this.#handleKill(statement, schemeCtx);
-                } else if (statement.op === "PLAN") {
-                    result = this.#handlePlan(statement);
-                } else if (statement.op === "EXEC") {
-                    // EXEC's target slot is `cwd`, not a scheme address.
-                    // Per plurnk.md the op routes unconditionally to the
-                    // exec scheme; the scheme handler reads runtime
-                    // (signal), cwd (target), and command (body).
-                    result = await this.#run("exec", statement, schemeCtx);
-                } else {
-                    result = await this.#run(this.#schemeNameOf(statement.target), statement, schemeCtx); // §op-methods-op-dispatch
-                }
-            } catch (err) { // a scheme exception becomes the op's 500 outcome — §scheme-surface-exception-500
-                result = {
-                    status: 500,
-                    error: err instanceof Error ? err.message : String(err),
-                };
-            }
-        }
-        const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
-        onDispatch?.(logEntryId);
-        // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve; §proposal-202-pauses). When a
-        // side-effecting op returns status 202 (a broadcast SEND[202] park is model
-        // speech, not a proposal — #isProposal, #255), the entry is written
-        // state='proposed'; dispatch then PAUSES on a per-entry waiter until
-        // resolution arrives via Engine.resolveProposal (from the loop/resolve RPC,
-        // YOLO listener, or timeout). The post-resolution status replaces 202 in the
-        // result the caller sees, so runTurn never branches on a pending state.
-        if (Engine.#isProposal(statement, result)) {
-            // Effect-gated auto-run (read/pure runtimes, plurnk-service#182):
-            // no human gate, no loop/proposal notification. Accept + apply
-            // in-process; the model sees the outcome directly, never a review.
-            if ((result.attrs as { inline?: boolean } | undefined)?.inline === true) {
-                const effective = await this.#runApplyResolution(statement, result, { decision: "accept" }, { sessionId, runId, loopId, turnId });
-                return this.#applyResolution(logEntryId, effective);
-            }
-            // Register the resolution waiter SYNCHRONOUSLY before any await
-            // yields. A same-tick resolveProposal() (e.g. from a test that
-            // awaits the onDispatch callback and immediately resolves) must
-            // find the waiter registered — adding an await between insert
-            // and waiter-registration would open a race window.
-            const resolutionPromise = this.#awaitResolution(logEntryId);
-            // Notify external listeners (Daemon broadcasts loop/proposal;
-            // YOLO listener auto-resolves) BEFORE awaiting — they may
-            // resolve synchronously inside their handlers.
-            const target = this.#extractTarget(statement.target);
-            const flags = await this.#loadLoopFlags(loopId); // the loop/proposal notification carries flags (yolo) — §dual-yolo-proposal-carries-flags
-            // #note10 — if the target diverged on disk this turn, the model's EDIT is based
-            // on a stale read; flag it so a YOLO auto-accept rejects instead of clobbering.
-            const diverged = await (this.#db.engine_target_diverged_this_turn as PrepMethod).get<{ hit: number }>({ run_id: runId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
-            const event: ProposalPendingEvent = {
-                logEntryId, sessionId, runId, loopId, turnId,
-                op: statement.op,
-                target: { scheme: target.scheme, pathname: target.pathname },
-                body: typeof result.body === "string" ? result.body : "",
-                attrs: (result.attrs ?? {}) as object,
-                flags,
-                staleClobberRisk: diverged !== undefined,
-            };
-            for (const listener of this.#proposalPendingListeners) {
-                try { listener(event); } catch (_) { /* listener errors don't break dispatch */ }
-            }
-            const resolution = await resolutionPromise;
-            // Run the scheme's applyResolution hook on accept (writes the
-            // file, spawns the process, etc.). If applyResolution returns a
-            // 4xx/5xx or throws, the resolution is downgraded to a reject
-            // with the failure outcome — engine treats it like a client
-            // rejection.
-            const effective = await this.#runApplyResolution(statement, result, resolution, { sessionId, runId, loopId, turnId });
-            // MOVE into a proposed dest: the deferred source-delete fires ONLY now,
-            // after the dest write landed (accept). On reject the source survives.
-            if (effective.decision === "accept") {
-                const moveSource = (result.attrs as { moveSource?: { scheme: string; pathname: string } } | undefined)?.moveSource;
-                if (moveSource !== undefined) {
-                    const srcHandler = this.#schemes.get(moveSource.scheme) as SchemeWithCrud | undefined;
-                    if (srcHandler !== undefined && typeof srcHandler.deleteEntry === "function") await srcHandler.deleteEntry(moveSource.pathname, schemeCtx);
-                }
-            }
-            const post = await this.#applyResolution(logEntryId, effective);
-            return post;
-        }
-        return result;
+        return this.#dispatcher.dispatch(context);
     }
 
     // op.look (#283) — resolve a READ and return its content WITHOUT writing a
-    // log_entries row: the client's off-run inspection primitive (LOOK → READ,
-    // invisible to the model). READ never mutates and never proposes, so this is
-    // dispatch's resolve path minus #writeLog. Runs on the client loop, so the
-    // human's inspection is never constrained by a model loop's flags. {§op-look}
+    // log_entries row: the client's off-run inspection primitive. {§op-look}
     async look(context: {
         statement: PlurnkStatement;
         sessionId: number; runId: number; loopId: number;
         origin?: WriterTier;
     }): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, origin = "client" } = context;
-        if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
-        // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
-        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId: 0, origin });
-        const denial = await this.#checkFlagsGate(statement, loopId);
-        if (denial !== null) return denial;
-        return this.#run(this.#schemeNameOf(statement.target), statement, schemeCtx);
+        return this.#dispatcher.look(context);
     }
 
-    #buildSchemeCtx(ids: { sessionId: number; runId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
-        const { sessionId, runId, loopId, turnId, origin } = ids;
-        return {
-            db: this.#db,
-            sessionId, runId, loopId, turnId,
-            writer: origin,
-            signal: this.#loopAborts.get(loopId)?.signal,
-            streamEventNotify: this.#streamEventNotify,
-            wakeRunNotify: this.#wakeRunNotify,
-            injectRun: this.#injectRun,
-            mimetypes: this.#mimetypes,
-            tokenize: this.#tokenize,
-            pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
-            executors: this.#executors,
-        };
-    }
-
-    // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. §proposal-accept-applies
-    async #runApplyResolution(
-        statement: PlurnkStatement,
-        originalResult: DispatchResult,
-        resolution: ProposalResolution,
-        ids: { sessionId: number; runId: number; loopId: number; turnId: number },
-    ): Promise<ProposalResolution> {
-        const { sessionId, runId, loopId, turnId } = ids;
-        if (resolution.decision !== "accept") return resolution;
-        // EXEC routes to the exec scheme regardless of target (cwd, not
-        // a scheme address). All other ops resolve their handler from
-        // statement.target's scheme.
-        // COPY/MOVE write the DEST (statement.body), not the source (target): the
-        // accept must reach the dest scheme's applyResolution (File writes disk).
-        const schemeName = statement.op === "EXEC" ? "exec"
-            : (statement.op === "COPY" || statement.op === "MOVE") ? this.#schemeNameOf(statement.body as ParsedPath | null)
-            : this.#schemeNameOf(statement.target);
-        if (schemeName === null) return resolution;
-        const handler = this.#schemes.get(schemeName) as
-            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: PlurnkSchemeContext) => Promise<{ status: number; outcome?: string; body?: string }> }
-            | undefined;
-        if (handler === undefined || typeof handler.applyResolution !== "function") return resolution;
-        try {
-            // Build a ctx for the scheme's applyResolution. The proposal
-            // was raised inside a specific (session, run, loop, turn);
-            // the scheme uses ctx to write the entry that makes the
-            // operation's artifact visible in the next packet's index.
-            const applyCtx: PlurnkSchemeContext = {
-                db: this.#db, sessionId, runId, loopId, turnId,
-                writer: "model", signal: this.#loopAborts.get(loopId)?.signal,
-                streamEventNotify: this.#streamEventNotify,
-                wakeRunNotify: this.#wakeRunNotify,
-                tokenize: this.#tokenize,
-                pushTelemetry: (event) => this.#pushTelemetry(sessionId, loopId, event),
-                executors: this.#executors,
-            };
-            const applyResult = await handler.applyResolution({
-                attrs: (originalResult.attrs ?? {}) as object,
-                body: resolution.body,
-            }, applyCtx);
-            if (applyResult.status >= 400) {
-                return {
-                    decision: "reject",
-                    outcome: applyResult.outcome ?? "apply_failed",
-                    body: applyResult.body,
-                };
-            }
-            // Propagate applyResolution.outcome onto the accepted resolution
-            // (operational metadata, e.g. exec's "exit_N") AND its body — an
-            // inline (read/pure) run returns its output as the body, which has
-            // to reach the model-facing result this turn, not just stream to
-            // the entry. Host accepts carry no body (fire-and-forget).
-            const withOutcome = applyResult.outcome !== undefined && resolution.outcome === undefined
-                ? { ...resolution, outcome: applyResult.outcome }
-                : resolution;
-            return applyResult.body === undefined ? withOutcome : { ...withOutcome, body: applyResult.body };
-        } catch (err) {
-            return {
-                decision: "reject",
-                outcome: "apply_threw",
-                body: err instanceof Error ? err.message : String(err),
-            };
-        }
-    }
-
-    // Engine.resolveProposal: external API to feed a resolution into a
-    // pending proposal. Called by the loop/resolve RPC handler (Phase E.2),
-    // the in-tree YOLO listener (Phase E.3), or the timeout watcher. Throws
-    // when the logEntryId has no pending waiter — duplicate resolutions, IDs
-    // for non-proposed entries, or entries already-resolved are caller
-    // errors.
+    // External API to feed a resolution into a pending proposal — the loop/resolve
+    // RPC handler, the in-tree YOLO listener, or the timeout watcher.
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
-        const waiter = this.#pendingProposals.get(logEntryId);
-        if (waiter === undefined) {
-            throw new Error(`Engine.resolveProposal: no pending proposal for log_entry ${logEntryId}`);
-        }
-        clearTimeout(waiter.timeoutHandle);
-        this.#pendingProposals.delete(logEntryId);
-        waiter.resolve(resolution);
+        this.#proposals.resolve(logEntryId, resolution);
     }
 
-    // Snapshot of pending proposals (for diagnostic / RPC listings). Returns
-    // the log entry IDs currently awaiting resolution.
+    // Snapshot of pending proposals (for diagnostic / RPC listings).
     pendingProposalIds(): number[] {
-        return [...this.#pendingProposals.keys()];
+        return this.#proposals.pendingIds();
+    }
+
+    // Subscribe to proposal-pending events. Daemon registers a listener
+    // that broadcasts the loop/proposal WS notification; YOLO listener
+    // registers one that auto-resolves.
+    onProposalPending(listener: (event: ProposalPendingEvent) => void): void {
+        this.#proposals.onPending(listener);
     }
 
     // Used by wake-on-completion (daemon side): "is there any loop in this
@@ -2065,7 +1220,7 @@ export default class Engine {
             tokenize: this.#tokenize,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushTelemetry: (event) => this.#telemetryEventNotify?.(sessionId, { loopId: 0, event }),
+            pushTelemetry: (event) => this.#telemetry.notify(sessionId, 0, event),
         };
         await EntryManifest.maintainDerivations(ctx);
     }
@@ -2092,7 +1247,7 @@ export default class Engine {
         const turnSeq = turnRow?.next ?? 1;
         const sessionRow = await (this.#db.drain_get_run_session as PrepMethod).get<{ session_id: number }>({ run_id: runId });
         if (sessionRow === undefined) throw new Error(`Engine.inject: run ${runId} not found`);
-        const pathname = `/prompt/${loopId}/${turnSeq}`; // canonical storage form (leading slash), matching the foist via #pathnameOf
+        const pathname = `/prompt/${loopId}/${turnSeq}`; // canonical storage form (leading slash), matching the turn-1 foist
         const ctx: PlurnkSchemeContext = {
             db: this.#db, sessionId: sessionRow.session_id, runId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
@@ -2101,7 +1256,7 @@ export default class Engine {
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
             tokenize: this.#tokenize,
-            pushTelemetry: (event) => this.#pushTelemetry(sessionRow.session_id, loopId, event),
+            pushTelemetry: (event) => this.#telemetry.push(sessionRow.session_id, loopId, event),
         };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
@@ -2111,499 +1266,24 @@ export default class Engine {
         return { loopId, turnSeq };
     }
 
-    // Subscribe to proposal-pending events. Daemon registers a listener
-    // that broadcasts the loop/proposal WS notification; YOLO listener
-    // (Phase E.3) registers one that auto-resolves. Listeners fire BEFORE
-    // dispatch awaits resolution, so synchronous (or fast-async) handlers
-    // can resolve inline.
-    onProposalPending(listener: (event: ProposalPendingEvent) => void): void {
-        this.#proposalPendingListeners.push(listener);
-    }
-
-    // Loads loops.flags (json column) and merges over DEFAULT_LOOP_FLAGS so
-    // missing keys read as their documented defaults. Single read site —
-    // ProposalPendingEvent.flags is constructed from this, and listeners
-    // (Daemon broadcast, YOLO auto-accept) share the result.
-    async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
-        const row = await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId });
-        if (row === undefined) return DEFAULT_LOOP_FLAGS;
-        try {
-            const parsed = JSON.parse(row.flags) as Partial<LoopFlags>;
-            return { ...DEFAULT_LOOP_FLAGS, ...parsed };
-        } catch {
-            return DEFAULT_LOOP_FLAGS;
-        }
-    }
-
-    #awaitResolution(logEntryId: number): Promise<ProposalResolution> {
-        const timeoutMs = readProposalTimeoutMs();
-        return new Promise<ProposalResolution>((resolve) => {
-            const timeoutHandle = setTimeout(() => {
-                // Timeout: synthesize a cancel resolution and feed it back
-                // through the same path as any other resolution. State
-                // transitions to cancelled with outcome='timeout'.
-                if (this.#pendingProposals.has(logEntryId)) {
-                    this.#pendingProposals.delete(logEntryId);
-                    resolve({ decision: "cancel", outcome: "timeout" }); // §proposal-timeout-cancels
-                }
-            }, timeoutMs);
-            this.#pendingProposals.set(logEntryId, { resolve, timeoutHandle });
-        });
-    }
-
-    async #applyResolution(logEntryId: number, resolution: ProposalResolution): Promise<DispatchResult> {
-        // Map decision → terminal state + HTTP-aligned status:
-        //   accept  → state='resolved', status=200
-        //   reject  → state='failed',   status=400, outcome='rejected' (default) §proposal-reject-fails
-        //   cancel  → state='cancelled',status=499, outcome='loop_aborted' (default) §proposal-cancel-aborts
-        // resolution.outcome wins over the default when supplied; this is how
-        // veto filters (Phase E.2 proposal.accepting) can specify a more
-        // precise outcome string like 'policy_veto' or 'timeout'.
-        const decision = resolution.decision;
-        const state = decision === "accept" ? "resolved"
-            : decision === "reject" ? "failed"
-            : "cancelled";
-        const status = decision === "accept" ? 200
-            : decision === "reject" ? 400
-            : 499;
-        const defaultOutcome = decision === "accept" ? null
-            : decision === "reject" ? "rejected"
-            : "loop_aborted";
-        const outcome = resolution.outcome ?? defaultOutcome;
-        // rx is the model-facing operation result. Status always; outcome is
-        // operational (stays on log_entries for forensics, never model-facing).
-        // Body is normally dropped — the propose preview was an input echo —
-        // EXCEPT an inline auto-run (read/pure) carries its run output AS the
-        // body, which is exactly the "what happened" the model needs this turn.
-        // Per AGENTS.md "Operational hygiene on what the model sees."
-        const rx = (decision === "accept" && resolution.body !== undefined)
-            ? JSON.stringify({ status, body: resolution.body })
-            : JSON.stringify({ status });
-        await (this.#db.engine_resolve_log_entry as PrepMethod).run({
-            id: logEntryId, state, outcome, status_rx: status, rx,
-        });
-        return { status, outcome, body: resolution.body };
-    }
-
-    // SPEC §scheme-surface: engine rejects writes whose origin is outside the target
-    // scheme's manifest.writableBy.
-    // - Read-side ops (READ, FIND, OPEN, FOLD) are not gated.
-    // - SEND broadcast (path=null) has no target scheme; not gated.
-    // - COPY: dst scheme writableBy applies.
-    // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
-    // - Schemes without a manifest are not gated (legacy / future allowance).
-    #checkWritable(statement: PlurnkStatement, origin: WriterTier): DispatchResult | null {
-        if (!MUTATING_OPS.has(statement.op)) return null;
-        if (statement.op === "SEND" && statement.target === null) return null;
-
-        // EXEC's target slot is `cwd`, not a scheme address. The op's
-        // authority always belongs to the exec scheme regardless of cwd.
-        if (statement.op === "EXEC") {
-            return this.#denyIfDisallowed("exec", origin);
-        }
-
-        // Run control (COPY target=run://, spawn or fork) is gated by run://'s writableBy — its
-        // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
-        // §machine-processes
-        if (this.#isRunCopy(statement)) return this.#denyIfDisallowed("run", origin);
-
-        if (statement.op === "COPY" || statement.op === "MOVE") {
-            const dst = statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body;
-            const dstScheme = this.#schemeNameOf(dst);
-            const dstDenial = this.#denyIfDisallowed(dstScheme, origin);
-            if (dstDenial !== null) return dstDenial;
-            if (statement.op === "MOVE") {
-                const srcScheme = this.#schemeNameOf(statement.target);
-                if (srcScheme !== dstScheme) {
-                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin);
-                    if (srcDenial !== null) return srcDenial;
-                }
-            }
-            return null;
-        }
-
-        const target = this.#schemeNameOf(statement.target);
-        return this.#denyIfDisallowed(target, origin);
-    }
-
-    #denyIfDisallowed(schemeName: string | null, origin: WriterTier): DispatchResult | null {
-        if (schemeName === null) return null;
-        const handler = this.#schemes.get(schemeName);
-        if (handler === undefined) return null;
-        const manifest = (handler.constructor as { manifest?: SchemeManifest }).manifest;
-        if (manifest === undefined) return null;
-        if (manifest.writableBy.includes(origin)) return null;
-        return { status: 403, error: `writer '${origin}' is not in writableBy for scheme '${schemeName}'` }; // §scheme-surface-writableby-403
-    }
-
-    // Per-loop flag gating. Schemes self-declare their flag affinity in
-    // their manifest (excludedInAsk / requiresWeb /
-    // requiresInteraction); SchemeRegistry.resolveForLoop returns the
-    // active set under the loop's persisted flags. Anything outside the
-    // set returns 403 — action-entry-as-outcome carries the rejection.
-    async #checkFlagsGate(statement: PlurnkStatement, loopId: number): Promise<DispatchResult | null> {
-        // Broadcast SEND has no scheme to gate.
-        if (statement.op === "SEND" && statement.target === null) return null;
-
-        const flags = await this.#loadLoopFlags(loopId);
-        // Fast path: default flags gate nothing. (yolo never gates.)
-        if (!flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
-
-        const active = this.#schemes.resolveForLoop(flags);
-        const check = (target: PlurnkStatement["target"]): DispatchResult | null => {
-            const scheme = this.#schemeNameOf(target);
-            if (scheme === null) return null;
-            if (active.has(scheme)) return null;
-            return { status: 403, error: `scheme '${scheme}' is inactive under current loop flags` };
-        };
-
-        if (this.#isRunCopy(statement)) return check(statement.target); // body is a spawn/fork prompt, not a dst path
-        if (statement.op === "COPY" || statement.op === "MOVE") {
-            return check(statement.target) ?? check(statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body);
-        }
-        return check(statement.target);
-    }
-
-    // A COPY whose TARGET is run:// is run control (spawn/fork), not an entry-copy — its body
-    // is the new run's seed prompt, not a destination path. The COPY gates and #handleCopy
-    // branch on this so they never parse the prompt as a dst path.
-    #isRunCopy(statement: PlurnkStatement): boolean {
-        return statement.op === "COPY" && this.#schemeNameOf(statement.target) === "run";
-    }
-
-    // COPY(run://<dst>):prompt — run control via COPY (grammar 0.74.41 OP×resource matrix):
-    //   • run://self   → FORK: deep-copy the current run's log into a new sister (Fork), then
-    //     continue it with the prompt (§machine-processes-fork-copies-the-log).
-    //   • run://<name> → SPAWN: a fresh sister (empty log) named <name>, started on the prompt.
-    //     A LIVE sister already holding <name> is a 409 conflict; a free or terminated name is
-    //     reclaimed (§run-scheme-spawn). The self form is fork; only a name spawns.
-    // Both ride the daemon inject and obey the active-runs cap (508, §run-scheme-cap).
-    async #handleRunCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        const target = statement.target;
-        if (target === null) return { status: 400, error: "run:// control requires a run target" };
-        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY (run://<name>), not the path
-        if (name === "") return { status: 400, error: "run:// control requires a run name or 'self' (run://<name>)" };
-        if (ctx.injectRun === undefined) throw new Error("run copy: injectRun capability absent");
-        const denied = await RunCap.deny(this.#db, ctx.sessionId);
-        if (denied !== null) return denied;
-        const prompt = typeof statement.body === "string" ? statement.body : "";
-
-        if (name === "self") {
-            // FORK — branch the current run's log into a new sister.
-            const branchRunId = await Fork.fork(this.#db, ctx.runId);
-            const branch = await (this.#db.fork_get_run as PrepMethod).get<{ name: string }>({ id: branchRunId });
-            await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt });
-            return { status: 200, body: branch?.name ?? "" };
-        }
-
-        // SPAWN — a fresh sister named <name>. A name is frozen per run but reclaimable across time
-        // (§machine-processes-run-origin): a LIVE sister holding it is a 409 conflict (legible, never
-        // a raw UNIQUE 500); a free or terminated name is reclaimed (the resolver picks newest).
-        const live = await (this.#db.run_live_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
-        if (live !== undefined) return { status: 409, error: `run '${name}' is already running` };
-        const row = await (this.#db.fork_insert_run as PrepMethod).get<{ id: number }>({
-            session_id: ctx.sessionId, name, parent_run_id: ctx.runId, origin: ctx.writer,
-        });
-        if (row === undefined) throw new Error("run spawn: run insert returned no row");
-        await ctx.injectRun({ sessionId: ctx.sessionId, runId: row.id, prompt });
-        return { status: 200, body: name };
-    }
-
-    async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.op !== "COPY") throw new Error("unreachable");
-        if (this.#isRunCopy(statement)) return await this.#handleRunCopy(statement, ctx);
-        const srcPath = statement.target;
-        // Past the run-control branch above, COPY's body is a dest path (grammar §COPY).
-        // Parse it; an unparseable dest surfaces as a 400.
-        const dstPath = statement.body === null ? null : parsePath(statement.body);
-        if (srcPath === null) return { status: 400, error: "COPY requires source path" };
-        if (dstPath === null) return { status: 400, error: "COPY destination must be a parseable path in the body slot" };
-        return await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
-    }
-
-    async #handleMove(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.op !== "MOVE") throw new Error("unreachable");
-        const srcPath = statement.target;
-        const dstPath = statement.body;
-        if (srcPath === null) return { status: 400, error: "MOVE requires source path" };
-        // MOVE is relocation only — deletion is KILL's job (§move, §move-dev-null-not-special). The /dev/null
-        // and null-body delete-by-MOVE back-compat is retired: no silent debt.
-        if (dstPath === null) return { status: 400, error: "MOVE requires a destination; use KILL to delete" }; // §move-null-body-400
-
-        const srcSchemeName = this.#schemeNameOf(srcPath);
-        if (srcSchemeName === null) return { status: 400, error: "MOVE source must be a URL path with a scheme" };
-        const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
-        if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
-
-        // Relocation: COPY then DELETE source (§move-relocation-deletes-source).
-        const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
-        if (copyResult.status >= 400) return copyResult;
-        const srcPathname = pathnameFromPath(srcPath);
-        // If the dest write is a pending proposal (file dest → §membership review), the
-        // source-delete MUST wait until the dest actually lands — a rejected
-        // proposal would otherwise lose the source. Thread it into the resolution:
-        // dispatch deletes the source AFTER the dest applies on accept.
-        if (copyResult.status === 202) {
-            return { ...copyResult, attrs: { ...(copyResult.attrs as Record<string, unknown>), moveSource: { scheme: srcSchemeName, pathname: srcPathname } } };
-        }
-        const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
-        if (delResult.status >= 400) return { status: delResult.status };
-        return copyResult;
-    }
-
-    // KILL — scheme-polymorphic destroy (plurnk-grammar#203 / 0.28.0). Entry-KILL
-    // permanently deletes the entry: the canonical delete now, MOVE→/dev/null
-    // retired from the model's vocabulary. Process-KILL (exec:///) aborts the
-    // running spawn's controller (the same teardown loop.cancel rides), addressed
-    // by coordinate pathname (#203). The KILL body is an opaque
-    // annotation with no runtime meaning; it survives into the log row's tx for
-    // free via the statement serialization. Status: 200 killed · 404 unknown ·
-    // 405 log:/// (append-only) · 403 writableBy (the #checkWritable gate, KILL ∈
-    // MUTATING_OPS) · 200/410/304/404 exec (killed / killed-earlier / exited / unknown) · 501 no-kill/delete scheme.
-    async #handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
-        if (statement.op !== "KILL") throw new Error("unreachable");
-        const path = statement.target;
-        if (path === null) return { status: 400, error: "KILL requires a target path" };
-        const schemeName = this.#schemeNameOf(path);
-        if (schemeName === null) return { status: 400, error: "KILL target must be a URL path with a scheme" };
-        // KILL on log:/// erases the log row(s) — the model's DB-storage curation lever
-        // (plurnk.md:36, :98), routed to Log.kill below via the killable.kill path. The old
-        // "append-only" 405 forbade what the grammar requires; FOLD only collapses the render.
-        // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
-        // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
-        // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec
-        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
-        if (killable !== undefined && typeof killable.kill === "function") {
-            return await killable.kill(pathnameFromPath(path), statement.signal, ctx);
-        }
-        if (schemeName === "run") {
-            // Entry-path present → KILL a run-scope scratch ENTRY (delete it), self-only —
-            // NOT run cancellation. The authority (hostname) names the owner, the pathname the
-            // entry; only the path-ABSENT form (run://<name>) terminates the run-as-actor. §run-scheme
-            const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
-            if (entryPath !== "" && entryPath !== "/") {
-                const runHandler = this.#schemes.get("run") as { deleteEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
-                return await runHandler.deleteEntry(statement, ctx);
-            }
-            // terminate — abort any run by address; whoever holds it may end it.
-            // `run://self` = self. cancelRun (→ Daemon.cancelDrain) aborts the run's signal
-            // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
-            const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY
-            if (name === "") return { status: 400, error: "run:// kill requires a run name or 'self' (run://<name>)" };
-            let runId = ctx.runId;
-            if (name !== "self") {
-                const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
-                if (row === undefined) return { status: 404, error: `run://${name} not found in this session` };
-                runId = row.id;
-            }
-            if (this.#cancelRun === undefined) throw new Error("run kill: cancelRun capability absent");
-            this.#cancelRun(runId);
-            return { status: 200 };
-        }
-        const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
-        if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };
-        const delResult = await handler.deleteEntry(pathnameFromPath(path), ctx);
-        return { status: delResult.status };
-    }
-
-    // Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey"). A glob
-    // READ target resolves to MANY files; READ returns one log row per file that matches, each
-    // holding that file's matching lines. The matched SET is exactly FIND's survey (which files
-    // + where — matchLines), so we reuse the scheme's own find, then READ each matched file. One
-    // model command, N log rows — each row addresses its concrete file, so it folds/kills/re-READs
-    // on its own. The running sequence counter in runTurn advances by rowsWritten.
-    // A READ fans out (honors FIND) when it resolves to more than the single exact entry: a glob
-    // or folder scope, OR a matcher (which selects per-match within whatever the target resolved).
-    // A bare entry, body-less, is the one direct read. #286
-    static #readFansOut(statement: PlurnkStatement): boolean {
-        if (statement.op !== "READ") return false;
-        if ("body" in statement && (statement as ReadStatement).body !== null) return true;  // a matcher → per-match fan-out
-        const t = statement.target;
-        const p = t === null ? "" : (t.kind === "url" ? t.pathname : t.raw);
-        return p.includes("*") || p.endsWith("/");  // glob/folder scope → fan out its contents
-    }
-
-    // Clone the READ onto one concrete match — the FIND already matched, so the per-match READ
-    // delivers content at the span: strip the body (no re-match) and set <L> to the span. A null
-    // span (body-less folder/glob fan-out) reads the whole entry. #286
-    static #retargetRead(statement: PlurnkStatement, pathname: string, span: { lineStart: number; lineEnd: number } | null): PlurnkStatement {
-        const t = statement.target;
-        const target = t !== null && t.kind === "url"
-            ? { ...t, pathname, raw: `${t.scheme}://${pathname}` }
-            : { ...(t as { raw: string }), raw: pathname };
-        const lineMarker = span !== null ? { marks: [span.lineStart, span.lineEnd] } : null;
-        return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body: null } as PlurnkStatement;
-    }
-
-    async #handleReadFanout(
-        statement: PlurnkStatement,
-        ctx: PlurnkSchemeContext,
-        ids: { runId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier; onDispatch?: (id: number) => void },
-    ): Promise<DispatchResult> {
-        const { runId, loopId, turnId, sequence, origin, onDispatch } = ids;
-        const schemeName = this.#schemeNameOf(statement.target);
-        const found = await this.#run(schemeName, { ...statement, op: "FIND" } as PlurnkStatement, ctx);
-        const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number } | null }> | undefined) ?? [];
-        // Find-less scheme, a matcher/scope error, or zero matches → a single row carrying the
-        // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
-        if (found.status !== 200 || matches.length === 0) {
-            const result: DispatchResult = { status: found.status === 200 ? 204 : found.status };
-            const id = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
-            onDispatch?.(id);
-            return { ...result, rowsWritten: 1 };
-        }
-        // One READ row per MATCH — the span's source lines (or the whole entry for a body-less
-        // folder/glob). The match span is SOURCE LINES, so deliver via a raw line-slice — NOT the
-        // scheme's <L> (which is item-index for application/json, structural for xml). Read each
-        // distinct entry's content once, then line-slice per match. #286
-        const wholeByPath = new Map<string, DispatchResult>();
-        const fannedStatuses: number[] = [];
-        let written = 0;
-        for (const m of matches) {
-            let whole = wholeByPath.get(m.pathname);
-            if (whole === undefined) {
-                whole = await this.#run(schemeName, Engine.#retargetRead(statement, m.pathname, null), ctx);
-                wholeByPath.set(m.pathname, whole);
-            }
-            const result = Engine.#sliceMatch(whole, m.span);
-            const id = await this.#writeLog({ statement: Engine.#retargetRead(statement, m.pathname, m.span), result, runId, loopId, turnId, sequence: sequence + written, origin });
-            onDispatch?.(id);
-            fannedStatuses.push(result.status);
-            written++;
-        }
-        return { status: 200, rowsWritten: written, fannedStatuses };
-    }
-
-    // Deliver one match: the whole entry (body-less, span null) or the source lines at the span —
-    // a RAW line-slice, so a structural mimetype (json item-index / xml) doesn't mis-slice a span
-    // that is, by construction, source line numbers (#286).
-    static #sliceMatch(whole: DispatchResult, span: { lineStart: number; lineEnd: number } | null): DispatchResult {
-        if (whole.status !== 200 || span === null) return whole;
-        const sliced = LineMarkerOps.sliceLines(typeof whole.content === "string" ? whole.content : "", { marks: [span.lineStart, span.lineEnd] });
-        if (sliced.status !== 200) return { status: sliced.status, error: sliced.error };
-        return { status: 200, content: sliced.text ?? "", mimetype: "text/markdown", startLine: sliced.startLine ?? span.lineStart };
-    }
-
-    // §model-entry — mirror a verbatim model emission back as an actionless `model` log row, so
-    // the model can finally SEE its own prior output (and reason through its own syntax errors).
-    // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
-    // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
-    async #writeModelEntry({ verbatim, runId, loopId, turnId, sequence, folded, origin = "model" }: {
-        verbatim: string; runId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
-    }): Promise<number> {
-        const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
-            run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
-            origin, source: null, op: "model", suffix: "", signal: null,
-            scheme: null, username: null, password: null, hostname: null, port: null,
-            pathname: null, params: null, fragment: null, lineMarker: null,
-            tx: "", mimetype_tx: "text/vnd.plurnk",
-            rx: JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" }),
-            mimetype_rx: "application/json",
-            status_rx: 200, tokens: this.#tokenize(verbatim), state: "resolved", outcome: null, attrs: "{}",
-        });
-        if (row === undefined) throw new Error("Engine.#writeModelEntry: insert returned no row");
-        if (folded) await (this.#db.engine_fold_log_entry as PrepMethod).run({ id: row.id });
-        return row.id;
-    }
-
-    // PLAN — the model's reasoning op (the 11th op). An ordinary op: dispatched like any
-    // other, logged, and broadcast to the client as a log entry — but a pure no-op for
-    // state (PLAN ∉ MUTATING_OPS); its body serializes into the log row's tx, no effect.
-    #handlePlan(statement: PlurnkStatement): DispatchResult {
-        if (statement.op !== "PLAN") throw new Error("unreachable");
-        return { status: 200 };
-    }
-
-    // Same- and cross-scheme COPY share one orchestrator — §copy-cross-scheme-copy §move-cross-scheme-move
-    async #copyOrchestration({ statement, srcPath, dstPath, ctx }: {
-        statement: PlurnkStatement;
-        srcPath: ParsedPath;
-        dstPath: ParsedPath;
-        ctx: PlurnkSchemeContext;
-    }): Promise<DispatchResult> {
-        const srcSchemeName = this.#schemeNameOf(srcPath);
-        const dstSchemeName = this.#schemeNameOf(dstPath);
-        if (srcSchemeName === null || dstSchemeName === null) return { status: 400, error: "COPY/MOVE require URL paths with schemes" };
-
-        const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
-        const dstHandler = this.#schemes.get(dstSchemeName) as SchemeWithCrud | undefined;
-        if (srcHandler === undefined || dstHandler === undefined) return { status: 501 };
-        if (typeof srcHandler.readEntry !== "function" || typeof dstHandler.writeEntry !== "function") return { status: 501 };
-
-        const srcPathname = pathnameFromPath(srcPath);
-        const dstPathname = pathnameFromPath(dstPath);
-
-        const srcResult = await srcHandler.readEntry(srcPathname, ctx);
-        if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };  // §copy-missing-source-404 §move-missing-source-404
-        const entry = srcResult.entry;
-
-        // Destination read — the conflict/no-op verdict is deferred until the
-        // to-be-written content is known (after <L> slice + tag resolution below),
-        // so an identical re-copy resolves to 304 instead of a phantom 409.
-        const dstExisting = typeof dstHandler.readEntry === "function"
-            ? await dstHandler.readEntry(dstPathname, ctx)
-            : null;
-
-        // Mimetype compatibility check against the destination scheme's manifest
-        const dstManifest = (dstHandler.constructor as { manifest?: SchemeManifest }).manifest;
-        const dstChannels = dstManifest?.channels ?? {};
-        for (const [channelName, channelData] of Object.entries(entry.channels)) {
-            const expectedMimetype = dstChannels[channelName];
-            if (expectedMimetype !== undefined && expectedMimetype !== channelData.mimetype) {
-                return { status: 415, error: `mimetype mismatch on channel '${channelName}': ${channelData.mimetype} vs ${expectedMimetype}` }; // cross-mimetype COPY/MOVE → 415, never coerce — §channel-mimetype-cross-mimetype-415
-            }
-        }
-
-        // `<L>` source range slicing per SPEC.md §op-invariants (symmetric with READ
-        // `<L>` — source range, no line-number prefix).
-        // Applied to every channel of the source entry. Binary channels return
-        // 415 since line semantics don't apply.
-        const lineMarker = (statement as { lineMarker?: LineMarker | null }).lineMarker ?? null;
-        let channels = entry.channels;
-        if (lineMarker !== null) {
-            const sliced: typeof entry.channels = {};
-            for (const [channelName, channelData] of Object.entries(entry.channels)) {
-                if (MimetypeBinary.isBinaryMimetype(channelData.mimetype)) {
-                    return { status: 415, error: `cannot slice <L> on binary channel '${channelName}' (${channelData.mimetype})` };
-                }
-                const r = LineMarkerOps.sliceLinesRaw(channelData.content ?? "", lineMarker);
-                if (r.status !== 200) return { status: r.status, error: r.error };
-                sliced[channelName] = { ...channelData, content: r.text ?? "" };
-            }
-            channels = sliced;
-        }
-
-        // Tag resolution: signal = replace (§copy-signal-replaces-source-tags); absent/empty = carry from source (§copy-no-signal-carries-source-tags)
-        const tags = (Array.isArray(statement.signal) && statement.signal.length > 0)
-            ? statement.signal
-            : entry.tags;
-
-        // 304/409 on an existing destination (SPEC §copy): a re-copy that would write
-        // exactly what's already there — same channel contents, same tags — is a no-op
-        // (304), mirroring EDIT's 304-on-noop (§edit). A divergent destination is a real
-        // collision (409); COPY/MOVE never clobbers.
-        if (dstExisting !== null && dstExisting.status === 200 && dstExisting.entry !== null) {
-            const dstChannels = dstExisting.entry.channels;
-            const writeNames = Object.keys(channels).sort();
-            const dstNames = Object.keys(dstChannels).sort();
-            const sameContent = writeNames.length === dstNames.length
-                && writeNames.every((n, i) => n === dstNames[i] && (channels[n]?.content ?? "") === (dstChannels[n]?.content ?? ""));
-            const sameTags = [...tags].sort().join("") === [...dstExisting.entry.tags].sort().join("");
-            if (sameContent && sameTags) return { status: 304 };  // identical → §copy-noop-304
-            return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };  // §copy-conflict-409
-        }
-
-        const writeResult = await dstHandler.writeEntry(dstPathname, { channels, tags }, ctx);
-        // A file dest returns 202 (disk write → §membership review): propagate the
-        // proposal so dispatch runs the gate + routes applyResolution to the dest.
-        if (writeResult.status === 202) return { status: 202, attrs: writeResult.attrs, body: writeResult.body };
-        return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
+    // §send-groundless-hibernate — can this op open a wake edge mid-turn? The grounding scan for a
+    // same-turn spawn-then-hibernate: an EXEC (stream conclusion / poll cadence wakes), a COPY to
+    // run:// (child-conclusion wake, §run-lifecycle-child-wake), a directed SEND to run:// (irc — the
+    // addressee can act and conclude back), or an http READ (a web fetch streams into a subscription).
+    // Conservative on purpose: a false PERMIT risks a dead park only in the spawn-failed corner; a
+    // false REFUSE breaks legitimate hibernation.
+    static #opCanOpenWakeEdge(op: PlurnkStatement): boolean {
+        if (op.op === "EXEC") return true;
+        const scheme = op.target !== null && op.target.kind === "url" ? op.target.scheme : null;
+        if (op.op === "COPY" && scheme === "run") return true;
+        if (op.op === "SEND" && scheme === "run") return true;
+        return op.op === "READ" && (scheme === "http" || scheme === "https");
     }
 
     // A run "holds a live thing" iff it has an open stream/spawn (subscription registry or an
     // exec spawn) OR a non-terminal child run — the structured-concurrency invariant a terminal
-    // SEND[200] must respect (§send-premature-terminate, §run-lifecycle: children and streams are
-    // the same kind of live thing a run holds).
+    // SEND must respect (§send-premature-terminate, §send-groundless-hibernate, §run-lifecycle:
+    // children and streams are the same kind of live thing a run holds).
     async #runHoldsLiveThing(runId: number): Promise<boolean> {
         const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
         if (openSubs.length > 0) return true;
@@ -2611,185 +1291,5 @@ export default class Engine {
         if (execHandler?.hasActiveSpawns?.(runId) === true) return true;
         const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
         return liveChild !== undefined;
-    }
-
-    async #handleSendBroadcast(statement: PlurnkStatement, loopId: number, prematureRefusal: PrematureReason | undefined): Promise<DispatchResult> {
-        if (statement.op !== "SEND") throw new Error("unreachable");
-        const status = statement.signal;
-        if (status === null) return { status: 400 };
-        // Premature terminate (§send-premature-terminate): a terminal SEND[200] is REFUSED 409 — the row
-        // keeps the [200] emission + body (faithful, never erased), the loop never goes terminal. The
-        // decision is the runTurn PRE-DISPATCH snapshot (threaded), so a same-turn fire-and-forget spawn
-        // isn't miscounted. Two reasons, two terse signals: a live thing the run holds, or a READ
-        // submitted this turn whose result the model can't have seen (it folds back next turn).
-        if (status === 200 && prematureRefusal === "live-thing") {
-            return { status: 409, error: "Attempted [200] termination despite active streams or worker runs. You may either hibernate [202] to wait or KILL them before terminating." };
-        }
-        if (status === 200 && prematureRefusal === "submitted-read") {
-            return { status: 409, error: "Attempted termination with submitted READ operation(s)." };
-        }
-        if (status === 200 || status === 202 || status === 499) {
-            // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance
-            // the loop; each carries its body as the loop's terminal message — the deliverable.
-            const body = statement.body;
-            const message = body === null ? null : typeof body === "string" ? body : body.raw;
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status, loop_id: loopId, message });
-        }
-        return { status };
-    }
-
-    async #run(
-        schemeName: string | null,
-        statement: PlurnkStatement,
-        ctx: PlurnkSchemeContext,
-    ): Promise<DispatchResult> {
-        if (schemeName === null) return { status: 400 };
-        const handler = this.#schemes.get(schemeName) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
-        if (handler === undefined) return { status: 501 };
-        const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
-        const method = handler[methodName];
-        if (typeof method !== "function") return { status: 501 };
-        // External @plurnk/plurnk-schemes-* siblings receive the DB-free SchemeCtx
-        // (caps), never the raw PlurnkSchemeContext (schemes SPEC §channels). The dynamic
-        // dispatch is typed for in-tree schemes; the cast bridges the ctx shapes —
-        // the sibling reads caps, the in-tree handler reads db.
-        if (this.#schemes.isExternal(schemeName)) {
-            return method.call(handler, statement, new SchemeCtxImpl(ctx, schemeName) as unknown as PlurnkSchemeContext);
-        }
-        return method.call(handler, statement, ctx);
-    }
-
-    // Bare paths default to the file scheme per plurnk.md (grammar sysprompt):
-    // "Bare paths (no scheme) default to local relative project file paths."
-    // file:/// remains an optional explicit form for absolute paths.
-    #schemeNameOf(path: ParsedPath | null): string | null {
-        if (path === null) return null;
-        // http + https are one scheme — the http sibling owns both prefixes (#195).
-        if (path.kind === "url") return path.scheme === "https" ? "http" : path.scheme;
-        return "file";  // local (bare) → file
-    }
-
-    // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/
-    // directed write — paused for client resolution) UNLESS it is a broadcast SEND.
-    // A broadcast SEND[202] is the model PARKING the loop (a terminal disposition,
-    // plurnk.md), never a side-effect — #255: gating the propose/await path on the
-    // bare 202 surfaced model speech as a loop/proposal and froze clients. The 202
-    // is overloaded (proposal-pause vs parked-terminal); the op disambiguates it.
-    static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
-        return result.status === 202 && !(statement.op === "SEND" && statement.target === null);
-    }
-
-    async #writeLog({
-        statement, result, runId, loopId, turnId, sequence, origin,
-    }: {
-        statement: PlurnkStatement; result: DispatchResult;
-        runId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
-    }): Promise<number> {
-        const target = this.#extractTarget(statement.target);
-        const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
-            ? JSON.stringify(statement.lineMarker as LineMarker)
-            : null;
-        // A proposal (status 202 from a side-effecting op) is written to the log in
-        // state='proposed' until the proposal lifecycle resolves it; attrs holds the
-        // scheme-supplied payload (file diff, exec command, etc.) the client renders
-        // for review and the scheme consumes on accept. A broadcast SEND[202] is a
-        // parked-terminal, NOT a proposal (#isProposal / #255) → state='resolved'.
-        const isProposed = Engine.#isProposal(statement, result);
-        let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
-            ? { ...(result.attrs as Record<string, unknown>) }
-            : {};
-        // EXEC produces a stream entry addressed by RUNTIME TAG as authority (§exec): it lives
-        // at <runtime>:///<loop_seq>/<turn_seq>/<sequence> (e.g. sh:///1/1/2). That address is a
-        // SEPARATE `stream` link in attrs — NOT an overload of `target`, which stays faithful to
-        // the EXEC's own slot (the cwd, or the path to the executable). The log:/// coordinate
-        // shares the trailing <loop>/<turn>/<seq>, so the op still correlates to its stream.
-        // Runtime comes from statement.signal (EXEC's runtime slot), resolvable for failed execs
-        // too; empty/absent = the default shell.
-        if (statement.op === "EXEC") {
-            const seqs = await (this.#db.engine_loop_turn_seqs as PrepMethod).get<{ loop_seq: number; turn_seq: number }>({
-                loop_id: loopId, turn_id: turnId,
-            });
-            if (seqs === undefined) throw new Error(`Engine.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
-            const runtime = (typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-            const coordPathname = `/${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`;
-            attrsObj.pathname = coordPathname;
-            attrsObj.stream = `${runtime}://${coordPathname}`;
-            // Mutate the in-memory result.attrs too: the dispatch path
-            // hands originalResult.attrs to handler.applyResolution after
-            // proposal accept (see #acceptResolution). Both views — the
-            // stored row AND the in-memory proposal — need the same
-            // pathname so applyResolution writes the entry at the same URI.
-            if (result.attrs !== undefined && result.attrs !== null) {
-                (result.attrs as Record<string, unknown>).pathname = coordPathname;
-            }
-        }
-        const attrs = JSON.stringify(attrsObj);
-        const txJson = JSON.stringify(statement);
-        const rxJson = JSON.stringify(result);
-        const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
-            run_id: runId,
-            loop_id: loopId,
-            turn_id: turnId,
-            sequence: sequence,
-            origin,
-            source: null,  // dispatch entries are self-authored; §env-delta deltas set this
-            op: statement.op,
-            suffix: statement.suffix,
-            signal: this.#signalToJson(statement.signal),
-            scheme: target.scheme,
-            username: target.username,
-            password: target.password,
-            hostname: target.hostname,
-            port: target.port,
-            pathname: target.pathname,
-            params: target.params,
-            fragment: target.fragment,
-            lineMarker: lineMarkerJson,
-            tx: txJson,
-            mimetype_tx: "application/json",
-            rx: rxJson,
-            mimetype_rx: "application/json",
-            status_rx: result.status,
-            tokens: this.#tokenize(txJson) + this.#tokenize(rxJson),
-            state: isProposed ? "proposed" : "resolved",
-            outcome: null,
-            attrs,
-        });
-        if (row === undefined) throw new Error("Engine.#writeLog: INSERT ... RETURNING produced no row");
-        return row.id;
-    }
-
-    // Normalize a parsed path for storage. The `file` scheme is a routing
-    // internal — never stored, never rendered to the model. Both bare paths
-    // and `file:///...` inputs collapse to scheme=null at this boundary, so
-    // entries.scheme / log_entries.scheme never carry the string "file".
-    #extractTarget(path: ParsedPath | null): {
-        scheme: string | null; username: string | null; password: string | null;
-        hostname: string | null; port: number | null; pathname: string | null;
-        params: string | null; fragment: string | null;
-    } {
-        if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, params: null, fragment: null };
-        // `local` (bare path) and `regex` (grammar 0.46 `#pattern#flags` target) carry no URL parts — store the raw text as the pathname for the log record, scheme=null.
-        if (path.kind === "regex") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: path.raw, params: null, fragment: null }; // regex source — no decode
-        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: decodePathParens(path.raw), params: null, fragment: null }; // #239 item 4
-        const scheme = path.scheme === "file" ? null : path.scheme;
-        // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
-        // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
-        // the entry (/prompt/<loop>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
-        // namespace: keep it in hostname. run:// is the one registered EXCEPTION — its authority IS the
-        // run selector (§run-scheme), and run://self must stay distinct from run://name, so Run.ts
-        // folds the owner into the storage path itself, never here.
-        const foldNs = scheme !== null && scheme !== "run" && this.#schemes.has(scheme);
-        return {
-            scheme, username: path.username, password: path.password,
-            hostname: foldNs ? null : path.hostname, port: path.port,
-            pathname: decodePathParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // #239 item 4
-            params: JSON.stringify(path.params), fragment: path.fragment,
-        };
-    }
-
-    #signalToJson(signal: unknown): string | null {
-        if (signal === null || signal === undefined) return null;
-        return JSON.stringify(signal);
     }
 }

@@ -398,7 +398,7 @@ export default class Daemon {
 
     /**
      * Emit a telemetry/event notification scoped to the session containing
-     * the loop. Engine.#pushTelemetry invokes this for every TelemetryEvent
+     * the loop. TelemetryChannel.push invokes this for every TelemetryEvent
      * (parse_error, strike, cycle, sudden_death, no_ops, max_commands_exceeded,
      * action_failure) the moment it lands in the loop's telemetry buffer.
      * SPEC §telemetry.

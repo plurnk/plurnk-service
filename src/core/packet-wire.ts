@@ -271,7 +271,7 @@ export default class PacketWire {
 
     // Render a (scheme, pathname) tuple as the URI the model should SEE.
     // Null scheme → bare pathname. The `file` scheme never reaches this
-    // function because Engine.#extractTarget normalizes it to null at the
+    // function because Dispatcher.#extractTarget normalizes it to null at the
     // storage boundary; storage and wire output are uniform on this.
     static #renderModelUri(scheme: string | null | undefined, pathname: string | null | undefined): string {
         const path = pathname ?? "";

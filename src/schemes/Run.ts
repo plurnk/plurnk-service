@@ -7,7 +7,7 @@ import type { FindResult } from "./_entry-find.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 
-// run:// — the run scheme: inter-run CONTROL (irc=SEND; COPY=spawn/fork is Engine.#handleRunFork)
+// run:// — the run scheme: inter-run CONTROL (irc=SEND; COPY=spawn/fork is Dispatcher.#handleRunCopy)
 // AND run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: run://<name>/<path> is
 // entry <path> owned by run <name>; `run://self` is the current run, empty authority is invalid.
 // Run is excluded from #extractTarget's authority-fold (Engine) so the authority stays the run
@@ -78,7 +78,7 @@ export default class Run {
 
     // KILL a run-scope scratch ENTRY (path present). Self-only — deleting a sister's notes
     // is a cross-run write, denied like EDIT (§run-scheme). The path-ABSENT KILL form is run
-    // cancellation, handled in Engine.#handleKill (it routes only entry-path KILLs here).
+    // cancellation, handled in Dispatcher.#handleKill (it routes only entry-path KILLs here).
     async deleteEntry(statement: KillStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
         const authority = Run.#authority(statement.target);
         if (authority === null) return { status: 400, error: "run:// requires a run target" };

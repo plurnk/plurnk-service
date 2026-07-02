@@ -34,7 +34,7 @@ const SCHEME_DOCS: ReadonlyMap<string, string> = await (async () => {
 export default class SchemeRegistry {
     // Heterogeneous handler store — in-tree schemes take PlurnkSchemeContext, external
     // siblings the DB-free SchemeCtx of the imported SchemeHandler; the common supertype
-    // is `object`. Dispatch (Engine.#run) borrows SchemeHandler's op-key set, not its ctx.
+    // is `object`. Dispatch (Dispatcher.#run) borrows SchemeHandler's op-key set, not its ctx.
     #handlers = new Map<string, object>();
     #external = new Set<string>();
     #attributions: string[] = []; // #249 — declared attribution tags of discovered external schemes

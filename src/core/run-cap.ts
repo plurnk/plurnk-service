@@ -5,7 +5,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 // knob; -1 / unset / invalid = no cap. Only concurrency is bounded, never lifetime:
 // sessions persist for months, so a total-created cap would punish longevity. A
 // spawn/fork past the ceiling fails hard (508) — no queue, no retry. Checked at the
-// single run-creation site (Engine.#handleRunCopy, which both spawns and forks); irc is
+// single run-creation site (Dispatcher.#handleRunCopy, which both spawns and forks); irc is
 // exempt — it targets an existing run and creates nothing.
 export default class RunCap {
     static async deny(db: Db, sessionId: number): Promise<{ status: number; error: string } | null> {

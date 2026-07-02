@@ -272,7 +272,7 @@ Author-facing contract: [plurnk-schemes#1](https://github.com/plurnk/plurnk-sche
 
 Every op targets a URI; the entry key is `(scope, scheme, pathname)`. The URI parses per RFC 3986 (`scheme://[authority]/path`) and maps to that key by one rule — no per-scheme carve-out:
 
-- A **registered** scheme is a plurnk namespace: its authority is a leading path segment, folded into the pathname (`Engine.#extractTarget` → `foldAuthorityIntoPath`). So `known://x`, `known:///x`, and pathname `/x` are the same entry — the authority is never a host, and the two-slash and three-slash forms are not distinct resources. {§scheme-address-namespace-fold}
+- A **registered** scheme is a plurnk namespace: its authority is a leading path segment, folded into the pathname (`Dispatcher.#extractTarget` → `foldAuthorityIntoPath`). So `known://x`, `known:///x`, and pathname `/x` are the same entry — the authority is never a host, and the two-slash and three-slash forms are not distinct resources. {§scheme-address-namespace-fold}
 - A **foreign** scheme (unregistered — `http`/`https`) is a real web host: its authority stays in `hostname`, never folded.
 - `file` persists `scheme = NULL`; a relative path resolves against the workspace root to the namespace-absolute `/rel` key (RFC 3986 §5 reference resolution), and a path escaping the root is 403 (§membership).
 
@@ -1085,7 +1085,7 @@ Each entry: question, answer, rationale, migration path.
 
 ### §packet-assembly Packet assembly: engine builds the default list, plugins transform it
 
-**Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk builds a default ordered section list directly in `Engine.#buildRequestPacket`, then lets trusted plugins rewrite it.
+**Question.** Rummy uses priority-ordered filter chains for packet assembly. Plurnk builds a default ordered section list directly in `PacketBuilder.buildRequestPacket`, then lets trusted plugins rewrite it.
 
 **Decision.** Two stages. (1) The engine builds the default section list. `slot` is a **trust boundary**: the system slot carries only framework-authored, non-injectable sections — `definition`, `tools`, `schemes`, the policy sections `system-policy`/`project-policy`, then the framework-status tail `errors` (uri+status pointers; the error item+body live in the log) and `git` (counts), with `budget` last (budget is law — a hard ceiling, the final word before the model acts). The user slot carries injectable content — `prompt` and `log` (READ results, exec output, the model's own mirror: data at the action point, never a privileged rule) — plus the `requirements` footer. Nothing that can carry attacker-reachable text rides the system slot. (2) `SchemeRegistry.transformSections` pipes that list through every registered scheme that implements `transformSections(sections) → sections`, in registration order, before the engine measures. A plugin returns whatever list it wants — add, remove, reorder. {§packet-plugin-transform}
 
@@ -1104,7 +1104,7 @@ Each entry: question, answer, rationale, migration path.
 
 **Built.**
 
-- **Provider tokens, stored at write.** `provider.countTokens` is the source of truth; `entry_channels.tokens` (via `_entry-crud`) and `log_entries.tokens` (via `Engine.#writeLog`) are populated at write as a write-time snapshot. A `ceil(len/DIVISOR)` fallback (the divisor tripwire) applies only when no provider tokenizer is wired. {§tokenomics-tokens-stored-at-write}
+- **Provider tokens, stored at write.** `provider.countTokens` is the source of truth; `entry_channels.tokens` (via `_entry-crud`) and `log_entries.tokens` (via `Dispatcher.#writeLog`) are populated at write as a write-time snapshot. A `ceil(len/DIVISOR)` fallback (the divisor tripwire) applies only when no provider tokenizer is wired. {§tokenomics-tokens-stored-at-write}
 - **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is measured from the *assembled packet* (placeholders substituted after measuring), so it reflects what the model actually receives. A `SUM` of stored content-depth would mis-price the rendered packet; render-weight is the accurate measure. {§tokenomics-render-weight-budget}
 - **Per-turn weight.** A markdown table groups render-weight by turn — the `loop/turn` coordinate prefix — listed chronologically (oldest first). The turn is the grinder's rollback unit, and the rail folds the **newest** turn first (§grinder); the model sees which turns are fat and can FOLD ahead of the rail. {§tokenomics-turn-totals}
 - **Heaviest entries.** A second table lists the five heaviest log entries by render-weight, each by its `log:///<coord>/<op>` handle — the FOLD targets behind the turn weight. The handle carries the turn, so the two tables interlock. {§tokenomics-largest-entries}
@@ -1166,7 +1166,7 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 **Question.** §tokenomics surfaces the budget honestly and the model curates against `tokensFree` — almost always enough. Two states defeat self-regulation, neither the model's doing: a jumbo prompt (the turn-0 environment), and an unexpectedly large read. (A jumbo repo is no longer its own case — with no index nothing auto-renders the repo; it surfaces only as a large catalog `FIND`, which the model pages like any big result.) What enforces the ceiling when the signal isn't enough?
 
-**Decision — a pre-LLM grinder, fired only on actual overflow.** In `Engine.runTurn`, after the packet is assembled (`#buildRequestPacket`) and before `provider.generate`, the assembled render-weight (§tokenomics) is measured against the ceiling. At or under → the packet ships untouched; the grinder never trims speculatively or "helpfully." {§grinder-overflow-only} On overflow it folds the newest turn, then hard-stops if that isn't enough:
+**Decision — a pre-LLM grinder, fired only on actual overflow.** In `Engine.runTurn`, after the packet is assembled (`PacketBuilder.buildRequestPacket`) and before `provider.generate`, the assembled render-weight (§tokenomics) is measured against the ceiling. At or under → the packet ships untouched; the grinder never trims speculatively or "helpfully." {§grinder-overflow-only} On overflow it folds the newest turn, then hard-stops if that isn't enough:
 
 - **Newest-turn rollback.** The grinder folds the newest turn in the packet, and ONLY that one: the immediately-prior turn's emissions (turn N>1, the latest output that pushed it over), or — when there is no prior turn — **turn 1's own foists** (the catalog/prompt). It never reaches older history; the model alone curates stale context via FOLD/KILL, and the engine never janitors. Folded, not deleted: rows and bodies persist and are re-OPENable, so log *history* is preserved while the render collapses to coordinates. {§grinder-layer1-rollback}
 - **Errors are exempt.** The grinder never folds an `op='error'` row — the budget-overflow it just minted, a parse failure, an action failure. Errors are the model's durable, curatable record of what went wrong; folding them away the moment they matter would blind the model to a recurring failure. They stay OPEN until the model itself FOLDs or KILLs them. {§grinder-errors-exempt}
@@ -1229,7 +1229,7 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 ## §packet Packet shape
 
-**Service-owned.** grammar 0.67 deleted `Packet.json` — the protocol scoped itself to the grammar, so the packet shape is now entirely plurnk-service's. The engine assembles it in `Engine.#buildRequestPacket` as an **ordered list of sections** that trusted plugins may rewrite (§packet-assembly).
+**Service-owned.** grammar 0.67 deleted `Packet.json` — the protocol scoped itself to the grammar, so the packet shape is now entirely plurnk-service's. The engine assembles it in `PacketBuilder.buildRequestPacket` as an **ordered list of sections** that trusted plugins may rewrite (§packet-assembly).
 
 ```ts
 type PacketSection = {
@@ -1303,7 +1303,7 @@ Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeep
 
 ### §tools user.tools — the capability sheet
 
-The tools capability lines render **titleless**, directly under the `definition` (plurnk.md) section — the examples flow on from plurnk.md with no separate header — and **above** `## Plurnk Service Requirements`, so the model sees what it can *do* before the rules it must follow. Each enabled capability contributes one line via `Engine.#collectTools`; the section is omitted when nothing is enabled. {§tools-capability-sheet}
+The tools capability lines render **titleless**, directly under the `definition` (plurnk.md) section — the examples flow on from plurnk.md with no separate header — and **above** `## Plurnk Service Requirements`, so the model sees what it can *do* before the rules it must follow. Each enabled capability contributes one line via `PacketBuilder.#collectTools`; the section is omitted when nothing is enabled. {§tools-capability-sheet}
 
 **Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE line — its canonical usage — via the shared `teachingLine` (identical shape to the scheme directory, §schemes); its doc is materialized at `plurnk://docs/<tag>.md` and discovered via the turn-1 `FIND(plurnk://docs/**)` foist, not linked inline (#270). A tag with no example contributes nothing; `PLURNK_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, retiring the model's blind `<<EXEC[sh]…`.
 

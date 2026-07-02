@@ -26,7 +26,7 @@
 //     - Use cases: real users who want "stop bothering me" ergonomics
 //       across an interactive session. Documented in client SPEC §open-fold.
 //
-// Listener fires BEFORE Engine.#awaitResolution awaits the waiter, so a
+// Listener fires BEFORE ProposalLifecycle.awaitResolution awaits the waiter, so a
 // synchronous resolveProposal here is delivered to the awaiting dispatch
 // without yielding. The loop/proposal broadcast still goes out (listeners
 // fan out independently) — clients in server-YOLO runs may see a brief

@@ -12,6 +12,18 @@
 // see other schemes gate the fold on scheme === "plurnk"; the entry layer only ever sees
 // empty-authority schemes, so it folds unconditionally (a no-op there).
 
+import type { ParsedPath } from "@plurnk/plurnk-grammar";
+
+// Bare paths default to the file scheme per plurnk.md (grammar sysprompt):
+// "Bare paths (no scheme) default to local relative project file paths."
+// file:/// remains an optional explicit form for absolute paths.
+export function schemeNameOf(path: ParsedPath | null): string | null {
+    if (path === null) return null;
+    // http + https are one scheme — the http sibling owns both prefixes (#195).
+    if (path.kind === "url") return path.scheme === "https" ? "http" : path.scheme;
+    return "file";  // local (bare) → file
+}
+
 export function foldAuthorityIntoPath(hostname: string | null, pathname: string): string {
     return hostname ? `/${hostname}${pathname}` : pathname;
 }
