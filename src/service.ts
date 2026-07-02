@@ -35,7 +35,30 @@ export default class Service {
         mkdirSync(Service.#homeDir, { recursive: true });
         const shipped = resolve(Service.#projectRoot, ".env.example");
         if (existsSync(shipped)) copyFileSync(shipped, resolve(Service.#homeDir, ".env.example"));
-        writeFileSync(resolve(Service.#homeDir, ".env"), "# plurnk config — overrides the shipped defaults. e.g.\n# PLURNK_MODEL=gemma\n");
+        // The first-run model selection lives HERE, as commented peers — an honest surfaced
+        // choice (no active default ships; #307). One uncomment per option; agents read this
+        // file as naturally as humans do.
+        writeFileSync(resolve(Service.#homeDir, ".env"), [
+            "# plurnk config — overrides the shipped defaults (~/.plurnk/.env.example is the legend).",
+            "#",
+            "# Pick a model — uncomment ONE block:",
+            "#",
+            "# LOCAL — your own llama-server / any OpenAI-compatible endpoint:",
+            "# PLURNK_MODEL_local=\"openai/gemma\"",
+            "# OPENAI_BASE_URL=http://127.0.0.1:11434",
+            "# PLURNK_MODEL=local",
+            "#",
+            "# CLOUD — bring your own key, any openrouter model:",
+            "# PLURNK_MODEL_cloud=\"openrouter/qwen/qwen3-coder\"",
+            "# OPENROUTER_API_KEY=\"...\"",
+            "# PLURNK_MODEL=cloud",
+            "#",
+            "# PLURNK.AI — the hosted relay (free tier: https://plurnk.ai):",
+            "# PLURNK_MODEL_plurnk=\"plurnk/plurnk\"",
+            "# PLURNK_API_KEY=\"...\"",
+            "# PLURNK_MODEL=plurnk",
+            "",
+        ].join("\n"));
         // Seed the default operating policy → ~/.plurnk/AGENTS.md, foisted as ## Plurnk Service Policy
         // (readSystemPolicy). A new install opens with a sane disposition, not a blank policy; the user
         // owns + edits it after — a deleted policy stays deleted, like the .env floor.
@@ -141,7 +164,7 @@ export default class Service {
             process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Install @plurnk/plurnk-mimetypes-embeddings for vector search, or see README.md#semantic-search\n");
         }
         if (alias === null) {
-            process.stderr.write(`plurnk-service: no model configured — set PLURNK_MODEL in ${resolve(Service.#homeDir, ".env")} (e.g. PLURNK_MODEL=gemma). Bring your own provider; the hosted default isn't live yet.\n`);
+            process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);
         }
         const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
         process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} db=${dbPath} ${aliasStr}\n`);

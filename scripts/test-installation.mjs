@@ -1,6 +1,7 @@
 // Off-hot-path e2e: install the built package into a clean sandbox as a consumer would, then
-// prove it works out of the box — lean (no optional embedder / native deps), the bin boots the
-// DB from the installed dist, the daemon listens, and the embedder-inactive notice surfaces.
+// prove it works out of the box — the embedder ships (default-on OOTB, via mimetypes-all) with no
+// native install scripts, the bin boots the DB from the installed dist, the daemon listens, and a
+// fresh install has NO active model (the #307 no-phone-home posture): the pointer surfaces instead.
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -40,7 +41,7 @@ installSandbox();
 ok(existsSync(bin), "plurnk-service bin linked in the sandbox");
 
 const mods = resolve(sandbox, "node_modules");
-ok(!existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "optional embedder NOT auto-installed (lean base)");
+ok(existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "embedder ships OOTB (default-on, via mimetypes-all)");
 ok(!existsSync(resolve(mods, "onnxruntime-node")) && !existsSync(resolve(mods, "sharp")), "native onnxruntime/sharp NOT pulled (script-free, portable)");
 
 const help = runBin(["--help"], { PLURNK_DB_PATH: resolve(sandbox, "x.db"), PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" });
@@ -57,7 +58,11 @@ void home;
 
 const boot = await bootStart({ PLURNK_DB_PATH: resolve(sandbox, "start.db") });
 ok(boot.listening === true, "`start` boots the daemon (WebSocket listening)");
-ok(/embedder inactive/.test(boot.stderr), "embedder-inactive notice on stderr when the embedder is absent");
+ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the shipped embedder is active");
+// #307 — a fresh install resolves NO model: the boot line says so, the stderr pointer names the
+// three options, and nothing can phone the hosted relay without the user uncommenting it.
+ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
+ok(/no model configured/.test(boot.stderr) && /local \/ cloud \/ plurnk\.ai/.test(boot.stderr), "the pointer names the three options in ~/.plurnk/.env");
 
 process.stdout.write("  ⚠ hosted-model round-trip: deliberate red (endpoint not live) — not yet asserted\n");
 
