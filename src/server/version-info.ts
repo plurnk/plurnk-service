@@ -42,7 +42,7 @@ export default class VersionInfo {
 
     static #maybeRefresh(): void {
         const ttl = VersionInfo.#envMs("PLURNK_VERSION_POLL_TTL", 0);
-        const timeout = VersionInfo.#envMs("PLURNK_FETCH_TIMEOUT", 1);
+        const timeout = VersionInfo.#envMs("PLURNK_PROVIDERS_FETCH_TIMEOUT", 1);
         if (VersionInfo.#inflight || Date.now() - VersionInfo.#cache.at < ttl) return;
         VersionInfo.#inflight = true;
         void VersionInfo.#refresh(timeout).finally(() => { VersionInfo.#inflight = false; });

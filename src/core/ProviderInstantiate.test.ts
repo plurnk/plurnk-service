@@ -19,7 +19,7 @@ test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL"
         // the probe's connection failure is expected and irrelevant.
         await ProviderInstantiate.instantiateProvider(
             { alias: "probe", provider: "openai", model: "m", baseUrl: "http://127.0.0.1:59731/v1" },
-            { ...process.env, OPENAI_BASE_URL: "http://127.0.0.1:59732", PLURNK_FETCH_TIMEOUT: "1500" },
+            { ...process.env, OPENAI_BASE_URL: "http://127.0.0.1:59732", PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500" },
         ).catch(() => {});
     } finally {
         globalThis.fetch = realFetch;
