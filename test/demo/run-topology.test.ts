@@ -19,9 +19,20 @@ const TIMEOUT = 600_000; // 10 min — topologies run more turns than a single-r
 const runStory = async (opts: { label: string; prompt: string; maxTurns?: number }) => {
     const fixture = await seedDemoFixture(opts.label);
     const s = await liveSession({ name: `topo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
-    const { finalStatus, hitMaxTurns, turnIds, lastContent } = await liveLoop(
-        s, 2, { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) }, { timeoutMs: TIMEOUT },
-    );
+    // The inner deadline UNDERCUTS the test timeout: at a tie the test cancels first, the body
+    // dangles awaiting loop/terminated, and cleanup is unreachable — the leaked daemon handles
+    // then wedge the whole tier (the process can't exit, the runner waits forever).
+    let loop;
+    try {
+        loop = await liveLoop(
+            s, 2, { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) }, { timeoutMs: TIMEOUT - 30_000 },
+        );
+    } catch (err) {
+        await s.cleanup().catch((e) => console.error(`[topo:${opts.label}] session cleanup after failure:`, e));
+        await fixture.cleanup().catch((e) => console.error(`[topo:${opts.label}] fixture cleanup after failure:`, e));
+        throw err;
+    }
+    const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
     console.error(`[topo:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
     const dump = async (): Promise<void> => {
         // All runs in the session — see the children too, not just the parent.

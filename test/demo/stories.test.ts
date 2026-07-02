@@ -56,7 +56,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
         loop = await liveLoop(
             s, 2,
             { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
-            { timeoutMs: TIMEOUT },
+            { timeoutMs: TIMEOUT - 30_000 }, // undercut the test timeout: the inner throw must land while cleanup is still reachable
         );
     } catch (err) {
         await s.cleanup().catch((e) => console.error(`[story:${opts.label}] session cleanup after failure:`, e));
