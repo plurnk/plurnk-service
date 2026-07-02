@@ -13,7 +13,7 @@ const mapOf = (entries: Record<string, string>, skipped: Record<string, string> 
 // — two-tier instantiation (SPEC §5) —
 
 const fullEnv = Object.freeze({
-    PLURNK_FETCH_TIMEOUT: "600000",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
     PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     OPENAI_BASE_URL: "http://x",
 });

@@ -104,7 +104,7 @@ Default export MUST have a static `fromEnv(env, model, options?)` factory:
 class OpenAI {
     static fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): OpenAI | Promise<OpenAI> {
         // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY, ...)
-        // plus universal operator knobs (PLURNK_PROVIDERS_REASONING_BUDGET, PLURNK_FETCH_TIMEOUT,
+        // plus universal operator knobs (PLURNK_PROVIDERS_REASONING_BUDGET, PLURNK_PROVIDERS_FETCH_TIMEOUT,
         // PLURNK_PROVIDERS_CONTEXT_SIZE). `options.baseUrl`, when set, is the per-alias
         // endpoint override (PLURNK_BASEURL_<alias>, §5) and wins over the env base URL.
         return new OpenAI({ /* ... */ });
@@ -126,7 +126,7 @@ Each provider's `fromEnv` reads these:
 - **`PLURNK_PROVIDERS_REASONING_BUDGET`** — REQUIRED integer `>= -1`. One knob carries the whole side-channel-reasoning space: **`0`** off, **`-1`** on/adaptive (no cap — model/backend decides depth), **`N>0`** on/capped at `N`. The provider maps this single intent to the active backend's mechanism — llama-server `chat_template_kwargs: { enable_thinking }` (always emitted; the explicit FALSE is the only working off-switch — llama-server ignores `think` and per-request budgets, and its `--reasoning-budget` default otherwise keeps the channel live, fatal under an active grammar, §13), Ollama `think`, relay `include_reasoning`, cloud `reasoning_effort` (tier from `N`; adaptive `-1` omits the field, letting the API pick its depth), fireworks `reasoning_effort` **explicit** (`effort_explicit`: `0` SENDS `"none"`, `-1` SENDS `"adaptive"` — omission is NOT off on reason-by-default models like DeepSeek V4, which defaults `'high'` and reasons inside a constrained decode until `max_tokens`, #30), Anthropic `thinking: { type: "adaptive" }` (`-1`) / `budget_tokens` (`N`). For native backends the magnitude is irrelevant — only zero vs non-zero matters. Consumers state intent, never mechanism. (In-DSL `<<PLAN>>` reasoning has **no provider footprint** and no operator knob: `PLAN` is a required element of the canonical plurnk grammar the consumer attaches via `generate`'s `grammar`. The provider transports that grammar verbatim and never forces, prefills, or toggles `PLAN`.)
 
 Read via `reasoningBudgetFromEnv` and **fail hard when unset** — configuration lives in the operator's env (the consumer's `.env.example` declares every var); the framework never defaults a knob in code.
-- **`PLURNK_FETCH_TIMEOUT`** — service-wide ms ceiling on any single outbound request (**per attempt**, not shared across retries). Each `fromEnv` reads and passes as `AbortSignal.timeout`. Per-provider override envs are NOT part of the contract.
+- **`PLURNK_PROVIDERS_FETCH_TIMEOUT`** — service-wide ms ceiling on any single outbound request (**per attempt**, not shared across retries). Each `fromEnv` reads and passes as `AbortSignal.timeout`. Per-provider override envs are NOT part of the contract.
 - **`PLURNK_PROVIDERS_RETRY_ATTEMPTS`** — REQUIRED non-negative integer (read via `parseRequiredInt`). The transient-failure retry budget: **`0`** surfaces the first failure; **`N`** retries up to `N` times on a *transient* classification only (`rate_limit` / `network_failure` — 429, 5xx, timeout, connection reset). Terminal kinds (`unauthorized`, `quota_exceeded`, `invalid_response`, `model_refused`) are never retried. Backoff is exponential from a `2000ms` base (`base * 2^(attempt-1)`), unless the server sent a `Retry-After` (which wins). The caller's `signal` aborts both the in-flight request and the backoff sleep. Lives in the shared `OpenAICompatProvider` so every provider inherits it uniformly; rides on the existing `classifyProviderError` (#18).
 - **`PLURNK_PROVIDERS_CONTEXT_SIZE`** — optional positive-integer override for the model's reported context window. Resolution: this env var → provider probe/config/table → `null`.
 
@@ -252,7 +252,7 @@ Sibling-specific behavioral tests (wire-format compliance, model-family quirks, 
 
 The framework ships the transport spine every OpenAI-compatible provider had been duplicating. Build a sibling *on top of these* — don't re-implement them.
 
-- **`OpenAICompatProvider`** — a `Provider` implementation built by composition. Its `generate` does the universal work (merge `signal` with a `PLURNK_FETCH_TIMEOUT` deadline, stream the completion, map `usage`, normalize `finishReason` to the §2 set, assemble the response). Per-provider deltas arrive as config:
+- **`OpenAICompatProvider`** — a `Provider` implementation built by composition. Its `generate` does the universal work (merge `signal` with a `PLURNK_PROVIDERS_FETCH_TIMEOUT` deadline, stream the completion, map `usage`, normalize `finishReason` to the §2 set, assemble the response). Per-provider deltas arrive as config:
 
   ```ts
   new OpenAICompatProvider({

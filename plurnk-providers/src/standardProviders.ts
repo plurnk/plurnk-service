@@ -377,7 +377,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         );
     }
     const url = resolveUrl(spec, env, name, baseUrlOverride);
-    const fetchTimeoutMs = parseRequiredInt(env.PLURNK_FETCH_TIMEOUT, "PLURNK_FETCH_TIMEOUT", name);
+    const fetchTimeoutMs = parseRequiredInt(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name);
 
     // The probe always runs for probeNctx specs — grammar capability must not
     // hinge on whether the operator pinned PLURNK_PROVIDERS_CONTEXT_SIZE. For

@@ -3,19 +3,19 @@ import { strict as assert } from "node:assert";
 import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
-    assert.equal(parseRequiredInt("600000", "PLURNK_FETCH_TIMEOUT", "openai"), 600000);
-    assert.equal(parseRequiredInt("0", "PLURNK_FETCH_TIMEOUT", "openai"), 0);
+    assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
+    assert.equal(parseRequiredInt("0", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 0);
 });
 
 test("parseRequiredInt: missing value names the env var and provider", () => {
-    assert.throws(() => parseRequiredInt(undefined, "PLURNK_FETCH_TIMEOUT", "groq"), /groq provider: PLURNK_FETCH_TIMEOUT must be set/);
-    assert.throws(() => parseRequiredInt("", "PLURNK_FETCH_TIMEOUT", "groq"), /must be set/);
+    assert.throws(() => parseRequiredInt(undefined, "PLURNK_PROVIDERS_FETCH_TIMEOUT", "groq"), /groq provider: PLURNK_PROVIDERS_FETCH_TIMEOUT must be set/);
+    assert.throws(() => parseRequiredInt("", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "groq"), /must be set/);
 });
 
 test("parseRequiredInt: rejects non-numeric, fractional, and negative values", () => {
-    assert.throws(() => parseRequiredInt("abc", "PLURNK_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "abc"\)/);
-    assert.throws(() => parseRequiredInt("1.5", "PLURNK_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "1\.5"\)/);
-    assert.throws(() => parseRequiredInt("-1", "PLURNK_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "-1"\)/);
+    assert.throws(() => parseRequiredInt("abc", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "abc"\)/);
+    assert.throws(() => parseRequiredInt("1.5", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "1\.5"\)/);
+    assert.throws(() => parseRequiredInt("-1", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "-1"\)/);
 });
 
 test("parseOptionalInt: absent → null, present → integer", () => {

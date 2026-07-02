@@ -6,7 +6,7 @@ import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from 
 // defaults for the providers exercised outside the coverage loop. `openai` is
 // deliberately omitted so its missing-base fail-hard test still fires.
 const baseEnv = Object.freeze({
-    PLURNK_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     GROQ_BASE_URL: "https://api.groq.com/openai/v1",
     DEEPINFRA_BASE_URL: "https://api.deepinfra.com/v1/openai",
     FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
