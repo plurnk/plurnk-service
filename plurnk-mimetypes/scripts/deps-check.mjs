@@ -92,6 +92,30 @@ function rangeCeiling(range) {
 // latest (string) >= ceiling (triplet array) → range can't reach latest → stale.
 const reachesPast = (latest, ceil) => { const L = triplet(latest); for (let i = 0; i < 3; i += 1) { if ((L[i] || 0) !== ceil[i]) return (L[i] || 0) > ceil[i]; } return true; };
 
+// Does version v satisfy a range built from the family's vocabulary — exact,
+// ^x.y.z, ~x.y.z, ">=a.b.c [<d.e.f]", and `||` unions of those? (#45: the PEERS
+// check needs real satisfaction, not just ceilings.) Unknown syntax → null
+// (skip, never guess).
+function satisfies(v, range) {
+    const parts = range.split("||").map((s) => s.trim());
+    let known = false;
+    for (const part of parts) {
+        if (isExact(part)) { known = true; if (cmp(v, part) === 0) return true; continue; }
+        if (SIMPLE_RANGE.test(part)) {
+            known = true;
+            if (cmp(v, part) >= 0 && !reachesPast(v, rangeCeiling(part))) return true;
+            continue;
+        }
+        const m = part.match(/^>=\s*(\d+\.\d+\.\d+)(?:\s+<\s*(\d+\.\d+\.\d+))?$/);
+        if (m) {
+            known = true;
+            if (cmp(v, m[1]) >= 0 && (m[2] === undefined || cmp(v, m[2]) < 0)) return true;
+            continue;
+        }
+    }
+    return known ? false : null;
+}
+
 const npmCache = new Map();
 function npmLatest(name) {
     if (npmCache.has(name)) return npmCache.get(name);
@@ -172,6 +196,31 @@ if (runPins) {
     if (!extStale.length) console.log("  none — every simple caret/tilde range still reaches npm-latest.");
     for (const s of extStale) console.log(`  STALE  ${s.slug}  [${s.field}]  ${s.name}  range ${s.range} → npm ${s.latest}`);
     issues += extStale.length;
+    console.log("");
+
+    // PEERS — every daughter's peer range on the core must admit the core TIP,
+    // where tip = max(npm latest, the LOCAL core version). #45: core 0.17.0
+    // published while every daughter peer topped out at ^0.16.0 — nothing in the
+    // family failed until a CONSUMER hit ERESOLVE. Checking against the local
+    // version makes a core minor bump turn this section red before the publish,
+    // not after: the ripple becomes a gate-enforced part of cutting a minor.
+    console.log("PEERS — daughter peer ranges vs the core tip\n");
+    const CORE = "@plurnk/plurnk-mimetypes";
+    const localCore = pkgs.find((p) => p.pj.name === CORE)?.pj.version;
+    const npmCore = npmLatest(CORE);
+    const coreTip = localCore && npmCore ? (cmp(localCore, npmCore) >= 0 ? localCore : npmCore) : (localCore ?? npmCore);
+    const peerStale = [];
+    if (coreTip) {
+        for (const { slug, pj } of pkgs) {
+            const range = pj.peerDependencies?.[CORE];
+            if (!range) continue;
+            const ok = satisfies(coreTip, range);
+            if (ok === false) peerStale.push({ slug, range });
+        }
+    }
+    if (!peerStale.length) console.log(`  none — every peer range admits core ${coreTip}.`);
+    for (const s of peerStale) console.log(`  STALE  ${s.slug}  peer "${s.range}" rejects core ${coreTip}`);
+    issues += peerStale.length;
     console.log("");
 }
 
