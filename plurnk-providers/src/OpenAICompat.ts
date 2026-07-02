@@ -71,12 +71,15 @@ export type OpenAICompatConfig = {
 // (plurnk-providers#9; reference: plurnk-grammar test/llama/gbnf-live.test.ts).
 const GRAMMAR_REPEAT_PENALTY_FLOOR = 1.15;
 
-// Near-greedy temperature DEFAULT for the response_format grammar path (#30):
+// Near-greedy temperature DEFAULT for EVERY grammar path (#30, endpoint#7):
 // measured on Fireworks DeepSeek V4, reasoning-off grammar runs went 2/5 → 30/30
-// conformant-and-terminating adding temperature 0.2. A DEFAULT, not a floor —
-// spread under the caller's `sampling`, so an explicit temperature wins (policy
-// stays the consumer's; this only covers the no-sampling out-of-the-box call).
-const GRAMMAR_RESPONSE_FORMAT_TEMPERATURE = 0.2;
+// conformant-and-terminating adding temperature 0.2; the same ramble-inside-the-
+// mask class reproduced on llama-server (whose launch default is 0.8 when the
+// operator sets no --temp). Rides per-request like the repeat-penalty floor —
+// never rely on server launch flags. A DEFAULT, not a floor — spread under the
+// caller's `sampling`, so an explicit temperature wins (policy stays the
+// consumer's; this only covers the no-sampling out-of-the-box call).
+const GRAMMAR_TEMPERATURE = 0.2;
 
 // Exponential-backoff base for transient-failure retries (#18). Attempt N waits
 // RETRY_BASE_DELAY_MS * 2^(N-1), unless the server sent a Retry-After (which
@@ -394,14 +397,12 @@ export default class OpenAICompatProvider implements Provider {
         if (wantGrammar && this.#gbnfDebug) this.#assertGrammarValid(grammar!);
         const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
 
-        // Assembly order = precedence: grammar-path sampling DEFAULTS (a
-        // response_format grammar needs near-greedy decode, #30) < the caller's
+        // Assembly order = precedence: grammar-path sampling DEFAULTS (any
+        // transported grammar needs a near-greedy decode, #30) < the caller's
         // `sampling` < the managed fields (model/messages/reasoning/grammar/
         // max_tokens/slot), which always win.
         const grammarSamplingDefaults: Record<string, unknown> =
-            sendGrammar !== undefined && this.#grammarStyle === "response_format"
-                ? { temperature: GRAMMAR_RESPONSE_FORMAT_TEMPERATURE }
-                : {};
+            sendGrammar !== undefined ? { temperature: GRAMMAR_TEMPERATURE } : {};
         const body: Record<string, unknown> = {
             ...grammarSamplingDefaults,
             ...this.#samplingBody(sampling),

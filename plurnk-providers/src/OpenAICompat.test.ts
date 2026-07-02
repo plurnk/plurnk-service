@@ -164,11 +164,11 @@ test("response_format grammar carries the near-greedy temperature DEFAULT; calle
     assert.equal("temperature" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("llamacpp grammar path injects NO temperature default (server-side sampling stands)", async () => {
+test("llamacpp grammar path carries the same near-greedy temperature default (never rely on launch flags)", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
-    assert.equal("temperature" in JSON.parse(calls[0].init.body as string), false);
+    assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
 });
 
 test("sampling passthrough forwards caller params; managed + reserved keys win", async () => {
