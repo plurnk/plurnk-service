@@ -134,8 +134,10 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // A window the floor fits but the fat log pushes past 50% occupancy (§tokenomics-pressure-gates-on-occupancy).
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 3000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
+        // A window sized so the fat log lands BETWEEN the 50% occupancy gate and the grinder: too
+        // tight and the grinder folds the fixture itself (folded rows collapse occupancy back under
+        // the gate — exactly what the 0.74.49 teaching growth exposed at 3000).
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] }); // unfolded ≈4.6k (heavy row 3.6k open) → ~78%: above the gate, under the grinder
         // A heavy edit (seq 1) and a tiny edit (seq 2) in one turn; read the next turn's budget.
         const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(60);
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "big"), heavy), anyEdit(anyUrl("known", "small"), "x"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
