@@ -48,11 +48,22 @@ interface StoryResult {
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const fixture = await seedDemoFixture(opts.label);
     const s = await liveSession({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
-    const { finalStatus, hitMaxTurns, turnIds, lastContent } = await liveLoop(
-        s, 2,
-        { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
-        { timeoutMs: TIMEOUT },
-    );
+    // A liveLoop throw (loop.run rejection, waitFor timeout) happens BEFORE the caller holds the
+    // StoryResult, so its finally-cleanup is unreachable — tear down HERE or the orphaned daemon's
+    // handles (ws pair, db worker) keep the child process alive after the run and wedge the tier.
+    let loop;
+    try {
+        loop = await liveLoop(
+            s, 2,
+            { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
+            { timeoutMs: TIMEOUT },
+        );
+    } catch (err) {
+        await s.cleanup().catch((e) => console.error(`[story:${opts.label}] session cleanup after failure:`, e));
+        await fixture.cleanup().catch((e) => console.error(`[story:${opts.label}] fixture cleanup after failure:`, e));
+        throw err;
+    }
+    const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
     console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
 
     const dump = async (): Promise<void> => {
