@@ -26,8 +26,8 @@ import { liveSession, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches the storyline timeout.
-const FLOOR_CEILING = 4300; // just above the prod sysprompt floor (~3100 + the ~800-token personality section, PLURNK_POLICY in test:demo) — the small fixtures must curate
-const JUMBO_CEILING = 7800; // TEMP probe: above the ~4921 floor + the ~800-token personality section
+const FLOOR_CEILING = 6200; // RAW-ruler units (calibration divides by ≤1.4, §tokenomics-ceiling-calibrates-to-usage): 6200/1.4 ≈ 4400, just above the ~3985 measured floor — the small fixtures must curate
+const JUMBO_CEILING = 11200; // RAW-ruler units (calibration ÷≤1.4): effective ≈8000, above the jumbo floor
 
 interface BudgetRun {
     db: Db;
