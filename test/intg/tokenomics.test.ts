@@ -112,10 +112,12 @@ test("[§tokenomics-turn-totals] budget groups render-weight by turn, oldest fir
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
+        // A window the floor fits but the fat log pushes past 50% occupancy — the tables render
+        // only under pressure now (§tokenomics-pressure-gates-on-occupancy).
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 3000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
         // Two turns each write to the log → two distinct loop/turn coordinates (1/1, 1/2).
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "a"), "alpha beta gamma delta"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "b"), "epsilon zeta eta theta"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "a"), "alpha beta gamma delta ".repeat(80)), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "b"), "epsilon zeta eta theta ".repeat(80)), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t3 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId }))!.packet), "budget");
         assert.match(budget, /Turns:\n\| turn \| tokens \|/, "per-turn table present");
@@ -132,9 +134,10 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
+        // A window the floor fits but the fat log pushes past 50% occupancy (§tokenomics-pressure-gates-on-occupancy).
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 3000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
         // A heavy edit (seq 1) and a tiny edit (seq 2) in one turn; read the next turn's budget.
-        const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(2);
+        const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(30);
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "big"), heavy), anyEdit(anyUrl("known", "small"), "x"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
@@ -195,5 +198,25 @@ test("[§tokenomics-over-budget-floor] the UN-FOLDABLE hard-413 record renders t
         assert.ok(usage > 9, `usage ${usage} exceeds the ceiling of 9`);
         assert.equal(free, 0, "free floors at 0 — never negative");
         assert.ok(percent > 100, `percent ${percent} honestly recorded past 100 in the failure record`);
+    } finally { await db.close(); }
+});
+
+test("[§tokenomics-pressure-gates-on-occupancy] a high-headroom window renders NO curation tables — headline only", async () => {
+    // #308 (the bench grok run): the Turns/Heaviest tables are a standing FOLD-target list; a
+    // model with 75%+ free burned turns on token hygiene. Below half the ceiling, numbers only.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `tok-headroom-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "p");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "note"), "some content worth logging"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
+        assert.match(budget, /Token Ceiling \d+/, "the headline gauge always renders");
+        assert.doesNotMatch(budget, /Heaviest items:/, "no FOLD-target list at low occupancy");
+        assert.doesNotMatch(budget, /Turns:/, "no per-turn table at low occupancy");
+        assert.doesNotMatch(budget, /Log entries:/, "no log-weight line at low occupancy — numbers only");
     } finally { await db.close(); }
 });

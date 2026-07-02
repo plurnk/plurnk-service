@@ -217,12 +217,25 @@ export default class PacketBuilder {
         const sections = await this.#schemes.transformSections(defaults);
         // Pass 1: measure the assembled total with the placeholder budget in
         // place, resolve free/percent, substitute into the budget section.
-        const total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
-        const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
-        const percent = ceiling === null ? null : (total / ceiling) * 100; // usage as % of the ceiling — §tokenomics-context-percent
-        if (tokensFree !== null && percent !== null) {
+        let total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
+        if (ceiling !== null) {
             const budgetSec = sections.find((s) => s.name === "budget"); // a plugin may have removed it
             if (budgetSec) {
+                // Curation pressure gates on OCCUPANCY (§tokenomics-pressure-gates-on-occupancy, #308):
+                // the Turns/Heaviest tables are a standing FOLD-target list, and a high-headroom model
+                // reads them as a todo — burning turns on token hygiene at 3% of a 64k window. Under
+                // half-full, the headline's numbers stand alone (truncate at the first blank line) and
+                // the total RE-measures — the substituted figures must reconcile with what ships.
+                // A null ceiling can't calibrate, so the full readout stays.
+                if ((total / ceiling) * 100 < 50) {
+                    const cut = budgetSec.content.indexOf("\n\n");
+                    if (cut !== -1) {
+                        budgetSec.content = budgetSec.content.slice(0, cut);
+                        total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
+                    }
+                }
+                const tokensFree = Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
+                const percent = (total / ceiling) * 100; // usage as % of the ceiling — §tokenomics-context-percent
                 budgetSec.content = budgetSec.content
                     .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
                     // Any nonzero usage under 1% is "<1" — Math.round alone claimed "1%" from 0.51%,

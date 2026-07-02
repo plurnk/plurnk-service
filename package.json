@@ -66,7 +66,7 @@
         "@plurnk/plurnk-mimetypes": "0.16.1",
         "@plurnk/plurnk-mimetypes-all": "0.5.10",
         "@plurnk/plurnk-mimetypes-text-html": "0.6.7",
-        "@plurnk/plurnk-providers": "^0.23.0",
+        "@plurnk/plurnk-providers": "^0.24.0",
         "@plurnk/plurnk-providers-all": "0.10.0",
         "@plurnk/plurnk-schemes": "^0.32.7",
         "@plurnk/plurnk-schemes-all": "^0.2.30",
