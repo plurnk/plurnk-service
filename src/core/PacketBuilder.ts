@@ -219,13 +219,15 @@ export default class PacketBuilder {
         // place, resolve free/percent, substitute into the budget section.
         const total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
         const tokensFree = ceiling === null ? null : Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
-        const percent = ceiling === null ? null : Math.round((total / ceiling) * 100); // usage as % of the ceiling — §tokenomics-context-percent
-        if (tokensFree !== null) {
+        const percent = ceiling === null ? null : (total / ceiling) * 100; // usage as % of the ceiling — §tokenomics-context-percent
+        if (tokensFree !== null && percent !== null) {
             const budgetSec = sections.find((s) => s.name === "budget"); // a plugin may have removed it
             if (budgetSec) {
                 budgetSec.content = budgetSec.content
                     .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
-                    .replace(TOKEN_PERCENT_PLACEHOLDER, percent === 0 && total > 0 ? "<1" : String(percent))
+                    // Any nonzero usage under 1% is "<1" — Math.round alone claimed "1%" from 0.51%,
+                    // overstating a near-empty window.
+                    .replace(TOKEN_PERCENT_PLACEHOLDER, total > 0 && percent < 1 ? "<1" : String(Math.round(percent)))
                     .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
             }
         }
