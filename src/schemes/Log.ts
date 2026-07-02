@@ -44,7 +44,11 @@ export default class Log {
         defaultChannel: "",
         category: "logging",
         scope: "session",
-        writableBy: ["plurnk"],  // engine-only writes; model & client read + open/fold
+        // Engine-only WRITES — but KILL ∈ MUTATING_OPS rides this same gate, and log-KILL is the
+        // model's DB-storage curation lever (plurnk.md:10/:47 + the OP×resource matrix; §model-entry-log-curation).
+        // The model clears the gate; Log's handler surface (kill only — no edit/writeEntry) is the
+        // op-level truth, so every other mutating op still 501s.
+        writableBy: ["plurnk", "model"],
         volatile: false,
         modelVisible: true,
         example: "<<READ(log:///1/2/3)::READ",

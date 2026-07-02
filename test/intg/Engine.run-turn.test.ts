@@ -49,12 +49,24 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
     },
 });
 
+// The deterministic HARD-failure (403 writableBy) generator for the strike/telemetry tests:
+// a scheme the model can't write. Log no longer serves this role — §model-entry-log-curation
+// admits the model through its gate for the KILL curation lever (other ops 501, a SOFT failure).
+class Sealed {
+    static manifest = {
+        name: "sealed", channels: {}, defaultChannel: "", category: "test", scope: "session",
+        writableBy: ["plurnk"], volatile: false, modelVisible: true, example: "",
+    };
+}
+
 const setup = async () => {
     const db = await openMigrated();
     const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
     const runId = await insertRun(db, sessionId);
     const loopId = await insertLoop(db, runId, 1, "test prompt");
-    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const schemes = new SchemeRegistry();
+    schemes.register("sealed", new Sealed());
+    const engine = new Engine({ db, schemes });
     return { db, engine, sessionId, runId, loopId };
 };
 
@@ -365,12 +377,12 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
 test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike_threshold reason", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // EDIT log:/// → 403 (writableBy denial = hard). SEND[102] keeps loop going.
+        // EDIT sealed:/// → 403 (writableBy denial = hard). SEND[102] keeps loop going.
         // Vary the path per turn so the failures stay DISTINCT (no cycle) — this isolates
         // the failure path → 500 (an identical-repeat would also trip cycle → 508).
         const denied = (n: number): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            target: urlPath("log", `/x-${n}`),
+            target: urlPath("sealed", `/x-${n}`),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -425,7 +437,7 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
     try {
         const denied = (): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            target: urlPath("log", "/x"),
+            target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const goodEdit = (p: string): EditStatement => ({
@@ -480,7 +492,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
     try {
         const denied = (): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            target: urlPath("log", "/x"),
+            target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -642,7 +654,7 @@ test("Engine.runTurn: telemetry buffer drains — failure shows once, then clear
     try {
         const denied = (): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            target: urlPath("log", "/x"),
+            target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -835,10 +847,10 @@ test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
 test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next packet's telemetry.errors[]", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // Model attempts to EDIT log:/// — denied 403 (Log.writableBy=['plurnk']).
+        // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['plurnk']).
         const denied: EditStatement = {
             op: "EDIT", suffix: "", signal: null,
-            target: urlPath("log", "/illegal"),
+            target: urlPath("sealed", "/illegal"),
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
         const provider = new Mock({
@@ -870,7 +882,7 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
     try {
         const denied: EditStatement = {
             op: "EDIT", suffix: "", signal: null,
-            target: urlPath("log", "/a"),
+            target: urlPath("sealed", "/a"),
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
         const provider = new Mock({

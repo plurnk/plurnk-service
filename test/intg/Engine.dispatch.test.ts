@@ -138,6 +138,31 @@ test("Engine.dispatch: KILL against log:/// is allowed (erases the row) — a mi
     } finally { await db.close(); }
 });
 
+test("[§model-entry-log-curation] MODEL-origin KILL(log:///…) clears the writableBy gate and erases the row — the taught curation lever, through the REAL dispatch path", async () => {
+    // Log.kill worked when called directly, but writableBy gated KILL ∈ MUTATING_OPS to plurnk-only —
+    // the model's own budget-recovery lever 403'd at dispatch (surfaced by the budget-grind digests:
+    // the model reaches for KILL(log:///…) under a pinned ceiling and was refused).
+    const { db, engine, env } = await setup();
+    try {
+        // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
+        const plan = await engine.dispatch({
+            statement: planStmt({ body: "stale reasoning to curate away" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(plan.status, 200);
+        const kill = await engine.dispatch({
+            statement: killStmt({ target: urlPath("log", "/1/1/1") }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(kill.status, 200, "the model's log-KILL clears the gate — never a 403");
+        const gone = await engine.dispatch({
+            statement: killStmt({ target: urlPath("log", "/1/1/1") }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
+        });
+        assert.equal(gone.status, 404, "the row was erased — a re-KILL finds nothing");
+    } finally { await db.close(); }
+});
+
 test("Engine.dispatch: PLAN is a logged no-op (200) whose reasoning body survives into the log row's tx", async () => {
     const { db, engine, env } = await setup();
     try {
@@ -318,7 +343,29 @@ test("Engine.dispatch: origin field captured in log", async () => {
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy or dispatch
 // returns 403 without invoking the handler.
 
-test("[§scheme-surface-writableby-403] Engine.dispatch: model EDIT log:/// rejected with 403 (Log.writableBy=['plurnk'])", async () => {
+test("[§scheme-surface-writableby-403] Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        // known:// is the model's memory — writableBy ['model','client'] excludes the engine's own
+        // plurnk origin, so a plurnk-origin EDIT 403s at the gate.
+        const result = await engine.dispatch({
+            statement: editStmt({ target: urlPath("known", "/x"), body: "y" }),
+            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            sequence: 1, origin: "plurnk",
+        });
+        assert.equal(result.status, 403);
+        assert.match((result as unknown as { error: string }).error, /writer 'plurnk'.*'known'/);
+        // 403 still writes a log row
+        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
+        assert.equal(log?.status_rx, 403);
+        assert.equal(log?.scheme, "known");
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: model EDIT log:/// clears the gate but 501s — Log's handler surface (kill only) is the op-level truth", async () => {
+    // §model-entry-log-curation admits the model through Log's writableBy for its KILL curation
+    // lever; every other mutating op still lands on a handler Log doesn't expose (no edit) → 501,
+    // matching plurnk.md's "Do not attempt to edit log items."
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -326,12 +373,7 @@ test("[§scheme-surface-writableby-403] Engine.dispatch: model EDIT log:/// reje
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 403);
-        assert.match((result as unknown as { error: string }).error, /writer 'model'.*'log'/);
-        // 403 still writes a log row
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
-        assert.equal(log?.status_rx, 403);
-        assert.equal(log?.scheme, "log");
+        assert.equal(result.status, 501, "op-level refusal (no edit handler), not the writer gate");
     } finally { await db.close(); }
 });
 
@@ -458,7 +500,7 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model COPY into log:/// destination rejected with 403", async () => {
+test("Engine.dispatch: model COPY into log:/// destination 501s — no writeEntry on Log, the gate no longer pre-empts", async () => {
     const { db, engine, env } = await setup();
     try {
         // Source first: model creates an entry in known:///.
@@ -479,6 +521,8 @@ test("Engine.dispatch: model COPY into log:/// destination rejected with 403", a
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
-        assert.equal(result.status, 403);
+        // The gate admits the model (§model-entry-log-curation); the dest handler surface rules —
+        // Log exposes no writeEntry, so the copy 501s. Never a silent write into the log.
+        assert.equal(result.status, 501);
     } finally { await db.close(); }
 });
