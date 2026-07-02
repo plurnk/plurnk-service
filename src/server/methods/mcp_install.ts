@@ -13,6 +13,7 @@ import type { Executor, RegistryEntry } from "../../core/ExecutorRegistry.ts";
 export default class McpInstallMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("mcp.install", {
+            longRunning: true, // probes an external server — exempt from PLURNK_RPC_TIMEOUT (§operator-config-rpc-timeout)
             handler: async (params, ctx) => {
                 const p = params as { name?: unknown; target?: unknown; headers?: unknown };
                 if (typeof p.name !== "string" || p.name.length === 0) throw new Error("mcp.install: name must be a non-empty string");

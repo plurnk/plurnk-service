@@ -13,7 +13,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 
 export default class Fork {
     // Terminal loop statuses (§lifecycle-terms) — inherited loops outside this set are clamped to 200.
-    static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 508]);
+    static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     static async fork(db: Db, parentRunId: number, name?: string): Promise<number> {
         const parent = await (db.fork_get_run as PrepMethod).get<{ session_id: number; name: string; origin: string }>({ id: parentRunId });

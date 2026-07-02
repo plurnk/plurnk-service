@@ -13,6 +13,7 @@ interface Params {
 export default class OpEditMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.edit", {
+            longRunning: true, // a proposal-capable write pauses on human review — exempt from PLURNK_RPC_TIMEOUT (§operator-config-rpc-timeout)
             handler: async (params, ctx) => {
                 const p = params as Params;
                 if (typeof p.target !== "string" || p.target.length === 0) throw new Error("op.edit requires params.target: string");

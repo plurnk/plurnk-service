@@ -102,6 +102,12 @@ const readPositiveInt = (envVar: string, fallback: number): number => {
     return n;
 };
 
+// §operator-config-loop-timeout — the loop's wall-clock budget (PLURNK_LOOP_TIMEOUT).
+const DEFAULT_LOOP_TIMEOUT_MS = 86400000;
+const readLoopTimeoutMs = (): number => readPositiveInt("PLURNK_LOOP_TIMEOUT", DEFAULT_LOOP_TIMEOUT_MS);
+// The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
+const LOOP_TIMEOUT_REASON = "loop_timeout";
+
 export default class Engine {
     static computeCeiling(contextSize: number | null, config: number): number | null {
         return PacketBuilder.computeCeiling(contextSize, config);
@@ -299,7 +305,7 @@ export default class Engine {
         origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "loop_timeout" | "external" | null }> {
         const turnIds: number[] = [];
         const suddenDeathThreshold = maxTurns - maxStrikes;
 
@@ -312,6 +318,19 @@ export default class Engine {
         }
         this.#loopAborts.set(loopId, loopAbort);
 
+        // §operator-config-loop-timeout — the wall-clock budget. Expiry aborts the loop signal, so a
+        // mid-flight provider call (generate rides this signal) and in-flight spawns tear down; the
+        // loop terminates 504 (kin to the exec <T> reap's 504, §exec-timeout) — a legible engine
+        // terminal, never an outside kill. unref'd: the wall never holds the process open.
+        const wall = setTimeout(() => loopAbort.abort(LOOP_TIMEOUT_REASON), readLoopTimeoutMs());
+        wall.unref();
+        const timedOut = (): boolean => loopAbort.signal.aborted && loopAbort.signal.reason === LOOP_TIMEOUT_REASON;
+        const ruleTimeout = async (): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "loop_timeout" }> => {
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 504, message: "loop_timeout" });
+            cleanup("forceful", "loop_timeout");
+            return { turnIds, finalStatus: 504, hitMaxTurns: false, reason: "loop_timeout" };
+        };
+
         // Cleanup splits by termination kind:
         // - "graceful" (SEND[202] Accepted): in-flight streaming-scheme spawns
         //   are ALLOWED to outlive the loop — they complete naturally, write final
@@ -320,6 +339,7 @@ export default class Engine {
         // - "forceful" (SEND[200] done, max_turns, strike, cancel, budget, 4xx/5xx):
         //   fire the loop-level abort so leftover spawns tear down. "Done" reaps.
         const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {
+            clearTimeout(wall);
             if (kind === "forceful" && !loopAbort.signal.aborted) {
                 loopAbort.abort(reason ?? "loop_forceful_termination");
             }
@@ -329,6 +349,8 @@ export default class Engine {
         };
 
         while (true) {
+            // The wall fired between turns — rule 504 before anything else reads the loop.
+            if (timedOut()) return await ruleTimeout();
             signal?.throwIfAborted();
 
             const row = await (this.#db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: loopId });
@@ -359,10 +381,18 @@ export default class Engine {
                 if (execHandler?.hasActiveSpawns?.(runId) === true) await delay(execWaitMs, undefined, { signal });
             }
 
-            const turn = await this.runTurn({
-                provider, messages, requirements, sessionId, runId, loopId, origin, signal, onDispatch,
-                turnNumber: turnIds.length + 1, maxTurns,
-            });
+            let turn;
+            try {
+                turn = await this.runTurn({
+                    provider, messages, requirements, sessionId, runId, loopId, origin, signal, onDispatch,
+                    turnNumber: turnIds.length + 1, maxTurns,
+                });
+            } catch (err) {
+                // The wall fired mid-turn — the abort tore the turn down (generate rides the loop
+                // signal); rule the legible 504, never a generic drain error.
+                if (timedOut()) return await ruleTimeout();
+                throw err;
+            }
             turnIds.push(turn.turnId);
 
             // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
@@ -726,7 +756,10 @@ export default class Engine {
             // ops are about to land. Base telemetry/event channel (the embed_progress precedent, §tokenomics
             // clients already render it unconditionally); the abort guard keeps a cancelled loop silent.
             if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal, grammar: await this.#grammarConstraint(), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            // generate rides the LOOP signal (already chained from the caller's), so a loop-level
+            // abort — the §operator-config-loop-timeout wall — cancels a stuck provider call, not
+            // just the schemes. Bare runTurn (no runLoop) has no loop entry → the caller's signal.
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // Every provider error surfaces as telemetry (the client/model sees the cause). #256:

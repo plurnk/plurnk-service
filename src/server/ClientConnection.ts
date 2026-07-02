@@ -20,6 +20,19 @@ const ERR_INTERNAL = -32603;
 
 // Plurnk-specific (SPEC §errors).
 const ERR_NOT_INITIALIZED = -32000;
+const ERR_TIMEOUT = -32007;
+
+// §operator-config-rpc-timeout — the deadline for non-longRunning RPC handlers.
+const DEFAULT_RPC_TIMEOUT_MS = 30000;
+const readRpcTimeoutMs = (): number => {
+    const raw = process.env.PLURNK_RPC_TIMEOUT;
+    if (raw === undefined || raw.length === 0) return DEFAULT_RPC_TIMEOUT_MS;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return DEFAULT_RPC_TIMEOUT_MS;
+    return n;
+};
+
+class RpcTimeoutError extends Error {}
 
 interface JsonRpcRequest {
     jsonrpc: "2.0";
@@ -156,11 +169,40 @@ export default class ClientConnection {
         };
 
         try {
-            const result = await registration.handler(request.params ?? {}, ctx);
+            const handled = registration.handler(request.params ?? {}, ctx);
+            // §operator-config-rpc-timeout — non-longRunning handlers race the operator deadline;
+            // longRunning ones (proposal-pausing ops, external installs) are exempt. §method-registration-register
+            const result = registration.longRunning === true
+                ? await handled
+                : await ClientConnection.#raceRpcDeadline(request.method, handled);
             this.#send({ jsonrpc: "2.0", id, result });
         } catch (cause) {
+            if (cause instanceof RpcTimeoutError) {
+                this.#sendError(id, ERR_TIMEOUT, cause.message);
+                return;
+            }
             const message = cause instanceof Error ? cause.message : String(cause);
             this.#sendError(id, ERR_INTERNAL, message);
+        }
+    }
+
+    static async #raceRpcDeadline(method: string, handled: Promise<unknown>): Promise<unknown> {
+        const timeoutMs = readRpcTimeoutMs();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            return await Promise.race([
+                handled,
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => {
+                        // The abandoned handler keeps running server-side: its late failure is logged
+                        // so it never vanishes; a late success is inert (the id was already answered).
+                        handled.catch((e) => console.error(`rpc '${method}' failed after its deadline response:`, e));
+                        reject(new RpcTimeoutError(`method '${method}' timed out after ${timeoutMs}ms (PLURNK_RPC_TIMEOUT)`));
+                    }, timeoutMs);
+                }),
+            ]);
+        } finally {
+            clearTimeout(timer);
         }
     }
 

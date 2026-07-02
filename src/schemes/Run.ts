@@ -111,7 +111,7 @@ export default class Run {
     }
 
     // Terminal loop statuses (§lifecycle-terms) — a loop here has DELIVERED; anything else is still running.
-    static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 508]);
+    static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     // §run-scheme — FIND a run's scratch. `run://self/**` is self; `run://<name>/**` a sister
     // (cross-run READ is allowed, so cross-run FIND is too). Resolve the owner and fold it into

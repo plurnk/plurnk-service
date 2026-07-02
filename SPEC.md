@@ -17,7 +17,7 @@ Canonical meanings. When a doc, comment, test name, or commit message uses one o
 | **agent** | The plurnk runtime. Acts in-session as the reserved `plurnk` run (§actor-boundary self-hosting), never a privileged singleton owning its own entries — the old *agent scope* is retired (entry scope is now `session` / `run`, §machine-processes). |
 | **session** | Durable user-named workspace. Persists across runs and process restarts. Identity: `sessions.id` + unique `sessions.name`. |
 | **run** | A stretch of work within a session. Multiple runs per session. May fork from another run via `parent_run_id`. Owns the log entries. |
-| **loop** | One model-driven or client-driven iteration within a run. Status ∈ {100 pending · 102 running · 200 done · 202 parked (resumable, §send) · 413 budget-overflow · 429 turn-ceiling · 499 cancelled · 500 failed · 508 runaway}. Many loops per run. The model runs inside a loop; each client RPC has its own loop. |
+| **loop** | One model-driven or client-driven iteration within a run. Status ∈ {100 pending · 102 running · 200 done · 202 parked (resumable, §send) · 413 budget-overflow · 429 turn-ceiling · 499 cancelled · 500 failed · 504 wall-clock timeout (§operator-config-loop-timeout) · 508 runaway}. Many loops per run. The model runs inside a loop; each client RPC has its own loop. |
 | **turn** | One round-trip with the LLM (or one client RPC dispatch). One assembled prompt sent, one parsed response handled. Many turns per loop. Identity: `(loop_id, sequence)`. |
 | **op** | One DSL operation the model emits. Parsed into a `PlurnkStatement`. Examples: `EDIT`, `READ`, `SEND`, `FIND`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `EXEC`. One turn produces zero or more ops. |
 | **statement** | Synonym for parsed op. The AST shape `PlurnkStatement` from `@plurnk/plurnk-grammar`. |
@@ -806,8 +806,8 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_PORT`                        | `3044`             | enforced   | TCP port for the daemon WebSocket.                            |
 | `PLURNK_MAX_TURNS`                   | `-1`               | enforced   | Operator turn **ceiling** — `-1` = no cap; a positive value caps a per-call `loop.run({maxTurns})`. |
 | `PLURNK_MAX_COMMANDS`                | `99`               | enforced   | Per-emission op cap. Overflow ops drop silently; one `max_commands_exceeded` telemetry entry surfaces on the next packet. |
-| `PLURNK_RPC_TIMEOUT`                 | `30000`            | reserved   | ms timeout for non-`longRunning` RPC handlers. Not yet enforced. |
-| `PLURNK_LOOP_TIMEOUT`                | `86400000`         | reserved   | ms wall-clock budget for a single `loop.run`. Not yet enforced. |
+| `PLURNK_RPC_TIMEOUT`                 | `30000`            | enforced   | ms deadline for non-`longRunning` RPC handlers; expiry answers `-32007 Timeout` (§errors) and the abandoned handler's late outcome is logged, never re-answered. `longRunning` registrations (proposal-pausing ops, external installs) are exempt. {§operator-config-rpc-timeout} |
+| `PLURNK_LOOP_TIMEOUT`                | `86400000`         | enforced   | ms wall-clock budget for a single `loop.run`: expiry aborts the loop signal mid-flight (a stuck `generate` included) and the loop terminates `504 loop_timeout` — a legible engine terminal, kin to the exec `<T>` reap's 504 (§exec-timeout). {§operator-config-loop-timeout} |
 | `PLURNK_MAX_STRIKES`                 | `3`                | enforced   | Strike threshold + sudden-death lead time (§engine-rails).             |
 | `PLURNK_MIN_CYCLES`                  | `3`                | enforced   | Min repetitions before cycle detection fires (§engine-rails).          |
 | `PLURNK_MAX_CYCLE_PERIOD`            | `4`                | enforced   | Max period length cycle detection examines (§engine-rails).            |

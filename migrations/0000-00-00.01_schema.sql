@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS loops (
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
     run_id   INTEGER NOT NULL,
     sequence INTEGER NOT NULL             CHECK (sequence >= 1),
-    status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 508)),
+    status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)),
     prompt   TEXT    NOT NULL,
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
     -- #249 — attribution tags of the loop's active plugins (string[] JSON); the activity tagged
@@ -74,10 +74,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS loops_run_id_sequence ON loops (run_id, sequen
 -- runs pull the termination as a folded ambient delta — caught uniformly across every
 -- death-path (SEND, grinder, max-turns, strike, KILL). The stamp updates terminated_at,
 -- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
--- 429 turn-ceiling · 499 cancel · 500 fail · 508 runaway. (202 = parked/sleeping, NOT terminal.)
+-- 429 turn-ceiling · 499 cancel · 500 fail · 504 wall-clock timeout · 508 runaway. (202 = parked/sleeping, NOT terminal.)
 CREATE TRIGGER IF NOT EXISTS loops_stamp_terminated_at
 AFTER UPDATE OF status ON loops
-WHEN NEW.status IN (200, 413, 429, 499, 500, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 508)
+WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
 BEGIN
     UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
 END;
