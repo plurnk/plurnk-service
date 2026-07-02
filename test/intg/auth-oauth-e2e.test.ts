@@ -5,36 +5,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { mockOAuthServer } from "../_mock-oauth.ts";
 import MethodRegistry from "../../src/server/MethodRegistry.ts";
 import type { HandlerContext } from "../../src/server/MethodRegistry.ts";
 import AuthMethod from "../../src/server/methods/auth.ts";
 import { serverConfig } from "@plurnk/plurnk-execs-mcp";
-
-const mockOAuthServer = async (): Promise<{ server: Server; base: string }> => {
-    const server = createServer((req, res) => {
-        const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-        const send = (body: unknown): void => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
-        const url = req.url ?? "";
-        if (url.includes("oauth-protected-resource")) return send({ resource: `${base}/mcp`, authorization_servers: [base] });
-        if (url.includes("oauth-authorization-server") || url.includes("openid-configuration")) return send({
-            issuer: base,
-            authorization_endpoint: `${base}/authorize`,
-            token_endpoint: `${base}/token`,
-            registration_endpoint: `${base}/register`,
-            response_types_supported: ["code"],
-            grant_types_supported: ["authorization_code", "refresh_token"],
-            code_challenge_methods_supported: ["S256"],
-            token_endpoint_auth_methods_supported: ["none"],
-        });
-        if (url.includes("/register")) return send({ client_id: "test-client-id", redirect_uris: ["http://127.0.0.1:9876/callback"], token_endpoint_auth_method: "none" });
-        if (url.includes("/token")) return send({ access_token: "tok-abc123", token_type: "Bearer", expires_in: 3600 });
-        res.writeHead(404); res.end("not found");
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    return { server, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
-};
 
 const ctx = {} as HandlerContext;
 const handler = (name: string) => {
