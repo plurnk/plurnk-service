@@ -329,7 +329,7 @@ test("GBNF: a header-bearing http target derives (constrained models can emit au
     // Request-metadata `{key: value}` blocks ride inside the target as free text —
     // `target-inner` already admits `{`, `}`, `:`, and spaces — so a rail'd model can
     // emit auth/content-type without any GBNF change. L(GBNF) ⊆ L(ANTLR) still holds.
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(https://api.dev/me{Authorization: Bearer x})::READ\n<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(https://api.dev/me{Authorization: Bearer x})::READ\n<<SEND[102]:fetching:SEND"), true);
     // SEND carries the loop disposition (200 here), not the HTTP status; the http scheme maps SEND->POST and rides the headers in the target.
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](https://api.dev/items{Authorization: Bearer x}{Content-Type: application/json}):{\"n\":1}:SEND"), true);
 });
@@ -397,11 +397,17 @@ test("GBNF: PLAN body is required non-empty — no blank statement of intent", (
     assert.equal(derives("root-turn", "<<PLAN:go:PLAN\n<<SEND[200]:done:SEND"), true);
 });
 
-test("GBNF: 200 is allowed regardless of ops — the rail no longer reserves it for op-free turns", () => {
-    assert.equal(derives("root-turn", "<<PLAN:answer from memory:PLAN\n<<SEND[200]:Paris:SEND"), true);       // op-free
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), true); // ops + 200 now ok
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:reading:SEND"), true);
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND(run://peer):ping:SEND\n<<SEND[200]:done:SEND"), true); // mid-send + 200
+test("GBNF: terminal SEND[200] is forbidden after a retrieval op (READ/FIND), allowed otherwise", () => {
+    // Deterministic rail: a same-turn READ/FIND then SEND[200] is never legitimate (asked for
+    // next-turn data, then declared done before seeing it). 200 stays free everywhere else.
+    assert.equal(derives("root-turn", "<<PLAN:answer from memory:PLAN\n<<SEND[200]:Paris:SEND"), true);            // op-free answer
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND"), false);   // READ → 200 BLOCKED
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FIND(known:///**)::FIND\n<<SEND[200]:done:SEND"), false);  // FIND → 200 BLOCKED
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:reading:SEND"), true); // correct pattern: 102 to receive
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FIND(known:///**)::FIND\n<<SEND[202]:parked:SEND"), true); // other terminals stay reachable
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<EDIT(known:///x):42:EDIT\n<<SEND[200]:done:SEND"), true);  // side-effect op → 200 OK (fire-and-forget)
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<EDIT(known:///y):v:EDIT\n<<SEND[200]:done:SEND"), false); // dirty sticks: READ anywhere blocks 200
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND(run://peer):ping:SEND\n<<SEND[200]:done:SEND"), true); // mid-send is comms, not retrieval → 200 OK
 });
 
 test("GBNF: terminal SEND body is required non-empty — a turn must not end empty-handed", () => {

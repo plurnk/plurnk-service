@@ -198,8 +198,10 @@ const trieRules = (model: GModel, rootName: string, entries: Array<{ literal: st
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
     const opEntries: Array<{ literal: string; tails: GSeq[] }> = [];
+    const retrievalEntries: Array<{ literal: string; tails: GSeq[] }> = [];
     const sendMidEntries: Array<{ literal: string; tails: GSeq[] }> = [];
     const sendFinalEntries: Array<{ literal: string; tails: GSeq[] }> = [];
+    const sendFinalNodoneEntries: Array<{ literal: string; tails: GSeq[] }> = [];
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
@@ -217,8 +219,9 @@ export const buildModel = (): GModel => {
                 // SENDs are unrestricted — any 3-digit status (status-mid) or none, targeted
                 // or pathless, empty body allowed. The TERMINAL SEND requires a code from the
                 // fixed disposition set (status-final) and a non-empty body — a turn must not
-                // end empty-handed. The rail no longer polices which codes are mid vs terminal,
-                // nor whether ops precede a 200; that is canon guidance, not a rail constraint.
+                // end empty-handed. The rail polices exactly one op/status combo — a terminal
+                // SEND[200] after a RETRIEVAL op (READ/FIND), forbidden via the turn fork below;
+                // all other code/op discipline stays canon guidance, not a rail constraint.
                 // Tails are factored behind the shared `<<SEND…` opener trie (no leading
                 // `lit(open)` — the trie matches it). `<<SEND` is a prefix of `<<SEND1`, so
                 // its tails sit at the interior trie node beside the digit branch.
@@ -232,6 +235,11 @@ export const buildModel = (): GModel => {
                 ] });
                 sendFinalEntries.push({ literal: open, tails: [
                     [lit("["), ref("status-final"), lit("]"), opt(ref("target")), ...bodyNE],
+                ] });
+                // Terminal SEND with 200 removed — reachable only from `tail-dirty` (after a
+                // retrieval op). Reuses the same non-empty body automata; only the status differs.
+                sendFinalNodoneEntries.push({ literal: open, tails: [
+                    [lit("["), ref("status-final-nodone"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
             } else if (op === "EXEC") {
                 // EXEC's optional `<timeout,poll>` rides the shared `line` slot (numbers; runtime-interpreted).
@@ -248,14 +256,20 @@ export const buildModel = (): GModel => {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
                 opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
             } else {
-                opEntries.push({ literal: open, tails: [[opt(ref("tags")), ref("target"), opt(ref("line")), ...body]] });
+                // READ/FIND are RETRIEVAL ops: the whole point is next-turn data, so a
+                // same-turn terminal SEND[200] is never legitimate (need it → SEND[102]; don't
+                // → why READ/FIND). Route them into `retrieval-op` so the turn fork can drop 200
+                // once one appears. Side-effect ops (EDIT/COPY/MOVE/OPEN/FOLD) stay in
+                // `op-statement` — their fire-and-forget-then-200 IS legitimate.
+                const entry = { literal: open, tails: [[opt(ref("tags")), ref("target"), opt(ref("line")), ...body]] };
+                (op === "READ" || op === "FIND" ? retrievalEntries : opEntries).push(entry);
             }
         }
     }
 
     // Turn shape — the PLAN-anchored sandwich `*:PLAN:OPS:SEND[N]`:
     //
-    //   root-turn ::= preplan plan sep batch-step* send-final-any sep
+    //   root-turn ::= preplan plan sep tail-clean   (tail-clean/tail-dirty fork drops SEND[200] after READ/FIND)
     //
     // `preplan` is a FREE reasoning prefix — any text up to the first `<<PLAN`. The
     // grammar names NO reasoning delimiter, so it is format-agnostic: a reasoning model
@@ -277,8 +291,6 @@ export const buildModel = (): GModel => {
     // Inter-op separator is up to 7 whitespace chars (`WS{0,7}`): glued or split, but
     // bounded, so a degenerate decoder can't stall in an unbounded whitespace run.
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
-    model.set("batch-step", [[ref("mid-statement"), ref("sep")]]);
-    model.set("mid-statement", [[ref("op-statement")], [ref("send-mid-any")]]);
     // preplan: the free reasoning prefix — any text completing no `<<OP` opener, so the
     // first `<<PLAN` is the unambiguous anchor and the preamble re-lexes as pure TEXT.
     preplanRules(model);
@@ -294,18 +306,36 @@ export const buildModel = (): GModel => {
     model.set("think-block", [[lit("<think>"), ref("rz-think-b0"), lit("</think>")]]);
     model.set("channel-block", [[lit("<|channel>"), ref("rz-chan-b0"), lit("<channel|>")]]);
     model.set("reasoning", [[ref("think-block")], [ref("channel-block")]]);
-    // Flat turn: PLAN, then any batch of ops/SENDs, then the terminal SEND. The rail no
-    // longer forks on op-presence or polices mid-op/status combinations — 200 is reachable
-    // regardless of ops; mid SENDs carry any code. Discipline (102-after-ops, etc.) is canon
-    // guidance, not a rail constraint.
-    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), star(ref("batch-step")), ref("send-final-any"), ref("sep")]]);
+    // Turn fork — the ONE op/status combo the rail forbids: a terminal SEND[200] after a
+    // RETRIEVAL op (READ/FIND) in the same turn (deterministic insanity — asked for next-turn
+    // data, then declared done before seeing it). A two-state batch tracks whether a retrieval
+    // op has appeared: `tail-clean` (none yet → any terminal, 200 OK) flips to `tail-dirty`
+    // (200 removed) on the first READ/FIND. Side-effect ops (EDIT/COPY/MOVE/OPEN/FOLD) do NOT
+    // flip it — fire-and-forget-then-200 stays legitimate. Everything else stays flat and
+    // canon-guided; this narrow rail was re-added after steering the floor model off READ→200
+    // failed, and the broad 0.74.19-stripped enforcement stays gone.
+    model.set("tail-clean", [
+        [ref("send-mid-any"), ref("sep"), ref("tail-clean")],
+        [ref("op-statement"), ref("sep"), ref("tail-clean")],
+        [ref("retrieval-op"), ref("sep"), ref("tail-dirty")],
+        [ref("send-final-any"), ref("sep")],
+    ]);
+    model.set("tail-dirty", [
+        [ref("send-mid-any"), ref("sep"), ref("tail-dirty")],
+        [ref("op-statement"), ref("sep"), ref("tail-dirty")],
+        [ref("retrieval-op"), ref("sep"), ref("tail-dirty")],
+        [ref("send-final-nodone"), ref("sep")],
+    ]);
+    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), ref("tail-clean")]]);
     trieRules(model, "op-statement", opEntries);
+    trieRules(model, "retrieval-op", retrievalEntries);
     trieRules(model, "send-mid-any", sendMidEntries);
     trieRules(model, "send-final-any", sendFinalEntries);
+    trieRules(model, "send-final-nodone", sendFinalNodoneEntries);
     // statement / send-statement: single-statement entries used only by the corpus and
     // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
-    model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
+    model.set("statement", [[ref("op-statement")], [ref("retrieval-op")], [ref("send-statement")]]);
     // status-final: model-emittable turn-closers — 102 continue, 202 parked,
     // 200 done (success), 499 give-up (HTTP 499 client-closed), and 300 = a multiple-
     // choice question to the user (HTTP 300 Multiple Choices, awaiting selection). 300
@@ -314,9 +344,11 @@ export const buildModel = (): GModel => {
     // degrades gracefully (no state change) until the service handles it. NOT 500:
     // "failed" is an ENGINE verdict, never a model SEND (persisted-only). Emittable vs
     // persisted (Loop.status) are meant to differ — see plurnk-service#33.
+    // status-final-nodone: the terminal set minus 200, for a turn that ran a retrieval op.
     // status-mid: any 3-digit code — a mid SEND is free comms (the rail no longer reserves
     // the terminal codes from mid use).
     model.set("status-final", [[lit("102")], [lit("200")], [lit("202")], [lit("300")], [lit("499")]]);
+    model.set("status-final-nodone", [[lit("102")], [lit("202")], [lit("300")], [lit("499")]]);
     model.set("status-mid", [[DIGIT, DIGIT, DIGIT]]);
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
