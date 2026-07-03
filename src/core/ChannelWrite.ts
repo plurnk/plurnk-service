@@ -162,7 +162,10 @@ export default class ChannelWrite {
                 const body = await (db.read_channel_content as PrepMethod).get<{ content: string }>({ entry_id: entryId, channel });
                 if (body !== undefined) {
                     await (db.fts_delete as PrepMethod).run({ entry_id: entryId });
-                    if (body.content.length > 0) await (db.fts_insert as PrepMethod).run({ entry_id: entryId, content: body.content });
+                    // §membership-binary-sniff — the same NUL guard as member ingest: a streamed
+                    // binary (an http READ of an image) must not enter the keyword index.
+                    const head = body.content.slice(0, 8192);
+                    if (body.content.length > 0 && !head.includes("\u0000")) await (db.fts_insert as PrepMethod).run({ entry_id: entryId, content: body.content });
                 }
             }
         }

@@ -108,13 +108,13 @@ export default class EntryManifest {
     // delete-then-insert — interleaved writers would duplicate chunk rows.
     static #deriveChain: Promise<void> = Promise.resolve();
 
-    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean): Promise<void> {
-        const run = EntryManifest.#deriveChain.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive));
+    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
+        const run = EntryManifest.#deriveChain.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks));
         EntryManifest.#deriveChain = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
         const { db, sessionId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         try {
@@ -137,10 +137,16 @@ export default class EntryManifest {
             // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
             // cleared, not stored. result.embedding is the fallback whole-entry vector.
             await EntrySemantic.indexFts(db, r.entry_id, r.content);
-            const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal);
-            if (chunks.length === 128) ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} embedding capped at 128 chunks — the head is indexed, the tail is not (§semantic-entry-chunk-cap)`, level: "info" });
+            const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal, maxChunks);
             await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
-            await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            // §semantic-entry-chunk-cap — a CAPPED (inline, latency-staged) pass does NOT stamp:
+            // the hash stays stale so the background pump completes the entry to full depth.
+            // Head-quality answers now, whole-book coverage at steady state.
+            if (capped) {
+                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} inline-embedded head-first (${chunks.length} chunks) — the background pump completes it`, level: "info" });
+            } else {
+                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            }
         } catch {
             await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
             await EntrySemantic.indexFts(db, r.entry_id, "");
@@ -166,7 +172,7 @@ export default class EntryManifest {
         for (const r of rows) {
             const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
             if (hash === r.deep_hash) continue; // already warm for this config
-            await EntryManifest.deriveOne(ctx, r, hash, true);
+            await EntryManifest.deriveOne(ctx, r, hash, true, 128); // inline latency stage (§semantic-entry-chunk-cap)
             derived++;
         }
         if (rows.length === cap) {

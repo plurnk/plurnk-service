@@ -78,16 +78,20 @@ test("[§derivation-off-hot-path] the queued pump completes on the background ch
     } finally { await db.close(); }
 });
 
-test("[§semantic-entry-chunk-cap] a giant text entry embeds at most 128 chunks — the head carries the identity", async () => {
-    // #320's second face: a build artifact is legally text, but embedding hundreds of its
-    // chunks drowns the source corpus ~70:1 and burns the derivation budget.
+test("[§semantic-entry-chunk-cap] the chunk cap is a latency stage — capped inline, complete in the pump, never a coverage bound", async () => {
+    // The flat cap silently foreclosed legitimate large texts (a 300-page book: head-only
+    // vectors, permanently). Now: an inline (maxChunks) pass caps and reports capped=true —
+    // and deriveOne skips the hash stamp on a capped pass so the pump re-derives to FULL
+    // depth; an uncapped pass embeds everything.
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
-    // ~200 chunk-budgets of filler: unique tokens per line so the tiler can't collapse it.
-    const giant = Array.from({ length: 26000 }, (_, i) => `filler line ${i} lorem ipsum token${i}`).join("\n");
+    const text = Array.from({ length: 1200 }, (_, i) => `filler line ${i} lorem ipsum token${i}`).join("\n");
     const EntrySemantic = (await import("../../src/schemes/_entry-semantic.ts")).default;
-    const { chunks } = await EntrySemantic.deriveEmbeddings(mimetypes, giant, [], undefined, undefined);
-    assert.ok(chunks.length > 0, "the head embedded");
-    assert.ok(chunks.length <= 128, `capped at 128 chunks; got ${chunks.length}`);
-    assert.equal(chunks[0].lineStart, 1, "the surviving chunks are the head of the file");
+    const inline = await EntrySemantic.deriveEmbeddings(mimetypes, text, [], undefined, undefined, undefined, 4);
+    assert.equal(inline.capped, true, "the inline stage reports the cap");
+    assert.equal(inline.chunks.length, 4, "bounded work at dispatch");
+    assert.equal(inline.chunks[0].lineStart, 1, "head-first");
+    const full = await EntrySemantic.deriveEmbeddings(mimetypes, text, [], undefined, undefined, undefined);
+    assert.equal(full.capped, false, "the pump path is never capped");
+    assert.ok(full.chunks.length > 4, `full coverage (${full.chunks.length} chunks) — no shape is foreclosed`);
 });

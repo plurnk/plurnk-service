@@ -63,11 +63,14 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
             // Packet-sections shape, `{ tokens, sections }`); the old `packet.system.tokens`/`.user.tokens`
             // fields are gone — reading them silently measured 0, making this assertion vacuous until
             // 2026-06-25, then over-strict (peak <= communicated-ceiling) until 2026-06-30.
+            // The DELIVERED REQUEST half only (sections sum): the stored packet.tokens gained the
+            // emission half when §turn-never-blank made rambles recordable — an honest record of a
+            // fat emission is not a budget violation; only the request the grinder governs is.
             let peak = 0;
             for (const tid of turnIds) {
                 const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: tid });
-                const p = JSON.parse(row?.packet ?? "{}") as { tokens?: number };
-                peak = Math.max(peak, p.tokens ?? 0);
+                const p = JSON.parse(row?.packet ?? "{}") as { sections?: Array<{ tokens?: number }> };
+                peak = Math.max(peak, (p.sections ?? []).reduce((n, sec) => n + (sec.tokens ?? 0), 0));
             }
             console.error(`[budget-grind] floor=${floor} ceiling=${CEILING} turns=${turnIds.length} finalStatus=${finalStatus} peakTotal=${peak}`);
 

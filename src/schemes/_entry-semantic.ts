@@ -57,19 +57,22 @@ export default class EntrySemantic {
         fallbackEmbedding: Uint8Array | undefined,
         fallbackModel: string | undefined,
         signal?: AbortSignal,
-    ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined }> {
+        maxChunks?: number,
+    ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined; capped: boolean }> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) {
             const totalLines = content.length === 0 ? 0 : content.split("\n").length;
-            if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
-            return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel };
+            if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined, capped: false };
+            return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel, capped: false };
         }
-        // §semantic-entry-chunk-cap (#320) — no single entry dominates the corpus: a build
-        // artifact (minified bundle, giant generated file) is legally text but embedding
-        // hundreds of chunks of it drowns the source ~70:1 and burns the derivation budget.
-        // Cap the chunks per entry; the head of the file is what survives (imports, headers —
-        // the searchable identity). Never silent: the caller's telemetry names the truncation.
-        const CHUNK_CAP = 128;
+        // §semantic-entry-chunk-cap — a LATENCY stage, never a coverage bound: the INLINE
+        // (dispatch-time) path caps chunks so a cold ~query answers in bounded seconds, and a
+        // capped pass does NOT stamp the deep hash — the background pump completes the entry to
+        // FULL depth (a 300-page book is entirely searchable at steady state; rank can't be
+        // dominated regardless — semantic_rank takes one best chunk per entry). The old flat cap
+        // silently foreclosed legitimate large texts: head-only vectors under a whole-file FTS
+        // narrow returned head-biased spans forever, and the stamped hash made it permanent.
+        const CHUNK_CAP = maxChunks ?? Number.POSITIVE_INFINITY;
         // Symbol edges (a @graph endLine, or the line before a symbol starts) are the
         // tiler's preferred cut points; it still tiles every line if there are none.
         const boundaries = new Set<number>();
@@ -79,8 +82,9 @@ export default class EntrySemantic {
         }
         const budget = EntrySemantic.#chunkBudget(info.maxTokens);
         let specs = await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens);
-        if (specs.length === 0) return { chunks: [], model: undefined };
-        if (specs.length > CHUNK_CAP) specs = specs.slice(0, CHUNK_CAP); // §semantic-entry-chunk-cap — the head survives; caller telemetry names it
+        if (specs.length === 0) return { chunks: [], model: undefined, capped: false };
+        const capped = specs.length > CHUNK_CAP;
+        if (capped) specs = specs.slice(0, CHUNK_CAP); // §semantic-entry-chunk-cap — inline latency stage; the pump completes
         // One data-parallel batch over the tiled chunk texts (#272 — embedBatch via the
         // framework seam, ~6× the per-chunk loop on a multi-core box; vectors bit-identical,
         // so no re-embed). Each tile embeds as PLAIN TEXT: a chunk is a fragment, not a
@@ -92,7 +96,7 @@ export default class EntrySemantic {
             const vector = vectors[i];
             if (vector !== undefined && vector.byteLength > 0) chunks.push({ lineStart: spec.lineStart, lineEnd: spec.lineEnd, vector });
         }
-        return { chunks, model: chunks.length > 0 ? info.model : undefined };
+        return { chunks, model: chunks.length > 0 ? info.model : undefined, capped };
     }
 
     // Chunk budget in tokens — `.env.example` is the law, no code fallback. EMPTY =
