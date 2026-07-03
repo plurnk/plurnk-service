@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS turns (
     status           INTEGER NOT NULL           CHECK (status BETWEEN 100 AND 599),
     usage_prompt     INTEGER NOT NULL DEFAULT 0 CHECK (usage_prompt >= 0),
     usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
+    usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
     usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
     usage_cost_pico  INTEGER NOT NULL DEFAULT 0 CHECK (usage_cost_pico >= 0),
     -- #274 — the context window of the model that RAN this turn (provider.contextSize), so the

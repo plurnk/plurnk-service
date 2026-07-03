@@ -38,8 +38,8 @@ FROM turns t JOIN loops l ON l.id = t.loop_id
 WHERE l.run_id = $run_id ORDER BY t.id;
 
 -- PREP: fork_insert_turn
-INSERT INTO turns (loop_id, sequence, timestamp, status, usage_prompt, usage_completion, usage_cached, usage_cost_pico, packet, finish_reason, model)
-VALUES ($loop_id, $sequence, $timestamp, $status, $usage_prompt, $usage_completion, $usage_cached, $usage_cost_pico, $packet, $finish_reason, $model)
+INSERT INTO turns (loop_id, sequence, timestamp, status, usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_pico, packet, finish_reason, model)
+VALUES ($loop_id, $sequence, $timestamp, $status, $usage_prompt, $usage_completion, $usage_reasoning, $usage_cached, $usage_cost_pico, $packet, $finish_reason, $model)
 RETURNING id;
 
 -- PREP: fork_get_log_entries

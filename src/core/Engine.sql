@@ -164,6 +164,7 @@ UPDATE turns SET
     packet = $packet,
     usage_prompt = $usage_prompt,
     usage_completion = $usage_completion,
+    usage_reasoning = $usage_reasoning,
     usage_cached = $usage_cached,
     usage_cost_pico = $usage_cost_pico,
     usage_context_size = $usage_context_size,

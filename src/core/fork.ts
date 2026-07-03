@@ -56,7 +56,7 @@ export default class Fork {
             // cost-rollup triggers add nothing — the session total stays true lifetime spend
             // (no double-count) and the branch's cost_pico accrues only what IT generates.
             const nt = await (db.fork_insert_turn as PrepMethod).get<{ id: number }>({
-                ...rest, usage_prompt: 0, usage_completion: 0, usage_cached: 0, usage_cost_pico: 0,
+                ...rest, usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 0,
                 loop_id: loopMap.get(loop_id),
             });
             if (nt === undefined) throw new Error("fork: turn insert returned no row");

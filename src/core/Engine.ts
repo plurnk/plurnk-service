@@ -764,7 +764,7 @@ export default class Engine {
             const hardPacket = this.#packets.completePacket(requestPacket, { content: "", ops: [], reasoning: null }, null, provider);
             await (this.#db.engine_close_turn as PrepMethod).run({
                 id: turnId, status: 413, packet: JSON.stringify(hardPacket),
-                usage_prompt: 0, usage_completion: 0, usage_cached: 0, usage_cost_pico: 0,
+                usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 0,
                 usage_context_size: provider.contextSize, // #274 — the model's window, even on a hard-413 turn
                 finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
             });
@@ -948,6 +948,7 @@ export default class Engine {
             packet: JSON.stringify(packet),
             usage_prompt: usage.prompt,
             usage_completion: usage.completion,
+            usage_reasoning: usage.reasoning,
             usage_cached: usage.cached,
             usage_cost_pico: provider.costFor(usage), // §provider-surface-costfor
             usage_context_size: provider.contextSize, // #274 — the running model's window (gauge denominator)

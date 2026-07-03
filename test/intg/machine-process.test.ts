@@ -122,7 +122,7 @@ test("#254 — a fork inherits the log but spends no new money: session cost is 
         // Give the parent turn a real cost — the rollup triggers carry it to run + session.
         await (db.engine_close_turn as PrepMethod).run({
             id: turnId, status: 200, packet: "{}",
-            usage_prompt: 100, usage_completion: 50, usage_cached: 0, usage_cost_pico: 1000,
+            usage_prompt: 100, usage_completion: 50, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 1000,
             finish_reason: null, model: "mock", meta: "{}",
         });
         const sessionCost = async () =>

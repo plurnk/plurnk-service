@@ -38,7 +38,7 @@ SELECT status FROM loops WHERE id = $id;
 
 -- PREP: test_get_turn
 SELECT id, loop_id, sequence, status,
-       usage_prompt, usage_completion, usage_cached, usage_cost_pico,
+       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_pico,
        finish_reason, model, packet
 FROM turns WHERE id = $id;
 
