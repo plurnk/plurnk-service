@@ -29,6 +29,7 @@
         "migrations/**/*.sql",
         "requirements.md",
         "README.md",
+        "INSTALL.md",
         "SPEC.md"
     ],
     "publishConfig": {
