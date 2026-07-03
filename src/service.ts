@@ -33,8 +33,6 @@ export default class Service {
         // required knob then surfaces as a clear `missing PLURNK_X` error, not a crash.
         if (existsSync(Service.#homeDir)) return;
         mkdirSync(Service.#homeDir, { recursive: true });
-        const shipped = resolve(Service.#projectRoot, ".env.example");
-        if (existsSync(shipped)) copyFileSync(shipped, resolve(Service.#homeDir, ".env.example"));
         // The first-run model selection lives HERE, as commented peers — an honest surfaced
         // choice (no active default ships; #307). One uncomment per option; agents read this
         // file as naturally as humans do.
@@ -65,6 +63,20 @@ export default class Service {
         const shippedPolicy = resolve(Service.#projectRoot, "PLURNK_PERSONALITY.md");
         if (existsSync(shippedPolicy)) copyFileSync(shippedPolicy, resolve(Service.#homeDir, "AGENTS.md"));
         process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
+    }
+
+    // Package-owned reference files (the legend + the config guide) are REFRESHED from the
+    // installed package on every boot — they carry the installed version's knobs and prose, so
+    // a seed-once snapshot would silently drift from the floor the daemon runs (the pre-fix bug).
+    // Safe to clobber because they are package-owned, NOT user config: ~/.plurnk/.env (the user's,
+    // seeded once above) is never touched here. The .env.example legend carries a loud overwrite
+    // warning at its head so nobody edits the wrong file.
+    static #syncReferenceFiles(): void {
+        if (!existsSync(Service.#homeDir)) return;
+        for (const name of [".env.example", "INSTALL.md"]) {
+            const src = resolve(Service.#projectRoot, name);
+            if (existsSync(src)) copyFileSync(src, resolve(Service.#homeDir, name));
+        }
     }
 
     static #expandHome(p: string): string {
@@ -183,7 +195,7 @@ export default class Service {
     }
 
     static async main(): Promise<void> {
-        if (!process.argv.includes("--help") && !process.argv.includes("-h")) Service.#ensureHome();
+        if (!process.argv.includes("--help") && !process.argv.includes("-h")) { Service.#ensureHome(); Service.#syncReferenceFiles(); }
         // Env cascade — first write wins (loadEnvFile is set-if-unset), so load highest first.
         // Precedence high→low: CLI --flags > shell env > --env-file/--config > ./.env >
         // ~/.plurnk/.env > ~/.plurnk/.env.example (the legend) > package .env.example (the floor).
