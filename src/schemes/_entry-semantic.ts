@@ -64,6 +64,12 @@ export default class EntrySemantic {
             if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
             return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel };
         }
+        // §semantic-entry-chunk-cap (#320) — no single entry dominates the corpus: a build
+        // artifact (minified bundle, giant generated file) is legally text but embedding
+        // hundreds of chunks of it drowns the source ~70:1 and burns the derivation budget.
+        // Cap the chunks per entry; the head of the file is what survives (imports, headers —
+        // the searchable identity). Never silent: the caller's telemetry names the truncation.
+        const CHUNK_CAP = 128;
         // Symbol edges (a @graph endLine, or the line before a symbol starts) are the
         // tiler's preferred cut points; it still tiles every line if there are none.
         const boundaries = new Set<number>();
@@ -72,8 +78,9 @@ export default class EntrySemantic {
             if (typeof s.line === "number" && s.line > 1) boundaries.add(s.line - 1);
         }
         const budget = EntrySemantic.#chunkBudget(info.maxTokens);
-        const specs = await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens);
+        let specs = await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens);
         if (specs.length === 0) return { chunks: [], model: undefined };
+        if (specs.length > CHUNK_CAP) specs = specs.slice(0, CHUNK_CAP); // §semantic-entry-chunk-cap — the head survives; caller telemetry names it
         // One data-parallel batch over the tiled chunk texts (#272 — embedBatch via the
         // framework seam, ~6× the per-chunk loop on a multi-core box; vectors bit-identical,
         // so no re-embed). Each tile embeds as PLAIN TEXT: a chunk is a fragment, not a

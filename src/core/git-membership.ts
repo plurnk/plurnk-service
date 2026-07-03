@@ -344,13 +344,24 @@ export default class GitMembership {
             if (r.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: r.entryId, synced_sig: sig });
             return null;  // binary bodies are empty markers — no text divergence to narrate
         }
-        let content: string;
+        let buf: Buffer;
         try {
-            content = await readFile(canonical, "utf8");
+            buf = await readFile(canonical);
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
             throw err;
         }
+        // §membership-binary-sniff (#320) — the extension map can lie (.wasm fell through to
+        // the markdown DEFAULT and a 3.3MB blob entered the corpus as prose, three copies,
+        // ~10M tokens). NUL bytes in the head are binary truth regardless of the label:
+        // re-stamp octet-stream and take the binary arm (empty body, READ-415, never
+        // FTS'd/embedded/tokenized as text).
+        if (buf.subarray(0, 8192).includes(0)) {
+            const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype: "application/octet-stream" } }, tags: [] }, ctx, null);
+            if (r.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: r.entryId, synced_sig: sig });
+            return null;
+        }
+        const content = buf.toString("utf8");
         // §env-delta — capture an out-of-band disk change BEFORE the refresh overwrites
         // the entry: an existing body channel whose content differs from disk is an
         // ambient divergence (D5). writeEntry then refreshes the entry to disk truth.

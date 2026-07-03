@@ -138,6 +138,7 @@ export default class EntryManifest {
             // cleared, not stored. result.embedding is the fallback whole-entry vector.
             await EntrySemantic.indexFts(db, r.entry_id, r.content);
             const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal);
+            if (chunks.length === 128) ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} embedding capped at 128 chunks — the head is indexed, the tail is not (§semantic-entry-chunk-cap)`, level: "info" });
             await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
             await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
         } catch {

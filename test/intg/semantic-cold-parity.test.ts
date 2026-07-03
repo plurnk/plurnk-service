@@ -77,3 +77,17 @@ test("[§derivation-off-hot-path] the queued pump completes on the background ch
         assert.ok(row?.deep_hash !== null && row?.deep_hash !== undefined && row.deep_hash.length > 0, "the pump ran to completion on the chain and stamped the deep hash");
     } finally { await db.close(); }
 });
+
+test("[§semantic-entry-chunk-cap] a giant text entry embeds at most 128 chunks — the head carries the identity", async () => {
+    // #320's second face: a build artifact is legally text, but embedding hundreds of its
+    // chunks drowns the source corpus ~70:1 and burns the derivation budget.
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    // ~200 chunk-budgets of filler: unique tokens per line so the tiler can't collapse it.
+    const giant = Array.from({ length: 26000 }, (_, i) => `filler line ${i} lorem ipsum token${i}`).join("\n");
+    const EntrySemantic = (await import("../../src/schemes/_entry-semantic.ts")).default;
+    const { chunks } = await EntrySemantic.deriveEmbeddings(mimetypes, giant, [], undefined, undefined);
+    assert.ok(chunks.length > 0, "the head embedded");
+    assert.ok(chunks.length <= 128, `capped at 128 chunks; got ${chunks.length}`);
+    assert.equal(chunks[0].lineStart, 1, "the surviving chunks are the head of the file");
+});

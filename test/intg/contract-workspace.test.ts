@@ -498,3 +498,26 @@ test("[§membership-git-flags] PLURNK_GIT_ALLOWED=0 denies all git membership, u
         }
     });
 });
+
+test("[§membership-binary-sniff] NUL-headed content is a binary marker regardless of the extension's lying label", async () => {
+    // #320 — extension detection fell through to the markdown default for .wasm and a
+    // 3.3MB blob entered the corpus as prose. The sniff reads bytes, not labels: a .md
+    // file whose head carries NUL materializes as the empty octet-stream marker (READ-415
+    // class), never as text — no FTS row, no tokens, no embedding.
+    await withGitWorkspace(async (root, ctx, db) => {
+        const evil = "blob.md"; // the most trusted-looking extension
+        await writeFile(join(root, evil), Buffer.concat([Buffer.from("MZ"), Buffer.alloc(64, 0), Buffer.from("binary tail")]));
+        await execFileP("git", ["add", evil], { cwd: root });
+        await GitMembership.indexGitMembership(ctx);
+        const row = await (db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({
+            session_id: ctx.sessionId, scheme: null, pathname: `/${evil}`, channel: "body",
+        });
+        assert.ok(row !== undefined, "the member materialized");
+        assert.equal(row.mimetype, "application/octet-stream", "the sniff overrode the label");
+        assert.equal(row.content, "", "binary bodies are empty markers");
+        const fts = await (db.semantic_rank_fts as PrepMethod).all<{ pathname: string }>({
+            fts_query: "binary OR tail", session_id: ctx.sessionId, scheme: null, k: 5,
+        });
+        assert.deepEqual(fts, [], "no keyword ghost of the blob");
+    });
+});
