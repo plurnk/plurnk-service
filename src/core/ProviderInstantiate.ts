@@ -48,6 +48,42 @@ export default class ProviderInstantiate {
     static async loadActiveProvider(env: NodeJS.ProcessEnv = process.env): Promise<Provider | null> {
         const alias = resolveActiveAlias(env); // the active provider alias resolves from PLURNK_MODEL — §provider-instantiation-alias-resolution
         if (alias === null) return null;
-        return ProviderInstantiate.instantiateProvider(alias, env);
+        const provider = await ProviderInstantiate.instantiateProvider(alias, env);
+        await ProviderInstantiate.verifyGrammarEnforcement(provider, env);
+        return provider;
+    }
+
+    // §grammar-enforcement-verified-at-boot — the rails are useless if silently OFF. The openai
+    // provider only transports the grammar when its boot probe DETECTS llama-server (grammarStyle
+    // 'llamacpp'); any probe hiccup silently falls back to 'none' — unconstrained generation, no
+    // signal, and the whole grammar contract dark (weeks of "gemma strokes" were unconstrained
+    // gemma). The Provider interface exposes no capability to introspect this, so we VERIFY the
+    // contract end to end: when the operator requested a grammar, force a trivial one and confirm
+    // the backend actually constrained the output. Anything else FAILS HARD at boot — a legible
+    // refusal to run beats silent garbage that reads as model failure. No-op when GBNF is off.
+    static #VERIFY_TOKEN = "PLURNK-RAILS-LIVE";
+    static async verifyGrammarEnforcement(provider: Provider, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+        const gbnf = env.PLURNK_PROVIDERS_GBNF;
+        if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // rails not requested — nothing to verify
+        const forcing = `root ::= "${ProviderInstantiate.#VERIFY_TOKEN}"`;
+        let content: string;
+        try {
+            const res = await provider.generate({
+                messages: [{ role: "user", content: "ok" }],
+                runId: "gbnf-enforcement-verify", grammar: forcing, maxTokens: 16,
+            });
+            content = res.assistant.content.trim();
+        } catch (cause) {
+            throw new Error(`grammar enforcement verification could not run against '${provider.model}' (PLURNK_PROVIDERS_GBNF=${gbnf}); refusing to boot with unverified rails`, { cause });
+        }
+        if (content !== ProviderInstantiate.#VERIFY_TOKEN) {
+            throw new Error(
+                `grammar enforcement is OFF: PLURNK_PROVIDERS_GBNF=${gbnf} requests constrained sampling, but '${provider.model}' returned UNCONSTRAINED output to a forcing grammar `
+                + `(expected ${JSON.stringify(ProviderInstantiate.#VERIFY_TOKEN)}, got ${JSON.stringify(content.slice(0, 40))}). `
+                + `The provider likely failed to detect the llama-server backend (grammarStyle 'none') — the grammar was never transported. `
+                + `Refusing to boot: unconstrained generation reads as model failure and hides that the rails are dark. `
+                + `Check the backend is a live llama-server (/v1/models must carry a per-model 'meta'), or unset PLURNK_PROVIDERS_GBNF to run unconstrained deliberately.`,
+            );
+        }
     }
 }

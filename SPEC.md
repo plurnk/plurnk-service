@@ -254,6 +254,8 @@ Deferred (#249): grounding the attribution value in real per-turn value flow rat
 
 Model alias parsing (`parseAliasesFromEnv` / `resolveActiveAlias`) lives in [`@plurnk/plurnk-providers`](https://github.com/plurnk/plurnk-providers). {§provider-instantiation-alias-resolution} Dynamic provider instantiation (`instantiateProvider` / `loadActiveProvider`) lives in `src/core/ProviderInstantiate.ts` here — `import()` resolves package specifiers relative to the calling module, so the dynamic-import path stays in the consumer where the `@plurnk/plurnk-providers-<vendor>` packages are installed.
 
+**Grammar enforcement is verified at boot.** When the operator sets `PLURNK_PROVIDERS_GBNF`, `loadActiveProvider` forces a trivial grammar (`root ::= "PLURNK-RAILS-LIVE"`) and confirms the backend returned exactly that — a live end-to-end proof the rails engaged. Anything else **fails hard at boot**: the openai provider only transports the grammar when its probe detects llama-server (grammarStyle `llamacpp`), and any probe hiccup silently falls back to `none` — unconstrained generation with no signal, the whole grammar contract dark, model rambles that read as reasoning failure. The Provider interface exposes no capability to introspect this, so the contract is *verified* rather than trusted; a legible boot refusal beats silent garbage. No-op when GBNF is unset/`0` (unconstrained is then a deliberate mode). {§grammar-enforcement-verified-at-boot}
+
 ```
 PLURNK_MODEL_gemma=openai/macher.gguf
 PLURNK_MODEL_opus=openrouter/anthropic/claude-opus-latest
