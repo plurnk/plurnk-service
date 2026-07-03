@@ -23,11 +23,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { liveSession, liveLoop } from "../_live-harness.ts";
+import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches the storyline timeout.
-const FLOOR_CEILING = 6200; // RAW-ruler units (calibration divides by ≤1.4, §tokenomics-ceiling-calibrates-to-usage): 6200/1.4 ≈ 4400, just above the ~3985 measured floor — the small fixtures must curate
-const JUMBO_CEILING = 11200; // RAW-ruler units (calibration ÷≤1.4): effective ≈8000, above the jumbo floor
+// Ceilings are FLOOR-RELATIVE: each run probes its own fixture's true turn-1 floor (a
+// zero-cost pre-generate hard-413, _floor-probe.ts) and pins ceiling = floor × factor —
+// teaching growth re-calibrates the pin instead of breaking it. TIGHT keeps the small
+// fixtures under real curation pressure; jumbo gets the same factor over its own floor.
+const TIGHT_FACTOR = 1.4;
 
 interface BudgetRun {
     db: Db;
@@ -42,15 +46,17 @@ interface BudgetRun {
 // runStory with a pinned budget ceiling. The daemon's engine reads
 // the partition env at construction (inside liveSession), so set before / restore
 // after — mirrors budget-grind. `projectRoot` overrides the default fixture (the SPEC demo).
-const runUnderBudget = async (opts: { label: string; prompt: string; ceiling: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
+const runUnderBudget = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
     const prev = process.env.PLURNK_PROVIDERS_CTX;
-    // promptBudget = opts.ceiling exactly; real assistant reserve keeps maxTokens sane live.
-    process.env.PLURNK_PROVIDERS_CTX = String(opts.ceiling + 8192);
+    const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
+    const root = opts.projectRoot ?? fixture!.workspace;
+    const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt });
+    const ceiling = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
+    // promptBudget = ceiling exactly; real assistant reserve keeps maxTokens sane live.
+    process.env.PLURNK_PROVIDERS_CTX = String(ceiling + 8192);
     process.env.PLURNK_PROVIDERS_REASONING = "0";
     process.env.PLURNK_PROVIDERS_ASSISTANT = "8192";
     process.env.PLURNK_PROVIDERS_SAFETY = "0";
-    const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
-    const root = opts.projectRoot ?? fixture!.workspace;
     try {
         const s = await liveSession({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
@@ -59,7 +65,7 @@ const runUnderBudget = async (opts: { label: string; prompt: string; ceiling: nu
             const r = await (s.db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: tid });
             perTurn.push((JSON.parse(r?.packet ?? "{}") as { tokens?: number }).tokens ?? 0);
         }
-        console.error(`[budget-meta:${opts.label}] ceiling=${opts.ceiling} turns=${turnIds.length} finalStatus=${finalStatus} floor=${perTurn[0]} peak=${Math.max(0, ...perTurn)} perTurn=[${perTurn.join(",")}]`);
+        console.error(`[budget-meta:${opts.label}] floor=${floor} ceiling=${ceiling} turns=${turnIds.length} finalStatus=${finalStatus} turn1=${perTurn[0]} peak=${Math.max(0, ...perTurn)} perTurn=[${perTurn.join(",")}]`);
         const dump = async (): Promise<void> => {
             for (const turnId of turnIds) {
                 const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
@@ -96,7 +102,6 @@ test("budget-meta: the codename storyline still completes under a tight ceiling"
     const run = await runUnderBudget({
         label: "codename-tight",
         prompt: "What's the project codename? It's recorded in notes.md.",
-        ceiling: FLOOR_CEILING,
     });
     try {
         if (!/phoenix/i.test(run.lastContent)) await run.dump();
@@ -109,7 +114,6 @@ test("budget-meta: the config-host storyline still completes under a tight ceili
     const run = await runUnderBudget({
         label: "host-tight",
         prompt: "What's the value of the `host` field in src/config.json?",
-        ceiling: FLOOR_CEILING,
     });
     try {
         if (!/db\.internal/.test(run.lastContent)) await run.dump();
@@ -127,7 +131,6 @@ test("budget-meta: jumbo SPEC.md under a tight ceiling — auto-fold then patter
     const run = await runUnderBudget({
         label: "spec-jumbo",
         prompt: "SPEC.md describes a budget 'grinder' that runs when a packet is over budget. According to SPEC.md, what does the grinder revert or fold first?",
-        ceiling: JUMBO_CEILING,
         projectRoot: spec.workspace,
         cleanupRoot: spec.cleanup,
     });
