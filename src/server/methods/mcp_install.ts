@@ -4,7 +4,7 @@ import type { Executor, RegistryEntry } from "../../core/ExecutorRegistry.ts";
 
 // mcp.install (#289 part 1) — the /mcp hotload route. An operator installs an MCP server LIVE and it
 // becomes an EXEC[<name>] runtime (its tools called from the EXEC body, output READ back slice-wise).
-// Gated by PLURNK_MCP_INSTALL (installAllowed): added tooling is an operator decision, off by default;
+// Gated by PLURNK_EXECS_MCP_INSTALL (installAllowed): added tooling is an operator decision, off by default;
 // the mcp executor re-checks the gate at connect (defense in depth, #240). execs-mcp mints the SAME
 // runtime decl boot discovery mints for an env-declared server, so a hotloaded server is
 // indistinguishable from a configured one, and it surfaces to the model on the next packet's tools
@@ -21,7 +21,7 @@ export default class McpInstallMethod {
                 const headers = McpInstallMethod.#parseHeaders(p.headers);
 
                 // The gate — fail-hard (not a silent no-op) so the caller learns WHY nothing installed.
-                if (!installAllowed()) throw new Error("mcp.install: runtime MCP install is disabled — set PLURNK_MCP_INSTALL=1 to permit it");
+                if (!installAllowed()) throw new Error("mcp.install: runtime MCP install is disabled — set PLURNK_EXECS_MCP_INSTALL=1 to permit it");
 
                 const name = p.name.toLowerCase();
                 const config = parseTarget(p.target, headers !== null ? { headers } : {});
@@ -43,7 +43,7 @@ export default class McpInstallMethod {
                 ctx.engine.hotloadRuntime(name, entry);
                 return { name, available: true, detail: availability.detail ?? null };
             },
-            description: "Install an MCP server as an EXEC[<name>] runtime at runtime (gated by PLURNK_MCP_INSTALL).",
+            description: "Install an MCP server as an EXEC[<name>] runtime at runtime (gated by PLURNK_EXECS_MCP_INSTALL).",
             params: {
                 name: "server name — becomes the EXEC tag",
                 target: "http(s) URL (→ streamable-http) or a stdio command line",

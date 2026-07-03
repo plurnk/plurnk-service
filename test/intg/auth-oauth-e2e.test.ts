@@ -22,7 +22,7 @@ const handler = (name: string) => {
 
 test("auth relay end-to-end: authorize → code → complete injects the bearer (real mock OAuth server)", async () => {
     const { server, base } = await mockOAuthServer();
-    process.env.PLURNK_MCP_TESTAUTH = `${base}/mcp`;
+    process.env.PLURNK_EXECS_MCP_TESTAUTH = `${base}/mcp`;
     const redirectUri = "http://127.0.0.1:9876/callback";
     try {
         // 1. auth.authorize — discovery + DCR + PKCE, all on real fetch to the mock, through our method.
@@ -38,7 +38,7 @@ test("auth relay end-to-end: authorize → code → complete injects the bearer 
         // 3. The bearer is now on the server's resolved config — the next EXEC[testauth] carries it.
         assert.equal(serverConfig("testauth")?.headers?.Authorization, "Bearer tok-abc123", "install overlaid the bearer");
     } finally {
-        delete process.env.PLURNK_MCP_TESTAUTH;
+        delete process.env.PLURNK_EXECS_MCP_TESTAUTH;
         server.close();
     }
 });
