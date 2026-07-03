@@ -52,6 +52,13 @@ SELECT open_paths FROM loops WHERE id = $loop_id;
 -- (no synthetic / shim layer).
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 
+-- PREP: engine_reclaim_queued_loop
+-- §run-lifecycle-wake-requeue-not-terminal — atomic 100→102 re-claim by loop id. A wake
+-- re-queued this loop while ITS OWN live drain was between turns; the drain re-claims and
+-- keeps running (the injected prompt is already the next turn). Conditional so a racing
+-- claimant can never double-claim.
+UPDATE loops SET status = 102 WHERE id = $loop_id AND status = 100;
+
 -- PREP: engine_loop_set_status
 -- The universal terminal setter. terminal_message carries either the loop's deliverable
 -- (the SEND body) or the engine's abandonment reason (max_turns / budget_overflow /

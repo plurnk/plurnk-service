@@ -103,6 +103,14 @@ export default class StrikeRail {
     // `history` holds per-turn fingerprints for rail #39 cycle detection.
     #state = new Map<number, { streak: number; turnErrors: number; history: string[] }>();
 
+    // The loop's CURRENT strike streak — the same figure the 500-threshold compares. Rides
+    // generate({strikes}) as first-party outbound metadata (Plurnk-Strikes, #313): the hosted
+    // router's escalation signal. NEVER model-facing (§engine-rails — a surfaced count is a
+    // metric to game); the packet does not carry it.
+    streak(loopId: number): number {
+        return this.#state.get(loopId)?.streak ?? 0;
+    }
+
     // Per-turn strike accounting, run by runLoop after every turn. Three
     // sources strike a turn:
     //  1. recordedFailed — any action-entry at hard failure status

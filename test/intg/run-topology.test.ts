@@ -179,3 +179,38 @@ test("[§run-delegation-inherits-flags] spawn and fork carry the delegating loop
         } finally { ws.close(); }
     });
 });
+
+test("[§run-lifecycle-wake-requeue-not-terminal] a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async () => {
+    // Deterministic reproduction of the delegation-flags flake: simulate the conclusion-wake
+    // landing between the parent's turn-end and its own drain's next status check by flipping
+    // the loop to 100 (+ next prompt) from INSIDE turn 1's generate. Pre-fix, runLoop read the
+    // 100 as an external terminal and the drain broadcast a queued loop as terminated.
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<SEND[202]:parking:SEND", 10),
+        makeMockResponse("<<SEND[200]:woke and finished:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "wake-requeue" });
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "go", flags: { yolo: true } });
+            const loopId = (accept.result as { loopId: number }).loopId;
+            // The loop parks at 202 (SEND[202]). Simulate the wake: prompt + re-queue to 100.
+            await waitForDb(
+                async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status,
+                (status) => status === 202,
+            );
+            await daemon.inject({
+                sessionId: 1, runId: (accept.result as { modelRunId?: number }).modelRunId ?? 2,
+                prompt: "the child concluded", provider: mock, systemPrompt: "SD",
+            });
+            const seen = await waitFor(
+                () => terminated() as Array<{ loopId: number; finalStatus: number }>,
+                (ts) => ts.some((t) => t.loopId === loopId),
+            );
+            const finals = seen.filter((t) => t.loopId === loopId).map((t) => t.finalStatus);
+            assert.deepEqual(finals, [200], `exactly one terminal broadcast, 200 — never a queued 100; got ${JSON.stringify(finals)}`);
+        } finally { ws.close(); }
+    });
+});

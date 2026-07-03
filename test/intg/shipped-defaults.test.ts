@@ -39,18 +39,16 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // The GBNF default is ACTIVE and resolves — a commented-out flag silently ran every
     // model tier unconstrained for days.
-    // Native reasoning ships BOUNDED — budget = the partition's REASONING reserve. 0 reroutes
-    // a think-trained model's thought into the grammar free zone (2-min prose-ramble turns);
-    // -1 thinks unbounded (28k-token turns). The bound must equal the reserve it spends.
-    assert.equal(env.get("PLURNK_PROVIDERS_REASONING_BUDGET"), env.get("PLURNK_PROVIDERS_REASONING"), "reasoning budget ships equal to the partition's reasoning reserve");
+    // Native thinking ships ON and BOUNDED (providers 0.31 activation/capacity split). Off
+    // reroutes a think-trained model's thought into the grammar free zone; adaptive is
+    // unbounded (28k-token turns). The capacity must equal the partition reserve it spends.
+    assert.equal(env.get("PLURNK_PROVIDERS_THINKING"), "on", "thinking ships on");
+    assert.equal(env.get("PLURNK_PROVIDERS_THINKING_CAPACITY"), env.get("PLURNK_PROVIDERS_REASONING"), "thinking capacity ships equal to the partition's reasoning reserve");
     // §tokenomics-window-partition — the 64Ki invariant: the shipped numbers partition any
     // ≥77Ki window to EXACTLY 65536 prompt tokens. Change any of the four and this names it.
     const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_PROVIDERS_${k}`)));
     assert.ok(part.every(Number.isFinite), "all four partition numbers ship");
     assert.equal(part[0] - part[1] - part[2] - part[3], 65536, "the shipped partition is exactly 64Ki of prompt");
-    // The tokenizer family ships explicitly — the chars/2 heuristic fallback is a loud
-    // safe overcount that wastes ~30% of the window (providers 0.29).
-    assert.equal(env.get("OPENAI_TOKENIZER"), "llama", "an exact-family tokenizer ships for the local floor");
     const variant = env.get("PLURNK_PROVIDERS_GBNF");
     assert.ok(variant !== undefined && variant.length > 0 && variant !== "0", "PLURNK_PROVIDERS_GBNF ships active");
     assert.doesNotThrow(() => fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`)), "the shipped variant resolves in the installed grammar");

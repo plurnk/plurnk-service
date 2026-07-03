@@ -167,9 +167,9 @@ export default class Service {
         // IGNORED by llama-server — when thinking is on, only the box's --reasoning-budget launch
         // flag clamps it, and it must equal PLURNK_PROVIDERS_REASONING. Unverifiable from here, so
         // say it loudly rather than let the reserve be fiction.
-        const reasoningBudget = Number(process.env.PLURNK_PROVIDERS_REASONING_BUDGET ?? "0");
-        if (reasoningBudget !== 0) {
-            process.stderr.write(`plurnk-service: native thinking is ON (PLURNK_PROVIDERS_REASONING_BUDGET=${reasoningBudget}) — llama-server ignores per-request numeric budgets; ensure the serving box launches with --reasoning-budget ${process.env.PLURNK_PROVIDERS_REASONING ?? "?"} or the reasoning reserve is not enforced.\n`);
+        const thinking = process.env.PLURNK_PROVIDERS_THINKING ?? "off";
+        if (thinking !== "off") {
+            process.stderr.write(`plurnk-service: native thinking is ${thinking} — llama-server ignores per-request numeric budgets; ensure the serving box launches with --reasoning-budget ${process.env.PLURNK_PROVIDERS_THINKING_CAPACITY ?? "?"} or the capacity is not enforced.\n`);
         }
         if (alias === null) {
             process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);

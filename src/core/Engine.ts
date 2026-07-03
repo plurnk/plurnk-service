@@ -357,6 +357,16 @@ export default class Engine {
 
             const row = await (this.#db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: loopId });
             if (row === undefined) throw new Error(`Engine.runLoop: loop ${loopId} not found`);
+            if (row.status === 100) {
+                // NOT a terminal — a wake re-queued this loop while its own live drain was
+                // between turns (a child concluded in the gap between our 202 write and this
+                // check, §run-lifecycle-wake-requeue-not-terminal). The wake's intent is KEEP
+                // RUNNING: re-claim atomically and continue — the injected prompt is already
+                // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
+                // as loop/terminated {finalStatus: 100} — the delegation-flags flake.
+                await (this.#db.engine_reclaim_queued_loop as PrepMethod).run({ loop_id: loopId });
+                continue; // claimed (or a racer flipped it first — the re-read decides)
+            }
             if (row.status !== 102) {
                 // Only 202 (Accepted) lets spawns outlive — it IS the async wake
                 // contract (E.4). Every other terminal, 200 included, reaps: "done"
@@ -767,7 +777,7 @@ export default class Engine {
             // generate rides the LOOP signal (already chained from the caller's), so a loop-level
             // abort — the §operator-config-loop-timeout wall — cancels a stuck provider call, not
             // just the schemes. Bare runTurn (no runLoop) has no loop entry → the caller's signal.
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), maxTokens: this.#packets.decodeBudget(), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), maxTokens: this.#packets.decodeBudget(), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // Every provider error surfaces as telemetry (the client/model sees the cause). #256:
