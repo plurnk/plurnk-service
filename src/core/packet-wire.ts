@@ -407,7 +407,7 @@ export default class PacketWire {
             } else if (op === "error") {
                 // §telemetry — a parse-error row is a LOG ITEM; its body is the parser message, which
                 // carries the content-offset `line:col`. The model resolves that line against its own
-                // emission — the born-OPEN `model` row (§model-entry) — so no snippet is embedded.
+                // emission — READ the folded `model` mirror row (§model-entry) — so no snippet is embedded.
                 // Foldable like any body; the errors section keeps only a pointer (status + coordinate).
                 const detail = (rx !== null && typeof rx === "object" ? rx : {}) as { message?: unknown };
                 if (typeof detail.message === "string" && detail.message.length > 0) {

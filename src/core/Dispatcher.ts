@@ -155,6 +155,15 @@ export default class Dispatcher {
                 };
             }
         }
+        // §fold-open-meta-operations — OPEN/FOLD are render directives, not actions: they change
+        // how the world DISPLAYS, never what it is. A successful one leaves NO log row — the next
+        // packet's render IS the receipt (the row shows collapsed/expanded), and a curation
+        // receipt that itself rents log space made curation self-defeating in the small (the
+        // grinder's own mechanical folds were already rowless — one rule for both curators).
+        // Failures keep the ordinary op row with their status: errors are signals.
+        if ((statement.op === "OPEN" || statement.op === "FOLD") && result.status < 400) {
+            return { ...result, rowsWritten: 0 };
+        }
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve; §proposal-202-pauses). When a

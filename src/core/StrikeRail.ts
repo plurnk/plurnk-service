@@ -3,7 +3,11 @@ import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-grammar";
 // Rail #38: action-entry statuses that DON'T accumulate strikes. Model adapted
 // to a finding (not_found, op_not_supported); no penalty. Rummy parallel:
 // SOFT_FAILURE_OUTCOMES = {"not_found", "unparsed"}.
-const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 501]);
+// Exploratory misses are not failures: probing a path that doesn't exist (404), a line
+// range that doesn't exist (416), or a capability a scheme lacks (501) is how discovery
+// works — striking them prices caution into the motions we most want (range-reads ARE
+// the surgical behavior under budget pressure). One simple set, evenly applied.
+const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 416, 501]);
 
 // Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
 // where the activity isn't fully captured by target alone:

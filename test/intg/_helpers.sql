@@ -295,3 +295,7 @@ SELECT packet FROM turns WHERE packet IS NOT NULL;
 -- PREP: test_deep_hash
 -- [§derivation-off-hot-path] — a session entry's stamped deep hash (any entry: the drain proof).
 SELECT deep_hash FROM entries WHERE session_id = $session_id AND deep_hash IS NOT NULL LIMIT 1;
+
+-- PREP: test_ops_by_loop
+-- [§fold-open-meta-operations] — every model-origin op row with its status.
+SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;

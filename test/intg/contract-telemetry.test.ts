@@ -92,8 +92,8 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 };
 
 test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
-    // A NOTICE points the model at a line in its own emission; the erroring turn's model echo is born
-    // OPEN (§model-entry) so the model resolves the line there — no snippet duplicating the bytes.
+    // A NOTICE points the model at a line in its own emission; the mirror row is ALWAYS folded
+    // (§model-entry) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = noticeProvider(1);
@@ -114,10 +114,11 @@ test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unen
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
         assert.match(wire, /^\* grammar_unenforced 2:4$/m, "the notice renders as a terse kind + content-offset line:col");
 
-        // The content-offset NOTICE turn's model echo is born OPEN — the model reads line 2 off it.
+        // The mirror is ALWAYS folded — even on the NOTICE turn (the auto-OPEN trigger is retired);
+        // the model READs the folded row at line 2 when it cares.
         const echo = (await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
             .find((r) => r.turn_id === t1.turnId && r.op === "model" && r.origin === "model");
-        assert.ok(echo !== undefined && echo.expanded === 1, "the NOTICE turn's model echo is born OPEN");
+        assert.ok(echo !== undefined && echo.expanded === 0, "the NOTICE turn's model echo stays folded");
     } finally { await db.close(); }
 });
 
@@ -346,9 +347,9 @@ test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (o
 });
 
 // §model-entry — the per-turn `model` echo (origin=model, distinct from the born-OPEN turn-0
-// exemplar at origin=plurnk) is born OPEN when the turn had a parse error (so the model sees its
+// exemplar at origin=plurnk) is ALWAYS born FOLDED (auto-OPEN on error is retired; the model READs its
 // malformed emission, line-numbered, to fix it) and FOLDED on a clean turn (budget-neutral).
-test("[§model-entry] the model echo is born OPEN on a parse-error turn, FOLDED on a clean turn", async () => {
+test("[§model-entry] the model echo is ALWAYS born FOLDED — errored and clean turns alike (the model READs it when it cares)", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -367,7 +368,7 @@ test("[§model-entry] the model echo is born OPEN on a parse-error turn, FOLDED 
 
         const e1 = await echo(t1.turnId);
         assert.ok(e1 !== undefined, "the parse-error turn mirrors a model echo");
-        assert.equal(e1!.expanded, 1, "born OPEN — the model sees its malformed emission to reason through the syntax error");
+        assert.equal(e1!.expanded, 0, "born FOLDED even on the erred turn — auto-OPEN is retired; the model READs the cited lines");
 
         const e2 = await echo(t2.turnId);
         assert.ok(e2 !== undefined, "the clean turn mirrors a model echo");

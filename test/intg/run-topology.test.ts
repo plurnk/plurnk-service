@@ -214,3 +214,26 @@ test("[§run-lifecycle-wake-requeue-not-terminal] a wake re-queue (100) mid-drai
         } finally { ws.close(); }
     });
 });
+
+test("[§fold-open-meta-operations] a successful FOLD leaves no log row — the render is the receipt; a failed one keeps its row", async () => {
+    // Curation receipts that rent log space made curation self-defeating (fold a row, pay a
+    // permanent FOLD row) — and the grinder's mechanical folds were already rowless. One rule.
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<EDIT(known://note):some content worth folding:EDIT\n<<SEND[102]:wrote:SEND", 10),
+        makeMockResponse("<<FOLD(log:///1/2/1)::FOLD\n<<FOLD(log:///9/9/9)::FOLD\n<<SEND[200]:curated:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "meta-ops" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "curate", flags: { yolo: true } });
+            assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
+            const rows = await (db.test_ops_by_loop as PrepMethod).all<{ op: string; status_rx: number }>({});
+            const folds = rows.filter((r) => r.op === "FOLD");
+            // The successful FOLD (real coordinate) left NO row; the failed one (phantom
+            // coordinate) kept its ordinary op row with its status — errors are signals.
+            assert.equal(folds.length, 1, `exactly one FOLD row — the failure; got ${JSON.stringify(folds)}`);
+            assert.ok(folds[0].status_rx >= 400, "the surviving row is the failed FOLD's, carrying its status");
+        } finally { ws.close(); }
+    });
+});

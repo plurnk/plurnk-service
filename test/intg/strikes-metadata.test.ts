@@ -39,3 +39,22 @@ test("[§strikes-first-party-metadata] generate carries the live streak — 0 ex
         } finally { ws.close(); }
     });
 });
+
+test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404/501)", async () => {
+    // Range-probing is the surgical behavior wanted under pressure; striking it prices
+    // caution into the exact motion being taught. {404, 416, 501}: one set, evenly applied.
+    const mock = new CapturingMock({ contextSize: 100000, responses: [
+        makeMockResponse("<<EDIT(known://short):one line only:EDIT\n<<SEND[102]:wrote:SEND", 10),
+        makeMockResponse("<<READ(known://short)<99,100>::READ\n<<SEND[102]:probing:SEND", 10),
+        makeMockResponse("<<SEND[200]:done:SEND", 10),
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "soft-416" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 6 });
+            assert.equal(finalStatus, 200);
+            assert.deepEqual(mock.seen, [0, 0, 0], "the range-miss turn never bumped the streak");
+        } finally { ws.close(); }
+    });
+});
