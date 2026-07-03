@@ -27,7 +27,7 @@ async function withEnv(key: string, value: string, fn: () => Promise<void>): Pro
 describe("ApplicationPdf — resource caps (#38 DoS resistance)", () => {
     it("a PDF over the byte cap degrades to empty symbols / null deepJson, never throws", async () => {
         const pdf = buildPdf({ title: "Over Cap", outline: [{ title: "A" }] });
-        await withEnv("PLURNK_PDF_MAX_BYTES", "10", async () => {
+        await withEnv("PLURNK_MIMETYPES_PDF_MAX_BYTES", "10", async () => {
             assert.deepEqual(await h.extractRaw(pdf), []);
             assert.equal(await h.deepJson(pdf), null);
         });
@@ -46,9 +46,9 @@ describe("ApplicationPdf — resource caps (#38 DoS resistance)", () => {
         // degrade-to-dark catch as an empty result (the old `|| magic-default`
         // bug, inverted).
         for (const bad of ["0", "-1", "abc"]) {
-            await withEnv("PLURNK_PDF_MAX_PAGES", bad, async () => {
-                await assert.rejects(() => h.extractRaw(pdf), /PLURNK_PDF_MAX_PAGES must be a positive integer/);
-                await assert.rejects(() => h.query(pdf, "regex", ".+"), /PLURNK_PDF_MAX_PAGES must be a positive integer/);
+            await withEnv("PLURNK_MIMETYPES_PDF_MAX_PAGES", bad, async () => {
+                await assert.rejects(() => h.extractRaw(pdf), /PLURNK_MIMETYPES_PDF_MAX_PAGES must be a positive integer/);
+                await assert.rejects(() => h.query(pdf, "regex", ".+"), /PLURNK_MIMETYPES_PDF_MAX_PAGES must be a positive integer/);
             });
         }
     });
@@ -57,5 +57,14 @@ describe("ApplicationPdf — resource caps (#38 DoS resistance)", () => {
         const pdf = buildPdf({ title: "Render Free", outline: [{ title: "Intro" }, { title: "Body" }] });
         const syms = await h.extractRaw(pdf);
         assert.ok(syms.some((s) => s.name === "Intro"), "structure extracted without rasterizing");
+    });
+});
+
+describe("rename tripwire (family-prefix sweep)", () => {
+    it("an OLD cap name crashes with a rename pointer — never silently unbounded", async () => {
+        const pdf = buildPdf({ title: "Doc", outline: [{ title: "A" }] });
+        await withEnv("PLURNK_PDF_MAX_PAGES", "5000", async () => {
+            await assert.rejects(() => h.extractRaw(pdf), /renamed to PLURNK_MIMETYPES_PDF_MAX_PAGES/);
+        });
     });
 });

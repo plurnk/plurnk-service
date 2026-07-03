@@ -54,8 +54,8 @@ const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
 // Resource caps (DoS resistance — decompression bombs, pathological page
 // counts). UNBOUNDED by default: the library invents no budget it can't validate
 // as the operator's intent (the family "no magic budget defaults" rule). Set
-// PLURNK_PDF_MAX_BYTES (a PDF over it never reaches the parser) or
-// PLURNK_PDF_MAX_PAGES (text extraction stops there) to a positive integer to
+// PLURNK_MIMETYPES_PDF_MAX_BYTES (a PDF over it never reaches the parser) or
+// PLURNK_MIMETYPES_PDF_MAX_PAGES (text extraction stops there) to a positive integer to
 // cap. Read at call time. Unset → no cap; malformed → crash, never a silent
 // revert to a guessed number. See .env.example.
 function envCap(name: string): number {
@@ -75,8 +75,17 @@ function envCap(name: string): number {
 // not get swallowed into an empty channel by the parse-error degrade. (A
 // valid-but-exceeded cap still degrades inside: the documented DoS behavior.)
 function assertCapsValid(): void {
-    envCap("PLURNK_PDF_MAX_BYTES");
-    envCap("PLURNK_PDF_MAX_PAGES");
+    // Rename tripwires (family-prefix sweep): an OLD cap name silently ignored
+    // would mean silently-UNBOUNDED DoS caps — the worst possible failure of
+    // this rename. Crash naming the new knob instead. Transitional — delete at
+    // the ship-time policy sweep.
+    for (const old of ["PLURNK_PDF_MAX_BYTES", "PLURNK_PDF_MAX_PAGES"] as const) {
+        if (process.env[old] !== undefined) {
+            throw new RangeError(`${old} was renamed to ${old.replace("PLURNK_", "PLURNK_MIMETYPES_")} (family-prefix convention); update the environment.`);
+        }
+    }
+    envCap("PLURNK_MIMETYPES_PDF_MAX_BYTES");
+    envCap("PLURNK_MIMETYPES_PDF_MAX_PAGES");
 }
 
 interface OutlineItem {
@@ -115,7 +124,7 @@ async function withDocument<T>(
     bytes: Uint8Array,
     use: (doc: PdfDocument) => Promise<T>,
 ): Promise<T> {
-    const maxBytes = envCap("PLURNK_PDF_MAX_BYTES");
+    const maxBytes = envCap("PLURNK_MIMETYPES_PDF_MAX_BYTES");
     if (bytes.byteLength > maxBytes) {
         throw new RangeError(`PDF exceeds ${maxBytes}-byte cap (${bytes.byteLength})`);
     }
@@ -310,7 +319,7 @@ async function collectSymbols(doc: PdfDocument): Promise<MimeSymbol[]> {
 // number (PDF's unit of navigation). Page-bounded by the same cap as text.
 async function collectStructHeadings(doc: PdfDocument): Promise<MimeSymbol[]> {
     const out: MimeSymbol[] = [];
-    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES"));
+    const limit = Math.min(doc.numPages, envCap("PLURNK_MIMETYPES_PDF_MAX_PAGES"));
     for (let p = 1; p <= limit; p += 1) {
         const page = await doc.getPage(p);
         try {
@@ -461,7 +470,7 @@ async function collectSecurity(doc: PdfDocument): Promise<{ hasJavaScript: boole
 async function collectLinks(doc: PdfDocument): Promise<Array<{ url: string; line: number; endLine: number }>> {
     const out: Array<{ url: string; line: number; endLine: number }> = [];
     const seen = new Set<string>();
-    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES"));
+    const limit = Math.min(doc.numPages, envCap("PLURNK_MIMETYPES_PDF_MAX_PAGES"));
     for (let i = 1; i <= limit; i += 1) {
         const page = await doc.getPage(i);
         try {
@@ -513,7 +522,7 @@ async function readAllPagesText(doc: PdfDocument): Promise<string> {
     const pages: string[] = [];
     // Bound the read — a multi-million-page PDF can't pin the event loop here.
     // The cap is well past any real document.
-    const limit = Math.min(doc.numPages, envCap("PLURNK_PDF_MAX_PAGES"));
+    const limit = Math.min(doc.numPages, envCap("PLURNK_MIMETYPES_PDF_MAX_PAGES"));
     for (let i = 1; i <= limit; i += 1) {
         const page = await doc.getPage(i);
         const tc = await page.getTextContent();
