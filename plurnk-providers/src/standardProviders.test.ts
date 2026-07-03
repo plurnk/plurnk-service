@@ -190,6 +190,70 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
     assert.equal(sent.id_slot, 0); // fingerprint wires internal slot affinity too
 });
 
+// — #34: detection must not silently decide capability —
+
+const llamaModels = () => new Response(JSON.stringify({ data: [{ id: "m", meta: { n_vocab: 262144, n_ctx: 49152 } }] }), { status: 200 });
+const sse = () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+
+test("openai: a transient /models failure is RETRIED — capability survives one hiccup (#34)", async () => {
+    let modelCalls = 0;
+    mock.method(globalThis, "fetch", async (url: string) => {
+        const u = String(url);
+        if (u.endsWith("/models")) { modelCalls++; if (modelCalls < 3) return new Response("busy", { status: 503 }); return llamaModels(); }
+        if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        return sse();
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
+    assert.equal(modelCalls, 3); // two failures retried, third answered
+    assert.equal(p!.constrainsOutput, true); // rails LIVE despite the hiccups
+});
+
+test("openai: detection exhaustion is SURFACED, never silent (#34)", async () => {
+    const warned: Array<string | Error> = [];
+    mock.method(process, "emitWarning", (msg: string | Error) => { warned.push(msg); });
+    mock.method(globalThis, "fetch", async (url: string) => {
+        if (String(url).endsWith("/models")) return new Response("down", { status: 503 });
+        return sse();
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
+    assert.equal(p!.constrainsOutput, false);
+    assert.ok(warned.some((w) => String(w).includes("llama-server detection failed") && String(w).includes("OPENAI_LLAMA_SERVER=1")), `expected PLURNK_PROBE_FAILED warning; got ${warned.join(" | ")}`);
+});
+
+test("openai: OPENAI_LLAMA_SERVER=1 pins llamacpp capabilities WITHOUT trusting the probe (#34)", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+        const u = String(url);
+        if (u.endsWith("/models")) return new Response("down", { status: 503 }); // probe dead the whole time
+        if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 2 }), { status: 200 });
+        return sse();
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", OPENAI_LLAMA_SERVER: "1" }, "m");
+    assert.equal(p!.constrainsOutput, true); // pinned: rails live, no probe dependency
+    assert.notEqual(p!.tokenize, undefined); // full capability set rides the pin
+});
+
+test("openai: OPENAI_LLAMA_SERVER=0 forces plain-remote even when the fingerprint matches (#34)", async () => {
+    mockEndpoint({ metaNctx: 49152 }); // fingerprint SAYS llama-server
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", OPENAI_LLAMA_SERVER: "0" }, "m");
+    assert.equal(p!.constrainsOutput, false);
+    assert.equal(p!.tokenize, undefined);
+});
+
+test("openai: a garbage OPENAI_LLAMA_SERVER value fails hard", async () => {
+    await assert.rejects(
+        standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", OPENAI_LLAMA_SERVER: "yes" }, "m"),
+        /OPENAI_LLAMA_SERVER must be "1" .* "0" .* or unset/,
+    );
+});
+
+test("constrainsOutput: fireworks (static response_format) reports true; groq reports false", async () => {
+    mockEndpoint();
+    const fw = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "k" }, "m");
+    assert.equal(fw!.constrainsOutput, true);
+    const gq = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, "m");
+    assert.equal(gq!.constrainsOutput, false);
+});
+
 test("openai: llama-server fingerprint surfaces the tokenize() capability (native /tokenize, model's own vocab)", async () => {
     const tokenizeCalls: Array<{ url: string; body: string }> = [];
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {

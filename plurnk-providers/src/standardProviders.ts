@@ -87,6 +87,11 @@ type StandardProviderSpec = {
     // sampling (SPEC §13). Set for providers that may front a local
     // OpenAI-compat server; cloud endpoints report neither → null / false.
     probeNctx?: boolean;
+    // Operator pin for llama-server capability (#34): the env var (probeNctx
+    // specs only) that OVERRIDES fingerprint detection — "1" pins llamacpp
+    // capabilities without trusting the probe; "0" forces plain-remote; unset →
+    // auto-detect (retried). An operator who KNOWS the box never rides the probe.
+    llamaServerEnvVar?: string;
     // Whether a probeNctx spec may infer LOCAL llama-server capabilities (grammar
     // transport → "llamacpp", slot pinning, template reasoning) from the probe's
     // `meta` fingerprint. Default true. Set FALSE for an endpoint that reports a
@@ -106,7 +111,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         apiKeyVar: "OPENAI_API_KEY", apiKeyRequired: false,
         baseUrlVar: ["OPENAI_BASE_URL", "OPENAI_API_BASE"], chatPath: "/v1/chat/completions", flexBaseStrip: true,
         reasoningStyle: "think", tokenizerEnvVar: "OPENAI_TOKENIZER",
-        probeNctx: true,
+        probeNctx: true, llamaServerEnvVar: "OPENAI_LLAMA_SERVER",
     },
     groq: {
         apiKeyVar: "GROQ_API_KEY", apiKeyRequired: true,
@@ -316,24 +321,46 @@ const resolveHeaders = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, labe
 // llama-server is the backend whose chat-completions accepts a `grammar` field.
 // Best-effort: any failure (unreachable, no field, non-2xx) degrades to
 // { null, false } — a legitimate "unknown", not a swallowed contract violation.
-type EndpointProbe = { nCtx: number | null; llamaServer: boolean };
+type EndpointProbe = { nCtx: number | null; llamaServer: boolean; failed: boolean };
+
+// One probe failure must never decide capability (#34): a busy server timing out
+// at boot is not evidence of "not a llama-server". Retries are mechanism, not an
+// operator knob — constants, short backoff.
+const PROBE_ATTEMPTS = 3;
+const PROBE_RETRY_DELAY_MS = 250;
 
 const probeModels = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number): Promise<EndpointProbe> => {
     const modelsUrl = chatUrl.replace(/\/chat\/completions$/, "/models");
     try {
         const res = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(fetchTimeoutMs) });
-        if (!res.ok) return { nCtx: null, llamaServer: false };
+        if (!res.ok) return { nCtx: null, llamaServer: false, failed: true };
         const data = (await res.json()) as { data?: Array<{ id?: string; n_ctx?: number; meta?: { n_ctx?: number } }> };
         const rows = data.data ?? [];
         const row = rows.find((r) => r.id === model) ?? rows[0];
         const n = row?.meta?.n_ctx ?? row?.n_ctx;
+        // A clean 200 without the meta block is a CONFIRMED non-llama-server —
+        // a valid answer, not a failure; no retry.
         return {
             nCtx: typeof n === "number" && n > 0 ? n : null,
             llamaServer: row?.meta !== undefined,
+            failed: false,
         };
     } catch {
-        return { nCtx: null, llamaServer: false };
+        return { nCtx: null, llamaServer: false, failed: true };
     }
+};
+
+// Retry wrapper (#34): only FAILED probes (non-200 / thrown fetch / timeout)
+// retry — a confirmed answer returns immediately. Exhaustion returns the last
+// failed result; the CALLER decides what a still-unknown capability means.
+const probeModelsRetrying = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number): Promise<EndpointProbe> => {
+    let probe: EndpointProbe = { nCtx: null, llamaServer: false, failed: true };
+    for (let attempt = 0; attempt < PROBE_ATTEMPTS; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, PROBE_RETRY_DELAY_MS * 2 ** (attempt - 1)));
+        probe = await probeModels(chatUrl, headers, model, fetchTimeoutMs);
+        if (!probe.failed) return probe;
+    }
+    return probe;
 };
 
 // Slot count from llama-server's /props (total_slots) — the valid id_slot
@@ -397,9 +424,17 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     let tokenizeUrl: string | undefined;
     let reasoningStyle = spec.reasoningStyle;
     if (spec.probeNctx === true) {
-        const probe = await probeModels(url, headers, wireModel, fetchTimeoutMs);
+        // Operator pin (#34): "1" → llama-server capabilities WITHOUT trusting
+        // the probe; "0" → plain remote, skip the fingerprint; unset → detect.
+        const pinRaw = spec.llamaServerEnvVar !== undefined ? env[spec.llamaServerEnvVar] : undefined;
+        if (pinRaw !== undefined && pinRaw !== "" && pinRaw !== "0" && pinRaw !== "1") {
+            throw new Error(`${name} provider: ${spec.llamaServerEnvVar} must be "1" (pin llama-server capabilities), "0" (force plain remote), or unset (auto-detect) (got "${pinRaw}")`);
+        }
+        const pin = pinRaw === undefined || pinRaw === "" ? null : pinRaw === "1";
+        const probe = await probeModelsRetrying(url, headers, wireModel, fetchTimeoutMs);
         contextSize ??= probe.nCtx;
-        if (probe.llamaServer && spec.detectLlamaServer !== false) {
+        const isLlama = pin ?? (probe.llamaServer && spec.detectLlamaServer !== false);
+        if (isLlama && spec.detectLlamaServer !== false) {
             grammarStyle = "llamacpp";
             supportsSlotPinning = true;
             slotCount = await probeSlotCount(url, headers, fetchTimeoutMs);
@@ -408,8 +443,16 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             tokenizeUrl = url.replace(/\/v1\/chat\/completions$/, "/tokenize");
             // llama-server ignores `think` — its working reasoning toggle is the
             // jinja chat_template_kwargs.enable_thinking, including the explicit
-            // FALSE at budget 0 that grammar-constrained loops require (§13).
+            // FALSE at THINKING=off that grammar-constrained loops require (§13).
             if (reasoningStyle === "think") reasoningStyle = "template";
+        } else if (pin === null && probe.failed && spec.detectLlamaServer !== false) {
+            // Detection exhausted its retries with NO answer: capability stays
+            // un-upgraded, but NEVER silently (#34) — rails going dark without a
+            // signal cost the consumer weeks of misattributed rambles.
+            process.emitWarning(
+                `${name} provider: llama-server detection failed after ${PROBE_ATTEMPTS} attempts — grammar transport stays OFF (grammarStyle "none"). If this endpoint IS a llama-server, pin ${spec.llamaServerEnvVar ?? "the capability"}=1.`,
+                { code: "PLURNK_PROBE_FAILED" },
+            );
         }
     }
 

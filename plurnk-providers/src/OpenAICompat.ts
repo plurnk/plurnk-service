@@ -207,6 +207,10 @@ export default class OpenAICompatProvider implements Provider {
 
     get contextSize(): number | null { return this.#contextSize; }
     get model(): string { return this.#model; }
+    // Resolved capability (#34): will a transported grammar actually constrain
+    // this backend's decode? Introspectable so a consumer can verify the rails
+    // are LIVE without spending a generation on a forcing-grammar probe.
+    get constrainsOutput(): boolean { return this.#grammarStyle !== "none"; }
 
     countTokens(text: string): number { return this.#countTokens(text); }
     costFor(usage: ProviderUsage): number { return this.#costFor(usage); }

@@ -103,6 +103,11 @@ export interface Provider {
     // server splits --ctx-size across slots and reports the divided value).
     readonly contextSize: number | null;
     readonly model: string;
+    // OPTIONAL resolved capability (#34): true when a transported grammar will
+    // actually constrain the decode (rails LIVE), false/undefined otherwise —
+    // introspectable so the consumer can fail hard on a dark-rails boot instead
+    // of discovering it from unconstrained emissions.
+    readonly constrainsOutput?: boolean;
     // Provider-owned tokenizer. Synchronous, non-negative integer. Without an
     // exact family configured this is the chars/2 UPPER BOUND (surfaced at
     // construction, never silent) — safe for refusal math, not an exact count.
