@@ -334,6 +334,30 @@ test("GBNF: a header-bearing http target derives (constrained models can emit au
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](https://api.dev/items{Authorization: Bearer x}{Content-Type: application/json}):{\"n\":1}:SEND"), true);
 });
 
+test("GBNF: op-count bound — K=14 mid-steps derive, 15 do not; exhaustion forces a valid terminal", () => {
+    // The corridor-flail rail (probes 2026-07-03): a model denied its premature 200 spams
+    // legal mid-steps to the max_tokens wall (reproduced live at seed 7; ×267 in service
+    // digests). At step 14 the only legal continuation is a terminal SEND, so the mask
+    // force-terminates with a valid disposition instead of a wall-death.
+    const turn = (steps: string[], terminal: string) => `<<PLAN:p:PLAN\n${steps.join("\n")}\n${terminal}`;
+    const edit = "<<EDIT(known:///x):v:EDIT";       // side-effect step (stays clean)
+    const read = "<<READ(known:///x)::READ";        // retrieval step (flips dirty)
+    const midSend = "<<SEND[102]:working:SEND";     // mid-SEND is also a counted step
+
+    // 14 clean steps + 200 derives; a 15th step does not.
+    assert.equal(derives("root-turn", turn(Array(14).fill(edit), "<<SEND[200]:done:SEND")), true);
+    assert.equal(derives("root-turn", turn(Array(15).fill(edit), "<<SEND[200]:done:SEND")), false);
+    // 14 retrieval steps + 102 derives (dirty forbids only 200); 15 do not.
+    assert.equal(derives("root-turn", turn(Array(14).fill(read), "<<SEND[102]:fetching:SEND")), true);
+    assert.equal(derives("root-turn", turn(Array(14).fill(read), "<<SEND[200]:done:SEND")), false); // dirty: no 200
+    assert.equal(derives("root-turn", turn(Array(15).fill(read), "<<SEND[102]:fetching:SEND")), false);
+    // The reproduced flail shape (READ,READ,FIND,SEND ×2 then SEND-spam past K) is non-derivable.
+    const flail = [read, read, "<<FIND(src/**)::FIND", midSend, read, read, "<<FIND(src/**)::FIND", midSend, ...Array(10).fill(midSend)];
+    assert.equal(derives("root-turn", turn(flail, "<<SEND[102]:done:SEND")), false);
+    // Mid-SENDs count as steps: 13 sends + 1 op + terminal is exactly 14 → derives.
+    assert.equal(derives("root-turn", turn([...Array(13).fill(midSend), edit], "<<SEND[200]:done:SEND")), true);
+});
+
 test("GBNF: root accepts mid-batch SENDs (targeted/pathless, any status) before the final", () => {
     const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[102]:done:SEND";
     assert.equal(derives("root-turn", batch), true);

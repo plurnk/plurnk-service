@@ -306,27 +306,44 @@ export const buildModel = (): GModel => {
     model.set("think-block", [[lit("<think>"), ref("rz-think-b0"), lit("</think>")]]);
     model.set("channel-block", [[lit("<|channel>"), ref("rz-chan-b0"), lit("<channel|>")]]);
     model.set("reasoning", [[ref("think-block")], [ref("channel-block")]]);
-    // Turn fork — the ONE op/status combo the rail forbids: a terminal SEND[200] after a
-    // RETRIEVAL op (READ/FIND) in the same turn (deterministic insanity — asked for next-turn
-    // data, then declared done before seeing it). A two-state batch tracks whether a retrieval
-    // op has appeared: `tail-clean` (none yet → any terminal, 200 OK) flips to `tail-dirty`
-    // (200 removed) on the first READ/FIND. Side-effect ops (EDIT/COPY/MOVE/OPEN/FOLD) do NOT
-    // flip it — fire-and-forget-then-200 stays legitimate. Everything else stays flat and
-    // canon-guided; this narrow rail was re-added after steering the floor model off READ→200
-    // failed, and the broad 0.74.19-stripped enforcement stays gone.
-    model.set("tail-clean", [
-        [ref("send-mid-any"), ref("sep"), ref("tail-clean")],
-        [ref("op-statement"), ref("sep"), ref("tail-clean")],
-        [ref("retrieval-op"), ref("sep"), ref("tail-dirty")],
-        [ref("send-final-any"), ref("sep")],
-    ]);
-    model.set("tail-dirty", [
-        [ref("send-mid-any"), ref("sep"), ref("tail-dirty")],
-        [ref("op-statement"), ref("sep"), ref("tail-dirty")],
-        [ref("retrieval-op"), ref("sep"), ref("tail-dirty")],
-        [ref("send-final-nodone"), ref("sep")],
-    ]);
-    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), ref("tail-clean")]]);
+    // Turn fork — two structural rails on the batch, both content-agnostic:
+    //
+    // 1. RETRIEVAL→200 (0.74.47): a terminal SEND[200] after a READ/FIND in the same turn is
+    //    forbidden (asked for next-turn data, then declared done before seeing it). `clean`
+    //    (any terminal, 200 OK) flips to `dirty` (200 removed) on the first READ/FIND;
+    //    side-effect ops (EDIT/COPY/MOVE/OPEN/FOLD) do NOT flip it.
+    //
+    // 2. OP-COUNT BOUND (K mid-steps, then the ONLY legal continuation is a terminal SEND).
+    //    Evidence, 2026-07-03 probes: unconstrained turns run 3–10 mid-steps and terminate
+    //    cleanly; the live failure is a model denied its (correctly blocked) premature 200
+    //    flailing in the legal corridor — mid-SEND spam / op repetition to the max_tokens
+    //    wall (reproduced at seed 7; ×267 in service digests). The bound is the exit sign:
+    //    at step K the mask force-terminates the turn with a VALID disposition instead of a
+    //    wall-death. PLAN + K + terminal SEND = a 16-statement turn ceiling.
+    //
+    // The fork therefore counts: state (clean|dirty) × steps-taken (0..K) — 2(K+1) rules.
+    // This stays a NARROW, structural rail; the broad 0.74.19-stripped semantic policing
+    // stays gone, and free-text/reasoning spans stay unbounded (probes show the models'
+    // preferred preamble is 0 chars — length is the sampler's concern, not the rail's).
+    const K_MID_STEPS = 14;
+    for (let k = 0; k < K_MID_STEPS; k++) {
+        model.set(`tail-clean-${k}`, [
+            [ref("send-mid-any"), ref("sep"), ref(`tail-clean-${k + 1}`)],
+            [ref("op-statement"), ref("sep"), ref(`tail-clean-${k + 1}`)],
+            [ref("retrieval-op"), ref("sep"), ref(`tail-dirty-${k + 1}`)],
+            [ref("send-final-any"), ref("sep")],
+        ]);
+        model.set(`tail-dirty-${k}`, [
+            [ref("send-mid-any"), ref("sep"), ref(`tail-dirty-${k + 1}`)],
+            [ref("op-statement"), ref("sep"), ref(`tail-dirty-${k + 1}`)],
+            [ref("retrieval-op"), ref("sep"), ref(`tail-dirty-${k + 1}`)],
+            [ref("send-final-nodone"), ref("sep")],
+        ]);
+    }
+    // Step budget exhausted: terminal SEND is the only continuation (still fork-aware).
+    model.set(`tail-clean-${K_MID_STEPS}`, [[ref("send-final-any"), ref("sep")]]);
+    model.set(`tail-dirty-${K_MID_STEPS}`, [[ref("send-final-nodone"), ref("sep")]]);
+    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), ref("tail-clean-0")]]);
     trieRules(model, "op-statement", opEntries);
     trieRules(model, "retrieval-op", retrievalEntries);
     trieRules(model, "send-mid-any", sendMidEntries);
