@@ -584,6 +584,23 @@ test("plurnk: forwards attributions + client as Plurnk-* telemetry headers (firs
     mock.restoreAll();
 });
 
+test("plurnk: forwards strikes as Plurnk-Strikes — and 0 is a real value, distinct from absent (#313)", async () => {
+    let seen = plurnkMock();
+    let p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    await p!.generate({ runId: "r", messages: [], strikes: 3 });
+    assert.equal(chatHeaders(seen)["Plurnk-Strikes"], "3");
+    mock.restoreAll();
+    seen = plurnkMock();
+    p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    await p!.generate({ runId: "r", messages: [], strikes: 0 }); // clean streak reported explicitly
+    assert.equal(chatHeaders(seen)["Plurnk-Strikes"], "0");
+    mock.restoreAll();
+    seen = plurnkMock();
+    p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    await p!.generate({ runId: "r", messages: [] }); // not reported → no header
+    assert.equal("Plurnk-Strikes" in chatHeaders(seen), false);
+});
+
 test("fireworks: does NOT forward attributions/client — first-party telemetry can't leak to a third party", async () => {
     let seenHeaders: Record<string, string> = {};
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
@@ -594,9 +611,10 @@ test("fireworks: does NOT forward attributions/client — first-party telemetry 
         return new Response("{}", { status: 200 });
     });
     const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, "deepseek-v4-flash");
-    await p!.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0" });
+    await p!.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0", strikes: 2 });
     assert.equal("Plurnk-Attribution" in seenHeaders, false);
     assert.equal("Plurnk-Client" in seenHeaders, false);
+    assert.equal("Plurnk-Strikes" in seenHeaders, false); // strikes gated identically
     mock.restoreAll();
 });
 

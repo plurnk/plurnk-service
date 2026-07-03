@@ -7,6 +7,7 @@
 // the same `source` + `kind` discriminator as parse/rail events.
 
 import { OpenAiHttpError } from "./openaiStream.ts";
+import type { ProviderUsage } from "./types.ts";
 
 // Required by the schema: source (producer id) + kind (discriminator). message
 // and position are optional. A transport failure isn't localizable, so it carries
@@ -47,13 +48,18 @@ export class ProviderError extends Error {
     readonly source: string;
     readonly kind: ProviderTelemetryKind;
     readonly status: number | null;
+    // The rejected attempt's forensics (#31): populated on grammar_unenforced so
+    // the consumer can bill the discarded emission and inspect WHAT the model
+    // said, instead of losing both when the turn is rejected. Absent elsewhere.
+    readonly attempt?: { readonly content: string; readonly usage: ProviderUsage };
 
-    constructor(source: string, kind: ProviderTelemetryKind, message: string, options: { status?: number | null; cause?: unknown } = {}) {
+    constructor(source: string, kind: ProviderTelemetryKind, message: string, options: { status?: number | null; cause?: unknown; attempt?: { content: string; usage: ProviderUsage } } = {}) {
         super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
         this.name = "ProviderError";
         this.source = source;
         this.kind = kind;
         this.status = options.status ?? null;
+        if (options.attempt !== undefined) this.attempt = options.attempt;
     }
 
     toTelemetryEvent(): TelemetryEvent {

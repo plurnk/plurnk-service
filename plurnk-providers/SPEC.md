@@ -55,7 +55,12 @@ interface Provider {
     // bypass grammar transport (§8). For a PROXY consumer forwarding its own
     // caller's sampling knobs (the plurnk endpoint fronting gemma/Fireworks); a
     // direct consumer leaves it unset.
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
+    // `strikes` is the run's CURRENT rail-strike streak at time-of-generate
+    // (0 = clean, distinct from absent = unreported; contract plurnk-service#313).
+    // Forwarded as `Plurnk-Strikes` ONLY under the firstPartyMetadata gate,
+    // dropped everywhere else — and headers only: the packet NEVER carries
+    // strike state (engine accounting must not become a model-facing metric).
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
 }
 
 interface ProviderResponse {
@@ -93,7 +98,7 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `contextSize` resolves to `null` when provider can't determine the model's context window. Consumer treats null as "no budget info available."
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
-- `generate` **verifies enforcement** when it transported a grammar: it validates the returned `content` against that grammar and rejects with a `grammar_unenforced` `ProviderError` if the backend did not actually constrain the output (§13). This is a grammar-**conformance** check against the grammar the provider already holds — *not* a plurnk-DSL parse (that stays consumer-side, below) — so it remains backend- and DSL-agnostic.
+- `generate` **verifies enforcement** when it transported a grammar: it validates the returned `content` against that grammar and rejects with a `grammar_unenforced` `ProviderError` if the backend did not actually constrain the output (§13). This is a grammar-**conformance** check against the grammar the provider already holds — *not* a plurnk-DSL parse (that stays consumer-side, below) — so it remains backend- and DSL-agnostic. The error carries the rejected attempt's forensics — `error.attempt = { content, usage }` (the verbatim discarded emission + normalized usage) — so the consumer can bill the spend it already incurred and inspect what the model actually said (#31).
 - **Backend affinity is the provider's internal guarantee, keyed by `runId`.** The consumer says *which run this is*, never *which backend resource serves it* — raw resource identifiers (slot integers, connections) never cross the contract in either direction. On slot-pinning backends (llama-server `--parallel N>1`), the provider keeps each run sticky to one slot and spreads distinct runs across slots, so each concurrent run keeps its KV-cache prefix warm (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Backends without affinity semantics ignore `runId` entirely.
 
 ## §3 `fromEnv(env, model, options?)` factory

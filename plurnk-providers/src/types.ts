@@ -91,7 +91,14 @@ export interface Provider {
     // only and can't bypass grammar transport (SPEC §8 holds). A PROXY consumer (the
     // plurnk endpoint fronting its own backends) uses it to pass its caller's sampling
     // knobs through; a direct consumer typically leaves it unset.
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
+    //
+    // `strikes` is the run's CURRENT rail-strike streak at time-of-generate
+    // (0 = clean; a clean turn zeroes it; every loop starts at 0 — contract:
+    // plurnk-service#313). Forwarded as a `Plurnk-Strikes` header ONLY under the
+    // same firstPartyMetadata gate as attributions/client; dropped everywhere
+    // else. Headers only — the packet NEVER carries strike state (the model must
+    // not see engine accounting; it would become a metric to game).
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.

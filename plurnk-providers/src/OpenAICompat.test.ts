@@ -297,6 +297,10 @@ test("enforcement: output the grammar REJECTS fails hard as grammar_unenforced, 
         assert.equal(err.source, "provider:test");
         assert.match(err.message, /grammar not enforced: output rejected .* at code point 0/);
         assert.deepEqual(err.toTelemetryEvent(), { source: "provider:test", kind: "grammar_unenforced", message: err.message, position: null });
+        // #31: the rejected attempt's forensics ride the error — the consumer
+        // billed for the discarded emission and needs its bytes + usage.
+        assert.equal(err.attempt?.content, "no");
+        assert.deepEqual(err.attempt?.usage, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
         return true;
     });
 });

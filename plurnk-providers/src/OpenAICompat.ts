@@ -9,7 +9,7 @@
 // Pure-config providers come from ./standardProviders.ts with no sibling at all.
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
-import { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
+import { chatCompletionStream, chatCompletion, OpenAiHttpError, type StreamResponse } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
@@ -280,13 +280,18 @@ export default class OpenAICompatProvider implements Provider {
 
     // First-party telemetry headers (SPEC §5): forwarded ONLY when the spec
     // opted in (the plurnk endpoint). The gate is here, not at the call site, so
-    // attributions/client can never reach a third-party backend even if the
-    // consumer passes them to the wrong provider. Empty values emit no header.
-    #metadataHeaders(attributions: string[] | undefined, client: string | undefined): Record<string, string> {
+    // attributions/client/strikes can never reach a third-party backend even if
+    // the consumer passes them to the wrong provider. Empty values emit no header
+    // — EXCEPT strikes, where 0 is a real value (clean streak) distinct from
+    // absent (consumer didn't report); contract per plurnk-service#313. Strikes
+    // ride HTTP headers only — the packet never carries them (the model must
+    // never see strike state; engine accounting is not a metric to game).
+    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined): Record<string, string> {
         if (!this.#firstPartyMetadata) return {};
         const h: Record<string, string> = {};
         if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
         if (client !== undefined && client.length > 0) h["Plurnk-Client"] = client;
+        if (strikes !== undefined && Number.isInteger(strikes) && strikes >= 0) h["Plurnk-Strikes"] = String(strikes);
         return h;
     }
 
@@ -319,11 +324,16 @@ export default class OpenAICompatProvider implements Provider {
     // MUST have constrained the output — some silently drop the grammar field or
     // mislabel the channel. STRICT: any non-accept verdict throws a terminal
     // grammar_unenforced ProviderError. A conformance check against the grammar we
-    // already hold, NOT a plurnk-DSL parse (§8) — backend-agnostic.
-    #verifyGrammarEnforced(grammar: string, content: string): void {
-        const verdict = this.#grammarVerdict(grammar, content);
+    // already hold, NOT a plurnk-DSL parse (§8) — backend-agnostic. The rejected
+    // attempt's content + normalized usage ride the error (#31): the consumer
+    // billed for the discarded emission and lost its bytes — a 33k-char verdict
+    // offset was once the only forensic window into what a model actually said.
+    #verifyGrammarEnforced(grammar: string, raw: StreamResponse): void {
+        const verdict = this.#grammarVerdict(grammar, raw.content);
         if (verdict === null || verdict.status === "accept") return;
-        throw new ProviderError(this.#source, "grammar_unenforced", describeUnenforced(verdict));
+        throw new ProviderError(this.#source, "grammar_unenforced", describeUnenforced(verdict), {
+            attempt: { content: raw.content, usage: normalizeUsage(raw.usage) },
+        });
     }
 
     // GBNF-FILTER path (PLURNK_GBNF_DEBUG: grammar withheld, output validated after
@@ -381,7 +391,7 @@ export default class OpenAICompatProvider implements Provider {
         return out;
     }
 
-    async generate({ messages, runId, signal, grammar, maxTokens, attributions, client, sampling }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
+    async generate({ messages, runId, signal, grammar, maxTokens, attributions, client, strikes, sampling }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
         // Boundary validation (SPEC §2): the run identity is required.
         if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
@@ -428,7 +438,7 @@ export default class OpenAICompatProvider implements Provider {
         const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
 
         // Per-request headers = static auth/routing + any first-party telemetry.
-        const metaHeaders = this.#metadataHeaders(attributions, client);
+        const metaHeaders = this.#metadataHeaders(attributions, client, strikes);
         const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
         let raw;
         for (let attempt = 0; ; attempt++) {
@@ -459,7 +469,7 @@ export default class OpenAICompatProvider implements Provider {
         //     consumer can feed the divergence back for self-correction (#24).
         let telemetry: TelemetryEvent[] | undefined;
         if (sendGrammar !== undefined) {
-            this.#verifyGrammarEnforced(sendGrammar, raw.content);
+            this.#verifyGrammarEnforced(sendGrammar, raw);
         } else if (wantGrammar && this.#gbnfDebug) {
             const event = this.#grammarConflictEvent(grammar!, raw.content);
             if (event !== null) telemetry = [event];
