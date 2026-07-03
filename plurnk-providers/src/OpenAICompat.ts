@@ -62,25 +62,21 @@ export type OpenAICompatConfig = {
     // backend's mechanism via reasoningStyle; capacity is only ever a magnitude,
     // never a hidden activation flag (#33).
     thinking: Thinking;
-    // Grammar decode tuning — REQUIRED, no in-code defaults (the canonical
-    // measured values, 0.2 / 1.15, live in .env.example; both alias-scopable):
-    // grammarTemperature is a near-greedy DEFAULT spread UNDER caller sampling
-    // on every grammar path (#30/endpoint#7); grammarRepeatPenalty is the FLOOR
-    // riding every attached grammar (managed — greedy-under-mask loops without
-    // it, #9). Values are operator config; WHERE they apply stays mechanism.
-    grammarTemperature: number;
-    grammarRepeatPenalty: number;
+    // Decode tuning — REQUIRED, no in-code defaults (canonical measured values,
+    // 0.2 / 1.15, live in .env.example; alias-scopable). `temperature` is the
+    // DEFAULT for EVERY request, spread UNDER caller sampling (#30/endpoint#7).
+    // `repeatPenalty` is the FLOOR the provider manages wherever a grammar rides
+    // (greedy-under-mask loops without it, #9) — the VALUE is operator config;
+    // WHERE it applies stays mechanism. `retryDelayMs` is the transient-retry
+    // backoff base (attempt N waits retryDelayMs * 2^(N-1); Retry-After wins).
+    temperature: number;
+    repeatPenalty: number;
+    retryDelayMs: number;
     // Transient-failure retry budget — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
     // first failure; N = up to N retries on a transient error (§4, #18).
     retryAttempts: number;
 };
-
-// Exponential-backoff base for transient-failure retries (#18). Attempt N waits
-// RETRY_BASE_DELAY_MS * 2^(N-1), unless the server sent a Retry-After (which
-// wins). The magnitude is mechanism, not operator intent — the COUNT is the
-// knob (PLURNK_PROVIDERS_RETRY_ATTEMPTS); the base stays a constant.
-const RETRY_BASE_DELAY_MS = 2000;
 
 // Only these two classifications are transient and worth retrying: rate_limit
 // (429) and network_failure (5xx, timeout, connection reset). unauthorized,
@@ -139,8 +135,9 @@ export default class OpenAICompatProvider implements Provider {
     #headers: Record<string, string>;
     #contextSize: number | null;
     #thinking: Thinking;
-    #grammarTemperature: number;
-    #grammarRepeatPenalty: number;
+    #temperature: number;
+    #repeatPenalty: number;
+    #retryDelayMs: number;
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
     #costFor: (usage: ProviderUsage) => number;
@@ -170,11 +167,12 @@ export default class OpenAICompatProvider implements Provider {
         // Loud guard: an out-of-date consumer (stale daughter dist) omitting the
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
-        if (typeof config.grammarTemperature !== "number" || typeof config.grammarRepeatPenalty !== "number") {
-            throw new Error(`${config.source ?? "provider"}: OpenAICompatConfig requires grammarTemperature + grammarRepeatPenalty (PLURNK_PROVIDERS_GRAMMAR_TEMPERATURE / _GRAMMAR_REPEAT_PENALTY) — rebuild against providers >= 0.33.0`);
+        if (typeof config.temperature !== "number" || typeof config.repeatPenalty !== "number" || typeof config.retryDelayMs !== "number") {
+            throw new Error(`${config.source ?? "provider"}: OpenAICompatConfig requires temperature + repeatPenalty + retryDelayMs (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY / _RETRY_DELAY) — rebuild against providers >= 0.33.0`);
         }
-        this.#grammarTemperature = config.grammarTemperature;
-        this.#grammarRepeatPenalty = config.grammarRepeatPenalty;
+        this.#temperature = config.temperature;
+        this.#repeatPenalty = config.repeatPenalty;
+        this.#retryDelayMs = config.retryDelayMs;
         this.#retryAttempts = config.retryAttempts;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
@@ -302,8 +300,8 @@ export default class OpenAICompatProvider implements Provider {
             // floor (#9, SPEC §13) — every grammar path carries it. llama.cpp spells
             // it `repeat_penalty`; the OpenAI-compat (Fireworks) shape is `repetition_penalty`
             // (verified honored live, #20).
-            case "llamacpp": return { grammar, repeat_penalty: this.#grammarRepeatPenalty };
-            case "response_format": return { response_format: { type: "grammar", grammar }, repetition_penalty: this.#grammarRepeatPenalty };
+            case "llamacpp": return { grammar, repeat_penalty: this.#repeatPenalty };
+            case "response_format": return { response_format: { type: "grammar", grammar }, repetition_penalty: this.#repeatPenalty };
             case "none": return {};
         }
     }
@@ -429,14 +427,12 @@ export default class OpenAICompatProvider implements Provider {
         if (wantGrammar && this.#gbnfDebug) this.#assertGrammarValid(grammar!);
         const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
 
-        // Assembly order = precedence: grammar-path sampling DEFAULTS (any
-        // transported grammar needs a near-greedy decode, #30) < the caller's
-        // `sampling` < the managed fields (model/messages/reasoning/grammar/
-        // max_tokens/slot), which always win.
-        const grammarSamplingDefaults: Record<string, unknown> =
-            sendGrammar !== undefined ? { temperature: this.#grammarTemperature } : {};
+        // Assembly order = precedence: the family's sampling DEFAULTS
+        // (PLURNK_PROVIDERS_TEMPERATURE — universal, #30 measured it on grammar
+        // paths and the name promises every request) < the caller's `sampling`
+        // < the managed fields, which always win.
         const body: Record<string, unknown> = {
-            ...grammarSamplingDefaults,
+            temperature: this.#temperature,
             ...this.#samplingBody(sampling),
             model: this.#model,
             messages,
@@ -476,7 +472,7 @@ export default class OpenAICompatProvider implements Provider {
                 // Terminal kind, or budget spent → surface the classified failure.
                 if (!RETRYABLE.has(kind) || attempt >= this.#retryAttempts) throw toProviderError(err, this.#source);
                 const retryAfter = err instanceof OpenAiHttpError ? err.retryAfter : null;
-                await sleepWithAbort(retryAfter ?? RETRY_BASE_DELAY_MS * 2 ** attempt, signal);
+                await sleepWithAbort(retryAfter ?? this.#retryDelayMs * 2 ** attempt, signal);
             }
         }
 

@@ -318,11 +318,9 @@ const resolveHeaders = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, labe
 // { null, false } — a legitimate "unknown", not a swallowed contract violation.
 type EndpointProbe = { nCtx: number | null; llamaServer: boolean; failed: boolean };
 
-// One probe failure must never decide capability (#34): a busy server timing out
-// at boot is not evidence of "not a llama-server". Retries are mechanism, not an
-// operator knob — constants, short backoff.
-const PROBE_ATTEMPTS = 3;
-const PROBE_RETRY_DELAY_MS = 250;
+// One probe failure must never decide capability (#34). Attempts/delay are
+// operator knobs (PLURNK_PROVIDERS_PROBE_ATTEMPTS / _PROBE_DELAY, canonical
+// 3 / 250ms in .env.example) — the full-sweep rule: no magic numbers in code.
 
 const probeModels = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number): Promise<EndpointProbe> => {
     const modelsUrl = chatUrl.replace(/\/chat\/completions$/, "/models");
@@ -348,10 +346,10 @@ const probeModels = async (chatUrl: string, headers: Record<string, string>, mod
 // Retry wrapper (#34): only FAILED probes (non-200 / thrown fetch / timeout)
 // retry — a confirmed answer returns immediately. Exhaustion returns the last
 // failed result; the CALLER decides what a still-unknown capability means.
-const probeModelsRetrying = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number): Promise<EndpointProbe> => {
+const probeModelsRetrying = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number, attempts: number, delayMs: number): Promise<EndpointProbe> => {
     let probe: EndpointProbe = { nCtx: null, llamaServer: false, failed: true };
-    for (let attempt = 0; attempt < PROBE_ATTEMPTS; attempt++) {
-        if (attempt > 0) await new Promise((r) => setTimeout(r, PROBE_RETRY_DELAY_MS * 2 ** (attempt - 1)));
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, delayMs * 2 ** (attempt - 1)));
         probe = await probeModels(chatUrl, headers, model, fetchTimeoutMs);
         if (!probe.failed) return probe;
     }
@@ -432,7 +430,8 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             throw new Error(`${name} provider: PLURNK_PROVIDERS_LLAMA_SERVER must be "1" (pin llama-server capabilities), "0" (force plain remote), or unset (auto-detect) (got "${pinRaw}")`);
         }
         const pin = pinRaw === undefined || pinRaw === "" ? null : pinRaw === "1";
-        const probe = await probeModelsRetrying(url, headers, wireModel, fetchTimeoutMs);
+        const probeAttempts = parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_ATTEMPTS, "PLURNK_PROVIDERS_PROBE_ATTEMPTS", name);
+        const probe = await probeModelsRetrying(url, headers, wireModel, fetchTimeoutMs, probeAttempts, parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_DELAY, "PLURNK_PROVIDERS_PROBE_DELAY", name));
         contextSize ??= probe.nCtx;
         const isLlama = pin ?? (probe.llamaServer && spec.detectLlamaServer !== false);
         if (isLlama && spec.detectLlamaServer !== false) {
@@ -451,7 +450,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             // un-upgraded, but NEVER silently (#34) — rails going dark without a
             // signal cost the consumer weeks of misattributed rambles.
             process.emitWarning(
-                `${name} provider: llama-server detection failed after ${PROBE_ATTEMPTS} attempts — grammar transport stays OFF (grammarStyle "none"). If this endpoint IS a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER=1 (or its _<alias> form).`,
+                `${name} provider: llama-server detection failed after ${probeAttempts} attempts — grammar transport stays OFF (grammarStyle "none"). If this endpoint IS a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER=1 (or its _<alias> form).`,
                 { code: "PLURNK_PROBE_FAILED" },
             );
         }
@@ -484,8 +483,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         contextSize,
         fetchTimeoutMs,
         thinking: thinkingFromEnv(env, name),
-        grammarTemperature: parseRequiredFloat(env.PLURNK_PROVIDERS_GRAMMAR_TEMPERATURE, "PLURNK_PROVIDERS_GRAMMAR_TEMPERATURE", name, 0),
-        grammarRepeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_GRAMMAR_REPEAT_PENALTY, "PLURNK_PROVIDERS_GRAMMAR_REPEAT_PENALTY", name, 0),
+        temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", name, 0),
+        repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
+        retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", name),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         reasoningStyle,
         costFor,
