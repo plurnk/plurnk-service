@@ -349,28 +349,16 @@ export default class OpenAICompatProvider implements Provider {
         }
     }
 
-    // CONSTRAINED path (grammar transported, grammarStyle !== "none"): the backend
-    // MUST have constrained the output — some silently drop the grammar field or
-    // mislabel the channel. STRICT: any non-accept verdict throws a terminal
-    // grammar_unenforced ProviderError. A conformance check against the grammar we
-    // already hold, NOT a plurnk-DSL parse (§8) — backend-agnostic. The rejected
-    // attempt's content + normalized usage ride the error (#31): the consumer
-    // billed for the discarded emission and lost its bytes — a 33k-char verdict
-    // offset was once the only forensic window into what a model actually said.
-    #verifyGrammarEnforced(grammar: string, raw: StreamResponse): void {
-        const verdict = this.#grammarVerdict(grammar, raw.content);
-        if (verdict === null || verdict.status === "accept") return;
-        throw new ProviderError(this.#source, "grammar_unenforced", describeUnenforced(verdict), {
-            attempt: { content: raw.content, usage: normalizeUsage(raw.usage) },
-        });
-    }
-
-    // GBNF-FILTER path (PLURNK_GBNF_DEBUG: grammar withheld, output validated after
-    // the fact). Non-conformance is EXPECTED here, so it does NOT throw — it returns
-    // a non-fatal grammar_unenforced TelemetryEvent carrying the divergence position
-    // (the model's bytes ride the response, not the message), so the consumer can
-    // render the model its own emission around `position` and let it self-correct
-    // (#24). null when the output conforms or the verify gap fired.
+    // Conformance observation (SPEC §13). A COMPLETED exchange always returns —
+    // the model's bytes flow in `assistant` no matter what — and a non-accept
+    // verdict rides `response.telemetry` as a grammar_unenforced OBSERVATION
+    // carrying the divergence position. One check, both paths (grammar
+    // transported OR withheld under PLURNK_GBNF_DEBUG); whether to discard,
+    // retry, escalate, or feed the divergence back is CONSUMER policy — the
+    // provider transports and observes, it never adjudicates. (Every measured
+    // "failure" in the field was a legal prefix; throwing destroyed billed
+    // bytes the consumer wanted — #31's error payload, now subsumed by the
+    // response itself.) null when the output conforms or the verify gap fired.
     #grammarConflictEvent(grammar: string, content: string): TelemetryEvent | null {
         const verdict = this.#grammarVerdict(grammar, content);
         if (verdict === null || verdict.status === "accept") return null;
@@ -487,20 +475,16 @@ export default class OpenAICompatProvider implements Provider {
             }
         }
 
-        // Grammar conformance (§13). Two paths from one check, splitting on whether
-        // we actually transported the grammar:
-        //   - CONSTRAINED (sendGrammar): the backend was told to enforce → a non-accept
-        //     verdict is a hard failure, THROW grammar_unenforced before the content
-        //     reaches the consumer.
-        //   - FILTER (PLURNK_GBNF_DEBUG): grammar withheld, model ran unconstrained →
-        //     non-conformance is expected diagnostic, NOT a failure. Attach it as a
-        //     non-fatal telemetry event so the model's bytes still flow and the
-        //     consumer can feed the divergence back for self-correction (#24).
+        // Grammar conformance (§13): bytes always flow; the verdict is an
+        // observation. Same check whether the grammar was transported
+        // (sendGrammar) or withheld (PLURNK_GBNF_DEBUG filter mode) — a
+        // non-accept verdict attaches a grammar_unenforced telemetry event
+        // (message + divergence position) and the response returns normally.
+        // Discard/retry/escalate/self-correct is the consumer's policy.
         let telemetry: TelemetryEvent[] | undefined;
-        if (sendGrammar !== undefined) {
-            this.#verifyGrammarEnforced(sendGrammar, raw);
-        } else if (wantGrammar && this.#gbnfDebug) {
-            const event = this.#grammarConflictEvent(grammar!, raw.content);
+        const observedGrammar = sendGrammar ?? (wantGrammar && this.#gbnfDebug ? grammar : undefined);
+        if (observedGrammar !== undefined) {
+            const event = this.#grammarConflictEvent(observedGrammar, raw.content);
             if (event !== null) telemetry = [event];
         }
 

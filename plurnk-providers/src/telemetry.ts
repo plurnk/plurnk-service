@@ -7,7 +7,6 @@
 // the same `source` + `kind` discriminator as parse/rail events.
 
 import { OpenAiHttpError } from "./openaiStream.ts";
-import type { ProviderUsage } from "./types.ts";
 
 // Required by the schema: source (producer id) + kind (discriminator). message
 // and position are optional. A transport failure isn't localizable, so it carries
@@ -30,12 +29,11 @@ export type ProviderTelemetryKind =
     | "invalid_response"
     | "unauthorized"
     | "quota_exceeded"
-    // Output did not conform to the GBNF. On the CONSTRAINED path (grammar sent,
-    // backend should enforce) the provider throws this as a terminal ProviderError
-    // — a backend that ignored the grammar is a hard failure. In GBNF-filter mode
-    // (grammar withheld, validated after the fact) it is NON-fatal: minted as a
-    // TelemetryEvent on the returned response, carrying the divergence position so
-    // the consumer can let the model self-correct (#24, SPEC §13).
+    // Output did not conform to the GBNF. ALWAYS an observation, never a throw:
+    // a completed exchange returns its bytes with this event on
+    // response.telemetry (message + divergence position), whether the grammar
+    // was transported or withheld (filter mode). Discard/retry/escalate is
+    // consumer policy (#24, SPEC §13).
     | "grammar_unenforced";
 
 // Build a provider source label (`provider:<vendor>`), schema-pattern-valid.
@@ -48,18 +46,13 @@ export class ProviderError extends Error {
     readonly source: string;
     readonly kind: ProviderTelemetryKind;
     readonly status: number | null;
-    // The rejected attempt's forensics (#31): populated on grammar_unenforced so
-    // the consumer can bill the discarded emission and inspect WHAT the model
-    // said, instead of losing both when the turn is rejected. Absent elsewhere.
-    readonly attempt?: { readonly content: string; readonly usage: ProviderUsage };
 
-    constructor(source: string, kind: ProviderTelemetryKind, message: string, options: { status?: number | null; cause?: unknown; attempt?: { content: string; usage: ProviderUsage } } = {}) {
+    constructor(source: string, kind: ProviderTelemetryKind, message: string, options: { status?: number | null; cause?: unknown } = {}) {
         super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
         this.name = "ProviderError";
         this.source = source;
         this.kind = kind;
         this.status = options.status ?? null;
-        if (options.attempt !== undefined) this.attempt = options.attempt;
     }
 
     toTelemetryEvent(): TelemetryEvent {

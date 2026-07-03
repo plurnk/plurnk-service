@@ -295,8 +295,8 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
     assert.equal("response_format" in body, false);
 });
 
-// — grammar ENFORCEMENT verification (SPEC §13): the backend must have honored
-//   the grammar we transported; strict — any non-accept verdict fails hard —
+// — grammar conformance OBSERVATION (SPEC §13): a completed exchange always
+//   returns; bytes flow; a non-accept verdict rides response.telemetry —
 
 const grammarProvider = () => new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
 const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
@@ -308,45 +308,42 @@ test("enforcement: conforming output passes through unchanged", async () => {
     assert.equal(assistant.content, "ok");
 });
 
-test("enforcement: output the grammar REJECTS fails hard as grammar_unenforced, naming the divergence", async () => {
-    const { ProviderError } = await import("./telemetry.ts");
+test("observation: REJECTED output still returns — bytes present, verdict attached with position", async () => {
     const p = grammarProvider();
     streamingContent("no");
-    await assert.rejects(() => p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }), (err: unknown) => {
-        assert.ok(err instanceof ProviderError);
-        assert.equal(err.kind, "grammar_unenforced");
-        assert.equal(err.source, "provider:test");
-        assert.match(err.message, /grammar not enforced: output rejected .* at code point 0/);
-        assert.deepEqual(err.toTelemetryEvent(), { source: "provider:test", kind: "grammar_unenforced", message: err.message, position: null });
-        // #31: the rejected attempt's forensics ride the error — the consumer
-        // billed for the discarded emission and needs its bytes + usage.
-        assert.equal(err.attempt?.content, "no");
-        assert.deepEqual(err.attempt?.usage, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
-        return true;
-    });
+    const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    assert.equal(res.assistant.content, "no"); // bytes ALWAYS flow
+    assert.equal(res.telemetry?.length, 1);
+    const ev = res.telemetry![0];
+    assert.equal(ev.kind, "grammar_unenforced");
+    assert.equal(ev.source, "provider:test");
+    assert.match(String(ev.message), /grammar not enforced: output rejected .* at code point 0/);
+    assert.equal(ev.position, 0); // divergence offset for consumer policy
 });
 
-test("enforcement: STRICT — an incomplete (valid prefix, never terminated) also fails", async () => {
-    const { ProviderError } = await import("./telemetry.ts");
+test("observation: an incomplete (valid prefix, never terminated) also returns with the verdict", async () => {
     const p = grammarProvider();
     streamingContent("ok");
-    await assert.rejects(() => p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok" "!"' }), (err: unknown) => {
-        assert.ok(err instanceof ProviderError);
-        assert.equal(err.kind, "grammar_unenforced");
-        assert.match(err.message, /incomplete match .* never terminated/);
-        return true;
-    });
+    const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok" "!"' });
+    assert.equal(res.assistant.content, "ok");
+    assert.equal(res.telemetry?.length, 1);
+    assert.match(String(res.telemetry![0].message), /incomplete match .* never terminated/);
+    assert.equal(res.telemetry![0].position, 2);
 });
 
-test("enforcement: empty content under a non-empty grammar fails (the 'content never arrives' leak)", async () => {
-    const { ProviderError } = await import("./telemetry.ts");
+test("observation: conforming output attaches NO telemetry", async () => {
+    const p = grammarProvider();
+    streamingContent("ok");
+    const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    assert.equal(res.telemetry, undefined);
+});
+
+test("observation: empty content under a non-empty grammar returns with the verdict (the 'content never arrives' leak, observed)", async () => {
     const p = grammarProvider();
     installFetch([{ choices: [{ delta: {}, finish_reason: "stop" }] }]); // no content delta → ""
-    await assert.rejects(() => p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }), (err: unknown) => {
-        assert.ok(err instanceof ProviderError);
-        assert.equal(err.kind, "grammar_unenforced");
-        return true;
-    });
+    const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    assert.equal(res.assistant.content, "");
+    assert.equal(res.telemetry?.[0].kind, "grammar_unenforced");
 });
 
 test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated", async () => {
