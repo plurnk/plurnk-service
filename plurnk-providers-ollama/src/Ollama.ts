@@ -6,13 +6,11 @@
 import {
     OpenAICompatProvider,
     parseRequiredInt,
-    reasoningBudgetFromEnv,
+    thinkingFromEnv,
     providerSource,
     requireEnv,
-    tokenizerFor,
     type Provider,
     type ProviderOptions,
-    type TokenizerFamily,
 } from "@plurnk/plurnk-providers";
 
 // Tokenizer dispatch. Ollama exposes the model family via /api/show
@@ -23,9 +21,6 @@ const LLAMA_TOKENIZER_FAMILIES = new Set([
     "llama", "llama2", "llama3",
     "mistral", "mixtral",
 ]);
-
-const tokenizerFamilyFor = (family: string | null): TokenizerFamily =>
-    family !== null && LLAMA_TOKENIZER_FAMILIES.has(family) ? "llama" : "heuristic";
 
 export default class Ollama {
     static async fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): Promise<Provider> {
@@ -46,10 +41,9 @@ export default class Ollama {
             url: `${normalizedBase}/v1/chat/completions`,
             fetchTimeoutMs,
             contextSize,
-            reasoningBudget: reasoningBudgetFromEnv(env, "ollama"),
+            thinking: thinkingFromEnv(env, "ollama"),
             retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", "ollama"),
             reasoningStyle: "think",
-            countTokens: tokenizerFor(tokenizerFamilyFor(family)),
             source: providerSource("ollama"),
         });
     }

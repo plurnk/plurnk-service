@@ -7,7 +7,7 @@ import Ollama from "./Ollama.ts";
 const baseEnv = Object.freeze({
     OLLAMA_BASE_URL: "http://x",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
-    PLURNK_PROVIDERS_REASONING_BUDGET: "0",
+    PLURNK_PROVIDERS_THINKING: "off",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
 });
 
@@ -29,7 +29,7 @@ test("fromEnv: throws when neither OLLAMA_BASE_URL nor OLLAMA_HOST is set", asyn
 });
 
 test("fromEnv: accepts the official OLLAMA_HOST, normalizing a bare host:port to http://", async () => {
-    const rest = { PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING_BUDGET: "0", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0" };
+    const rest = { PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0" };
     const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
     await Ollama.fromEnv({ ...rest, OLLAMA_HOST: "127.0.0.1:11434" }, "qwenzel:latest");
     assert.ok(calls.some((u) => u.startsWith("http://127.0.0.1:11434/")), `normalized OLLAMA_HOST used: ${calls[0]}`);
@@ -49,7 +49,7 @@ test("fromEnv: a per-alias baseUrl override normalizes a bare host:port like OLL
 
 test("fromEnv: throws when PLURNK_PROVIDERS_FETCH_TIMEOUT is unset", async () => {
     await assert.rejects(
-        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "m"),
+        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_THINKING: "off" }, "m"),
         /PLURNK_PROVIDERS_FETCH_TIMEOUT must be set/,
     );
 });
@@ -61,9 +61,9 @@ test("fromEnv: throws when PLURNK_PROVIDERS_FETCH_TIMEOUT is non-numeric", async
     );
 });
 
-test("fromEnv: throws when PLURNK_PROVIDERS_REASONING_BUDGET is non-numeric", async () => {
+test("fromEnv: throws when PLURNK_PROVIDERS_THINKING is not a valid mode", async () => {
     mockShow({ model_info: { "qwen35.context_length": 262144 } });
-    await assert.rejects(() => Ollama.fromEnv({ ...baseEnv, PLURNK_PROVIDERS_REASONING_BUDGET: "lots" }, "m"), /PLURNK_PROVIDERS_REASONING_BUDGET must be an integer >= -1/);
+    await assert.rejects(() => Ollama.fromEnv({ ...baseEnv, PLURNK_PROVIDERS_THINKING: "8192" }, "m"), /PLURNK_PROVIDERS_THINKING must be one of/);
 });
 
 // — /api/show probe —
@@ -102,25 +102,6 @@ test("fromEnv: trailing slash on base URL is stripped before /api/show", async (
 });
 
 // — tokenizer dispatch on the constructed Provider —
-
-test("fromEnv: dispatches to llama tokenizer when details.family is llama (hello world = 3)", async () => {
-    mockShow({ model_info: { "llama.context_length": 131072 }, details: { family: "llama" } });
-    const p = await Ollama.fromEnv({ ...baseEnv }, "llama3:latest");
-    assert.equal(p.countTokens("hello world"), 3);
-});
-
-test("fromEnv: falls back to heuristic when family is unknown (ceil(len/4))", async () => {
-    mockShow({ model_info: { "qwen35.context_length": 262144 }, details: { family: "qwen35" } });
-    const p = await Ollama.fromEnv({ ...baseEnv }, "qwenzel:latest");
-    assert.equal(p.countTokens(""), 0);
-    assert.equal(p.countTokens("12345678"), 2);
-});
-
-test("fromEnv: heuristic when details block is absent", async () => {
-    mockShow({ model_info: { "phi.context_length": 8192 } });
-    const p = await Ollama.fromEnv({ ...baseEnv }, "phi:latest");
-    assert.equal(p.countTokens("abcde"), 2); // ceil(5/4)
-});
 
 test("generate failure carries the provider:ollama telemetry source (SPEC §12)", async () => {
     const { ProviderError } = await import("@plurnk/plurnk-providers");
