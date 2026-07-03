@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-embeddings",
-    "version": "0.9.0",
+    "version": "0.10.0",
     "description": "Opt-in embedder for @plurnk/plurnk-mimetypes' embedding channel. Bundles Xenova/all-MiniLM-L6-v2 (q8 onnx, 384-d) on a vendored portable WASM runtime (onnxruntime-web) — hermetic, no native addon, no runtime network, no transitive install scripts.",
     "type": "module",
     "license": "MIT",
@@ -32,7 +32,7 @@
         "vendor:ort": "node scripts/vendor-ort.mjs",
         "verify:ort": "node scripts/verify-ort.mjs",
         "pretest": "npm run verify:ort",
-        "test:unit": "PLURNK_MIMETYPES_EMBED_WORKERS=2 node --test index.test.js",
+        "test:unit": "PLURNK_MIMETYPES_EMBED_WORKERS=2 node --test index.test.js remote.test.js",
         "test:integration": "PLURNK_MIMETYPES_EMBED_WORKERS=2 node --test test/integration/*.test.js",
         "test": "npm run test:unit && npm run test:integration",
         "deps:fresh": "npm outdated",

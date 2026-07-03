@@ -57,6 +57,10 @@ For bulk corpus generation, feed the tiled chunks to `embedBatch` and forward `o
 
 ## Environment
 
+### Remote mode (#46)
+
+Set `PLURNK_MIMETYPES_EMBED_BASE_URL` (OpenAI-convention `/v1` base; `/embeddings` is appended) to swap the bundled WASM embedder for an OpenAI-compatible endpoint — BYO GPU (llama-server, vLLM, hosted). `PLURNK_MIMETYPES_EMBED_MODEL` is **required** with it; `PLURNK_MIMETYPES_EMBED_API_KEY` optional (Bearer). Dimension is probed at load (unreachable endpoint = import crash = boot-time surfacing); identity becomes `remote:<model>@d<dim>` so a swap re-derives the space. No local tokenizer in remote mode: `maxTokens`/`countTokens` are absent → `embedderInfo()` is null → hosts stay on whole-entry chunks. `embedBatch` sends one request with the whole input array; `PLURNK_MIMETYPES_EMBED_WORKERS` is not required (no pool). Unset BASE_URL = local mode, byte-identical to previous releases.
+
 - `PLURNK_MIMETYPES_EMBED_WORKERS` — **required, no default.** `embedBatch` pool size. A positive integer sets the exact count; **`-1` sizes to the host** (`availableParallelism` — an explicit "match cores" directive, not a fallback). Lower it on a shared or low-RAM host (one model copy per worker). Unset, empty, `0`, or malformed → the embedder crashes on load (it will not guess). See `.env.example`.
 
 ## Scripts

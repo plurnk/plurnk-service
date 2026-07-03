@@ -3,65 +3,77 @@
 // embed(text) → Promise<Uint8Array> of native-endian raw Float32 bytes
 // (4 × dimension), plus the dimension constant.
 //
-// Runtime: onnxruntime-web (WASM) + @huggingface/tokenizers — pure portable
-// JS/WASM, no native N-API addon (the move off transformers.js/onnxruntime-node,
-// plurnk-mimetypes#36). The embed math lives in embed-core.js, shared verbatim
-// by the single main-thread path here and the pool workers.
+// TWO MODES, chosen at load (plurnk-mimetypes#46, routed from service#319):
 //
-// Throughput: embed() runs one text on the calling thread (the framework's
-// per-entry path). embedBatch() spreads many texts across a pool of
-// single-threaded workers — data-parallel, so each vector stays bit-identical
-// (same model identity) while N cores are used. The host (plurnk-service) drives
-// bulk corpus embedding through embedBatch with onProgress so a long run is
-// visible, not opaque (plurnk-mimetypes-embeddings#2).
+//   LOCAL (default, PLURNK_MIMETYPES_EMBED_BASE_URL unset) — the bundled WASM
+//   path, unchanged: onnxruntime-web + @huggingface/tokenizers, hermetic, no
+//   network. embed() on the calling thread; embedBatch() data-parallel across a
+//   worker pool (PLURNK_MIMETYPES_EMBED_WORKERS).
 //
-// Model: Xenova/all-MiniLM-L6-v2, q8 quantized onnx, bundled in model/ at the
-// revision in .model-pin. Hermetic: only local files are read.
+//   REMOTE (BASE_URL set) — an OpenAI-compatible `/v1/embeddings` endpoint
+//   (BYO GPU: llama-server, vLLM, hosted). PLURNK_MIMETYPES_EMBED_MODEL is
+//   REQUIRED; PLURNK_MIMETYPES_EMBED_API_KEY optional (Bearer). The dimension
+//   is PROBED at load with one request — an unreachable/misconfigured endpoint
+//   crashes the import, so the framework's present-but-broken rule surfaces it
+//   at boot, never mid-query. The identity folds model + dimension
+//   (`remote:<model>@d<dim>`), so an embedder swap re-derives the vector space
+//   (service folds it into deep_hash). No local tokenizer in remote mode →
+//   maxTokens/countTokens are absent → embedderInfo() reports null and the host
+//   stays on whole-entry chunks (honest; the window is the endpoint's fact, not
+//   ours to invent).
 import { Worker } from "node:worker_threads";
 import { availableParallelism } from "node:os";
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { loadRuntime, embedText, countTokensWith, releaseRuntime, dimension, maxTokens } from "./embed-core.js";
-
-export { dimension, maxTokens };
+import {
+    loadRuntime, embedText, countTokensWith, releaseRuntime,
+    dimension as localDimension, maxTokens as localMaxTokens,
+} from "./embed-core.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// The two facts that fully determine the output vectors: the HF revision
-// (single source of truth = .model-pin) and the quantization. The runtime and
-// the worker count are deliberately NOT part of the identity — every unit is
-// single-threaded, so output is bit-identical regardless.
-const REPO = "Xenova/all-MiniLM-L6-v2";
-const DTYPE = "q8";
-const PIN = readFileSync(path.join(here, ".model-pin"), "utf-8").trim();
+// Rename tripwire (metaproject family-prefix sweep): the old knob must crash
+// pointing at the new one, never be silently ignored — in EITHER mode.
+// Transitional — delete at the ship-time policy sweep.
+if (process.env.PLURNK_EMBED_WORKERS !== undefined) {
+    throw new RangeError(
+        "PLURNK_EMBED_WORKERS was renamed to PLURNK_MIMETYPES_EMBED_WORKERS "
+        + "(family-prefix convention); update the environment.",
+    );
+}
 
-// Model identity, surfaced by the framework as ProcessResult.embeddingModel.
-// DERIVED, never a hand-synced literal.
-export const model = `${REPO}@${PIN.slice(0, 8)}+${DTYPE}`;
-
-// embedBatch() pool size. REQUIRED — there is no default. Each worker holds its
-// own model copy, so the count is a memory↔throughput decision only the operator
-// can make; the embedder will not guess it (no CPU heuristic, no magic 8). Set
-// PLURNK_MIMETYPES_EMBED_WORKERS to a positive integer, or -1 to size to the
-// host (availableParallelism) — an explicit "match cores" directive, not a guess
-// (see .env.example). Unset, empty, 0, or malformed → crash on load. No
-// fallback, ever.
-const WORKERS = requireWorkers(process.env.PLURNK_MIMETYPES_EMBED_WORKERS);
-
-function requireWorkers(raw) {
-    // Rename tripwire (metaproject family-prefix sweep): the old knob must
-    // crash pointing at the new one, never be silently ignored. Transitional —
-    // delete at the ship-time policy sweep.
-    if (process.env.PLURNK_EMBED_WORKERS !== undefined) {
+// Remote-mode config, resolved once at load. BASE_URL is the OpenAI-convention
+// base (e.g. http://127.0.0.1:8080/v1) — the client appends /embeddings.
+// BASE_URL set without MODEL is a misconfiguration: crash, never guess a model
+// name the endpoint might not serve.
+function resolveRemote() {
+    const base = process.env.PLURNK_MIMETYPES_EMBED_BASE_URL;
+    if (base === undefined || base.trim() === "") return null;
+    const modelName = process.env.PLURNK_MIMETYPES_EMBED_MODEL;
+    if (modelName === undefined || modelName.trim() === "") {
         throw new RangeError(
-            "PLURNK_EMBED_WORKERS was renamed to PLURNK_MIMETYPES_EMBED_WORKERS "
-            + "(family-prefix convention); update the environment.",
+            "PLURNK_MIMETYPES_EMBED_MODEL is required when PLURNK_MIMETYPES_EMBED_BASE_URL is set "
+            + "— the embedder will not guess which model the endpoint serves (see .env.example).",
         );
     }
+    return {
+        url: `${base.trim().replace(/\/+$/, "")}/embeddings`,
+        model: modelName.trim(),
+        key: process.env.PLURNK_MIMETYPES_EMBED_API_KEY,
+    };
+}
+const REMOTE = resolveRemote();
+
+// embedBatch() pool size (LOCAL mode only — remote has no pool). REQUIRED, no
+// default: each worker holds its own model copy, so the count is a
+// memory↔throughput decision only the operator can make. -1 = match cores
+// (availableParallelism), an explicit directive, not a guess. Unset, empty, 0,
+// or malformed → crash on load. No fallback, ever.
+const WORKERS = REMOTE ? null : requireWorkers(process.env.PLURNK_MIMETYPES_EMBED_WORKERS);
+
+function requireWorkers(raw) {
     const n = Number(raw);
-    // -1 is the ecosystem "size to this box" sentinel — an explicit operator
-    // directive, so the "no default, no guess" contract stays intact.
     if (n === -1) return availableParallelism();
     if (raw === undefined || raw.trim() === "" || !Number.isInteger(n) || n < 1) {
         throw new RangeError(
@@ -73,19 +85,84 @@ function requireWorkers(raw) {
     return n;
 }
 
+// POST the OpenAI-compatible embeddings request; texts in → Uint8Array[] out,
+// input order (data[].index is authoritative). Every failure names the
+// endpoint; a wrong-shaped response is a contract violation, never coerced.
+async function remoteEmbedMany(texts, signal) {
+    const res = await fetch(REMOTE.url, {
+        method: "POST",
+        headers: {
+            "content-type": "application/json",
+            ...(REMOTE.key ? { authorization: `Bearer ${REMOTE.key}` } : {}),
+        },
+        body: JSON.stringify({ model: REMOTE.model, input: texts }),
+        ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) {
+        const detail = await res.text().then((t) => t.slice(0, 200)).catch(() => "");
+        throw new Error(`remote embeddings: ${res.status} ${res.statusText} from ${REMOTE.url}${detail ? ` — ${detail}` : ""}`);
+    }
+    const body = await res.json();
+    if (!Array.isArray(body?.data) || body.data.length !== texts.length) {
+        throw new Error(`remote embeddings: expected ${texts.length} vectors from ${REMOTE.url}, got ${Array.isArray(body?.data) ? body.data.length : "no data array"}`);
+    }
+    const out = new Array(texts.length);
+    for (const item of body.data) {
+        if (!Number.isInteger(item?.index) || item.index < 0 || item.index >= texts.length || !Array.isArray(item?.embedding)) {
+            throw new Error(`remote embeddings: malformed data item from ${REMOTE.url}`);
+        }
+        if (dimension !== undefined && item.embedding.length !== dimension) {
+            throw new Error(`remote embeddings: ${REMOTE.url} returned dimension ${item.embedding.length}, expected ${dimension} — vectors from mixed dimensions are incomparable`);
+        }
+        out[item.index] = new Uint8Array(Float32Array.from(item.embedding).buffer);
+    }
+    if (out.some((v) => v === undefined)) throw new Error(`remote embeddings: response from ${REMOTE.url} missing indices`);
+    return out;
+}
+
+// Mode-resolved identity facts. Remote: dimension PROBED at load (one request;
+// unreachable endpoint = crash the import = boot-time surfacing); identity
+// folds model + dimension so an embedder swap re-derives the space; no
+// maxTokens/countTokens (no local tokenizer — embedderInfo() → null → the host
+// stays on whole-entry chunks). Local: the bundled model's facts, identity
+// string byte-identical to every previously stored id.
+export let dimension;
+export let maxTokens;
+export let model;
+if (REMOTE) {
+    const [probe] = await remoteEmbedMany(["plurnk dimension probe"]);
+    const dim = probe.byteLength / 4;
+    if (!Number.isInteger(dim) || dim < 1) throw new Error(`remote embeddings: probe returned invalid dimension ${dim} from ${REMOTE.url}`);
+    dimension = dim;
+    maxTokens = undefined;
+    model = `remote:${REMOTE.model}@d${dimension}`;
+} else {
+    const REPO = "Xenova/all-MiniLM-L6-v2";
+    const DTYPE = "q8";
+    const PIN = readFileSync(path.join(here, ".model-pin"), "utf-8").trim();
+    dimension = localDimension;
+    maxTokens = localMaxTokens;
+    model = `${REPO}@${PIN.slice(0, 8)}+${DTYPE}`;
+}
+
 let runtimePromise = null;
 function runtime() {
     runtimePromise ??= loadRuntime();
     return runtimePromise;
 }
 
-// text → 1536 bytes on the calling thread. The framework's single-entry path.
+// text → 4×dimension bytes. Local: WASM on the calling thread. Remote: one
+// endpoint request (failures throw with the endpoint named; the host's
+// degrade-to-FTS + telemetry handling is service-side, per #46).
 export async function embed(text) {
+    if (REMOTE) return (await remoteEmbedMany([text]))[0];
     return embedText(await runtime(), text);
 }
 
-// Untruncated token count in the model's own tokenizer (CLS/SEP included).
+// Untruncated token count in the bundled model's own tokenizer (CLS/SEP
+// included). LOCAL only — remote mode has no tokenizer and will not fake one.
 export async function countTokens(text) {
+    if (REMOTE) throw new Error("countTokens is unavailable in remote embed mode (no local tokenizer; the window belongs to the endpoint)");
     return countTokensWith((await runtime()).tokenizer, text);
 }
 
@@ -106,15 +183,19 @@ function pool() {
     return poolPromise;
 }
 
-// Embed many texts across the worker pool, returning vectors in input order.
-// onProgress({completed, total}) fires as each finishes — the host's progress
-// signal. signal (AbortSignal) cancels in flight. Bit-identical to embed() per
-// text (each worker is single-threaded). The pool is lazy + persistent across
-// calls; unref'd while idle so it never holds the event loop open (#36), and
-// fully released by dispose().
+// Embed many texts, returning vectors in input order. Local: data-parallel
+// across the worker pool, onProgress per completion, AbortSignal cancels.
+// Remote: ONE request carrying the whole input array (the OpenAI contract) —
+// the endpoint owns its batching limits; onProgress fires once on completion;
+// signal aborts the fetch. Bit-identical to embed() per text in both modes.
 export async function embedBatch(texts, { onProgress, signal } = {}) {
     if (!Array.isArray(texts)) throw new TypeError("embedBatch: texts must be an array");
     if (texts.length === 0) return [];
+    if (REMOTE) {
+        const out = await remoteEmbedMany(texts, signal);
+        onProgress?.({ completed: texts.length, total: texts.length });
+        return out;
+    }
     const workers = await pool();
     const results = new Array(texts.length);
     let next = 0;
@@ -158,7 +239,8 @@ export async function embedBatch(texts, { onProgress, signal } = {}) {
 }
 
 // Release the WASM session and tear down the worker pool so the process exits.
-// Idempotent; embed()/embedBatch() re-lazy-init afterward.
+// Idempotent; embed()/embedBatch() re-lazy-init afterward. Remote mode holds no
+// native state — nothing to release.
 export async function dispose() {
     if (runtimePromise) {
         const pending = runtimePromise;
