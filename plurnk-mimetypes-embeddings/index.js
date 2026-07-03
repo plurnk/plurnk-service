@@ -43,21 +43,31 @@ export const model = `${REPO}@${PIN.slice(0, 8)}+${DTYPE}`;
 // embedBatch() pool size. REQUIRED — there is no default. Each worker holds its
 // own model copy, so the count is a memory↔throughput decision only the operator
 // can make; the embedder will not guess it (no CPU heuristic, no magic 8). Set
-// PLURNK_EMBED_WORKERS to a positive integer, or -1 to size to the host
-// (availableParallelism) — an explicit "match cores" directive, not a guess (see
-// .env.example). Unset, empty, 0, or malformed → crash on load. No fallback, ever.
-const WORKERS = requireWorkers(process.env.PLURNK_EMBED_WORKERS);
+// PLURNK_MIMETYPES_EMBED_WORKERS to a positive integer, or -1 to size to the
+// host (availableParallelism) — an explicit "match cores" directive, not a guess
+// (see .env.example). Unset, empty, 0, or malformed → crash on load. No
+// fallback, ever.
+const WORKERS = requireWorkers(process.env.PLURNK_MIMETYPES_EMBED_WORKERS);
 
 function requireWorkers(raw) {
+    // Rename tripwire (metaproject family-prefix sweep): the old knob must
+    // crash pointing at the new one, never be silently ignored. Transitional —
+    // delete at the ship-time policy sweep.
+    if (process.env.PLURNK_EMBED_WORKERS !== undefined) {
+        throw new RangeError(
+            "PLURNK_EMBED_WORKERS was renamed to PLURNK_MIMETYPES_EMBED_WORKERS "
+            + "(family-prefix convention); update the environment.",
+        );
+    }
     const n = Number(raw);
     // -1 is the ecosystem "size to this box" sentinel — an explicit operator
     // directive, so the "no default, no guess" contract stays intact.
     if (n === -1) return availableParallelism();
     if (raw === undefined || raw.trim() === "" || !Number.isInteger(n) || n < 1) {
         throw new RangeError(
-            `PLURNK_EMBED_WORKERS is required and must be -1 (match cores) or a positive integer; `
-            + `got ${JSON.stringify(raw)}. Set it (see .env.example) — the embedBatch worker count is a `
-            + `memory↔throughput decision the embedder will not make for you.`,
+            `PLURNK_MIMETYPES_EMBED_WORKERS is required and must be -1 (match cores) or a positive `
+            + `integer; got ${JSON.stringify(raw)}. Set it (see .env.example) — the embedBatch worker `
+            + `count is a memory↔throughput decision the embedder will not make for you.`,
         );
     }
     return n;

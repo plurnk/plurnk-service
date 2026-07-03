@@ -220,15 +220,15 @@ describe("embedder duck surface", () => {
     });
 });
 
-describe("PLURNK_EMBED_WORKERS contract (embeddings#2: -1 = match cores)", () => {
+describe("PLURNK_MIMETYPES_EMBED_WORKERS contract (embeddings#2: -1 = match cores)", () => {
     const indexPath = path.join(import.meta.dirname, "index.js");
     // Load index.js in a child with a given env value (bare import runs the
     // top-level requireWorkers; the pool/model stay lazy, so it's cheap).
     // Throws on non-zero exit = the module crashed on load.
     const load = (value) => {
         const env = { ...process.env };
-        if (value === undefined) delete env.PLURNK_EMBED_WORKERS;
-        else env.PLURNK_EMBED_WORKERS = value;
+        if (value === undefined) delete env.PLURNK_MIMETYPES_EMBED_WORKERS;
+        else env.PLURNK_MIMETYPES_EMBED_WORKERS = value;
         execFileSync(process.execPath, ["--input-type=module", "--eval", `import ${JSON.stringify(indexPath)};`], {
             env, timeout: 30000, stdio: "pipe",
         });
@@ -247,4 +247,12 @@ describe("PLURNK_EMBED_WORKERS contract (embeddings#2: -1 = match cores)", () =>
             assert.throws(() => load(bad));
         });
     }
+});
+
+describe("rename tripwire (family-prefix sweep)", () => {
+    it("the OLD PLURNK_EMBED_WORKERS name crashes with a rename pointer, never silently ignored", () => {
+        const indexPath = path.join(import.meta.dirname, "index.js");
+        const env = { ...process.env, PLURNK_EMBED_WORKERS: "4", PLURNK_MIMETYPES_EMBED_WORKERS: "4" };
+        assert.throws(() => execFileSync(process.execPath, ["--input-type=module", "--eval", `import ${JSON.stringify(indexPath)};`], { env, timeout: 30000, stdio: "pipe" }));
+    });
 });
