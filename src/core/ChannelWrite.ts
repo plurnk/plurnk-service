@@ -153,6 +153,19 @@ export default class ChannelWrite {
     ): Promise<void> {
         const result = await ChannelWrite.#stateStmt(db).run({ state, entry_id: entryId, channel });
         if (result.changes === 0) return;
+        // §semantic-fts-at-write — a stream's accumulated BODY content becomes keyword-searchable
+        // the moment the channel settles (closed/errored), not a pump-pass later. Body only: the
+        // FTS row is per-ENTRY (rowid = entry id) and the fusion's keyword half is the body's.
+        if ((state === "closed" || state === "errored") && channel === "body") {
+            const row = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel });
+            if (row !== undefined) {
+                const body = await (db.read_channel_content as PrepMethod).get<{ content: string }>({ entry_id: entryId, channel });
+                if (body !== undefined) {
+                    await (db.fts_delete as PrepMethod).run({ entry_id: entryId });
+                    if (body.content.length > 0) await (db.fts_insert as PrepMethod).run({ entry_id: entryId, content: body.content });
+                }
+            }
+        }
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;

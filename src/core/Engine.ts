@@ -154,6 +154,26 @@ export default class Engine {
     // only tightens. A chars/4 heuristic ruler undercounts escaped-JSON logs ~1.5×; calibrating
     // against the provider's own count makes a real context overflow unreachable past turn 1.
     #tokenRatios = new Map<number, number>();
+    // §derivation-off-hot-path — the background derivation chain: the per-turn pump and the
+    // session warm ride it instead of the turn (a 2-CPU container CPU-embedding a 335-entry
+    // ingest starved every loop for ~28min, #316). Serialized (never two pumps interleaved),
+    // drained at daemon stop (never racing db close), failures logged (never swallowed).
+    // A turn never waits on an embedding; a ~query warms its own candidate slice inline
+    // (§semantic-cold-query-full-fidelity), so cold sessions still get full-fidelity search.
+    #derivationChain: Promise<void> = Promise.resolve();
+
+    #queueDerivation(job: () => Promise<void>): Promise<void> {
+        const run = this.#derivationChain.then(job).catch((err: unknown) => {
+            process.stderr.write(`plurnk-engine: background derivation failed: ${err instanceof Error ? err.message : String(err)}\n`);
+        });
+        this.#derivationChain = run;
+        return run;
+    }
+
+    // Awaited by Daemon.stop before the db closes.
+    async drainDerivations(): Promise<void> {
+        await this.#derivationChain;
+    }
 
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeRunNotify: WakeRunNotify | undefined;
@@ -585,7 +605,7 @@ export default class Engine {
         const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
         await this.#logFsFictions(sessionId, fsDivergences);
 
-        await EntryManifest.maintainDerivations(systemCtx);
+        this.#queueDerivation(() => EntryManifest.maintainDerivations(systemCtx)); // §derivation-off-hot-path — the turn proceeds; ~queries warm their own slice
 
         // Turn-0 catalog preview (PLURNK_FILES_ITEMS, §actor-boundary-manifest-preview):
         // one FIND(scheme:///**) per scheme that holds entries, foisted into the run's first
@@ -1281,7 +1301,7 @@ export default class Engine {
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
             pushTelemetry: (event) => this.#telemetry.notify(sessionId, 0, event),
         };
-        await EntryManifest.maintainDerivations(ctx);
+        await this.#queueDerivation(() => EntryManifest.maintainDerivations(ctx)); // §derivation-off-hot-path
     }
 
     // Inject a prompt into the run's currently-executing loop. Writes a

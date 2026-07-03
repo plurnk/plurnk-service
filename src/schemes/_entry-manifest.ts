@@ -100,6 +100,80 @@ export default class EntryManifest {
     // wrote) makes process() throw — uncaught, that once crashed the whole turn (the daemon's
     // -32603); contain it here (clear the deep channels, stamp the hash so it doesn't re-attempt)
     // and keep pumping the rest.
+    // One entry's full derivation (graph + FTS + embeddings + hash stamp), containment
+    // included — shared by the pump and the ~query inline slice (§semantic-cold-query-
+    // full-fidelity). Failure clears the deep channels and stamps the hash (no re-attempt).
+    // Every derivation write funnels through one chain: the background pump and a ~query's
+    // inline slice may target the SAME entry concurrently, and indexFts/indexEmbedding are
+    // delete-then-insert — interleaved writers would duplicate chunk rows.
+    static #deriveChain: Promise<void> = Promise.resolve();
+
+    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean): Promise<void> {
+        const run = EntryManifest.#deriveChain.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive));
+        EntryManifest.#deriveChain = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
+        return run;
+    }
+
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean): Promise<void> {
+        const { db, sessionId, mimetypes } = ctx;
+        if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
+        try {
+            const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
+            let result: ProcessResult;
+            if (wantGraph) {
+                try {
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: embedActive ? ["symbols", "references", "embedding"] : ["symbols", "references"] }); // §mimetype-methods-process-entry-point
+                    await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
+                } catch {
+                    // A handler predating the references channel throws → metadata-only, clear graph.
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+                    await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+                }
+            } else {
+                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+                await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+            }
+            // The other two deep channels: re-index the body into entry_fts (~semantic's keyword
+            // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
+            // cleared, not stored. result.embedding is the fallback whole-entry vector.
+            await EntrySemantic.indexFts(db, r.entry_id, r.content);
+            const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal);
+            await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
+            await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+        } catch {
+            await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+            await EntrySemantic.indexFts(db, r.entry_id, "");
+            await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
+            await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+        }
+    }
+
+    // §semantic-cold-query-full-fidelity — derive any STALE entries among the ~query's
+    // FTS-narrowed candidate slice, inline at dispatch. Ranking only ever scores the
+    // narrowed set, so deriving exactly this slice on demand gives bit-identical results
+    // to a fully-warm corpus — the first turn never runs on degraded search while the
+    // background pump sweeps the rest. Bounded by the caller's cap; returns how many derived.
+    static async deriveFtsCandidates(ctx: PlurnkSchemeContext, scheme: string | null, ftsQuery: string, cap: number): Promise<number> {
+        const { db, sessionId, mimetypes } = ctx;
+        if (mimetypes === undefined) return 0;
+        const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
+        if (deepCfgSig === "embed:none") return 0; // FTS-only posture — nothing to derive
+        const rows = await (db.semantic_fts_candidates as PrepMethod).all<{ entry_id: number; content: string; mimetype: string; deep_hash: string | null }>({
+            fts_query: ftsQuery, session_id: sessionId, scheme, cap,
+        });
+        let derived = 0;
+        for (const r of rows) {
+            const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
+            if (hash === r.deep_hash) continue; // already warm for this config
+            await EntryManifest.deriveOne(ctx, r, hash, true);
+            derived++;
+        }
+        if (rows.length === cap) {
+            ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `inline slice capped at ${cap} candidates — broader results warm in the background`, level: "info" });
+        }
+        return derived;
+    }
+
     static async maintainDerivations(ctx: PlurnkSchemeContext): Promise<void> {
         const { db, sessionId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("maintainDerivations: ctx.mimetypes is required to derive entry deep channels");
@@ -124,35 +198,7 @@ export default class EntryManifest {
         const step = total > 1 ? Math.max(1, Math.floor(total / 10)) : 0; // ~10 milestones, or silent for 0-1
         let completed = 0;
         for (const { r, hash } of pending) {
-            try {
-                const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
-                let result: ProcessResult;
-                if (wantGraph) {
-                    try {
-                        result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: embedActive ? ["symbols", "references", "embedding"] : ["symbols", "references"] }); // §mimetype-methods-process-entry-point
-                        await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
-                    } catch {
-                        // A handler predating the references channel throws → metadata-only, clear graph.
-                        result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
-                        await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
-                    }
-                } else {
-                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
-                    await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
-                }
-                // The other two deep channels: re-index the body into entry_fts (~semantic's keyword
-                // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
-                // cleared, not stored. result.embedding is the fallback whole-entry vector.
-                await EntrySemantic.indexFts(db, r.entry_id, r.content);
-                const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal);
-                await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
-                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
-            } catch {
-                await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
-                await EntrySemantic.indexFts(db, r.entry_id, "");
-                await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
-                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
-            }
+            await EntryManifest.deriveOne(ctx, r, hash, embedActive);
             completed++;
             if (step > 0 && (completed === total || completed % step === 0)) {
                 ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `deriving entries ${completed}/${total}`, completed, total, level: "info" });

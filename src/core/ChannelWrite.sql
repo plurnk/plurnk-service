@@ -77,3 +77,8 @@ WHERE e.scope = 'session' AND e.session_id = $session_id
   AND s.closed_at IS NOT NULL
 ORDER BY s.closed_at DESC
 LIMIT 1;
+
+-- PREP: read_channel_content
+-- §semantic-fts-at-write — a settled stream's accumulated body, read once for the
+-- write-time FTS index.
+SELECT content FROM entry_channels WHERE entry_id = $entry_id AND name = $channel;

@@ -46,8 +46,10 @@ test("[#290] Engine.warmSessionDerivations derives deep channels at session scop
         await new Known().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
         await new Known().edit(editStmt(url("cart.ts"), "export function addToCart() {}\n"), ctx);
 
-        // Nothing derived yet (no turn has run): FTS is empty.
-        assert.deepEqual(await fts(db, sessionId, "processPayment"), [], "no derivation before warm");
+        // §semantic-fts-at-write — the keyword half indexes AT the write now: a cold corpus is
+        // FTS-addressable before any pump runs. The warm still owns the DEEP channels (graph,
+        // embeddings, deep_hash) — asserted below by the stamped hashes and progress fan-out.
+        assert.deepEqual(await fts(db, sessionId, "processPayment"), ["/pay.ts"], "write-time FTS precedes the warm");
 
         // Warm at session scope — the seam session.create fires. No loop/turn exists.
         await engine.warmSessionDerivations(sessionId);

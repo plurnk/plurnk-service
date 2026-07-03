@@ -1,3 +1,4 @@
+import EntrySemantic from "./_entry-semantic.ts";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
@@ -161,6 +162,8 @@ export default class EntryOps {
 
         if (ctx.tokenize === undefined) throw new Error("editSessionEntry: ctx.tokenize is required for token accounting");
         await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — §per-entry-channels-edit-writes-only-body
+        // §semantic-fts-at-write — the keyword half indexes with the write (body channel only).
+        if (targetChannel === "body") await EntrySemantic.indexFts(db, entryId, newContent);
         // NB: NO @graph derivation here — a scheme write resolves the mimetype
         // label but never invokes the mimetypes handler (§mimetype). The symbol index is
         // built engine-side at manifest-add (EntryManifest.buildManifestBody).

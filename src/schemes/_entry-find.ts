@@ -109,6 +109,9 @@ export default class EntryFind {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) return { status: 501, matches: [] };
             if (statement.lineMarker === null) return { status: 400, matches: [] };  // ~query needs a rank marker, e.g. ~query<10>
+            // §semantic-cold-query-full-fidelity — warm the query's own candidate slice inline
+            // (bit-identical to a warm corpus; the background pump owes nothing to THIS query).
+            await EntryManifest.deriveFtsCandidates(ctx, scheme, EntrySemantic.ftsQueryFor(statement.body.raw), 128);
             const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, LineMarkerOps.firstLast(statement.lineMarker));
             if (ranked.status !== 200) return { status: ranked.status, matches: [] };
             return { status: 200, matches: ranked.results.map((x) => ({ pathname: x.pathname, span: { lineStart: x.lineStart, lineEnd: x.lineEnd } })) };

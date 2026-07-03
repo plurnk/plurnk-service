@@ -3,6 +3,7 @@
 // cross-scheme orchestration of COPY/MOVE/SEND[410].
 
 import type { PrepMethod } from "../core/Db.ts";
+import EntrySemantic from "./_entry-semantic.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
@@ -80,10 +81,13 @@ export default class EntryCrud {
         for (const tag of entry.tags) {
             await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
         }
-        // NB: NO @graph derivation here — a write stores content + label; the
-        // mimetypes handler is never invoked at write (§mimetype, §mimetype-schemes-do-not-invoke-handlers). The symbol index is
-        // built engine-side at manifest-add (EntryManifest.buildManifestBody),
-        // which walks every entry — files included — once per turn.
+        // §semantic-fts-at-write — the keyword half of the ~fusion indexes AT THE WRITE
+        // (plain string→FTS, no handler): a cold session's very first query narrows over
+        // everything ever written. Only the VECTOR half is derived (background pump +
+        // the ~query's inline slice). NB: still NO @graph derivation here — the mimetypes
+        // handler is never invoked at write (§mimetype-schemes-do-not-invoke-handlers).
+        const body = entry.channels["body"];
+        if (body !== undefined) await EntrySemantic.indexFts(db, entryId, body.content);
 
         return { status: created ? 201 : 200, created, entryId };
     }
@@ -92,6 +96,7 @@ export default class EntryCrud {
         const { db, sessionId } = ctx;
         const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
         if (existing === undefined) return { status: 404 };
+        await EntrySemantic.indexFts(db, existing.id, ""); // §semantic-fts-at-write — the keyword row dies with the entry
         await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });
         // CASCADE on entry_channels, entry_tags per FK constraints.
         return { status: 200 };

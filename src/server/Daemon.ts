@@ -261,6 +261,7 @@ export default class Daemon {
         const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
         await Promise.allSettled(drainPromises);
         await this.#drainStreamingSchemes();
+        await this.#engine.drainDerivations(); // §derivation-off-hot-path — background pumps finish before the db closes upstream
     }
 
     // Per-scheme idle awaits for clean shutdown. New streaming schemes

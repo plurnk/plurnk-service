@@ -149,7 +149,15 @@ export default class EntrySemantic {
         const { first, last } = marker;
         const toResult = (x: { pathname: string; line_start: number; line_end: number }) => ({ pathname: x.pathname, lineStart: x.line_start, lineEnd: x.line_end });
 
-        const r = await mimetypes.process({ content: queryText, hint: "text/markdown" }, { channels: ["embedding"] });
+        // The query embedding honors the SAME gate as the corpus (#embedderInfo /
+        // PLURNK_EMBED_DISABLE): with the embeddings package installed but disabled,
+        // calling process() directly would compute a query vector and rank it against
+        // an empty entry_embeddings — every ~query silently []. Disabled → the honest
+        // FTS keyword fallback, same as no embedder at all.
+        const info = await EntrySemantic.#embedderInfo(mimetypes);
+        const r = info === null
+            ? { embedding: undefined, embeddingModel: undefined }
+            : await mimetypes.process({ content: queryText, hint: "text/markdown" }, { channels: ["embedding"] });
         if (r.embedding === undefined || r.embedding.byteLength === 0 || r.embeddingModel === undefined) {
             // FTS fallback: no embedder, so there is no query vector to cosine with. Top-K ranks
             // by BM25 keyword relevance alone; the <0.x> threshold form is intrinsically cosine-

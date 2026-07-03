@@ -291,3 +291,7 @@ SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' O
 -- PREP: test_all_packets
 -- [§strikes-first-party-metadata] — every stored packet, to prove no section carries strike state.
 SELECT packet FROM turns WHERE packet IS NOT NULL;
+
+-- PREP: test_deep_hash
+-- [§derivation-off-hot-path] — a session entry's stamped deep hash (any entry: the drain proof).
+SELECT deep_hash FROM entries WHERE session_id = $session_id AND deep_hash IS NOT NULL LIMIT 1;
