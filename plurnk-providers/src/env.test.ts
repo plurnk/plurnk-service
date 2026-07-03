@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningBudgetFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, thinkingFromEnv } from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
@@ -29,13 +29,15 @@ test("parseOptionalInt: rejects fractional and negative values", () => {
     assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
 });
 
-test("reasoningBudgetFromEnv: 0 off, -1 adaptive, N capped; required; rejects < -1 and non-int", () => {
-    assert.equal(reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "openai"), 0);
-    assert.equal(reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "-1" }, "openai"), -1);
-    assert.equal(reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "4096" }, "openai"), 4096);
-    assert.throws(() => reasoningBudgetFromEnv({}, "openai"), /PLURNK_PROVIDERS_REASONING_BUDGET must be set/);
-    assert.throws(() => reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "-2" }, "openai"), /integer >= -1/);
-    assert.throws(() => reasoningBudgetFromEnv({ PLURNK_PROVIDERS_REASONING_BUDGET: "1.5" }, "openai"), /integer >= -1/);
+test("thinkingFromEnv: activation modes parse; capacity required IFF on; fail-hard on everything else (#33)", () => {
+    assert.deepEqual(thinkingFromEnv({ PLURNK_PROVIDERS_THINKING: "off" }, "openai"), { mode: "off", capacity: null });
+    assert.deepEqual(thinkingFromEnv({ PLURNK_PROVIDERS_THINKING: "adaptive" }, "openai"), { mode: "adaptive", capacity: null });
+    assert.deepEqual(thinkingFromEnv({ PLURNK_PROVIDERS_THINKING: "on", PLURNK_PROVIDERS_THINKING_CAPACITY: "4096" }, "openai"), { mode: "on", capacity: 4096 });
+    assert.throws(() => thinkingFromEnv({}, "openai"), /PLURNK_PROVIDERS_THINKING must be set/);
+    assert.throws(() => thinkingFromEnv({ PLURNK_PROVIDERS_THINKING: "8192" }, "openai"), /must be one of "off", "adaptive", "on"/); // the old numeric habit fails loudly
+    assert.throws(() => thinkingFromEnv({ PLURNK_PROVIDERS_THINKING: "on" }, "openai"), /PLURNK_PROVIDERS_THINKING_CAPACITY must be set when/);
+    assert.throws(() => thinkingFromEnv({ PLURNK_PROVIDERS_THINKING: "on", PLURNK_PROVIDERS_THINKING_CAPACITY: "0" }, "openai"), /positive integer/);
+    assert.throws(() => thinkingFromEnv({ PLURNK_PROVIDERS_THINKING: "on", PLURNK_PROVIDERS_THINKING_CAPACITY: "1.5" }, "openai"), /positive integer/);
 });
 
 test("requireEnv: returns the value or throws a named error", () => {

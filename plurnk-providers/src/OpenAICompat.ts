@@ -9,19 +9,22 @@
 // Pure-config providers come from ./standardProviders.ts with no sibling at all.
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { Thinking } from "./env.ts";
 import { chatCompletionStream, chatCompletion, OpenAiHttpError, type StreamResponse } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 
-// How the single reasoningBudget (PLURNK_PROVIDERS_REASONING_BUDGET: 0 off,
-// -1 adaptive, N capped) translates to each backend's wire mechanism (SPEC §4);
-// the per-style mapping lives in #reasoningBody. Non-obvious ones: "template"
-// ALWAYS emits enable_thinking — the explicit false is llama-server's only working
-// off-switch (§13); "anthropic" uses the `thinking` object and IGNORES reasoning_effort;
-// "effort_explicit" (fireworks) sends the EXPLICIT "none"/"adaptive" enum values at
-// 0/-1 instead of omitting — reason-by-DEFAULT models (DeepSeek V4 defaults 'high')
-// keep reasoning when the field is omitted, fatal under an active grammar (#30).
+// How the thinking intent (PLURNK_PROVIDERS_THINKING: off | adaptive | on, plus
+// THINKING_CAPACITY iff on — #32/#33) translates to each backend's wire mechanism
+// (SPEC §4); the per-style mapping lives in #reasoningBody. Non-obvious ones:
+// "template" ALWAYS emits enable_thinking — the explicit false is llama-server's
+// only working off-switch (§13); "anthropic" uses the `thinking` object and IGNORES
+// reasoning_effort; "effort_explicit" (fireworks) sends the EXPLICIT "none"/"adaptive"
+// enum values instead of omitting — reason-by-DEFAULT models (DeepSeek V4 defaults
+// 'high') keep reasoning when the field is omitted, fatal under an active grammar
+// (#30) — and under a transported response_format grammar it is CLAMPED to "none"
+// regardless of intent (measured: low→cycle loops, high→pool-starvation spirals; #32).
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "template" | "anthropic";
 
 // How a caller-supplied GBNF grammar is carried on the wire — backends accept
@@ -38,7 +41,7 @@ export type OpenAICompatConfig = {
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     contextSize?: number | null;              // default null
     reasoningStyle?: ReasoningStyle;          // default "none"
-    countTokens?: (text: string) => number;   // default chars/4 heuristic
+    countTokens?: (text: string) => number;   // default chars/2 upper-bound heuristic
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
@@ -53,11 +56,12 @@ export type OpenAICompatConfig = {
     // provider exposes the optional `tokenize()` capability — the model's OWN
     // vocab, no client-side tokenizer data needed; default unset (capability absent).
     tokenizeUrl?: string;
-    // The side-channel reasoning budget — REQUIRED, no in-code default
-    // (PLURNK_PROVIDERS_REASONING_BUDGET, read via reasoningBudgetFromEnv):
-    // 0 off, -1 adaptive, N capped. The provider maps it to the backend's
-    // mechanism via reasoningStyle.
-    reasoningBudget: number;
+    // The side-channel thinking intent — REQUIRED, no in-code default
+    // (PLURNK_PROVIDERS_THINKING + _CAPACITY, read via thinkingFromEnv):
+    // { mode: off|adaptive|on, capacity: iff on }. The provider maps it to the
+    // backend's mechanism via reasoningStyle; capacity is only ever a magnitude,
+    // never a hidden activation flag (#33).
+    thinking: Thinking;
     // Transient-failure retry budget — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
     // first failure; N = up to N retries on a transient error (§4, #18).
@@ -143,7 +147,7 @@ export default class OpenAICompatProvider implements Provider {
     #fetchTimeoutMs: number;
     #headers: Record<string, string>;
     #contextSize: number | null;
-    #reasoningBudget: number;
+    #thinking: Thinking;
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
     #costFor: (usage: ProviderUsage) => number;
@@ -169,7 +173,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#headers = config.headers ?? {};
         this.#contextSize = config.contextSize ?? null;
-        this.#reasoningBudget = config.reasoningBudget;
+        this.#thinking = config.thinking;
         this.#retryAttempts = config.retryAttempts;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
@@ -207,32 +211,53 @@ export default class OpenAICompatProvider implements Provider {
     countTokens(text: string): number { return this.#countTokens(text); }
     costFor(usage: ProviderUsage): number { return this.#costFor(usage); }
 
-    #reasoningBody(): Record<string, unknown> {
-        const b = this.#reasoningBudget;   // 0 off, -1 adaptive, N>0 capped
-        const on = b !== 0;
+    // One-time surfacing flag for the #32 clamp — warn on the first turn where
+    // topology overrides intent, not on every call.
+    #clampWarned = false;
+
+    // Maps the thinking INTENT (off | adaptive | on+capacity, #33) to the
+    // backend's wire mechanism. `grammarClamped` (#32): a transported
+    // response_format grammar forces "none" regardless of intent — measured on
+    // the real stack: `low` → cycle loops, `high` → pool-starvation spirals;
+    // reasoning under an in-band grammar has no working non-none posture.
+    // Surfaced once per provider instance, never silent.
+    #reasoningBody(grammarClamped: boolean): Record<string, unknown> {
+        const { mode, capacity } = this.#thinking;
+        if (grammarClamped && this.#reasoningStyle === "effort_explicit") {
+            if (mode !== "off" && !this.#clampWarned) {
+                this.#clampWarned = true;
+                process.emitWarning(
+                    `${this.#source}: thinking intent "${mode}" clamped to reasoning_effort "none" — an in-band (response_format) grammar has no working reasoning posture (#32)`,
+                    { code: "PLURNK_REASONING_CLAMPED" },
+                );
+            }
+            return { reasoning_effort: "none" };
+        }
+        const on = mode !== "off";
         switch (this.#reasoningStyle) {
             // Native-channel styles. "template" ALWAYS emits — the explicit
-            // enable_thinking:false is the only working off-switch on
-            // llama-server (§13). The magnitude is irrelevant for native (on/off only).
+            // enable_thinking:false is the only working off-switch on llama-server
+            // (§13). Activation only; capacity is enforced by the box's
+            // --reasoning-budget launch flag (per-request numerics ignored, F7).
             case "template": return { chat_template_kwargs: { enable_thinking: on } };
             case "think": return on ? { think: true } : {};
             case "include_reasoning": return on ? { include_reasoning: true } : {};
-            // effort tiers from a capped budget; adaptive (-1) omits the field
-            // (lets the API pick its default depth); off (0) omits.
-            case "effort": return b > 0 ? { reasoning_effort: effortFromBudget(b) } : {};
-            // Fireworks enum (low|medium|high|xhigh|max|none|adaptive): 0 and -1
-            // are sent EXPLICITLY — omission leaves a reason-by-default model
-            // (DeepSeek V4: default 'high') reasoning inside a constrained decode
-            // until max_tokens (#30, measured 0/5 → 30/30 conformant with "none").
-            // V4 gotchas: integer efforts 400; low/medium silently promote to high.
-            case "effort_explicit": return b === 0
+            // effort tiers from the capacity; off/adaptive omit the field (the
+            // API's default depth is its adaptive).
+            case "effort": return mode === "on" ? { reasoning_effort: effortFromBudget(capacity!) } : {};
+            // Fireworks enum (low|medium|high|xhigh|max|none|adaptive): off and
+            // adaptive are sent EXPLICITLY — omission leaves a reason-by-default
+            // model (DeepSeek V4: default 'high') reasoning inside a constrained
+            // decode until max_tokens (#30). V4 gotchas: integer efforts 400;
+            // low/medium silently promote to high.
+            case "effort_explicit": return mode === "off"
                 ? { reasoning_effort: "none" }
-                : b > 0 ? { reasoning_effort: effortFromBudget(b) } : { reasoning_effort: "adaptive" };
-            // Anthropic compat: explicit thinking object. 0 → disabled; N>0 →
-            // enabled with budget_tokens; -1 adaptive → omit (the API default).
-            case "anthropic": return b === 0
+                : mode === "on" ? { reasoning_effort: effortFromBudget(capacity!) } : { reasoning_effort: "adaptive" };
+            // Anthropic compat: explicit thinking object. off → disabled; on →
+            // enabled with budget_tokens; adaptive → omit (the API default).
+            case "anthropic": return mode === "off"
                 ? { thinking: { type: "disabled" } }
-                : b > 0 ? { thinking: { type: "enabled", budget_tokens: b } } : {};
+                : mode === "on" ? { thinking: { type: "enabled", budget_tokens: capacity } } : {};
             case "none": return {};
         }
     }
@@ -422,7 +447,7 @@ export default class OpenAICompatProvider implements Provider {
             ...this.#samplingBody(sampling),
             model: this.#model,
             messages,
-            ...this.#reasoningBody(),
+            ...this.#reasoningBody(sendGrammar !== undefined && this.#grammarStyle === "response_format"),
             ...this.#grammarBody(sendGrammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
             ...this.#slotBody(runId),

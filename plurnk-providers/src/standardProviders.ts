@@ -11,8 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, reasoningBudgetFromEnv } from "./env.ts";
-import { parseTokenizerFamily, tokenizerFor, type TokenizerFamily } from "./tokenizers.ts";
+import { parseRequiredInt, parseOptionalInt, thinkingFromEnv } from "./env.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
 import { lookup } from "@plurnk/plurnk-models";
@@ -77,7 +76,9 @@ type StandardProviderSpec = {
     // Top-level response field the endpoint reports account balance (pico-USD) in,
     // surfaced as ProviderResponse.balancePico (plurnk only, #23). Absent elsewhere.
     balanceMetaKey?: string;
-    tokenizerDefault: TokenizerFamily;
+    // RETIRED knob (#27→mimetypes#44): exact client-side tokenizer families were
+    // removed with the tokenizer shed — the var is kept ONLY to fail hard with a
+    // migration pointer when an operator still sets it.
     tokenizerEnvVar: string;
     // When true, probe GET /v1/models at construction. Two reads off one call:
     // the endpoint-reported context window (`n_ctx`, used when
@@ -104,28 +105,28 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     openai: {
         apiKeyVar: "OPENAI_API_KEY", apiKeyRequired: false,
         baseUrlVar: ["OPENAI_BASE_URL", "OPENAI_API_BASE"], chatPath: "/v1/chat/completions", flexBaseStrip: true,
-        reasoningStyle: "think", tokenizerDefault: "heuristic", tokenizerEnvVar: "OPENAI_TOKENIZER",
+        reasoningStyle: "think", tokenizerEnvVar: "OPENAI_TOKENIZER",
         probeNctx: true,
     },
     groq: {
         apiKeyVar: "GROQ_API_KEY", apiKeyRequired: true,
         baseUrlVar: "GROQ_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "effort", tokenizerDefault: "heuristic", tokenizerEnvVar: "GROQ_TOKENIZER",
+        reasoningStyle: "effort", tokenizerEnvVar: "GROQ_TOKENIZER",
     },
     deepseek: {
         apiKeyVar: "DEEPSEEK_API_KEY", apiKeyRequired: true,
         baseUrlVar: "DEEPSEEK_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DEEPSEEK_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "DEEPSEEK_TOKENIZER",
     },
     mistral: {
         apiKeyVar: "MISTRAL_API_KEY", apiKeyRequired: true,
         baseUrlVar: "MISTRAL_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MISTRAL_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "MISTRAL_TOKENIZER",
     },
     together: {
         apiKeyVar: "TOGETHER_API_KEY", apiKeyRequired: true,
         baseUrlVar: "TOGETHER_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "TOGETHER_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "TOGETHER_TOKENIZER",
     },
     // reasoningStyle "effort_explicit", NOT "none": fireworks serves reason-by-
     // DEFAULT models (DeepSeek V4 defaults 'high'), so budget 0 must SEND
@@ -134,12 +135,12 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
         baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "effort_explicit", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerDefault: "heuristic", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
+        reasoningStyle: "effort_explicit", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
         apiKeyVar: ["DEEPINFRA_API_KEY", "DEEPINFRA_API_TOKEN", "DEEPINFRA_TOKEN"], apiKeyRequired: true,
         baseUrlVar: "DEEPINFRA_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DEEPINFRA_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "DEEPINFRA_TOKENIZER",
     },
     // — Chinese cloud hosts (all OpenAI-compat, plain bearer, doc-verified 2026). —
     // The .env.example base is the INTERNATIONAL endpoint; mainland operators
@@ -153,68 +154,68 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     moonshot: {
         apiKeyVar: "MOONSHOT_API_KEY", apiKeyRequired: true,
         baseUrlVar: "MOONSHOT_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MOONSHOT_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "MOONSHOT_TOKENIZER",
     },
     // Alibaba Qwen via DashScope "compatible-mode". Mainland: dashscope.aliyuncs.com.
     dashscope: {
         apiKeyVar: "DASHSCOPE_API_KEY", apiKeyRequired: true,
         baseUrlVar: "DASHSCOPE_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "DASHSCOPE_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "DASHSCOPE_TOKENIZER",
     },
     // Zhipu GLM. Base carries /api/paas/v4 (non-/v1). Mainland: open.bigmodel.cn/api/paas/v4.
     zhipu: {
         apiKeyVar: ["ZHIPUAI_API_KEY", "ZAI_API_KEY"], apiKeyRequired: true,
         baseUrlVar: "ZHIPU_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "ZHIPU_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "ZHIPU_TOKENIZER",
     },
     // ByteDance Doubao via BytePlus ModelArk (base carries /api/v3; `model` is an
     // inference-endpoint/model id). Mainland (Volcengine): ark.cn-beijing.volces.com/api/v3.
     volcengine: {
         apiKeyVar: "ARK_API_KEY", apiKeyRequired: true,
         baseUrlVar: "ARK_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "ARK_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "ARK_TOKENIZER",
     },
     // Tencent Hunyuan — single global host (no intl/mainland split).
     hunyuan: {
         apiKeyVar: "HUNYUAN_API_KEY", apiKeyRequired: true,
         baseUrlVar: "HUNYUAN_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "HUNYUAN_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "HUNYUAN_TOKENIZER",
     },
     // MiniMax. Mainland twin is api.minimaxi.com (note the extra "i").
     minimax: {
         apiKeyVar: "MINIMAX_API_KEY", apiKeyRequired: true,
         baseUrlVar: "MINIMAX_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MINIMAX_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "MINIMAX_TOKENIZER",
     },
     // StepFun. Intl twin is api.stepfun.ai (.ai vs the .com mainland host).
     stepfun: {
         apiKeyVar: "STEP_API_KEY", apiKeyRequired: true,
         baseUrlVar: "STEPFUN_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "STEPFUN_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "STEPFUN_TOKENIZER",
     },
     // Baichuan — single host.
     baichuan: {
         apiKeyVar: "BAICHUAN_API_KEY", apiKeyRequired: true,
         baseUrlVar: "BAICHUAN_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BAICHUAN_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "BAICHUAN_TOKENIZER",
     },
     // Baidu ERNIE via Qianfan v2 (key is a bce-v3/ALTAK-… bearer; base carries /v2).
     qianfan: {
         apiKeyVar: "QIANFAN_API_KEY", apiKeyRequired: true,
         baseUrlVar: "QIANFAN_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "QIANFAN_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "QIANFAN_TOKENIZER",
     },
     // SiliconFlow aggregator. Mainland twin is api.siliconflow.cn.
     siliconflow: {
         apiKeyVar: "SILICONFLOW_API_KEY", apiKeyRequired: true,
         baseUrlVar: "SILICONFLOW_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "SILICONFLOW_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "SILICONFLOW_TOKENIZER",
     },
     // ModelScope API-Inference aggregator — single host (.cn).
     modelscope: {
         apiKeyVar: ["MODELSCOPE_API_KEY", "MODELSCOPE_TOKEN"], apiKeyRequired: true,
         baseUrlVar: "MODELSCOPE_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "MODELSCOPE_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "MODELSCOPE_TOKENIZER",
     },
     // First-party Claude via Anthropic's OpenAI-compat endpoint: bearer auth,
     // OpenAI SSE, the `thinking` reasoning param (reasoning_effort is ignored).
@@ -222,7 +223,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     anthropic: {
         apiKeyVar: "ANTHROPIC_API_KEY", apiKeyRequired: true,
         baseUrlVar: "ANTHROPIC_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "anthropic", tokenizerDefault: "heuristic", tokenizerEnvVar: "ANTHROPIC_TOKENIZER",
+        reasoningStyle: "anthropic", tokenizerEnvVar: "ANTHROPIC_TOKENIZER",
     },
     // AWS Bedrock via its OpenAI-compat endpoint (path is /openai/v1, NOT /v1),
     // bearer-authed with a Bedrock API key (SigV4 optional). Region-templated base
@@ -248,7 +249,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
             if (dot < 0) return undefined;
             return lookup(stripped.slice(0, dot), stripped.slice(dot + 1))?.contextWindow;
         },
-        reasoningStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "BEDROCK_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "BEDROCK_TOKENIZER",
     },
     // The plurnk hosted model — deliberately the most boring OpenAI-compatible
     // client we can ship: the ecosystem must not know what sits behind
@@ -260,7 +261,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     plurnk: {
         baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: false,
-        reasoningStyle: "none", grammarStyle: "none", tokenizerDefault: "heuristic", tokenizerEnvVar: "PLURNK_TOKENIZER",
+        reasoningStyle: "none", grammarStyle: "none", tokenizerEnvVar: "PLURNK_TOKENIZER",
         probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico",
     },
 });
@@ -366,16 +367,18 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
 
     const headers = resolveHeaders(spec, env, name);
 
-    const family = parseTokenizerFamily(env[spec.tokenizerEnvVar], spec.tokenizerDefault, spec.tokenizerEnvVar, name);
-    // A heuristic fallback is never silent: countTokens will be a chars/2 UPPER
-    // BOUND, not an exact count — surfaced so the operator knows window math is
-    // conservative until an exact tokenizer (family var, or the seam) is wired.
-    if (family === "heuristic") {
-        process.emitWarning(
-            `${name} provider: no exact tokenizer for "${model}" — countTokens is a chars/2 upper bound (set ${spec.tokenizerEnvVar} for an exact family)`,
-            { code: "PLURNK_TOKENIZER_HEURISTIC" },
-        );
+    // Tokenizer shed (mimetypes#44 landed): client-side families are GONE — exact
+    // counting lives in the mimetypes tokenizer seam + the tokenize() capability.
+    // A still-set family var fails hard with the migration pointer; countTokens is
+    // the chars/2 upper bound, surfaced so window math is never silently inexact.
+    const staleTokenizer = env[spec.tokenizerEnvVar];
+    if (staleTokenizer !== undefined && staleTokenizer.length > 0) {
+        throw new Error(`${name} provider: ${spec.tokenizerEnvVar} was removed — exact counting moved to the @plurnk/plurnk-mimetypes tokenizer seam (mimetypes#44) and Provider.tokenize(); unset the var (countTokens is a chars/2 upper bound)`);
     }
+    process.emitWarning(
+        `${name} provider: countTokens is a chars/2 upper bound — exact counts come from the mimetypes tokenizer seam or tokenize()`,
+        { code: "PLURNK_TOKENIZER_HEURISTIC" },
+    );
     const url = resolveUrl(spec, env, name, baseUrlOverride);
     const fetchTimeoutMs = parseRequiredInt(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name);
 
@@ -436,10 +439,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         headers,
         contextSize,
         fetchTimeoutMs,
-        reasoningBudget: reasoningBudgetFromEnv(env, name),
+        thinking: thinkingFromEnv(env, name),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         reasoningStyle,
-        countTokens: tokenizerFor(family),
         costFor,
         source: providerSource(name),
         grammarStyle,

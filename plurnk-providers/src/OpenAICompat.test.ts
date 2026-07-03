@@ -68,7 +68,7 @@ test("effortFromBudget: maps budget to tiers", () => {
 });
 
 test("identity getters and defaults", () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     assert.equal(p.model, "m");
     assert.equal(p.contextSize, null); // default
     assert.equal(p.countTokens(""), 0);
@@ -78,7 +78,7 @@ test("identity getters and defaults", () => {
 
 test("injected countTokens and costFor are used", () => {
     const p = new OpenAICompatProvider({
-        model: "m", url: "http://x", fetchTimeoutMs: 1000, reasoningBudget: 0, retryAttempts: 0,
+        model: "m", url: "http://x", fetchTimeoutMs: 1000, thinking: { mode: "off", capacity: null }, retryAttempts: 0,
         countTokens: (t) => t.length,
         costFor: (u) => u.total * 2,
     });
@@ -87,7 +87,7 @@ test("injected countTokens and costFor are used", () => {
 });
 
 test("generate maps a streamed response into ProviderResponse", async () => {
-    const p = new OpenAICompatProvider({ model: "req-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "req-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     installFetch([
         { model: "wire-model", choices: [{ delta: { content: "hel" } }] },
         { choices: [{ delta: { content: "lo" }, finish_reason: "stop" }] },
@@ -103,51 +103,51 @@ test("generate maps a streamed response into ProviderResponse", async () => {
 });
 
 test("generate normalizes an out-of-set finish_reason to null", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "function_call" }] }]);
     const { assistant } = await p.generate({ runId: "r", messages: [] });
     assert.equal(assistant.finishReason, null);
 });
 
 test("generate aggregates reasoning deltas under multiple field names", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
     const { assistant } = await p.generate({ runId: "r", messages: [] });
     assert.equal(assistant.reasoning, "because");
 });
 
 test("reasoningStyle 'think' gates on budget != 0 (magnitude irrelevant for native)", async () => {
-    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: -1, retryAttempts: 0, reasoningStyle: "think" });
+    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "adaptive", capacity: null }, retryAttempts: 0, reasoningStyle: "think" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ runId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).think, true);
 
     mock.restoreAll();
-    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, reasoningStyle: "think" });
+    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, reasoningStyle: "think" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ runId: "r", messages: [] });
     assert.equal("think" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("reasoningStyle 'effort' sends a reasoning_effort tier from the budget", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 5000, retryAttempts: 0, reasoningStyle: "effort" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "on", capacity: 5000 }, retryAttempts: 0, reasoningStyle: "effort" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
 });
 
-test("reasoningStyle 'effort_explicit': 0 SENDS none, -1 SENDS adaptive, N sends the tier (#30)", async () => {
-    for (const [budget, expected] of [[0, "none"], [-1, "adaptive"], [5000, "high"]] as Array<[number, string]>) {
-        const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: budget, retryAttempts: 0, reasoningStyle: "effort_explicit" });
+test("reasoningStyle 'effort_explicit': off SENDS none, adaptive SENDS adaptive, on sends the tier (#30/#33)", async () => {
+    for (const [thinking, expected] of [[{ mode: "off", capacity: null }, "none"], [{ mode: "adaptive", capacity: null }, "adaptive"], [{ mode: "on", capacity: 5000 }, "high"]] as Array<[{ mode: "off" | "adaptive" | "on"; capacity: number | null }, string]>) {
+        const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking, retryAttempts: 0, reasoningStyle: "effort_explicit" });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({ runId: "r", messages: [] });
-        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `budget ${budget}`);
+        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `mode ${thinking.mode}`);
         mock.restoreAll();
     }
 });
 
 test("response_format grammar carries the near-greedy temperature DEFAULT; caller sampling overrides it (#30)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "response_format" });
     // default rides with the grammar (non-streamed demotion path)
     let calls = installFetchJson(jsonChoice);
     await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
@@ -164,15 +164,36 @@ test("response_format grammar carries the near-greedy temperature DEFAULT; calle
     assert.equal("temperature" in JSON.parse(calls[0].init.body as string), false);
 });
 
+test("effort_explicit under a response_format grammar CLAMPS to none regardless of intent, surfaced once (#32)", async () => {
+    const warned: Array<string | Error> = [];
+    mock.method(process, "emitWarning", (msg: string | Error) => { warned.push(msg); });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "on", capacity: 8192 }, retryAttempts: 0, reasoningStyle: "effort_explicit", grammarStyle: "response_format", source: "provider:test" });
+    let calls = installFetchJson(jsonChoice);
+    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
+    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "none"); // intent "on" overridden by topology
+    assert.ok(warned.some((w) => String(w).includes("clamped to reasoning_effort")), "clamp must be surfaced");
+    // second grammar call: clamp still applies, but the warning fired only once
+    calls = installFetchJson(jsonChoice);
+    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
+    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "none");
+    assert.equal(warned.filter((w) => String(w).includes("clamped")).length, 1);
+    mock.restoreAll();
+    // no grammar → intent flows through untouched
+    const p2 = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "on", capacity: 8192 }, retryAttempts: 0, reasoningStyle: "effort_explicit", grammarStyle: "response_format" });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p2.generate({ runId: "r", messages: [] });
+    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
+});
+
 test("llamacpp grammar path carries the same near-greedy temperature default (never rely on launch flags)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
 });
 
 test("sampling passthrough forwards caller params; managed + reserved keys win", async () => {
-    const p = new OpenAICompatProvider({ model: "managed-model", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "managed-model", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({
         runId: "r",
@@ -195,33 +216,33 @@ test("sampling passthrough forwards caller params; managed + reserved keys win",
 });
 
 test("reasoningStyle 'template' always emits enable_thinking mirroring budget != 0 — explicit false, never omitted", async () => {
-    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: -1, retryAttempts: 0, reasoningStyle: "template" });
+    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "adaptive", capacity: null }, retryAttempts: 0, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ runId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).chat_template_kwargs, { enable_thinking: true });
 
     mock.restoreAll();
-    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, reasoningStyle: "template" });
+    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, reasoningStyle: "template" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ runId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).chat_template_kwargs, { enable_thinking: false });
 });
 
 test("budget 0 suppresses effort and include_reasoning", async () => {
-    const effort = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, reasoningStyle: "effort" });
+    const effort = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, reasoningStyle: "effort" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await effort.generate({ runId: "r", messages: [] });
     assert.equal("reasoning_effort" in JSON.parse(calls[0].init.body as string), false);
 
     mock.restoreAll();
-    const relay = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, reasoningStyle: "include_reasoning" });
+    const relay = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, reasoningStyle: "include_reasoning" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await relay.generate({ runId: "r", messages: [] });
     assert.equal("include_reasoning" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: -1, retryAttempts: 0, reasoningStyle: "include_reasoning" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "adaptive", capacity: null }, retryAttempts: 0, reasoningStyle: "include_reasoning" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
@@ -230,7 +251,7 @@ test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", asy
 // — grammar-constrained sampling (SPEC §13, issues #8/#9) —
 
 test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -240,7 +261,7 @@ test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor
 });
 
 test("grammar transport 'response_format': response_format.grammar, no top-level grammar (Fireworks)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "response_format" });
     const calls = installFetchJson(jsonChoice);   // response_format grammar demotes off SSE
     await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -255,7 +276,7 @@ test("grammar transport 'response_format': response_format.grammar, no top-level
 // as reasoning_content but returns it as content non-streamed (§13). The demotion
 // is per-request — a grammarless call on the same provider still streams.
 test("response_format grammar demotes THIS request off SSE; grammarless calls still stream", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "response_format" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "response_format" });
     const jsonCalls = installFetchJson(jsonChoice);
     await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
     assert.equal("stream" in JSON.parse(jsonCalls[0].init.body as string), false);   // no SSE flag
@@ -266,7 +287,7 @@ test("response_format grammar demotes THIS request off SSE; grammarless calls st
 });
 
 test("grammar transport 'none' (default): the grammar is never sent — no silent unconstrained", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
@@ -277,7 +298,7 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
 // — grammar ENFORCEMENT verification (SPEC §13): the backend must have honored
 //   the grammar we transported; strict — any non-accept verdict fails hard —
 
-const grammarProvider = () => new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
+const grammarProvider = () => new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
 const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
 
 test("enforcement: conforming output passes through unchanged", async () => {
@@ -329,7 +350,7 @@ test("enforcement: empty content under a non-empty grammar fails (the 'content n
 });
 
 test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 }); // grammarStyle defaults to "none"
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
     streamingContent("anything goes");
     const { assistant } = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }); // grammar passed but never transported
     assert.equal(assistant.content, "anything goes"); // no enforcement check
@@ -351,7 +372,7 @@ test("enforcement: a grammar our validator can't parse is a NON-FATAL verify gap
 // — PLURNK_GBNF_DEBUG: run unconstrained, then verify the free output against the grammar —
 
 test("gbnfDebug: the grammar is NOT transported; conforming free output passes through with NO telemetry", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
     const calls = installFetch([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
     const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -362,7 +383,7 @@ test("gbnfDebug: the grammar is NOT transported; conforming free output passes t
 });
 
 test("gbnfDebug: a conflict does NOT throw — it returns the bytes plus a grammar_unenforced telemetry event with the divergence position (#24)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
     const calls = installFetch([{ choices: [{ delta: { reasoning_content: "let me think about ok", content: "xon-conforming output" }, finish_reason: "stop" }] }]);
     const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
     // The model's bytes survive — not discarded by a throw (the empty-turn cascade root cause).
@@ -380,7 +401,7 @@ test("gbnfDebug: a conflict does NOT throw — it returns the bytes plus a gramm
 });
 
 test("gbnfDebug: an INVALID grammar throws before any wire call — it never reaches the model", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await assert.rejects(
         () => p.generate({ runId: "r", messages: [], grammar: 'foo ::= "a"' }), // no `root` rule → invalid GBNF
@@ -392,7 +413,7 @@ test("gbnfDebug: an INVALID grammar throws before any wire call — it never rea
 // — meta bag: pass-through extras + validated known keys (#23) —
 
 test("meta: the spec's balance field is normalized to a validated meta.balancePico", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
     installFetchJson({ ...jsonChoice, balance_pico: 4_200_000 });
     const res = await p.generate({ runId: "r", messages: [] });
     assert.equal(res.meta?.balancePico, 4_200_000);
@@ -400,7 +421,7 @@ test("meta: the spec's balance field is normalized to a validated meta.balancePi
 });
 
 test("meta: passes the backend's extra top-level fields through verbatim (every provider)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false }); // no balanceMetaKey
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, streaming: false }); // no balanceMetaKey
     installFetchJson({ ...jsonChoice, balance_pico: 4_200_000, system_fingerprint: "fp_abc" });
     const res = await p.generate({ runId: "r", messages: [] });
     assert.equal(res.meta?.balance_pico, 4_200_000); // passed through raw — no balance contract on this provider
@@ -409,7 +430,7 @@ test("meta: passes the backend's extra top-level fields through verbatim (every 
 });
 
 test("meta: a non-numeric balance is dropped, never surfaced as balancePico (null-honest)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
     installFetchJson({ ...jsonChoice, balance_pico: "lots" });
     const res = await p.generate({ runId: "r", messages: [] });
     assert.equal("balancePico" in (res.meta ?? {}), false);
@@ -422,7 +443,7 @@ const headerVal = (init: RequestInit, name: string): string | undefined =>
     new Headers(init.headers).get(name) ?? undefined;
 
 test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, firstPartyMetadata: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.2.0", "@foo/y@0.3.1"], client: "plurnk.nvim/1.4.0" });
     assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), '["@acme/x@1.2.0","@foo/y@0.3.1"]');
@@ -430,7 +451,7 @@ test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async
 });
 
 test("firstPartyMetadata off (default): the headers are structurally dropped even when values are passed", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.2.0"], client: "plurnk-cli/2.0.0" });
     assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);   // never leaks to a non-first-party backend
@@ -438,7 +459,7 @@ test("firstPartyMetadata off (default): the headers are structurally dropped eve
 });
 
 test("firstPartyMetadata on but empty values: no header emitted", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, firstPartyMetadata: true });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], attributions: [], client: "" });
     assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);
@@ -446,7 +467,7 @@ test("firstPartyMetadata on but empty values: no header emitted", async () => {
 });
 
 test("grammar transport: capable backend with no grammar passed sends neither field", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
@@ -455,7 +476,7 @@ test("grammar transport: capable backend with no grammar passed sends neither fi
 });
 
 test("maxTokens transports as max_tokens; absent → no wire field (server default)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [], maxTokens: 2048 });
     assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 2048);
@@ -467,7 +488,7 @@ test("maxTokens transports as max_tokens; absent → no wire field (server defau
 });
 
 test("slot affinity is internal: sticky per runId, distinct runs spread across slots (#11)", async () => {
-    const pinning = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
+    const pinning = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await pinning.generate({ runId: "run-A", messages: [] });
     await pinning.generate({ runId: "run-B", messages: [] });
@@ -478,20 +499,20 @@ test("slot affinity is internal: sticky per runId, distinct runs spread across s
 });
 
 test("slot affinity: no pinning backend or unknown slotCount → no id_slot ever", async () => {
-    const cloud = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 }); // default: no pinning
+    const cloud = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 }); // default: no pinning
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await cloud.generate({ runId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 
     mock.restoreAll();
-    const noCount = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, supportsSlotPinning: true }); // slotCount null
+    const noCount = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, supportsSlotPinning: true }); // slotCount null
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await noCount.generate({ runId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("slot affinity: a run past the LRU window (slotCount*8) loses its pin; recent runs stay sticky (#11)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const slotOf = (i: number) => JSON.parse(calls[i].init.body as string).id_slot;
     for (let i = 0; i < 16; i++) await p.generate({ runId: `r${i}`, messages: [] }); // fills the 16-entry window {r0..r15}
@@ -505,7 +526,7 @@ test("slot affinity: a run past the LRU window (slotCount*8) loses its pin; rece
 
 test("streaming:false: a non-ok response rejects as a classified ProviderError (covers the non-streamed transport)", async () => {
     const { ProviderError } = await import("./telemetry.ts");
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false, source: "provider:test" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, streaming: false, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("boom", { status: 500 }));
     await assert.rejects(() => p.generate({ runId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError);
@@ -516,14 +537,14 @@ test("streaming:false: a non-ok response rejects as a classified ProviderError (
 });
 
 test("generate fail-hards on a missing or empty runId", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await assert.rejects(() => p.generate({ runId: "", messages: [] }), /runId is required/);
     await assert.rejects(() => (p.generate as (a: object) => Promise<unknown>)({ messages: [] }), /runId is required/);
 });
 
 test("messages pass through verbatim — the provider injects no turn (PLAN lives in the grammar, never a provider prefill)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "out" } }] }]);
     const input = [{ role: "user" as const, content: "hi" }];
     const res = await p.generate({ runId: "r", messages: input });
@@ -533,7 +554,7 @@ test("messages pass through verbatim — the provider injects no turn (PLAN live
 
 test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEvent", async () => {
     const { ProviderError } = await import("./telemetry.ts");
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, source: "provider:test" });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
     await assert.rejects(() => p.generate({ runId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError);
@@ -545,7 +566,7 @@ test("generate wraps an HTTP failure as a ProviderError carrying a TelemetryEven
 });
 
 test("generate rejects on a pre-aborted external signal", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0 });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const signal = AbortSignal.abort(new Error("nope"));
     await assert.rejects(() => p.generate({ runId: "r", messages: [], signal }));
@@ -553,7 +574,7 @@ test("generate rejects on a pre-aborted external signal", async () => {
 
 test("configured headers and url are sent verbatim", async () => {
     const p = new OpenAICompatProvider({
-        model: "m", url: "http://host/custom/chat/completions", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0,
+        model: "m", url: "http://host/custom/chat/completions", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0,
         headers: { Authorization: "Bearer secret", "X-Title": "plurnk" },
     });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -565,7 +586,7 @@ test("configured headers and url are sent verbatim", async () => {
 
 // — transient-failure retry (#18) —
 
-const retryCfg = { model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0 as const };
+const retryCfg = { model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null } as const };
 
 test("retry: a transient failure retries and a later success resolves", async () => {
     const calls = installFetchScript([
@@ -631,21 +652,21 @@ test("retry: a caller abort during backoff rejects promptly with no further atte
 
 test("reasoningStyle 'anthropic' maps the budget to the thinking param", async () => {
     // N>0 → enabled with budget_tokens
-    const capped = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, reasoningBudget: 4096, reasoningStyle: "anthropic" });
+    const capped = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, thinking: { mode: "on", capacity: 4096 }, reasoningStyle: "anthropic" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await capped.generate({ runId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 4096 });
 
     mock.restoreAll();
     // 0 → explicit disabled
-    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, reasoningBudget: 0, reasoningStyle: "anthropic" });
+    const off = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, thinking: { mode: "off", capacity: null }, reasoningStyle: "anthropic" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ runId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "disabled" });
 
     mock.restoreAll();
     // -1 adaptive → omit (API default depth)
-    const adaptive = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, reasoningBudget: -1, reasoningStyle: "anthropic" });
+    const adaptive = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, retryAttempts: 0, thinking: { mode: "adaptive", capacity: null }, reasoningStyle: "anthropic" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await adaptive.generate({ runId: "r", messages: [] });
     assert.equal("thinking" in JSON.parse(calls[0].init.body as string), false);
@@ -663,7 +684,7 @@ test("streaming:false posts without stream and parses the single JSON response",
             usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
         }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, reasoningBudget: 0, retryAttempts: 0, streaming: false });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, thinking: { mode: "off", capacity: null }, retryAttempts: 0, streaming: false });
     const res = await p.generate({ runId: "r", messages: [] });
     const sent = JSON.parse(calls[0].body);
     assert.equal("stream" in sent, false);                 // no streaming flag
