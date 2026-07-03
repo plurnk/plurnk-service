@@ -98,9 +98,9 @@ Behavior ships as `export default class` (one class per file, static methods) �
 
 ### Mimetype classification — `MimetypeClassifier`
 
-- `MimetypeClassifier.isBinary(mimetype)` — enforces 415 boundary on binary entries (text/* is text; application/{json,jsonl,x-ndjson,yaml,toml,xml,javascript,typescript,sql} is text; `+json`/`+xml`/`+yaml` suffix variants are text; everything else with a slash is binary).
-- `MimetypeClassifier.isJson(mimetype)` — `application/json` plus `+json` variants. Used by `<L>` dispatch.
-- `MimetypeClassifier.isLineNavigable(mimetype)` — render-layer decides whether to prefix lines with `N:\t`.
+- `MimetypeClassifier.isBinary(mimetype)` — enforces 415 boundary on binary entries. Delegates to `classifyMimetype` from @plurnk/plurnk-mimetypes (the framework owns the text/binary taxonomy — mimetypes#43; the former local allowlists were absorbed upstream verbatim and retired).
+- `MimetypeClassifier.isJson(mimetype)` — `application/json` plus `+json` variants. Used by `<L>` dispatch. Scheme semantics — stays local, not delegated.
+- `MimetypeClassifier.isLineNavigable(mimetype)` — render-layer decides whether to prefix lines with `N:\t`. Delegates to `classifyMimetype`.
 - `MimetypeClassifier.normalizeAutoText(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).
 - `TEXT_PRIMITIVE_MIMETYPE` — `"text/markdown"` (named export from the same module).
 
