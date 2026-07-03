@@ -8,7 +8,7 @@
 //   npm run grammars:update   # for each behind: bump + rebuild + verify + open PR
 //   ... -- --only python      # restrict to one grammar
 //
-// Config: PLURNK_GRAMMARS_ROOT (.env.example) — the directory holding the
+// Config: PLURNK_MIMETYPES_GRAMMARS_ROOT (.env.example) — the directory holding the
 // grammar repos. Defaults to this checkout's parent (the usual side-by-side
 // layout). Loaded via Node's built-in process.loadEnvFile().
 import { readdir, readFile, writeFile } from "node:fs/promises";
@@ -17,14 +17,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 try { process.loadEnvFile(); } catch { /* no .env — fine */ }
+// Rename tripwires (family-prefix sweep): old knob names crash with a pointer,
+// never silently ignored (a stale FAMILY_ROOT would silently scan the wrong dir).
+for (const old of ["PLURNK_AUDIT_LEVEL", "PLURNK_FAMILY_ROOT", "PLURNK_GRAMMARS_ROOT"]) {
+    if (process.env[old] !== undefined) throw new Error(`${old} was renamed to ${old.replace("PLURNK_", "PLURNK_MIMETYPES_")} (family-prefix convention); update the environment.`);
+}
+
 
 const args = process.argv.slice(2);
 const check = args.includes("--check");
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = process.env.PLURNK_GRAMMARS_ROOT
-    ? path.resolve(process.env.PLURNK_GRAMMARS_ROOT)
+const root = process.env.PLURNK_MIMETYPES_GRAMMARS_ROOT
+    ? path.resolve(process.env.PLURNK_MIMETYPES_GRAMMARS_ROOT)
     : path.resolve(here, "..", "..");
 
 const names = (await readdir(root, { withFileTypes: true }))

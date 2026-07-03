@@ -27,8 +27,8 @@
 //   npm run deps:check -- --only pins
 //   npm run deps:check -- --only audit
 //
-// Config (.env.example): PLURNK_FAMILY_ROOT (dir holding the side-by-side repos,
-// default = this checkout's parent), PLURNK_AUDIT_LEVEL (default "moderate").
+// Config (.env.example): PLURNK_MIMETYPES_FAMILY_ROOT (dir holding the side-by-side repos,
+// default = this checkout's parent), PLURNK_MIMETYPES_AUDIT_LEVEL (default "moderate").
 // Exits non-zero if any issue is found — usable as a gate.
 import { readdirSync, readFileSync, existsSync, statSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -37,6 +37,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 try { process.loadEnvFile(); } catch { /* no .env — fine */ }
+// Rename tripwires (family-prefix sweep): old knob names crash with a pointer,
+// never silently ignored (a stale FAMILY_ROOT would silently scan the wrong dir).
+for (const old of ["PLURNK_AUDIT_LEVEL", "PLURNK_FAMILY_ROOT", "PLURNK_GRAMMARS_ROOT"]) {
+    if (process.env[old] !== undefined) throw new Error(`${old} was renamed to ${old.replace("PLURNK_", "PLURNK_MIMETYPES_")} (family-prefix convention); update the environment.`);
+}
+
 
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
@@ -44,15 +50,15 @@ const runPins = !only || only === "pins";
 const runAudit = !only || only === "audit";
 
 const SEVERITIES = ["info", "low", "moderate", "high", "critical"];
-const auditLevel = process.env.PLURNK_AUDIT_LEVEL || "moderate";
+const auditLevel = process.env.PLURNK_MIMETYPES_AUDIT_LEVEL || "moderate";
 // Unset → "moderate" (the honest documented default); SET-but-invalid is a
 // contract violation — crash, don't collapse a typo'd level to index 0 ("info").
-if (!SEVERITIES.includes(auditLevel)) throw new Error(`Invalid PLURNK_AUDIT_LEVEL "${auditLevel}" — expected one of ${SEVERITIES.join("|")}`);
+if (!SEVERITIES.includes(auditLevel)) throw new Error(`Invalid PLURNK_MIMETYPES_AUDIT_LEVEL "${auditLevel}" — expected one of ${SEVERITIES.join("|")}`);
 const levelIdx = SEVERITIES.indexOf(auditLevel);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = process.env.PLURNK_FAMILY_ROOT
-    ? path.resolve(process.env.PLURNK_FAMILY_ROOT)
+const root = process.env.PLURNK_MIMETYPES_FAMILY_ROOT
+    ? path.resolve(process.env.PLURNK_MIMETYPES_FAMILY_ROOT)
     : path.resolve(here, "..", "..");
 
 const FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];

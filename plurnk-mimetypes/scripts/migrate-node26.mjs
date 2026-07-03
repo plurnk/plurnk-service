@@ -8,20 +8,26 @@
 //   node scripts/migrate-node26.mjs --check   # report, change nothing
 //   node scripts/migrate-node26.mjs           # bump + commit + push each
 //
-// Config: PLURNK_FAMILY_ROOT (.env.example), default = this checkout's parent.
+// Config: PLURNK_MIMETYPES_FAMILY_ROOT (.env.example), default = this checkout's parent.
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 try { process.loadEnvFile(); } catch { /* no .env — fine */ }
+// Rename tripwires (family-prefix sweep): old knob names crash with a pointer,
+// never silently ignored (a stale FAMILY_ROOT would silently scan the wrong dir).
+for (const old of ["PLURNK_AUDIT_LEVEL", "PLURNK_FAMILY_ROOT", "PLURNK_GRAMMARS_ROOT"]) {
+    if (process.env[old] !== undefined) throw new Error(`${old} was renamed to ${old.replace("PLURNK_", "PLURNK_MIMETYPES_")} (family-prefix convention); update the environment.`);
+}
+
 
 const check = process.argv.includes("--check");
 const TARGET = ">=26";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = process.env.PLURNK_FAMILY_ROOT
-    ? path.resolve(process.env.PLURNK_FAMILY_ROOT)
+const root = process.env.PLURNK_MIMETYPES_FAMILY_ROOT
+    ? path.resolve(process.env.PLURNK_MIMETYPES_FAMILY_ROOT)
     : path.resolve(here, "..", "..");
 
 const entries = await readdir(root, { withFileTypes: true });

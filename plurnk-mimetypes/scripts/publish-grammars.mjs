@@ -5,17 +5,23 @@
 //
 //   npm run grammars:publish
 //
-// Config: PLURNK_GRAMMARS_ROOT (.env.example) — same as grammars:update.
+// Config: PLURNK_MIMETYPES_GRAMMARS_ROOT (.env.example) — same as grammars:update.
 import { readdir, readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 try { process.loadEnvFile(); } catch { /* no .env — fine */ }
+// Rename tripwires (family-prefix sweep): old knob names crash with a pointer,
+// never silently ignored (a stale FAMILY_ROOT would silently scan the wrong dir).
+for (const old of ["PLURNK_AUDIT_LEVEL", "PLURNK_FAMILY_ROOT", "PLURNK_GRAMMARS_ROOT"]) {
+    if (process.env[old] !== undefined) throw new Error(`${old} was renamed to ${old.replace("PLURNK_", "PLURNK_MIMETYPES_")} (family-prefix convention); update the environment.`);
+}
+
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = process.env.PLURNK_GRAMMARS_ROOT
-    ? path.resolve(process.env.PLURNK_GRAMMARS_ROOT)
+const root = process.env.PLURNK_MIMETYPES_GRAMMARS_ROOT
+    ? path.resolve(process.env.PLURNK_MIMETYPES_GRAMMARS_ROOT)
     : path.resolve(here, "..", "..");
 
 const names = (await readdir(root, { withFileTypes: true }))
