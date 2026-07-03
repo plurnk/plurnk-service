@@ -286,12 +286,16 @@ export default class OpenAICompatProvider implements Provider {
     // absent (consumer didn't report); contract per plurnk-service#313. Strikes
     // ride HTTP headers only — the packet never carries them (the model must
     // never see strike state; engine accounting is not a metric to game).
-    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined): Record<string, string> {
+    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, runId: string): Record<string, string> {
         if (!this.#firstPartyMetadata) return {};
         const h: Record<string, string> = {};
         if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
         if (client !== undefined && client.length > 0) h["Plurnk-Client"] = client;
         if (strikes !== undefined && Number.isInteger(strikes) && strikes >= 0) h["Plurnk-Strikes"] = String(strikes);
+        // Run identity (#26): the opaque runId the consumer already supplies,
+        // forwarded so the endpoint can key per-run affinity/telemetry — same
+        // gate as every first-party signal.
+        h["Plurnk-Run-Id"] = runId;
         return h;
     }
 
@@ -438,7 +442,7 @@ export default class OpenAICompatProvider implements Provider {
         const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
 
         // Per-request headers = static auth/routing + any first-party telemetry.
-        const metaHeaders = this.#metadataHeaders(attributions, client, strikes);
+        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, runId);
         const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
         let raw;
         for (let attempt = 0; ; attempt++) {
