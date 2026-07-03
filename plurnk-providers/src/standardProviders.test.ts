@@ -6,7 +6,7 @@ import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from 
 // defaults for the providers exercised outside the coverage loop. `openai` is
 // deliberately omitted so its missing-base fail-hard test still fires.
 const baseEnv = Object.freeze({
-    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_GRAMMAR_TEMPERATURE: "0.2", PLURNK_PROVIDERS_GRAMMAR_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     GROQ_BASE_URL: "https://api.groq.com/openai/v1",
     DEEPINFRA_BASE_URL: "https://api.deepinfra.com/v1/openai",
     FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
@@ -217,32 +217,32 @@ test("openai: detection exhaustion is SURFACED, never silent (#34)", async () =>
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
     assert.equal(p!.constrainsOutput, false);
-    assert.ok(warned.some((w) => String(w).includes("llama-server detection failed") && String(w).includes("OPENAI_LLAMA_SERVER=1")), `expected PLURNK_PROBE_FAILED warning; got ${warned.join(" | ")}`);
+    assert.ok(warned.some((w) => String(w).includes("llama-server detection failed") && String(w).includes("PLURNK_PROVIDERS_LLAMA_SERVER=1")), `expected PLURNK_PROBE_FAILED warning; got ${warned.join(" | ")}`);
 });
 
-test("openai: OPENAI_LLAMA_SERVER=1 pins llamacpp capabilities WITHOUT trusting the probe (#34)", async () => {
+test("openai: PLURNK_PROVIDERS_LLAMA_SERVER=1 pins llamacpp capabilities WITHOUT trusting the probe (#34)", async () => {
     mock.method(globalThis, "fetch", async (url: string) => {
         const u = String(url);
         if (u.endsWith("/models")) return new Response("down", { status: 503 }); // probe dead the whole time
         if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 2 }), { status: 200 });
         return sse();
     });
-    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", OPENAI_LLAMA_SERVER: "1" }, "m");
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_LLAMA_SERVER: "1" }, "m");
     assert.equal(p!.constrainsOutput, true); // pinned: rails live, no probe dependency
     assert.notEqual(p!.tokenize, undefined); // full capability set rides the pin
 });
 
-test("openai: OPENAI_LLAMA_SERVER=0 forces plain-remote even when the fingerprint matches (#34)", async () => {
+test("openai: PLURNK_PROVIDERS_LLAMA_SERVER=0 forces plain-remote even when the fingerprint matches (#34)", async () => {
     mockEndpoint({ metaNctx: 49152 }); // fingerprint SAYS llama-server
-    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", OPENAI_LLAMA_SERVER: "0" }, "m");
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_LLAMA_SERVER: "0" }, "m");
     assert.equal(p!.constrainsOutput, false);
     assert.equal(p!.tokenize, undefined);
 });
 
-test("openai: a garbage OPENAI_LLAMA_SERVER value fails hard", async () => {
+test("openai: a garbage PLURNK_PROVIDERS_LLAMA_SERVER value fails hard", async () => {
     await assert.rejects(
-        standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", OPENAI_LLAMA_SERVER: "yes" }, "m"),
-        /OPENAI_LLAMA_SERVER must be "1" .* "0" .* or unset/,
+        standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_LLAMA_SERVER: "yes" }, "m"),
+        /PLURNK_PROVIDERS_LLAMA_SERVER must be "1" .* "0" .* or unset/,
     );
 });
 
@@ -504,12 +504,12 @@ test("bedrock: a publisher the catalog lacks (meta) → contextSize null; PLURNK
     assert.equal(pinned!.contextSize, 128000);
 });
 
-test("PLURNK_GBNF_DEBUG=1 wires through: an invalid grammar throws without a chat call", async () => {
+test("PLURNK_PROVIDERS_GBNF_DEBUG=1 wires through: an invalid grammar throws without a chat call", async () => {
     const calls = mockEndpoint({ metaNctx: 4096 }); // llama fingerprint → grammarStyle llamacpp
-    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x", PLURNK_GBNF_DEBUG: "1" }, "m");
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x", PLURNK_PROVIDERS_GBNF_DEBUG: "1" }, "m");
     await assert.rejects(
         () => p!.generate({ runId: "r", messages: [], grammar: 'foo ::= "a"' }), // invalid GBNF
-        /PLURNK_GBNF_DEBUG/,
+        /PLURNK_PROVIDERS_GBNF_DEBUG/,
     );
     assert.equal(chatCall(calls), undefined); // probes only — the grammar never reached /chat/completions
     mock.restoreAll();

@@ -45,7 +45,7 @@ export type OpenAICompatConfig = {
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
-    gbnfDebug?: boolean;                        // PLURNK_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
+    gbnfDebug?: boolean;                        // PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
     balanceMetaKey?: string;                    // top-level response field carrying account balance (pico-USD) → validated meta.balancePico (plurnk only, #23); default unset
@@ -62,28 +62,19 @@ export type OpenAICompatConfig = {
     // backend's mechanism via reasoningStyle; capacity is only ever a magnitude,
     // never a hidden activation flag (#33).
     thinking: Thinking;
+    // Grammar decode tuning — REQUIRED, no in-code defaults (the canonical
+    // measured values, 0.2 / 1.15, live in .env.example; both alias-scopable):
+    // grammarTemperature is a near-greedy DEFAULT spread UNDER caller sampling
+    // on every grammar path (#30/endpoint#7); grammarRepeatPenalty is the FLOOR
+    // riding every attached grammar (managed — greedy-under-mask loops without
+    // it, #9). Values are operator config; WHERE they apply stays mechanism.
+    grammarTemperature: number;
+    grammarRepeatPenalty: number;
     // Transient-failure retry budget — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
     // first failure; N = up to N retries on a transient error (§4, #18).
     retryAttempts: number;
 };
-
-// Sampling guard under an active grammar (SPEC §13): greedy decoding under
-// hard constraint masks degenerates into repetition loops at the server
-// default of 1.0, so the floor rides per-request with every attached grammar —
-// never rely on server launch flags. Probed on llama.cpp b894 + gemma-4-26B
-// (plurnk-providers#9; reference: plurnk-grammar test/llama/gbnf-live.test.ts).
-const GRAMMAR_REPEAT_PENALTY_FLOOR = 1.15;
-
-// Near-greedy temperature DEFAULT for EVERY grammar path (#30, endpoint#7):
-// measured on Fireworks DeepSeek V4, reasoning-off grammar runs went 2/5 → 30/30
-// conformant-and-terminating adding temperature 0.2; the same ramble-inside-the-
-// mask class reproduced on llama-server (whose launch default is 0.8 when the
-// operator sets no --temp). Rides per-request like the repeat-penalty floor —
-// never rely on server launch flags. A DEFAULT, not a floor — spread under the
-// caller's `sampling`, so an explicit temperature wins (policy stays the
-// consumer's; this only covers the no-sampling out-of-the-box call).
-const GRAMMAR_TEMPERATURE = 0.2;
 
 // Exponential-backoff base for transient-failure retries (#18). Attempt N waits
 // RETRY_BASE_DELAY_MS * 2^(N-1), unless the server sent a Retry-After (which
@@ -148,6 +139,8 @@ export default class OpenAICompatProvider implements Provider {
     #headers: Record<string, string>;
     #contextSize: number | null;
     #thinking: Thinking;
+    #grammarTemperature: number;
+    #grammarRepeatPenalty: number;
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
     #costFor: (usage: ProviderUsage) => number;
@@ -174,6 +167,14 @@ export default class OpenAICompatProvider implements Provider {
         this.#headers = config.headers ?? {};
         this.#contextSize = config.contextSize ?? null;
         this.#thinking = config.thinking;
+        // Loud guard: an out-of-date consumer (stale daughter dist) omitting the
+        // required tuning fields must fail at construction, not silently send
+        // undefined sampling on every grammar request.
+        if (typeof config.grammarTemperature !== "number" || typeof config.grammarRepeatPenalty !== "number") {
+            throw new Error(`${config.source ?? "provider"}: OpenAICompatConfig requires grammarTemperature + grammarRepeatPenalty (PLURNK_PROVIDERS_GRAMMAR_TEMPERATURE / _GRAMMAR_REPEAT_PENALTY) — rebuild against providers >= 0.33.0`);
+        }
+        this.#grammarTemperature = config.grammarTemperature;
+        this.#grammarRepeatPenalty = config.grammarRepeatPenalty;
         this.#retryAttempts = config.retryAttempts;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
@@ -301,8 +302,8 @@ export default class OpenAICompatProvider implements Provider {
             // floor (#9, SPEC §13) — every grammar path carries it. llama.cpp spells
             // it `repeat_penalty`; the OpenAI-compat (Fireworks) shape is `repetition_penalty`
             // (verified honored live, #20).
-            case "llamacpp": return { grammar, repeat_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
-            case "response_format": return { response_format: { type: "grammar", grammar }, repetition_penalty: GRAMMAR_REPEAT_PENALTY_FLOOR };
+            case "llamacpp": return { grammar, repeat_penalty: this.#grammarRepeatPenalty };
+            case "response_format": return { response_format: { type: "grammar", grammar }, repetition_penalty: this.#grammarRepeatPenalty };
             case "none": return {};
         }
     }
@@ -357,7 +358,7 @@ export default class OpenAICompatProvider implements Provider {
     // the model's bytes flow in `assistant` no matter what — and a non-accept
     // verdict rides `response.telemetry` as a grammar_unenforced OBSERVATION
     // carrying the divergence position. One check, both paths (grammar
-    // transported OR withheld under PLURNK_GBNF_DEBUG); whether to discard,
+    // transported OR withheld under PLURNK_PROVIDERS_GBNF_DEBUG); whether to discard,
     // retry, escalate, or feed the divergence back is CONSUMER policy — the
     // provider transports and observes, it never adjudicates. (Every measured
     // "failure" in the field was a legal prefix; throwing destroyed billed
@@ -369,7 +370,7 @@ export default class OpenAICompatProvider implements Provider {
         return { source: this.#source, kind: "grammar_unenforced", message: describeUnenforced(verdict), position: verdict.pos };
     }
 
-    // PLURNK_GBNF_DEBUG (SPEC §13): validate the supplied GBNF locally and fail
+    // PLURNK_PROVIDERS_GBNF_DEBUG (SPEC §13): validate the supplied GBNF locally and fail
     // hard if it's malformed, BEFORE any wire call — and the grammar is NOT
     // transported, so the request runs unconstrained. A debug aid to catch invalid
     // grammars (e.g. while editing the plurnk grammar) without a model round-trip;
@@ -380,7 +381,7 @@ export default class OpenAICompatProvider implements Provider {
         try {
             validateGbnf(grammar, "");
         } catch (cause) {
-            throw new Error(`grammar validation (PLURNK_GBNF_DEBUG): invalid GBNF — ${(cause as Error).message}`, { cause });
+            throw new Error(`grammar validation (PLURNK_PROVIDERS_GBNF_DEBUG): invalid GBNF — ${(cause as Error).message}`, { cause });
         }
     }
 
@@ -418,7 +419,7 @@ export default class OpenAICompatProvider implements Provider {
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
 
-        // Grammar handling (SPEC §13). PLURNK_GBNF_DEBUG validates the supplied
+        // Grammar handling (SPEC §13). PLURNK_PROVIDERS_GBNF_DEBUG validates the supplied
         // grammar locally and throws on a malformed one, then WITHHOLDS it so the
         // model generates UNCONSTRAINED — and the free output is still verified
         // against the grammar (below), surfacing exactly where the model's natural
@@ -433,7 +434,7 @@ export default class OpenAICompatProvider implements Provider {
         // `sampling` < the managed fields (model/messages/reasoning/grammar/
         // max_tokens/slot), which always win.
         const grammarSamplingDefaults: Record<string, unknown> =
-            sendGrammar !== undefined ? { temperature: GRAMMAR_TEMPERATURE } : {};
+            sendGrammar !== undefined ? { temperature: this.#grammarTemperature } : {};
         const body: Record<string, unknown> = {
             ...grammarSamplingDefaults,
             ...this.#samplingBody(sampling),
@@ -481,7 +482,7 @@ export default class OpenAICompatProvider implements Provider {
 
         // Grammar conformance (§13): bytes always flow; the verdict is an
         // observation. Same check whether the grammar was transported
-        // (sendGrammar) or withheld (PLURNK_GBNF_DEBUG filter mode) — a
+        // (sendGrammar) or withheld (PLURNK_PROVIDERS_GBNF_DEBUG filter mode) — a
         // non-accept verdict attaches a grammar_unenforced telemetry event
         // (message + divergence position) and the response returns normally.
         // Discard/retry/escalate/self-correct is the consumer's policy.

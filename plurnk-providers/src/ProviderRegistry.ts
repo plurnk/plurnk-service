@@ -14,6 +14,7 @@ import type { Provider, ProviderFactory } from "./types.ts";
 import { isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 import { discover, type DiscoverOptions, type Discovery } from "./discover.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-aliases";
+import { scopeEnvToAlias } from "./env.ts";
 
 // Two injectable seams, both defaulting to production behavior and never passed
 // by real callers: the module importer (tests exercise the bespoke path without
@@ -43,7 +44,11 @@ export const instantiateProvider = async (
     importImpl: ImportModule = importModule,
     discoverFn: DiscoverFn = discover,
     baseUrl?: string, // per-alias endpoint override (PLURNK_BASEURL_<alias>); threaded to both tiers
+    alias?: string, // the alias this instantiation serves — scopes PLURNK_PROVIDERS_<KNOB>_<alias> overrides
 ): Promise<Provider> => {
+    // Per-alias knob scoping: overlay any _<alias>-suffixed knob onto its bare
+    // name so both tiers (and every fromEnv) read plain vars, per-alias-resolved.
+    if (alias !== undefined) env = scopeEnvToAlias(env, alias);
     if (isStandardProvider(name)) {
         const standard = await standardProviderFromEnv(name, env, model, baseUrl);
         if (standard === null) throw new Error(`provider "${name}": standard registry resolution failed`);
@@ -84,5 +89,5 @@ export const loadActiveProvider = async (
     if (alias === null) {
         throw new Error("no active provider: set PLURNK_MODEL to an alias declared via PLURNK_MODEL_<alias>=<provider>/<model>");
     }
-    return instantiateProvider(alias.provider, env, alias.model, importImpl, discoverFn, alias.baseUrl);
+    return instantiateProvider(alias.provider, env, alias.model, importImpl, discoverFn, alias.baseUrl, alias.alias);
 };

@@ -14,7 +14,7 @@ const mapOf = (entries: Record<string, string>, skipped: Record<string, string> 
 
 const fullEnv = Object.freeze({
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
-    PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_GRAMMAR_TEMPERATURE: "0.2", PLURNK_PROVIDERS_GRAMMAR_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     OPENAI_BASE_URL: "http://x",
 });
 
@@ -138,6 +138,28 @@ test("instantiateProvider: a discovered package whose import throws fails hard, 
             return true;
         },
     );
+});
+
+test("instantiateProvider: per-alias knobs scope through to the provider (#35-doctrine)", async () => {
+    resetDiscoveryCache();
+    mock.method(globalThis, "fetch", async (url: string) => {
+        if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+    const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_SIZE_turbo: "12345", PLURNK_PROVIDERS_LLAMA_SERVER_turbo: "1" };
+    const p = await instantiateProvider("openai", env, "m",
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() }),
+        undefined, "turbo");
+    assert.equal(p.contextSize, 12345); // _turbo CONTEXT_SIZE reached the provider
+    assert.equal(p.constrainsOutput, true); // _turbo LLAMA_SERVER pin reached it too
+    // same env, DIFFERENT alias: neither override applies
+    const q = await instantiateProvider("openai", env, "m",
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() }),
+        undefined, "plain");
+    assert.equal(q.contextSize, null);
+    assert.equal(q.constrainsOutput, false);
+    mock.restoreAll();
 });
 
 test("loadActiveProvider: resolves the alias cascade end-to-end via the scan", async () => {

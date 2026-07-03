@@ -45,3 +45,32 @@ test("requireEnv: returns the value or throws a named error", () => {
     assert.throws(() => requireEnv(undefined, "GROQ_API_KEY", "groq"), /groq provider: GROQ_API_KEY must be set/);
     assert.throws(() => requireEnv("", "GROQ_API_KEY", "groq"), /must be set/);
 });
+
+// — per-alias knob scoping (#35-doctrine) —
+
+test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
+    const { scopeEnvToAlias } = await import("./env.ts");
+    const env = {
+        PLURNK_PROVIDERS_THINKING: "off",
+        PLURNK_PROVIDERS_THINKING_turboderp: "on",
+        PLURNK_PROVIDERS_THINKING_CAPACITY_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
+        PLURNK_PROVIDERS_CONTEXT_SIZE_other: "1",
+    } as NodeJS.ProcessEnv;
+    const scoped = scopeEnvToAlias(env, "turboderp");
+    assert.equal(scoped.PLURNK_PROVIDERS_THINKING, "on");
+    assert.equal(scoped.PLURNK_PROVIDERS_THINKING_CAPACITY, "4096");
+    assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_SIZE, undefined); // other alias's override never bleeds
+    assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_THINKING, "off"); // fallback intact
+});
+
+test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mistaken for a suffix", async () => {
+    const { scopeEnvToAlias } = await import("./env.ts");
+    const env = {
+        PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT_my_box: "5000",
+        PLURNK_PROVIDERS_THINKING: "off",
+        PLURNK_PROVIDERS_THINKING_CAPACITY: "4096", // bare capacity — NOT a "_capacity" alias override of THINKING
+    } as NodeJS.ProcessEnv;
+    assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FETCH_TIMEOUT, "5000");
+    assert.equal(scopeEnvToAlias(env, "capacity").PLURNK_PROVIDERS_THINKING, "off"); // collision guard
+});

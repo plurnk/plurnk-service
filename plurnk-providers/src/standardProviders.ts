@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, thinkingFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, thinkingFromEnv } from "./env.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
 import { lookup } from "@plurnk/plurnk-models";
@@ -87,11 +87,6 @@ type StandardProviderSpec = {
     // sampling (SPEC §13). Set for providers that may front a local
     // OpenAI-compat server; cloud endpoints report neither → null / false.
     probeNctx?: boolean;
-    // Operator pin for llama-server capability (#34): the env var (probeNctx
-    // specs only) that OVERRIDES fingerprint detection — "1" pins llamacpp
-    // capabilities without trusting the probe; "0" forces plain-remote; unset →
-    // auto-detect (retried). An operator who KNOWS the box never rides the probe.
-    llamaServerEnvVar?: string;
     // Whether a probeNctx spec may infer LOCAL llama-server capabilities (grammar
     // transport → "llamacpp", slot pinning, template reasoning) from the probe's
     // `meta` fingerprint. Default true. Set FALSE for an endpoint that reports a
@@ -111,7 +106,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         apiKeyVar: "OPENAI_API_KEY", apiKeyRequired: false,
         baseUrlVar: ["OPENAI_BASE_URL", "OPENAI_API_BASE"], chatPath: "/v1/chat/completions", flexBaseStrip: true,
         reasoningStyle: "think", tokenizerEnvVar: "OPENAI_TOKENIZER",
-        probeNctx: true, llamaServerEnvVar: "OPENAI_LLAMA_SERVER",
+        probeNctx: true,
     },
     groq: {
         apiKeyVar: "GROQ_API_KEY", apiKeyRequired: true,
@@ -398,6 +393,11 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // counting lives in the mimetypes tokenizer seam + the tokenize() capability.
     // A still-set family var fails hard with the migration pointer; countTokens is
     // the chars/2 upper bound, surfaced so window math is never silently inexact.
+    // Namespace seizure (fail-forward): the debug knob moved into the owned
+    // PLURNK_PROVIDERS_ namespace (alias-scopable). The old name fails hard.
+    if (env.PLURNK_GBNF_DEBUG !== undefined && env.PLURNK_GBNF_DEBUG.length > 0) {
+        throw new Error(`${name} provider: PLURNK_GBNF_DEBUG was renamed to PLURNK_PROVIDERS_GBNF_DEBUG (alias-scopable as _<alias>); update the env`);
+    }
     const staleTokenizer = env[spec.tokenizerEnvVar];
     if (staleTokenizer !== undefined && staleTokenizer.length > 0) {
         throw new Error(`${name} provider: ${spec.tokenizerEnvVar} was removed — exact counting moved to the @plurnk/plurnk-mimetypes tokenizer seam (mimetypes#44) and Provider.tokenize(); unset the var (countTokens is a chars/2 upper bound)`);
@@ -426,9 +426,10 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     if (spec.probeNctx === true) {
         // Operator pin (#34): "1" → llama-server capabilities WITHOUT trusting
         // the probe; "0" → plain remote, skip the fingerprint; unset → detect.
-        const pinRaw = spec.llamaServerEnvVar !== undefined ? env[spec.llamaServerEnvVar] : undefined;
+        // A plurnk-owned UNIVERSAL knob (alias-scopable: _<alias> suffix wins).
+        const pinRaw = env.PLURNK_PROVIDERS_LLAMA_SERVER;
         if (pinRaw !== undefined && pinRaw !== "" && pinRaw !== "0" && pinRaw !== "1") {
-            throw new Error(`${name} provider: ${spec.llamaServerEnvVar} must be "1" (pin llama-server capabilities), "0" (force plain remote), or unset (auto-detect) (got "${pinRaw}")`);
+            throw new Error(`${name} provider: PLURNK_PROVIDERS_LLAMA_SERVER must be "1" (pin llama-server capabilities), "0" (force plain remote), or unset (auto-detect) (got "${pinRaw}")`);
         }
         const pin = pinRaw === undefined || pinRaw === "" ? null : pinRaw === "1";
         const probe = await probeModelsRetrying(url, headers, wireModel, fetchTimeoutMs);
@@ -450,7 +451,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             // un-upgraded, but NEVER silently (#34) — rails going dark without a
             // signal cost the consumer weeks of misattributed rambles.
             process.emitWarning(
-                `${name} provider: llama-server detection failed after ${PROBE_ATTEMPTS} attempts — grammar transport stays OFF (grammarStyle "none"). If this endpoint IS a llama-server, pin ${spec.llamaServerEnvVar ?? "the capability"}=1.`,
+                `${name} provider: llama-server detection failed after ${PROBE_ATTEMPTS} attempts — grammar transport stays OFF (grammarStyle "none"). If this endpoint IS a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER=1 (or its _<alias> form).`,
                 { code: "PLURNK_PROBE_FAILED" },
             );
         }
@@ -483,6 +484,8 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         contextSize,
         fetchTimeoutMs,
         thinking: thinkingFromEnv(env, name),
+        grammarTemperature: parseRequiredFloat(env.PLURNK_PROVIDERS_GRAMMAR_TEMPERATURE, "PLURNK_PROVIDERS_GRAMMAR_TEMPERATURE", name, 0),
+        grammarRepeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_GRAMMAR_REPEAT_PENALTY, "PLURNK_PROVIDERS_GRAMMAR_REPEAT_PENALTY", name, 0),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         reasoningStyle,
         costFor,
@@ -490,7 +493,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         grammarStyle,
         // Optional debug toggle (off by default): validate a transported grammar
         // locally and throw on invalid, without sending it to the model (§13).
-        gbnfDebug: env.PLURNK_GBNF_DEBUG !== undefined && env.PLURNK_GBNF_DEBUG !== "" && env.PLURNK_GBNF_DEBUG !== "0",
+        gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined && env.PLURNK_PROVIDERS_GBNF_DEBUG !== "" && env.PLURNK_PROVIDERS_GBNF_DEBUG !== "0",
         streaming: spec.streaming,
         firstPartyMetadata: spec.firstPartyMetadata,
         balanceMetaKey: spec.balanceMetaKey,
