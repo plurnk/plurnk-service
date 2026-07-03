@@ -18,13 +18,13 @@ Tags here aren't known at publish time — they're the servers *you* configure. 
 
 ## Configuration (environment)
 
-Mirrors the model-alias convention (`PLURNK_MODEL_<alias>=<provider>/<model>`): **one var per server, the server is the var**, and the set is discovered by enumerating the namespace — there is no list var. The suffix case-folds to the tag, so `PLURNK_MCP_github` and `PLURNK_MCP_GITHUB` are the same server.
+Mirrors the model-alias convention (`PLURNK_MODEL_<alias>=<provider>/<model>`): **one var per server, the server is the var**, and the set is discovered by enumerating the namespace — there is no list var. The suffix case-folds to the tag, so `PLURNK_EXECS_MCP_github` and `PLURNK_EXECS_MCP_GITHUB` are the same server.
 
 | Var | Notes |
 |---|---|
-| `PLURNK_MCP_<server>` | **the server** — its value is the target: an `https://…` URL (streamable-HTTP) **or** a command line (stdio) |
-| `PLURNK_MCP_<server>_ENV` | stdio: JSON env overlay for the child process (where tokens go) |
-| `PLURNK_MCP_<server>_HEADERS` | http: JSON request headers (auth) |
+| `PLURNK_EXECS_MCP_<server>` | **the server** — its value is the target: an `https://…` URL (streamable-HTTP) **or** a command line (stdio) |
+| `PLURNK_EXECS_MCP_<server>_ENV` | stdio: JSON env overlay for the child process (where tokens go) |
+| `PLURNK_EXECS_MCP_<server>_HEADERS` | http: JSON request headers (auth) |
 
 The transport is inferred from the target: an `http(s)://` value connects over HTTP, anything else is spawned as a stdio command. `_ENV` / `_HEADERS` are reserved companion suffixes and `INSTALL` is a reserved control key (below), so a server can't be named to end in them or be named `install`. Two keys that case-fold to one server is a fail-hard config error.
 
@@ -32,25 +32,25 @@ The transport is inferred from the target: an `http(s)://` value connects over H
 
 | Var | Default | Notes |
 |---|---|---|
-| `PLURNK_MCP_INSTALL` | off | may **arbitrary** MCP tooling be **added at runtime** (a future `/mcp` hotload route)? Off ⇒ only env-declared servers exist |
+| `PLURNK_EXECS_MCP_INSTALL` | off | may **arbitrary** MCP tooling be **added at runtime** (a future `/mcp` hotload route)? Off ⇒ only env-declared servers exist |
 
-The single security boundary is what may be *added*, not what may be *activated*. Servers you declare in env are always honored; enabling or disabling an already-present tag is never gated. Runtime hotloading of operator-unvetted servers is refused unless `PLURNK_MCP_INSTALL=1`.
+The single security boundary is what may be *added*, not what may be *activated*. Servers you declare in env are always honored; enabling or disabling an already-present tag is never gated. Runtime hotloading of operator-unvetted servers is refused unless `PLURNK_EXECS_MCP_INSTALL=1`.
 
 ```bash
 # http server
-PLURNK_MCP_github="https://api.githubcopilot.com/mcp/"
-PLURNK_MCP_github_HEADERS='{"Authorization":"Bearer …"}'
+PLURNK_EXECS_MCP_github="https://api.githubcopilot.com/mcp/"
+PLURNK_EXECS_MCP_github_HEADERS='{"Authorization":"Bearer …"}'
 
 # stdio server
-PLURNK_MCP_FIGMA="npx -y figma-developer-mcp --stdio"
-PLURNK_MCP_FIGMA_ENV='{"FIGMA_API_KEY":"…"}'
+PLURNK_EXECS_MCP_FIGMA="npx -y figma-developer-mcp --stdio"
+PLURNK_EXECS_MCP_FIGMA_ENV='{"FIGMA_API_KEY":"…"}'
 ```
 
 ### Authorization
 
 Two ways a server gets credentials:
 
-- **Static token** — put it where the transport carries it: `PLURNK_MCP_<server>_HEADERS='{"Authorization":"Bearer …"}'` for http, or `PLURNK_MCP_<server>_ENV` for a stdio child. The executor is a pass-through carrier — it never mints or refreshes a token.
+- **Static token** — put it where the transport carries it: `PLURNK_EXECS_MCP_<server>_HEADERS='{"Authorization":"Bearer …"}'` for http, or `PLURNK_EXECS_MCP_<server>_ENV` for a stdio child. The executor is a pass-through carrier — it never mints or refreshes a token.
 - **OAuth** — when an http server demands OAuth, `connect` returns **401** and the executor emits **`mcp_auth_required`** (`{ server, resource }`, status 401). The **executor owns the OAuth protocol** (it has the SDK, config, and transport) and exposes the non-interactive mechanics — no consent round-trip lands here:
   - **`authorize(server, { redirectUri })`** → `{ authorizationUrl, pkce }` — RFC 9728 discovery + dynamic client registration + PKCE. Returns the URL to open and an opaque `pkce` blob the caller round-trips (no server-side session).
   - **`completeAuth(server, { code, pkce, redirectUri })`** → `{ headers }` — the authorization-code token exchange, returning the `Authorization: Bearer …` headers.

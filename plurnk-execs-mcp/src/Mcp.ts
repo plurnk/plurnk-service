@@ -91,7 +91,7 @@ export default class Mcp extends BaseExecutor {
     override async probe(): Promise<RuntimeAvailability> {
         const cfg = serverConfig(this.runtime);
         if (cfg === null) {
-            return { available: false, detail: `MCP server '${this.runtime}' not configured (set PLURNK_MCP_${this.runtime.toUpperCase()}=<url-or-command>)` };
+            return { available: false, detail: `MCP server '${this.runtime}' not configured (set PLURNK_EXECS_MCP_${this.runtime.toUpperCase()}=<url-or-command>)` };
         }
         try {
             const { tools } = await connect(this.runtime, cfg).then((c) => c.listTools());
@@ -121,10 +121,10 @@ export default class Mcp extends BaseExecutor {
         };
         if (cfg === null) return fail("mcp_not_configured", `MCP server '${runtime}' is not configured`);
         // Defense in depth behind the consumer's route gate (#240): a runtime-injected
-        // server is honored only while PLURNK_MCP_INSTALL permits added tooling. An
+        // server is honored only while PLURNK_EXECS_MCP_INSTALL permits added tooling. An
         // env-declared server is never gated (isInjected is false for it).
         if (isInjected(runtime) && !installAllowed()) {
-            return fail("mcp_install_disabled", `MCP server '${runtime}' was added at runtime but PLURNK_MCP_INSTALL is off`, 501);
+            return fail("mcp_install_disabled", `MCP server '${runtime}' was added at runtime but PLURNK_EXECS_MCP_INSTALL is off`, 501);
         }
 
         let client: Client;
@@ -137,7 +137,7 @@ export default class Mcp extends BaseExecutor {
             // surfaces the need and stops. The consumer runs the OAuth flow through
             // its proposal system (propose the authorization link → user consents →
             // token), injects the bearer via registerServer / a
-            // PLURNK_MCP_<server>_HEADERS `Authorization: Bearer …`, and
+            // PLURNK_EXECS_MCP_<server>_HEADERS `Authorization: Bearer …`, and
             // re-dispatches (plurnk-execs#13 — oauth-via-proposal).
             if (isAuthRequired(err)) {
                 emit({ source: `exec:${runtime}`, kind: "mcp_auth_required", message: `MCP server '${runtime}' requires authorization`, server: runtime, resource: cfg.url });

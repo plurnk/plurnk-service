@@ -3,27 +3,27 @@
 // server, the server IS the var, and the set is discovered by ENUMERATING the
 // namespace — no separate list var. The suffix case-folds to the tag.
 //
-//   PLURNK_MCP_<server>          = <target>   the server. Target is an http(s)
+//   PLURNK_EXECS_MCP_<server>          = <target>   the server. Target is an http(s)
 //                                             URL (streamable-HTTP transport) or
 //                                             a command line (stdio transport).
-//   PLURNK_MCP_<server>_ENV      = <json>     stdio: env overlay for the child (tokens)
-//   PLURNK_MCP_<server>_HEADERS  = <json>     http:  request headers (auth)
-//   PLURNK_MCP_INSTALL           = 0|1        daemon gate: may arbitrary MCP
+//   PLURNK_EXECS_MCP_<server>_ENV      = <json>     stdio: env overlay for the child (tokens)
+//   PLURNK_EXECS_MCP_<server>_HEADERS  = <json>     http:  request headers (auth)
+//   PLURNK_EXECS_MCP_INSTALL           = 0|1        daemon gate: may arbitrary MCP
 //                                             tooling be ADDED at runtime (the
 //                                             /mcp hotload route)? Default off.
 //
-// Servers case-fold (PLURNK_MCP_github === PLURNK_MCP_GITHUB); two keys folding
+// Servers case-fold (PLURNK_EXECS_MCP_github === PLURNK_EXECS_MCP_GITHUB); two keys folding
 // to the same server is fail-hard, exactly as model aliases are. `_ENV` /
 // `_HEADERS` are reserved companion suffixes and `INSTALL` is a reserved control
 // key, so a server can't be named to end in those or to be named `install`.
 // This module is SDK-free — it only parses the environment, so the runtimes
 // hook that imports it pulls no transport code at discovery time.
 
-const PREFIX = "PLURNK_MCP_";
+const PREFIX = "PLURNK_EXECS_MCP_";
 const ENV_SUFFIX = "_env";
 const HEADERS_SUFFIX = "_headers";
 
-// Reserved control keys in the PLURNK_MCP_* namespace — daemon switches, never
+// Reserved control keys in the PLURNK_EXECS_MCP_* namespace — daemon switches, never
 // servers. (A server therefore can't be named for one of these.)
 const CONTROL_KEYS = new Set(["install"]);
 
@@ -44,10 +44,10 @@ interface Parsed {
     headers: Map<string, string>;
 }
 
-// One pass over the environment, partitioning `PLURNK_MCP_*` into server targets
+// One pass over the environment, partitioning `PLURNK_EXECS_MCP_*` into server targets
 // and their `_ENV` / `_HEADERS` companions (all keyed by the case-folded server
 // name). The prefix is fixed upper-case; only the suffix case varies, so the
-// user's `PLURNK_MCP_github` and a conventional `PLURNK_MCP_GITHUB` both resolve.
+// user's `PLURNK_EXECS_MCP_github` and a conventional `PLURNK_EXECS_MCP_GITHUB` both resolve.
 const parse = (environ: NodeJS.ProcessEnv): Parsed => {
     const targets = new Map<string, string>();
     const envs = new Map<string, string>();
@@ -86,9 +86,9 @@ const jsonRecord = (raw: string | undefined, what: string): Record<string, strin
 // Env-declared servers are always honored; only runtime-injected,
 // operator-unvetted servers are gated by this. Enabling/disabling an
 // already-present tag is NOT gated. Default OFF (absent / "" / "0"); opt in with
-// PLURNK_MCP_INSTALL=1. Mirrors the trust-gate truthiness convention.
+// PLURNK_EXECS_MCP_INSTALL=1. Mirrors the trust-gate truthiness convention.
 export const installAllowed = (env: NodeJS.ProcessEnv = process.env): boolean => {
-    const gate = env.PLURNK_MCP_INSTALL;
+    const gate = env.PLURNK_EXECS_MCP_INSTALL;
     return !(gate === undefined || gate === "" || gate === "0");
 };
 

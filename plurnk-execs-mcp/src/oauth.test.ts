@@ -34,7 +34,7 @@ const mockFetch = (async (input: Parameters<typeof fetch>[0]): Promise<Response>
 }) as typeof fetch;
 
 test("authorize: RFC 9728 discovery + DCR + PKCE → an authorization URL to propose; pkce round-trips as JSON", async () => {
-    process.env.PLURNK_MCP_OASRV = RESOURCE;
+    process.env.PLURNK_EXECS_MCP_OASRV = RESOURCE;
     try {
         const { authorizationUrl, pkce } = await authorize("oasrv", { redirectUri: REDIRECT, fetchFn: mockFetch });
         assert.match(authorizationUrl, /^https:\/\/auth\.test\/authorize\?/);
@@ -45,39 +45,39 @@ test("authorize: RFC 9728 discovery + DCR + PKCE → an authorization URL to pro
         assert.match(pkce.authorizationServerUrl, /auth\.test/);
         assert.doesNotThrow(() => JSON.parse(JSON.stringify(pkce)), "pkce is an opaque JSON blob the caller carries back");
     } finally {
-        delete process.env.PLURNK_MCP_OASRV;
+        delete process.env.PLURNK_EXECS_MCP_OASRV;
     }
 });
 
 test("completeAuth: authorization-code exchange → Bearer headers to inject", async () => {
-    process.env.PLURNK_MCP_OASRV = RESOURCE;
+    process.env.PLURNK_EXECS_MCP_OASRV = RESOURCE;
     try {
         const { pkce } = await authorize("oasrv", { redirectUri: REDIRECT, fetchFn: mockFetch });
         const { headers } = await completeAuth("oasrv", { code: "auth-code-xyz", pkce, redirectUri: REDIRECT, fetchFn: mockFetch });
         assert.deepEqual(headers, { Authorization: "Bearer tok-abc123" });
     } finally {
-        delete process.env.PLURNK_MCP_OASRV;
+        delete process.env.PLURNK_EXECS_MCP_OASRV;
     }
 });
 
 test("install: overlays the bearer onto an env server's headers and evicts the cached client (#1)", () => {
-    process.env.PLURNK_MCP_OASRV = RESOURCE;
+    process.env.PLURNK_EXECS_MCP_OASRV = RESOURCE;
     try {
         install("oasrv", { Authorization: "Bearer tok-abc123" });
         assert.equal(serverConfig("oasrv")?.headers?.Authorization, "Bearer tok-abc123");
     } finally {
-        delete process.env.PLURNK_MCP_OASRV;
+        delete process.env.PLURNK_EXECS_MCP_OASRV;
     }
 });
 
 test("authorize: a stdio server is rejected — OAuth is http-only", async () => {
-    process.env.PLURNK_MCP_STDIOSRV = "node server.mjs";
+    process.env.PLURNK_EXECS_MCP_STDIOSRV = "node server.mjs";
     try {
         await assert.rejects(
             authorize("stdiosrv", { redirectUri: REDIRECT, fetchFn: mockFetch }),
             /not a configured http server/,
         );
     } finally {
-        delete process.env.PLURNK_MCP_STDIOSRV;
+        delete process.env.PLURNK_EXECS_MCP_STDIOSRV;
     }
 });

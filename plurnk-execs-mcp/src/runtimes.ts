@@ -8,7 +8,7 @@ const GLYPH = "🔌";
 // scan time — but only for a trusted package — to materialize the per-deployment
 // tags a static `plurnk.runtimes[]` can't express.
 //
-// Each MCP server an operator declares as `PLURNK_MCP_<server>=<target>` becomes
+// Each MCP server an operator declares as `PLURNK_EXECS_MCP_<server>=<target>` becomes
 // one EXEC tag named for the server (the model-alias convention); its tools are
 // called from the EXEC body. Reads the environment ONLY — no network — so
 // discovery stays cheap and offline; reachability and the live tool catalog are

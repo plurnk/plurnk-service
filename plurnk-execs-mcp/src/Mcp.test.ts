@@ -32,22 +32,22 @@ const invoke = async (runtime: string, command: string, opts: { signal?: AbortSi
 };
 
 before(() => {
-    process.env.PLURNK_MCP_ECHO = `node ${FIXTURE}`;
+    process.env.PLURNK_EXECS_MCP_ECHO = `node ${FIXTURE}`;
 });
 after(async () => { await closeAll(); });
 
 // --- config.ts (pure env parsing — explicit env, no process.env leakage) ---
 
 test("config: stdio transport parsed from a command target (split into argv)", () => {
-    const env = { PLURNK_MCP_ECHO: `node ${FIXTURE}` };
+    const env = { PLURNK_EXECS_MCP_ECHO: `node ${FIXTURE}` };
     assert.deepEqual(serverNames(env), ["echo"]);
     assert.deepEqual(serverConfig("echo", env), {
         transport: "stdio", command: "node", args: [FIXTURE], env: undefined,
     });
 });
 
-test("config: the user's lower-case PLURNK_MCP_github=https://… resolves to http", () => {
-    const env = { PLURNK_MCP_github: "https://mcp.test/rpc", PLURNK_MCP_GITHUB_HEADERS: '{"Authorization":"Bearer x"}' };
+test("config: the user's lower-case PLURNK_EXECS_MCP_github=https://… resolves to http", () => {
+    const env = { PLURNK_EXECS_MCP_github: "https://mcp.test/rpc", PLURNK_EXECS_MCP_GITHUB_HEADERS: '{"Authorization":"Bearer x"}' };
     assert.deepEqual(serverNames(env), ["github"]);
     assert.deepEqual(serverConfig("github", env), {
         transport: "http", url: "https://mcp.test/rpc", headers: { Authorization: "Bearer x" },
@@ -55,7 +55,7 @@ test("config: the user's lower-case PLURNK_MCP_github=https://… resolves to ht
 });
 
 test("config: servers are discovered by enumeration (no list var), sorted", () => {
-    const env = { PLURNK_MCP_FIGMA: "https://figma.test", PLURNK_MCP_ECHO: "node x.mjs", PLURNK_OTHER: "ignored" };
+    const env = { PLURNK_EXECS_MCP_FIGMA: "https://figma.test", PLURNK_EXECS_MCP_ECHO: "node x.mjs", PLURNK_OTHER: "ignored" };
     assert.deepEqual(serverNames(env), ["echo", "figma"]);
 });
 
@@ -64,34 +64,34 @@ test("config: an unconfigured server resolves to null", () => {
 });
 
 test("config: _ENV / _HEADERS are companions, not servers", () => {
-    const env = { PLURNK_MCP_ECHO: "node x.mjs", PLURNK_MCP_ECHO_ENV: '{"TOKEN":"t"}' };
+    const env = { PLURNK_EXECS_MCP_ECHO: "node x.mjs", PLURNK_EXECS_MCP_ECHO_ENV: '{"TOKEN":"t"}' };
     assert.deepEqual(serverNames(env), ["echo"], "the _ENV companion is not its own server");
     assert.deepEqual(serverConfig("echo", env)?.env, { TOKEN: "t" });
 });
 
 test("config: two keys case-folding to one server is fail-hard", () => {
     assert.throws(
-        () => serverNames({ PLURNK_MCP_GH: "https://a.test", PLURNK_MCP_gh: "https://b.test" }),
+        () => serverNames({ PLURNK_EXECS_MCP_GH: "https://a.test", PLURNK_EXECS_MCP_gh: "https://b.test" }),
         /Duplicate MCP server "gh"/,
     );
 });
 
 test("config: malformed companion JSON is fail-hard", () => {
-    const env = { PLURNK_MCP_BAD: "node x.mjs", PLURNK_MCP_BAD_ENV: "{not json" };
-    assert.throws(() => serverConfig("bad", env), /PLURNK_MCP_BAD_ENV must be a JSON object/);
+    const env = { PLURNK_EXECS_MCP_BAD: "node x.mjs", PLURNK_EXECS_MCP_BAD_ENV: "{not json" };
+    assert.throws(() => serverConfig("bad", env), /PLURNK_EXECS_MCP_BAD_ENV must be a JSON object/);
 });
 
-test("config: PLURNK_MCP_INSTALL is a reserved gate, not a server", () => {
-    const env = { PLURNK_MCP_INSTALL: "1", PLURNK_MCP_ECHO: "node x.mjs" };
+test("config: PLURNK_EXECS_MCP_INSTALL is a reserved gate, not a server", () => {
+    const env = { PLURNK_EXECS_MCP_INSTALL: "1", PLURNK_EXECS_MCP_ECHO: "node x.mjs" };
     assert.deepEqual(serverNames(env), ["echo"], "INSTALL is never enumerated as a server");
     assert.equal(serverConfig("install", env), null, "and resolves to no config");
 });
 
 test("config: the install gate defaults off (absent / empty / \"0\"), on for any other value", () => {
     assert.equal(installAllowed({}), false);
-    assert.equal(installAllowed({ PLURNK_MCP_INSTALL: "" }), false);
-    assert.equal(installAllowed({ PLURNK_MCP_INSTALL: "0" }), false);
-    assert.equal(installAllowed({ PLURNK_MCP_INSTALL: "1" }), true);
+    assert.equal(installAllowed({ PLURNK_EXECS_MCP_INSTALL: "" }), false);
+    assert.equal(installAllowed({ PLURNK_EXECS_MCP_INSTALL: "0" }), false);
+    assert.equal(installAllowed({ PLURNK_EXECS_MCP_INSTALL: "1" }), true);
 });
 
 // --- runtimes.ts (the dynamic hook) ----------------------------------------
@@ -200,7 +200,7 @@ test("run: an HTTP server that requires auth surfaces mcp_auth_required (401), n
     const server = createServer((_req, res) => { res.writeHead(401); res.end(); });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
     const { port } = server.address() as { port: number };
-    process.env.PLURNK_MCP_AUTHSRV = `http://127.0.0.1:${port}/mcp`;
+    process.env.PLURNK_EXECS_MCP_AUTHSRV = `http://127.0.0.1:${port}/mcp`;
     try {
         const { result, events, states } = await invoke("authsrv", "{}", { target: "some_tool" });
         assert.equal(result.status, 401, "auth-required is a distinct 401, not a 500 hard failure");
@@ -208,7 +208,7 @@ test("run: an HTTP server that requires auth surfaces mcp_auth_required (401), n
         assert.equal(events[0].server, "authsrv");
         assert.equal(states.at(-1)?.state, "errored");
     } finally {
-        delete process.env.PLURNK_MCP_AUTHSRV;
+        delete process.env.PLURNK_EXECS_MCP_AUTHSRV;
         await new Promise<void>((resolve) => server.close(() => resolve()));
     }
 });
@@ -226,7 +226,7 @@ test("hotload: registerServer makes a server resolvable with no env", () => {
 
 test("hotload: env-declared servers take precedence over an injected name", () => {
     registerServer("echo", { transport: "http", url: "https://shadow.test" });
-    assert.deepEqual(serverConfig("echo", { PLURNK_MCP_ECHO: "node x.mjs" }), {
+    assert.deepEqual(serverConfig("echo", { PLURNK_EXECS_MCP_ECHO: "node x.mjs" }), {
         transport: "stdio", command: "node", args: ["x.mjs"], env: undefined,
     });
 });
@@ -247,23 +247,23 @@ test("hotload: runtimeDecl mints the same shape boot discovery does", () => {
     assert.match(decl.example ?? "", /^<<EXEC\[hot\]:.*:EXEC$/);
 });
 
-test("hotload: an injected server is refused at run() when PLURNK_MCP_INSTALL is off (501)", async () => {
+test("hotload: an injected server is refused at run() when PLURNK_EXECS_MCP_INSTALL is off (501)", async () => {
     registerServer("hotecho", { transport: "stdio", command: "node", args: [FIXTURE] });
-    delete process.env.PLURNK_MCP_INSTALL;
+    delete process.env.PLURNK_EXECS_MCP_INSTALL;
     const { result, events, states } = await invoke("hotecho", "", { target: "echo" });
     assert.equal(result.status, 501);
     assert.equal(events[0].kind, "mcp_install_disabled");
     assert.deepEqual(states, [{ channel: "results", state: "errored" }]);
 });
 
-test("hotload: an injected server runs at run() when PLURNK_MCP_INSTALL is on", async () => {
+test("hotload: an injected server runs at run() when PLURNK_EXECS_MCP_INSTALL is on", async () => {
     registerServer("hotecho2", { transport: "stdio", command: "node", args: [FIXTURE] });
-    process.env.PLURNK_MCP_INSTALL = "1";
+    process.env.PLURNK_EXECS_MCP_INSTALL = "1";
     try {
         const { result, writes } = await invoke("hotecho2", "", { target: "echo" });
         assert.equal(result.status, 200);
         assert.equal(JSON.parse(writes[0].chunk).content[0].text, "{}");
     } finally {
-        delete process.env.PLURNK_MCP_INSTALL;
+        delete process.env.PLURNK_EXECS_MCP_INSTALL;
     }
 });
