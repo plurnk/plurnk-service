@@ -249,10 +249,3 @@ describe("PLURNK_MIMETYPES_EMBED_WORKERS contract (embeddings#2: -1 = match core
     }
 });
 
-describe("rename tripwire (family-prefix sweep)", () => {
-    it("the OLD PLURNK_EMBED_WORKERS name crashes with a rename pointer, never silently ignored", () => {
-        const indexPath = path.join(import.meta.dirname, "index.js");
-        const env = { ...process.env, PLURNK_EMBED_WORKERS: "4", PLURNK_MIMETYPES_EMBED_WORKERS: "4" };
-        assert.throws(() => execFileSync(process.execPath, ["--input-type=module", "--eval", `import ${JSON.stringify(indexPath)};`], { env, timeout: 30000, stdio: "pipe" }));
-    });
-});

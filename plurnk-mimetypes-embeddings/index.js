@@ -33,15 +33,6 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// Rename tripwire (metaproject family-prefix sweep): the old knob must crash
-// pointing at the new one, never be silently ignored — in EITHER mode.
-// Transitional — delete at the ship-time policy sweep.
-if (process.env.PLURNK_EMBED_WORKERS !== undefined) {
-    throw new RangeError(
-        "PLURNK_EMBED_WORKERS was renamed to PLURNK_MIMETYPES_EMBED_WORKERS "
-        + "(family-prefix convention); update the environment.",
-    );
-}
 
 // Remote-mode config, resolved once at load. BASE_URL is the OpenAI-convention
 // base (e.g. http://127.0.0.1:8080/v1) — the client appends /embeddings.

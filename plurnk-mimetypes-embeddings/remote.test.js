@@ -108,10 +108,4 @@ describe("remote mode (#46)", () => {
         assert.equal(JSON.parse(out), true);
     });
 
-    it("the old-name tripwire still fires in remote mode", async () => {
-        await assert.rejects(
-            () => inRemote(`console.log("loaded");`, { PLURNK_EMBED_WORKERS: "4" }),
-            /renamed to PLURNK_MIMETYPES_EMBED_WORKERS/,
-        );
-    });
 });
