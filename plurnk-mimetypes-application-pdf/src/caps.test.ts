@@ -60,11 +60,3 @@ describe("ApplicationPdf — resource caps (#38 DoS resistance)", () => {
     });
 });
 
-describe("rename tripwire (family-prefix sweep)", () => {
-    it("an OLD cap name crashes with a rename pointer — never silently unbounded", async () => {
-        const pdf = buildPdf({ title: "Doc", outline: [{ title: "A" }] });
-        await withEnv("PLURNK_PDF_MAX_PAGES", "5000", async () => {
-            await assert.rejects(() => h.extractRaw(pdf), /renamed to PLURNK_MIMETYPES_PDF_MAX_PAGES/);
-        });
-    });
-});

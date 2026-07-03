@@ -75,15 +75,6 @@ function envCap(name: string): number {
 // not get swallowed into an empty channel by the parse-error degrade. (A
 // valid-but-exceeded cap still degrades inside: the documented DoS behavior.)
 function assertCapsValid(): void {
-    // Rename tripwires (family-prefix sweep): an OLD cap name silently ignored
-    // would mean silently-UNBOUNDED DoS caps — the worst possible failure of
-    // this rename. Crash naming the new knob instead. Transitional — delete at
-    // the ship-time policy sweep.
-    for (const old of ["PLURNK_PDF_MAX_BYTES", "PLURNK_PDF_MAX_PAGES"] as const) {
-        if (process.env[old] !== undefined) {
-            throw new RangeError(`${old} was renamed to ${old.replace("PLURNK_", "PLURNK_MIMETYPES_")} (family-prefix convention); update the environment.`);
-        }
-    }
     envCap("PLURNK_MIMETYPES_PDF_MAX_BYTES");
     envCap("PLURNK_MIMETYPES_PDF_MAX_PAGES");
 }
