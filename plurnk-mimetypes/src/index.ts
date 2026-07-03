@@ -68,6 +68,11 @@ export type {
     TelemetrySeverity,
 } from "./TelemetryEvent.ts";
 
+// Per-mimetype classification authority (SPEC §20, #43) — the pure taxonomy
+// heuristic; Mimetypes.classify() is the registry-aware form.
+export { classifyMimetype } from "./classify.ts";
+export type { MimeClassification } from "./classify.ts";
+
 // Tokenizer seam (SPEC §19, #44) — exact LLM token counting via the opt-in
 // @plurnk/plurnk-mimetypes-tokenizers artifact package.
 export type { TokenizerResolution } from "./Tokenizers.ts";

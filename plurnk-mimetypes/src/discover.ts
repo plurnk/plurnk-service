@@ -194,6 +194,11 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
         if (typeof entry !== "object" || entry === null) continue;
         const e = entry as Record<string, unknown>;
         if (typeof e.name !== "string" || e.name === "") continue;
+        // Optional per-entry navigation declaration (SPEC §20). Only the two
+        // legal values pass; anything else is a malformed entry field and the
+        // declaration is dropped (the heuristic answers instead) — same
+        // dumb-scanner posture as glyph/extensions.
+        const navigation = e.navigation === "line" || e.navigation === "tree" ? e.navigation : undefined;
         infos.push({
             mimetype: e.name,
             glyph: typeof e.glyph === "string" ? e.glyph : "",
@@ -201,6 +206,7 @@ async function readHandlerInfos(dir: string): Promise<HandlerInfo[]> {
             extensions: filterExtensions(e.extensions),
             binary,
             source: "package",
+            ...(navigation !== undefined && { navigation }),
             ...(attribution !== undefined && { attribution }),
         });
     }

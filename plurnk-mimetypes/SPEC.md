@@ -716,3 +716,30 @@ For exact resolutions the id derives from the `tokenizer.json` bytes (sha256 pre
 ### 19.3 Artifact duck contract
 
 The tokenizers package default-exports (or exports) `resolve(modelRef) → Promise<{ countTokens, tokenizerId } | null>` — null meaning "no bundled tokenizer matches this ref" (a data gap, not an error; the seam degrades). Optional `dispose()` releases engine state, forwarded from `Mimetypes.dispose()`. Loader errors follow the §17 rule: `ERR_MODULE_NOT_FOUND`/`MODULE_NOT_FOUND` → absent; anything else → a misconfigured-but-present artifact and rethrows.
+
+## 20. Classification authority (framework v0.18.0, issue #43)
+
+This family is the single source of filetype truth, so **binary-vs-text** and **line-vs-tree navigation** are answered here; consumers retire hand-maintained allowlists (the `application/jsonl` → 415 drift, schemes#28, is the motivating bug).
+
+### 20.1 Surface
+
+```ts
+interface MimeClassification {
+    binary: boolean;
+    lineNavigable: boolean;                 // line-number addressing vs structural (jsonpath/xpath)
+    source: "handler" | "heuristic";        // which layer decided
+}
+classifyMimetype(mimetype): MimeClassification            // pure taxonomy heuristic, sync
+mimetypes.classify(mimetype): Promise<MimeClassification> // registry-aware
+```
+
+The axes do not collapse: NDJSON is text AND line-navigable (each line is a record); a single JSON document is text and tree-navigated.
+
+### 20.2 Two layers
+
+- **Taxonomy heuristic** (`classifyMimetype`, exported): answers for ANY mimetype string — consumers classify stream labels with no installed handler. Rules: `text/*` → text; a known text-application set (json/yaml/toml/xml/javascript/ecmascript/typescript/sql/jsonl/x-ndjson) → text; RFC 6839 suffixes `+json/+xml/+yaml/+toml` → text; else binary; slash-less → binary; `""` → not binary, not line-navigable. Tree-navigated: `application/json`, `application/xml`, `text/html`, and `+json`/`+xml` suffixes; every other non-binary text is line-navigable (yaml/toml/csv deliberately read as line-oriented).
+- **Registry refinement** (`Mimetypes.classify`): an installed handler's declared `plurnk.binary` is authoritative, and an optional per-entry **`navigation: "line" | "tree"`** in the plurnk block overrides the taxonomy (declare it only when a handler's algebra defies the taxonomy — no current handler needs it). A binary type is never line-navigable. `source: "handler"` marks registry-decided answers.
+
+### 20.3 Consumer migration
+
+plurnk-schemes retires `TEXT_APPLICATION_MIMETYPES` / `TREE_NAVIGABLE_MIMETYPES` and delegates: sync call sites use `classifyMimetype`, registry-aware sites use `classify()`. The third axis schemes floated (structural-JSON for `<L>` item dispatch) stays scheme-semantics (`isJson` is RFC 6839 trivia, not handler knowledge) — not absorbed.

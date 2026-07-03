@@ -106,6 +106,12 @@ export interface HandlerInfo {
     // @plurnk packages take precedence — tree-sitter entries only fill in
     // mimetypes that no @plurnk package claims.
     source: "package" | "treesitter";
+    // Per-handler navigation declaration (SPEC §20, #43): "line" (addressed by
+    // line numbers) or "tree" (structural jsonpath/xpath addressing). Set via
+    // `navigation` on the handler entry in the plurnk block. OPTIONAL — absent
+    // means the framework's taxonomy heuristic decides (classifyMimetype); a
+    // handler declares it only when its algebra defies the taxonomy.
+    navigation?: "line" | "tree";
     // Raw `plurnk.attribution` (string | string[]) declared at the top of the
     // package's plurnk block — plugin attribution tags the host unions onto
     // model `generate({ attributions })` calls (issue #37 / plurnk-service#249).

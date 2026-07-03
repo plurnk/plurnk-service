@@ -7,6 +7,7 @@ import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
 import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
 import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
+import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { mimetypeSource, type TelemetryEvent } from "./TelemetryEvent.ts";
 import type {
     DetectInput,
@@ -155,6 +156,19 @@ export default class Mimetypes {
         await this.ready();
         const result = detect(input, this.#discovery!.registry);
         return result ?? this.#defaultMimetype;
+    }
+
+    // Per-mimetype classification (SPEC §20, #43) — this family is the filetype
+    // authority; consumers retire their hand-maintained allowlists. An INSTALLED
+    // handler's declared facts (plurnk.binary, plurnk.navigation) win
+    // (source: "handler"); any other mimetype string gets the taxonomy heuristic
+    // (source: "heuristic") — consumers classify arbitrary stream labels, not
+    // just installed types.
+    async classify(mimetype: string): Promise<MimeClassification> {
+        await this.ready();
+        const info = this.#discovery!.handlers.get(mimetype);
+        if (info === undefined) return classifyMimetype(mimetype);
+        return classifyWithHandler(mimetype, { binary: info.binary, navigation: info.navigation });
     }
 
     async getHandler(mimetype: string): Promise<BaseHandler | null> {
