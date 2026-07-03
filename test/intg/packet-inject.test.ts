@@ -10,15 +10,15 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-// #240 — PLURNK_PACKET_INJECT lands as an operator section right after the teaching (schemes),
+// #240 — PLURNK_SERVICE_PACKET_INJECT lands as an operator section right after the teaching (schemes),
 // in the cached system slot, before the log. The operator-side pressure valve.
-test("[§packet-inject] PLURNK_PACKET_INJECT: operator file rides as a system section after schemes", async () => {
+test("[§packet-inject] PLURNK_SERVICE_PACKET_INJECT: operator file rides as a system section after schemes", async () => {
     const db = await openMigrated();
     const dir = await mkdtemp(join(tmpdir(), "plurnk-inject-intg-"));
-    const prior = process.env.PLURNK_PACKET_INJECT;
+    const prior = process.env.PLURNK_SERVICE_PACKET_INJECT;
     try {
         await writeFile(join(dir, "ops.md"), "## House style\nPrefer sqlite over node.");
-        process.env.PLURNK_PACKET_INJECT = join(dir, "ops.md");
+        process.env.PLURNK_SERVICE_PACKET_INJECT = join(dir, "ops.md");
 
         const sessionId = await insertSession(db, `inject-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
@@ -36,7 +36,7 @@ test("[§packet-inject] PLURNK_PACKET_INJECT: operator file rides as a system se
         const sysOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "system").map((s) => s.name);
         assert.deepEqual(sysOrder.slice(0, 4), ["definition", "tools", "schemes", "inject"], "inject sits right after the teaching, before the log");
     } finally {
-        if (prior === undefined) delete process.env.PLURNK_PACKET_INJECT; else process.env.PLURNK_PACKET_INJECT = prior;
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_PACKET_INJECT; else process.env.PLURNK_SERVICE_PACKET_INJECT = prior;
         await db.close();
         await rm(dir, { recursive: true, force: true });
     }

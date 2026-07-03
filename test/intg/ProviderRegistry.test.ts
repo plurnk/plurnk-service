@@ -7,7 +7,7 @@ test("[§provider-instantiation-alias-resolution] parseAliasesFromEnv: extracts 
         PLURNK_MODEL_gemma: "openai/macher.gguf",
         PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest",
         PLURNK_MODEL: "gemma",
-        PLURNK_DB_PATH: "./x.db",
+        PLURNK_SERVICE_DB_PATH: "./x.db",
     });
     assert.deepEqual(aliases.toSorted((a, b) => a.alias.localeCompare(b.alias)), [
         { alias: "gemma", provider: "openai", model: "macher.gguf" },

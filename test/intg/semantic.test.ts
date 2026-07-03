@@ -14,8 +14,8 @@ import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
 
 // This suite asserts REAL vector ranking, so it re-enables the embedder the fast lane turns off
-// (.env.test PLURNK_EMBED_DISABLE=1). --test-isolation=process scopes this to this file's process.
-process.env.PLURNK_EMBED_DISABLE = "0";
+// (.env.test PLURNK_SERVICE_EMBED_DISABLE=1). --test-isolation=process scopes this to this file's process.
+process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `known:///${pathname}`, scheme: "known",

@@ -3,7 +3,7 @@
 // at the write, and the ~dispatch derives its own FTS-narrowed candidate slice inline.
 // The background pump owes nothing to any query. REAL embedder (this file re-enables it;
 // the fast lane disables it in .env.test) — --test-isolation=process scopes the flip here.
-process.env.PLURNK_EMBED_DISABLE = "0";
+process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 import test from "node:test";
 import assert from "node:assert/strict";

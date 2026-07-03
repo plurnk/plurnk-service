@@ -485,16 +485,16 @@ test("[§membership-change-gated-sync] a member unchanged on disk is not re-toke
     });
 });
 
-test("[§membership-git-flags] PLURNK_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
+test("[§membership-git-flags] PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
-        const prev = process.env.PLURNK_GIT_ALLOWED;
-        process.env.PLURNK_GIT_ALLOWED = "0";
+        const prev = process.env.PLURNK_SERVICE_GIT_ALLOWED;
+        process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
         try {
             await GitMembership.resolveGitMembership(db, ctx.sessionId, undefined);
             const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${trackedPath}`});
             assert.equal(member, undefined, "ALLOWED=0 must deny git membership — no member resolves");
         } finally {
-            if (prev === undefined) delete process.env.PLURNK_GIT_ALLOWED; else process.env.PLURNK_GIT_ALLOWED = prev;
+            if (prev === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED; else process.env.PLURNK_SERVICE_GIT_ALLOWED = prev;
         }
     });
 });

@@ -20,8 +20,8 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 // A ~semantic READ-honors-FIND case (#286) asserts REAL vector ranking — re-enable the embedder the
-// fast lane turns off (.env.test PLURNK_EMBED_DISABLE=1); --test-isolation scopes this to this file.
-process.env.PLURNK_EMBED_DISABLE = "0";
+// fast lane turns off (.env.test PLURNK_SERVICE_EMBED_DISABLE=1); --test-isolation scopes this to this file.
+process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
     const found = PlurnkParser.parse(`<<PLAN::PLAN\n${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);

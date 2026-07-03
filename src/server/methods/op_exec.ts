@@ -11,7 +11,7 @@ interface Params {
 export default class OpExecMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.exec", {
-            longRunning: true, // a proposal-capable write pauses on human review — exempt from PLURNK_RPC_TIMEOUT (§operator-config-rpc-timeout)
+            longRunning: true, // a proposal-capable write pauses on human review — exempt from PLURNK_SERVICE_RPC_TIMEOUT (§operator-config-rpc-timeout)
             handler: async (params, ctx) => {
                 const p = params as Params;
                 const statement = Dsl.buildExec(p);

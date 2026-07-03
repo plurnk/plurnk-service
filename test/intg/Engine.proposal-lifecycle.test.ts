@@ -306,12 +306,12 @@ test("proposal: YOLO auto-accepts when loops.flags.yolo === true", async () => {
 
 test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", async (t) => {
     // Tight timeout so the test doesn't wait the full 5m default.
-    const original = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
+    const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
-        if (original === undefined) delete process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
-        else process.env.PLURNK_PROPOSAL_TIMEOUT_MS = original;
+        if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = original;
     });
-    process.env.PLURNK_PROPOSAL_TIMEOUT_MS = "100";
+    process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = "100";
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -335,13 +335,13 @@ test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", a
     } finally { await db.close(); }
 });
 
-test("[§proposal-timeout-cancels] proposal: timeout fires after PLURNK_PROPOSAL_TIMEOUT_MS", async (t) => {
-    const original = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
+test("[§proposal-timeout-cancels] proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (t) => {
+    const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
-        if (original === undefined) delete process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
-        else process.env.PLURNK_PROPOSAL_TIMEOUT_MS = original;
+        if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = original;
     });
-    process.env.PLURNK_PROPOSAL_TIMEOUT_MS = "50";  // 50ms — fast for tests
+    process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = "50";  // 50ms — fast for tests
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);

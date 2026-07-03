@@ -8,7 +8,7 @@ export default class ExecAbort {
     // number (it'd be a magic literal there); the consumer owns it — env-tunable, 2s default. A
     // getter, not a static field, so a test can set the env at runtime. §run-lifecycle-total-reap
     static get graceMs(): number {
-        return Number(process.env.PLURNK_EXEC_KILL_GRACE_MS ?? "2000");
+        return Number(process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS ?? "2000");
     }
 
     // Loop/run teardown — a BOUNDED reap, so Exec.idle() can't wedge on a signal-ignoring spawn.

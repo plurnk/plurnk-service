@@ -1,4 +1,4 @@
-// End-to-end: a fat prompt over PLURNK_PROMPT_PREVIEW_CHARS renders as the pointer PLACEHOLDER in
+// End-to-end: a fat prompt over PLURNK_SERVICE_PROMPT_PREVIEW_CHARS renders as the pointer PLACEHOLDER in
 // the built packet's Active User Prompts section (no inlined body) — while the full body stays intact
 // at its plurnk://prompt/<loop>/<seq> entry. The cap is model-context (what replays each turn); the
 // database entry is never truncated (the full body is always recoverable by READ/OPEN).
@@ -13,8 +13,8 @@ import { openMigrated, insertSession, insertRun, insertLoop, packetSection } fro
 import { sendStmt } from "./_dsl.ts";
 
 test("[prompt-preview] a fat prompt renders capped in the packet but stays whole at its entry", async () => {
-    const prev = process.env.PLURNK_PROMPT_PREVIEW_CHARS;
-    process.env.PLURNK_PROMPT_PREVIEW_CHARS = "50";
+    const prev = process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS;
+    process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS = "50";
     const db = await openMigrated();
     try {
         const fullPrompt = "DESCRIBE ".repeat(40); // 360 chars, well over the 50-char cap
@@ -41,6 +41,6 @@ test("[prompt-preview] a fat prompt renders capped in the packet but stays whole
         assert.equal(entry!.content, fullPrompt, "the prompt entry retains the full, untruncated body");
     } finally {
         await db.close();
-        if (prev === undefined) delete process.env.PLURNK_PROMPT_PREVIEW_CHARS; else process.env.PLURNK_PROMPT_PREVIEW_CHARS = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS; else process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS = prev;
     }
 });

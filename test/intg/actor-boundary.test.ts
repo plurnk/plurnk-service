@@ -136,7 +136,7 @@ test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), ne
 });
 
 test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run firing ops — the EDIT lands in the plurnk run's log; a sibling reaches the result through the environment door", async () => {
-    // The keystone (dispatchAsPlurnk) is BUILT, and its proven use — materializing a PLURNK_MD_<ALIAS>
+    // The keystone (dispatchAsPlurnk) is BUILT, and its proven use — materializing a PLURNK_SERVICE_MD_<ALIAS>
     // doc — IS the self-hosting contract: a runtime op runs as the reserved `plurnk` actor, not a
     // privileged engine write. doc-injection.test.ts pins the negatives (the EDIT is absent from the
     // model's log; the model sees only the READ). Here we pin the POSITIVE structure the anchor states:
@@ -147,8 +147,8 @@ test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run fi
     const dir = await mkdtemp(join(tmpdir(), "plurnk-selfhost-"));
     const docPath = join(dir, "selfhost.md");
     await writeFile(docPath, "# Self-hosting\nThe runtime is an actor.\n", "utf8");
-    const prev = process.env.PLURNK_MD_SELFHOST;
-    process.env.PLURNK_MD_SELFHOST = docPath;
+    const prev = process.env.PLURNK_SERVICE_MD_SELFHOST;
+    process.env.PLURNK_SERVICE_MD_SELFHOST = docPath;
     try {
         const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -179,7 +179,7 @@ test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run fi
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MD_SELFHOST; else process.env.PLURNK_MD_SELFHOST = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_MD_SELFHOST; else process.env.PLURNK_SERVICE_MD_SELFHOST = prev;
         await rm(dir, { recursive: true, force: true });
     }
 });

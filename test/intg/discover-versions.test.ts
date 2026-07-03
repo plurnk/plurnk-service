@@ -10,8 +10,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse } from "./_rpc.ts";
 
 test("[§discovery-versions] discover advertises the daemon's installed version (npm latest best-effort) (#235)", async () => {
-    const prev = process.env.PLURNK_VERSION_POLL_TTL;
-    process.env.PLURNK_VERSION_POLL_TTL = "999999999999999"; // suppress the background poll for a hermetic assertion
+    const prev = process.env.PLURNK_SERVICE_VERSION_POLL_TTL;
+    process.env.PLURNK_SERVICE_VERSION_POLL_TTL = "999999999999999"; // suppress the background poll for a hermetic assertion
     try {
         const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:ok:SEND", 50)] });
         await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -26,6 +26,6 @@ test("[§discovery-versions] discover advertises the daemon's installed version 
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_VERSION_POLL_TTL; else process.env.PLURNK_VERSION_POLL_TTL = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_VERSION_POLL_TTL; else process.env.PLURNK_SERVICE_VERSION_POLL_TTL = prev;
     }
 });

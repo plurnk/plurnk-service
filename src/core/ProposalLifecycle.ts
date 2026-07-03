@@ -59,7 +59,7 @@ export interface ProposalPendingEvent {
 // within this window. SPEC.md §engine-rails (proposal lifecycle) + §methods (loop.resolve).
 const PROPOSAL_TIMEOUT_DEFAULT_MS = 300000;
 const readProposalTimeoutMs = (): number => {
-    const raw = process.env.PLURNK_PROPOSAL_TIMEOUT_MS;
+    const raw = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     if (raw === undefined || raw.length === 0) return PROPOSAL_TIMEOUT_DEFAULT_MS;
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) return PROPOSAL_TIMEOUT_DEFAULT_MS;

@@ -19,8 +19,8 @@ const mockTurn = (dsl: string) => ({
 const stubbornSpawn = `<<EXEC[sh]:trap '' HUP TERM; sleep 30:EXEC\n<<SEND[202]:parked with a stubborn spawn:SEND`;
 
 test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async () => {
-    const prior = process.env.PLURNK_EXEC_KILL_GRACE_MS;
-    process.env.PLURNK_EXEC_KILL_GRACE_MS = "50";  // a fast SIGKILL grace — deterministic, far under the waitFor budget
+    const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
+    process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = "50";  // a fast SIGKILL grace — deterministic, far under the waitFor budget
     try {
         const mock = new Mock({ contextSize: 8192, responses: [mockTurn(stubbornSpawn)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -53,7 +53,7 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
             } finally { ws.close(); }
         });
     } finally {
-        if (prior === undefined) delete process.env.PLURNK_EXEC_KILL_GRACE_MS;
-        else process.env.PLURNK_EXEC_KILL_GRACE_MS = prior;
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
+        else process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = prior;
     }
 });

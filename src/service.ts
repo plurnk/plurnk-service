@@ -125,10 +125,10 @@ export default class Service {
     static async #openDb(dbPath: string): Promise<Db> {
         const tuning: Record<string, number> = {};
         for (const [env, opt] of [
-            ["PLURNK_SQLITE_TIMEOUT", "timeout"],
-            ["PLURNK_SQLITE_CACHE_SIZE", "cacheSize"],
-            ["PLURNK_SQLITE_MMAP_SIZE", "mmapSize"],
-            ["PLURNK_SQLITE_MAX_PAGE_COUNT", "maxPageCount"],
+            ["PLURNK_SERVICE_SQLITE_TIMEOUT", "timeout"],
+            ["PLURNK_SERVICE_SQLITE_CACHE_SIZE", "cacheSize"],
+            ["PLURNK_SERVICE_SQLITE_MMAP_SIZE", "mmapSize"],
+            ["PLURNK_SERVICE_SQLITE_MAX_PAGE_COUNT", "maxPageCount"],
         ] as const) {
             const v = Service.#sqliteKnob(env);
             if (v !== undefined) tuning[opt] = v;
@@ -144,14 +144,14 @@ export default class Service {
     }
 
     static async #migrate(): Promise<void> {
-        const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_DB_PATH"));
+        const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
         const db = await Service.#openDb(dbPath);
         try { process.stdout.write(`migrated: ${dbPath}\n`); }
         finally { await db.close(); }
     }
 
     static async #start(): Promise<void> {
-        const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_DB_PATH"));
+        const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
         const host = Service.#requireEnv("PLURNK_HOST");
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
@@ -165,7 +165,7 @@ export default class Service {
         }
         // §tokenomics-window-partition coupling (F7): per-request numeric reasoning budgets are
         // IGNORED by llama-server — when thinking is on, only the box's --reasoning-budget launch
-        // flag clamps it, and it must equal PLURNK_PROVIDERS_REASONING. Unverifiable from here, so
+        // flag clamps it, and it must equal PLURNK_SERVICE_REASONING. Unverifiable from here, so
         // say it loudly rather than let the reserve be fiction.
         const thinking = process.env.PLURNK_PROVIDERS_THINKING ?? "off";
         if (thinking !== "off") {

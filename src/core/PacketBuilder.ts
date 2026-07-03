@@ -89,10 +89,10 @@ export default class PacketBuilder {
         this.#schemes = schemes;
         this.#telemetry = telemetry;
         this.#executors = executors;
-        this.#ctx = readPartitionInt("PLURNK_PROVIDERS_CTX", 1);
-        this.#reasoning = readPartitionInt("PLURNK_PROVIDERS_REASONING", 0);
-        this.#assistant = readPartitionInt("PLURNK_PROVIDERS_ASSISTANT", 0);
-        this.#safety = readPartitionInt("PLURNK_PROVIDERS_SAFETY", 0);
+        this.#ctx = readPartitionInt("PLURNK_SERVICE_CTX", 1);
+        this.#reasoning = readPartitionInt("PLURNK_SERVICE_REASONING", 0);
+        this.#assistant = readPartitionInt("PLURNK_SERVICE_ASSISTANT", 0);
+        this.#safety = readPartitionInt("PLURNK_SERVICE_SAFETY", 0);
     }
 
     // The generation envelope — REASONING + ASSISTANT, one undifferentiated pool, passed on
@@ -111,7 +111,7 @@ export default class PacketBuilder {
     ceilingFor(provider: Provider, tokenRatio = 1): number {
         const effectiveWindow = provider.contextSize === null ? this.#ctx : Math.min(this.#ctx, provider.contextSize);
         const promptBudget = effectiveWindow - this.#reasoning - this.#assistant - this.#safety;
-        if (promptBudget <= 0) throw new Error(`window partition contradiction: effective window ${effectiveWindow} <= reserves ${this.#reasoning}+${this.#assistant}+${this.#safety} (PLURNK_PROVIDERS_CTX/REASONING/ASSISTANT/SAFETY)`);
+        if (promptBudget <= 0) throw new Error(`window partition contradiction: effective window ${effectiveWindow} <= reserves ${this.#reasoning}+${this.#assistant}+${this.#safety} (PLURNK_SERVICE_CTX/REASONING/ASSISTANT/SAFETY)`);
         return Math.floor(promptBudget / Math.max(1, tokenRatio));
     }
 
@@ -152,13 +152,13 @@ export default class PacketBuilder {
         // foist mechanism entirely.
         const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${loopId}/%` }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
-        const promptCap = Number.parseInt(process.env.PLURNK_PROMPT_PREVIEW_CHARS ?? "", 10);
+        const promptCap = Number.parseInt(process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS ?? "", 10);
         const prompt = promptRows.length > 0
             ? PacketWire.renderActivePrompts(promptRows, Number.isInteger(promptCap) ? promptCap : -1)
             : byRole("user");
         // Requirements is engine-sourced, NOT threaded from callers — that threading is
         // exactly how it went missing (callers read the sysprompt but never the
-        // requirements). Read Paths.defaultRequirements (PLURNK_REQUIREMENTS env →
+        // requirements). Read Paths.defaultRequirements (PLURNK_SERVICE_REQUIREMENTS env →
         // requirements.md) fresh each build so edits take effect; a non-empty param wins.
         const baseRequirements = requirements.length > 0 ? requirements : await readFile(Paths.defaultRequirements, "utf8");
         // No injected syntax line: the grammar already headlines the system definition (§Syntax) and
@@ -188,8 +188,8 @@ export default class PacketBuilder {
         // here; they resolve below once the assembled total is known.
         const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
         const sessionRoot = (await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId }))?.project_root ?? null;
-        const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_POLICY)
-        const projectPolicy = await readProjectPolicy(sessionRoot); // <projectRoot>/AGENTS.md (or PLURNK_PROJECT)
+        const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
+        const projectPolicy = await readProjectPolicy(sessionRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
         // Child-orientation (§child-orientation): the live things THIS run holds — open streams +
         // unconcluded child runs — surfaced every turn as terse `* <status> <path>` pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
@@ -319,7 +319,7 @@ export default class PacketBuilder {
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
             for (const tag of executors.availableRuntimes()) {
-                if (excluded.has(tag)) continue; // #240 — PLURNK_DOCS_EXCLUDE drops the oneliner + the doc
+                if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
                 const entry = executors.entry(tag);
                 // #240 — identical treatment with the scheme directory: the example IS the oneliner,
                 // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose
@@ -334,7 +334,7 @@ export default class PacketBuilder {
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
     // catalogue's doc-links READ and the manifest carries each doc's token cost.
     docEntries(): Array<{ name: string; content: string }> {
-        const out = this.#schemes.docs(); // scheme docs already drop PLURNK_DOCS_EXCLUDE names
+        const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();

@@ -67,9 +67,9 @@ export default class LoopRunMethod {
                 if (p.openPaths !== undefined && (!Array.isArray(p.openPaths) || p.openPaths.some((x) => typeof x !== "string" || x.length === 0))) {
                     throw new Error("loop.run: openPaths must be an array of non-empty path strings");
                 }
-                // PLURNK_MAX_TURNS is the operator turn ceiling (§operator-config): -1 = no
+                // PLURNK_SERVICE_MAX_TURNS is the operator turn ceiling (§operator-config): -1 = no
                 // cap; positive = a hard cap a per-call maxTurns cannot exceed. §operator-config-max-turns-ceiling
-                const ceiling = Number(process.env.PLURNK_MAX_TURNS ?? "-1");
+                const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
                 const requested = p.maxTurns ?? ceiling;
                 const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
 
@@ -115,12 +115,12 @@ export default class LoopRunMethod {
                 const modelRunId = ctx.session.modelRunId ?? (ctx.session.modelRunId = await Envelope.ensureModelRun(ctx.db, sessionId));
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
 
-                // Operator reference docs (PLURNK_MD_<ALIAS>): materialize each as
+                // Operator reference docs (PLURNK_SERVICE_MD_<ALIAS>): materialize each as
                 // a plurnk:///<ALIAS>.md entry via the self-hosting keystone (a
                 // plurnk run, §actor-boundary) so the model READs it at turn 0 (Engine.runTurn
                 // foists the READ). The materializing EDITs land in the plurnk
                 // run's log, invisible to the model. Missing files are skipped.
-                // #231 — materialize env docs (PLURNK_MD_*) UNION the session's client docs
+                // #231 — materialize env docs (PLURNK_SERVICE_MD_*) UNION the session's client docs
                 // (settings.mdDocs); client wins on alias collision. Engine.runTurn foists a
                 // READ of the same set at turn-0.
                 const { mdDocs } = await SessionSettings.read(ctx.db, sessionId);
@@ -201,7 +201,7 @@ export default class LoopRunMethod {
             description: "Run a model-driven loop with a prompt. Optional `model` (`<provider>/<model>`, client-resolved) runs on that provider using the daemon's keys — preferred over `alias`, which resolves a PLURNK_MODEL_<alias> override in the DAEMON's env. Optional `flags.yolo:true` enables server-side YOLO (daemon auto-accepts proposals in-process; intended for benchmarks and automation, NOT standard client UX — see client SPEC §open-fold for client-side YOLO). Returns `modelRunId` — the conversation's run; a conversation client reads it via `log.read({ runId })` for live tail and hydration (§214). Streams log/entry notifications; fires loop/terminated on completion.",
             params: {
                 prompt: "string — user prompt for the loop",
-                maxTurns: "number? — per-loop turn request; the PLURNK_MAX_TURNS operator ceiling caps it when set (§operator-config)",
+                maxTurns: "number? — per-loop turn request; the PLURNK_SERVICE_MAX_TURNS operator ceiling caps it when set (§operator-config)",
                 alias: "string? — model alias resolved in the DAEMON's env (overrides PLURNK_MODEL); prefer `model` for client-resolved selection",
                 model: "string? — client-resolved '<provider>/<model>' to run on, instantiated with the daemon's keys; bypasses daemon alias lookup, takes precedence over `alias`",
                 flags: "object? — per-loop flags. Currently accepts { yolo?: boolean }. Server YOLO; not for routine client use.",

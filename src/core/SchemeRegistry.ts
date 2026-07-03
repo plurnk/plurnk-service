@@ -125,7 +125,7 @@ export default class SchemeRegistry {
         const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases route, but exec is taught once
-            if (excluded.has(name)) continue; // #240 — PLURNK_DOCS_EXCLUDE drops the oneliner + the doc
+            if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
             const manifest = (handler.constructor as { manifest?: { example?: string; documentation?: string } }).manifest;
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
@@ -141,7 +141,7 @@ export default class SchemeRegistry {
         const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases share exec's doc, not their own
-            if (excluded.has(name)) continue; // #240 — PLURNK_DOCS_EXCLUDE drops the doc
+            if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the doc
             const inline = (handler.constructor as { manifest?: { documentation?: string } }).manifest?.documentation;
             const content = SCHEME_DOCS.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
             if (content !== undefined && content.length > 0) out.push({ name, content });

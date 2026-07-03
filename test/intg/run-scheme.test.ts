@@ -350,10 +350,10 @@ test("[§run-scheme-fork] COPY(run://self):prompt forks — a branch run started
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-cap] spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail hard (508), create nothing", async () => {
+test("[§run-scheme-cap] spawn AND fork past PLURNK_SERVICE_SESSION_RUNS_MAX_ACTIVE fail hard (508), create nothing", async () => {
     const db = await openMigrated();
-    const prior = process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE;
-    process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE = "1"; // ceiling of 1 active run
+    const prior = process.env.PLURNK_SERVICE_SESSION_RUNS_MAX_ACTIVE;
+    process.env.PLURNK_SERVICE_SESSION_RUNS_MAX_ACTIVE = "1"; // ceiling of 1 active run
     try {
         const { calls, injectRun } = recordingInjectRun();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectRun, tokenize });
@@ -381,8 +381,8 @@ test("[§run-scheme-cap] spawn AND fork past PLURNK_SESSION_RUNS_MAX_ACTIVE fail
         assert.equal(worker, undefined, "no run is created past the ceiling");
         assert.equal(calls.length, 0, "no inject on a refused spawn/fork");
     } finally {
-        if (prior === undefined) delete process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE;
-        else process.env.PLURNK_SESSION_RUNS_MAX_ACTIVE = prior;
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_SESSION_RUNS_MAX_ACTIVE;
+        else process.env.PLURNK_SERVICE_SESSION_RUNS_MAX_ACTIVE = prior;
         await db.close();
     }
 });

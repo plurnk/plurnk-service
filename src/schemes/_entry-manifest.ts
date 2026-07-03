@@ -188,7 +188,7 @@ export default class EntryManifest {
         // The embedding config signature is identical for every entry this pass — compute it
         // once and fold it into each deep_hash (re-derive on model/knob change).
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
-        // No embedder (absent OR PLURNK_EMBED_DISABLE) → don't request the embedding channel: it loads/
+        // No embedder (absent OR PLURNK_SERVICE_EMBED_DISABLE) → don't request the embedding channel: it loads/
         // runs the model independent of the capability probe, and deriveEmbeddings would only discard the
         // vector. The signature already collapses to "embed:none" in that case, so reuse it (no new flag read).
         const embedActive = deepCfgSig !== "embed:none";

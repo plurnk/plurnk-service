@@ -184,14 +184,14 @@ test("[§tokenomics-over-budget-floor] the UN-FOLDABLE hard-413 record renders t
         const sessionId = await insertSession(db, `tok-over-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
-        const prevPart = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_PROVIDERS_${k}`]);
-        process.env.PLURNK_PROVIDERS_CTX = "9";
-        process.env.PLURNK_PROVIDERS_REASONING = "0";
-        process.env.PLURNK_PROVIDERS_ASSISTANT = "0";
-        process.env.PLURNK_PROVIDERS_SAFETY = "0";
+        const prevPart = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+        process.env.PLURNK_SERVICE_CTX = "9";
+        process.env.PLURNK_SERVICE_REASONING = "0";
+        process.env.PLURNK_SERVICE_ASSISTANT = "0";
+        process.env.PLURNK_SERVICE_SAFETY = "0";
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
-            if (prevPart[i] === undefined) delete process.env[`PLURNK_PROVIDERS_${k}`]; else process.env[`PLURNK_PROVIDERS_${k}`] = prevPart[i];
+            if (prevPart[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prevPart[i];
         });
         // Pinned CTX 9 under a 10 window, zero reserves → promptBudget 9; the packet's own
         // scaffolding alone blows past it and CANNOT fold under

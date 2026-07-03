@@ -29,14 +29,14 @@ const WIDE = 1_000_000;  // absolute wall capped to the window → never overflo
 // promptBudget IS the pin (§tokenomics-window-partition; the settable ceiling is retired).
 // Set → construct (reads env) → restore is synchronous, so no cross-test race.
 const engineAt = (db: Db, ceiling: number): Engine => {
-    const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_PROVIDERS_${k}`]);
-    process.env.PLURNK_PROVIDERS_CTX = String(ceiling);
-    process.env.PLURNK_PROVIDERS_REASONING = "0";
-    process.env.PLURNK_PROVIDERS_ASSISTANT = "0";
-    process.env.PLURNK_PROVIDERS_SAFETY = "0";
+    const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+    process.env.PLURNK_SERVICE_CTX = String(ceiling);
+    process.env.PLURNK_SERVICE_REASONING = "0";
+    process.env.PLURNK_SERVICE_ASSISTANT = "0";
+    process.env.PLURNK_SERVICE_SAFETY = "0";
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
-        if (prev[i] === undefined) delete process.env[`PLURNK_PROVIDERS_${k}`]; else process.env[`PLURNK_PROVIDERS_${k}`] = prev[i];
+        if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i];
     });
     return engine;
 };

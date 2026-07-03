@@ -12,11 +12,11 @@ test("[§tokenomics-window-partition] the prompt ceiling derives from min(CTX, w
     // The partition arithmetic, end to end through a real packet build: CTX 10000, reserves
     // 1000+2000+500 → promptBudget 6500 against a wide window; a 5000 window → min caps →
     // 1500; a 3000 window → reserves exceed it → the build fails hard (config contradiction).
-    const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_PROVIDERS_${k}`]);
-    process.env.PLURNK_PROVIDERS_CTX = "10000";
-    process.env.PLURNK_PROVIDERS_REASONING = "1000";
-    process.env.PLURNK_PROVIDERS_ASSISTANT = "2000";
-    process.env.PLURNK_PROVIDERS_SAFETY = "500";
+    const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+    process.env.PLURNK_SERVICE_CTX = "10000";
+    process.env.PLURNK_SERVICE_REASONING = "1000";
+    process.env.PLURNK_SERVICE_ASSISTANT = "2000";
+    process.env.PLURNK_SERVICE_SAFETY = "500";
     const db = await openMigrated();
     try {
         const run = async (contextSize: number): Promise<string> => {
@@ -33,7 +33,7 @@ test("[§tokenomics-window-partition] the prompt ceiling derives from min(CTX, w
         await assert.rejects(() => run(3000), /partition contradiction/, "reserves exceeding the window fail hard");
     } finally {
         ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
-            if (prev[i] === undefined) delete process.env[`PLURNK_PROVIDERS_${k}`]; else process.env[`PLURNK_PROVIDERS_${k}`] = prev[i];
+            if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i];
         });
         await db.close();
     }

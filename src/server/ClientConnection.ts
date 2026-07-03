@@ -25,7 +25,7 @@ const ERR_TIMEOUT = -32007;
 // §operator-config-rpc-timeout — the deadline for non-longRunning RPC handlers.
 const DEFAULT_RPC_TIMEOUT_MS = 30000;
 const readRpcTimeoutMs = (): number => {
-    const raw = process.env.PLURNK_RPC_TIMEOUT;
+    const raw = process.env.PLURNK_SERVICE_RPC_TIMEOUT;
     if (raw === undefined || raw.length === 0) return DEFAULT_RPC_TIMEOUT_MS;
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) return DEFAULT_RPC_TIMEOUT_MS;
@@ -197,7 +197,7 @@ export default class ClientConnection {
                         // The abandoned handler keeps running server-side: its late failure is logged
                         // so it never vanishes; a late success is inert (the id was already answered).
                         handled.catch((e) => console.error(`rpc '${method}' failed after its deadline response:`, e));
-                        reject(new RpcTimeoutError(`method '${method}' timed out after ${timeoutMs}ms (PLURNK_RPC_TIMEOUT)`));
+                        reject(new RpcTimeoutError(`method '${method}' timed out after ${timeoutMs}ms (PLURNK_SERVICE_RPC_TIMEOUT)`));
                     }, timeoutMs);
                 }),
             ]);

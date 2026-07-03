@@ -52,12 +52,12 @@ const fatReads = (chars: number, n = 1): MockResponse[] =>
 
 const engineAt = (db: Db, ceiling: number): Engine => {
     // CTX = the pin, zero reserves: promptBudget IS the pin (§tokenomics-window-partition).
-    process.env.PLURNK_PROVIDERS_CTX = String(ceiling);
-    process.env.PLURNK_PROVIDERS_REASONING = "0";
-    process.env.PLURNK_PROVIDERS_ASSISTANT = "0";
-    process.env.PLURNK_PROVIDERS_SAFETY = "0";
+    process.env.PLURNK_SERVICE_CTX = String(ceiling);
+    process.env.PLURNK_SERVICE_REASONING = "0";
+    process.env.PLURNK_SERVICE_ASSISTANT = "0";
+    process.env.PLURNK_SERVICE_SAFETY = "0";
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    for (const k of ["CTX", "REASONING", "ASSISTANT", "SAFETY"]) delete process.env[`PLURNK_PROVIDERS_${k}`];
+    for (const k of ["CTX", "REASONING", "ASSISTANT", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}`];
     return engine;
 };
 const envelope = async (db: Db): Promise<{ sessionId: number; runId: number; loopId: number }> => {
@@ -319,15 +319,15 @@ test("budget: the un-foldable hard-413 record reports a positive overshoot hones
 test("budget: a window narrower than CTX governs the partition — ceiling = window − reserves", async () => {
     const db = await openMigrated();
     try {
-        const prevPart = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_PROVIDERS_${k}`]);
-        process.env.PLURNK_PROVIDERS_CTX = "1000000";
-        process.env.PLURNK_PROVIDERS_REASONING = "0";
-        process.env.PLURNK_PROVIDERS_ASSISTANT = "0";
-        process.env.PLURNK_PROVIDERS_SAFETY = "0";
+        const prevPart = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+        process.env.PLURNK_SERVICE_CTX = "1000000";
+        process.env.PLURNK_SERVICE_REASONING = "0";
+        process.env.PLURNK_SERVICE_ASSISTANT = "0";
+        process.env.PLURNK_SERVICE_SAFETY = "0";
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
-            if (prevPart[i] === undefined) delete process.env[`PLURNK_PROVIDERS_${k}`]; else process.env[`PLURNK_PROVIDERS_${k}`] = prevPart[i];
+            if (prevPart[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prevPart[i];
         });
         const t = await engine.runTurn({ provider: new Mock({ contextSize: 12, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const { ceiling } = budgetHeadline((await packetOf(db, t.turnId)).packet);

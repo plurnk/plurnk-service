@@ -5,7 +5,7 @@
 // file content after edit, response text after query, etc.
 //
 // Driven through the REAL prod loop — loop.run via the daemon. session.create
-// pins the fixture as project_root; PLURNK_GIT_AUTO makes its git-committed
+// pins the fixture as project_root; PLURNK_SERVICE_GIT_AUTO makes its git-committed
 // files members the production way (no hand-registered catalog), and Exec
 // defaults its cwd to project_root. runStory boots the prod Daemon directly
 // (rather than the auto-closing withDaemon) only because the db must stay open

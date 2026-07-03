@@ -9,7 +9,7 @@
 //
 // Driven through the REAL prod loop (loop.run via the daemon). The ceiling is a
 // tasteful .env tuning — set before liveSession boots the daemon so its engine
-// captures it at construction; project_root + PLURNK_GIT_AUTO give the fixture's
+// captures it at construction; project_root + PLURNK_SERVICE_GIT_AUTO give the fixture's
 // git files as members the production way (no hand-registered catalog).
 
 import test from "node:test";
@@ -44,16 +44,16 @@ const NO_CURATION_FACTOR = 1.45;
 
 test("demo: budget grind — under a pinned ceiling, the model must curate to keep assembled context under budget", async () => {
     const fixture = await seedDemoFixture("budget");
-    const prevCeiling = process.env.PLURNK_PROVIDERS_CTX;
+    const prevCeiling = process.env.PLURNK_SERVICE_CTX;
     const userPromptText = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
     const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText });
     const CEILING = Math.round(floor * GRIND_FACTOR);
     const NO_CURATION = Math.round(floor * NO_CURATION_FACTOR);
     // promptBudget = CEILING exactly; a real assistant reserve keeps maxTokens sane for live gemma.
-    process.env.PLURNK_PROVIDERS_CTX = String(CEILING + 8192);
-    process.env.PLURNK_PROVIDERS_REASONING = "0";
-    process.env.PLURNK_PROVIDERS_ASSISTANT = "8192";
-    process.env.PLURNK_PROVIDERS_SAFETY = "0"; // captured by the daemon's engine at construction (liveSession, below)
+    process.env.PLURNK_SERVICE_CTX = String(CEILING + 8192);
+    process.env.PLURNK_SERVICE_REASONING = "0";
+    process.env.PLURNK_SERVICE_ASSISTANT = "8192";
+    process.env.PLURNK_SERVICE_SAFETY = "0"; // captured by the daemon's engine at construction (liveSession, below)
     try {
         const s = await liveSession({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {
@@ -78,8 +78,8 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
             assert.ok(peak < NO_CURATION, `the model curated rather than letting the log run away (peaked ${peak}, no-curation ~${NO_CURATION}+; communicated ceiling ${CEILING})`);
         } finally { await s.cleanup(); }
     } finally {
-        if (prevCeiling === undefined) delete process.env.PLURNK_PROVIDERS_CTX;
-        else process.env.PLURNK_PROVIDERS_CTX = prevCeiling;
+        if (prevCeiling === undefined) delete process.env.PLURNK_SERVICE_CTX;
+        else process.env.PLURNK_SERVICE_CTX = prevCeiling;
         await fixture.cleanup();
     }
 });

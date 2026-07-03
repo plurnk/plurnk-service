@@ -270,11 +270,11 @@ export default class Digest {
         }, null, 2);
     }
 
-    // Default DB path — mirrors the service (`Service.#expandHome(PLURNK_DB_PATH)`; the
+    // Default DB path — mirrors the service (`Service.#expandHome(PLURNK_SERVICE_DB_PATH)`; the
     // `.env.example` floor is `~/.plurnk/plurnk.db`). The old repo-local default broke when
     // the DB moved to `~/.plurnk`; a no-arg digest now reads the service's actual DB.
     static defaultDbPath(): string {
-        const env = process.env.PLURNK_DB_PATH;
+        const env = process.env.PLURNK_SERVICE_DB_PATH;
         if (env !== undefined && env.length > 0) {
             if (env === "~") return homedir();
             return env.startsWith("~/") ? resolve(homedir(), env.slice(2)) : env;

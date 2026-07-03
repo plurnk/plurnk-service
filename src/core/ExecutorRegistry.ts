@@ -85,10 +85,10 @@ export default class ExecutorRegistry {
             console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
 
-        // #259 — git lockout. PLURNK_GIT_ALLOWED=0 must drop the git/gh executors ENTIRELY (not
+        // #259 — git lockout. PLURNK_SERVICE_GIT_ALLOWED=0 must drop the git/gh executors ENTIRELY (not
         // just membership + telemetry): a denied host neither dispatches EXEC[git]/[gh] nor teaches
         // them (the tools sheet reads the registered set). "No git" then training on git is a break.
-        const gitDenied = process.env.PLURNK_GIT_ALLOWED !== "1";
+        const gitDenied = process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1";
         const infos = [...discovered.values()].filter((info) => !(gitDenied && info.packageName === "@plurnk/plurnk-execs-git"));
 
         // Probe per-TAG: one executor instance per tag (this.runtime = the tag),

@@ -454,7 +454,7 @@ export default class Daemon {
                 await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
                 const started = await this.#ensureDrain({
                     sessionId, runId, provider: args.provider, systemPrompt: args.systemPrompt,
-                    maxTurns: args.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50"),
+                    maxTurns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
                 });
                 return { action: "injected_next_turn", loopId: slept.id, ...(injected?.turnSeq !== undefined ? { turnSeq: injected.turnSeq } : {}), ...(started ?? {}) };
             }
@@ -492,7 +492,7 @@ export default class Daemon {
         const started = await this.#ensureDrain({
             sessionId, runId, provider: args.provider,
             systemPrompt: args.systemPrompt,
-            maxTurns: args.maxTurns ?? Number(process.env.PLURNK_MAX_TURNS ?? "50"),
+            maxTurns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
         });
         return { action: "enqueued_new_loop", loopId, ...(started ?? {}) };
     }
@@ -862,7 +862,7 @@ export default class Daemon {
                 await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
                 const started = await this.#ensureDrain({
                     sessionId: payload.sessionId, runId: payload.runId, provider: this.#provider,
-                    systemPrompt, maxTurns: Number(process.env.PLURNK_MAX_TURNS ?? "50"),
+                    systemPrompt, maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
                 });
                 this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
                     ...payload, wakeAction: "resumed-loop", wakeLoopId: slept.id,
@@ -907,9 +907,9 @@ export default class Daemon {
         const row = await (this.#db.drain_run_min_poll as PrepMethod).get<{ poll_seconds: number | null }>({ run_id: runId });
         const pollSec = row?.poll_seconds ?? null;
         if (pollSec === null || pollSec <= 0) return; // no polled stream → the 202 just sleeps (woken only by conclusion)
-        // Floored by the post-EXEC breath (PLURNK_EXEC_WAIT_MS) so a `<…,1>` can't wake the loop
+        // Floored by the post-EXEC breath (PLURNK_SERVICE_EXEC_WAIT_MS) so a `<…,1>` can't wake the loop
         // faster than a turn settles — §exec-poll.
-        const execWaitMs = Number(process.env.PLURNK_EXEC_WAIT_MS ?? "0");
+        const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
         const timer = setTimeout(() => {
             this.#pollTimers.delete(runId);
             void this.#wakeParkedRun(sessionId, runId, provider, systemPrompt);
@@ -937,7 +937,7 @@ export default class Daemon {
         await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
         const started = await this.#ensureDrain({
             sessionId, runId, provider, systemPrompt,
-            maxTurns: Number(process.env.PLURNK_MAX_TURNS ?? "50"),
+            maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
         });
         started?.drainPromise?.catch((err: unknown) => {
             console.error("wake-parked resume drain failed:", err instanceof Error ? err.message : String(err));

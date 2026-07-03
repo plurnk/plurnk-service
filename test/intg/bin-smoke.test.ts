@@ -31,7 +31,7 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
         const env: NodeJS.ProcessEnv = {
             ...process.env,
             HOME: dir,   // isolate the ~/.plurnk first-run bootstrap into the temp dir
-            PLURNK_DB_PATH: dbPath,
+            PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",   // OS picks a free port
         };
@@ -135,7 +135,7 @@ test("bin: spawns, listens on assigned port, accepts discover RPC, exits cleanly
 test("bin: --help prints usage without booting daemon", async () => {
     const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
         const child = spawn(process.execPath, [BIN_PATH, "--help"], {
-            env: { ...process.env, HOME: "/tmp/plurnk-help-home", PLURNK_DB_PATH: "/tmp/plurnk-help-test.db", PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" },
+            env: { ...process.env, HOME: "/tmp/plurnk-help-home", PLURNK_SERVICE_DB_PATH: "/tmp/plurnk-help-test.db", PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" },
             stdio: ["ignore", "pipe", "pipe"],
         });
         let stdout = "";

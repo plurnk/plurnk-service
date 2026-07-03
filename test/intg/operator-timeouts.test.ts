@@ -41,7 +41,7 @@ const waitForReply = async (replies: object[]): Promise<{ id: number; result?: u
 };
 
 test("[§operator-config-rpc-timeout] a non-longRunning handler past the deadline answers -32007 Timeout", async () => {
-    process.env.PLURNK_RPC_TIMEOUT = "60";
+    process.env.PLURNK_SERVICE_RPC_TIMEOUT = "60";
     try {
         const registry = new MethodRegistry();
         registry.registerMethod("test.hang", {
@@ -53,11 +53,11 @@ test("[§operator-config-rpc-timeout] a non-longRunning handler past the deadlin
         const reply = await waitForReply(replies);
         assert.equal(reply.error?.code, -32007, "the plurnk Timeout code (§errors)");
         assert.match(reply.error?.message ?? "", /timed out after 60ms/);
-    } finally { delete process.env.PLURNK_RPC_TIMEOUT; }
+    } finally { delete process.env.PLURNK_SERVICE_RPC_TIMEOUT; }
 });
 
 test("[§operator-config-rpc-timeout] a longRunning handler outlives the deadline and still answers", async () => {
-    process.env.PLURNK_RPC_TIMEOUT = "20";
+    process.env.PLURNK_SERVICE_RPC_TIMEOUT = "20";
     try {
         const registry = new MethodRegistry();
         registry.registerMethod("test.slow", {
@@ -69,11 +69,11 @@ test("[§operator-config-rpc-timeout] a longRunning handler outlives the deadlin
         emit({ jsonrpc: "2.0", id: 1, method: "test.slow" });
         const reply = await waitForReply(replies);
         assert.deepEqual(reply.result, { ok: true }, "exempt handlers answer past the deadline, no -32007");
-    } finally { delete process.env.PLURNK_RPC_TIMEOUT; }
+    } finally { delete process.env.PLURNK_SERVICE_RPC_TIMEOUT; }
 });
 
 test("[§operator-config-loop-timeout] the wall rules a legible 504 loop_timeout terminal", async () => {
-    process.env.PLURNK_LOOP_TIMEOUT = "1"; // expires before the first turn settles
+    process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "1"; // expires before the first turn settles
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `loop-wall-${crypto.randomUUID()}`);
@@ -88,7 +88,7 @@ test("[§operator-config-loop-timeout] the wall rules a legible 504 loop_timeout
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 504, "the loop row carries the wall terminal");
     } finally {
-        delete process.env.PLURNK_LOOP_TIMEOUT;
+        delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
         await db.close();
     }
 });

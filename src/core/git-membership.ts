@@ -183,15 +183,15 @@ export default class GitMembership {
         const viewGlobs = constraints.filter((c) => c.effect === "view").map((c) => c.glob);
 
         // git substrate — the union of the session's DECLARED repos' MEMBERS: tracked files
-        // plus untracked-but-not-ignored ones (§membership-auto-add). PLURNK_GIT_ALLOWED=0 is
-        // the hard ceiling (deny all git membership); PLURNK_GIT_AUTO=1 declares project_root
+        // plus untracked-but-not-ignored ones (§membership-auto-add). PLURNK_SERVICE_GIT_ALLOWED=0 is
+        // the hard ceiling (deny all git membership); PLURNK_SERVICE_GIT_AUTO=1 declares project_root
         // as an implicit repo. Empty when git is denied or no declared repo resolves, so
         // `pick` is then the sole source. No early-return on non-git.
         const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob); // a declared repo's ls-files join membership, path-prefixed — §membership-overlay-repo
-        if (process.env.PLURNK_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
+        if (process.env.PLURNK_SERVICE_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
         // #232 — git:false is a session-level tighten of the env ALLOWED ceiling (env AND session).
         const sessionGit = (await SessionSettings.read(db, sessionId)).git;
-        const gitMembers = process.env.PLURNK_GIT_ALLOWED === "1" && sessionGit !== false
+        const gitMembers = process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && sessionGit !== false
             ? await GitMembership.#forestMembers(root, repoDirs, signal)
             : [];
 

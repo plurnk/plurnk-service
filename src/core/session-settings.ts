@@ -2,8 +2,8 @@
 // user legitimately sets at session.create, read at turn-0 with precedence over env.
 // Two knobs with deliberately different compose semantics:
 //   - filesItems: REPLACE — a single scalar; the client value wins outright over
-//     PLURNK_FILES_ITEMS (normalization — 0=off / -1=full / N=first-N — stays in Engine).
-//   - mdDocs: UNION — the server env docs (PLURNK_MD_*) and the client's docs ride
+//     PLURNK_SERVICE_FILES_ITEMS (normalization — 0=off / -1=full / N=first-N — stays in Engine).
+//   - mdDocs: UNION — the server env docs (PLURNK_SERVICE_MD_*) and the client's docs ride
 //     together; the systemwide policy doc survives unless the client shadows its alias.
 // Storage is a JSON bag on sessions.settings (the env mdDocs live in process.env, never
 // the DB, so the union is a TS set-merge regardless — normalizing the column buys nothing).
@@ -15,8 +15,8 @@ import type { Db, PrepMethod } from "./Db.ts";
 export type ClientMdDoc = { alias: string; content: string };
 export type SessionOpenContext = {
     filesItems: number | null; // default-semantics — REPLACE env; null = unset (#231)
-    mdDocs: ClientMdDoc[];        // default-semantics — UNION with env PLURNK_MD_* (#231)
-    maxCommands: number | null;   // ceiling — min() with env PLURNK_MAX_COMMANDS; null = unset (#232)
+    mdDocs: ClientMdDoc[];        // default-semantics — UNION with env PLURNK_SERVICE_MD_* (#231)
+    maxCommands: number | null;   // ceiling — min() with env PLURNK_SERVICE_MAX_COMMANDS; null = unset (#232)
     git: boolean | null;          // ceiling — env AND session; false denies git; null = unset (#232)
     client: string | null;        // #249 — session-stable frontend id, forwarded as Plurnk-Client (plurnk provider only); null = unset
 };
@@ -37,7 +37,7 @@ export default class SessionSettings {
         return { filesItems, mdDocs, maxCommands, git, client };
     }
 
-    // The turn-0 reference-doc set: server env docs (PLURNK_MD_*, read from disk) UNION the
+    // The turn-0 reference-doc set: server env docs (PLURNK_SERVICE_MD_*, read from disk) UNION the
     // session's client docs (content), keyed by `<alias>.md`. On alias collision the client
     // wins — it may deliberately shadow a server doc, but by default the policy doc rides
     // along. Missing env files are skipped (same as the env-only path before #231). The set

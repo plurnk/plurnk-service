@@ -33,9 +33,9 @@ const okSend = (): MockResponse => ({
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 
 const makeEngine = (db: Db): Engine => {
-    process.env.PLURNK_PROVIDERS_CTX = "1000000"; process.env.PLURNK_PROVIDERS_REASONING = "0"; process.env.PLURNK_PROVIDERS_ASSISTANT = "0"; process.env.PLURNK_PROVIDERS_SAFETY = "0";  // never overflow — keep the grinder out of it
+    process.env.PLURNK_SERVICE_CTX = "1000000"; process.env.PLURNK_SERVICE_REASONING = "0"; process.env.PLURNK_SERVICE_ASSISTANT = "0"; process.env.PLURNK_SERVICE_SAFETY = "0";  // never overflow — keep the grinder out of it
     const e = new Engine({ db, schemes: new SchemeRegistry() });
-    for (const k of ["CTX", "REASONING", "ASSISTANT", "SAFETY"]) delete process.env[`PLURNK_PROVIDERS_${k}`];
+    for (const k of ["CTX", "REASONING", "ASSISTANT", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}`];
     return e;
 };
 

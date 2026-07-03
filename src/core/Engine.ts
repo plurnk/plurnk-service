@@ -46,7 +46,7 @@ const DEFAULT_MAX_STRIKES = 3;
 const DEFAULT_MAX_COMMANDS = 99;
 
 const readMaxStrikes = (): number => {
-    const raw = process.env.PLURNK_MAX_STRIKES;
+    const raw = process.env.PLURNK_SERVICE_MAX_STRIKES;
     if (raw === undefined || raw.length === 0) return DEFAULT_MAX_STRIKES;
     const n = Number.parseInt(raw, 10);
     if (!Number.isFinite(n) || n < 0) return DEFAULT_MAX_STRIKES;
@@ -54,18 +54,18 @@ const readMaxStrikes = (): number => {
 };
 
 const readMaxCommands = (): number => {
-    const raw = process.env.PLURNK_MAX_COMMANDS;
+    const raw = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     if (raw === undefined || raw.length === 0) return DEFAULT_MAX_COMMANDS;
     const n = Number.parseInt(raw, 10);
     if (!Number.isFinite(n) || n < 1) return DEFAULT_MAX_COMMANDS;
     return n;
 };
 
-// PLURNK_FILES_ITEMS — the turn-0 manifest preview. null = off (no foist);
+// PLURNK_SERVICE_FILES_ITEMS — the turn-0 manifest preview. null = off (no foist);
 // -1 = the full manifest; positive N = the first N items. 0 / unset = off.
 const normalizeFilesItems = (n: number): number | null => (!Number.isFinite(n) || n === 0 ? null : n < 0 ? -1 : n);
 const readFilesItems = (): number | null => {
-    const raw = process.env.PLURNK_FILES_ITEMS;
+    const raw = process.env.PLURNK_SERVICE_FILES_ITEMS;
     if (raw === undefined || raw.length === 0) return null;
     return normalizeFilesItems(Number.parseInt(raw, 10));
 };
@@ -102,9 +102,9 @@ const readPositiveInt = (envVar: string, fallback: number): number => {
     return n;
 };
 
-// §operator-config-loop-timeout — the loop's wall-clock budget (PLURNK_LOOP_TIMEOUT).
+// §operator-config-loop-timeout — the loop's wall-clock budget (PLURNK_SERVICE_LOOP_TIMEOUT).
 const DEFAULT_LOOP_TIMEOUT_MS = 86400000;
-const readLoopTimeoutMs = (): number => readPositiveInt("PLURNK_LOOP_TIMEOUT", DEFAULT_LOOP_TIMEOUT_MS);
+const readLoopTimeoutMs = (): number => readPositiveInt("PLURNK_SERVICE_LOOP_TIMEOUT", DEFAULT_LOOP_TIMEOUT_MS);
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
 const LOOP_TIMEOUT_REASON = "loop_timeout";
 
@@ -308,8 +308,8 @@ export default class Engine {
     async runLoop({
         provider, messages, requirements = "", sessionId, runId, loopId,
         maxTurns = 50, maxStrikes = readMaxStrikes(),
-        minCycles = readPositiveInt("PLURNK_MIN_CYCLES", DEFAULT_MIN_CYCLES),
-        maxCyclePeriod = readPositiveInt("PLURNK_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
+        minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
+        maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
         origin = "model", signal, onDispatch,
     }: {
         provider: Provider;
@@ -403,11 +403,11 @@ export default class Engine {
                 return { turnIds, finalStatus: 429, hitMaxTurns: true, reason: "max_turns" };
             }
 
-            // PLURNK_EXEC_WAIT_MS — a post-EXEC breath: if a spawn from the prior turn
+            // PLURNK_SERVICE_EXEC_WAIT_MS — a post-EXEC breath: if a spawn from the prior turn
             // is still in flight, give it a tunable beat to land in THIS turn's packet
             // before we assemble it. A fixed grace beat, never a wait-for-completion;
             // 0/unset = off. Abortable with the loop signal.
-            const execWaitMs = Number(process.env.PLURNK_EXEC_WAIT_MS ?? "0");
+            const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
             if (execWaitMs > 0) {
                 const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
                 if (execHandler?.hasActiveSpawns?.(runId) === true) await delay(execWaitMs, undefined, { signal });
@@ -527,12 +527,12 @@ export default class Engine {
         const turnZeroMoves: string[] = [];
         if (seq === 1) {
             if (runFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
-            // Operator doc READs (PLURNK_MD_<ALIAS>, §actor-boundary-doc-injection). The docs were materialized
+            // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, §actor-boundary-doc-injection). The docs were materialized
             // as plurnk:///<entry> entries by the plurnk run (loop_run, via the
             // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
             // lives in the plurnk run's log, never the model's.
-            // #231 — env docs (PLURNK_MD_*) UNION the session's client docs; foist a READ of
+            // #231 — env docs (PLURNK_SERVICE_MD_*) UNION the session's client docs; foist a READ of
             // each materialized plurnk:///<alias>.md (loop_run materialized the same set).
             const { mdDocs } = await SessionSettings.read(this.#db, sessionId);
             // #269 — operator docs are run-once; foist them only on the run's first loop.
@@ -607,7 +607,7 @@ export default class Engine {
 
         this.#queueDerivation(() => EntryManifest.maintainDerivations(systemCtx)); // §derivation-off-hot-path — the turn proceeds; ~queries warm their own slice
 
-        // Turn-0 catalog preview (PLURNK_FILES_ITEMS, §actor-boundary-manifest-preview):
+        // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, §actor-boundary-manifest-preview):
         // one FIND(scheme:///**) per scheme that holds entries, foisted into the run's first
         // model turn so it opens with its catalog (the per-scheme arrays that replaced the
         // single manifest.json). -1 → each scheme's whole catalog; N → its first N rows
@@ -636,7 +636,7 @@ export default class Engine {
                     // the model orients on IS the docs; doc links are no longer rendered inline (#270).
                     const isPlurnk = schemeName === "plurnk";
                     const isFile = schemeName === "file";
-                    // Only the FILE list is cappable (PLURNK_FILES_ITEMS first-N): the tracked-file
+                    // Only the FILE list is cappable (PLURNK_SERVICE_FILES_ITEMS first-N): the tracked-file
                     // tree is external and arbitrarily large. Every other scheme — known/unknown
                     // (memory), run (scratch), plurnk (docs) — foists FULL, never truncated: a partial
                     // view of the model's own memory reads as withheld. file at -1, or any non-file

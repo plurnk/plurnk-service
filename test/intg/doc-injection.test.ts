@@ -1,4 +1,4 @@
-// PLURNK_MD_<ALIAS> doc injection (self-hosting keystone, §actor-boundary). An operator
+// PLURNK_SERVICE_MD_<ALIAS> doc injection (self-hosting keystone, §actor-boundary). An operator
 // doc declared via env is materialized as a plurnk:///<ALIAS>.md entry by the
 // plurnk run (DispatchAsPlurnk) and foisted as a READ into the model's turn 0.
 // The model sees only the READ; the materializing EDIT lives in the plurnk run.
@@ -15,14 +15,14 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-test("[§actor-boundary-doc-injection] PLURNK_MD_<ALIAS>: doc is materialized by the plurnk run + READ into the model's turn 0", async () => {
+test("[§actor-boundary-doc-injection] PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk run + READ into the model's turn 0", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-"));
     const docPath = join(dir, "agents.md");
     const docBody = "# Project rules\nBe excellent.\n";
     await writeFile(docPath, docBody, "utf8");
 
-    const prev = process.env.PLURNK_MD_AGENTS;
-    process.env.PLURNK_MD_AGENTS = docPath;
+    const prev = process.env.PLURNK_SERVICE_MD_AGENTS;
+    process.env.PLURNK_SERVICE_MD_AGENTS = docPath;
     try {
         const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -52,22 +52,22 @@ test("[§actor-boundary-doc-injection] PLURNK_MD_<ALIAS>: doc is materialized by
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MD_AGENTS; else process.env.PLURNK_MD_AGENTS = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_MD_AGENTS; else process.env.PLURNK_SERVICE_MD_AGENTS = prev;
         await rm(dir, { recursive: true, force: true });
     }
 });
 
-// Note 293 (b): PLURNK_MD inclusions are NOT gated by the catalog-preview (PLURNK_FILES_ITEMS) switch.
-// With PLURNK_FILES_ITEMS=0 (preview off) the operator doc is STILL foisted into
+// Note 293 (b): PLURNK_MD inclusions are NOT gated by the catalog-preview (PLURNK_SERVICE_FILES_ITEMS) switch.
+// With PLURNK_SERVICE_FILES_ITEMS=0 (preview off) the operator doc is STILL foisted into
 // turn 0 — it overrides/bypasses the cap rather than riding it.
-test("PLURNK_MD docs foist at turn 0 even when PLURNK_FILES_ITEMS=0 — the preview off-switch never gates operator docs", async () => {
+test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — the preview off-switch never gates operator docs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-0-"));
     const docPath = join(dir, "policy.md");
     await writeFile(docPath, "# Policy\nObey.\n", "utf8");
-    const prevMd = process.env.PLURNK_MD_POLICY;
-    const prevItems = process.env.PLURNK_FILES_ITEMS;
-    process.env.PLURNK_MD_POLICY = docPath;
-    process.env.PLURNK_FILES_ITEMS = "0"; // catalog preview OFF
+    const prevMd = process.env.PLURNK_SERVICE_MD_POLICY;
+    const prevItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    process.env.PLURNK_SERVICE_MD_POLICY = docPath;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "0"; // catalog preview OFF
     try {
         const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -83,25 +83,25 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_FILES_ITEMS=0 — the prev
             } finally { ws.close(); }
         });
     } finally {
-        if (prevMd === undefined) delete process.env.PLURNK_MD_POLICY; else process.env.PLURNK_MD_POLICY = prevMd;
-        if (prevItems === undefined) delete process.env.PLURNK_FILES_ITEMS; else process.env.PLURNK_FILES_ITEMS = prevItems;
+        if (prevMd === undefined) delete process.env.PLURNK_SERVICE_MD_POLICY; else process.env.PLURNK_SERVICE_MD_POLICY = prevMd;
+        if (prevItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prevItems;
         await rm(dir, { recursive: true, force: true });
     }
 });
 
-// #231 — a client's session.create settings.mdDocs UNION with the server's PLURNK_MD_*
+// #231 — a client's session.create settings.mdDocs UNION with the server's PLURNK_SERVICE_MD_*
 // docs: the operator's policy doc rides into every session, the client adds its own on
 // top, and on an alias collision the client deliberately shadows the server's.
-test("[§operator-config-session-md-docs] session.create settings.mdDocs UNIONs with env PLURNK_MD_* — env rides, client adds, client wins a collision", async () => {
+test("[§operator-config-session-md-docs] session.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — env rides, client adds, client wins a collision", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-union-"));
     const policyPath = join(dir, "policy.md");
     const guidePath = join(dir, "guide.md");
     await writeFile(policyPath, "# Server policy\nObey.\n", "utf8");
     await writeFile(guidePath, "# Server guide\nRefer.\n", "utf8");
-    const prevPolicy = process.env.PLURNK_MD_POLICY;
-    const prevGuide = process.env.PLURNK_MD_GUIDE;
-    process.env.PLURNK_MD_POLICY = policyPath; // operator policy doc — the client shadows this one
-    process.env.PLURNK_MD_GUIDE = guidePath;   // operator doc the client leaves alone — must survive
+    const prevPolicy = process.env.PLURNK_SERVICE_MD_POLICY;
+    const prevGuide = process.env.PLURNK_SERVICE_MD_GUIDE;
+    process.env.PLURNK_SERVICE_MD_POLICY = policyPath; // operator policy doc — the client shadows this one
+    process.env.PLURNK_SERVICE_MD_GUIDE = guidePath;   // operator doc the client leaves alone — must survive
     try {
         const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -128,8 +128,8 @@ test("[§operator-config-session-md-docs] session.create settings.mdDocs UNIONs 
             } finally { ws.close(); }
         });
     } finally {
-        if (prevPolicy === undefined) delete process.env.PLURNK_MD_POLICY; else process.env.PLURNK_MD_POLICY = prevPolicy;
-        if (prevGuide === undefined) delete process.env.PLURNK_MD_GUIDE; else process.env.PLURNK_MD_GUIDE = prevGuide;
+        if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_MD_POLICY; else process.env.PLURNK_SERVICE_MD_POLICY = prevPolicy;
+        if (prevGuide === undefined) delete process.env.PLURNK_SERVICE_MD_GUIDE; else process.env.PLURNK_SERVICE_MD_GUIDE = prevGuide;
         await rm(dir, { recursive: true, force: true });
     }
 });

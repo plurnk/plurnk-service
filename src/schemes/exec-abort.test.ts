@@ -22,15 +22,15 @@ test("teardownReason: a bounded housekeeping reap carrying the consumer's grace"
 });
 
 test("graceMs: env-tunable, defaulting to 2000ms; teardownReason carries the live value", () => {
-    const prior = process.env.PLURNK_EXEC_KILL_GRACE_MS;
+    const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
     try {
-        delete process.env.PLURNK_EXEC_KILL_GRACE_MS;
+        delete process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
         assert.equal(ExecAbort.graceMs, 2000);
-        process.env.PLURNK_EXEC_KILL_GRACE_MS = "150";
+        process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = "150";
         assert.equal(ExecAbort.graceMs, 150);
         assert.equal(ExecAbort.teardownReason().graceMs, 150);
     } finally {
-        if (prior === undefined) delete process.env.PLURNK_EXEC_KILL_GRACE_MS;
-        else process.env.PLURNK_EXEC_KILL_GRACE_MS = prior;
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
+        else process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = prior;
     }
 });

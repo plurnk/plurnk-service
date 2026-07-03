@@ -89,7 +89,7 @@ export default class PacketWire {
     // `N:\t` LINE-NUMBERED inside the fence — a SECURITY boundary: numbered, fenced prompt text
     // can't spoof other parts of the packet (a prompt line `## Plurnk Service Errors` reads as
     // `3:\t## …`, plainly inside the prompt, not a real section). A fat prompt replays every turn,
-    // so PLURNK_PROMPT_PREVIEW_CHARS caps it: over the cap, render a pointer placeholder instead of
+    // so PLURNK_SERVICE_PROMPT_PREVIEW_CHARS caps it: over the cap, render a pointer placeholder instead of
     // the body — the model OPENs/READs the entry to see it whole (never lost). cap < 0 = no cap.
     static renderActivePrompts(rows: Array<{ content: string; pathname: string }>, cap: number): string {
         return rows.map((r) => {

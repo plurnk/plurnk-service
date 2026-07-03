@@ -4,11 +4,11 @@ import EnvFlags from "../../src/core/EnvFlags.ts";
 
 test("parseEnvExampleContent: simple var with single-line description", () => {
     const content = `# SQLite file path.
-PLURNK_DB_PATH=./plurnk.db`;
+PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     const flags = EnvFlags.parseEnvExampleContent(content);
     assert.equal(flags.length, 1);
-    assert.equal(flags[0].flagName, "--db-path");
-    assert.equal(flags[0].envName, "PLURNK_DB_PATH");
+    assert.equal(flags[0].flagName, "--service-db-path");
+    assert.equal(flags[0].envName, "PLURNK_SERVICE_DB_PATH");
     assert.equal(flags[0].defaultValue, "./plurnk.db");
     assert.equal(flags[0].description, "SQLite file path.");
 });
@@ -27,7 +27,7 @@ PLURNK_SOME_KNOB=256`;
 
 test("parseEnvExampleContent: section delimiter resets description buffer", () => {
     const content = `# --- Storage ---
-PLURNK_DB_PATH=./plurnk.db`;
+PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     const flags = EnvFlags.parseEnvExampleContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].description, null, "section delimiter does NOT become description");
@@ -36,7 +36,7 @@ PLURNK_DB_PATH=./plurnk.db`;
 test("parseEnvExampleContent: blank line between comment and var resets buffer", () => {
     const content = `# This comment is for nothing in particular.
 
-PLURNK_DB_PATH=./plurnk.db`;
+PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     const flags = EnvFlags.parseEnvExampleContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].description, null);
@@ -45,7 +45,7 @@ PLURNK_DB_PATH=./plurnk.db`;
 test("parseEnvExampleContent: section delimiter then comment then var — only the comment is description", () => {
     const content = `# --- Storage ---
 # SQLite file path.
-PLURNK_DB_PATH=./plurnk.db`;
+PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     const flags = EnvFlags.parseEnvExampleContent(content);
     assert.equal(flags[0].description, "SQLite file path.");
 });
@@ -95,24 +95,24 @@ test("parseEnvExampleContent: parses the actual plurnk-service .env.example shap
 
 # --- Storage ---
 # SQLite file path.
-PLURNK_DB_PATH=./plurnk_dev.db
+PLURNK_SERVICE_DB_PATH=./plurnk_dev.db
 
 # --- Diagnostics ---
 # When 1, enables debug.
-PLURNK_DEBUG=0`;
+PLURNK_SERVICE_DEBUG=0`;
 
     const flags = EnvFlags.parseEnvExampleContent(content);
     assert.equal(flags.length, 2);
 
     const byEnv = Object.fromEntries(flags.map((f) => [f.envName, f]));
-    assert.equal(byEnv.PLURNK_DB_PATH.flagName, "--db-path");
-    assert.equal(byEnv.PLURNK_DB_PATH.description, "SQLite file path.");
-    assert.equal(byEnv.PLURNK_DEBUG.flagName, "--debug");
+    assert.equal(byEnv.PLURNK_SERVICE_DB_PATH.flagName, "--service-db-path");
+    assert.equal(byEnv.PLURNK_SERVICE_DB_PATH.description, "SQLite file path.");
+    assert.equal(byEnv.PLURNK_SERVICE_DEBUG.flagName, "--service-debug");
 });
 
 test("formatFlagsHelp: undescribed flags still appear (terse fallback to env=default)", () => {
     const flags = [
-        { flagName: "--db-path", envName: "PLURNK_DB_PATH", defaultValue: "./db", description: "SQLite path" },
+        { flagName: "--db-path", envName: "PLURNK_SERVICE_DB_PATH", defaultValue: "./db", description: "SQLite path" },
         { flagName: "--magic", envName: "PLURNK_MAGIC", defaultValue: "42", description: null },
     ];
     const help = EnvFlags.formatFlagsHelp(flags);
@@ -122,8 +122,8 @@ test("formatFlagsHelp: undescribed flags still appear (terse fallback to env=def
 
 test("formatFlagsHelp: described flag shows description + env=default on one line", () => {
     const flags = [
-        { flagName: "--db-path", envName: "PLURNK_DB_PATH", defaultValue: "./db", description: "SQLite path" },
+        { flagName: "--db-path", envName: "PLURNK_SERVICE_DB_PATH", defaultValue: "./db", description: "SQLite path" },
     ];
     const help = EnvFlags.formatFlagsHelp(flags);
-    assert.match(help, /SQLite path\s+\(PLURNK_DB_PATH=\.\/db\)/);
+    assert.match(help, /SQLite path\s+\(PLURNK_SERVICE_DB_PATH=\.\/db\)/);
 });

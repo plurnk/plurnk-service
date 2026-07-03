@@ -51,7 +51,7 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
     const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
     const ws = await connect(addr);
     // SANDBOX: every live/demo session roots at a fresh empty dir, NEVER the host repo. With
-    // PLURNK_GIT_ALLOWED=1 + PLURNK_GIT_AUTO=1 + PLURNK_FILES_ITEMS=-1 (the live/demo .env), an
+    // PLURNK_SERVICE_GIT_ALLOWED=1 + PLURNK_SERVICE_GIT_AUTO=1 + PLURNK_SERVICE_FILES_ITEMS=-1 (the live/demo .env), an
     // in-repo projectRoot makes git membership materialize + embed ALL of plurnk-service every turn
     // — the embed cycle that turns a 7s task into a 240s timeout. seedEntry writes to the DB, so an
     // empty root costs the tests nothing. Caller may override (e.g. with a fixture git repo).

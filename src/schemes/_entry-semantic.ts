@@ -103,27 +103,27 @@ export default class EntrySemantic {
     // the embedder's reported window (scalable — NO model-specific number baked in);
     // a positive value caps BELOW the window (e.g. to sweep granularity).
     static #chunkBudget(maxTokens: number): number {
-        const raw = process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
+        const raw = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
         if (raw === undefined || raw.trim() === "") return maxTokens;
         const v = Number(raw);
-        if (!Number.isInteger(v) || v < 1) throw new Error(`PLURNK_SEMANTIC_CHUNK_TOKENS must be empty (= the embedder's window) or a positive integer, got ${JSON.stringify(raw)}`);
+        if (!Number.isInteger(v) || v < 1) throw new Error(`PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS must be empty (= the embedder's window) or a positive integer, got ${JSON.stringify(raw)}`);
         return Math.min(v, maxTokens);
     }
 
     static #chunkOverlap(): number {
-        const v = Number(process.env.PLURNK_SEMANTIC_CHUNK_OVERLAP);
-        if (!(v >= 0 && v < 1)) throw new Error(`PLURNK_SEMANTIC_CHUNK_OVERLAP must be in [0,1), got ${JSON.stringify(process.env.PLURNK_SEMANTIC_CHUNK_OVERLAP)}`);
+        const v = Number(process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_OVERLAP);
+        if (!(v >= 0 && v < 1)) throw new Error(`PLURNK_SERVICE_SEMANTIC_CHUNK_OVERLAP must be in [0,1), got ${JSON.stringify(process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_OVERLAP)}`);
         return v;
     }
 
     // The embedder capability surface (daughter window + tokenizer + model id), probed
     // through the Mimetypes handle. null until an embedder is installed.
     static async #embedderInfo(mimetypes: Mimetypes): Promise<{ maxTokens: number; countTokens: (text: string) => Promise<number>; model?: string } | null> {
-        // PLURNK_EMBED_DISABLE=1 forces the no-embedder path even when the optional embeddings package
+        // PLURNK_SERVICE_EMBED_DISABLE=1 forces the no-embedder path even when the optional embeddings package
         // IS installed — the whole semantic stack (deriveEmbeddings, the ~query FTS→cosine fusion, the
         // deep_hash config) funnels through here, so one gate makes everything FTS-only. The fast lane
         // (mock-provider tests) sets it so the suite doesn't spin up the MiniLM worker pool for nothing.
-        if (process.env.PLURNK_EMBED_DISABLE === "1") return null;
+        if (process.env.PLURNK_SERVICE_EMBED_DISABLE === "1") return null;
         return (await (mimetypes as { embedderInfo?: () => Promise<{ maxTokens: number; countTokens: (text: string) => Promise<number>; model?: string } | null> }).embedderInfo?.()) ?? null;
     }
 
@@ -161,7 +161,7 @@ export default class EntrySemantic {
         const toResult = (x: { pathname: string; line_start: number; line_end: number }) => ({ pathname: x.pathname, lineStart: x.line_start, lineEnd: x.line_end });
 
         // The query embedding honors the SAME gate as the corpus (#embedderInfo /
-        // PLURNK_EMBED_DISABLE): with the embeddings package installed but disabled,
+        // PLURNK_SERVICE_EMBED_DISABLE): with the embeddings package installed but disabled,
         // calling process() directly would compute a query vector and rank it against
         // an empty entry_embeddings — every ~query silently []. Disabled → the honest
         // FTS keyword fallback, same as no embedder at all.

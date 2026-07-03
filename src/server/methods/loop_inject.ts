@@ -32,8 +32,8 @@ export default class LoopInjectMethod {
                 if (modelRunId === null) throw new Error("loop.inject: no model run to inject into — start one with loop.run");
                 if (ctx.provider === null) return { status: 501, error: "no provider configured at the daemon" };
 
-                // PLURNK_MAX_TURNS operator ceiling, same as loop.run (§operator-config).
-                const ceiling = Number(process.env.PLURNK_MAX_TURNS ?? "-1");
+                // PLURNK_SERVICE_MAX_TURNS operator ceiling, same as loop.run (§operator-config).
+                const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
                 const requested = p.maxTurns ?? ceiling;
                 const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
 
@@ -53,7 +53,7 @@ export default class LoopInjectMethod {
             description: "Inject a prompt into the session's in-flight model run — the missing 'talk to a running loop' half of the conversation model. An active drain folds the prompt into its next turn (the mid-run nudge / 'BTW' idiom; steer instead of cancel; answer a model's intermediate SEND); an idle run enqueues a fresh loop. Returns immediately with {action, loopId}; progress surfaces via the run's log/entry + loop/terminated notifications. Requires an existing model run (loop.run starts one). #193.",
             params: {
                 prompt: "string — the prompt to speak into the run",
-                maxTurns: "number? — per-loop turn request when this enqueues a fresh loop; the PLURNK_MAX_TURNS ceiling caps it (§operator-config)",
+                maxTurns: "number? — per-loop turn request when this enqueues a fresh loop; the PLURNK_SERVICE_MAX_TURNS ceiling caps it (§operator-config)",
                 flags: "object? — { yolo?: boolean } for a freshly-enqueued loop (no effect when folded into an active drain)",
             },
             requiresInit: true,

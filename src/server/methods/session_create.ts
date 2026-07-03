@@ -60,7 +60,7 @@ export default class SessionCreateMethod {
                 name: "string? — session name (auto-generated if omitted)",
                 projectRoot: "string? — absolute path to the client's workspace; null/omitted = headless mode (no disk side-effects on file ops)",
                 constraints: "array? — [{effect, glob}] membership overlay seeded atomically at creation so turn-1's manifest is right with no follow-up RPC. effect: pick (admit a file git misses / the sole source when headless) | hide (drop a tracked match) | view (read-only) | repo (declare a git repo folder anywhere — its members join the manifest, addressed relative to the project root: clean under it, `..`-prefixed outside). glob: node:path glob vs workspace-relative paths (a folder for repo).",
-                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { filesItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_FILES_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_MD_* docs; client wins on alias collision), client?: string (#249 — session-stable frontend id, e.g. 'plurnk.nvim/1.4.0', forwarded to the plurnk provider as Plurnk-Client; dropped by other providers) }",
+                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { filesItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_SERVICE_FILES_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_SERVICE_MD_* docs; client wins on alias collision), client?: string (#249 — session-stable frontend id, e.g. 'plurnk.nvim/1.4.0', forwarded to the plurnk provider as Plurnk-Client; dropped by other providers) }",
             },
         });
 

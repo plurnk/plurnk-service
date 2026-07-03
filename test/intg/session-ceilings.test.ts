@@ -1,7 +1,7 @@
 // #232 — session.create({settings}) ceiling family: tighten-only, most-restrictive-wins
 // against the operator env ceiling at each knob's read-site (companion to #231's
-// default-semantics knobs). maxCommands min()s PLURNK_MAX_COMMANDS; git:false ANDs the
-// PLURNK_GIT_ALLOWED service ceiling. A client may narrow, never widen.
+// default-semantics knobs). maxCommands min()s PLURNK_SERVICE_MAX_COMMANDS; git:false ANDs the
+// PLURNK_SERVICE_GIT_ALLOWED service ceiling. A client may narrow, never widen.
 //
 // NOTE: these set process-global env vars; node --test isolates each file's process.
 
@@ -30,10 +30,10 @@ const entryId = (db: Db, pathname: string) =>
     (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "known", pathname });
 
 test("[§operator-config-session-max-commands] session settings.maxCommands min()s the env op cap — tightens, never widens", async () => {
-    const prev = process.env.PLURNK_MAX_COMMANDS;
+    const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
         // TIGHTEN: env 99, session 1 → min 1 → only the first model op dispatches.
-        process.env.PLURNK_MAX_COMMANDS = "99";
+        process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
         await withDaemon(twoEdits(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -44,7 +44,7 @@ test("[§operator-config-session-max-commands] session settings.maxCommands min(
             } finally { ws.close(); }
         });
         // NO-WIDEN: env 1, session 99 → min 1 → still only the first op; the client can't widen.
-        process.env.PLURNK_MAX_COMMANDS = "1";
+        process.env.PLURNK_SERVICE_MAX_COMMANDS = "1";
         await withDaemon(twoEdits(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -54,14 +54,14 @@ test("[§operator-config-session-max-commands] session settings.maxCommands min(
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MAX_COMMANDS; else process.env.PLURNK_MAX_COMMANDS = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS; else process.env.PLURNK_SERVICE_MAX_COMMANDS = prev;
     }
 });
 
 test("[§operator-config-session-max-commands-floor] maxCommands:0 admits PLAN + the terminal SEND, drops every action", async () => {
-    const prev = process.env.PLURNK_MAX_COMMANDS;
+    const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
-        process.env.PLURNK_MAX_COMMANDS = "99";
+        process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
         // One turn: two EDIT actions wrapped by the mandatory PLAN and a terminal SEND.
         // maxCommands:0 caps actions at zero — both EDITs drop — but PLAN and the terminal
         // SEND always dispatch, so the loop still plans and concludes (0's only coherent meaning).
@@ -85,7 +85,7 @@ test("[§operator-config-session-max-commands-floor] maxCommands:0 admits PLAN +
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_MAX_COMMANDS; else process.env.PLURNK_MAX_COMMANDS = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS; else process.env.PLURNK_SERVICE_MAX_COMMANDS = prev;
     }
 });
 

@@ -4,9 +4,9 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import EntrySemantic from "./_entry-semantic.ts";
 
 // These exercise the CAPABLE-embedder path (via a stub embedder), so the embedder must be ON —
-// the fast lane disables it in .env.test (PLURNK_EMBED_DISABLE=1), which would force #embedderInfo
+// the fast lane disables it in .env.test (PLURNK_SERVICE_EMBED_DISABLE=1), which would force #embedderInfo
 // to null and collapse every assertion to the FTS fallback. Re-enable it for this file.
-process.env.PLURNK_EMBED_DISABLE = "0";
+process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const wordCount = (t: string): number => (t.match(/\S+/g) ?? []).length;
 const fakeVector = (s: string): Uint8Array => new Uint8Array(new Float32Array([s.length, wordCount(s), 0]).buffer);
@@ -22,8 +22,8 @@ const capable = {
 const dormant = { process: async () => ({ embedding: undefined, embeddingModel: undefined }) } as unknown as Mimetypes;
 
 test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body losslessly, embeds each chunk (#plan-semantics)", async () => {
-    const prev = process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
-    process.env.PLURNK_SEMANTIC_CHUNK_TOKENS = "20"; // force tiling regardless of the .env.example default
+    const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
+    process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "20"; // force tiling regardless of the .env.example default
     try {
         const content = Array.from({ length: 40 }, (_, i) => `line ${i} alpha beta gamma`).join("\n"); // ~200 words
         const { chunks, model } = await EntrySemantic.deriveEmbeddings(capable, content, [], undefined, undefined);
@@ -34,14 +34,14 @@ test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body lossle
         for (let l = 1; l <= 40; l++) assert.ok(covered.has(l), `line ${l} covered (lossless)`);
         assert.ok(chunks.every((c) => c.vector.byteLength > 0), "each chunk embedded");
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
-        else process.env.PLURNK_SEMANTIC_CHUNK_TOKENS = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
+        else process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = prev;
     }
 });
 
 test("EntrySemantic.deriveEmbeddings: batches all tiled chunks into ONE embedBatch call, not a per-chunk loop (#272)", async () => {
-    const prev = process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
-    process.env.PLURNK_SEMANTIC_CHUNK_TOKENS = "20";
+    const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
+    process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "20";
     try {
         const batchSizes: number[] = [];
         const spy = {
@@ -54,8 +54,8 @@ test("EntrySemantic.deriveEmbeddings: batches all tiled chunks into ONE embedBat
         assert.equal(batchSizes.length, 1, "exactly one embedBatch call — the parallel path, not a sequential per-chunk loop");
         assert.equal(batchSizes[0], chunks.length, "the single batch carried every tiled chunk text");
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
-        else process.env.PLURNK_SEMANTIC_CHUNK_TOKENS = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
+        else process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = prev;
     }
 });
 
@@ -71,9 +71,9 @@ test("EntrySemantic.deriveEmbeddings: no embedder capability → one whole-entry
     assert.equal(empty.model, undefined);
 });
 
-test("EntrySemantic.deriveEmbeddings: empty PLURNK_SEMANTIC_CHUNK_TOKENS = the embedder's reported window (scalable, no baked-in budget)", async () => {
-    const prev = process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
-    delete process.env.PLURNK_SEMANTIC_CHUNK_TOKENS; // empty = discover the window
+test("EntrySemantic.deriveEmbeddings: empty PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = the embedder's reported window (scalable, no baked-in budget)", async () => {
+    const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
+    delete process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS; // empty = discover the window
     try {
         // A capable embedder advertising a SMALL window (5 tokens). The budget must come
         // from THAT window, not a hardcoded default — so ~80 words tiles into many chunks.
@@ -86,8 +86,8 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SEMANTIC_CHUNK_TOKENS = the e
         const { chunks } = await EntrySemantic.deriveEmbeddings(smallWindow, content, [], undefined, undefined);
         assert.ok(chunks.length > 3, `budget came from the model window (5), not a baked-in number — got ${chunks.length} chunks`);
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_SEMANTIC_CHUNK_TOKENS;
-        else process.env.PLURNK_SEMANTIC_CHUNK_TOKENS = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
+        else process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = prev;
     }
 });
 

@@ -1,7 +1,7 @@
 // §operator-config-shipped-defaults — the shipped .env.example is ITSELF under test. Every other
 // tier runs the TEST cascade (.env.test deliberately blanks the policy surfaces, pins its own
 // knobs), which means shipped-default regressions are structurally invisible to it: the POLICY.md
-// double-injection (a stale PLURNK_MD_POLICY default alongside the policy section) and the
+// double-injection (a stale PLURNK_SERVICE_MD_POLICY default alongside the policy section) and the
 // silently-commented PLURNK_PROVIDERS_GBNF both shipped through fully-green tiers. This file
 // asserts the template's contract directly, then builds one packet UNDER the shipped policy
 // wiring and proves the policy renders exactly once.
@@ -30,11 +30,11 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
 
 test("[§operator-config-shipped-defaults] the template ships no double policy, no active model, a resolving GBNF", async () => {
     const env = await shippedEnv();
-    // The operating policy is a packet SECTION (readSystemPolicy) — a PLURNK_MD_* default pointing
+    // The operating policy is a packet SECTION (readSystemPolicy) — a PLURNK_SERVICE_MD_* default pointing
     // at the same file injects it twice (once as ## Plurnk Service Policy, once as a foisted
     // plurnk:///<ALIAS>.md READ). The template must ship NO active doc aliases.
-    const mdKeys = [...env.keys()].filter((k) => k.startsWith("PLURNK_MD_"));
-    assert.deepEqual(mdKeys, [], `no active PLURNK_MD_* doc default ships; got ${mdKeys.join(", ")}`);
+    const mdKeys = [...env.keys()].filter((k) => k.startsWith("PLURNK_SERVICE_MD_"));
+    assert.deepEqual(mdKeys, [], `no active PLURNK_SERVICE_MD_* doc default ships; got ${mdKeys.join(", ")}`);
     // No active model — the local/cloud/plurnk.ai selection is the user's (#307).
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // The GBNF default is ACTIVE and resolves — a commented-out flag silently ran every
@@ -43,10 +43,10 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     // reroutes a think-trained model's thought into the grammar free zone; adaptive is
     // unbounded (28k-token turns). The capacity must equal the partition reserve it spends.
     assert.equal(env.get("PLURNK_PROVIDERS_THINKING"), "on", "thinking ships on");
-    assert.equal(env.get("PLURNK_PROVIDERS_THINKING_CAPACITY"), env.get("PLURNK_PROVIDERS_REASONING"), "thinking capacity ships equal to the partition's reasoning reserve");
+    assert.equal(env.get("PLURNK_PROVIDERS_THINKING_CAPACITY"), env.get("PLURNK_SERVICE_REASONING"), "thinking capacity ships equal to the partition's reasoning reserve");
     // §tokenomics-window-partition — the 64Ki invariant: the shipped numbers partition any
     // ≥77Ki window to EXACTLY 65536 prompt tokens. Change any of the four and this names it.
-    const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_PROVIDERS_${k}`)));
+    const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_SERVICE_${k}`)));
     assert.ok(part.every(Number.isFinite), "all four partition numbers ship");
     assert.equal(part[0] - part[1] - part[2] - part[3], 65536, "the shipped partition is exactly 64Ki of prompt");
     const variant = env.get("PLURNK_PROVIDERS_GBNF");
@@ -55,12 +55,12 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
 });
 
 test("[§operator-config-shipped-defaults] under the shipped policy wiring, the personality renders in the packet exactly once", async () => {
-    // Mirror a fresh install: PLURNK_POLICY → the seed file itself (ensureHome copies
-    // PLURNK_PERSONALITY.md to ~/.plurnk/AGENTS.md); no PLURNK_MD_* docs.
-    const prevPolicy = process.env.PLURNK_POLICY;
-    const prevMd = process.env.PLURNK_MD_POLICY;
-    process.env.PLURNK_POLICY = fileURLToPath(new URL("../../PLURNK_PERSONALITY.md", import.meta.url));
-    delete process.env.PLURNK_MD_POLICY;
+    // Mirror a fresh install: PLURNK_SERVICE_POLICY → the seed file itself (ensureHome copies
+    // PLURNK_PERSONALITY.md to ~/.plurnk/AGENTS.md); no PLURNK_SERVICE_MD_* docs.
+    const prevPolicy = process.env.PLURNK_SERVICE_POLICY;
+    const prevMd = process.env.PLURNK_SERVICE_MD_POLICY;
+    process.env.PLURNK_SERVICE_POLICY = fileURLToPath(new URL("../../PLURNK_PERSONALITY.md", import.meta.url));
+    delete process.env.PLURNK_SERVICE_MD_POLICY;
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `shipped-${crypto.randomUUID()}`);
@@ -79,8 +79,8 @@ test("[§operator-config-shipped-defaults] under the shipped policy wiring, the 
         const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
         assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted plurnk:///POLICY.md READ");
     } finally {
-        if (prevPolicy === undefined) delete process.env.PLURNK_POLICY; else process.env.PLURNK_POLICY = prevPolicy;
-        if (prevMd !== undefined) process.env.PLURNK_MD_POLICY = prevMd;
+        if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;
+        if (prevMd !== undefined) process.env.PLURNK_SERVICE_MD_POLICY = prevMd;
         await db.close();
     }
 });

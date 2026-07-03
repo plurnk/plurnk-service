@@ -270,15 +270,15 @@ test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification
     } finally { await db.close(); }
 });
 
-// PLURNK_MAX_COMMANDS cap. The html-attrs demo surfaced a pathology where
+// PLURNK_SERVICE_MAX_COMMANDS cap. The html-attrs demo surfaced a pathology where
 // the model emitted 635 ops in a single assistant turn; without a cap the
 // engine dispatches every one (each is a real DB write + handler call).
 // Cap dispatches at the configured limit; overflow ops are silently dropped
 // (no per-op log rows, to keep forensics from drowning in identical refusals)
 // and a single max_commands_exceeded telemetry entry tells the model next turn.
-test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + telemetry signals", async () => {
-    const original = process.env.PLURNK_MAX_COMMANDS;
-    process.env.PLURNK_MAX_COMMANDS = "3";
+test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow drops + telemetry signals", async () => {
+    const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
+    process.env.PLURNK_SERVICE_MAX_COMMANDS = "3";
     try {
         const { db, engine, sessionId, runId, loopId } = await setup();
         try {
@@ -320,8 +320,8 @@ test("Engine.runTurn: PLURNK_MAX_COMMANDS caps dispatched ops; overflow drops + 
             assert.equal((capErrors[0] as { cap?: number }).cap, undefined);
         } finally { await db.close(); }
     } finally {
-        if (original === undefined) delete process.env.PLURNK_MAX_COMMANDS;
-        else process.env.PLURNK_MAX_COMMANDS = original;
+        if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
+        else process.env.PLURNK_SERVICE_MAX_COMMANDS = original;
     }
 });
 

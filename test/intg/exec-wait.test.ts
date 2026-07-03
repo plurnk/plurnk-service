@@ -1,4 +1,4 @@
-// PLURNK_EXEC_WAIT_MS — the post-EXEC breath. After a turn backgrounds an exec
+// PLURNK_SERVICE_EXEC_WAIT_MS — the post-EXEC breath. After a turn backgrounds an exec
 // whose spawn is still in flight at the next turn boundary, the loop waits a
 // tunable beat before assembling the next packet (so a fast exec's output lands
 // in it). Verified by a lower-bound timing assertion (the breath deterministically
@@ -9,9 +9,9 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-test("PLURNK_EXEC_WAIT_MS breathes before the next turn while a spawn is in flight (#exec-wait)", async () => {
-    const prev = process.env.PLURNK_EXEC_WAIT_MS;
-    process.env.PLURNK_EXEC_WAIT_MS = "300";
+test("PLURNK_SERVICE_EXEC_WAIT_MS breathes before the next turn while a spawn is in flight (#exec-wait)", async () => {
+    const prev = process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
+    process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "300";
     try {
         // Turn 1 backgrounds a slow exec + continues (102); at turn 2's boundary the sleep is still in
         // flight → the 300ms breath fires. The spawn is still live at turn 2's close, so a SEND[200]
@@ -34,7 +34,7 @@ test("PLURNK_EXEC_WAIT_MS breathes before the next turn while a spawn is in flig
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_EXEC_WAIT_MS;
-        else process.env.PLURNK_EXEC_WAIT_MS = prev;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_EXEC_WAIT_MS = prev;
     }
 });

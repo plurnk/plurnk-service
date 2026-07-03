@@ -9,7 +9,7 @@ interface Params {
 export default class OpDispatchMethod {
     static register(registry: MethodRegistry): void {
         registry.registerMethod("op.dispatch", {
-            longRunning: true, // a proposal-capable write pauses on human review — exempt from PLURNK_RPC_TIMEOUT (§operator-config-rpc-timeout)
+            longRunning: true, // a proposal-capable write pauses on human review — exempt from PLURNK_SERVICE_RPC_TIMEOUT (§operator-config-rpc-timeout)
             handler: async (params, ctx) => {
                 const p = params as Params;
                 if (p.statement === undefined || p.statement === null) throw new Error("op.dispatch requires params.statement: PlurnkStatement");

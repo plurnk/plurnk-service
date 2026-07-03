@@ -36,7 +36,7 @@ ORDER BY r.id DESC LIMIT 1;
 
 -- PREP: run_count_active
 -- Runs in a session with a non-terminal loop (status 100 pending / 102 in-progress)
--- — "active" for the PLURNK_SESSION_RUNS_MAX_ACTIVE ceiling (run-cap.ts).
+-- — "active" for the PLURNK_SERVICE_SESSION_RUNS_MAX_ACTIVE ceiling (run-cap.ts).
 SELECT COUNT(DISTINCT r.id) AS n FROM runs r
 JOIN loops l ON l.run_id = r.id
 WHERE r.session_id = $session_id AND l.status IN (100, 102);

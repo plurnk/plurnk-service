@@ -12,11 +12,11 @@ import { liveSession, liveLoop } from "../_live-harness.ts";
 const PARTITION_KEYS = ["CTX", "REASONING", "ASSISTANT", "SAFETY"] as const;
 
 export const measureFloor = async (opts: { label: string; projectRoot: string; prompt: string }): Promise<number> => {
-    const prev = PARTITION_KEYS.map((k) => process.env[`PLURNK_PROVIDERS_${k}`]);
-    process.env.PLURNK_PROVIDERS_CTX = "1";
-    process.env.PLURNK_PROVIDERS_REASONING = "0";
-    process.env.PLURNK_PROVIDERS_ASSISTANT = "0";
-    process.env.PLURNK_PROVIDERS_SAFETY = "0";
+    const prev = PARTITION_KEYS.map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+    process.env.PLURNK_SERVICE_CTX = "1";
+    process.env.PLURNK_SERVICE_REASONING = "0";
+    process.env.PLURNK_SERVICE_ASSISTANT = "0";
+    process.env.PLURNK_SERVICE_SAFETY = "0";
     try {
         const s = await liveSession({ name: `floor-probe-${opts.label}-${crypto.randomUUID()}`, projectRoot: opts.projectRoot });
         try {
@@ -29,7 +29,7 @@ export const measureFloor = async (opts: { label: string; projectRoot: string; p
         } finally { await s.cleanup(); }
     } finally {
         PARTITION_KEYS.forEach((k, i) => {
-            if (prev[i] === undefined) delete process.env[`PLURNK_PROVIDERS_${k}`]; else process.env[`PLURNK_PROVIDERS_${k}`] = prev[i];
+            if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i];
         });
     }
 };

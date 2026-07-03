@@ -25,10 +25,10 @@ export default class Paths {
     // the grammar block doesn't cover (e.g. "loop concludes with SEND[200]").
     static defaultRequirements = Paths.#resolveDefaultRequirements();
 
-    // Resolve the default requirements file: `PLURNK_REQUIREMENTS` env (absolute
+    // Resolve the default requirements file: `PLURNK_SERVICE_REQUIREMENTS` env (absolute
     // or relative-to-package-root) overrides the in-package `requirements.md`.
     static #resolveDefaultRequirements(): string {
-        const env = process.env.PLURNK_REQUIREMENTS;
+        const env = process.env.PLURNK_SERVICE_REQUIREMENTS;
         if (typeof env === "string" && env.length > 0) {
             return resolve(Paths.#PACKAGE_ROOT, env);
         }
@@ -36,7 +36,7 @@ export default class Paths {
     }
 
     // Operator reference docs auto-READ into every model run at turn 0.
-    // `PLURNK_MD_<ALIAS>=<path>` materializes <path>'s markdown as a
+    // `PLURNK_SERVICE_MD_<ALIAS>=<path>` materializes <path>'s markdown as a
     // `plurnk:///<ALIAS>.md` entry the model READs — an idiomatic, userland way
     // to inject standing context (an ordinary entry + READ op, not a bespoke
     // packet section). `~` expands to home; relative paths resolve
@@ -44,8 +44,8 @@ export default class Paths {
     static docs(): Array<{ entryName: string; path: string }> {
         const out: Array<{ entryName: string; path: string }> = [];
         for (const [key, value] of Object.entries(process.env)) {
-            if (!key.startsWith("PLURNK_MD_") || typeof value !== "string" || value.length === 0) continue;
-            const alias = key.slice("PLURNK_MD_".length);
+            if (!key.startsWith("PLURNK_SERVICE_MD_") || typeof value !== "string" || value.length === 0) continue;
+            const alias = key.slice("PLURNK_SERVICE_MD_".length);
             if (alias.length === 0) continue;
             const expanded = value.startsWith("~/") ? resolve(homedir(), value.slice(2)) : value === "~" ? homedir() : value;
             out.push({ entryName: `${alias}.md`, path: resolve(Paths.#PACKAGE_ROOT, expanded) });
