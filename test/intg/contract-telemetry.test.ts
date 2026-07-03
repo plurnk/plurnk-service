@@ -176,46 +176,37 @@ test("[§telemetry-drain-on-read] the NOTICE telemetry buffer drains — a notic
     } finally { await db.close(); }
 });
 
-test("#256 — grammar_unenforced provider error surfaces as telemetry on the next packet + an empty no-op turn, not a loop crash", async () => {
+test("[§turn-never-blank] a thrown ProviderError is an infrastructure failure — no turn is fabricated, the loop dies carrying the cause", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
-        // The one provider error the MODEL can recover from: the backend failed to
-        // enforce the transported GBNF, so generate() throws ProviderError. The engine
-        // must catch it, surface telemetry, and fall through as an empty no-op turn —
-        // NOT propagate (which would terminate the loop). Turn 2 is a clean Mock turn
-        // that drains the telemetry buffer onto its packet.
-        const provider = new Mock({
-            contextSize: 100000,
-            responses: [drainTurn], // consumed by turn 2 only
-        });
+        // Providers 0.32 retired the constrained-path throw: a completed exchange ALWAYS
+        // returns (bytes + a conformance OBSERVATION on response.telemetry — the #275 test
+        // below pins that path). A ProviderError reaching the engine therefore means NO
+        // completed exchange exists (auth, network, rate limit) — the engine must NOT
+        // fabricate an empty turn (the retired fallback laundered provider adjudications
+        // into model-behavior 422s): telemetry the cause and propagate, so the drain
+        // writes the loop terminal 500 with the message.
+        const provider = new Mock({ contextSize: 100000, responses: [drainTurn] });
         const realGenerate = provider.generate.bind(provider);
         let threw = false;
         provider.generate = async (req) => {
             if (threw) return realGenerate(req);
             threw = true;
-            throw new ProviderError("mock", "grammar_unenforced", "backend did not enforce the transported grammar");
+            throw new ProviderError("mock", "unauthorized", "backend rejected the API key");
         };
 
-        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-
-        // Turn 1 did not crash: zero ops dispatched, and it took the no-ops strike (422),
-        // so the strike rail gives the model maxStrikes chances to recover.
-        assert.deepEqual(t1.statuses, [], "grammar_unenforced → no ops dispatched (empty no-op turn)");
-        assert.equal(t1.status, 422, "no real ops, no terminal SEND → the 422 no-op strike, not a terminal error");
-
-        // Negative control: the failure is NOT on the turn that produced it (predates the drain)...
-        const p1 = await getPacket(db, t1.turnId);
-        assert.equal(
-            p1.telemetryErrors.filter((e) => e.kind === "grammar_unenforced").length, 0,
-            "failure not visible on the turn that produced it",
+        await assert.rejects(
+            () => engine.runTurn({ provider, sessionId, runId, loopId, messages: [] }),
+            (err: Error) => /API key/.test(err.message),
+            "the infrastructure failure propagates — no fabricated turn absorbs it",
         );
-        // ...it surfaces on turn 2's packet — the model's next view — exactly once.
+        // The cause reached telemetry before the throw (the operator/client see it live;
+        // a subsequent turn on the loop would drain it to the model — proven by draining).
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
-        const ge = p2.telemetryErrors.filter((e) => e.kind === "grammar_unenforced");
-        assert.equal(ge.length, 1, "grammar_unenforced drained exactly once onto the next packet");
-        assert.equal(ge[0].source, "provider", "attributed to the provider, not the grammar/scheme");
-        assert.match(String(ge[0].message), /grammar/i, "carries the provider's own diagnostic");
+        const ev = p2.telemetryErrors.filter((e) => e.kind === "unauthorized");
+        assert.equal(ev.length, 1, "the provider failure surfaced as telemetry exactly once");
+        assert.equal(ev[0].source, "provider", "attributed to the provider");
     } finally { await db.close(); }
 });
 

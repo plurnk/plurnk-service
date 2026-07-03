@@ -800,25 +800,20 @@ export default class Engine {
             response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), maxTokens: this.#packets.decodeBudget(), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
-            // Every provider error surfaces as telemetry (the client/model sees the cause). #256:
-            // grammar_unenforced is the one the MODEL can recover from — the backend didn't
-            // constrain the GBNF, so this turn was rejected but a conforming emission next turn is
-            // accepted: fall through as an empty no-op turn so the strike rail retries. Every other
-            // kind (rate_limit, network_failure, unauthorized, …) is terminal — telemetry'd, then
-            // propagated to end the loop (rather than only the opaque loop.run rejection).
-            // NOTE (providers 0.19.0 / #275): only the CONSTRAINED path still throws grammar_unenforced.
-            // In GBNF-filter mode the provider returns the bytes with a grammar_unenforced telemetry
-            // event instead — recovered on the success path below (response.telemetry), no empty turn.
+            // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
+            // beyond retries, rate limit): no completed exchange exists, so no turn exists —
+            // telemetry the cause and DIE legibly (the drain writes the loop terminal 500 with
+            // the message). Grammar conformance never arrives here: providers 0.32 retired the
+            // constrained-path throw — a completed exchange ALWAYS returns, bytes in assistant,
+            // the conformance verdict riding response.telemetry as an OBSERVATION (the engine's
+            // ANTLR parse is the judge; the provider transports and observes, never adjudicates).
+            // The old fallback fabricated an empty emission here and laundered a provider
+            // adjudication into a model-behavior 422 — a state the system otherwise forbids,
+            // a record that lied, and days of forensics pointed at the wrong suspect.
             if (err instanceof ProviderError) {
                 this.#telemetry.push(sessionId, loopId, { source: "provider", kind: err.kind, message: err.message, level: "error" });
-                if (err.kind !== "grammar_unenforced") throw err;
-                response = {
-                    assistant: { content: "", reasoning: null, usage: { prompt: requestPacket.tokens, completion: 0, reasoning: 0, cached: 0, total: requestPacket.tokens }, finishReason: null, model: provider.model },
-                    assistantRaw: null,
-                };
-            } else {
-                throw err;
             }
+            throw err;
         }
 
         // Engine splits wire-level response: emission (content, reasoning,
