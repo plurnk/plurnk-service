@@ -88,7 +88,7 @@ test("search: queries SearXNG, writes results, closes channel, status 200", asyn
     assert.equal(captured?.searchParams.get("q"), "pie recipes");
     assert.equal(captured?.searchParams.get("format"), "json");
     assert.equal(captured?.searchParams.get("categories"), "general");
-    assert.equal(captured?.searchParams.get("language"), "en");
+    assert.equal(captured?.searchParams.get("language"), null, "language omitted when unset — SearXNG default applies (no code default)");
     assert.deepEqual(JSON.parse(writes[0].chunk), [{ title: "a" }, { title: "b" }]);
     assert.deepEqual(states, [{ channel: "results", state: "closed" }]);
     assert.equal(events.length, 0);
