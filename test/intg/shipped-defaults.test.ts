@@ -48,6 +48,9 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_PROVIDERS_${k}`)));
     assert.ok(part.every(Number.isFinite), "all four partition numbers ship");
     assert.equal(part[0] - part[1] - part[2] - part[3], 65536, "the shipped partition is exactly 64Ki of prompt");
+    // The tokenizer family ships explicitly — the chars/2 heuristic fallback is a loud
+    // safe overcount that wastes ~30% of the window (providers 0.29).
+    assert.equal(env.get("OPENAI_TOKENIZER"), "llama", "an exact-family tokenizer ships for the local floor");
     const variant = env.get("PLURNK_PROVIDERS_GBNF");
     assert.ok(variant !== undefined && variant.length > 0 && variant !== "0", "PLURNK_PROVIDERS_GBNF ships active");
     assert.doesNotThrow(() => fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`)), "the shipped variant resolves in the installed grammar");

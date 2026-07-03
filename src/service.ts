@@ -186,7 +186,7 @@ export default class Service {
         if (!process.argv.includes("--help") && !process.argv.includes("-h")) Service.#ensureHome();
         // Env cascade — first write wins (loadEnvFile is set-if-unset), so load highest first.
         // Precedence high→low: CLI --flags > shell env > --env-file/--config > ./.env >
-        // ~/.plurnk/.env > ~/.plurnk/.env.example > package .env.example (the floor).
+        // ~/.plurnk/.env > ~/.plurnk/.env.example (the legend) > package .env.example (the floor).
         for (const { path: envFile, required } of Service.#envFileArgs()) Service.#loadEnv(envFile, required);
 
         const configFlagIndex = process.argv.findIndex((a) => a === "--config" || a.startsWith("--config="));
@@ -200,7 +200,11 @@ export default class Service {
         if (configFile !== null) Service.#loadEnv(configFile, true);
         Service.#loadEnv(".env", false);
         Service.#loadEnv(resolve(Service.#homeDir, ".env"), false);
-        Service.#loadEnv(resolve(Service.#homeDir, ".env.example"), false);   // the cascade floor (NOT the node_modules copy)
+        Service.#loadEnv(resolve(Service.#homeDir, ".env.example"), false);   // the visible legend (seed-once, user-ownable)
+        // The PACKAGE template is the TRUE floor, under the home legend: shipped defaults must
+        // evolve with the installed version — a seed-once home floor left every upgrade's new
+        // knobs (including fail-hard REQUIRED vars) unreachable on existing installs.
+        Service.#loadEnv(resolve(Service.#projectRoot, ".env.example"), false);
 
         const flagDescriptors = await EnvFlags.parseEnvExample(resolve(Service.#projectRoot, ".env.example"));
         const flagOptions: Record<string, { type: "string" }> = {};
