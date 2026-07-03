@@ -114,6 +114,9 @@ Body content is character-perfect, exactly matching whitespace.
 
 ## Imperatives
 
+To spawn a separate run: <<COPY(run://capital-checker):List the capitals in: known:///continents/europe:COPY
+To fork the current run: <<COPY(run://self):Re-derive the capital from a primary source.:COPY
+
 YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
 YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
 YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
@@ -123,9 +126,6 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 * 200: submit a final turn with status code 200: <<SEND[200]:Operations returned. Tasks successfully performed.:SEND
 * 202: submit a hibernation turn with status code 202: <<SEND[202]:Awaiting streams and worker responses.:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
-
-To spawn a separate run: <<COPY(run://capital-checker):List the capitals in: known:///continents/europe:COPY
-To fork the current run: <<COPY(run://self):Re-derive the capital from a primary source.:COPY
 
 ## Examples
 
