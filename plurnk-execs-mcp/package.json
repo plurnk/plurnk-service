@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-mcp",
-    "version": "0.5.0",
+    "version": "0.5.1",
     "description": "MCP-bridge runtime executor for plurnk-service's exec scheme — exposes each configured MCP server as its own EXEC tag, its tools called from the body, output contained behind the server's address.",
     "keywords": [
         "plurnk",
@@ -57,9 +57,9 @@
     "devDependencies": {
         "@types/node": "^26.0.0",
         "typescript": "^6.0.3",
-        "@plurnk/plurnk-execs": "0.4.29"
+        "@plurnk/plurnk-execs": "0.4.30"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "0.4.29"
+        "@plurnk/plurnk-execs": "0.4.30"
     }
 }
