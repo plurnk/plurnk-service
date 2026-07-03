@@ -56,18 +56,14 @@ export interface RenderResult {
     readonly html: string;
 }
 
-// Salvage threshold: a navigation that times out on networkidle but whose DOM
-// already holds this much body text is the chatty-page case (long-poll, ad
-// refresh, a server that never closes the stream) — the page rendered, the
-// network just never settled. Below it we discard: too little to be sure the
-// DOM ever rendered the article rather than a skeleton.
-const SALVAGE_MIN_BODY_CHARS = 200;
-const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
-const DEFAULT_TIMEOUT_MS = 30_000;
-
-const numEnv = (key: string, fallback: number): number => {
+// Required numeric knob — `.env.example` is the canonical list (metaproject
+// env rule: every magic number lives there; no in-code default hides one). An
+// unset or non-numeric value fails hard at first use, naming the var. All
+// three numerics are render-path-only, so a byte-fetch-only deployment never
+// pays them — but a rendering one must configure them.
+const requireNumEnv = (key: string): number => {
     const raw = process.env[key];
-    if (raw === undefined) return fallback;
+    if (raw === undefined) throw new Error(`Browser: required env ${key} is unset — see .env.example`);
     const n = Number(raw);
     if (Number.isNaN(n)) throw new Error(`Browser: ${key}=${raw} is not a number`);
     return n;
@@ -98,7 +94,7 @@ export default class Browser {
     // the page. Throws on navigation failure (the caller maps it to a status).
     async render(
         url: string,
-        { runId, signal, headers, timeout = numEnv("PLURNK_HTTP_FETCH_TIMEOUT", DEFAULT_TIMEOUT_MS) }:
+        { runId, signal, headers, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
             { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; timeout?: number },
     ): Promise<RenderResult> {
         const context = await this.#getContext(runId);
@@ -134,8 +130,10 @@ export default class Browser {
     // already rendered substantive body text is the chatty-page case: the
     // content is there even though the network never settled. readyState is
     // unreliable (a never-ending stream stays `loading` forever); the load-
-    // bearing signal is the body's innerText length. Returns the Response on
-    // normal completion, null on salvage, and re-throws every other error.
+    // bearing signal is the body's innerText length — below the salvage
+    // threshold we discard (too little to be sure the DOM rendered the article
+    // rather than a skeleton). Returns the Response on normal completion, null
+    // on salvage, and re-throws every other error.
     async #safeGoto(page: PwPage, url: string, timeout: number): Promise<PwResponse | null> {
         try {
             return await page.goto(url, { waitUntil: "networkidle", timeout });
@@ -144,26 +142,26 @@ export default class Browser {
             const bodyLen = await page
                 .evaluate(() => document?.body?.innerText?.length ?? 0)
                 .catch(() => 0);
-            if (bodyLen < SALVAGE_MIN_BODY_CHARS) throw err;
+            if (bodyLen < requireNumEnv("PLURNK_SCHEMES_HTTP_SALVAGE_MIN_BODY_CHARS")) throw err;
             return null;
         }
     }
 
     // Get-or-launch the warm chromium. Connects to a remote CDP endpoint via
-    // PLURNK_HTTP_PLAYWRIGHT_WS if set (shared / Lightpanda / browserless),
-    // else launches locally. Single browser across all runs; per-run isolation
-    // is at the context layer. Relaunches if chromium dies (OOM/segfault/WS
-    // teardown) leaves the handle stale.
+    // PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS if set (shared / Lightpanda /
+    // browserless), else launches locally. Single browser across all runs;
+    // per-run isolation is at the context layer. Relaunches if chromium dies
+    // (OOM/segfault/WS teardown) leaves the handle stale.
     async #getBrowser(): Promise<PwBrowser> {
         this.#touchIdle();
         if (this.#browser) return this.#browser;
         this.#launching ??= (async () => {
             const chromium = await this.#factory();
-            const ws = process.env.PLURNK_HTTP_PLAYWRIGHT_WS;
+            const ws = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS;
             if (ws) return chromium.connect(ws);
             const args: string[] = [];
-            if (process.env.PLURNK_HTTP_NO_SANDBOX === "1") args.push("--no-sandbox");
-            const heapMb = process.env.PLURNK_HTTP_CHROMIUM_HEAP_MB;
+            if (process.env.PLURNK_SCHEMES_HTTP_NO_SANDBOX === "1") args.push("--no-sandbox");
+            const heapMb = process.env.PLURNK_SCHEMES_HTTP_CHROMIUM_HEAP_MB;
             if (heapMb) args.push(`--js-flags=--max-old-space-size=${heapMb}`);
             return chromium.launch({ headless: true, args });
         })();
@@ -202,7 +200,7 @@ export default class Browser {
 
     #touchIdle(): void {
         if (this.#idleTimer) clearTimeout(this.#idleTimer);
-        this.#idleTimer = setTimeout(() => { this.close().catch(() => {}); }, IDLE_TIMEOUT_MS);
+        this.#idleTimer = setTimeout(() => { this.close().catch(() => {}); }, requireNumEnv("PLURNK_SCHEMES_HTTP_IDLE_TIMEOUT"));
         this.#idleTimer.unref?.();
     }
 

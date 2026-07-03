@@ -65,7 +65,7 @@ Error results carry a `scheme:http` `TelemetryEvent` (via `Results.error`).
 
 The **byte path** is dependency-free: `fetch` / `AbortController` / `TextDecoder` / `ReadableStream` are Node ≥25 built-ins.
 
-The **render path** takes one runtime dependency, `playwright`, **lazy-imported** (`Browser.ts`) so only an actual render pays for it — a byte fetch never loads it. The chromium binary is optional: set `PLURNK_HTTP_PLAYWRIGHT_WS` to drive a remote CDP endpoint (shared chromium / Lightpanda / browserless) instead of launching locally. This is the conscious, scoped inversion of the original "no runtime deps" stance — rendering is acquisition, and acquisition is this scheme's job.
+The **render path** takes one runtime dependency, `playwright`, **lazy-imported** (`Browser.ts`) so only an actual render pays for it — a byte fetch never loads it. The chromium binary is optional: set `PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS` to drive a remote CDP endpoint (shared chromium / Lightpanda / browserless) instead of launching locally. This is the conscious, scoped inversion of the original "no runtime deps" stance — rendering is acquisition, and acquisition is this scheme's job.
 
 ## §6 Render lifecycle
 
@@ -74,5 +74,5 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 - **Gate:** a GET whose response `Content-Type` is `text/html` / `application/xhtml+xml` renders; the probe-fetch body is discarded and the browser does its own navigation. POST never renders.
 - **Render:** warm chromium (one per `Browser`), per-run `BrowserContext` keyed on `ctx.runId`, navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
 - **Body:** the serialized DOM is delivered as one `body` chunk labelled `text/html`; the mimetype layer projects everything (`content`/`symbols`/`deepXml`/embedding) off it. http never cleans or extracts — the body is the faithful, final page (schemes-http#1).
-- **Config:** `PLURNK_HTTP_FETCH_TIMEOUT`, `PLURNK_HTTP_NO_SANDBOX`, `PLURNK_HTTP_CHROMIUM_HEAP_MB`, `PLURNK_HTTP_PLAYWRIGHT_WS`. Idle teardown after 15 min.
+- **Config:** `.env.example` is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`). Required render-path numerics — `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT` — fail hard when unset (no in-code defaults). Optional modes: `PLAYWRIGHT_WS`, `NO_SANDBOX`, `CHROMIUM_HEAP_MB`.
 - **Cancel:** the composed `AbortSignal` / SEND[499] handle aborts the render by closing the page (in-flight `goto` rejects promptly).
