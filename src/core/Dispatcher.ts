@@ -30,7 +30,7 @@ const pathnameFromPath = (path: ParsedPath): string => {
 // Why a terminal SEND is refused: a [200] while the run holds a live thing, or with a READ submitted
 // this turn whose result the model hasn't observed (§send-premature-terminate); a [202] with no wake
 // edge — nothing held, nothing opened this turn — that could ever resume it (§send-groundless-hibernate).
-export type PrematureReason = "live-thing" | "submitted-read" | "groundless-hibernate";
+export type PrematureReason = "live-thing" | "groundless-hibernate";
 
 export type DispatchContext = {
     statement: PlurnkStatement;
@@ -706,13 +706,11 @@ export default class Dispatcher {
         // Premature terminate (§send-premature-terminate): a terminal SEND[200] is REFUSED 409 — the row
         // keeps the [200] emission + body (faithful, never erased), the loop never goes terminal. The
         // decision is the runTurn PRE-DISPATCH snapshot (threaded), so a same-turn fire-and-forget spawn
-        // isn't miscounted. Two reasons, two terse signals: a live thing the run holds, or a READ
-        // submitted this turn whose result the model can't have seen (it folds back next turn).
+        // isn't miscounted. Runtime-only: a live thing the run holds (a spawned child's status / an open
+        // stream), which the parser can never see. Grammar-shape terminals (a SEND after a same-turn
+        // READ) are the parser's job to reject (grammar#51), not the engine's.
         if (status === 200 && prematureRefusal === "live-thing") {
             return { status: 409, error: "Attempted [200] termination despite active streams or worker runs. You may either hibernate [202] to wait or KILL them before terminating." };
-        }
-        if (status === 200 && prematureRefusal === "submitted-read") {
-            return { status: 409, error: "Attempted termination with submitted READ operation(s). SEND[102]; the results arrive next turn." };
         }
         // Groundless hibernation (§send-groundless-hibernate): a SEND[202] alongside a same-turn READ,
         // with no wake edge — the READ's result folds back on a next turn this park would never reach,

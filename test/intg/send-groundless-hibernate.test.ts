@@ -1,6 +1,7 @@
-// §send-groundless-hibernate — the [202] arm of submitted-READ: a SEND[202] alongside a same-turn
-// READ, with no wake edge, orphans the READ's result — it folds back on a next turn the park would
-// never reach (the config-lookup dead-park: PLAN → READ → SEND[202] hung a demo tier for 40 minutes).
+// §send-groundless-hibernate — a SEND[202] alongside a same-turn READ, with no wake edge, orphans the
+// READ's result — it folds back on a next turn the park would never reach (the config-lookup dead-park:
+// PLAN → READ → SEND[202] hung a demo tier for 40 minutes). Stays engine-side: the wake-edge test is
+// RUNTIME state, not a shape the parser can judge.
 // A bare park holding nothing stays LEGAL (the voice door, §actor-boundary-passive-wake) — only the
 // orphaning shape refuses. Engine-level A/B so it's race-free.
 
@@ -82,7 +83,7 @@ test("[§send-groundless-hibernate] READ + EXEC + SEND[202] parks cleanly — a 
     const { db, sessionId, runId, loopId, engine } = await setup("grounded-spawn");
     try {
         // The pre-dispatch snapshot precedes the turn's own ops, so the spawn isn't held YET — the
-        // emission scan grounds it (the same shape submitted-READ detection uses, inverted direction).
+        // emission scan grounds it (a wake-capable op this turn spares the park).
         const result = await engine.runTurn({
             provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readConfig(), execStmt("sh", "sleep 1"), sendStmt(202, null, "awaiting spawn")] } }] }),
             sessionId, runId, loopId,

@@ -45,8 +45,8 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 // the log — that is the budget pressure) then closes. The EDIT body is free; the
 // READ render is not. Repeated n times for multi-turn accumulation.
 // A heavy read turn — EDIT a fat entry then READ it back; the READ folds into the NEXT turn's packet
-// (that's what makes the next turn fat). It CONTINUES (SEND[102]) — a turn that submits a READ must not
-// terminate in the same breath (§send-premature-terminate), and the result is for the next turn anyway.
+// (that's what makes the next turn fat). It CONTINUES (SEND[102]) — the result is for the next turn
+// anyway (a same-turn READ + SEND[200] is a parser-rejected shape, grammar#51).
 const fatReads = (chars: number, n = 1): MockResponse[] =>
     Array.from({ length: n }, () => response([editStmt(urlPath("known", "big"), heavy(chars)), readStmt(urlPath("known", "big")), sendStmt(102, null, "ok")]));
 

@@ -893,22 +893,18 @@ export default class Engine {
         // faithfully (no erasure to 102) and auto-surfaces (status≥400); the loop never goes terminal.
         // Here we only flag it so the turn stays a continue and the strike couples to the grinder
         // (steerStruck → turnErrors): a model that won't stop premature-200ing escalates out via the rails.
-        // A terminal SEND[200] is premature when the run still holds a live thing (open stream/spawn or
-        // a non-terminal child), OR when the model submitted a READ THIS turn whose result it cannot have
-        // seen — results fold back on the NEXT turn, so terminating now means terminating on data it
-        // doesn't have (the classic "READ + SEND[200] in one turn" that ends mid-sentence). Both refuse
-        // 409 + strike; live-thing takes precedence when both hold.
+        // Live-thing is RUNTIME state — a spawned child's status, an open stream — that the parser can
+        // never see, so the engine is the only judge. The grammar-rule shapes (a terminal SEND after a
+        // same-turn READ) belong in the parser, not here (grammar#51).
         let prematureReason: PrematureReason | undefined;
         if (sendOp?.signal === 200) {
-            prematureReason = (await this.#runHoldsLiveThing(runId)) ? "live-thing"
-                : packetAssistant.ops.some((op) => op.op === "READ") ? "submitted-read"
-                    : undefined;
+            prematureReason = (await this.#runHoldsLiveThing(runId)) ? "live-thing" : undefined;
         } else if (sendOp?.signal === 202) {
             // §send-groundless-hibernate — a park is refused only when it ORPHANS work: the turn
             // submitted a READ (its result folds back on a next turn this park may never have) AND no
             // wake edge exists — nothing held (the pre-dispatch snapshot) and nothing wake-capable
-            // opened this turn (a spawn takes effect mid-turn, after the snapshot — the same
-            // emission-scan shape as submitted-read). A bare park holding nothing stays LEGAL — the
+            // opened this turn (a spawn takes effect mid-turn, after the snapshot). Whether a wake edge
+            // exists is RUNTIME state, so this adjudication stays engine-side. A bare park holding nothing stays LEGAL — the
             // voice door: a sibling irc / operator inject wakes it (§actor-boundary-passive-wake) and
             // the daemon surfaces it as loop/quiesced (§run-lifecycle-quiesced), so it is never refused.
             if (packetAssistant.ops.some((op) => op.op === "READ")) {
