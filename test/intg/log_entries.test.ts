@@ -99,20 +99,9 @@ test("log_entries: origin enum", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: op enum", async () => {
-    const db = await openMigrated();
-    try {
-        const ctx = await seedEnvelope(db, "ws-log-op");
-        const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC"];
-        for (const [i, op] of ops.entries()) {
-            await minimalLog(db, ctx, { sequence: i + 1, op });
-        }
-        await assert.rejects(
-            () => minimalLog(db, ctx, { sequence: ops.length + 1, op: "DROP" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
+// (No "op enum" test: log_entries.op no longer CHECK-enumerates the grammar op set — that was a
+// hand-copy of grammar's contract that went stale on every new verb. Op validity lives at the parse
+// (grammar) + type (PlurnkOp) layer; the column stores what the typed engine writes.)
 
 test("log_entries: status_rx range 100..599", async () => {
     const db = await openMigrated();

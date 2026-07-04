@@ -64,7 +64,7 @@
         "@plurnk/plurnk-execs-all": "^0.1.20",
         "@plurnk/plurnk-execs-mcp": "^0.5.4",
         "@plurnk/plurnk-execs-search": "^0.2.15",
-        "@plurnk/plurnk-grammar": "^0.74.55",
+        "@plurnk/plurnk-grammar": "^0.74.56",
         "@plurnk/plurnk-mimetypes": "^0.18.0",
         "@plurnk/plurnk-mimetypes-all": "^0.5.15",
         "@plurnk/plurnk-mimetypes-text-html": "^0.6.8",

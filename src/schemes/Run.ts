@@ -8,14 +8,14 @@ import type { FindResult } from "./_entry-find.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 
-// run:// — the run scheme: inter-run CONTROL (irc=SEND; COPY=spawn/fork is Dispatcher.#handleRunCopy)
+// run:// — the run scheme: inter-run CONTROL (irc=SEND; WORK=spawn, FORK=fork is Dispatcher.#handleRunControl)
 // AND run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: run://<name>/<path> is
 // entry <path> owned by run <name>; `run://self` is the current run, empty authority is invalid.
 // Run is excluded from #extractTarget's authority-fold (Engine) so the authority stays the run
 // name, never folded.
 //   - path present → storage: READ any run's entry by address (cross-run read ok); EDIT self
 //     only (cross-run write → 403 — a run reads a sister's notes, never writes them).
-//   - path absent  → control on the run-as-actor: COPY spawns/forks (Engine), SEND ircs, READ
+//   - path absent  → control on the run-as-actor: WORK spawns / FORK forks (Engine), SEND ircs, READ
 //     collects the deliverable; EDIT on the bare entity is rejected (the entity is not an entry).
 export default class Run {
     static manifest: SchemeManifest = {
@@ -66,8 +66,8 @@ export default class Run {
         const entryPath = Run.#entryPath(statement.target);
 
         // The run ENTITY (path-absent run://<name>) is not EDITable — EDIT is file/entry only
-        // (grammar 0.74.41 OP×resource matrix). COPY(run://<name>) spawns; COPY(run://self) forks.
-        if (entryPath === "") return { status: 400, error: "run:// entity is not editable — COPY(run://<name>) to spawn, COPY(run://self) to fork" };
+        // (grammar 0.74.55): WORK(run://<name>) spawns a worker; FORK(run://<name>) forks a named branch.
+        if (entryPath === "") return { status: 400, error: "run:// entity is not editable — WORK(run://<name>) to spawn a worker, FORK(run://<name>) to fork a branch" };
 
         // Storage: write a run-scope entry. Self only — cross-run write is denied (§run-scheme).
         if (authority === "") return { status: 400, error: "run:// requires a run name or 'self' (run://self/<path>)" };

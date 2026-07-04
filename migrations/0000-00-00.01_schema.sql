@@ -287,7 +287,11 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- 'model' is an ACTIONLESS row too (§model-entry): the model's own verbatim emission, mirrored
     -- back as a foldable log item so it can finally SEE its prior output (born folded; the turn-0
     -- exemplar is born open). text/vnd.plurnk-typed; OPEN/FOLD/KILL-able like any row.
-    op              TEXT    NOT NULL           CHECK (op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'OPEN', 'FOLD', 'SEND', 'EXEC', 'KILL', 'PLAN', 'error', 'model')),
+    -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
+    -- only by the PlurnkOp-typed engine (grammar ops) or with the two service markers ('error','model').
+    -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
+    -- (it did — FORK/WORK). Validity lives at the parse + type layer, not duplicated in DDL.
+    op              TEXT    NOT NULL,
     suffix          TEXT    NOT NULL DEFAULT '',
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 

@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ParsedPath, CopyStatement, KillStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
+import type { ParsedPath, CopyStatement, WorkStatement, ForkStatement, KillStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Run from "../../src/schemes/Run.ts";
@@ -31,10 +31,14 @@ const runEntry = (owner: string, path: string): ParsedPath => ({
     pathname: `/${path}`, params: {}, fragment: null,
 });
 
-// Run control via COPY (grammar 0.74.41 OP×resource matrix): COPY(run://<name>):prompt spawns a
-// fresh sister; COPY(run://self):prompt forks. The body is the seed prompt, not a dst path.
-const copyRun = (name: string, prompt: string): CopyStatement => ({
-    op: "COPY", suffix: "", signal: null, target: runPath(name),
+// Run control (grammar 0.74.55): WORK(run://<name>):task spawns a fresh worker; FORK(run://<name>):task
+// branches the current run into a named sister. The body is the seed task, not a dst path.
+const workRun = (name: string, prompt: string): WorkStatement => ({
+    op: "WORK", suffix: "", signal: null, target: runPath(name),
+    lineMarker: null, body: prompt, position: { line: 1, column: 1 },
+});
+const forkRun = (name: string, prompt: string): ForkStatement => ({
+    op: "FORK", suffix: "", signal: null, target: runPath(name),
     lineMarker: null, body: prompt, position: { line: 1, column: 1 },
 });
 
@@ -127,7 +131,7 @@ test("[§run-scheme-find-perspective] a run FINDs its OWN run-scope scratch; a s
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-spawn] COPY(run://name):prompt spawns a same-session sister, seeded via injectRun", async () => {
+test("[§run-scheme-spawn] WORK(run://name):task spawns a same-session sister, seeded via injectRun", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -138,7 +142,7 @@ test("[§run-scheme-spawn] COPY(run://name):prompt spawns a same-session sister,
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const result = await engine.dispatch({
-            statement: copyRun("worker", "investigate the bug"),
+            statement: workRun("worker", "investigate the bug"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "spawn returns 200");
@@ -156,7 +160,7 @@ test("[§run-scheme-spawn] COPY(run://name):prompt spawns a same-session sister,
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-spawn] COPY-spawning a name a LIVE sister holds is refused 409 — legible, never a raw UNIQUE 500", async () => {
+test("[§run-scheme-spawn] WORK-spawning a name a LIVE sister holds is refused 409 — legible, never a raw UNIQUE 500", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -170,7 +174,7 @@ test("[§run-scheme-spawn] COPY-spawning a name a LIVE sister holds is refused 4
         await insertLoop(db, sister, 1, "working");
 
         const result = await engine.dispatch({
-            statement: copyRun("worker", "do it again"),
+            statement: workRun("worker", "do it again"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
@@ -194,7 +198,7 @@ test("[§run-scheme-spawn] a TERMINATED sister's name is reclaimed — spawn suc
         await (db.test_set_loop_status as PrepMethod).run({ id: deadLoop, status: 200 });
 
         const result = await engine.dispatch({
-            statement: copyRun("worker", "fresh work"),
+            statement: workRun("worker", "fresh work"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "a terminated name is free to reclaim");
@@ -234,7 +238,7 @@ test("[§run-scheme-collect] READ(run://name) collects the deliverable — messa
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-spawn] EDIT on the bare run entity is rejected — COPY spawns, not EDIT (400, no inject)", async () => {
+test("[§run-scheme-spawn] EDIT on the bare run entity is rejected — WORK spawns, not EDIT (400, no inject)", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -245,7 +249,7 @@ test("[§run-scheme-spawn] EDIT on the bare run entity is rejected — COPY spaw
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         // grammar 0.74.41 OP×resource matrix: EDIT is file/entry only — the run ENTITY (path-absent
-        // run://<name>) is not editable. The old EDIT-spawn form is gone; COPY(run://<name>) spawns.
+        // run://<name>) is not editable. The old EDIT-spawn form is gone; WORK(run://<name>) spawns.
         const result = await engine.dispatch({
             statement: editStmt(runPath("worker"), "loop forever"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
@@ -320,7 +324,7 @@ test("[§run-scheme-scratch-kill] KILL(run://owner/entry) deletes the scratch en
     } finally { await db.close(); }
 });
 
-test("[§run-scheme-fork] COPY(run://self):prompt forks — a branch run started via injectRun", async () => {
+test("[§run-scheme-fork] FORK(run://name):task forks a NAMED branch — started via injectRun", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectRun } = recordingInjectRun();
@@ -330,16 +334,13 @@ test("[§run-scheme-fork] COPY(run://self):prompt forks — a branch run started
         const loopId = await insertLoop(db, runId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
-        const forkStmt: CopyStatement = {
-            op: "COPY", suffix: "", signal: null, target: runPath("self"),
-            lineMarker: null, body: "take the other branch", position: { line: 1, column: 1 },
-        };
+        const forkStmt = forkRun("recheck", "take the other branch");
         const result = await engine.dispatch({
             statement: forkStmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "fork returns 200");
         const branchName = (result as { body?: string }).body ?? "";
-        assert.equal(branchName, "explorer-fork-1", "the branch is the source's name + -fork-<N> (unique per fork)");
+        assert.equal(branchName, "recheck", "the branch carries the explicit name FORK gave it");
 
         const branch = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch run in the session");
@@ -363,17 +364,13 @@ test("[§run-scheme-cap] spawn AND fork past PLURNK_SERVICE_SESSION_RUNS_MAX_ACT
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const spawn = await engine.dispatch({
-            statement: copyRun("worker", "go"),
+            statement: workRun("worker", "go"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(spawn.status, 508, "spawn at the ceiling is refused, hard");
 
-        const forkStmt: CopyStatement = {
-            op: "COPY", suffix: "", signal: null, target: runPath("self"),
-            lineMarker: null, body: "branch", position: { line: 1, column: 1 },
-        };
         const fork = await engine.dispatch({
-            statement: forkStmt, sessionId, runId, loopId, turnId, sequence: 2, origin: "model",
+            statement: forkRun("branch", "go"), sessionId, runId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(fork.status, 508, "fork at the ceiling is refused, hard");
 

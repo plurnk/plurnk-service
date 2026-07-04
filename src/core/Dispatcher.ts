@@ -20,7 +20,7 @@ import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
-const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL"]);
+const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL", "FORK", "WORK"]);
 
 const pathnameFromPath = (path: ParsedPath): string => {
     if (path.kind === "regex") return path.raw; // regex source — parens are syntax, never encoded
@@ -131,6 +131,8 @@ export default class Dispatcher {
             try {
                 if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#handleSendBroadcast(statement, loopId, prematureRefusal);
+                } else if (statement.op === "FORK" || statement.op === "WORK") {
+                    result = await this.#handleRunControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
                     result = await this.#handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
@@ -295,10 +297,10 @@ export default class Dispatcher {
             return this.#denyIfDisallowed("exec", origin);
         }
 
-        // Run control (COPY target=run://, spawn or fork) is gated by run://'s writableBy — its
+        // Run control (FORK/WORK → run://<name>, spawn or fork) is gated by run://'s writableBy — its
         // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
         // §machine-processes
-        if (this.#isRunCopy(statement)) return this.#denyIfDisallowed("run", origin);
+        if (this.#isRunControl(statement)) return this.#denyIfDisallowed("run", origin);
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dst = statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body;
@@ -350,56 +352,59 @@ export default class Dispatcher {
             return { status: 403, error: `scheme '${scheme}' is inactive under current loop flags` };
         };
 
-        if (this.#isRunCopy(statement)) return check(statement.target); // body is a spawn/fork prompt, not a dst path
+        if (this.#isRunControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
         if (statement.op === "COPY" || statement.op === "MOVE") {
             return check(statement.target) ?? check(statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body);
         }
         return check(statement.target);
     }
 
-    // A COPY whose TARGET is run:// is run control (spawn/fork), not an entry-copy — its body
+    // Run control is FORK/WORK (grammar 0.74.55), not COPY — its body
     // is the new run's seed prompt, not a destination path. The COPY gates and #handleCopy
     // branch on this so they never parse the prompt as a dst path.
-    #isRunCopy(statement: PlurnkStatement): boolean {
-        return statement.op === "COPY" && schemeNameOf(statement.target) === "run";
+    #isRunControl(statement: PlurnkStatement): boolean {
+        return statement.op === "FORK" || statement.op === "WORK"; // run control targets run://<name> (grammar 0.74.55)
     }
 
-    // COPY(run://<dst>):prompt — run control via COPY (grammar 0.74.41 OP×resource matrix):
+    // FORK/WORK(run://<name>):task — run control (grammar 0.74.55):
     //   • run://self   → FORK: deep-copy the current run's log into a new sister (Fork), then
     //     continue it with the prompt (§machine-processes-fork-copies-the-log).
     //   • run://<name> → SPAWN: a fresh sister (empty log) named <name>, started on the prompt.
     //     A LIVE sister already holding <name> is a 409 conflict; a free or terminated name is
     //     reclaimed (§run-scheme-spawn). The self form is fork; only a name spawns.
     // Both ride the daemon inject and obey the active-runs cap (508, §run-scheme-cap).
-    async #handleRunCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+    // FORK/WORK — run control (grammar 0.74.55). Both name a NEW run in the target authority
+    // (run://<name>) and carry its seed task in the body. WORK spawns a fresh worker; FORK branches
+    // the current run's log into a named sister. Replaces the COPY(run://) overload — one verb, one
+    // intent, so the model never conflates the target slot with the body (grammar#52).
+    async #handleRunControl(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
-        if (target === null) return { status: 400, error: "run:// control requires a run target" };
+        if (target === null) return { status: 400, error: `${statement.op} requires a run target (${statement.op}(run://<name>))` };
         const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY (run://<name>), not the path
-        if (name === "") return { status: 400, error: "run:// control requires a run name or 'self' (run://<name>)" };
-        if (ctx.injectRun === undefined) throw new Error("run copy: injectRun capability absent");
+        if (name === "") return { status: 400, error: `${statement.op} requires a run name (run://<name>)` };
+        if (name === "self") return { status: 400, error: `'self' is the current run — ${statement.op} names a NEW run (run://<name>)` };
+        if (ctx.injectRun === undefined) throw new Error("run control: injectRun capability absent");
         const denied = await RunCap.deny(this.#db, ctx.sessionId);
         if (denied !== null) return denied;
         const prompt = typeof statement.body === "string" ? statement.body : "";
 
-        // §run-delegation-inherits-flags — authority flows down the delegation edge: the
-        // child's live loop runs with ITS DELEGATOR'S flags. A flagless (non-YOLO) child's
-        // every side-effecting op proposes into a resolver-less void — 300s auto-cancel per
-        // attempt was the four-sweep fan-out wedge.
+        // §run-delegation-inherits-flags — authority flows down the delegation edge: the child's live
+        // loop runs with ITS DELEGATOR'S flags. A flagless (non-YOLO) child's every side-effecting op
+        // proposes into a resolver-less void — 300s auto-cancel per attempt was the fan-out wedge.
         const flags = await this.#loadLoopFlags(ctx.loopId);
 
-        if (name === "self") {
-            // FORK — branch the current run's log into a new sister.
-            const branchRunId = await Fork.fork(this.#db, ctx.runId);
-            const branch = await (this.#db.fork_get_run as PrepMethod).get<{ name: string }>({ id: branchRunId });
-            await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt, flags });
-            return { status: 200, body: branch?.name ?? "" };
-        }
-
-        // SPAWN — a fresh sister named <name>. A name is frozen per run but reclaimable across time
-        // (§machine-processes-run-origin): a LIVE sister holding it is a 409 conflict (legible, never
-        // a raw UNIQUE 500); a free or terminated name is reclaimed (the resolver picks newest).
+        // A name is frozen per run but reclaimable across time (§machine-processes-run-origin): a LIVE
+        // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
         const live = await (this.#db.run_live_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
         if (live !== undefined) return { status: 409, error: `run '${name}' is already running` };
+
+        if (statement.op === "FORK") {
+            // Branch the current run's log into a named sister.
+            const branchRunId = await Fork.fork(this.#db, ctx.runId, name);
+            await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt, flags });
+            return { status: 200, body: name };
+        }
+        // WORK — a fresh worker sister named <name>.
         const row = await (this.#db.fork_insert_run as PrepMethod).get<{ id: number }>({
             session_id: ctx.sessionId, name, parent_run_id: ctx.runId, origin: ctx.writer,
         });
@@ -410,10 +415,9 @@ export default class Dispatcher {
 
     async #handleCopy(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "COPY") throw new Error("unreachable");
-        if (this.#isRunCopy(statement)) return await this.#handleRunCopy(statement, ctx);
         const srcPath = statement.target;
-        // Past the run-control branch above, COPY's body is a dest path (grammar §COPY).
-        // Parse it; an unparseable dest surfaces as a 400.
+        // COPY is entry-copy only — run control (spawn/fork) moved to the FORK/WORK verbs
+        // (grammar 0.74.55). COPY's body is a dest path (grammar §COPY); an unparseable dest → 400.
         const dstPath = statement.body === null ? null : parsePath(statement.body);
         if (srcPath === null) return { status: 400, error: "COPY requires source path" };
         if (dstPath === null) return { status: 400, error: "COPY destination must be a parseable path in the body slot" };
