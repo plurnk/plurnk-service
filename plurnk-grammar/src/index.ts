@@ -32,6 +32,7 @@ export type {
     ExecStatement,
     FindStatement,
     FoldStatement,
+    ForkStatement,
     KillStatement,
     LineMarker,
     LocalPath,
@@ -53,4 +54,5 @@ export type {
     OpenStatement,
     TelemetryEvent,
     UrlPath,
+    WorkStatement,
 } from "./types.ts";
