@@ -8,20 +8,15 @@ import type PlurnkParseError from "./PlurnkParseError.ts";
 // Non-schema types — depend on the PlurnkParseError class and so can't be
 // expressed in JSON Schema. Hand-maintained.
 
-export type PlurnkOp =
-    | "FIND"
-    | "READ"
-    | "EDIT"
-    | "COPY"
-    | "MOVE"
-    | "OPEN"
-    | "FOLD"
-    | "SEND"
-    | "EXEC"
-    | "WORK"
-    | "FORK"
-    | "KILL"
-    | "PLAN";
+// The canonical runtime op-set — the SINGLE source of truth for the protocol alphabet, in
+// canonical order. PlurnkOp is DERIVED from it, so a new verb lands in the type AND the runtime
+// list at once; consumers derive their enums / validators / SQL CHECKs from PLURNK_OPS instead
+// of hand-copying the literal set (which goes stale the instant a verb ships).
+export const PLURNK_OPS = [
+    "FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN",
+] as const;
+
+export type PlurnkOp = (typeof PLURNK_OPS)[number];
 
 // Client-tier-only ops (parseClient). Kept distinct from PlurnkOp so the protocol op set
 // stays closed and client ops never widen the model-facing type.
