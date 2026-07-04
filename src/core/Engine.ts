@@ -1104,8 +1104,8 @@ export default class Engine {
 
     // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs).
-    docEntries(): Array<{ name: string; content: string }> {
-        return this.#packets.docEntries();
+    docEntries(sessionId: number): Promise<Array<{ name: string; content: string }>> {
+        return this.#packets.docEntries(sessionId);
     }
 
     // §env-delta (§actor-boundary-no-mutex: runs share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this

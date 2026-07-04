@@ -6,6 +6,8 @@ import type TelemetryChannel from "./TelemetryChannel.ts";
 import type { GitStatus } from "./git-state.ts";
 import { renderAddress } from "./plurnk-uri.ts";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
+import { Policy } from "@plurnk/plurnk-execs";
+import SessionSettings from "./session-settings.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
@@ -168,7 +170,7 @@ export default class PacketBuilder {
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.buildTelemetryErrors(loopId, currentTurnSeq);
         const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
-        const tools = this.#collectTools();
+        const tools = this.#collectTools(await this.#sessionEnabled(sessionId));
         // Budget readout (SPEC.md §tokenomics). Two-pass: render the budget from
         // the structured log's subtotals with a {{tokensFree}} placeholder, build
         // the section list, measure the assembled total, resolve free, substitute.
@@ -301,12 +303,21 @@ export default class PacketBuilder {
         return lines.join("\n");
     }
 
+    // #328 — the per-session client execs policy narrows what the packet ADVERTISES, matching what
+    // dispatch refuses: a session-disabled tag is absent from the capability sheet and the doc set,
+    // never taught-then-refused. No policy (execs unset) → everything boot-registered shows.
+    async #sessionEnabled(sessionId: number): Promise<(tag: string) => boolean> {
+        const { execs } = await SessionSettings.read(this.#db, sessionId);
+        if (execs === null) return () => true;
+        return (tag: string) => Policy.isEnabled(tag, execs);
+    }
+
     // The ## Plurnk Service Tools capability sheet (SPEC §tools). A hook: each enabled
     // capability contributes one line, rendered above Requirements so the model sees what
     // it can do before the rules. Each available executor tag contributes its self-documenting
     // example (plurnk-execs#7), retiring the blind EXEC.
     // The capability sheet — the live tool surface (wired executor tags). §tools-capability-sheet
-    #collectTools(): string[] {
+    #collectTools(sessionEnabled: (tag: string) => boolean): string[] {
         const tools: string[] = [];
         // Each available runtime tag contributes its self-documenting example —
         // the example carries syntax + purpose, so there's no prose line. Tags
@@ -319,6 +330,7 @@ export default class PacketBuilder {
             const excluded = docsExcludeSet();
             for (const tag of executors.availableRuntimes()) {
                 if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
+                if (!sessionEnabled(tag)) continue; // #328 — session-disabled tags aren't advertised
                 const entry = executors.entry(tag);
                 // #240 — identical treatment with the scheme directory: the example IS the oneliner,
                 // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose
@@ -332,13 +344,15 @@ export default class PacketBuilder {
     // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
     // catalogue's doc-links READ and the manifest carries each doc's token cost.
-    docEntries(): Array<{ name: string; content: string }> {
+    async docEntries(sessionId: number): Promise<Array<{ name: string; content: string }>> {
         const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
+            const sessionEnabled = await this.#sessionEnabled(sessionId); // #328 — no doc for a disabled tag
             for (const tag of executors.availableRuntimes()) {
                 if (excluded.has(tag)) continue; // #240 — exec docs honor the same exclude
+                if (!sessionEnabled(tag)) continue;
                 const doc = executors.entry(tag)?.documentation;
                 if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });
             }

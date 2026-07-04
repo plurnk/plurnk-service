@@ -135,7 +135,7 @@ export default class LoopRunMethod {
                 // session-scope seeding is a future refinement — seeding at session.create
                 // shifts every session's initial entry/run state (origin, counts, coordinates)
                 // and breaks the no-loop.run op.* tests, not worth the churn for the redundancy saved.
-                for (const { name, content } of ctx.engine.docEntries()) {
+                for (const { name, content } of await ctx.engine.docEntries(sessionId)) {
                     docStmts.push({
                         op: "EDIT", suffix: "", signal: null,
                         target: { kind: "url", raw: `plurnk://docs/${name}.md`, scheme: "plurnk", username: null, password: null, hostname: "docs", port: null, pathname: `/${name}.md`, params: {}, fragment: null },

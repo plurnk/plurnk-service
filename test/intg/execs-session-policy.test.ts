@@ -38,3 +38,20 @@ test("#328 allowlist (case-insensitive key): ONLY=jq makes sh absent for the ses
     assert.equal(r.status, 501, "sh is not in the allowlist → absent");
     assert.match(String(r.error ?? ""), /disabled for this session by client policy/);
 });
+
+test("#328 render filter: a session-disabled tag is absent from docEntries — never taught-then-refused", async () => {
+    const db = await openMigrated();
+    try {
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        engine.setExecutors(await testExecutors());
+        const sessionId = await insertSession(db, `sp-render-${crypto.randomUUID()}`);
+        // Baseline: node's doc is present with no session policy.
+        const before = await engine.docEntries(sessionId);
+        assert.ok(before.some((d) => d.name === "node"), "baseline: node's reference doc renders");
+        // Disable node for the session → its doc drops.
+        await (db.test_set_session_settings as PrepMethod).run({ id: sessionId, settings: JSON.stringify({ execs: { PLURNK_EXECS_NODE: "0" } }) });
+        const after = await engine.docEntries(sessionId);
+        assert.ok(!after.some((d) => d.name === "node"), "node disabled by session policy → no doc materialized");
+        assert.ok(after.some((d) => d.name === "sh"), "other tags' docs survive the filter");
+    } finally { await db.close(); }
+});
