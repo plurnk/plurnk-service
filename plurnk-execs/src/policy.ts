@@ -20,10 +20,23 @@
 // `PLURNK_EXECS_*` format for the per-session client layer. One parser, both
 // tiers — the consumer feeds the client's map straight to these methods.
 export default class Policy {
+    // Read a PLURNK_EXECS_<suffix> key case-INSENSITIVELY. The env-var
+    // convention is uppercase, but an operator/agent naturally writes the tag as
+    // it appears (PLURNK_EXECS_sh=0) — matching the tag they see, not shouting
+    // it — and a case-sensitive miss would silently no-op (service#328). Fold
+    // the key the way the mcp config already folds server names. Direct hit
+    // first (the common uppercase form), then a folded scan.
+    static #read(env: Record<string, string | undefined>, suffix: string): string | undefined {
+        const key = `PLURNK_EXECS_${suffix.toUpperCase()}`;
+        if (key in env) return env[key];
+        const hit = Object.keys(env).find((k) => k.toUpperCase() === key);
+        return hit === undefined ? undefined : env[hit];
+    }
+
     static isEnabled(tag: string, env: Record<string, string | undefined> = process.env): boolean {
-        const off = env[`PLURNK_EXECS_${tag.toUpperCase()}`];
+        const off = Policy.#read(env, tag);
         if (off === "0" || off?.toLowerCase() === "false") return false;
-        const only = env.PLURNK_EXECS_ONLY;
+        const only = Policy.#read(env, "ONLY");
         if (only) {
             const allow = new Set(only.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
             if (!allow.has(tag.toLowerCase())) return false;

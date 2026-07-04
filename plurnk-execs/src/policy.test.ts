@@ -44,3 +44,14 @@ test("enabledAcross: the client CANNOT re-enable what the service disabled", () 
     assert.equal(Policy.enabledAcross("node", [service, client]), false, "the service disable is the ceiling");
     assert.equal(Policy.enabledAcross("search", [service, client]), true);
 });
+
+test("isEnabled: the per-tag key is case-insensitive — lowercase behaves identically (service#328)", () => {
+    assert.equal(Policy.isEnabled("sh", { PLURNK_EXECS_SH: "0" }), false, "the uppercase key");
+    assert.equal(Policy.isEnabled("sh", { PLURNK_EXECS_sh: "0" }), false, "…and the lowercase key no longer silently no-ops");
+    assert.equal(Policy.isEnabled("node", { PLURNK_EXECS_Node: "false" }), false, "…and mixed case");
+});
+
+test("isEnabled: the PLURNK_EXECS_ONLY key is case-insensitive too", () => {
+    assert.equal(Policy.isEnabled("node", { PLURNK_EXECS_only: "search" }), false, "a lowercase ONLY key still gates");
+    assert.equal(Policy.isEnabled("search", { PLURNK_EXECS_only: "search" }), true);
+});

@@ -203,7 +203,7 @@ A **registration** bound — a sibling of the §3 trust gate, **not** the §3.2 
 | `PLURNK_EXECS_<TAG>=0` (or `false`) | surgical kill-switch for one tag |
 | `PLURNK_EXECS_ONLY=a,b,c` | allowlist — a tag not listed is disabled |
 
-The two compose within a layer (an allowlisted tag can still be individually killed). `ONLY` is reserved: a runtime tag may not be named `only`. Purely **subtractive** — there is no force-enable verb, by design.
+The two compose within a layer (an allowlisted tag can still be individually killed). `ONLY` is reserved: a runtime tag may not be named `only`. **Keys are matched case-insensitively** — `PLURNK_EXECS_sh=0` ≡ `PLURNK_EXECS_SH=0`, the way the mcp config folds server names, so the natural lowercase-tag spelling doesn't silently no-op. Purely **subtractive** — there is no force-enable verb, by design.
 
 **The cascade is an intersection.** A tag is live iff enabled in *every* layer: `enabled(tag) = service ∧ client ∧ …`. Because each layer only subtracts, order is irrelevant and no downstream layer can undo an upstream disable — **the client can never re-enable what the service disabled**, structurally, not by a policed rule.
 
