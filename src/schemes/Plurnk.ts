@@ -8,15 +8,13 @@ import type { EditResult, ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { SendResult } from "./_entry-send.ts";
 import type { FindResult } from "./_entry-find.ts";
-import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 
-// Internal-events scheme. Indexed entries the engine writes for the model
-// to see — currently just prompts at `plurnk:///prompt/<loop_id>`. Future
-// internal model-interactions land here as their need arises.
-//
-// writableBy is open at the manifest level so future plurnk:///… paths can
-// accept any origin. Path-prefix restrictions live in the edit handler:
-// `plurnk:///prompt/*` rejects model-origin writes (engine/client own those).
+// Engine-authored reference scheme — the prompt (`plurnk:///prompt/<loop_id>`), the scheme
+// docs (`plurnk:///docs/*`), the catalog. All of it the engine writes FOR the model to READ;
+// none of it is the model's to write. writableBy excludes "model", so the manifest gate
+// (§scheme-surface-writableby-403) rejects every model-origin write uniformly — no path special-
+// case. The model's scratch surface is `known://`; editing plurnk:// reference used to "succeed"
+// and became a scratch-behavior sink for weak models (#310).
 export default class Plurnk {
     static manifest: SchemeManifest = {
         name: "plurnk",
@@ -24,23 +22,14 @@ export default class Plurnk {
         defaultChannel: "body",
         category: "data",
         scope: "session",
-        writableBy: ["model", "client", "plurnk"],
+        writableBy: ["client", "plurnk"],
         volatile: false,
         modelVisible: true,
         example: "<<FIND(plurnk:///**)::FIND",
-        documentation: "Engine-authored events surfaced to you — most notably your active prompt at `plurnk://prompt/<loop>`. You may READ these and EDIT your own `plurnk://` notes, but `plurnk://prompt/*` is engine-owned and rejects your writes.",
+        documentation: "Engine-authored reference surfaced to you — your active prompt at `plurnk://prompt/<loop>`, the scheme docs at `plurnk://docs/*`. READ-ONLY: READ these, never EDIT them (use `known://` for your own scratch).",
     };
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
-        const t = statement.target;
-        // Fold authority→path (plurnk://prompt/<loop> ⇒ /prompt/<loop>) so the engine-owned
-        // prompt namespace stays protected regardless of the addressing form the model used.
-        const pathname = t !== null && t.kind === "url"
-            ? foldAuthorityIntoPath(t.hostname, t.pathname)
-            : t?.raw ?? "";
-        if (ctx.writer === "model" && pathname.startsWith("/prompt/")) {
-            return { status: 403, entryId: null, channel: null };
-        }
         return EntryOps.editSessionEntry(statement, ctx, Plurnk.manifest);
     }
 

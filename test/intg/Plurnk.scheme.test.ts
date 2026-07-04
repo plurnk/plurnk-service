@@ -17,11 +17,11 @@ const setup = async () => {
     return { db, sessionId, runId };
 };
 
-test("plurnk:/// scheme manifest: open writability, body channel, text/markdown", () => {
+test("plurnk:/// scheme manifest: engine-authored, model-READ-ONLY, body channel, text/markdown", () => {
     assert.deepEqual(Plurnk.manifest.channels, { body: "text/markdown" });
     assert.equal(Plurnk.manifest.defaultChannel, "body");
-    assert.equal(Plurnk.manifest.modelVisible, true);
-    assert.ok(Plurnk.manifest.writableBy.includes("model"));
+    assert.equal(Plurnk.manifest.modelVisible, true, "the model READS plurnk:// reference");
+    assert.ok(!Plurnk.manifest.writableBy.includes("model"), "the model never WRITES plurnk:// — it is engine-authored reference (#310 scratch sink)");
     assert.ok(Plurnk.manifest.writableBy.includes("client"));
     assert.ok(Plurnk.manifest.writableBy.includes("plurnk"));
 });
@@ -37,29 +37,6 @@ test("system EDIT plurnk:///prompt/<loop_id> creates the entry", async () => {
         assert.equal(r.status, 201);
         const body = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: r.entryId, name: "body" }))?.content;
         assert.equal(body, "what is the capital of france?");
-    } finally { await db.close(); }
-});
-
-test("model EDIT plurnk:///prompt/* rejected with 403 (engine/client own prompts)", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const r = await new Plurnk().edit(
-            editStmt(urlPath("plurnk", "/prompt/1"), "fake prompt"),
-            makeSchemeCtx({ db, sessionId, runId, writer: "model" }),
-        );
-        assert.equal(r.status, 403);
-        assert.equal(r.entryId, null);
-    } finally { await db.close(); }
-});
-
-test("model EDIT plurnk:///<non-prompt-path> is allowed", async () => {
-    const { db, sessionId, runId } = await setup();
-    try {
-        const r = await new Plurnk().edit(
-            editStmt(urlPath("plurnk", "/scratch/notes"), "model thoughts"),
-            makeSchemeCtx({ db, sessionId, runId, writer: "model" }),
-        );
-        assert.equal(r.status, 201);
     } finally { await db.close(); }
 });
 

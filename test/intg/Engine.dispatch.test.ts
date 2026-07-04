@@ -389,15 +389,15 @@ test("Engine.dispatch: model EDIT plurnk:///prompt/* rejected with 403 (engine/c
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT plurnk:/// non-prompt path is allowed", async () => {
+test("Engine.dispatch: model EDIT plurnk:/// non-prompt path ALSO rejected 403 — all plurnk:// is engine-authored (#310)", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("plurnk", "/scratch"), body: "y" }),
+            statement: editStmt({ target: urlPath("plurnk", "/docs/log.md"), body: "y" }),
             sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 201);
+        assert.equal(result.status, 403, "the model never writes plurnk:// reference — no scratch sink");
     } finally { await db.close(); }
 });
 
