@@ -164,8 +164,7 @@ export default class PacketBuilder {
         // No injected syntax line: the grammar already headlines the system definition (§Syntax) and
         // leads requirements.md, so a third copy here was pure duplication in the model's packet. PLAN
         // is mandated unconditionally by plurnk.md §Imperatives (grammar 0.70 requires every turn to
-        // lead with PLAN), so the service injects no separate plan directive either (the former
-        // PLURNK_PLAN gating is retired — PLURNK_PLAN is no longer a flag).
+        // lead with PLAN), so the service injects no separate plan directive either.
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.buildTelemetryErrors(loopId, currentTurnSeq);
         const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
