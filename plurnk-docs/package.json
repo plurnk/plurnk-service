@@ -1,0 +1,25 @@
+{
+  "name": "@plurnk/plurnk-docs",
+  "version": "0.1.0",
+  "description": "The plurnk teaching corpus — scheme docs, default operating policy, and requirements consumed by @plurnk/plurnk-service",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plurnk/plurnk-docs.git"
+  },
+  "files": [
+    "docs/**/*",
+    "PLURNK_PERSONALITY.md",
+    "requirements.md"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    "./PLURNK_PERSONALITY.md": "./PLURNK_PERSONALITY.md",
+    "./requirements.md": "./requirements.md",
+    "./docs/*.md": "./docs/*.md"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
