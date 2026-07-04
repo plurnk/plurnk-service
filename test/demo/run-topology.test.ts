@@ -14,7 +14,9 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { liveSession, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
-const TIMEOUT = 600_000; // 10 min — topologies run more turns than a single-run story.
+const TIMEOUT = 900_000; // 15 min — the op-bound (grammar 0.74.51) segments each actor into more
+// turns, and a 4-actor fan-out serializes on a single test llama-server slot (~4.5min fresh, more
+// under sweep load). Production multi-slot backends run the workers in parallel; the test env can't.
 
 const runStory = async (opts: { label: string; prompt: string; maxTurns?: number }) => {
     const fixture = await seedDemoFixture(opts.label);
@@ -25,7 +27,7 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
     let loop;
     try {
         loop = await liveLoop(
-            s, 2, { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) }, { timeoutMs: TIMEOUT - 30_000 },
+            s, 2, { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) }, { timeoutMs: TIMEOUT - 90_000 }, // 90s cleanup headroom: tearing down a fan-out's parent + 3 worker daemons + in-flight execs takes longer than a single run, and a mid-teardown test-timeout wedges the tier
         );
     } catch (err) {
         await s.cleanup().catch((e) => console.error(`[topo:${opts.label}] session cleanup after failure:`, e));
