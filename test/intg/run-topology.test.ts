@@ -150,7 +150,11 @@ test("[§run-delegation-inherits-flags] spawn and fork carry the delegating loop
     // side-effecting op proposed into a resolver-less void (300s auto-cancel per attempt).
     // Proof is behavioral AND through the real dispatch path: the child's EDIT must land
     // state='resolved' (YOLO auto-accept inherited), never state='proposed'/'cancelled'.
-    const mock = new Mock({ contextSize: 8192, responses: [
+    // 16Ki (not the 8Ki the sibling tests use): a topology packet carries the child-orientation
+    // section for the spawned + forked runs on top of the base system prompt, so it sits well above a
+    // single-run packet. At 8Ki it rode the budget edge (a ~50% 413/200 flake) and grammar 0.74.55's
+    // larger delegation teaching tipped it consistently over — the headroom is the fix, not a race.
+    const mock = new Mock({ contextSize: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
         makeMockResponse("<<COPY(run://worker):edit something and finish:COPY\n<<COPY(run://self):edit something and finish:COPY\n<<SEND[202]:delegated; waiting:SEND", 10),
         // Worker turn 1: a SIDE-EFFECTING op (proposes unless YOLO), then conclude.
