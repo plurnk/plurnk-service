@@ -201,6 +201,47 @@ test("value-add: warning carries severity through to the TelemetryEvent level", 
     assert.equal(warn.error.toTelemetryEvent().level, "warn");
 });
 
+test("value-add: mid-turn termination (op after a disposition SEND) is lifted to the rule", () => {
+    const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(known:///a):v:EDIT");
+    assert.ok(errs.some((e) => /a disposition SEND \(code 102\/200\/202\/300\/499\) ends the turn - nothing may follow it/.test(e!.message)));
+    // No longer the bare token-level fallback.
+    assert.equal(errs.some((e) => /unexpected open tag/.test(e!.message)), false);
+});
+
+test("value-add: two disposition SENDs get the termination rule (the second cannot follow the first)", () => {
+    const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND\n<<SEND[200]:done:SEND");
+    assert.ok(errs.some((e) => /a disposition SEND .* ends the turn/.test(e!.message)));
+});
+
+test("value-add: the mid-termination lift is suppressed when the turn derailed mid-op", () => {
+    // An unclosed signal recovers a partial SEND[200]; the real fix is the `]`, not a mid-term.
+    const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[200(x):d:SEND");
+    assert.equal(errs.some((e) => /ends the turn/.test(e!.message)), false);
+    assert.equal(errs.some((e) => e!.source === "lexer"), true);
+});
+
+test("value-add: a malformed signal collapses the per-character lexer cascade to one error", () => {
+    const lex = errMsgs("<<PLAN:p:PLAN\n<<SEND[abc]:d:SEND").filter((e) => e!.source === "lexer");
+    // 'a','b','c' would each error one-per-char without the collapse; now a single steer.
+    assert.equal(lex.length, 1, lex.map((e) => e!.message).join(" | "));
+    assert.match(lex[0]!.message, /expected integer for SEND\/KILL/);
+});
+
+test("value-add: SPAWN/DELEGATE near-miss steers to `<<WORK` (0.74.54 delegation verbs)", () => {
+    for (const word of ["SPAWN", "DELEGATE"]) {
+        const r = PlurnkParser.parse(`<<PLAN:p:PLAN\n<<${word}(run://x):go:${word}\n<<SEND[102]:c:SEND`);
+        const warn = r.items.find((i) => i.kind === "error" && i.error.severity === "warning");
+        assert.ok(warn && warn.kind === "error", `${word} should surface a near-miss`);
+        assert.match(warn.error.message, /did you mean `<<WORK\(run:\/\/name\)`/);
+    }
+});
+
+test("value-add: FORK is a real op now, never flagged as a near-miss", () => {
+    const r = PlurnkParser.parse("<<PLAN:p:PLAN\n<<FORK(run://x):retry:FORK\n<<SEND[102]:c:SEND");
+    assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
+    assert.equal(r.items.filter((i) => i.kind === "statement" && i.statement.op === "FORK").length, 1);
+});
+
 // -------------------------------------------------------------------------
 // Domain AST shape
 // -------------------------------------------------------------------------

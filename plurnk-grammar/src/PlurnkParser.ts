@@ -19,7 +19,7 @@ const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_clientStatement,
 ]);
 
-// Container rules whose children hold the statements — extraction recurses through these.
+// Container rules whose children hold the statements - extraction recurses through these.
 // `turnStatement` is the `<<TURN…:…:TURN` wrapper (log); `turnContent` is the sandwich inside
 // it (and document's single turn). Recursing both flattens a wrapped log to its ops in order.
 const CONTAINER_RULES = new Set<number>([
@@ -31,7 +31,7 @@ export default class PlurnkParser {
     // Parse a model TURN. Two hard requirements: a PLAN anchor (first op, only free-text
     // preamble may precede it) and a terminal SEND (carries the loop status code). A PLAN-less
     // or SEND-less packet does NOT parse and surfaces as error items. Prose is tolerated
-    // anywhere else (preamble, between ops, trailing) and surfaces as text items — in Plurnk
+    // anywhere else (preamble, between ops, trailing) and surfaces as text items - in Plurnk
     // Script that prose is the comment mechanism. The GBNF rail already requires PLAN, so the
     // rail and the parser agree (prose tolerance is the only place the parser stays lenient).
     static parse(input: string): ParseResult {
@@ -41,10 +41,11 @@ export default class PlurnkParser {
         // refine the model-facing message set; neither changes what parsed.
         PlurnkParser.#flagNearMissOps(result.items);
         PlurnkParser.#imperativeTurnShape(result.items);
+        PlurnkParser.#imperativeMidTermination(result.items);
         return result;
     }
 
-    // Curated op-name confusions (semantic + dead-verb), NOT edit-distance — a full
+    // Curated op-name confusions (semantic + dead-verb), NOT edit-distance - a full
     // `<<Word…:Word` heredoc carrying one of these is unambiguously an intended op, so the
     // false-positive rate is ~0. Bodies are never scanned (only DEFAULT-mode text items), so
     // the model's legitimate suffixed/embedded code is immune by construction.
@@ -56,12 +57,12 @@ export default class PlurnkParser {
         WRITE: "`<<EDIT`", CREATE: "`<<EDIT`", UPDATE: "`<<EDIT`", SET: "`<<EDIT`",
         LIST: "`<<FIND`", SEARCH: "`<<FIND`", GREP: "`<<FIND`", QUERY: "`<<FIND`",
         RUN: "`<<EXEC`", SHELL: "`<<EXEC`",
-        SPAWN: "`<<EDIT(run://name)` to spawn a run", FORK: "`<<COPY(run://self)` to fork the run",
+        SPAWN: "`<<WORK(run://name)` to spawn a worker run", DELEGATE: "`<<WORK(run://name)` to spawn a worker run",
     };
 
     // Surface near-miss ops that the forgiving parser swallowed as prose: a `<<Word…:Word`
     // heredoc whose keyword is a known confusion (`<<CLOSE`, `<<DELETE`, …). Emits a WARNING
-    // (never an error — the input parsed), so a silent swallow becomes a steer toward canon.
+    // (never an error - the input parsed), so a silent swallow becomes a steer toward canon.
     static #flagNearMissOps(items: ParseItem<any>[]): void {
         const additions: { at: number; item: ParseItem<any> }[] = [];
         items.forEach((item, idx) => {
@@ -118,7 +119,7 @@ export default class PlurnkParser {
         items.push(...kept);
         // Only add the anchor imperative when the shape is CLEANLY incomplete. If a lexer or
         // visitor error is present, the turn derailed mid-op (e.g. an unclosed target), so the
-        // missing PLAN/SEND is a parse artifact, not the real fix — that specific error plus the
+        // missing PLAN/SEND is a parse artifact, not the real fix - that specific error plus the
         // unparsedTail is the actionable guidance, and an imperative would mislead.
         const hasSpecificError = items.some(
             (i) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser",
@@ -130,14 +131,66 @@ export default class PlurnkParser {
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 
-    // Parse a bare sequence of statements — teaching-example collections, single ops,
+    // Lift the mid-turn-termination error. A disposition-coded SEND (102/200/202/300/499) IS the
+    // turn terminal (grammar 0.74.52/0.74.53), so an op or second SEND after one is a genuine
+    // error - but the parser reports only a generic "unexpected open tag". Rewrite it to the rule.
+    // Runs after the begin/end imperative (which handles the incomplete-shape case and, for a
+    // complete-but-trailing turn, returns early leaving this error in place to rewrite).
+    static #imperativeMidTermination(items: ParseItem<any>[]): void {
+        // If the turn derailed mid-op (a lexer/visitor error - e.g. an unclosed signal), a partial
+        // disposition SEND may have been recovered; that derailment is the real issue, so don't
+        // mislabel its fallout as a mid-termination. Mirrors #imperativeTurnShape's guard.
+        if (items.some((i: any) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser")) return;
+        const DISPOSITIONS = new Set([102, 200, 202, 300, 499]);
+        const terminal = items.find(
+            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && DISPOSITIONS.has(i.statement.signal),
+        ) as any;
+        if (!terminal) return;
+        const t = terminal.statement.position;
+        for (const i of items as any[]) {
+            if (i.kind !== "error" || i.error.source !== "parser" || i.error.severity !== "error") continue;
+            const after = i.error.line > t.line || (i.error.line === t.line && i.error.column > t.column);
+            if (!after) continue;
+            i.error = new PlurnkParseError(
+                i.error.line,
+                i.error.column,
+                "parser",
+                "a disposition SEND (code 102/200/202/300/499) ends the turn - nothing may follow it",
+            );
+        }
+    }
+
+    // Collapse a lexer per-character cascade: the SIGNAL/TARGET modes emit one 'unrecognized
+    // character' error PER bad char, so a single malformed `[signal]` floods 10+ near-identical
+    // rows. Keep the first of each consecutive same-context run (adjacent columns, same mode
+    // context) - the model needs one steer to the fix, not a per-character wall. Mutates in place.
+    static #dedupeLexerCascade(errors: PlurnkParseError[]): void {
+        for (let i = errors.length - 1; i >= 1; i--) {
+            const cur = errors[i];
+            const prev = errors[i - 1];
+            if (cur.source !== "lexer" || prev.source !== "lexer") continue;
+            if (cur.line !== prev.line || cur.column !== prev.column + 1) continue;
+            if (PlurnkParser.#lexerContext(cur.message) !== PlurnkParser.#lexerContext(prev.message)) continue;
+            errors.splice(i, 1);
+        }
+    }
+
+    // The mode-context tail of a lexer message (the part after `unrecognized character <ch> `),
+    // e.g. `in signal - expected integer for SEND/KILL, then \`]\``. Two adjacent chars sharing
+    // it belong to the same cascade.
+    static #lexerContext(message: string): string {
+        const m = /unrecognized character (?:'[^']*'|end of input) (.+)$/.exec(message);
+        return m ? m[1] : message;
+    }
+
+    // Parse a bare sequence of statements - teaching-example collections, single ops,
     // documentation snippets. Strict: statements only (whitespace is hidden), no prose,
     // no turn shape. Not for model output; use `parse` for that.
     static parseStatements(input: string): ParseResult {
         return PlurnkParser.#run(input, (parser) => parser.statementSeq());
     }
 
-    // Parse a multi-turn LOG — a saved sequence of turns, each a full PLAN-anchored sandwich
+    // Parse a multi-turn LOG - a saved sequence of turns, each a full PLAN-anchored sandwich
     // (the v1 Plurnk Script substrate). Items are flat across turns, in source order; turn
     // boundaries are recoverable from the terminal SENDs. A log is valid (no error items, no
     // unparsedTail) iff every turn in it is a valid turn.
@@ -145,7 +198,7 @@ export default class PlurnkParser {
         return PlurnkParser.#run(input, (parser) => parser.log());
     }
 
-    // Parse the CLIENT tier — a bare sequence of protocol statements plus the client-only utility
+    // Parse the CLIENT tier - a bare sequence of protocol statements plus the client-only utility
     // ops LOOK and BUFF. The topmost subset (one above Script); never used for model output. The
     // protocol entry points reject LOOK/BUFF, so a client op only parses here.
     static parseClient(input: string): ParseResult<ClientStatement> {
@@ -173,6 +226,7 @@ export default class PlurnkParser {
         parser.errorHandler = new PlurnkErrorStrategy();
 
         const tree = parseFn(parser);
+        PlurnkParser.#dedupeLexerCascade(errors);
 
         const items: ParseItem<S>[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
@@ -190,12 +244,12 @@ export default class PlurnkParser {
             const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
             const modeName = lexer.modeNames[lexer.mode] ?? "";
             const reason = modeName === "BODY"
-                ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed — add \`:${openTag}\` to terminate`
+                ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`:${openTag}\` to terminate`
                 : modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
-                    ? `signal slot of \`<<${openTag}\` opened at line ${from.line} but never closed — add \`]\` to terminate the signal`
+                    ? `signal slot of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`]\` to terminate the signal`
                     : modeName === "TARGET"
-                        ? `target slot of \`<<${openTag}\` opened at line ${from.line} but never closed — add \`)\` to terminate the target`
-                        : `statement \`<<${openTag}\` opened at line ${from.line} but never reached its close tag — add \`:${openTag}\` to terminate`;
+                        ? `target slot of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`)\` to terminate the target`
+                        : `statement \`<<${openTag}\` opened at line ${from.line} but never reached its close tag - add \`:${openTag}\` to terminate`;
             unparsedTail = { from, reason };
         }
 
@@ -237,7 +291,7 @@ export default class PlurnkParser {
                         items.push({ kind: "statement", statement: buildFn(c) });
                     } catch (e) {
                         // A genuine visitor contract violation (e.g. a malformed URI) is a
-                        // PlurnkParseError — surface it as an error item. Anything else is an
+                        // PlurnkParseError - surface it as an error item. Anything else is an
                         // internal bug, not a parse error: let it crash rather than masquerade
                         // as a model-facing parse-error item (#45).
                         if (!(e instanceof PlurnkParseError)) throw e;

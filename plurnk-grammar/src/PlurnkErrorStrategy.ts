@@ -14,11 +14,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
         DEFAULT_MODE: "between statements",
-        SLOTS: "in slot region — expected `[signal]`, `(target)`, `<L>`, or `:body:` (any order)",
-        SIGNAL_TAGS: "in tag signal — expected tag, `,`, or `]`",
-        SIGNAL_INT: "in signal — expected integer for SEND/KILL, then `]`",
-        SIGNAL_IDENT: "in signal — expected executor for EXEC, then `]`",
-        TARGET: "in target slot — expected URI characters or `)`",
+        SLOTS: "in slot region - expected `[signal]`, `(target)`, `<L>`, or `:body:` (any order)",
+        SIGNAL_TAGS: "in tag signal - expected tag, `,`, or `]`",
+        SIGNAL_INT: "in signal - expected integer for SEND/KILL, then `]`",
+        SIGNAL_IDENT: "in signal - expected executor for EXEC, then `]`",
+        TARGET: "in target slot - expected URI characters or `)`",
         BODY: "in body",
     };
 
@@ -78,7 +78,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         const types: number[] = expected.toArray();
         if (types.length === 0) return null;
         // Every OPEN_<OP> token maps to the same canon name (`open tag <<OPsuffix`), so a
-        // statement-position expected-set yields that phrase 10+ times. Dedup to one entry —
+        // statement-position expected-set yields that phrase 10+ times. Dedup to one entry -
         // the model needs the distinct options, not the alternation count.
         const names = [...new Set(
             types
