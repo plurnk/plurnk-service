@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs",
-    "version": "0.4.31",
+    "version": "0.4.32",
     "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor family.",
     "keywords": [
         "plurnk",
@@ -46,7 +46,7 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-schemes": "0.32.13"
+        "@plurnk/plurnk-schemes": "0.32.14"
     },
     "devDependencies": {
         "@types/node": "^26.0.1",
