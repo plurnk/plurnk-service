@@ -69,12 +69,14 @@ export interface SchemeHandler {
     move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    work?(statement: WorkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    fork?(statement: ForkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     plan?(statement: PlanStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 ```
 
-A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set tracks the pinned grammar (0.53.0) and moves with the framework's grammar bump. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and exact-pins ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive pin (§3).
+A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set is exactly grammar's `PlurnkStatement` dispatch union and moves with the framework's grammar bump (0.74.57 added `work?`/`fork?`; `LOOK`/`BUFF` are grammar `ClientStatement` ops, client-facing and never dispatched to a scheme, so they're intentionally absent here). **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and exact-pins ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive pin (§3).
 
 Two surfaces are NOT yet in `SchemeHandler`, pending their result types migrating here from plurnk-service v0: the **CRUD primitives** (`readEntry`/`writeEntry`/`deleteEntry`, required for entry-bearing schemes) and the **proposal lifecycle** (the optional `ProposalAware.applyResolution` hook, already exported via §3.bis). Until then a scheme declares those methods directly.
 

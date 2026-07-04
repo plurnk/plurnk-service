@@ -13,11 +13,14 @@
 // on (and exact-pins) ONLY @plurnk/plurnk-schemes — grammar rides underneath as
 // the framework's transitive pin, not a second pin every scheme tracks by hand.
 
-// The op set tracks the EXACT pinned grammar (0.49.0): Find/Read/Open/Fold/
-// Edit/Copy/Move/Send/Exec/Kill/Plan. When the framework's grammar pin moves
-// and the op surface changes, this interface moves with it — same consumer-
-// driven bump as every other grammar-derived type here. (Show/Hide were
-// replaced by Open/Fold; Kill/Plan added — grammar 0.49, schemes#19.)
+// The op set tracks the EXACT pinned grammar (0.74.57): Find/Read/Open/Fold/
+// Edit/Copy/Move/Send/Exec/Work/Fork/Kill/Plan — exactly the `PlurnkStatement`
+// dispatch union. When the framework's grammar pin moves and the op surface
+// changes, this interface moves with it — same consumer-driven bump as every
+// other grammar-derived type here. (Show/Hide → Open/Fold + Kill/Plan at 0.49,
+// schemes#19; Work/Fork added at 0.74.57.) LOOK/BUFF are deliberately absent:
+// they live only in grammar's `ClientStatement` union, not `PlurnkStatement`,
+// so they're client-facing ops the engine never dispatches to a scheme.
 import type {
     FindStatement,
     ReadStatement,
@@ -28,6 +31,8 @@ import type {
     MoveStatement,
     SendStatement,
     ExecStatement,
+    WorkStatement,
+    ForkStatement,
     KillStatement,
     PlanStatement,
 } from "@plurnk/plurnk-grammar";
@@ -52,6 +57,8 @@ export interface SchemeHandler {
     move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    work?(statement: WorkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    fork?(statement: ForkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     plan?(statement: PlanStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }

@@ -74,6 +74,8 @@ export type {
     MoveStatement,
     SendStatement,
     ExecStatement,
+    WorkStatement,
+    ForkStatement,
     KillStatement,
     PlanStatement,
     ParsedPath,
