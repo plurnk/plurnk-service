@@ -23,11 +23,8 @@
     },
     "files": [
         ".env.example",
-        "PLURNK_PERSONALITY.md",
         "dist/**/*",
-        "docs/**/*",
         "migrations/**/*.sql",
-        "requirements.md",
         "README.md",
         "INSTALL.md",
         "SPEC.md"
@@ -40,8 +37,8 @@
         "test:lint": "tsc --noEmit",
         "test:unit": "node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-timeout=30000 src/**/*.test.ts",
         "test:intg": "PLURNK_SERVICE_FILES_ITEMS=0 node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 --test-timeout=30000 test/intg/*.test.ts",
-        "test:live": "PLURNK_SERVICE_POLICY=./PLURNK_PERSONALITY.md PLURNK_SERVICE_REASONING=4096 PLURNK_SERVICE_ASSISTANT=8192 PLURNK_SERVICE_SAFETY=1024 node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/live/*.test.ts",
-        "test:demo": "PLURNK_SERVICE_POLICY=./PLURNK_PERSONALITY.md PLURNK_SERVICE_REASONING=4096 PLURNK_SERVICE_ASSISTANT=8192 PLURNK_SERVICE_SAFETY=1024 node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/demo/*.test.ts",
+        "test:live": "PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md PLURNK_SERVICE_REASONING=4096 PLURNK_SERVICE_ASSISTANT=8192 PLURNK_SERVICE_SAFETY=1024 node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/live/*.test.ts",
+        "test:demo": "PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md PLURNK_SERVICE_REASONING=4096 PLURNK_SERVICE_ASSISTANT=8192 PLURNK_SERVICE_SAFETY=1024 node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/demo/*.test.ts",
         "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo",
         "test:digest": "node bin/digest.ts",
         "test:clean-tmp": "rm -rf test/intg/.tmp",
@@ -60,6 +57,7 @@
         "prepublishOnly": "npm run deps:audit"
     },
     "dependencies": {
+        "@plurnk/plurnk-docs": "^0.1.0",
         "@plurnk/plurnk-execs": "^0.4.33",
         "@plurnk/plurnk-execs-all": "^0.1.20",
         "@plurnk/plurnk-execs-mcp": "^0.5.4",

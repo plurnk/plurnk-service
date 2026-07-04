@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import Paths from "./Paths.ts";
 import { parseArgs } from "node:util";
 import { existsSync, mkdirSync, copyFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -60,7 +61,7 @@ export default class Service {
         // Seed the default operating policy → ~/.plurnk/AGENTS.md, foisted as ## Plurnk Service Policy
         // (readSystemPolicy). A new install opens with a sane disposition, not a blank policy; the user
         // owns + edits it after — a deleted policy stays deleted, like the .env floor.
-        const shippedPolicy = resolve(Service.#projectRoot, "PLURNK_PERSONALITY.md");
+        const shippedPolicy = Paths.personality; // @plurnk/plurnk-docs owns the default policy
         if (existsSync(shippedPolicy)) copyFileSync(shippedPolicy, resolve(Service.#homeDir, "AGENTS.md"));
         process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
     }

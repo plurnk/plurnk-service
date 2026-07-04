@@ -15,9 +15,15 @@ import { homedir } from "node:os";
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     static #GRAMMAR_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/package.json")));
+    // The teaching corpus lives in @plurnk/plurnk-docs (scheme docs, personality, requirements) —
+    // the same single-source shape as GRAMMAR_ROOT: the docs agent owns the prose, we consume it.
+    static #DOCS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-docs/package.json")));
 
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
     static instructionsSystem = resolve(Paths.#GRAMMAR_ROOT, "plurnk.md");
+    // The default operating policy (seeded to ~/.plurnk/AGENTS.md) + the per-scheme teaching docs.
+    static personality = resolve(Paths.#DOCS_ROOT, "PLURNK_PERSONALITY.md");
+    static schemeDocs = resolve(Paths.#DOCS_ROOT, "docs");
     // (GBNF artifact resolution moved to Engine.#grammarConstraint — the env value
     // SELECTS the variant from @plurnk/plurnk-grammar; no hardcoded default here, #225.)
     // packet.user.system_requirements DEFAULT. Static contract appended at
@@ -26,13 +32,13 @@ export default class Paths {
     static defaultRequirements = Paths.#resolveDefaultRequirements();
 
     // Resolve the default requirements file: `PLURNK_SERVICE_REQUIREMENTS` env (absolute
-    // or relative-to-package-root) overrides the in-package `requirements.md`.
+    // or relative-to-package-root) overrides the docs package's `requirements.md`.
     static #resolveDefaultRequirements(): string {
         const env = process.env.PLURNK_SERVICE_REQUIREMENTS;
         if (typeof env === "string" && env.length > 0) {
             return resolve(Paths.#PACKAGE_ROOT, env);
         }
-        return resolve(Paths.#PACKAGE_ROOT, "requirements.md");
+        return resolve(Paths.#DOCS_ROOT, "requirements.md");
     }
 
     // Operator reference docs auto-READ into every model run at turn 0.

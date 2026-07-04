@@ -16,17 +16,18 @@ import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { Executor } from "./ExecutorRegistry.ts";
 import { readdir, readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import Paths from "../Paths.ts";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
 
-// docs/ migration — the in-tree CORE-scheme depth (run/known/unknown/log) lives in
-// <pkgroot>/docs/<name>.md, NOT inline, loaded once at module eval (top-level await; resolves
-// from src/core or dist/core alike). teach()/docs() prefer this over a manifest's inline
-// `documentation` (the path that stays for stubs + daughter schemes). Absent dir → empty map.
+// The in-tree CORE-scheme depth (run/known/unknown/log) lives in @plurnk/plurnk-docs
+// (Paths.schemeDocs), NOT inline — the docs agent owns the prose; loaded once at module eval.
+// teach()/docs() prefer this over a manifest's inline `documentation` (the path that stays for
+// stubs + daughter schemes). Absent dir → empty map.
 const SCHEME_DOCS: ReadonlyMap<string, string> = await (async () => {
-    const dir = new URL("../../docs/", import.meta.url);
     try {
-        const files = (await readdir(dir)).filter((f) => f.endsWith(".md"));
-        const loaded = await Promise.all(files.map(async (f) => [f.slice(0, -3), await readFile(new URL(f, dir), "utf8")] as const));
+        const files = (await readdir(Paths.schemeDocs)).filter((f) => f.endsWith(".md"));
+        const loaded = await Promise.all(files.map(async (f) => [f.slice(0, -3), await readFile(resolve(Paths.schemeDocs, f), "utf8")] as const));
         return new Map(loaded);
     } catch { return new Map(); }
 })();
