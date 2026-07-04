@@ -873,7 +873,12 @@ export default class Engine {
         const realOpsCount = packetAssistant.ops.filter(
             (op) => op.op !== "PLAN" && !(op.op === "SEND" && op.signal === 103 && op.target === null),
         ).length;
-        const sendOp = packetAssistant.ops.findLast(
+        // The FIRST terminal SEND, not the last: dispatch runs ops in emission order and concludes
+        // the loop on the first terminal it hits, so the premature check must judge THAT SEND. A
+        // grammar-legal turn has exactly one terminal (find === findLast); an unenforced stroke can
+        // emit several (…SEND[200]…SEND[202]) and findLast would bind the refusal to a trailing SEND
+        // the loop never reaches — the first SEND[200] then concludes on unread data, unrefused.
+        const sendOp = packetAssistant.ops.find(
             (op): op is PlurnkStatement & { op: "SEND"; signal: number } =>
                 op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200,
         );
