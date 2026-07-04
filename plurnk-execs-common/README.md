@@ -34,7 +34,7 @@ All run arbitrary code → `effect: host` → **proposal-gated** (not auto-run).
 
 ## Configuration
 
-`.env.example` documents per-tag kill-switches: `PLURNK_EXECS_<TAG>=0` disables a tag even when installed (drops it from the available list with a "disabled" 501 reason).
+Per-tag kill-switches (`PLURNK_EXECS_<TAG>=0`) and the `PLURNK_EXECS_ONLY` allowlist are honored by the **framework's** `discover()`, uniformly across every daughter — not here (SPEC §3.3). A disabled tag is not registered at all, so it never reaches this executor. `disable all standard execs except search` → `PLURNK_EXECS_ONLY=search`.
 
 ## Tests
 

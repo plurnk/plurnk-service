@@ -40,25 +40,19 @@ const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
 // Exposed for tests / consumers wanting the candidate set.
 export const RUNTIME_TAGS: readonly string[] = Object.freeze(Object.keys(RECIPES));
 
-// Operator kill-switch: PLURNK_EXECS_<TAG>=0 (or "false") disables a tag even
-// when its interpreter is installed. (Honored here locally; the cross-family
-// equivalent is service registry policy.)
-const isDisabled = (tag: string): boolean => {
-    const v = process.env[`PLURNK_EXECS_${tag.toUpperCase()}`];
-    return v === "0" || v?.toLowerCase() === "false";
-};
-
 // PATH presence via POSIX `command -v` — robust across interpreters that don't
 // support `--version` (tclsh, bc, some awks). bin is from the fixed table above.
 const onPath = (bin: string): boolean =>
     spawnSync("sh", ["-c", `command -v "$1"`, "sh", bin]).status === 0;
 
 // Detection harness: one package claiming the common-REPL tags. probe() lights
-// up only the interpreters present on this host (and not operator-disabled), so
-// the consumer offers the model exactly what the platform has — "plurnk supports
-// the host's REPLs out of the box". All run arbitrary code → effect `host`
-// (inherited, proposal-gated). Reuses SubprocessExecutor's run() (streaming +
-// process-group abort) via the spawnArgs() hook.
+// up only the interpreters present on this host, so the consumer offers the
+// model exactly what the platform has — "plurnk supports the host's REPLs out
+// of the box". The operator kill-switch (PLURNK_EXECS_<tag>=0 / _ONLY) is no
+// longer honored here — the framework's discover() applies it uniformly across
+// every daughter (SPEC §3.3), so a disabled tag never reaches probe(). All run
+// arbitrary code → effect `host` (inherited, proposal-gated). Reuses
+// SubprocessExecutor's run() (streaming + process-group abort) via spawnArgs().
 export default class Common extends SubprocessExecutor {
     protected override spawnArgs(runtime: string, command: string, target: string | null = null): SpawnArgs {
         const r = RECIPES[runtime];
@@ -81,9 +75,6 @@ export default class Common extends SubprocessExecutor {
     override async probe(): Promise<RuntimeAvailability> {
         const r = RECIPES[this.runtime];
         if (r === undefined) return { available: false, detail: `unknown runtime '${this.runtime}'` };
-        if (isDisabled(this.runtime)) {
-            return { available: false, detail: `disabled (PLURNK_EXECS_${this.runtime.toUpperCase()}=0)` };
-        }
         if (r.alwaysAvailable) return { available: true, detail: r.bin === "node" ? process.version : r.bin };
         return onPath(r.bin)
             ? { available: true, detail: r.bin }

@@ -97,13 +97,9 @@ test("probe: reflects PATH presence per tag", async () => {
     }
 });
 
-test("probe: PLURNK_EXECS_<TAG>=0 disables a tag even when installed", async () => {
-    process.env.PLURNK_EXECS_BC = "0";
-    const r = await make("bc").probe();
-    delete process.env.PLURNK_EXECS_BC;
-    assert.equal(r.available, false);
-    assert.match(String(r.detail), /disabled/);
-});
+// The PLURNK_EXECS_<tag>=0 / _ONLY kill-switch moved to the framework's
+// discover() (SPEC §3.3) — a disabled tag is never registered, so probe() no
+// longer sees it. Covered in plurnk-execs' policy.test.ts / discover.test.ts.
 
 test("unclaimed runtime tag is fail-hard in spawnArgs", async () => {
     await assert.rejects(run("nope", "x"), /unclaimed runtime tag 'nope'/);
