@@ -11,6 +11,8 @@ import type {
     FindStatement,
     FoldStatement,
     KillStatement,
+    WorkStatement,
+    ForkStatement,
     LineMarker,
     LookStatement,
     MatcherBody,
@@ -36,6 +38,8 @@ import type {
     FindStatementContext,
     FoldStatementContext,
     KillStatementContext,
+    WorkStatementContext,
+    ForkStatementContext,
     LookStatementContext,
     MoveStatementContext,
     ReadStatementContext,
@@ -89,6 +93,8 @@ export default class AstBuilder {
             const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         }
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
+        const work = ctx.workStatement(); if (work) return AstBuilder.#buildWork(work);
+        const fork = ctx.forkStatement(); if (fork) return AstBuilder.#buildFork(fork);
         const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
         // `midStatement` has no planStatement alternative (PLAN is never a mid-op); only the
         // full `statement` rule does.
@@ -275,6 +281,32 @@ export default class AstBuilder {
             op: "KILL",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_KILL().getText(), "KILL"),
             ...slots,
+            lineMarker: null,
+            body: AstBuilder.#bodyTextOf(ctx),
+            position,
+        };
+    }
+
+    static #buildWork(ctx: WorkStatementContext): WorkStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        return {
+            op: "WORK",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_WORK().getText(), "WORK"),
+            signal: null,
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), position),
+            lineMarker: null,
+            body: AstBuilder.#bodyTextOf(ctx),
+            position,
+        };
+    }
+
+    static #buildFork(ctx: ForkStatementContext): ForkStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        return {
+            op: "FORK",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_FORK().getText(), "FORK"),
+            signal: null,
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), position),
             lineMarker: null,
             body: AstBuilder.#bodyTextOf(ctx),
             position,

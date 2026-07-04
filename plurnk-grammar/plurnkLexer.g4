@@ -60,7 +60,7 @@ private isOpKeywordAfterLtLt(): boolean {
     // and client (LOOK/BUFF). Membership here means `<<KW` lexes as an opener, NOT prose, so a
     // client op in a protocol/script position becomes an OPEN_* token the parser then rejects
     // (territorial integrity: a minted op fails hard out of tier, it never masquerades as text).
-    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN", "TURN", "LOOK", "BUFF"];
+    const ops = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN", "TURN", "LOOK", "BUFF"];
     for (const op of ops) {
         let matches = true;
         for (let i = 0; i < op.length; i++) {
@@ -138,6 +138,11 @@ OPEN_OPEN : '<<OPEN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_FOLD : '<<FOLD' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_SEND : '<<SEND' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_EXEC : '<<EXEC' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+// Delegation verbs: WORK spawns a fresh named worker, FORK branches the current run into a
+// named child. Target + body, no signal (not send/exec/kill, so a stray `[` defaults to tags
+// and the parser rejects it — WORK/FORK take no signal slot).
+OPEN_WORK : '<<WORK' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
+OPEN_FORK : '<<FORK' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_KILL : '<<KILL' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 OPEN_PLAN : '<<PLAN' SUFFIX? { this.setOpenTag(); } -> mode(SLOTS) ;
 // `<<TURN…:` wraps a whole turn (Plurnk Script). Unlike every other op, its body is NOT

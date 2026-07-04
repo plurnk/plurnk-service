@@ -29,7 +29,7 @@ const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.code
 const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(ch, ch));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
-const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "KILL", "PLAN"] as const;
+const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN"] as const;
 // ε, 1, 2 — same-op nesting depth 1 (a credible edge case) and 2 (a possible corner
 // case). Beyond depth 2 an emission is about as likely to be degenerate as legitimate,
 // so the constrained subset stops there; a consumer with a genuinely deeper recursive
@@ -255,6 +255,11 @@ export const buildModel = (): GModel => {
             } else if (op === "KILL") {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
                 opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
+            } else if (op === "WORK" || op === "FORK") {
+                // Delegation verbs — target (the run://<name>) REQUIRED plus the task/hint body;
+                // no signal, no line slot. The child's name lives in the target (a nameless
+                // worker/branch can't be addressed), so the rail requires it.
+                opEntries.push({ literal: open, tails: [[ref("target"), ...body]] });
             } else {
                 // READ/FIND are RETRIEVAL ops: the whole point is next-turn data, so a
                 // same-turn terminal SEND[200] is never legitimate (need it → SEND[102]; don't

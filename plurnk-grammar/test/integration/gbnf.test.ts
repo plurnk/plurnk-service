@@ -437,6 +437,40 @@ test("GBNF: EXEC accepts an optional <timeout,poll> line slot (canonical signal,
     assert.equal(derives("op-statement", "<<EXEC(sh:///x)<60,5>:cmd:EXEC"), true);         // slotless executor
 });
 
+test("GBNF: WORK/FORK are delegation ops — target (run://name) REQUIRED, body, no signal slot", () => {
+    // WORK spawns a fresh named worker; FORK branches the current run into a named child.
+    assert.equal(derives("op-statement", "<<WORK(run://worker-db):resolve the db field:WORK"), true);
+    assert.equal(derives("op-statement", "<<FORK(run://recheck):re-derive from a primary source:FORK"), true);
+    // The rail REQUIRES the target — a nameless worker/branch can't be addressed.
+    assert.equal(derives("op-statement", "<<WORK:do a thing:WORK"), false);
+    assert.equal(derives("op-statement", "<<FORK:do a thing:FORK"), false);
+    // No signal slot — a [tag]/[int] on WORK/FORK is not sampleable.
+    assert.equal(derives("op-statement", "<<WORK[x](run://w):t:WORK"), false);
+    // They derive as mid-ops before the terminal SEND.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<WORK(run://w):task:WORK\n<<SEND[102]:spawned:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FORK(run://r):retry:FORK\n<<SEND[102]:forked:SEND"), true);
+});
+
+test("parse: WORK/FORK build the right AST — op, run:// target, opaque body, null signal + lineMarker", () => {
+    const one = (s: string) => {
+        const r = PlurnkParser.parseStatements(s);
+        const item = r.items.find((i) => i.kind === "statement");
+        assert.ok(item && item.kind === "statement", `no statement parsed from ${s}`);
+        return item.statement;
+    };
+    const w = one("<<WORK(run://capital-checker):Find the capital of France:WORK");
+    assert.equal(w.op, "WORK");
+    assert.equal(w.signal, null);
+    assert.equal(w.lineMarker, null);
+    assert.equal(w.body, "Find the capital of France");
+    assert.ok(w.target !== null && JSON.stringify(w.target).includes("capital-checker"));
+    const f = one("<<FORK(run://recheck):Re-derive the capital:FORK");
+    assert.equal(f.op, "FORK");
+    assert.equal(f.signal, null);
+    assert.equal(f.lineMarker, null);
+    assert.equal(f.body, "Re-derive the capital");
+});
+
 test("GBNF: PLAN is the turn anchor only — first op, not a statement-layer op", () => {
     // PLAN is first-only: NOT in the statement trie, so it never appears mid-batch.
     assert.equal(derives("statement", "<<PLAN:think first, then act:PLAN"), false);

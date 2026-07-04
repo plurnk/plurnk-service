@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST of one plurnk statement. Discriminated on `op`. SEND and KILL have no `<L>` slot (`lineMarker` is always null for those); EXEC's `<L>` slot carries an optional `<timeout,poll>`. `target` is the URI of the operand (parsed into ParsedPath structure); null when the operand slot was omitted. Body shape varies per op: matcher dialect for FIND/READ/OPEN/FOLD, raw string for EDIT/EXEC, ParsedPath for MOVE (destination URI), opaque raw string for COPY (a destination URI for entry copies, a prompt for run forks — the scheme handler interprets it), SendBody for SEND, opaque annotation string for KILL (no assigned runtime meaning; lands in the log), reasoning text for PLAN (recorded to the log; no other effect).",
+    "description": "The parsed AST of one plurnk statement. Discriminated on `op`. SEND, KILL, WORK, and FORK have no `<L>` slot (`lineMarker` is always null for those); WORK and FORK also carry no signal (always null); EXEC's `<L>` slot carries an optional `<timeout,poll>`. `target` is the URI of the operand (parsed into ParsedPath structure); null when the operand slot was omitted. Body shape varies per op: matcher dialect for FIND/READ/OPEN/FOLD, raw string for EDIT/EXEC, ParsedPath for MOVE (destination URI), opaque raw string for COPY (a destination URI for entry copies, a prompt for run forks — the scheme handler interprets it), SendBody for SEND, opaque annotation string for KILL (no assigned runtime meaning; lands in the log), reasoning text for PLAN (recorded to the log; no other effect), and an opaque task string for WORK (spawn a fresh named worker) and FORK (branch the current run into a named child) — the `run://<name>` in target names the child.",
     "oneOf": [
         { "$ref": "#/$defs/FindStatement" },
         { "$ref": "#/$defs/ReadStatement" },
@@ -13,6 +13,8 @@
         { "$ref": "#/$defs/MoveStatement" },
         { "$ref": "#/$defs/SendStatement" },
         { "$ref": "#/$defs/ExecStatement" },
+        { "$ref": "#/$defs/WorkStatement" },
+        { "$ref": "#/$defs/ForkStatement" },
         { "$ref": "#/$defs/KillStatement" },
         { "$ref": "#/$defs/PlanStatement" }
     ],
@@ -208,6 +210,34 @@
                         { "type": "null" }
                     ]
                 },
+                "target": { "$ref": "#/$defs/PathOrNull" },
+                "lineMarker": { "type": "null" },
+                "body": { "type": ["string", "null"] },
+                "position": { "$ref": "#/$defs/PositionRef" }
+            }
+        },
+        "WorkStatement": {
+            "type": "object",
+            "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
+            "additionalProperties": false,
+            "properties": {
+                "op": { "const": "WORK" },
+                "suffix": { "type": "string" },
+                "signal": { "type": "null" },
+                "target": { "$ref": "#/$defs/PathOrNull" },
+                "lineMarker": { "type": "null" },
+                "body": { "type": ["string", "null"] },
+                "position": { "$ref": "#/$defs/PositionRef" }
+            }
+        },
+        "ForkStatement": {
+            "type": "object",
+            "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
+            "additionalProperties": false,
+            "properties": {
+                "op": { "const": "FORK" },
+                "suffix": { "type": "string" },
+                "signal": { "type": "null" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "type": "null" },
                 "body": { "type": ["string", "null"] },

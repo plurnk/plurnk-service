@@ -70,7 +70,7 @@ test("plurnk.md examples cover every OP", () => {
 // otherwise carry no coverage — which is exactly how a bogus `get` target and a
 // missing `<<` opener slipped past review before. Extract by matched open/close tag
 // (suffix-aware, non-greedy, multiline), then parse each in isolation.
-const HEREDOC = /<<(FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|KILL|SEND|PLAN)(\d|[a-z]+)?[\s\S]*?:\1\2(?![A-Za-z0-9])/g;
+const HEREDOC = /<<(FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|WORK|FORK|KILL|SEND|PLAN)(\d|[a-z]+)?[\s\S]*?:\1\2(?![A-Za-z0-9])/g;
 
 // Schematic metavariable examples: the `<Line>` slot is a placeholder (N, M), not a
 // literal, so they intentionally do not parse. Any addition here is a deliberate act.

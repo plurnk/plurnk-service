@@ -18,6 +18,8 @@ export type PlurnkOp =
     | "FOLD"
     | "SEND"
     | "EXEC"
+    | "WORK"
+    | "FORK"
     | "KILL"
     | "PLAN";
 

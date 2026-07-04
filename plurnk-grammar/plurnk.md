@@ -76,7 +76,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 ### `(path)`
 
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
-* `run://name` is the run entity (COPY to spawn or fork, KILL to stop); `run://name/path` is an entry in its workspace.
+* `run://name` is the run entity (WORK to spawn a fresh worker, FORK to branch the current run, KILL to stop); `run://name/path` is an entry in its workspace.
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
@@ -91,6 +91,8 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 | OPEN | no   | no    | no  | no     | yes |
 | FOLD | no   | no    | no  | no     | yes |
 | EXEC | yes  | yes   | no  | no     | no  |
+| WORK | no   | no    | yes | no     | no  |
+| FORK | no   | no    | yes | no     | no  |
 | KILL | yes  | yes   | yes | yes    | yes |
 
 ### `<Line / Result>`
@@ -112,10 +114,14 @@ A leading decimal is a `~`-similarity threshold (results scoring at least that v
 Empty (no body) OPs contain two colons: <<READ(AGENTS.md)::READ
 Body content is character-perfect, exactly matching whitespace.
 
-## Imperatives
+## Delegation
 
-To spawn a separate run: <<COPY(run://capital-checker):List the capitals in: known:///continents/europe:COPY
-To fork the current run: <<COPY(run://self):Re-derive the capital from a primary source.:COPY
+`run://<name>` names a child run you bring into being, then address by that name: the name is yours to mint, it is the run's identity, and it lives in the target. Reach it afterward - SEND it a hint, READ its result, or KILL it to stop. WORK spawns a fresh worker (clean context); FORK branches the current run (your context, inherited).
+
+To spawn a WORKer run: <<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
+To FORK the current run: <<FORK(run://recheck):Re-derive the capital from a primary source:FORK
+
+## Imperatives
 
 YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
 YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
