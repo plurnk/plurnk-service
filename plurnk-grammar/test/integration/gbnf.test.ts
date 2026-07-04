@@ -298,6 +298,26 @@ test("PlurnkParser.parse requires both PLAN and a terminal SEND; prose tolerated
     assert.equal(ok.unparsedTail, undefined);
 });
 
+test("PlurnkParser.parse: a mid-turn termination is ILLEGAL — a disposition-coded SEND is the terminal", () => {
+    const invalid = (s: string): boolean => {
+        const r = PlurnkParser.parse(s);
+        return r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined;
+    };
+    const valid = (s: string): boolean => !invalid(s);
+    // A disposition code {102,200,202,300,499} IS the turn terminal (the lexer tokens it as
+    // DISPOSITION), so the grammar ends the turn there — a statement after it is a genuine
+    // parse ERROR, not a mid comms demotion the way a positional last-SEND grammar would allow.
+    assert.equal(invalid("<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND\n<<EDIT(known://a):v:EDIT\n<<SEND[102]:cont:SEND"), true);
+    assert.equal(invalid("<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND\n<<SEND[200]:done:SEND"), true);   // two disposition SENDs
+    assert.equal(invalid("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<KILL(proc://x)::KILL"), true);    // op after the terminal
+    assert.equal(invalid("<<PLAN:p:PLAN\n<<EDIT(known://a):v:EDIT\n<<SEND[400]:report:SEND"), true); // 400 is comms, not a terminal — turn never terminated
+    // Legal: a mid-comms SEND (non-disposition INT, statusless, or empty) may precede the
+    // terminal; prose may follow the terminal.
+    assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[400]:report:SEND\n<<EDIT(known://a):v:EDIT\n<<SEND[200]:done:SEND"), true);
+    assert.equal(valid("<<PLAN:p:PLAN\n<<SEND(run://peer):hint:SEND\n<<SEND[102]:cont:SEND"), true);
+    assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\nall set, boss"), true);
+});
+
 // -------------------------------------------------------------------------
 // SEND disposition codes (terminal vs mid)
 // -------------------------------------------------------------------------

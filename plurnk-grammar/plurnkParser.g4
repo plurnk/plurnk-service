@@ -65,6 +65,7 @@ statement
     | openStatement
     | foldStatement
     | sendStatement
+    | midSend
     | execStatement
     | killStatement
     | planStatement
@@ -81,7 +82,7 @@ midStatement
     | moveStatement
     | openStatement
     | foldStatement
-    | sendStatement
+    | midSend
     | execStatement
     | killStatement
     ;
@@ -96,9 +97,13 @@ moveStatement : OPEN_MOVE tagOpModifiers? COLON? body? CLOSE_TAG ;
 openStatement : OPEN_OPEN tagOpModifiers? COLON? body? CLOSE_TAG ;
 foldStatement : OPEN_FOLD tagOpModifiers? COLON? body? CLOSE_TAG ;
 
-// SEND/EXEC/KILL have no `<L>` slot. Signal and target may appear in either
-// order. SEND and KILL share the int-signal modifier permutation.
-sendStatement : OPEN_SEND intOpModifiers? COLON? body? CLOSE_TAG ;
+// SEND splits by signal kind (the lexer emits DISPOSITION for {102,200,202,300,499}): a
+// disposition-coded SEND IS the turn terminal (sendStatement), so turnContent ends on it and
+// a statement after it is a genuine parse error — mid-turn terminations are ILLEGAL, not
+// demoted to a mid comms. A mid-comms SEND (midSend) carries a plain INT code or none. EXEC/KILL
+// keep the permissive int signal (a KILL's unix signal may coincide with a disposition number).
+sendStatement : OPEN_SEND termModifiers COLON? body? CLOSE_TAG ;
+midSend       : OPEN_SEND midModifiers? COLON? body? CLOSE_TAG ;
 execStatement : OPEN_EXEC execModifiers? COLON? body? CLOSE_TAG ;
 killStatement : OPEN_KILL intOpModifiers? COLON? body? CLOSE_TAG ;
 
@@ -125,6 +130,18 @@ intOpModifiers
     | target intSignal?
     ;
 
+// Terminal SEND: a disposition signal is REQUIRED — a turn ends on a disposition code.
+termModifiers
+    : dispSignal target?
+    | target dispSignal
+    ;
+
+// Mid-comms SEND: a plain integer code (or none), optional target.
+midModifiers
+    : midSignal target?
+    | target midSignal?
+    ;
+
 // EXEC's lineMarker carries an optional `<timeout,poll>` (numbers; runtime-interpreted).
 execModifiers
     : identSignal (target lineMarker? | lineMarker target?)?
@@ -134,7 +151,9 @@ execModifiers
 
 // Signal productions — permissive where the interpretation is deterministic.
 tagSignal   : LBRACKET (TAG | COMMA)* RBRACKET ;
-intSignal   : LBRACKET INT? RBRACKET ;
+intSignal   : LBRACKET (INT | DISPOSITION)? RBRACKET ;   // KILL: permissive (a unix signal may be a disposition number)
+midSignal   : LBRACKET INT? RBRACKET ;                   // mid-comms SEND: a plain integer code (or empty), never a DISPOSITION
+dispSignal  : LBRACKET DISPOSITION RBRACKET ;            // terminal SEND: a disposition code
 identSignal : LBRACKET IDENT? RBRACKET ;
 
 target      : LPAREN TARGET_TEXT? RPAREN ;

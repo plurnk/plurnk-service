@@ -2,7 +2,7 @@ lexer grammar plurnkLexer;
 
 tokens {
     LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COLON, COMMA,
-    INT, IDENT, TAG,
+    INT, DISPOSITION, IDENT, TAG,
     TARGET_TEXT, BODY_TEXT, CLOSE_TAG, TEXT,
     OPEN_TURN, CLOSE_TURN
 }
@@ -216,9 +216,15 @@ ST_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 // ============================================================================
 
 mode SIGNAL_INT;
-SI_WS  : [ \t]+ -> skip ;
-SI_INT : '-'? [0-9]+ -> type(INT) ;
-SI_END : ']' -> type(RBRACKET), mode(SLOTS) ;
+SI_WS   : [ \t]+ -> skip ;
+// A terminal DISPOSITION code lexes to its own token so the parser can make a
+// disposition-coded SEND structurally terminal — a SEND[200] IS a turn termination,
+// distinct from a mid-comms SEND[400] (INT). Both SEND and KILL enter this mode; a
+// KILL carrying one of these numbers is harmless (its signal rule accepts both).
+// Ordered before SI_INT; max-munch keeps `2000` an INT (the longer match wins).
+SI_DISP : ('102' | '200' | '202' | '300' | '499') -> type(DISPOSITION) ;
+SI_INT  : '-'? [0-9]+ -> type(INT) ;
+SI_END  : ']' -> type(RBRACKET), mode(SLOTS) ;
 
 // ============================================================================
 // SIGNAL_IDENT — inside `[...]` for EXEC. Single executor identifier only.

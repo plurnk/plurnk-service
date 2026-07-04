@@ -1,4 +1,4 @@
-import { ParserRuleContext } from "antlr4ng";
+import { ParserRuleContext, TerminalNode } from "antlr4ng";
 import * as xpath from "xpath";
 import { JSONPath } from "jsonpath-plus";
 import type {
@@ -35,7 +35,6 @@ import type {
     ExecStatementContext,
     FindStatementContext,
     FoldStatementContext,
-    IntOpModifiersContext,
     KillStatementContext,
     LookStatementContext,
     MoveStatementContext,
@@ -43,17 +42,18 @@ import type {
     OpenStatementContext,
     StatementContext,
     MidStatementContext,
+    MidSendContext,
     TagOpModifiersContext,
 } from "./generated/plurnkParser.ts";
 import {
     IdentSignalContext,
-    IntSignalContext,
     LineMarkerContext,
     PlanStatementContext,
     SendStatementContext,
     TargetContext,
     TagSignalContext,
 } from "./generated/plurnkParser.ts";
+import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
@@ -82,7 +82,12 @@ export default class AstBuilder {
         const move = ctx.moveStatement(); if (move) return AstBuilder.#buildMove(move);
         const open = ctx.openStatement(); if (open) return AstBuilder.#buildOpen(open);
         const fold = ctx.foldStatement(); if (fold) return AstBuilder.#buildFold(fold);
-        const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
+        const midSend = ctx.midSend(); if (midSend) return AstBuilder.#buildSend(midSend);
+        // `sendStatement` (the disposition-coded terminal) appears in `statement` (teaching
+        // corpora) but NOT in `midStatement` — guard the accessor before calling it.
+        if ("sendStatement" in ctx) {
+            const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
+        }
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
         const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
         // `midStatement` has no planStatement alternative (PLAN is never a mid-op); only the
@@ -225,9 +230,9 @@ export default class AstBuilder {
         };
     }
 
-    static #buildSend(ctx: SendStatementContext): SendStatement {
+    static #buildSend(ctx: SendStatementContext | MidSendContext): SendStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractIntSlots(ctx.intOpModifiers(), position);
+        const slots = AstBuilder.#extractIntSlots(ctx, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "SEND",
@@ -265,7 +270,7 @@ export default class AstBuilder {
 
     static #buildKill(ctx: KillStatementContext): KillStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractIntSlots(ctx.intOpModifiers(), position);
+        const slots = AstBuilder.#extractIntSlots(ctx, position);
         return {
             op: "KILL",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_KILL().getText(), "KILL"),
@@ -284,13 +289,30 @@ export default class AstBuilder {
         };
     }
 
-    static #extractIntSlots(modCtx: IntOpModifiersContext | null, pos: Position): IntSlots {
-        const intCtx = AstBuilder.#findFirst(modCtx, IntSignalContext);
-        const intNode = intCtx?.INT() ?? null;
+    // A SEND/KILL signal is one signed-integer literal, tokenized as INT (mid-comms SEND, KILL)
+    // or DISPOSITION (the terminal SEND — the parser tokenizes {102,200,202,300,499} distinctly
+    // so a disposition-coded SEND is structurally terminal). `ctx` is the whole SEND/KILL
+    // statement; the only INT/DISPOSITION token is the signal, the only target the recipient.
+    static #extractIntSlots(ctx: ParserRuleContext | null, pos: Position): IntSlots {
+        const sig = AstBuilder.#findToken(ctx, plurnkLexer.INT) ?? AstBuilder.#findToken(ctx, plurnkLexer.DISPOSITION);
         return {
-            signal: intNode !== null ? Number.parseInt(intNode.getText(), 10) : null,
-            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
+            signal: sig !== null ? Number.parseInt(sig, 10) : null,
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos),
         };
+    }
+
+    // Depth-first search for the first terminal of `tokenType`; returns its text or null.
+    // Lets the SEND/KILL signal read work regardless of which signal rule wrapped it.
+    static #findToken(root: ParserRuleContext | null, tokenType: number): string | null {
+        if (root === null) return null;
+        for (const child of root.children ?? []) {
+            if (child instanceof TerminalNode && child.symbol.type === tokenType) return child.getText();
+            if (child instanceof ParserRuleContext) {
+                const found = AstBuilder.#findToken(child, tokenType);
+                if (found !== null) return found;
+            }
+        }
+        return null;
     }
 
     static #extractExecSlots(modCtx: ExecModifiersContext | null, pos: Position): ExecSlots {
