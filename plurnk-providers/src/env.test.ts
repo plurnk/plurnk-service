@@ -46,7 +46,7 @@ test("requireEnv: returns the value or throws a named error", () => {
     assert.throws(() => requireEnv("", "GROQ_API_KEY", "groq"), /must be set/);
 });
 
-// — per-alias knob scoping (#35-doctrine) —
+// — per-alias knob scoping (per-alias scoping doctrine, user 2026-07-03) —
 
 test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
     const { scopeEnvToAlias } = await import("./env.ts");

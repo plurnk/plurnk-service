@@ -140,7 +140,7 @@ test("instantiateProvider: a discovered package whose import throws fails hard, 
     );
 });
 
-test("instantiateProvider: per-alias knobs scope through to the provider (#35-doctrine)", async () => {
+test("instantiateProvider: per-alias knobs scope through to the provider (per-alias scoping doctrine, user 2026-07-03)", async () => {
     resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
         if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
