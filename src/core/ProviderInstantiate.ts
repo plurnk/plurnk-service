@@ -74,7 +74,19 @@ export default class ProviderInstantiate {
             });
             content = res.assistant.content.trim();
         } catch (cause) {
-            throw new Error(`grammar enforcement verification could not run against '${provider.model}' (PLURNK_PROVIDERS_GBNF=${gbnf}); refusing to boot with unverified rails`, { cause });
+            // The probe REQUEST was rejected (not "rails came back unconstrained"). This is loud, not
+            // the silent-off failure the verify guards against — and it will recur on every real turn,
+            // so refuse legibly and name the likely cause. The classic one: the provider sends a
+            // reasoning parameter the model rejects (a non-reasoning model + PLURNK_PROVIDERS_THINKING
+            // defaulting on → OpenAI 400 "does not support parameter reasoningEffort").
+            const detail = cause instanceof Error ? cause.message : String(cause);
+            throw new Error(
+                `grammar enforcement verification could not COMPLETE its probe against '${provider.model}' (PLURNK_PROVIDERS_GBNF=${gbnf}) — the model REJECTED the probe request. `
+                + `This is a request/config incompatibility, NOT proof the rails are dark (and it would fail every real turn too). `
+                + `Most common cause: the model does not accept a parameter the provider sends — e.g. a reasoning param on a non-reasoning model; set PLURNK_PROVIDERS_THINKING=off (or the model-appropriate posture). `
+                + `Refusing to boot until the request the daemon sends is one the model accepts. Probe error: ${detail}`,
+                { cause },
+            );
         }
         if (content !== ProviderInstantiate.#VERIFY_TOKEN) {
             throw new Error(
