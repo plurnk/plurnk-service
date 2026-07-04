@@ -116,10 +116,10 @@ Body content is character-perfect, exactly matching whitespace.
 
 ## Delegation
 
-`run://<name>` names a child run you bring into being, then address by that name: the name is yours to mint, it is the run's identity, and it lives in the target. Reach it afterward - SEND it a hint, READ its result, or KILL it to stop. WORK spawns a fresh worker (clean context); FORK branches the current run (your context, inherited).
-
-To spawn a WORKer run: <<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
+To spawn a new WORKer run: <<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
 To FORK the current run: <<FORK(run://recheck):Re-derive the capital from a primary source:FORK
+To message another run: <<SEND(run://recheck):Also, what's the capital of Germany?:SEND
+To kill another run: <<KILL(run://recheck)::KILL
 
 ## Imperatives
 
@@ -165,9 +165,9 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 * <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
 * <<OPEN(log:///**)<1,10>::OPEN
 * <<FOLD(log:///**)<101,200>::FOLD
+* <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
 * <<KILL(known:///draft.md)::KILL
 * <<KILL(obsolete/file.md)::KILL
 * <<KILL(sh:///3/1/2)::KILL
 * <<KILL[9](sh:///3/1/3)::KILL
 * <<KILL(log:///1/*/*/FOLD)::KILL
-* <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
