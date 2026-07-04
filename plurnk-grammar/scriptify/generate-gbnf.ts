@@ -362,11 +362,27 @@ export const buildModel = (): GModel => {
     // "failed" is an ENGINE verdict, never a model SEND (persisted-only). Emittable vs
     // persisted (Loop.status) are meant to differ — see plurnk-service#33.
     // status-final-nodone: the terminal set minus 200, for a turn that ran a retrieval op.
-    // status-mid: any 3-digit code — a mid SEND is free comms (the rail no longer reserves
-    // the terminal codes from mid use).
+    // status-mid: any 3-digit code EXCEPT the terminal disposition codes {102,200,202,300,499}.
+    // A SEND carrying a terminal code IS the terminal (the dispatcher acts on the FIRST
+    // disposition-coded SEND, so it terminates there), hence it can ONLY be the last op.
+    // Reserving those five from mid position makes a premature terminate — e.g. a mid SEND[200]
+    // after a READ — UNSAMPLEABLE, instead of demoting it to a legal mid-comms SEND that
+    // bypasses both the last-SEND model and the READ→200 rail. A mid SEND stays comms:
+    // statusless, or a non-disposition code (a 4xx error report to a peer). Encoded as the
+    // complement of the five over DDD, as a first-digit trie.
     model.set("status-final", [[lit("102")], [lit("200")], [lit("202")], [lit("300")], [lit("499")]]);
     model.set("status-final-nodone", [[lit("102")], [lit("202")], [lit("300")], [lit("499")]]);
-    model.set("status-mid", [[DIGIT, DIGIT, DIGIT]]);
+    model.set("status-mid", [
+        [cls([R("0", "0"), R("5", "9")]), DIGIT, DIGIT],   // 0xx / 5xx-9xx: no disposition code here
+        [lit("1"), ref("status-mid-1")],
+        [lit("2"), ref("status-mid-2")],
+        [lit("3"), ref("status-mid-3")],
+        [lit("4"), ref("status-mid-4")],
+    ]);
+    model.set("status-mid-1", [[lit("0"), cls([R("0", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]); // forbid 102
+    model.set("status-mid-2", [[lit("0"), cls([R("1", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]); // forbid 200, 202
+    model.set("status-mid-3", [[lit("0"), cls([R("1", "9")])], [cls([R("1", "9")]), DIGIT]]);              // forbid 300
+    model.set("status-mid-4", [[lit("9"), cls([R("0", "8")])], [cls([R("0", "8")]), DIGIT]]);              // forbid 499
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
