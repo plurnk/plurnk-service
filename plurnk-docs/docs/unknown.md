@@ -1,3 +1,3 @@
-# `unknown://` — the catch-all scheme
+# `unknown://` — your open questions
 
-The catch-all an address falls into when its scheme isn't one you recognize. It behaves like `known:///` — the unrecognized URI still becomes an addressable entry you can EDIT, READ, FIND, and SEND — so a typo or an unmodeled scheme degrades to a usable entry rather than an error.
+The staging ground for the questions you author. Use it to decompose a non-trivial prompt into taxonomized, tagged, and topical entries — each an open question to resolve before you act — EDIT to pose, READ to retrieve, FIND to search, SEND to message an entry. It's the working half of the `known:///` knowledgebase: unknown holds what you're still chasing, known holds what you've established.
