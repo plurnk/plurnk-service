@@ -299,3 +299,7 @@ SELECT deep_hash FROM entries WHERE session_id = $session_id AND deep_hash IS NO
 -- PREP: test_ops_by_loop
 -- [§fold-open-meta-operations] — every model-origin op row with its status.
 SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;
+
+-- PREP: test_set_session_settings
+-- Set the sessions.settings JSON bag (client open-context) for a test.
+UPDATE sessions SET settings = $settings WHERE id = $id;

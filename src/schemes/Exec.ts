@@ -1,6 +1,7 @@
 import type { ExecStatement, FindStatement, ReadStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
-import type { ChannelState } from "@plurnk/plurnk-execs";
+import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { Executor } from "../core/ExecutorRegistry.ts";
+import SessionSettings from "../core/session-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -155,6 +156,14 @@ export default class Exec {
 
         const requested = typeof statement.signal === "string" ? statement.signal : "";
         const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
+        // #328 — per-session client policy narrows the boot-registered set (subtractive). A tag the
+        // session's client layer disables is ABSENT for this session — refused like an unavailable
+        // runtime. The boot layer (process.env) is already applied in the registry, so this checks the
+        // client layer over the already-registered set (§3.3 de-register, distinct from §3.2 deactivate).
+        const sessionExecs = (await SessionSettings.read(ctx.db, ctx.sessionId)).execs;
+        if (sessionExecs !== null && !Policy.isEnabled(runtime, sessionExecs)) {
+            return { status: 501, error: `\`${runtime}\` is disabled for this session by client policy (PLURNK_EXECS_*)` };
+        }
         if (ctx.executors === undefined) throw new Error("exec dispatched without an executor registry");
         const resolved = ctx.executors.entry(runtime); // registry resolves the runtime tag; unknown/unavailable → 501 — §exec-registry-resolves
         if (resolved === undefined) {

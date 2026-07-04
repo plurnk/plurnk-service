@@ -60,7 +60,7 @@ export default class SessionCreateMethod {
                 name: "string? — session name (auto-generated if omitted)",
                 projectRoot: "string? — absolute path to the client's workspace; null/omitted = headless mode (no disk side-effects on file ops)",
                 constraints: "array? — [{effect, glob}] membership overlay seeded atomically at creation so turn-1's manifest is right with no follow-up RPC. effect: pick (admit a file git misses / the sole source when headless) | hide (drop a tracked match) | view (read-only) | repo (declare a git repo folder anywhere — its members join the manifest, addressed relative to the project root: clean under it, `..`-prefixed outside). glob: node:path glob vs workspace-relative paths (a folder for repo).",
-                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { filesItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_SERVICE_FILES_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_SERVICE_MD_* docs; client wins on alias collision), client?: string (#249 — session-stable frontend id, e.g. 'plurnk.nvim/1.4.0', forwarded to the plurnk provider as Plurnk-Client; dropped by other providers) }",
+                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { filesItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_SERVICE_FILES_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_SERVICE_MD_* docs; client wins on alias collision), client?: string (#249 — session-stable frontend id, e.g. 'plurnk.nvim/1.4.0', forwarded to the plurnk provider as Plurnk-Client; dropped by other providers), execs?: { [PLURNK_EXECS_* flag]: string } (#328 — the client's exec-runtime policy layer, subtractive: narrows the boot-registered set per session, never widens; e.g. { PLURNK_EXECS_ONLY: 'search' } or { PLURNK_EXECS_NODE: '0' }. MCP server-config keys rejected) }",
             },
         });
 
@@ -96,8 +96,8 @@ export default class SessionCreateMethod {
     static #parseSettings(raw: unknown): string {
         if (raw === undefined || raw === null) return "{}";
         if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("session.create: settings must be an object");
-        const r = raw as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown };
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string } = {};
+        const r = raw as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown };
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string; execs?: Record<string, string> } = {};
         if (r.filesItems !== undefined) {
             if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems)) {
                 throw new Error("session.create: settings.filesItems must be an integer (-1 full | 0 off | N first-N)");
@@ -124,6 +124,23 @@ export default class SessionCreateMethod {
                 throw new Error("session.create: settings.client must be a non-empty string (the frontend id, e.g. 'plurnk.nvim/1.4.0')");
             }
             out.client = r.client;
+        }
+        // #328 — the client's resolved PLURNK_EXECS_* policy subset, verbatim key→value, fed to execs'
+        // Policy as the per-session client layer (subtractive: narrows the boot-registered set, never
+        // widens). PLURNK_EXECS_MCP_* (server URLs + _HEADERS tokens) MUST NOT ride the wire — refused
+        // here as defense-in-depth even though the client already excludes them (the bare MCP toggle stays).
+        if (r.execs !== undefined) {
+            if (typeof r.execs !== "object" || r.execs === null || Array.isArray(r.execs)) {
+                throw new Error("session.create: settings.execs must be an object of PLURNK_EXECS_* key→value strings");
+            }
+            const execs: Record<string, string> = {};
+            for (const [k, v] of Object.entries(r.execs as Record<string, unknown>)) {
+                if (!/^PLURNK_EXECS_[A-Za-z0-9_]+$/.test(k)) throw new Error(`session.create: settings.execs key '${k}' is not a PLURNK_EXECS_* flag`);
+                if (/^PLURNK_EXECS_MCP_/i.test(k)) throw new Error(`session.create: settings.execs may not carry MCP server config '${k}' — those are not policy and must not ride the wire`);
+                if (typeof v !== "string") throw new Error(`session.create: settings.execs['${k}'] must be a string`);
+                execs[k] = v;
+            }
+            out.execs = execs;
         }
         if (r.mdDocs !== undefined) {
             if (!Array.isArray(r.mdDocs)) throw new Error("session.create: settings.mdDocs must be an array");
