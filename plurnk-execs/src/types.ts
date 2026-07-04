@@ -172,6 +172,11 @@ export interface Discovery {
     // never crashes on an untrusted package — it returns them here so the
     // consumer can emit a telemetry note (discover() has no sink of its own).
     skipped: string[];
+    // Registered tags removed by the runtime policy (PLURNK_EXECS_<tag>=0 /
+    // PLURNK_EXECS_ONLY — the daemon boot layer; SPEC §3.3): materialized but
+    // NOT registered, returned so the consumer can note what the operator gated
+    // off. Distinct from `skipped` (whole untrusted packages).
+    disabled: string[];
 }
 
 export interface DiscoverOptions {

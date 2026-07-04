@@ -280,3 +280,37 @@ test('trust gate OFF ("0"): every installed package loads, nothing skipped', asy
         assert.deepEqual(skipped, [], "nothing skipped when the gate is off");
     });
 });
+
+// Runtime policy (SPEC §3.3): the boot layer, applied at registration across
+// EVERY daughter's tags — a disabled tag is absent, not "Available-off".
+const withEnv = async (kv: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> => {
+    const prev = Object.fromEntries(Object.keys(kv).map((k) => [k, process.env[k]]));
+    for (const [k, v] of Object.entries(kv)) v === undefined ? delete process.env[k] : (process.env[k] = v);
+    try { await fn(); } finally {
+        for (const [k, v] of Object.entries(prev)) v === undefined ? delete process.env[k] : (process.env[k] = v);
+    }
+};
+
+test("runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the rest land in `disabled`", async () => {
+    const dir = await makePkg({
+        name: "@plurnk/plurnk-execs-common",
+        plurnk: { kind: "exec", runtimes: [{ name: "search" }, { name: "node" }, { name: "sqlite" }] },
+    });
+    await withEnv({ PLURNK_EXECS_ONLY: "search" }, async () => {
+        const { registry, disabled } = await Discover.scan({ packageDirs: [dir] });
+        assert.deepEqual([...registry.keys()], ["search"], "only the allowlisted tag registers");
+        assert.deepEqual(disabled, ["node", "sqlite"], "the rest are reported disabled, not registered");
+    });
+});
+
+test("runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
+    const dir = await makePkg({
+        name: "@plurnk/plurnk-execs-common",
+        plurnk: { kind: "exec", runtimes: [{ name: "node" }, { name: "sh" }] },
+    });
+    await withEnv({ PLURNK_EXECS_NODE: "0" }, async () => {
+        const { registry, disabled } = await Discover.scan({ packageDirs: [dir] });
+        assert.deepEqual([...registry.keys()], ["sh"]);
+        assert.deepEqual(disabled, ["node"]);
+    });
+});

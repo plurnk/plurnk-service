@@ -192,6 +192,26 @@ The principle: *Active = the operator unambiguously committed this capability ON
 
 Execs owns none of the overlay machinery — the live Active/Available state, the `/enable` `/disable` `/mcp` commands, and the gate enforcement are the consumer's (plurnk-service#240). Execs' contribution is the static signals above and (for the hotload route) an MCP executor that accepts a runtime-injected server config and re-checks `PLURNK_MCP_INSTALL` at its connect path (defense in depth).
 
+### §3.3 Runtime policy (the enable/disable cascade)
+
+A **registration** bound — a sibling of the §3 trust gate, **not** the §3.2 activation overlay. The trust gate bounds registration by *package*; the runtime policy bounds it by *tag*; `discover()` enforces both (the two operator gates on "what is registered for this daemon"). A policy-disabled tag is **absent** — not Active, not Available — so §3.2's "a client may freely activate any registered capability" still holds: the registered set is simply bounded per layer.
+
+**Grammar** (the `PLURNK_EXECS_*` namespace, identical at every tier):
+
+| Var | Effect |
+|---|---|
+| `PLURNK_EXECS_<TAG>=0` (or `false`) | surgical kill-switch for one tag |
+| `PLURNK_EXECS_ONLY=a,b,c` | allowlist — a tag not listed is disabled |
+
+The two compose within a layer (an allowlisted tag can still be individually killed). `ONLY` is reserved: a runtime tag may not be named `only`. Purely **subtractive** — there is no force-enable verb, by design.
+
+**The cascade is an intersection.** A tag is live iff enabled in *every* layer: `enabled(tag) = service ∧ client ∧ …`. Because each layer only subtracts, order is irrelevant and no downstream layer can undo an upstream disable — **the client can never re-enable what the service disabled**, structurally, not by a policed rule.
+
+- `discover()` applies the **daemon boot layer** (`process.env`) at registration, uniformly across every daughter (framework-guaranteed — a daughter cannot escape it, the way `-common`'s old local kill-switch let `sqlite`/`jq`/`git` slip through). Disabled tags are returned in `Discovery.disabled`.
+- The consumer applies the **per-session client layer** with the *same parser* — `Policy.enabledAcross(tag, [serviceEnv, clientLayer])`, or `Policy.isEnabled(tag, clientLayer)` over the already-registered set. The client declares its policy in the identical `PLURNK_EXECS_*` format; the daemon intersects. The client has no enforcement surface of its own — executors run in the daemon — so this is a structural ceiling, not a trust boundary.
+
+Framework surface: **`Policy.isEnabled(tag, env?)`** (one layer, defaults to `process.env`) and **`Policy.enabledAcross(tag, layers)`** (the intersection). To disable all standard execs except search: `PLURNK_EXECS_ONLY=search`.
+
 ## §4 Subprocess helper (legacy path)
 
 `resolveRuntime(runtime, command) → SpawnArgs` and `isKnownRuntime(runtime)` / `KNOWN_RUNTIMES` translate a subprocess runtime tag into `node:child_process.spawn` arguments:

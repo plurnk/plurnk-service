@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import Policy from "./policy.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
 
 // An exec package's parsed manifest — its name and the `plurnk` block. Read
@@ -57,6 +58,7 @@ export default class Discover {
 
         const registry = new Map<string, ExecInfo>();
         const skipped = new Set<string>();
+        const disabled = new Set<string>();
         for (const dir of dirs) {
             const manifest = await Discover.#readExecManifest(dir);
             if (manifest === null) continue; // not an exec package
@@ -70,6 +72,17 @@ export default class Discover {
                 continue;
             }
             for (const info of await Discover.#readExecInfos(dir, manifest)) {
+                // Runtime policy — the operator kill-switch / allowlist
+                // (PLURNK_EXECS_<tag>=0, PLURNK_EXECS_ONLY), the daemon's boot
+                // layer, applied uniformly to EVERY tag regardless of daughter
+                // (SPEC §3.3). A disabled tag is not registered — absent, not
+                // "Available-off" — and recorded for the consumer. The
+                // per-session client layer is the consumer's to intersect via
+                // the exported Policy, same parser.
+                if (!Policy.isEnabled(info.runtime)) {
+                    disabled.add(info.runtime);
+                    continue;
+                }
                 const existing = registry.get(info.runtime);
                 if (existing !== undefined) {
                     throw new Error(
@@ -81,7 +94,7 @@ export default class Discover {
             }
         }
 
-        return { registry, skipped: [...skipped].sort() };
+        return { registry, skipped: [...skipped].sort(), disabled: [...disabled].sort() };
     }
 
     // Host plugin-trust gate, read from PLURNK_PLUGINS_TRUSTED_ONLY — the SAME

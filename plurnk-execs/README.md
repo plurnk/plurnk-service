@@ -57,16 +57,18 @@ Declare the two and a third-party tag gets the same self-documenting surface the
 
 ## Discovery & trust
 
-`discover(options?)` scans **every installed package** under `<cwd>/node_modules` — scope-agnostic — for `plurnk.kind === "exec"`, returning `{ registry, skipped }`.
+`discover(options?)` scans **every installed package** under `<cwd>/node_modules` — scope-agnostic — for `plurnk.kind === "exec"`, returning `{ registry, skipped, disabled }`.
 
 - **Tag collisions are fail-hard.** Two packages claiming the same tag throws at discovery, naming both — deliberately stricter than plurnk-mimetypes' last-wins. A runtime tag is an executable dispatch key, so a third party silently shadowing `python` is exactly the failure we refuse to let ship quietly; the operator resolves it.
 - **Trust gate.** `discover()` honors **`PLURNK_PLUGINS_TRUSTED_ONLY`** (host posture, plurnk-service#229): unset/`""`/`0` → every package registers (default, no regression); any value → `@plurnk/*` always trusted plus a comma-separated allowlist (`1` = first-party only). An untrusted package is discovered but **not** registered and returned in `Discovery.skipped` for the consumer to note — never a crash.
+- **Runtime policy (enable/disable cascade).** `discover()` applies the operator kill-switch uniformly to every tag (SPEC §3.3): `PLURNK_EXECS_<TAG>=0` kills one tag, `PLURNK_EXECS_ONLY=a,b,c` is an allowlist (all else off). Disabled tags are **not** registered — returned in `Discovery.disabled`. It's purely subtractive, so it **cascades**: the consumer feeds a client-declared policy (same `PLURNK_EXECS_*` format) through `Policy.enabledAcross(tag, [serviceEnv, clientLayer])` and the client can only narrow — never re-enable what the service disabled. `disable all but search` → `PLURNK_EXECS_ONLY=search`.
 
 ## Exports
 
 - `BaseExecutor` — abstract base: `channels`, `run(args)`, optional `probe()` / `effect(target)`.
 - `SubprocessExecutor` — concrete base for subprocess runtimes; override `spawnArgs()` (and `binary`). Streaming + process-group abort + env scoping + exit code, inherited.
-- `discover(options?)` — the scope-agnostic registry scan (trust-gated, fail-hard on collision).
+- `discover(options?)` — the scope-agnostic registry scan (trust-gated + runtime-policy-gated, fail-hard on collision).
+- `Policy` — the runtime enable/disable resolver (SPEC §3.3): `Policy.isEnabled(tag, env?)`, `Policy.enabledAcross(tag, layers)`. Same parser the daemon and the consumer's per-session client layer share.
 - Contract types: `ExecArgs`, `ExecResult`, `ChannelDecl`, `ChannelState`, `ExecutorMetadata`, `RuntimeAvailability`, `Effect`, `ExecInfo`, `ExecRegistry`, `Discovery`, `DiscoverOptions`.
 - `TelemetryEvent`, `ContentOffset`, `LogCoordinate` — the `emit` sink's payload (mirror of grammar's telemetry envelope).
 - `resolveRuntime`, `isKnownRuntime`, `KNOWN_RUNTIMES`, `SpawnArgs`, `RuntimeResolver` — subprocess-family helper for the consumer's legacy spawn path (SPEC §4).

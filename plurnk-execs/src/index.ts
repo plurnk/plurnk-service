@@ -10,6 +10,12 @@ export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
 // public contract and the consumer's import stay unchanged.
 export const discover = Discover.scan;
 
+// Runtime enable/disable policy (SPEC §3.3). `discover()` applies it as the
+// daemon boot layer; the consumer reuses the same parser for the per-session
+// client layer — Policy.enabledAcross(tag, [serviceEnv, clientLayer]) — so the
+// cascade is byte-identical at both tiers.
+export { default as Policy } from "./policy.ts";
+
 // Runtime-tag → spawn-args helper (subprocess family; legacy scheme path,
 // SPEC §4). Same shape: behavior on the `Runtime` class, the documented
 // function/constant names re-exported over its statics.
