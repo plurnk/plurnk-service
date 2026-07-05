@@ -126,15 +126,20 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
             contextSize: 100000,
             responses: [
                 response([editStmt("/state", "from turn 1"), sendStmt(102, "continuing")]),
-                response([readStmt("/state"), sendStmt(200, "done")]),
+                // The pending set (§send-premature-terminate) forbids READ + [200] in one turn —
+                // the retrieval's result folds back next packet. Read, continue, THEN conclude.
+                response([readStmt("/state"), sendStmt(102, "reading")]),
+                response([sendStmt(200, "done")]),
             ],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const turn1 = await dispatchTurn(engine, provider, db, env);
         const turn2 = await dispatchTurn(engine, provider, db, env);
+        const turn3 = await dispatchTurn(engine, provider, db, env);
         assert.notEqual(turn1.turnId, turn2.turnId);
         assert.deepEqual(turn1.statuses, [201, 102]);
-        assert.deepEqual(turn2.statuses, [200, 200], "READ → 200; terminal SEND broadcast → 200");
+        assert.deepEqual(turn2.statuses, [200, 102], "READ → 200; the continue receives the result next turn");
+        assert.deepEqual(turn3.statuses, [200], "the conclusion lands clean — nothing pending");
 
         const turn2Reads = (await (db.test_log_entries_by_turn as PrepMethod).all<{ sequence: number; status_rx: number; pathname: string; op: string }>({ turn_id: turn2.turnId }))
             .filter((r) => r.op === "READ");

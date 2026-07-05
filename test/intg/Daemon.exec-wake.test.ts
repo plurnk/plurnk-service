@@ -14,7 +14,7 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, w
 import type { PrepMethod } from "../../src/core/Db.ts";
 
 const execDsl = (command: string): string =>
-    `<<EXEC[sh]:${command}:EXEC\n<<SEND[202]:done:SEND`;
+    `<<EXEC[sh]:${command}:EXEC\n<<SEND[102]<-1>:done:SEND`;
 
 const mockResponse = (dsl: string) => {
     // grammar 0.70: turns lead with PLAN. No `ops` here → the Engine re-parses
@@ -114,7 +114,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            mockResponse(execDsl("echo soon").replace("SEND[202]", "SEND[102]")),
+            mockResponse(execDsl("echo soon").replace("SEND[102]<-1>", "SEND[102]")),
             continueResponse,
             continueResponse,
             continueResponse,
@@ -156,7 +156,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            mockResponse(`<<EXEC[sh]:for i in 5 4 3 2 1; do echo $i; sleep 0.4; done:EXEC\n<<SEND[202]:fire and forget:SEND`),
+            mockResponse(`<<EXEC[sh]:for i in 5 4 3 2 1; do echo $i; sleep 0.4; done:EXEC\n<<SEND[102]<-1>:fire and forget:SEND`),
             // Wake-opened loop just terminates so the test completes:
             mockResponse("<<SEND[200]:saw the wake:SEND"),
         ],

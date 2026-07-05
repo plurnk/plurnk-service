@@ -95,6 +95,7 @@ export default class Daemon {
     // grammar 0.74.20 EXEC `<T,P>` — per-run hibernation poll-wake timer. When a loop parks at
     // SEND[202] with a polled stream, a timer fires every P seconds to resume it (§exec-poll). One
     // per run (the tightest cadence); cleared/replaced on each park and on cancel.
+    #parkTimers: Map<number, NodeJS.Timeout> = new Map();
     #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
     // Per-run drain-transition lock — see #withDrainLock (R4 / §run-lifecycle-single-drain).
     #drainLocks = new Map<number, Promise<unknown>>();
@@ -583,6 +584,25 @@ export default class Daemon {
                         // (#handleWakeRun) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect (§exec-poll). §run-lifecycle-wake-liveness.
                         void this.#schedulePollWake(sessionId, runId, provider, systemPrompt);
+                        // §send-premature-terminate/[102]<T> — the park DEADLINE (grammar 0.75.0): the
+                        // dispatcher recorded the marker's seconds; a bounded park is woken at T
+                        // regardless of arrivals, so a park always has a next turn. -1 (indefinite:
+                        // the butler, a [300] ask) schedules nothing — irc/inject/conclusions wake it.
+                        // In-memory: a daemon restart drops pending deadlines.
+                        if (currentLoopId !== null) {
+                            const deadline = this.#engine.parkDeadlines.get(currentLoopId);
+                            this.#engine.parkDeadlines.delete(currentLoopId);
+                            const prior = this.#parkTimers.get(runId);
+                            if (prior !== undefined) { clearTimeout(prior); this.#parkTimers.delete(runId); }
+                            if (deadline !== undefined && deadline > 0) {
+                                const t = setTimeout(() => {
+                                    this.#parkTimers.delete(runId);
+                                    void this.#wakeParkedRun(sessionId, runId, provider, systemPrompt);
+                                }, deadline * 1000);
+                                t.unref();
+                                this.#parkTimers.set(runId, t);
+                            }
+                        }
                         // Honor an OWED wake (§run-lifecycle-child-wake): a child/stream concluded while
                         // this run was mid-turn, before it slept — resume in place rather than park blind,
                         // so a worker-run hibernation always returns. The loop is 202 here; reset to

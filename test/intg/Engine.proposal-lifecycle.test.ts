@@ -241,8 +241,8 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
         // A bare statement without a PLAN lead is a parse error (grammar 0.70 PLAN-first),
         // and parseDsl drops kind:"error" items — so build from a PLAN-led turn and pluck
         // the broadcast SEND[202] (target:null) the model would actually emit.
-        const sendParked = parseDsl("<<PLAN::PLAN\n<<SEND[202]:awaiting your reply:SEND").find((s) => s.op === "SEND");
-        assert.ok(sendParked, "fixture: broadcast SEND[202] parsed as a statement");
+        const sendParked = parseDsl("<<PLAN::PLAN\n<<SEND[102]<-1>:awaiting your reply:SEND").find((s) => s.op === "SEND");
+        assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({
             statement: sendParked,
@@ -253,11 +253,11 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
         const parkId = await parkDeferred.promise;
 
         // Dispatch returned the terminal 202 directly — it never paused...
-        assert.equal(parkResult.status, 202, "broadcast SEND[202] returns its terminal status, unpaused");
+        assert.equal(parkResult.status, 102, "the broadcast park ([102]<-1>) returns its signal, unpaused");
         // ...the entry is a resolved terminal, not a proposed one...
         const parkRow = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number }>({ id: parkId });
         assert.equal(parkRow?.state, "resolved", "parked SEND is a resolved terminal, not a proposed entry");
-        assert.equal(parkRow?.status_rx, 202);
+        assert.equal(parkRow?.status_rx, 102);
         // ...and no loop/proposal was announced for it.
         assert.ok(!proposed.includes(parkId), "no proposal announced for the broadcast SEND[202]");
 

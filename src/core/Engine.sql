@@ -427,3 +427,10 @@ UPDATE log_entries
        rx = $rx
  WHERE id = $id
    AND state = 'proposed';
+
+-- PREP: engine_turn_retrievals
+-- §send-premature-terminate — the pending set's retrieval leg: THIS turn's READ/FIND/OPEN rows,
+-- whose results the model cannot have seen (they fold back next packet). A [200] over them is
+-- discarding answers it asked for.
+SELECT id FROM log_entries
+WHERE turn_id = $turn_id AND origin = 'model' AND op IN ('READ', 'FIND', 'OPEN');

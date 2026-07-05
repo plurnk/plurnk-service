@@ -268,7 +268,7 @@ test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by t
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]:backgrounded:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]<-1>:backgrounded:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
         ],
     });
@@ -308,7 +308,7 @@ test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its st
     const mock = new Mock({
         contextSize: 8192,
         responses: [
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]:backgrounded:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]<-1>:backgrounded:SEND"),
             sendOnly("<<SEND[200]:should never run:SEND"),
         ],
     });

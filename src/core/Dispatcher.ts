@@ -27,11 +27,6 @@ const pathnameFromPath = (path: ParsedPath): string => {
     return decodePathParens(path.kind === "url" ? path.pathname : path.raw); // #239 item 4
 };
 
-// Why a terminal SEND is refused: a [200] while the run holds a live thing, or with a READ submitted
-// this turn whose result the model hasn't observed (§send-premature-terminate); a [202] with no wake
-// edge — nothing held, nothing opened this turn — that could ever resume it (§send-groundless-hibernate).
-export type PrematureReason = "live-thing" | "groundless-hibernate";
-
 export type DispatchContext = {
     statement: PlurnkStatement;
     sessionId: number;
@@ -41,12 +36,6 @@ export type DispatchContext = {
     sequence: number;
     origin: WriterTier;
     onDispatch?: (logEntryId: number) => void;
-    // Set by runTurn for THIS turn's terminal SEND when it's refused (§send-premature-terminate,
-    // §send-groundless-hibernate) — the reason: a live thing the run holds (open stream/spawn or
-    // non-terminal child), a READ submitted THIS turn whose result the model can't have seen yet, or
-    // a [202] with no wake edge. Threaded — never re-checked at dispatch — so a same-turn
-    // fire-and-forget spawn isn't miscounted: the snapshot precedes the turn's ops.
-    prematureRefusal?: PrematureReason;
 };
 
 export type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
@@ -80,8 +69,11 @@ export default class Dispatcher {
     #wakeRunNotify: WakeRunNotify | undefined;
     #injectRun: InjectRunNotify | undefined;
     #cancelRun: CancelRunNotify | undefined;
+    // §send-premature-terminate/[102]<T> — the engine-owned park-deadline registry (loopId → seconds;
+    // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
+    #parkDeadlines: Map<number, number>;
 
-    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeRunNotify, injectRun, cancelRun }: {
+    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeRunNotify, injectRun, cancelRun, parkDeadlines }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -94,6 +86,7 @@ export default class Dispatcher {
         wakeRunNotify?: WakeRunNotify;
         injectRun?: InjectRunNotify;
         cancelRun?: CancelRunNotify;
+        parkDeadlines?: Map<number, number>;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -107,10 +100,11 @@ export default class Dispatcher {
         this.#wakeRunNotify = wakeRunNotify;
         this.#injectRun = injectRun;
         this.#cancelRun = cancelRun;
+        this.#parkDeadlines = parkDeadlines ?? new Map();
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, prematureRefusal } = context;
+        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch } = context;
         const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin });
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
@@ -130,7 +124,7 @@ export default class Dispatcher {
             // those are system failures.
             try {
                 if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, loopId, prematureRefusal);
+                    result = await this.#handleSendBroadcast(statement, { sessionId, runId, loopId, turnId });
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleRunControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -703,50 +697,70 @@ export default class Dispatcher {
         return { status: writeResult.status, entryId: writeResult.entryId, created: writeResult.created };
     }
 
-    async #handleSendBroadcast(statement: PlurnkStatement, loopId: number, prematureRefusal: PrematureReason | undefined): Promise<DispatchResult> {
+    // §send-premature-terminate — the unified PENDING SET, judged at the terminal's OWN dispatch
+    // (post-batch: the emission's earlier ops already executed, so a same-turn KILL+[200] repairs in
+    // ONE turn, and a same-turn WORK+[200] is caught — the spawn is live by the time the SEND lands).
+    // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/OPEN, results unseen
+    // until next packet). One rule, one steer, one repair family: nothing pending may be silently
+    // discarded; 499 discards BY STATED INTENT and is never gated.
+    async #pendingSet(runId: number, turnId: number): Promise<string[]> {
+        const pending: string[] = [];
+        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
+        if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true) pending.push("open streams");
+        const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
+        if (liveChild !== undefined) pending.push("live worker runs");
+        const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
+        if (retrievals.length > 0) pending.push("results of this turn's READ/FIND/OPEN (they arrive NEXT turn)");
+        return pending;
+    }
+
+    async #handleSendBroadcast(statement: PlurnkStatement, ctx: { sessionId: number; runId: number; loopId: number; turnId: number }): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
+        const { runId, loopId, turnId } = ctx;
         const status = statement.signal;
         if (status === null) return { status: 400 };
-        // Premature terminate (§send-premature-terminate): a terminal SEND[200] is REFUSED 409 — the row
-        // keeps the [200] emission + body (faithful, never erased), the loop never goes terminal. The
-        // decision is the runTurn PRE-DISPATCH snapshot (threaded), so a same-turn fire-and-forget spawn
-        // isn't miscounted. Runtime-only: a live thing the run holds (a spawned child's status / an open
-        // stream), which the parser can never see. Grammar-shape terminals (a SEND after a same-turn
-        // READ) are the parser's job to reject (grammar#51), not the engine's.
-        if (status === 200 && prematureRefusal === "live-thing") {
-            return { status: 409, error: "Attempted [200] termination despite active streams or worker runs. You may either hibernate [202] to wait or KILL them before terminating." };
+        const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
+
+        // [102]<T> — waiting is a mode of CONTINUING (grammar 0.75.0, the terminal redesign): park
+        // up to T seconds, woken early by any arrival (stream/child conclusion, irc, inject), woken
+        // at T regardless — a park ALWAYS has a next turn, so nothing can be orphaned. <-1> parks
+        // indefinitely (the butler/worker pattern — owner-ruled ungated; the instrumentation renders
+        // it legibly). Internally the parked state remains loops.status=202: the model-facing SIGNAL
+        // retired, the engine's park state did not.
+        if (status === 102 && statement.lineMarker !== null) {
+            const seconds = statement.lineMarker.marks[0];
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw });
+            if (typeof seconds === "number") this.#parkDeadlines.set(loopId, seconds);
+            return { status: 102, attrs: { parked: seconds } };
         }
-        // Groundless hibernation (§send-groundless-hibernate): a SEND[202] alongside a same-turn READ,
-        // with no wake edge — the READ's result folds back on a next turn this park would never reach,
-        // so the model is sleeping on its own unanswered question. Refused 409 on the record, same
-        // shape as the premature 200 — the row keeps the [202] attempt, the loop stays a continue, the
-        // steer strikes. (A bare park holding nothing is legal — the voice door; never refused here.)
-        if (status === 202 && prematureRefusal === "groundless-hibernate") {
-            return { status: 409, error: "Attempted [202] hibernation with submitted retrieval operation(s) — the results arrive NEXT turn, and nothing here would wake you. SEND[102] to receive them." };
-        }
-        // §send-300-choices — SEND[300]:question;choice;choice;… asks the OPERATOR a multiple-choice
-        // question and PARKS the loop awaiting the answer. The park is the ordinary resumable 202
-        // state (same wake edges), the choice set rides the log/entry notification the client already
-        // streams (attrs carry the parsed shape), and the answer returns via the existing
-        // loop.inject → passive-wake path — the operator is the waker (the voice door, by design, so
-        // no groundless refusal applies: the question's recipient just received it). Teaching is
-        // INJECTABLE, never in the core packet — a choice prompt isn't always appropriate to advertise.
+
+        // §send-300-choices — ask the operator and park (the answer returns via loop.inject).
         if (status === 300) {
-            // A [300] can never be malformed (owner ruling): without choices it is simply an OPEN
-            // question to respond to — the choices are optional chooser sugar for the client UI.
-            const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
             const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);
             const [question = "", ...choices] = parts;
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw });
+            this.#parkDeadlines.set(loopId, -1); // awaiting a human — indefinite, like <-1>
             return { status: 300, attrs: choices.length > 0 ? { question, choices } : { question } };
         }
-        if (status === 200 || status === 202 || status === 499) {
-            // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance
-            // the loop; each carries its body as the loop's terminal message — the deliverable.
-            const body = statement.body;
-            const message = body === null ? null : typeof body === "string" ? body : body.raw;
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status, loop_id: loopId, message });
+
+        // [200] — terminate, gated by the pending set (post-batch). The row records the refused
+        // attempt faithfully (status_rx=409, never erased); the loop stays a continue; the strike
+        // couples in runTurn. [499] abandons regardless — discard by stated intent.
+        if (status === 200) {
+            const pending = await this.#pendingSet(runId, turnId);
+            if (pending.length > 0) {
+                return { status: 409, error: `Attempted [200] termination with pending work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
+            }
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: loopId, message: raw === "" ? null : raw });
+            return { status: 200 };
         }
+        if (status === 499) {
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 499, loop_id: loopId, message: raw === "" ? null : raw });
+            return { status: 499 };
+        }
+        // Every other signal — 102 bare, 202 (retired as a terminal; now ordinary mid-comms), 1xx —
+        // is a plain broadcast row: no loop transition.
         return { status };
     }
 

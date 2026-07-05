@@ -81,9 +81,47 @@ test("[§send-premature-terminate] a CONCLUDED child carrying an inherited non-t
     } finally { await db.close(); }
 });
 
-// NOTE: the same-turn READ + SEND[200] shape (terminating on a result that folds back next turn) is a
-// GRAMMAR-shape violation the parser rejects (plurnk-grammar#51), no longer an engine gate — so there is
-// no engine-side test for it here. The live-thing gate below is runtime-only.
+// The unified PENDING SET (grammar 0.75.0 / the terminal redesign): a [200] is judged at its own
+// dispatch, post-batch — streams, live children, and this turn's retrievals are ONE rule.
+
+test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `pend-read-${crypto.randomUUID()}`);
+        const parentRun = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const result = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(200, null, "the host is db.internal")] } }] }),
+            sessionId, runId: parentRun, loopId: parentLoop,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
+        assert.equal(result.steerStruck, true, "the pending-set refusal strikes");
+        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
+        assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[200] row records the refusal as 409");
+    } finally { await db.close(); }
+});
+
+test("[§send-premature-terminate] a [102]<-1> emission PARKS the loop — waiting is a mode of continuing", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `park-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "wait");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const park = { op: "SEND" as const, suffix: "", signal: 102, target: null, lineMarker: { marks: [-1] }, body: "standing by", position: { line: 1, column: 1 } };
+        await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [park] } }] }),
+            sessionId, runId, loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        assert.equal(loopStatus, 202, "the loop parked (the internal resumable state; the model-facing signal is [102]<-1>)");
+        assert.equal(engine.parkDeadlines.get(loopId), -1, "the deadline registry carries the indefinite marker for the daemon");
+    } finally { await db.close(); }
+});
 
 test("[§send-premature-terminate] a READ + non-terminal SEND[102] continue does not strike — the live-thing gate is [200]-only", async () => {
     // The correct shape stays clean: submit the READ, SEND[102] to receive it next turn. A continue is

@@ -36,7 +36,7 @@ import PacketBuilder, { type ChatMessage, type PacketAssistant } from "./PacketB
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import Dispatcher from "./Dispatcher.ts";
-import type { DispatchContext, DispatchResult, PrematureReason } from "./Dispatcher.ts";
+import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -133,6 +133,10 @@ export default class Engine {
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
+    // §send-premature-terminate/[102]<T> — park deadlines by loopId, written at dispatch (the
+    // marker's seconds; -1 = indefinite), consumed by the daemon's drain park-exit to schedule
+    // the deadline wake. In-memory: a daemon restart drops pending deadlines (documented).
+    readonly parkDeadlines: Map<number, number> = new Map();
 
     // The collaborators. Engine constructs them (they share its deps via
     // thunks where the value is late-injected — executors, loop signals)
@@ -224,6 +228,7 @@ export default class Engine {
             telemetry: this.#telemetry, proposals: this.#proposals,
             executors, loopSignal,
             streamEventNotify, wakeRunNotify, injectRun, cancelRun,
+            parkDeadlines: this.parkDeadlines,
         });
     }
 
@@ -886,49 +891,19 @@ export default class Engine {
         // post-dispatch sequence counter). §telemetry-uniform-error-channel
         const pendingEngineErrors: EngineErrorKind[] = [];
 
-        // Premature terminate: a SEND[200] while the run still holds a live thing — an open stream/spawn
-        // OR a non-terminal child run (§run-lifecycle: children and streams are the same kind of "live
-        // thing a run holds"). The model declared done with work running. The SEND is REFUSED 409 at
-        // dispatch (Dispatcher's send-broadcast handler) — the row records the [200] attempt + body
-        // faithfully (no erasure to 102) and auto-surfaces (status≥400); the loop never goes terminal.
-        // Here we only flag it so the turn stays a continue and the strike couples to the grinder
-        // (steerStruck → turnErrors): a model that won't stop premature-200ing escalates out via the rails.
-        // Live-thing is RUNTIME state — a spawned child's status, an open stream — that the parser can
-        // never see, so the engine is the only judge. The grammar-rule shapes (a terminal SEND after a
-        // same-turn READ) belong in the parser, not here (grammar#51).
-        let prematureReason: PrematureReason | undefined;
-        if (sendOp?.signal === 200) {
-            prematureReason = (await this.#runHoldsLiveThing(runId)) ? "live-thing" : undefined;
-        } else if (sendOp?.signal === 202) {
-            // §send-groundless-hibernate — a park is refused only when it ORPHANS work: the turn
-            // submitted a retrieval op — READ/FIND/OPEN, whose result folds back on a next turn this
-            // park may never have — AND no wake edge exists: nothing held (the pre-dispatch snapshot)
-            // and nothing wake-capable opened this turn (a spawn takes effect mid-turn, after the
-            // snapshot). Whether a wake edge exists is RUNTIME state, so this adjudication stays
-            // engine-side. FIND/OPEN count exactly like READ — a FIND-then-park wedged a live run
-            // eternally (benchmarks/run15: FIND 200s in, SEND[202], no wake edge, 240s timeout).
-            // A bare park holding nothing stays LEGAL — the voice door: a sibling irc / operator
-            // inject wakes it (§actor-boundary-passive-wake) and the daemon surfaces it as
-            // loop/quiesced (§run-lifecycle-quiesced), so it is never refused.
-            if (packetAssistant.ops.some((op) => op.op === "READ" || op.op === "FIND" || op.op === "OPEN")) {
-                const wakeEdge = (await this.#runHoldsLiveThing(runId))
-                    || packetAssistant.ops.some((op) => Engine.#opCanOpenWakeEdge(op));
-                if (!wakeEdge) prematureReason = "groundless-hibernate";
-            }
-        }
-        const prematureTerminate = prematureReason !== undefined;
-        if (prematureTerminate) steerStruck = true;
+        // Terminal adjudication moved to the DISPATCHER (§send-premature-terminate, the unified
+        // pending set): the terminal SEND is judged AT ITS OWN DISPATCH — after the emission's
+        // earlier ops executed — so a same-turn KILL+[200] repairs in one turn and a same-turn
+        // WORK+[200] is caught. A refused terminal (409) strikes via the dispatch-loop check below.
 
         // Rail #41 (revised): the per-turn requirement is "emit at least one op," not "emit a terminal
         // SEND." SEND is purely a signal verb; many turns pass without one. An empty op list strikes.
-        // A refused terminal (premature [200] or groundless [202]) keeps the turn a continue (102)
-        // though the SEND's signal stays on the row (the un-erased record) — the loop never went
-        // terminal, so the turn didn't either.
-        const turnStatus = prematureTerminate
-            ? TURN_STATUS_IMPLICIT_CONTINUE
-            : sendOp !== undefined
-                ? sendOp.signal
-                : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
+        // Provisional here — a terminal REFUSED at dispatch (the pending-set 409, only knowable
+        // post-dispatch) demotes the turn back to a continue below: the SEND's signal stays on the
+        // row (the un-erased record), but the loop never went terminal, so the turn didn't either.
+        let turnStatus = sendOp !== undefined
+            ? sendOp.signal
+            : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
         // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
         // The model continued with nothing to do. (Skipped when premature already steered this turn.)
@@ -992,9 +967,12 @@ export default class Engine {
                 statement, sessionId, runId, loopId, turnId,
                 sequence: rowSeq,
                 origin, onDispatch,
-                prematureRefusal: prematureTerminate && statement === sendOp ? prematureReason : undefined, // the pre-dispatch snapshot's reason, only for this turn's terminal SEND
             });
             statuses.push(result.status);
+            // A refused terminal (the pending-set 409) strikes — couples to the grinder rails
+            // exactly as the old premature gate did (§grinder-strike-coupling) — and demotes the
+            // turn to a continue: the loop never went terminal, so the turn didn't either.
+            if (statement === sendOp && result.status === 409) { steerStruck = true; turnStatus = TURN_STATUS_IMPLICIT_CONTINUE; }
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
         // §telemetry-uniform-error-channel — every engine + parse failure mints as an op='error'
@@ -1339,30 +1317,15 @@ export default class Engine {
         return { loopId, turnSeq };
     }
 
-    // §send-groundless-hibernate — can this op open a wake edge mid-turn? The grounding scan for a
+    //  — can this op open a wake edge mid-turn? The grounding scan for a
     // same-turn spawn-then-hibernate: an EXEC (stream conclusion / poll cadence wakes), a COPY to
     // run:// (child-conclusion wake, §run-lifecycle-child-wake), a directed SEND to run:// (irc — the
     // addressee can act and conclude back), or an http READ (a web fetch streams into a subscription).
     // Conservative on purpose: a false PERMIT risks a dead park only in the spawn-failed corner; a
     // false REFUSE breaks legitimate hibernation.
-    static #opCanOpenWakeEdge(op: PlurnkStatement): boolean {
-        if (op.op === "EXEC") return true;
-        const scheme = op.target !== null && op.target.kind === "url" ? op.target.scheme : null;
-        if (op.op === "COPY" && scheme === "run") return true;
-        if (op.op === "SEND" && scheme === "run") return true;
-        return op.op === "READ" && (scheme === "http" || scheme === "https");
-    }
 
     // A run "holds a live thing" iff it has an open stream/spawn (subscription registry or an
     // exec spawn) OR a non-terminal child run — the structured-concurrency invariant a terminal
-    // SEND must respect (§send-premature-terminate, §send-groundless-hibernate, §run-lifecycle:
+    // SEND must respect (§send-premature-terminate,  §run-lifecycle:
     // children and streams are the same kind of live thing a run holds).
-    async #runHoldsLiveThing(runId: number): Promise<boolean> {
-        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
-        if (openSubs.length > 0) return true;
-        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
-        if (execHandler?.hasActiveSpawns?.(runId) === true) return true;
-        const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
-        return liveChild !== undefined;
-    }
 }
