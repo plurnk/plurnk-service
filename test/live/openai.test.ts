@@ -9,13 +9,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop } from "../_live-harness.ts";
+import { liveSession, liveLoop, seedEntry } from "../_live-harness.ts";
 
-test("live OpenAI: a multi-turn loop drives paris → tokyo → compare to terminal", async () => {
+test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes with it", async () => {
     const s = await liveSession({ name: `live-loop-${crypto.randomUUID()}` });
     try {
-        const userPrompt = "Compare the populations of Paris and Tokyo. Approach: this turn, EDIT known:///city/paris/population with Paris's approximate population. Then SEND[102] continuing. On the next turn, EDIT known:///city/tokyo/population. Then SEND[102]. On a final turn, READ both, then SEND[200] with a one-sentence comparison.";
-        const { finalStatus, turnIds } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { timeoutMs: 240_000 });
+        // The multi-turn mechanics test, epistemically airtight: a RANDOM secret the model cannot
+        // know or infer from the packet, retrievable only by READ — whose result folds back on the
+        // NEXT turn (under rails the grammar itself makes a same-turn conclude unsampleable after a
+        // retrieval). So a correct conclusion PROVES the loop: turn N retrieves, turn N+1 consumes.
+        // One natural sentence, no ops spelled, no turn choreography (the contract-tier doctrine).
+        const secret = crypto.randomUUID().slice(0, 8);
+        await seedEntry(s.db, s.sessionId, { pathname: "vault/code.md", content: `the access code is ${secret}` });
+        const userPrompt = "What is the access code stored at known:///vault/code.md? Tell me in one sentence.";
+        const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { timeoutMs: 240_000 });
 
         console.log(`\n=== multi-turn run (${turnIds.length} turns, final ${finalStatus}) ===`);
         for (const [i, turnId] of turnIds.entries()) {
@@ -25,25 +32,9 @@ test("live OpenAI: a multi-turn loop drives paris → tokyo → compare to termi
             console.log(packet.assistant.content);
         }
 
-        const entries = await (s.db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
-        console.log("\n=== entries written ===");
-        for (const e of entries) console.log(`  known:///${e.pathname}`);
-
-        // Outcome assertions — not just "the loop terminated cleanly," which silently
-        // passed for a loop that wrote `paris` five times and never advanced. The task
-        // says: paris pop, then tokyo pop, then a comparison. Both city entries must exist.
-        const pathnames = entries.map((e) => e.pathname);
-        assert.ok(
-            pathnames.some((p) => p.includes("paris")),
-            `expected a known:///city/paris/* entry; got ${JSON.stringify(pathnames)}`,
-        );
-        assert.ok(
-            pathnames.some((p) => p.includes("tokyo")),
-            `expected a known:///city/tokyo/* entry; got ${JSON.stringify(pathnames)} — model never advanced past turn 1`,
-        );
-        assert.ok(entries.length >= 2, `expected at least 2 distinct entries (paris, tokyo); got ${entries.length}`);
-        assert.ok(turnIds.length >= 2, "multi-turn task needs more than 1 turn");
+        assert.ok(turnIds.length >= 2, "the fold-back forces the loop: the READ result arrives next packet, so a correct answer needs a second turn");
         assert.ok([200, 499].includes(finalStatus), `loop must terminate cleanly; got ${finalStatus}`);
+        assert.ok(lastContent.includes(secret), `the conclusion carries the seeded secret '${secret}' — proof the fold-back was consumed; got: ${lastContent.slice(0, 200)}`);
     } finally { await s.cleanup(); }
 });
 
