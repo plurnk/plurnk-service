@@ -137,11 +137,12 @@ test("[§grinder-overflow-error-row] overflow is a terse op='error' log row (413
     } finally { await db.close(); }
 });
 
-test("[§grinder-layer1-rollback] stage 2: a huge ENGINE-WRITTEN row on the current turn is folded — never a needless 413 (#332)", async () => {
+test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn folds like everything else — never a needless 413 (#332)", async () => {
     // The run14 shape: the prior turn is tiny, and the overflow lives in THIS turn's pre-model
-    // rows (a wake turn's auto-surfaced stream conclusion — 68KB of search results). Stage 1
-    // (fold the prior turn) cannot reclaim enough; stage 2 folds the current turn's own
-    // engine-written rows and the packet fits — the loop survives to read the folded row.
+    // rows (a wake turn's auto-surfaced stream conclusion — 68KB of search results). Under the
+    // one-rule grinder the current turn's rows fold with everything else and the packet fits —
+    // the loop survives to read the folded, re-OPENable row. (The retired staged design folded
+    // only the prior turn here and died 413 on content the engine itself had opened.)
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
@@ -173,8 +174,7 @@ test("[§grinder-layer1-rollback] stage 2: a huge ENGINE-WRITTEN row on the curr
         };
         const args = { initialMessages: MESSAGES, requirements: "", sessionId, runId, loopId, currentTurnSeq: 2, provider, gitStatus: null };
         const open = await buildAt(WIDE).buildRequestPacket(args);
-        // Pin the ceiling just under the open packet: stage 1 (tiny prior turn) can't save it;
-        // stage 2 (the 8KB current-turn row) must.
+        // Pin the ceiling just under the open packet: only folding the 8KB current-turn row can save it.
         const builder = buildAt(open.tokens - 50);
         const packet = await builder.buildRequestPacket(args);
         const result = await builder.enforceBudget({
