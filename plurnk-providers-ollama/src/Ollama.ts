@@ -7,6 +7,7 @@ import {
     OpenAICompatProvider,
     parseRequiredInt,
     thinkingFromEnv,
+    dataCaptureFromEnv,
     parseRequiredFloat,
     providerSource,
     requireEnv,
@@ -47,6 +48,8 @@ export default class Ollama {
             retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", "ollama"),
             thinking: thinkingFromEnv(env, "ollama"),
             retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", "ollama"),
+            // Opt-in data capture (#36), off by default, per-alias-scopable.
+            ...dataCaptureFromEnv(env, "ollama"),
             reasoningStyle: "think",
             source: providerSource("ollama"),
         });
