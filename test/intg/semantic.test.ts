@@ -157,3 +157,27 @@ test("[#47] PLURNK_MIMETYPES_NO_EMBED: a matched entry derives FTS-only — zero
         if (prev === undefined) delete process.env.PLURNK_MIMETYPES_NO_EMBED; else process.env.PLURNK_MIMETYPES_NO_EMBED = prev;
     }
 });
+
+test("[#337] the pump derives smallest-first — a fat outlier never clogs the corpus warm-up", async () => {
+    // Pure scheduling: nothing skipped, nothing capped — the whale derives to full depth, LAST.
+    // Proven by insertion order: embedding rowids are monotonic, so the small entries' vectors
+    // must land before the big entry's despite the big entry being written first.
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `sort-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        const whale = Array.from({ length: 120 }, (_, i) => `whale line ${i}: substantial prose about topic ${i} with enough words to chunk`).join("\n");
+        await new Known().edit(editStmt(url("whale.md"), whale), ctx);       // written FIRST, biggest
+        await new Known().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);
+        await new Known().edit(editStmt(url("minnow-b.md"), "a tiny note about lemons"), ctx);
+        await EntryManifest.maintainDerivations(ctx);
+        const order = await (db.test_embedding_insertion_order as PrepMethod).all<{ pathname: string; first_rowid: number }>({});
+        const byPath = new Map(order.map((o) => [o.pathname, o.first_rowid]));
+        const whaleFirst = byPath.get("/whale.md") ?? -1;
+        assert.ok((byPath.get("/minnow-a.md") ?? Infinity) < whaleFirst, "minnow-a embedded before the whale");
+        assert.ok((byPath.get("/minnow-b.md") ?? Infinity) < whaleFirst, "minnow-b embedded before the whale");
+    } finally { db.close(); }
+});

@@ -312,3 +312,8 @@ SELECT count(*) AS n FROM entry_embeddings WHERE entry_id = $entry_id;
 
 -- PREP: test_get_log_entry_attrs_by_turn
 SELECT attrs FROM log_entries WHERE turn_id = $turn_id AND op = $op ORDER BY id DESC LIMIT 1;
+
+-- PREP: test_embedding_insertion_order
+SELECT e.pathname, min(ee.rowid) AS first_rowid
+FROM entry_embeddings ee JOIN entries e ON e.id = ee.entry_id
+GROUP BY e.pathname;

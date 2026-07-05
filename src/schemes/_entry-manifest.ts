@@ -212,6 +212,11 @@ export default class EntryManifest {
             const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
             if (hash !== r.deep_hash) pending.push({ r, hash }); // unchanged since last derivation → deep rows persist
         }
+        // Smallest-first (owner ruling, service#337 follow-up): a fat outlier (a minified bundle,
+        // a lockfile that slipped classification) derives LAST, so the corpus is mostly-warm early
+        // and the hot path never queues behind the whale. Pure scheduling — nothing is skipped,
+        // nothing is lazy; the whale still derives to full depth, just at the back of the line.
+        pending.sort((a, b) => a.r.content.length - b.r.content.length);
         const total = pending.length;
         const step = total > 1 ? Math.max(1, Math.floor(total / 10)) : 0; // ~10 milestones, or silent for 0-1
         let completed = 0;

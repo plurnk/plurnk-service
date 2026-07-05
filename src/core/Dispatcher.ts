@@ -732,14 +732,13 @@ export default class Dispatcher {
         // no groundless refusal applies: the question's recipient just received it). Teaching is
         // INJECTABLE, never in the core packet — a choice prompt isn't always appropriate to advertise.
         if (status === 300) {
+            // A [300] can never be malformed (owner ruling): without choices it is simply an OPEN
+            // question to respond to — the choices are optional chooser sugar for the client UI.
             const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
             const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);
-            if (parts.length < 2) {
-                return { status: 400, error: "SEND[300] is a multiple-choice prompt: question;choice;choice;… — at least a question and one choice." };
-            }
-            const [question, ...choices] = parts;
+            const [question = "", ...choices] = parts;
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw });
-            return { status: 300, attrs: { question, choices } };
+            return { status: 300, attrs: choices.length > 0 ? { question, choices } : { question } };
         }
         if (status === 200 || status === 202 || status === 499) {
             // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance

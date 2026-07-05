@@ -35,20 +35,25 @@ test("[§send-300-choices] SEND[300] parses the choice set onto the row and PARK
     } finally { await db.close(); }
 });
 
-test("[§send-300-choices] a malformed [300] body (no choices) is a 400 steer — the loop does NOT park", async () => {
+test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — parks the same, never malformed", async () => {
+    // Owner ruling: choices are optional chooser sugar; a choiceless [300] simply asks freeform.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `c300m-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, `c300o-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "ask");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("just a question, no semicolons")] } }, { assistant: { content: "", reasoning: null, ops: [sendStmt(102, null, "ok")] } }] }),
+        const r = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("What should the deploy tag be?")] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 102, "a malformed ask never parks — the 400 steers the shape");
+        assert.equal(loopStatus, 202, "the open question parks awaiting the operator's freeform answer");
+        const attrs = await (db.test_get_log_entry_attrs_by_turn as PrepMethod).get<{ attrs: string }>({ turn_id: r.turnId, op: "SEND" });
+        const parsed = JSON.parse(attrs?.attrs ?? "{}") as { question?: string; choices?: string[] };
+        assert.equal(parsed.question, "What should the deploy tag be?", "attrs carry the question");
+        assert.equal(parsed.choices, undefined, "no choices field for the bare open-question form");
     } finally { await db.close(); }
 });
 
