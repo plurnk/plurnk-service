@@ -743,3 +743,12 @@ The axes do not collapse: NDJSON is text AND line-navigable (each line is a reco
 ### 20.3 Consumer migration
 
 plurnk-schemes retires `TEXT_APPLICATION_MIMETYPES` / `TREE_NAVIGABLE_MIMETYPES` and delegates: sync call sites use `classifyMimetype`, registry-aware sites use `classify()`. The third axis schemes floated (structural-JSON for `<L>` item dispatch) stays scheme-semantics (`isJson` is RFC 6839 trivia, not handler knowledge) — not absorbed.
+
+## 21. Embedding-eligibility suppression (framework v0.18.1, issue #47)
+
+Machine-generated content (minified bundles, lockfiles, sourcemaps) is honest bytes but semantic-derivation waste — a minified vuepress bundle chunked to 2,162 embeddings wall-clocked a CPU run (service#337). The eligibility decision is **operator configuration, not code**: `PLURNK_MIMETYPES_NO_EMBED` is a comma-separated basename pattern list (`*` wildcard; no-`*` = exact basename; first match wins) whose sane default ships in `.env.example`. The knob IS the classification — tunable per deployment, extensible without a release, and the matched pattern is the observable reason.
+
+- `ProcessResult.noEmbed?: string` — the matched pattern, present iff matched (also on the grammar-degraded path); consumers skip semantic derivation and stay FTS-only for these entries.
+- `matchNoEmbed(path)` — the exported matcher, read at call time from the host env like the pdf caps. Unset/empty → nothing suppressed; **no code fallback carries a hidden default**.
+- A content heuristic (line-length mass ratios) was evaluated and **rejected**: it false-positives on line-record data (large-record JSONL, wide-row CSV), silently excluding real searchable content — a worse failure than the waste it prevents — and its thresholds would be hidden magic. Name-based misses a generated file with an innocent name; the operator adds a pattern, which is the paradigm working, not failing.
+- Whole-content size ceilings are explicitly NOT this mechanism: a 500-page novel embeds fully (owner ruling, #47) — suppression is name-targeted, never size-targeted.

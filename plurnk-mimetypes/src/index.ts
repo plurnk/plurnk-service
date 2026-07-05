@@ -73,6 +73,10 @@ export type {
 export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
 
+// Embedding-eligibility suppression (SPEC §21, #47) — the
+// PLURNK_MIMETYPES_NO_EMBED matcher, also surfaced as ProcessResult.noEmbed.
+export { matchNoEmbed } from "./noEmbed.ts";
+
 // Tokenizer seam (SPEC §19, #44) — exact LLM token counting via the opt-in
 // @plurnk/plurnk-mimetypes-tokenizers artifact package.
 export type { TokenizerResolution } from "./Tokenizers.ts";
