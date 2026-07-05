@@ -737,15 +737,14 @@ export default class Dispatcher {
         }
 
         // §send-300-choices — ask the operator and park (the answer returns via loop.inject).
-        // GATED, off by default (the cascade): asks are only meaningful where an operator is
-        // watching. PLURNK_SERVICE_ASK=1 enables environment-wide; a session's settings.ask
-        // REPLACES the env default (the interactive client with a human enables its own sessions;
-        // a headless/bench session stays ask-less). Disabled → the ask is refused with a steer to
-        // self-decide — never a park into the void. The TEACHING is injectable for the same reason.
+        // The three-state cascade (owner design): PLURNK_QUESTIONS unset = ALLOWED (not enabled);
+        // =0 = DENIED servicewide (a ceiling the client cannot override); ENABLED requires the
+        // client to affirmatively pass it per session (settings.questions — the interactive client
+        // with a human enables its own sessions; headless/bench never asks). Enabled sessions ALSO
+        // get the questions.md teaching injected (docEntries) — capability and teaching gate as one.
+        // Disabled → refused with a self-decide steer, never a park into the void.
         if (status === 300) {
-            const sessionAsk = (await SessionSettings.read(this.#db, ctx.sessionId)).ask;
-            const askEnabled = sessionAsk ?? (process.env.PLURNK_SERVICE_ASK === "1");
-            if (!askEnabled) {
+            if (!(await SessionSettings.questionsEnabled(this.#db, ctx.sessionId))) {
                 return { status: 409, error: "Operator asks ([300]) are not enabled in this environment — no one is watching to answer. Decide yourself and proceed: SEND[102] to continue, or [200] to conclude." };
             }
             const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);

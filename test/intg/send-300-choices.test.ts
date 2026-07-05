@@ -10,13 +10,13 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-// Asks are OFF by default (PLURNK_SERVICE_ASK) — these tests exercise the enabled path.
-const withAsk = async <T>(fn: () => Promise<T>): Promise<T> => {
-    const prev = process.env.PLURNK_SERVICE_ASK;
-    process.env.PLURNK_SERVICE_ASK = "1";
-    try { return await fn(); }
-    finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_ASK; else process.env.PLURNK_SERVICE_ASK = prev; }
+// Questions: ALLOWED by default (PLURNK_QUESTIONS unset), enabled only when the client
+// affirmatively requests per session (settings.questions) — the enabled-path tests do exactly
+// what a real interactive client does.
+const enableQuestions = async (db: Awaited<ReturnType<typeof openMigrated>>, sessionId: number): Promise<void> => {
+    await (db.test_set_session_settings as PrepMethod).run({ id: sessionId, settings: JSON.stringify({ questions: true }) });
 };
+const withAsk = async <T>(fn: () => Promise<T>): Promise<T> => fn(); // enabled per-session now — wrapper retired in place
 
 const send300 = (body: string) => ({ ...sendStmt(300, null, body) });
 
@@ -24,6 +24,7 @@ test("[§send-300-choices] SEND[300] parses the choice set onto the row and PARK
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `c300-${crypto.randomUUID()}`);
+        await enableQuestions(db, sessionId);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "ask");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -48,6 +49,7 @@ test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — 
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `c300o-${crypto.randomUUID()}`);
+        await enableQuestions(db, sessionId);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "ask");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -77,7 +79,7 @@ test("[§send-300-choices] e2e: the ask parks, the operator's inject IS the answ
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "choices-e2e" });
+            await rpcCall(ws, 1, "session.create", { name: "choices-e2e", settings: { questions: true } });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const entries = subscribeNotifications(ws, "log/entry");
             await rpcCall(ws, 2, "loop.run", { prompt: "deploy the service", flags: { yolo: true } });
@@ -94,7 +96,7 @@ test("[§send-300-choices] e2e: the ask parks, the operator's inject IS the answ
 }); });
 
 
-test("[§send-300-choices] asks are OFF by default — a [300] is refused with a self-decide steer, never a park into the void", async () => {
+test("[§send-300-choices] not enabled by default — a [300] without the client's request is refused with a self-decide steer", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `c300off-${crypto.randomUUID()}`);
@@ -113,11 +115,11 @@ test("[§send-300-choices] asks are OFF by default — a [300] is refused with a
     } finally { await db.close(); }
 });
 
-test("[§send-300-choices] settings.ask=true enables asks for the session over the env default", async () => {
+test("[§send-300-choices] settings.questions=true (the client's affirmative request) enables the session", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `c300on-${crypto.randomUUID()}`);
-        await (db.test_set_session_settings as PrepMethod).run({ id: sessionId, settings: JSON.stringify({ ask: true }) });
+        await (db.test_set_session_settings as PrepMethod).run({ id: sessionId, settings: JSON.stringify({ questions: true }) });
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "ask");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -129,4 +131,54 @@ test("[§send-300-choices] settings.ask=true enables asks for the session over t
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 202, "the interactive session's ask parks — the client enabled it");
     } finally { await db.close(); }
+});
+
+test("[§send-300-choices] PLURNK_QUESTIONS=0 is a servicewide ceiling — the client's request cannot override it", async () => {
+    const prev = process.env.PLURNK_QUESTIONS;
+    process.env.PLURNK_QUESTIONS = "0";
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `c300deny-${crypto.randomUUID()}`);
+        await enableQuestions(db, sessionId);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "ask");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
+            sessionId, runId, loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        assert.equal(loopStatus, 102, "denied servicewide — even a requesting session cannot park an ask");
+    } finally {
+        await db.close();
+        if (prev === undefined) delete process.env.PLURNK_QUESTIONS; else process.env.PLURNK_QUESTIONS = prev;
+    }
+});
+
+test("[§send-300-choices] the teaching injects ONLY where enabled — docEntries carries questions.md for the requesting session, not the default one", async () => {
+    // The installed docs package (0.1.1) predates questions.md — seed the REAL read location so
+    // the mechanism is exercised on the real path; restored after. Redundant-but-harmless once
+    // docs 0.1.2 ships the file.
+    const { writeFileSync, unlinkSync, existsSync, readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const Paths = (await import("../../src/Paths.ts")).default;
+    const qPath = resolve(Paths.schemeDocs, "questions.md");
+    const hadFile = existsSync(qPath);
+    const original = hadFile ? readFileSync(qPath, "utf8") : null;
+    writeFileSync(qPath, "# Operator questions\nChoices are suggestions — the operator always has a free-text option.\n");
+    const db = await openMigrated();
+    try {
+        const off = await insertSession(db, `qdoc-off-${crypto.randomUUID()}`);
+        const on = await insertSession(db, `qdoc-on-${crypto.randomUUID()}`);
+        await enableQuestions(db, on);
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const offDocs = await engine.docEntries(off);
+        const onDocs = await engine.docEntries(on);
+        assert.ok(!offDocs.some((d) => d.name === "questions"), "an un-enabled session is never taught the op it can't use");
+        assert.ok(onDocs.some((d) => d.name === "questions" && /free-text/.test(d.content)), "the enabled session gets questions.md — including the always-free-text answer teaching");
+    } finally {
+        await db.close();
+        if (original !== null) writeFileSync(qPath, original); else if (existsSync(qPath)) unlinkSync(qPath);
+    }
 });

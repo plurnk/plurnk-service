@@ -10,6 +10,7 @@ import { Policy } from "@plurnk/plurnk-execs";
 import SessionSettings from "./session-settings.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
+import { resolve as resolvePath } from "node:path";
 import Paths from "../Paths.ts";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
@@ -170,7 +171,7 @@ export default class PacketBuilder {
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.buildTelemetryErrors(loopId, currentTurnSeq);
         const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
-        const tools = this.#collectTools(await this.#sessionEnabled(sessionId));
+        const tools = this.#collectTools(await this.#sessionEnabled(sessionId), await SessionSettings.questionsEnabled(this.#db, sessionId));
         // Budget readout (SPEC.md §tokenomics). Two-pass: render the budget from
         // the structured log's subtotals with a {{tokensFree}} placeholder, build
         // the section list, measure the assembled total, resolve free, substitute.
@@ -317,8 +318,11 @@ export default class PacketBuilder {
     // it can do before the rules. Each available executor tag contributes its self-documenting
     // example (plurnk-execs#7), retiring the blind EXEC.
     // The capability sheet — the live tool surface (wired executor tags). §tools-capability-sheet
-    #collectTools(sessionEnabled: (tag: string) => boolean): string[] {
+    #collectTools(sessionEnabled: (tag: string) => boolean, questionsOn = false): string[] {
         const tools: string[] = [];
+        // §send-300-choices — the one-liner rides ONLY where questions are enabled (allowed +
+        // client-requested); the fuller questions.md doc injects through docEntries the same way.
+        if (questionsOn) tools.push(teachingLine("<<SEND[300]:Deploy where?;staging;production:SEND"));
         // Each available runtime tag contributes its self-documenting example —
         // the example carries syntax + purpose, so there's no prose line. Tags
         // with no example (sh/node, covered by the core prompt) contribute
@@ -346,6 +350,15 @@ export default class PacketBuilder {
     // catalogue's doc-links READ and the manifest carries each doc's token cost.
     async docEntries(sessionId: number): Promise<Array<{ name: string; content: string }>> {
         const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
+        // §send-300-choices — the conditional teaching: questions.md (from @plurnk/plurnk-docs)
+        // materializes ONLY for enabled sessions — the same conditional-doc mechanism as the EXEC
+        // plugin docs below. An un-enabled session is never taught the op it can't use.
+        if (await SessionSettings.questionsEnabled(this.#db, sessionId)) {
+            try {
+                const q = await readFile(resolvePath(Paths.schemeDocs, "questions.md"), "utf8");
+                if (q.length > 0) out.push({ name: "questions", content: q });
+            } catch { /* docs package without questions.md — nothing to inject */ }
+        }
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
