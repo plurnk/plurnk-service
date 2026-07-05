@@ -17,6 +17,7 @@ import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
+import SessionSettings from "./session-settings.ts";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -736,7 +737,17 @@ export default class Dispatcher {
         }
 
         // §send-300-choices — ask the operator and park (the answer returns via loop.inject).
+        // GATED, off by default (the cascade): asks are only meaningful where an operator is
+        // watching. PLURNK_SERVICE_ASK=1 enables environment-wide; a session's settings.ask
+        // REPLACES the env default (the interactive client with a human enables its own sessions;
+        // a headless/bench session stays ask-less). Disabled → the ask is refused with a steer to
+        // self-decide — never a park into the void. The TEACHING is injectable for the same reason.
         if (status === 300) {
+            const sessionAsk = (await SessionSettings.read(this.#db, ctx.sessionId)).ask;
+            const askEnabled = sessionAsk ?? (process.env.PLURNK_SERVICE_ASK === "1");
+            if (!askEnabled) {
+                return { status: 409, error: "Operator asks ([300]) are not enabled in this environment — no one is watching to answer. Decide yourself and proceed: SEND[102] to continue, or [200] to conclude." };
+            }
             const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);
             const [question = "", ...choices] = parts;
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw });

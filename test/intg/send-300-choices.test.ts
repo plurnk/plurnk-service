@@ -10,9 +10,17 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
+// Asks are OFF by default (PLURNK_SERVICE_ASK) — these tests exercise the enabled path.
+const withAsk = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const prev = process.env.PLURNK_SERVICE_ASK;
+    process.env.PLURNK_SERVICE_ASK = "1";
+    try { return await fn(); }
+    finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_ASK; else process.env.PLURNK_SERVICE_ASK = prev; }
+};
+
 const send300 = (body: string) => ({ ...sendStmt(300, null, body) });
 
-test("[§send-300-choices] SEND[300] parses the choice set onto the row and PARKS the loop (resumable 202)", async () => {
+test("[§send-300-choices] SEND[300] parses the choice set onto the row and PARKS the loop (resumable 202)", async () => { await withAsk(async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `c300-${crypto.randomUUID()}`);
@@ -33,9 +41,9 @@ test("[§send-300-choices] SEND[300] parses the choice set onto the row and PARK
         assert.equal(parsed.question, "Which environment?", "attrs carry the question");
         assert.deepEqual(parsed.choices, ["production", "staging", "local"], "attrs carry the choice set — the client's chooser UI reads the log/entry it already streams");
     } finally { await db.close(); }
-});
+}); });
 
-test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — parks the same, never malformed", async () => {
+test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — parks the same, never malformed", async () => { await withAsk(async () => {
     // Owner ruling: choices are optional chooser sugar; a choiceless [300] simply asks freeform.
     const db = await openMigrated();
     try {
@@ -55,9 +63,9 @@ test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — 
         assert.equal(parsed.question, "What should the deploy tag be?", "attrs carry the question");
         assert.equal(parsed.choices, undefined, "no choices field for the bare open-question form");
     } finally { await db.close(); }
-});
+}); });
 
-test("[§send-300-choices] e2e: the ask parks, the operator's inject IS the answer, the loop resumes and concludes with it", async () => {
+test("[§send-300-choices] e2e: the ask parks, the operator's inject IS the answer, the loop resumes and concludes with it", async () => { await withAsk(async () => {
     // The full client contract through the real daemon: the model asks [300], the client (who
     // streams the log/entry carrying {question, choices}) answers via the EXISTING loop.inject,
     // the passive wake resumes the parked loop, and the next turn concludes using the answer.
@@ -83,4 +91,42 @@ test("[§send-300-choices] e2e: the ask parks, the operator's inject IS the answ
             assert.ok(done !== undefined, "the ask→answer→resume→conclude cycle completed at 200");
         } finally { ws.close(); }
     });
+}); });
+
+
+test("[§send-300-choices] asks are OFF by default — a [300] is refused with a self-decide steer, never a park into the void", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `c300off-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "ask");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const r = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
+            sessionId, runId, loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        assert.equal(loopStatus, 102, "no park — nobody is watching to answer");
+        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ op: string; status_rx: number }>({ turn_id: r.turnId });
+        assert.equal(rows.find((row) => row.op === "SEND")?.status_rx, 409, "the ask is refused with the self-decide steer");
+    } finally { await db.close(); }
+});
+
+test("[§send-300-choices] settings.ask=true enables asks for the session over the env default", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `c300on-${crypto.randomUUID()}`);
+        await (db.test_set_session_settings as PrepMethod).run({ id: sessionId, settings: JSON.stringify({ ask: true }) });
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "ask");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
+            sessionId, runId, loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        assert.equal(loopStatus, 202, "the interactive session's ask parks — the client enabled it");
+    } finally { await db.close(); }
 });

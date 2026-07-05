@@ -20,6 +20,7 @@ export type SessionOpenContext = {
     git: boolean | null;          // ceiling — env AND session; false denies git; null = unset (#232)
     client: string | null;        // #249 — session-stable frontend id, forwarded as Plurnk-Client (plurnk provider only); null = unset
     execs: Record<string, string> | null; // #328 — the client's PLURNK_EXECS_* policy layer; null = unset. Subtractive per-session narrowing over the boot registry.
+    ask: boolean | null;          // §send-300-choices — operator asks enabled? REPLACE semantics over PLURNK_SERVICE_ASK; null = unset (env default).
 };
 
 export default class SessionSettings {
@@ -27,16 +28,17 @@ export default class SessionSettings {
     // bag never reaches here — session.create validates before persisting.
     static async read(db: Db, sessionId: number): Promise<SessionOpenContext> {
         const row = await (db.session_get_settings as PrepMethod).get<{ settings: string }>({ session_id: sessionId });
-        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown }) : {};
+        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown; ask?: unknown }) : {};
         const filesItems = typeof bag.filesItems === "number" ? bag.filesItems : null;
         const maxCommands = typeof bag.maxCommands === "number" ? bag.maxCommands : null;
         const git = typeof bag.git === "boolean" ? bag.git : null;
         const client = typeof bag.client === "string" ? bag.client : null;
         const execs = (typeof bag.execs === "object" && bag.execs !== null && !Array.isArray(bag.execs)) ? (bag.execs as Record<string, string>) : null;
+        const ask = typeof bag.ask === "boolean" ? bag.ask : null;
         const mdDocs = Array.isArray(bag.mdDocs)
             ? bag.mdDocs.filter((d): d is ClientMdDoc => typeof (d as ClientMdDoc)?.alias === "string" && typeof (d as ClientMdDoc)?.content === "string")
             : [];
-        return { filesItems, mdDocs, maxCommands, git, client, execs };
+        return { filesItems, mdDocs, maxCommands, git, client, execs, ask };
     }
 
     // The turn-0 reference-doc set: server env docs (PLURNK_SERVICE_MD_*, read from disk) UNION the

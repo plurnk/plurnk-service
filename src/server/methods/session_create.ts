@@ -60,7 +60,7 @@ export default class SessionCreateMethod {
                 name: "string? — session name (auto-generated if omitted)",
                 projectRoot: "string? — absolute path to the client's workspace; null/omitted = headless mode (no disk side-effects on file ops)",
                 constraints: "array? — [{effect, glob}] membership overlay seeded atomically at creation so turn-1's manifest is right with no follow-up RPC. effect: pick (admit a file git misses / the sole source when headless) | hide (drop a tracked match) | view (read-only) | repo (declare a git repo folder anywhere — its members join the manifest, addressed relative to the project root: clean under it, `..`-prefixed outside). glob: node:path glob vs workspace-relative paths (a folder for repo).",
-                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { filesItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_SERVICE_FILES_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_SERVICE_MD_* docs; client wins on alias collision), client?: string (#249 — session-stable frontend id, e.g. 'plurnk.nvim/1.4.0', forwarded to the plurnk provider as Plurnk-Client; dropped by other providers), execs?: { [PLURNK_EXECS_* flag]: string } (#328 — the client's exec-runtime policy layer, subtractive: narrows the boot-registered set per session, never widens; e.g. { PLURNK_EXECS_ONLY: 'search' } or { PLURNK_EXECS_NODE: '0' }. MCP server-config keys rejected) }",
+                settings: "object? — client-chosen open-context, persisted per session, read at turn-0 over env. { filesItems?: number (-1 full | 0 off | N first-N; replaces PLURNK_SERVICE_FILES_ITEMS), mdDocs?: [{alias, content}] (unioned with server PLURNK_SERVICE_MD_* docs; client wins on alias collision), client?: string (#249 — session-stable frontend id, e.g. 'plurnk.nvim/1.4.0', forwarded to the plurnk provider as Plurnk-Client; dropped by other providers), execs?: { [PLURNK_EXECS_* flag]: string } (#328 — the client's exec-runtime policy layer, subtractive: narrows the boot-registered set per session, never widens; e.g. { PLURNK_EXECS_ONLY: 'search' } or { PLURNK_EXECS_NODE: '0' }. MCP server-config keys rejected), ask?: boolean (§send-300-choices — operator asks ([300]) for this session; REPLACES the PLURNK_SERVICE_ASK env default: an interactive client with a human enables, headless stays off) }",
             },
         });
 
@@ -96,8 +96,8 @@ export default class SessionCreateMethod {
     static #parseSettings(raw: unknown): string {
         if (raw === undefined || raw === null) return "{}";
         if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("session.create: settings must be an object");
-        const r = raw as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown };
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string; execs?: Record<string, string> } = {};
+        const r = raw as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown; ask?: unknown };
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string; execs?: Record<string, string>; ask?: boolean } = {};
         if (r.filesItems !== undefined) {
             if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems)) {
                 throw new Error("session.create: settings.filesItems must be an integer (-1 full | 0 off | N first-N)");
@@ -116,6 +116,12 @@ export default class SessionCreateMethod {
         if (r.git !== undefined) {
             if (typeof r.git !== "boolean") throw new Error("session.create: settings.git must be a boolean (false denies git for the session)");
             out.git = r.git;
+        }
+        // §send-300-choices — operator asks: REPLACE semantics over PLURNK_SERVICE_ASK (an
+        // interactive client with a human enables its sessions; headless stays ask-less).
+        if (r.ask !== undefined) {
+            if (typeof r.ask !== "boolean") throw new Error("session.create: settings.ask must be a boolean (operator asks — [300] — enabled for this session)");
+            out.ask = r.ask;
         }
         // #249 — session-stable frontend id (e.g. "plurnk.nvim/1.4.0"), forwarded to the plurnk
         // provider as Plurnk-Client telemetry; ignored by every other provider. Self-identified.
