@@ -390,7 +390,9 @@ export default class Exec {
                 }
                 await (db.engine_insert_log_entry as PrepMethod).get({
                     run_id: narration.runId, loop_id: narration.loopId, turn_id: narration.turnId, sequence: narration.seq++,
-                    origin: "plurnk", source: String(ctx.runId), op: "EDIT", suffix: "", signal: null,
+                    // signal carries the tags — the SAME slot a model's EDIT[tags] uses, so the
+                    // ambient row renders its tags natively everywhere (packet meta line, digest).
+                    origin: "plurnk", source: String(ctx.runId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
                     scheme: parsed.scheme, username: null, password: null, hostname: null, port: null,
                     pathname, params: null, fragment: null, lineMarker: null,
                     tx: "", mimetype_tx: "text/plain",

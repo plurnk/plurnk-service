@@ -87,5 +87,7 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         assert.equal(narrations[0]?.source, String(runId), "source attributes the CALLING run");
         assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries tokens — the folded meta line shows size without a byte of body");
         assert.ok(/turkeys_query/.test(narrations[0]?.attrs ?? ""), "attrs carry the slug tags for the meta line");
+        const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ run_id: plurnkRun.id, op: "EDIT" });
+        assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await db.close(); }
 });

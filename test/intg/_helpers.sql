@@ -323,3 +323,6 @@ SELECT pathname, source, tokens, attrs FROM log_entries WHERE run_id = $run_id A
 
 -- PREP: test_count_entries_by_scheme
 SELECT count(*) AS n FROM entries WHERE scheme = $scheme;
+
+-- PREP: test_log_entries_by_run_op_signal
+SELECT signal FROM log_entries WHERE run_id = $run_id AND op = $op ORDER BY id;
