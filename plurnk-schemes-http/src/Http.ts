@@ -157,7 +157,26 @@ export default class Http implements SchemeHandler {
     async #fetchStream(target: UrlPath, ctx: SchemeCtx, method: string, body: string | undefined): Promise<PassthroughResult> {
         const url = Http.#rewriteHostileHost(Http.#urlFrom(target));
         const pathname = target.pathname;
-        const headers = target.headers;  // [key,value][] | undefined — opaque to grammar, honored here
+        const headers = target.headers ?? [];  // [key,value][] — opaque to grammar, honored here
+
+        // Conditional revalidation (GET only, service#341): recover the prior
+        // fetch's validators + body from THIS scheme's own stored entry (entries
+        // cap, own namespace — sanctioned). If the origin answers 304, we re-serve
+        // the cached body and skip the expensive render. Always-revalidate is the
+        // meaning of `volatile`; there is no local TTL (that arrives later as the
+        // SAME freshness predicate at #storedCopyServable — service#333). Captured
+        // BEFORE the seed write below overwrites the entry.
+        let cached: { header: string; body: { content: string; mimetype: string } } | undefined;
+        const conditional: Array<[string, string]> = [];
+        if (method === "GET") {
+            const prior = await ctx.entries.read(pathname);
+            const pb = prior.entry?.channels[BODY];
+            if (pb !== undefined && pb.content.length > 0) {
+                const ph = prior.entry?.channels[HEADER]?.content ?? "";
+                cached = { header: ph, body: { content: pb.content, mimetype: pb.mimetype } };
+                conditional.push(...Http.#validators(ph));
+            }
+        }
 
         // Local AbortController for force-cancel from outside (SEND[499]).
         const local = new AbortController();
@@ -180,10 +199,24 @@ export default class Http implements SchemeHandler {
             const response = await fetch(url, {
                 method,
                 body,
-                headers,
+                headers: [...headers, ...conditional],
                 signal: local.signal,
                 redirect: "follow",
             });
+
+            // Origin confirms the cached copy is current → re-serve it, skip the
+            // render/stream. A 304-serve is a first-class READ: the model sees the
+            // stored body as an ordinary streaming result, never a cache status
+            // (service#341). `revalidated 304` rides the close summary for the log
+            // meta line + digest. notifyChunk appends onto the freshly-seeded empty
+            // channels, restoring the cached header + body.
+            if (cached !== undefined && Http.#storedCopyServable(response)) {
+                await ctx.subscriptions.notifyChunk(HEADER, cached.header, "text/plain");
+                await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
+                await ctx.subscriptions.close("done", `revalidated 304; ${cached.body.content.length} chars from cache`);
+                return { shape: "passthrough", status: 102 };
+            }
+
             const contentType = response.headers.get("content-type") ?? "";
 
             // Always-render: a GET of an HTML page is re-acquired through the
@@ -269,6 +302,28 @@ export default class Http implements SchemeHandler {
         const gh = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(url);
         if (gh !== null) return `https://raw.githubusercontent.com/${gh[1]}/${gh[2]}/${gh[3]}`;
         return url;
+    }
+
+    // The single freshness-predicate boundary (service#341, #333). Today a
+    // conditional-GET `304 Not Modified` proves the stored copy is current, so it
+    // is servable without a re-fetch/re-render. service#333's per-URL TTL lands
+    // HERE as the SAME predicate (a pre-fetch branch) — one stamp, one rule,
+    // identical at every entry point. Never add a second freshness check elsewhere.
+    static #storedCopyServable(response: Response): boolean {
+        return response.status === 304;
+    }
+
+    // Conditional-request headers from the prior fetch's stored response headers
+    // (the HEADER channel text #writeHeader wrote): ETag → If-None-Match,
+    // Last-Modified → If-Modified-Since. Empty when neither is present — the
+    // origin then just 200s with a full body, which is correct.
+    static #validators(priorHeader: string): Array<[string, string]> {
+        const out: Array<[string, string]> = [];
+        const etag = /^etag:[ \t]*(.+)$/im.exec(priorHeader);
+        if (etag !== null) out.push(["If-None-Match", etag[1].trim()]);
+        const lastModified = /^last-modified:[ \t]*(.+)$/im.exec(priorHeader);
+        if (lastModified !== null) out.push(["If-Modified-Since", lastModified[1].trim()]);
+        return out;
     }
 
     static #bad(status: number, scheme: string, kind: string, message: string): PassthroughResult {

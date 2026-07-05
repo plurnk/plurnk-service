@@ -39,7 +39,7 @@ const fakeBrowser = (html: string) => {
 };
 
 // ── conformant ctx + recorder ─────────────────────────────────────────────
-const makeCtx = () => {
+const makeCtx = (priorEntry: EntryData | null = null) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string; handle: SubscriptionHandle } | null = null;
     let closed: { reason: string; outcome?: string } | null = null;
@@ -49,7 +49,7 @@ const makeCtx = () => {
     const localAbort = new AbortController();
 
     const entries: EntryCaps = {
-        async read() { return { status: 404, entry: null }; },
+        async read() { return priorEntry === null ? { status: 404, entry: null } : { status: 200, entry: priorEntry }; },
         async write(pathname, entry) { wrote = { pathname, entry }; seq.push("write"); return { status: 201, created: true, entryId: 1 }; },
         async delete(pathname) { deleted = pathname; return { status: 200 }; },
     };
@@ -216,7 +216,7 @@ test("READ: an HTML page is rendered — body is the final DOM, labelled text/ht
         assert.equal(r.status, 102);
     });
     const { chunks, closed } = inspect();
-    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", runId: 1, headers: undefined }]);
+    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", runId: 1, headers: [] }]);
     const bodyChunks = chunks.filter((c) => c.channel === "body");
     assert.equal(bodyChunks.length, 1); // single-shot: the whole rendered DOM
     assert.equal(bodyChunks[0].chunk, "<html><body>rendered</body></html>");
@@ -397,6 +397,55 @@ test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
         await new Http().read(readStmt(urlTarget("https://example.com/x", "/x")), ctx);
     });
     assert.equal(seenUrl, "https://example.com/x");
+});
+
+// ── conditional revalidation (service#341) ─────────────────────────────────
+const priorEntry = (body: string, mimetype: string, header: string): EntryData => ({
+    channels: { body: { content: body, mimetype }, header: { content: header, mimetype: "text/plain" } },
+    tags: [],
+});
+
+test("READ revalidation: prior ETag → If-None-Match → 304 serves cached body, skips render", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/html", "HTTP 200 OK\netag: \"v1\""));
+    const browser = fakeBrowser("<html>SHOULD NOT RENDER</html>");
+    let seenINM = "";
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        seenINM = new Headers(init?.headers).get("if-none-match") ?? "";
+        return new Response(null, { status: 304, statusText: "Not Modified" });
+    };
+    await withFetch(probe as typeof fetch, async () => {
+        const r = await new Http(browser).read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+        assert.equal(r.status, 102); // first-class READ, not a cache status
+    });
+    assert.equal(seenINM, "\"v1\"");                       // validator sent
+    assert.equal(browser.calls.length, 0);                  // 304 → no render
+    const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
+    assert.equal(body, "cached page");                      // cached body re-served
+    assert.match(inspect().closed?.outcome ?? "", /revalidated 304/); // honest in the close summary
+});
+
+test("READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", "HTTP 200 OK\netag: \"v1\""));
+    await withFetch(mockFetch(200, "OK", ["fresh content"], { "content-type": "text/plain" }), async () => {
+        await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+    });
+    const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
+    assert.equal(body, "fresh content");
+    assert.match(inspect().closed?.outcome ?? "", /HTTP 200; \d+ bytes/); // normal path, not revalidated
+});
+
+test("READ revalidation: no prior entry → no conditional headers, full fetch", async () => {
+    const { ctx } = makeCtx(); // 404 on read
+    let hadConditional = false;
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        const h = new Headers(init?.headers);
+        hadConditional = h.has("if-none-match") || h.has("if-modified-since");
+        return new Response("body", { status: 200, headers: { "content-type": "text/plain" } });
+    };
+    await withFetch(probe as typeof fetch, async () => {
+        await new Http().read(readStmt(urlTarget("https://example.com/x", "/x")), ctx);
+    });
+    assert.equal(hadConditional, false);
 });
 
 // ── cancellation ──────────────────────────────────────────────────────────

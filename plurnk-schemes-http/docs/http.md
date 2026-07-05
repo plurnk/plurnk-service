@@ -5,6 +5,11 @@ Fetch a URL. HTML is rendered (headless browser, post-JS) and returned as
 returns raw bytes under its `Content-Type`. Every request streams its response:
 status `102` now, the body/header channels fill, you READ the entry next turn.
 
+Re-reading a URL **revalidates** it: the prior fetch's validators (`ETag`/
+`Last-Modified`) go out on the next READ, and if the page is unchanged the
+stored copy is served without re-rendering — always fresh, but cheap when
+nothing changed. You just READ again; there's no cache flag to manage.
+
 The HTTP method is the **op**:
 
 - `READ(http(s)://…)` — GET.
@@ -34,8 +39,9 @@ source (line-navigable, exact) rather than the JS code-viewer page — so
 Cancel / cache:
 
 - `SEND[499](http(s)://…)` — cancel an in-flight request (abort the fetch).
-- `SEND[410](http(s)://…)` — delete the locally cached response entry. This is a
-  cache drop, **not** an HTTP DELETE — use `KILL` to DELETE the remote resource.
+- `SEND[410](http(s)://…)` — drop the locally cached copy, forcing the next READ
+  to full-fetch instead of revalidate. A local cache drop, **not** an HTTP
+  DELETE — use `KILL` to DELETE the remote resource.
 
 The `SEND[code]` is loop disposition (`102`/`200`/…), never the HTTP status —
 the real `2xx`/`4xx` comes back in `#header`.
