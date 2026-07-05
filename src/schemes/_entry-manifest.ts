@@ -136,7 +136,14 @@ export default class EntryManifest {
             // The other two deep channels: re-index the body into entry_fts (~semantic's keyword
             // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
             // cleared, not stored. result.embedding is the fallback whole-entry vector.
-            await EntrySemantic.indexFts(db, r.entry_id, r.content);
+            // The SEMANTIC SOURCE: when the handler returns a readable projection
+            // (ProcessResult.content — e.g. text/html's Readability→markdown), FTS and the
+            // embedder consume THAT, not the raw body. A 424k-token raw page becomes a few-k
+            // article; the vectors and keywords index what a reader (and the model, per the
+            // epic's READ-slices-of-reading end-state) actually consumes. Handlers that return
+            // no projection keep today's raw-body behavior exactly.
+            const semanticSource = result.content ?? r.content;
+            await EntrySemantic.indexFts(db, r.entry_id, semanticSource);
             // §21/#47 — the operator's PLURNK_MIMETYPES_NO_EMBED classification: a matched entry
             // (lockfile, minified bundle, sourcemap) is never semantically derived — zero vectors,
             // FTS-only is the honest treatment. The knob IS the decision table; no code heuristics.
@@ -146,7 +153,7 @@ export default class EntryManifest {
                 await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 return;
             }
-            const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal, maxChunks);
+            const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal, maxChunks);
             await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
             // §semantic-entry-chunk-cap — a CAPPED (inline, latency-staged) pass does NOT stamp:
             // the hash stays stale so the background pump completes the entry to full depth.
