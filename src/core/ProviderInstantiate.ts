@@ -65,6 +65,19 @@ export default class ProviderInstantiate {
     static async verifyGrammarEnforcement(provider: Provider, env: NodeJS.ProcessEnv = process.env): Promise<void> {
         const gbnf = env.PLURNK_PROVIDERS_GBNF;
         if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // rails not requested — nothing to verify
+        // #336 — gate on the provider's own claim: a grammarStyle-'none' provider DROPS the grammar
+        // cleanly (never on the wire, constrainsOutput:false), so a global GBNF default must not
+        // refuse boot against it — the rails are simply not in play for this backend. The #34 hole
+        // stays closed: wherever the provider CLAIMS constrainsOutput, the end-to-end verify below
+        // still fails hard; and a llama-server whose /v1/models probe raced to 'none' is cured
+        // deterministically by PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1, which the notice names.
+        if (provider.constrainsOutput === false) {
+            process.stderr.write(
+                `plurnk-service: PLURNK_PROVIDERS_GBNF=${gbnf} is configured, but '${provider.model}' does not enforce grammars — running UNCONSTRAINED on this alias. `
+                + `If this backend is a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 so detection never races.\n`,
+            );
+            return;
+        }
         const forcing = `root ::= "${ProviderInstantiate.#VERIFY_TOKEN}"`;
         let content: string;
         try {

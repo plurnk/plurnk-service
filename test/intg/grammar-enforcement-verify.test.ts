@@ -32,3 +32,21 @@ test("[§grammar-enforcement-verified-at-boot] no grammar requested → verifica
     await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("anything"), { PLURNK_PROVIDERS_GBNF: "0" });
     // no throw = unconstrained is a legitimate deliberate mode
 });
+
+test("[§grammar-enforcement-verified-at-boot] a NON-CLAIMING backend (constrainsOutput:false) boots with a notice — the global default is safe (#336)", async () => {
+    // A grammarStyle-'none' provider drops the grammar cleanly (never on the wire), so a global
+    // GBNF default must not refuse boot against it. The probe is SKIPPED entirely — generate()
+    // here would return garbage, proving the gate fired before any probe.
+    const nonClaiming = { ...fakeProvider("garbage the probe would reject"), constrainsOutput: false } as unknown as Provider;
+    await ProviderInstantiate.verifyGrammarEnforcement(nonClaiming, { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" });
+    // no throw = boots unconstrained on this alias, with the stderr notice
+
+    // And the claim gates HARD the other way: constrainsOutput true (or absent — the legacy
+    // interface) still runs the end-to-end probe and refuses on unconstrained output (#34).
+    const claiming = { ...fakeProvider("unconstrained ramble"), constrainsOutput: true } as unknown as Provider;
+    await assert.rejects(
+        () => ProviderInstantiate.verifyGrammarEnforcement(claiming, { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" }),
+        /grammar enforcement is OFF/,
+        "a CLAIMING backend that returns unconstrained output still fails hard",
+    );
+});
