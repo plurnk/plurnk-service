@@ -115,3 +115,29 @@ describe("Issue #47 — N4: surfaced on process()", () => {
         });
     });
 });
+
+describe("Issue #47 — N5: path-aware patterns (directory drawers)", () => {
+    it("a /-pattern matches the full path — the run18 offender, verbatim", async () => {
+        await withKnob("*/dist/*", () => {
+            assert.equal(matchNoEmbed("/docs/src/.vuepress/dist/assets/js/12.5188bb.js"), "*/dist/*");
+            assert.equal(matchNoEmbed("/src/distillery.js"), undefined, "'dist' inside a segment is not a drawer");
+        });
+    });
+    it("relative-root drawers need the unanchored form", async () => {
+        await withKnob("dist/*", () => {
+            assert.equal(matchNoEmbed("dist/bundle.js"), "dist/*");
+            assert.equal(matchNoEmbed("/repo/dist/bundle.js"), undefined, "anchored: no leading segments");
+        });
+    });
+    it("basename patterns are unaffected by directories", async () => {
+        await withKnob("*.map", () => {
+            assert.equal(matchNoEmbed("/very/deep/dir/x.js.map"), "*.map");
+        });
+    });
+    it("the shipped default now catches the hashed vuepress bundle", async () => {
+        await withKnob(DEFAULT_LIST, () => {
+            assert.equal(matchNoEmbed("/docs/src/.vuepress/dist/assets/js/12.5188bb.js"), "*/dist/*");
+            assert.equal(matchNoEmbed("/books/novel.md"), undefined, "novel still embeds");
+        });
+    });
+});

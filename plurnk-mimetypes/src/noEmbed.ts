@@ -14,10 +14,13 @@
 // excluding real searchable data, and its thresholds would be exactly the
 // hidden magic this family forbids.
 //
-// Pattern semantics: each entry matches the path's BASENAME; `*` is a
-// wildcard; an entry without `*` is an exact basename match. Whitespace around
-// entries is trimmed. First match wins and is returned verbatim — the matched
-// pattern is the observable reason.
+// Pattern semantics: an entry WITHOUT `/` matches the path's BASENAME; an
+// entry WITH `/` matches the FULL PATH (directory junk-drawers like */dist/*
+// — hashed bundle names defeat basename patterns; the run18 offender was
+// dist/assets/js/12.5188bb.js). `*` is a wildcard and crosses `/`; an entry
+// without `*` is an exact match. Whitespace around entries is trimmed. First
+// match wins and is returned verbatim — the matched pattern is the observable
+// reason.
 
 const cache = new Map<string, { source: string; regex: RegExp }[]>();
 
@@ -47,5 +50,5 @@ export function matchNoEmbed(path: string | undefined): string | undefined {
     const raw = process.env.PLURNK_MIMETYPES_NO_EMBED;
     if (raw === undefined || raw.trim() === "") return undefined;
     const base = path.slice(path.lastIndexOf("/") + 1);
-    return compile(raw).find((p) => p.regex.test(base))?.source;
+    return compile(raw).find((p) => p.regex.test(p.source.includes("/") ? path : base))?.source;
 }
