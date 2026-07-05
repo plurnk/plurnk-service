@@ -35,11 +35,20 @@ Every tunable is an **optional env override** — no code default hides a magic 
 | `PLURNK_EXECS_SEARCH_TIMEOUT` | no | the consumer's signal is the deadline (SPEC §2.5); this is an extra ceiling (ms) |
 | `PLURNK_EXECS_SEARCH_SAFESEARCH` | no | instance default — `0` / `1` / `2` |
 | `PLURNK_EXECS_SEARCH_SNIPPET` | no | snippet unbounded (else max chars per result snippet) |
-| `PLURNK_EXECS_SEARCH_RAW` | no | digest mode; truthy → emit the verbatim SearXNG payload (debug) |
+| `PLURNK_EXECS_SEARCH_RAW` | no | digest mode; truthy → verbatim SearXNG payload, page pass skipped (debug) |
+| `PLURNK_EXECS_SEARCH_PAGE_TIMEOUT` | no | exec signal is the deadline (else an extra per-page ceiling, ms) |
+| `PLURNK_EXECS_SEARCH_REDIRECTS` | no | 3xx pruned (else max hops per page, each hop re-guarded) |
+
+## The one-load flow (plurnk-execs#18)
+
+Every candidate page is fetched **exactly once** (parallel, deduped by url):
+
+- **Pruned, silently:** guard-refused targets (private/loopback/metadata/localhost — search results are attacker-influencable URLs, so every target and every redirect hop passes a public-address check), unreachable hosts, non-2xx, non-textual mimetypes, empty bodies. *Listed = loaded.*
+- **Materialized:** each survivor becomes an `https://` entry via the consumer's `ExecArgs.entry()` sink, tagged with the slugified query (`pie_recipes`) — the consumer's ambience announces it as a folded row carrying path + tokens. Without the sink (older consumers) the flow degrades gracefully: prune + digest, no materialization.
 
 ## Output
 
-Writes a compact **digest** — `{ title, url, snippet }` per result (plus `publishedDate` when present), capped by `PLURNK_EXECS_SEARCH_LIMIT` — as JSON to the `results` channel. The raw SearXNG payload is ~10–20× its information content (`template`, engine internals, scores, `parsed_url` — noise the model can't use), and folding a full 68KB response back into the prompt can blow the budget (plurnk-execs#17); the digest is a few KB. Set `PLURNK_EXECS_SEARCH_RAW=1` for the verbatim payload. The model reads `exec://<coord>/EXEC#results`.
+Writes a compact **digest of survivors only** — `{ title, url, snippet }` per result (plus `publishedDate` when present), capped by `PLURNK_EXECS_SEARCH_LIMIT` — as JSON to the `results` channel. Zero dead rows by construction. The digest is the model's chooser context and rides OPEN (a few KB by design — the raw SearXNG payload was ~10–20× that and blew budgets, plurnk-execs#17); page bodies live in the materialized entries, never the packet. The model reads `exec://<coord>/EXEC#results`, then READs / `~`-queries the entries it picks.
 
 Failures emit a `TelemetryEvent` (`source: "exec:<tag>"`): `searxng_not_configured`, `searxng_unreachable`, `searxng_timeout`, `searxng_http_<n>`, `external_bang_refused`.
 

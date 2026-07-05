@@ -1,5 +1,6 @@
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
+import Pages from "./Pages.ts";
 
 // Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
 // claims (package.json `plurnk.runtimes[]`) maps 1:1 onto SearXNG's category
@@ -43,9 +44,19 @@ interface SearxngResult {
 //                                                 (SPEC §2.5) — this is an extra local ceiling
 //   PLURNK_EXECS_SEARCH_SAFESEARCH    (optional)  0|1|2
 //   PLURNK_EXECS_SEARCH_SNIPPET       (optional)  max chars per result snippet; unbounded if unset
-//   PLURNK_EXECS_SEARCH_RAW           (optional)  truthy → emit the verbatim SearXNG payload (debug)
+//   PLURNK_EXECS_SEARCH_RAW           (optional)  truthy → emit the verbatim SearXNG payload (debug;
+//                                                 skips the page pass entirely)
+//   PLURNK_EXECS_SEARCH_PAGE_TIMEOUT  (optional)  ms per candidate page (Pages.ts)
+//   PLURNK_EXECS_SEARCH_REDIRECTS     (optional)  redirect hops per page, re-guarded (Pages.ts)
 // No code defaults hide a magic number — suggested values live in the consuming
 // service's .env.example.
+//
+// The one-load flow (plurnk-execs#18): every candidate page is fetched exactly
+// once; 404/timeout/empty/guard-refused candidates are pruned; survivors are
+// materialized as slug-tagged https:// entries via the consumer's entry() sink
+// (folded ambient rows announce them with tokens); the digest lists survivors
+// ONLY — zero dead rows by construction. The digest rides OPEN as chooser
+// context; page bodies live in the entries, never the packet.
 export default class Search extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
@@ -66,7 +77,7 @@ export default class Search extends BaseExecutor {
         return "read";
     }
 
-    async run({ runtime, command, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, command, signal, write, setState, emit, entry }: ExecArgs): Promise<ExecResult> {
         const category = CATEGORY[runtime];
         // A tag we never claimed means the scheme misrouted — a contract
         // violation, not an expected runtime failure. Fail hard.
@@ -132,21 +143,38 @@ export default class Search extends BaseExecutor {
 
         const data = await response.json() as { results?: SearxngResult[] };
         const capped = (data.results ?? []).slice(0, limitRaw ? Number(limitRaw) : undefined);
+
+        // Debug escape hatch: the verbatim SearXNG payload, no page pass.
+        if (process.env.PLURNK_EXECS_SEARCH_RAW) {
+            write("results", JSON.stringify(capped));
+            setState("results", "closed");
+            return { status: 200 };
+        }
+
+        // One-load page pass (#18): fetch every candidate once (parallel,
+        // deduped by url), prune the dead, materialize survivors as slug-tagged
+        // entries. The digest below lists survivors only — zero dead rows.
+        const slug = Pages.slugify(query);
+        const unique = [...new Map(capped.filter((r) => r.url).map((r) => [r.url!, r])).values()];
+        const outcomes = await Promise.all(unique.map((r) => Pages.load(r.url!, { signal, entry, slug })));
+        if (signal.aborted) {
+            setState("results", "errored");
+            return { status: 499 };
+        }
+        const survivors = unique.filter((_, i) => outcomes[i]);
+
         // Emit a model-consumable digest, not the raw upstream payload (#17): a
         // raw SearXNG result is ~10–20× its information content, and a wake that
         // folds the full response back into the prompt can exceed the budget
-        // outright (a 68KB/query hard 413). Keep title + url + a snippet
-        // (optionally bounded); PLURNK_EXECS_SEARCH_RAW is a debug escape hatch
-        // back to the verbatim payload.
+        // outright (a 68KB/query hard 413). Title + url + a snippet (optionally
+        // bounded) — the OPEN chooser context; sizes ride the ambient entry rows.
         const snippetMax = process.env.PLURNK_EXECS_SEARCH_SNIPPET;
-        const results = process.env.PLURNK_EXECS_SEARCH_RAW
-            ? capped
-            : capped.map(({ title, url, content, publishedDate }) => ({
-                title,
-                url,
-                snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
-                ...(publishedDate ? { publishedDate } : {}),
-            }));
+        const results = survivors.map(({ title, url, content, publishedDate }) => ({
+            title,
+            url,
+            snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
+            ...(publishedDate ? { publishedDate } : {}),
+        }));
         write("results", JSON.stringify(results));
         setState("results", "closed");
         return { status: 200 };
