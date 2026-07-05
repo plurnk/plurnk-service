@@ -84,7 +84,7 @@ LIMIT $k;
 -- with the derivation inputs (content/mimetype/deep_hash) so the caller can derive any
 -- stale candidate INLINE before ranking. Ranking only ever scores this narrowed set, so
 -- embedding exactly this slice on demand gives bit-identical results to a warm corpus.
-SELECT e.id AS entry_id, ec.content, ec.mimetype, e.deep_hash, 'body' AS channel
+SELECT e.id AS entry_id, e.pathname, ec.content, ec.mimetype, e.deep_hash, 'body' AS channel
 FROM entry_fts f
 JOIN entries e ON e.id = f.rowid
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'

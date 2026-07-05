@@ -125,3 +125,35 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
     } finally { db.close(); }
 });
 
+
+test("[#47] PLURNK_MIMETYPES_NO_EMBED: a matched entry derives FTS-only — zero vectors, stamped, never re-attempted; unmatched embeds fully", async () => {
+    // The operator's decision table (mimetypes 0.18.1 §21) consumed in the pump: the knob IS the
+    // classification — a lockfile-class entry is never semantically derived (zero vectors, FTS
+    // stays), a normal entry embeds fully. No caps, no heuristics in code.
+    const prev = process.env.PLURNK_MIMETYPES_NO_EMBED;
+    process.env.PLURNK_MIMETYPES_NO_EMBED = "package-lock.json,*.min.*";
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `noembed-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        await new Known().edit(editStmt(url("package-lock.json"), '{"name":"x","lockfileVersion":3,"packages":{"":{"deps":{"y":"1.0.0"}}}}'), ctx);
+        await new Known().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
+        await EntryManifest.maintainDerivations(ctx);
+        const lock = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/package-lock.json" });
+        const notes = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/notes.md" });
+        const lockVecs = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: lock?.id ?? -1 });
+        const noteVecs = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: notes?.id ?? -1 });
+        assert.equal(lockVecs?.n, 0, "the lockfile matched the pattern — zero vectors");
+        assert.ok((noteVecs?.n ?? 0) > 0, "the unmatched entry embeds fully");
+        // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
+        await EntryManifest.maintainDerivations(ctx);
+        const lockVecs2 = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: lock?.id ?? -1 });
+        assert.equal(lockVecs2?.n, 0, "still zero after a second pump pass — stamped, skipped");
+    } finally {
+        db.close();
+        if (prev === undefined) delete process.env.PLURNK_MIMETYPES_NO_EMBED; else process.env.PLURNK_MIMETYPES_NO_EMBED = prev;
+    }
+});

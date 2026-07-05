@@ -108,13 +108,13 @@ export default class EntryManifest {
     // delete-then-insert — interleaved writers would duplicate chunk rows.
     static #deriveChain: Promise<void> = Promise.resolve();
 
-    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
+    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
         const run = EntryManifest.#deriveChain.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks));
         EntryManifest.#deriveChain = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
         const { db, sessionId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         try {
@@ -122,21 +122,30 @@ export default class EntryManifest {
             let result: ProcessResult;
             if (wantGraph) {
                 try {
-                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: embedActive ? ["symbols", "references", "embedding"] : ["symbols", "references"] }); // §mimetype-methods-process-entry-point
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: embedActive ? ["symbols", "references", "embedding"] : ["symbols", "references"] }); // §mimetype-methods-process-entry-point
                     await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
                 } catch {
                     // A handler predating the references channel throws → metadata-only, clear graph.
-                    result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: [] });
                     await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
                 }
             } else {
-                result = await mimetypes.process({ content: r.content, hint: r.mimetype }, { channels: [] });
+                result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: [] });
                 await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
             }
             // The other two deep channels: re-index the body into entry_fts (~semantic's keyword
             // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
             // cleared, not stored. result.embedding is the fallback whole-entry vector.
             await EntrySemantic.indexFts(db, r.entry_id, r.content);
+            // §21/#47 — the operator's PLURNK_MIMETYPES_NO_EMBED classification: a matched entry
+            // (lockfile, minified bundle, sourcemap) is never semantically derived — zero vectors,
+            // FTS-only is the honest treatment. The knob IS the decision table; no code heuristics.
+            if (result.noEmbed !== undefined) {
+                await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
+                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} (${r.pathname}) matched no-embed pattern '${result.noEmbed}' — FTS-only, no vectors`, level: "info" });
+                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+                return;
+            }
             const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal, maxChunks);
             await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
             // §semantic-entry-chunk-cap — a CAPPED (inline, latency-staged) pass does NOT stamp:
@@ -167,7 +176,7 @@ export default class EntryManifest {
         if (mimetypes === undefined) return 0;
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
         if (deepCfgSig === "embed:none") return 0; // FTS-only posture — nothing to derive
-        const rows = await (db.semantic_fts_candidates as PrepMethod).all<{ entry_id: number; content: string; mimetype: string; deep_hash: string | null }>({
+        const rows = await (db.semantic_fts_candidates as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string; deep_hash: string | null }>({
             fts_query: ftsQuery, session_id: sessionId, scheme, cap,
         });
         let derived = 0;
