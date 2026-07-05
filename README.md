@@ -1,7 +1,5 @@
 # plurnk-service
 
-> Plurnk is in early-alpha public testing — see https://status.plurnk.ai for current status.
-
 LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/plurnk-grammar); exposes WebSocket JSON-RPC. User-facing CLI: [plurnk](https://github.com/plurnk/plurnk). Provider-agnostic, MIT — no vendor or model lock-in.
 
 ## What an agent can do
