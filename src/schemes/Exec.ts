@@ -1,3 +1,4 @@
+import { parsePath } from "@plurnk/plurnk-grammar";
 import type { ExecStatement, FindStatement, ReadStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { Executor } from "../core/ExecutorRegistry.ts";
@@ -7,6 +8,7 @@ import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
+import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import EntryFind from "./_entry-find.ts";
 import type { ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
@@ -347,9 +349,55 @@ export default class Exec {
         let exitLabel = "spawn_failed";
         let stdoutLength = 0;
         let stderrLength = 0;
+        // §exec-entry-sink (#340) — the executor's entry() materialization request. The executor
+        // owns zero substrate: it hands us (path, content, {tags, mimetype}) and WE create/update
+        // the entry (writeEntry upsert; tags UNIONED — writeEntry alone replaces), then narrate ONE
+        // EDIT row in the reserved plurnk run's log (the fs-fiction pattern, source = the calling
+        // run) — the existing env-delta ambience folds it into every run's next packet, meta line
+        // carrying path + tokens. NO page body ever rides a packet; the digest is the open part.
+        // Serialized: parallel entry() calls (allSettled) write in order; a rejection prunes that
+        // survivor executor-side without breaking the chain. Lazy narration context: one plurnk-run
+        // turn per spawn, not per entry.
+        let entryChain: Promise<unknown> = Promise.resolve();
+        let narration: { runId: number; loopId: number; turnId: number; seq: number } | null = null;
+        const entrySink = (path: string, content: string, opts: { tags: string[]; mimetype: string }): Promise<void> => {
+            const op = async (): Promise<void> => {
+                const parsed = parsePath(path);
+                if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) throw new Error(`entry(): '${path.slice(0, 80)}' is not a URL`);
+                const pathname = foldAuthorityIntoPath(parsed.hostname, parsed.pathname);
+                const prior = await EntryCrud.readEntry(pathname, ctx, parsed.scheme);
+                const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
+                const written = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype: opts.mimetype } }, tags }, ctx, parsed.scheme);
+                if (narration === null) {
+                    const run = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: "plurnk" })
+                        ?? await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: "plurnk", origin: "plurnk" });
+                    if (run === undefined) throw new Error("entry(): plurnk run resolution returned no row");
+                    const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
+                    if (loop === undefined) throw new Error("entry(): loop insert returned no row");
+                    const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: loop.id });
+                    const turn = await (db.client_turn_insert as PrepMethod).get<{ id: number }>({ loop_id: loop.id, sequence: seqRow?.next ?? 1, packet: "{}" });
+                    if (turn === undefined) throw new Error("entry(): turn insert returned no row");
+                    narration = { runId: run.id, loopId: loop.id, turnId: turn.id, seq: 1 };
+                }
+                await (db.engine_insert_log_entry as PrepMethod).get({
+                    run_id: narration.runId, loop_id: narration.loopId, turn_id: narration.turnId, sequence: narration.seq++,
+                    origin: "plurnk", source: String(ctx.runId), op: "EDIT", suffix: "", signal: null,
+                    scheme: parsed.scheme, username: null, password: null, hostname: null, port: null,
+                    pathname, params: null, fragment: null, lineMarker: null,
+                    tx: "", mimetype_tx: "text/plain",
+                    rx: JSON.stringify({ status: written.status, entryId: written.entryId, tags }), mimetype_rx: "application/json",
+                    status_rx: written.status, tokens: ctx.tokenize?.(content) ?? 0, state: "resolved", outcome: null,
+                    attrs: JSON.stringify({ tags }),
+                });
+            };
+            const run = entryChain.then(op, op);
+            entryChain = run.then(() => undefined, () => undefined);
+            return run;
+        };
         try {
             const result = await executor.run({
                 runtime, command, cwd, target, signal,
+                entry: entrySink,
                 env: ExecEnv.scoped(),  // SPEC §exec {§exec-env-scoped} — never plurnk's own secrets
                 write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
                     entryId, channel, chunk, notify: ctx.streamEventNotify, coordinate,

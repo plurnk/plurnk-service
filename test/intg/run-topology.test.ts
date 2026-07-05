@@ -74,7 +74,9 @@ test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent
 });
 
 test("[§run-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
-    const mock = new Mock({ contextSize: 8192, responses: [
+    // 16384: the static packet (tools sheet + docs) grew with execs-search 0.3.0's ten category
+    // tags — the same teaching-growth budget-edge the delegation test hit at the FORK/WORK adopt.
+    const mock = new Mock({ contextSize: 16384, responses: [
         makeMockResponse("<<WORK(run://w1):first job:WORK\n<<SEND[102]<-1>:awaiting w1:SEND", 10), // parent t1
         makeMockResponse("<<SEND[200]:w1 done:SEND", 10),                                       // w1
         makeMockResponse("<<WORK(run://w2):second job:WORK\n<<SEND[102]<-1>:awaiting w2:SEND", 10),// parent t2 (woken by w1)

@@ -317,3 +317,6 @@ SELECT attrs FROM log_entries WHERE turn_id = $turn_id AND op = $op ORDER BY id 
 SELECT e.pathname, min(ee.rowid) AS first_rowid
 FROM entry_embeddings ee JOIN entries e ON e.id = ee.entry_id
 GROUP BY e.pathname;
+
+-- PREP: test_log_entries_by_run_op
+SELECT pathname, source, tokens, attrs FROM log_entries WHERE run_id = $run_id AND op = $op ORDER BY id;
