@@ -693,3 +693,58 @@ test("streaming:false posts without stream and parses the single JSON response",
     assert.equal(res.assistant.usage.total, 4);
     mock.restoreAll();
 });
+
+// ── Data capture (#36): logprobs + verbatim rawBody, opt-in, off by default ──
+const captureBase = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, thinking: { mode: "off", capacity: null } as const, retryAttempts: 0 };
+
+test("#36 logprobs OFF by default: no wire request, no assistant.logprobs, no rawBody", async () => {
+    const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
+    const p = new OpenAICompatProvider({ ...captureBase });
+    const res = await p.generate({ runId: "r", messages: [{ role: "user", content: "q" }] });
+    const body = JSON.parse((calls[0].init.body as string));
+    assert.equal("logprobs" in body, false);
+    assert.equal("top_logprobs" in body, false);
+    assert.equal(res.assistant.logprobs, undefined);
+    assert.equal(res.assistant.meanLogprob, undefined);
+    assert.equal(res.rawBody, undefined);
+    mock.restoreAll();
+});
+
+test("#36 logprobs ON (streamed): requests logprobs+top_logprobs, surfaces raw logprob + meanLogprob", async () => {
+    const chunk = { model: "m", usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 }, choices: [{ delta: { content: "yesno" }, finish_reason: "stop", logprobs: { content: [
+        { token: "yes", logprob: -0.5, sampling_logprob: -0.5, top_logprobs: [{ token: "yes", logprob: -0.5 }, { token: "no", logprob: -1.0 }] },
+        { token: "no", logprob: -0.1, sampling_logprob: -0.1, top_logprobs: [{ token: "no", logprob: -0.1 }] },
+    ] } }] };
+    const calls = installFetch([chunk]);
+    const p = new OpenAICompatProvider({ ...captureBase, logprobs: 2 });
+    const res = await p.generate({ runId: "r", messages: [{ role: "user", content: "q" }] });
+    const body = JSON.parse((calls[0].init.body as string));
+    assert.equal(body.logprobs, true);
+    assert.equal(body.top_logprobs, 2);
+    assert.equal(res.assistant.logprobs?.length, 2);
+    assert.deepEqual(res.assistant.logprobs?.[0], { token: "yes", logprob: -0.5, top: [{ token: "yes", logprob: -0.5 }, { token: "no", logprob: -1.0 }] });
+    assert.equal(res.assistant.meanLogprob, -0.3); // (-0.5 + -0.1) / 2
+    mock.restoreAll();
+});
+
+test("#36 rawBody ON (non-streamed): verbatim wire body incl. sampling_logprob preserved", async () => {
+    const wire = { model: "m", extra_top_level: "kept", choices: [{ message: { content: "no" }, finish_reason: "stop", logprobs: { content: [{ token: "no", logprob: -0.1, sampling_logprob: -0.1, token_id: 42 }] } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
+    installFetchJson(wire);
+    const p = new OpenAICompatProvider({ ...captureBase, streaming: false, logprobs: 0, rawBody: true });
+    const res = await p.generate({ runId: "r", messages: [{ role: "user", content: "q" }] });
+    assert.deepEqual(res.rawBody, wire); // verbatim
+    assert.equal((res.rawBody as typeof wire).choices[0].logprobs.content[0].sampling_logprob, -0.1);
+    assert.equal((res.rawBody as typeof wire).choices[0].logprobs.content[0].token_id, 42);
+    assert.equal(res.assistant.logprobs?.[0].token, "no"); // structured view still uses raw logprob
+    mock.restoreAll();
+});
+
+test("#36 caller sampling cannot forge logprobs (reserved keys): the env flag is the only control", async () => {
+    const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
+    const p = new OpenAICompatProvider({ ...captureBase }); // logprobs OFF
+    await p.generate({ runId: "r", messages: [{ role: "user", content: "q" }], sampling: { logprobs: true, top_logprobs: 5 } });
+    const body = JSON.parse((calls[0].init.body as string));
+    assert.equal("logprobs" in body, false);   // sampling passthrough stripped it
+    assert.equal("top_logprobs" in body, false);
+    mock.restoreAll();
+});

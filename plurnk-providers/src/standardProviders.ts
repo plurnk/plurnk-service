@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, thinkingFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, thinkingFromEnv, dataCaptureFromEnv } from "./env.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
 import { lookup } from "@plurnk/plurnk-models";
@@ -494,6 +494,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         // Optional debug toggle (off by default): validate a transported grammar
         // locally and throw on invalid, without sending it to the model (§13).
         gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined && env.PLURNK_PROVIDERS_GBNF_DEBUG !== "" && env.PLURNK_PROVIDERS_GBNF_DEBUG !== "0",
+        // Opt-in data capture (#36), off by default, per-alias-scopable — universal
+        // across every standard provider (any backend that returns logprobs).
+        ...dataCaptureFromEnv(env, name),
         streaming: spec.streaming,
         firstPartyMetadata: spec.firstPartyMetadata,
         balanceMetaKey: spec.balanceMetaKey,

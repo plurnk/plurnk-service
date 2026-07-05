@@ -9,9 +9,13 @@ type StreamRequest = {
     headers: Record<string, string>;
     body: Record<string, unknown>;
     signal: AbortSignal;
+    // #36: assemble the verbatim wire body onto StreamResponse.rawBody. Off by
+    // default so a serving turn never pays the reassembly/retention cost.
+    captureRawBody?: boolean;
 };
 
 import type { RawUsage } from "./usage.ts";
+import type { TokenLogprob } from "./types.ts";
 
 export type StreamResponse = {
     model: string | null;
@@ -20,6 +24,26 @@ export type StreamResponse = {
     finish_reason: string | null;
     usage: RawUsage | null;
     chunkMetadata: Record<string, unknown>;
+    // #36: per-token logprobs parsed from choices[0].logprobs.content[], present
+    // only when the request asked for them (else the field is absent → null).
+    logprobs: TokenLogprob[] | null;
+    // #36: the verbatim response body, populated only when captureRawBody is set.
+    rawBody: unknown;
+};
+
+// Map an OpenAI-style `logprobs.content[]` array to the canonical structured view
+// (#36). Reads the RAW `logprob` (not `sampling_logprob`); `top_logprobs` → `top`.
+// Returns null when the shape is absent — never synthesizes.
+const parseLogprobs = (raw: unknown): TokenLogprob[] | null => {
+    const content = (raw as { content?: unknown } | null | undefined)?.content;
+    if (!Array.isArray(content)) return null;
+    return content.map((entry) => {
+        const { token, logprob, top_logprobs } = entry as { token: string; logprob: number; top_logprobs?: unknown };
+        const top = Array.isArray(top_logprobs)
+            ? top_logprobs.map((a) => ({ token: (a as TokenLogprob).token, logprob: (a as TokenLogprob).logprob }))
+            : undefined;
+        return top !== undefined ? { token, logprob, top } : { token, logprob };
+    });
 };
 
 export class OpenAiHttpError extends Error {
@@ -50,7 +74,7 @@ const parseRetryAfter = (header: string | null): number | null => {
 // the Provider contract is atomic either way, so the transport is free to
 // choose. The fetch timeout (AbortSignal) bounds the wait; there is no proxy
 // between us and the backend that would idle out a non-streamed request.
-export const chatCompletion = async ({ url, headers, body, signal }: StreamRequest): Promise<StreamResponse> => {
+export const chatCompletion = async ({ url, headers, body, signal, captureRawBody }: StreamRequest): Promise<StreamResponse> => {
     const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
@@ -75,10 +99,13 @@ export const chatCompletion = async ({ url, headers, body, signal }: StreamReque
         finish_reason: typeof choice.finish_reason === "string" ? choice.finish_reason : null,
         usage: (j.usage ?? null) as StreamResponse["usage"],
         chunkMetadata,
+        logprobs: parseLogprobs(choice.logprobs),
+        // Non-streamed: the parsed JSON IS the verbatim wire body, exact.
+        rawBody: captureRawBody === true ? j : undefined,
     };
 };
 
-export const chatCompletionStream = async ({ url, headers, body, signal }: StreamRequest): Promise<StreamResponse> => {
+export const chatCompletionStream = async ({ url, headers, body, signal, captureRawBody }: StreamRequest): Promise<StreamResponse> => {
     const requestBody = { ...body, stream: true, stream_options: { include_usage: true } };
 
     const response = await fetch(url, {
@@ -104,6 +131,9 @@ export const chatCompletionStream = async ({ url, headers, body, signal }: Strea
     let model: string | null = null;
     let finish_reason: string | null = null;
     const chunkMetadata: Record<string, unknown> = {};
+    // #36: logprobs stream as per-chunk choices[0].logprobs.content[] deltas —
+    // accumulate the raw entries across chunks, map once at the end.
+    const logprobEntries: unknown[] = [];
 
     while (true) {
         const { done, value } = await reader.read();
@@ -134,6 +164,9 @@ export const chatCompletionStream = async ({ url, headers, body, signal }: Strea
             if (choice === undefined) continue;
             if (typeof choice.finish_reason === "string") finish_reason = choice.finish_reason;
 
+            const chunkLogprobs = (choice.logprobs as { content?: unknown } | undefined)?.content;
+            if (Array.isArray(chunkLogprobs)) logprobEntries.push(...chunkLogprobs);
+
             const delta = choice.delta as Record<string, unknown> | undefined;
             if (delta === undefined) continue;
             if (typeof delta.content === "string") content += delta.content;
@@ -144,5 +177,12 @@ export const chatCompletionStream = async ({ url, headers, body, signal }: Strea
         }
     }
 
-    return { model, content, reasoning_content, finish_reason, usage, chunkMetadata };
+    const logprobs = logprobEntries.length > 0 ? parseLogprobs({ content: logprobEntries }) : null;
+    // Streamed turns have no single verbatim wire body; reassemble the equivalent
+    // (#36) — chunk-level fields (chunkMetadata) + the collected choice — only when
+    // asked, so serving turns pay nothing.
+    const rawBody = captureRawBody === true
+        ? { ...chunkMetadata, model, usage, choices: [{ index: 0, message: { content, reasoning_content }, finish_reason, logprobs: logprobs !== null ? { content: logprobEntries } : null }] }
+        : undefined;
+    return { model, content, reasoning_content, finish_reason, usage, chunkMetadata, logprobs, rawBody };
 };

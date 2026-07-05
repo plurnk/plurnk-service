@@ -76,6 +76,14 @@ export type OpenAICompatConfig = {
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
     // first failure; N = up to N retries on a transient error (§4, #18).
     retryAttempts: number;
+    // Data-capture knobs (#36), OFF by default — the flag IS the isolation, so a
+    // serving turn requests nothing and carries nothing. `logprobs`: when a
+    // non-negative int, request `logprobs:true, top_logprobs:<n>` and surface the
+    // per-token confidence on assistant.logprobs (PLURNK_PROVIDERS_LOGPROB; null =
+    // off). `rawBody`: when true, attach the verbatim wire body to response.rawBody
+    // (PLURNK_PROVIDERS_RAWBODY). Both universal — any backend, gated per-alias.
+    logprobs?: number | null;
+    rawBody?: boolean;
 };
 
 // Only these two classifications are transient and worth retrying: rate_limit
@@ -112,7 +120,7 @@ const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
 // these, or it could bypass grammar transport, the stream/JSON choice, or slot
 // pinning (SPEC §8: backend-specific fields never cross the contract).
-const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set(["model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot"]);
+const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set(["model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot", "logprobs", "top_logprobs"]);
 
 // Render a non-accept verdict into a terse, factual grammar_unenforced message
 // (SPEC §12 message policy: no guidance prose). `reject` names the diverging code
@@ -150,6 +158,8 @@ export default class OpenAICompatProvider implements Provider {
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
+    #logprobs: number | null;
+    #rawBody: boolean;
 
     // Optional capability (SPEC §2): exact tokenization served by the backend's
     // own vocab. Assigned in the constructor ONLY when the config carries a
@@ -185,6 +195,8 @@ export default class OpenAICompatProvider implements Provider {
         this.#balanceMetaKey = config.balanceMetaKey;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
+        this.#logprobs = config.logprobs ?? null;
+        this.#rawBody = config.rawBody ?? false;
         const { tokenizeUrl } = config;
         if (tokenizeUrl !== undefined) {
             this.tokenize = async (text: string): Promise<number[]> => {
@@ -439,6 +451,9 @@ export default class OpenAICompatProvider implements Provider {
             ...this.#reasoningBody(sendGrammar !== undefined && this.#grammarStyle === "response_format"),
             ...this.#grammarBody(sendGrammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+            // #36: request per-token logprobs only when enabled (managed field —
+            // reserved from caller sampling; the env flag is the single control).
+            ...(this.#logprobs !== null ? { logprobs: true, top_logprobs: this.#logprobs } : {}),
             ...this.#slotBody(runId),
         };
 
@@ -463,7 +478,7 @@ export default class OpenAICompatProvider implements Provider {
             const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
             const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
             try {
-                raw = await transport({ url: this.#url, headers, body, signal: effectiveSignal });
+                raw = await transport({ url: this.#url, headers, body, signal: effectiveSignal, captureRawBody: this.#rawBody });
                 break;
             } catch (err) {
                 // Caller-initiated abort is cancellation — never retried or wrapped.
@@ -491,6 +506,14 @@ export default class OpenAICompatProvider implements Provider {
 
         const meta = this.#buildMeta(raw.chunkMetadata);
 
+        // #36: surface per-token logprobs + their mean when the backend returned
+        // them (only possible when the flag requested them). Absent otherwise —
+        // never synthesized.
+        const logprobs = raw.logprobs !== null && raw.logprobs.length > 0 ? raw.logprobs : undefined;
+        const meanLogprob = logprobs !== undefined
+            ? logprobs.reduce((sum, t) => sum + t.logprob, 0) / logprobs.length
+            : undefined;
+
         return {
             assistant: {
                 content: raw.content,
@@ -498,8 +521,10 @@ export default class OpenAICompatProvider implements Provider {
                 usage: normalizeUsage(raw.usage),
                 finishReason: normalizeFinishReason(raw.finish_reason),
                 model: raw.model ?? this.#model,
+                ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
             },
             assistantRaw: raw,
+            ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),
             ...(telemetry !== undefined ? { telemetry } : {}),
         };

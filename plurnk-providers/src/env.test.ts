@@ -74,3 +74,21 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
     assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FETCH_TIMEOUT, "5000");
     assert.equal(scopeEnvToAlias(env, "capacity").PLURNK_PROVIDERS_THINKING, "off"); // collision guard
 });
+
+test("#36 dataCaptureFromEnv: both knobs OFF by default, ON when set (LOGPROB = top_logprobs count)", async () => {
+    const { dataCaptureFromEnv } = await import("./env.ts");
+    assert.deepEqual(dataCaptureFromEnv({} as NodeJS.ProcessEnv, "x"), { logprobs: null, rawBody: false });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" } as NodeJS.ProcessEnv, "x"), { logprobs: null, rawBody: false });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_LOGPROB: "3", PLURNK_PROVIDERS_RAWBODY: "1" } as NodeJS.ProcessEnv, "x"), { logprobs: 3, rawBody: true });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_LOGPROB: "0" } as NodeJS.ProcessEnv, "x"), { logprobs: 0, rawBody: false }); // set-to-0 = on, chosen-token only
+});
+
+test("#36 capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
+    const { scopeEnvToAlias, dataCaptureFromEnv } = await import("./env.ts");
+    const env = {
+        PLURNK_PROVIDERS_LOGPROB_fireslow: "3",
+        PLURNK_PROVIDERS_RAWBODY_fireslow: "1",
+    } as NodeJS.ProcessEnv;
+    assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "fireslow"), "x"), { logprobs: 3, rawBody: true });
+    assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "grokfast"), "x"), { logprobs: null, rawBody: false });
+});

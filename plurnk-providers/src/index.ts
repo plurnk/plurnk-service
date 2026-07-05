@@ -7,6 +7,8 @@ export type {
     ProviderOptions,
     ProviderResponse,
     ProviderUsage,
+    TokenLogprob,
+    TokenAlternative,
 } from "./types.ts";
 
 // Alias cascade — re-exported from the zero-dep @plurnk/plurnk-aliases (#27), so
@@ -32,7 +34,7 @@ export { default as OpenAICompatProvider, effortFromBudget } from "./OpenAICompa
 export type { OpenAICompatConfig, ReasoningStyle, GrammarStyle } from "./OpenAICompat.ts";
 export { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
 export type { StreamResponse } from "./openaiStream.ts";
-export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, requireEnv, thinkingFromEnv, scopeEnvToAlias } from "./env.ts";
+export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, requireEnv, thinkingFromEnv, scopeEnvToAlias, dataCaptureFromEnv } from "./env.ts";
 export type { Thinking, ThinkingMode } from "./env.ts";
 export { normalizeUsage, computeCost } from "./usage.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";

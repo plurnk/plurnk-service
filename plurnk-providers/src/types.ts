@@ -26,12 +26,36 @@ export interface ProviderUsage {
 // values back to one of these at the provider boundary.
 export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter" | null;
 
+// A per-token logprob (#36, SPEC §14). `logprob` is the backend's RAW model
+// log-probability of the emitted token — the sampling-transform-invariant
+// confidence, chosen over Fireworks' post-mask `sampling_logprob` (measured
+// IDENTICAL under grammar, incl. an adversarial mask; the raw value is the honest
+// model belief and the correct distillation target). `top` carries the top-N
+// alternatives when top_logprobs was requested. The verbatim per-token record
+// (sampling_logprob, token_id, bytes, mask fields) survives on
+// ProviderResponse.rawBody — this structured view is the canonical signal only.
+export interface TokenAlternative {
+    readonly token: string;
+    readonly logprob: number;
+}
+export interface TokenLogprob {
+    readonly token: string;
+    readonly logprob: number;
+    readonly top?: readonly TokenAlternative[];
+}
+
 export interface ProviderAssistant {
     readonly content: string;
     readonly reasoning: string | null;
     readonly usage: ProviderUsage;
     readonly finishReason: FinishReason;
     readonly model: string;
+    // Per-token logprobs (#36), present ONLY when PLURNK_PROVIDERS_LOGPROB is set
+    // AND the backend returned them. Absent otherwise — NEVER synthesized. Opt-in,
+    // per-alias: a scraping alias enables it; serving turns carry nothing.
+    readonly logprobs?: readonly TokenLogprob[];
+    // Convenience: mean of logprobs[].logprob (natural log). Absent when logprobs is.
+    readonly meanLogprob?: number;
 }
 
 export interface ProviderResponse {
@@ -44,6 +68,13 @@ export interface ProviderResponse {
     // filters what reaches the client; it reads `meta`, never mines `assistantRaw`.
     // Absent when the backend reported no extra fields (#23, generalized).
     readonly meta?: Record<string, unknown>;
+    // The VERBATIM backend response body (#36, SPEC §14) — the full wire JSON for
+    // a non-streamed turn, or the reassembled equivalent for a streamed one.
+    // `assistantRaw` is a normalized DIGEST (it drops choices[]); this is the
+    // capture-everything record for the endpoint's fine-tune corpus. Present ONLY
+    // when PLURNK_PROVIDERS_RAWBODY is on — off by default so serving turns never
+    // carry it. Absent otherwise.
+    readonly rawBody?: unknown;
     // Observations attached to a COMPLETED exchange (#24, SPEC §13). The model's
     // bytes always flow through `assistant`; these events annotate them. Today: a
     // `grammar_unenforced` event whenever the output diverges from the grammar —
