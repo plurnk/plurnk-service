@@ -722,7 +722,7 @@ export default class Dispatcher {
         // shape as the premature 200 — the row keeps the [202] attempt, the loop stays a continue, the
         // steer strikes. (A bare park holding nothing is legal — the voice door; never refused here.)
         if (status === 202 && prematureRefusal === "groundless-hibernate") {
-            return { status: 409, error: "Attempted [202] hibernation with submitted READ operation(s). SEND[102]; nothing here would wake you." };
+            return { status: 409, error: "Attempted [202] hibernation with submitted retrieval operation(s) — the results arrive NEXT turn, and nothing here would wake you. SEND[102] to receive them." };
         }
         if (status === 200 || status === 202 || status === 499) {
             // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance

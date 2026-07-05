@@ -901,13 +901,16 @@ export default class Engine {
             prematureReason = (await this.#runHoldsLiveThing(runId)) ? "live-thing" : undefined;
         } else if (sendOp?.signal === 202) {
             // §send-groundless-hibernate — a park is refused only when it ORPHANS work: the turn
-            // submitted a READ (its result folds back on a next turn this park may never have) AND no
-            // wake edge exists — nothing held (the pre-dispatch snapshot) and nothing wake-capable
-            // opened this turn (a spawn takes effect mid-turn, after the snapshot). Whether a wake edge
-            // exists is RUNTIME state, so this adjudication stays engine-side. A bare park holding nothing stays LEGAL — the
-            // voice door: a sibling irc / operator inject wakes it (§actor-boundary-passive-wake) and
-            // the daemon surfaces it as loop/quiesced (§run-lifecycle-quiesced), so it is never refused.
-            if (packetAssistant.ops.some((op) => op.op === "READ")) {
+            // submitted a retrieval op — READ/FIND/OPEN, whose result folds back on a next turn this
+            // park may never have — AND no wake edge exists: nothing held (the pre-dispatch snapshot)
+            // and nothing wake-capable opened this turn (a spawn takes effect mid-turn, after the
+            // snapshot). Whether a wake edge exists is RUNTIME state, so this adjudication stays
+            // engine-side. FIND/OPEN count exactly like READ — a FIND-then-park wedged a live run
+            // eternally (benchmarks/run15: FIND 200s in, SEND[202], no wake edge, 240s timeout).
+            // A bare park holding nothing stays LEGAL — the voice door: a sibling irc / operator
+            // inject wakes it (§actor-boundary-passive-wake) and the daemon surfaces it as
+            // loop/quiesced (§run-lifecycle-quiesced), so it is never refused.
+            if (packetAssistant.ops.some((op) => op.op === "READ" || op.op === "FIND" || op.op === "OPEN")) {
                 const wakeEdge = (await this.#runHoldsLiveThing(runId))
                     || packetAssistant.ops.some((op) => Engine.#opCanOpenWakeEdge(op));
                 if (!wakeEdge) prematureReason = "groundless-hibernate";

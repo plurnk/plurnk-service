@@ -11,6 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { sendStmt, readStmt, execStmt, urlPath } from "./_dsl.ts";
 
@@ -40,6 +41,24 @@ test("[§send-groundless-hibernate] READ + SEND[202] with no wake edge is refuse
         assert.equal(loopStatus, 102, "the LOOP stays 102 — a park that orphans its READ never lands");
         // The record is faithful: the SEND row keeps its [202] emission, stamped 409 (refused),
         // auto-surfacing in the errors section (status≥400) — never erased or rewritten.
+        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
+        assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[202] row records the refusal as 409");
+    } finally { await db.close(); }
+});
+
+test("[§send-groundless-hibernate] FIND + SEND[202] with no wake edge is refused 409 — the retrieval twin (benchmarks/run15)", async () => {
+    // The live wedge: FIND(known:///**) returns 200, the model parks, nothing wakes it — an eternal
+    // park that rode the READ-only scan. FIND/OPEN results fold back next turn exactly like READ.
+    const { db, sessionId, runId, loopId, engine } = await setup("groundless-find");
+    try {
+        const find: PlurnkStatement = { op: "FIND", suffix: "", signal: null, target: { kind: "url", raw: "known:///**", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/**", params: {}, fragment: null }, lineMarker: null, body: { dialect: "regex", raw: "#apple|lemon#", pattern: "apple|lemon", flags: "" }, position: { line: 1, column: 1 } };
+        const result = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [find, sendStmt(202, null, "awaiting the survey")] } }] }),
+            sessionId, runId, loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        assert.equal(result.status, 102, "the turn stays a continue — the FIND-park never lands");
+        assert.equal(result.steerStruck, true, "the groundless-hibernate steer fired on the FIND shape");
         const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[202] row records the refusal as 409");
     } finally { await db.close(); }
