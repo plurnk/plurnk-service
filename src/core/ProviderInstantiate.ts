@@ -85,7 +85,10 @@ export default class ProviderInstantiate {
                 messages: [{ role: "user", content: "ok" }],
                 runId: "gbnf-enforcement-verify", grammar: forcing, maxTokens: 16,
             });
-            content = res.assistant.content.trim();
+            // llama-server sometimes renders the end-of-sequence token as literal text after the
+            // forced string ("PLURNK-RAILS-LIVE<eos>") — that IS proof of enforcement (the grammar
+            // matched exactly, then the sampler stopped); strip one trailing eos-ish marker.
+            content = res.assistant.content.trim().replace(/(<eos>|<\/s>|<\|eot_id\|>|<\|endoftext\|>|<end_of_turn>)\s*$/, "").trim();
         } catch (cause) {
             // The probe REQUEST was rejected (not "rails came back unconstrained"). This is loud, not
             // the silent-off failure the verify guards against — and it will recur on every real turn,
