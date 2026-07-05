@@ -412,9 +412,25 @@ export default class Engine {
             // is still in flight, give it a tunable beat to land in THIS turn's packet
             // before we assemble it. A fixed grace beat, never a wait-for-completion;
             // 0/unset = off. Abortable with the loop signal.
+            const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean; hasActiveHoldSpawns?: (runId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
+            // §exec-hold-until-concluded — the turn-hold exception (owner ruling): for runtimes in
+            // the operator's HOLD set (the search family — streams we know and control: one final
+            // JSON digest, seconds-bounded), the cycle PAUSES here until the stream concludes, so
+            // the model never gets a turn it can only waste asking "are we there yet". Bounded by
+            // PLURNK_SERVICE_EXEC_HOLD_MS and FAIL-OPEN: at the cap the standard cycle resumes
+            // (the stream stays live; parks/wakes/polls all still apply). Zero grammar or teaching
+            // change — the model emits EXEC + SEND[102] as ever; the next packet simply contains
+            // the finished digest, open and final.
+            const holdSet = new Set((process.env.PLURNK_SERVICE_EXEC_HOLD ?? "").split(",").map((x) => x.trim()).filter((x) => x.length > 0));
+            const holdCapMs = Number(process.env.PLURNK_SERVICE_EXEC_HOLD_MS ?? "45000");
+            if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
+                const holdStart = Date.now();
+                while (execHandler.hasActiveHoldSpawns(runId, holdSet) && Date.now() - holdStart < holdCapMs) {
+                    await delay(150, undefined, { signal });
+                }
+            }
             const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
             if (execWaitMs > 0) {
-                const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
                 if (execHandler?.hasActiveSpawns?.(runId) === true) await delay(execWaitMs, undefined, { signal });
             }
 

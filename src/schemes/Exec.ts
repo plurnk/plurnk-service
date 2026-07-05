@@ -92,7 +92,7 @@ export default class Exec {
         },
     };
 
-    #activeAborts = new Map<number, { runId: number; pathname: string; controller: AbortController; unlink: () => void }>();
+    #activeAborts = new Map<number, { runId: number; pathname: string; runtime: string; controller: AbortController; unlink: () => void }>();
     #activeSpawns = new Map<number, Promise<number>>();
 
     async idle(): Promise<void> {
@@ -105,6 +105,15 @@ export default class Exec {
     // ctx.signal), so even a spawn registering after the cancel self-aborts.
     hasActiveSpawns(runId: number): boolean {
         for (const { runId: r } of this.#activeAborts.values()) if (r === runId) return true;
+        return false;
+    }
+
+    // §exec-hold-until-concluded — does the run hold an in-flight spawn whose RUNTIME is in the
+    // operator's hold set? The turn-hold exception (owner ruling): for streams we know and
+    // control (the search family — one final JSON digest, seconds-bounded), the engine holds
+    // the next packet until conclusion instead of giving the model a turn it can only waste.
+    hasActiveHoldSpawns(runId: number, holdSet: ReadonlySet<string>): boolean {
+        for (const { runId: r, runtime } of this.#activeAborts.values()) if (r === runId && holdSet.has(runtime)) return true;
         return false;
     }
 
@@ -296,7 +305,7 @@ export default class Exec {
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { runId: ctx.runId, pathname, controller, unlink });
+        this.#activeAborts.set(subscriptionId, { runId: ctx.runId, pathname, runtime, controller, unlink });
 
         const tail = this.#runExecutor({
             executor: resolved.executor,
