@@ -320,3 +320,6 @@ GROUP BY e.pathname;
 
 -- PREP: test_log_entries_by_run_op
 SELECT pathname, source, tokens, attrs FROM log_entries WHERE run_id = $run_id AND op = $op ORDER BY id;
+
+-- PREP: test_count_entries_by_scheme
+SELECT count(*) AS n FROM entries WHERE scheme = $scheme;

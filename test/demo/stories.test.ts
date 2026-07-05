@@ -98,6 +98,27 @@ test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async 
     } finally { await story.cleanup(); }
 });
 
+test("story: answer a question with a web search", { timeout: TIMEOUT }, async () => {
+    // The Web Search Epic's model-driven demo — the whole composition in one story:
+    // EXEC[search] → SearXNG → the one-load flow (survivor pages materialized as tagged
+    // https:// entries + the open digest of survivors) → ambient narration rows → the model
+    // answers from what it retrieved. The subject is release-current, so weights alone can't
+    // answer it honestly — the tool is the path of least resistance, not a scripted op.
+    const story = await runStory({
+        label: "web-search",
+        prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
+        maxTurns: 8,
+    });
+    try {
+        const searchEntries = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "search" });
+        const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && /\d{2}/.test(story.lastContent);
+        if (!ok) await story.dump();
+        assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /\d{2}/, `the answer carries a version number; got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
+});
+
 test("story: read the codename from notes.md", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "codename",
