@@ -434,3 +434,10 @@ UPDATE log_entries
 -- discarding answers it asked for.
 SELECT id FROM log_entries
 WHERE turn_id = $turn_id AND origin = 'model' AND op IN ('READ', 'FIND', 'OPEN');
+
+-- PREP: engine_demote_turn_status
+-- §send-premature-terminate — a terminal REFUSED at dispatch (the pending-set 409) demotes the
+-- turn to a continue AFTER the close already persisted the provisional status (the close writes
+-- packet+usage as soon as the model responds; ops dispatch after). The record must match the
+-- truth the return value carries: the loop never went terminal, so the turn didn't either.
+UPDATE turns SET status = $status WHERE id = $id;

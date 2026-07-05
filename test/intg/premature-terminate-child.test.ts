@@ -101,6 +101,10 @@ test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 —
         assert.equal(result.steerStruck, true, "the pending-set refusal strikes");
         const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[200] row records the refusal as 409");
+        // The STORED record agrees with the return (run20's T3 bug: the close persists the
+        // provisional status pre-dispatch; the refusal must demote the row too, not just the return).
+        const storedTurn = await (db.test_get_turn as PrepMethod).get<{ status: number }>({ id: result.turnId });
+        assert.equal(storedTurn?.status, 102, "the persisted turns.status is demoted — the digest surface never lies");
     } finally { await db.close(); }
 });
 

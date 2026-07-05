@@ -971,8 +971,14 @@ export default class Engine {
             statuses.push(result.status);
             // A refused terminal (the pending-set 409) strikes — couples to the grinder rails
             // exactly as the old premature gate did (§grinder-strike-coupling) — and demotes the
-            // turn to a continue: the loop never went terminal, so the turn didn't either.
-            if (statement === sendOp && result.status === 409) { steerStruck = true; turnStatus = TURN_STATUS_IMPLICIT_CONTINUE; }
+            // turn to a continue: the loop never went terminal, so the turn didn't either. The
+            // close persisted the provisional status BEFORE dispatch, so the RECORD is demoted
+            // here too (run20's T3 stored 200 with a 409-refused SEND — the digest surface lied).
+            if (statement === sendOp && result.status === 409) {
+                steerStruck = true;
+                turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
+                await (this.#db.engine_demote_turn_status as PrepMethod).run({ id: turnId, status: turnStatus });
+            }
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
         // §telemetry-uniform-error-channel — every engine + parse failure mints as an op='error'
