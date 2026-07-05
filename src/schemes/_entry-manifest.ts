@@ -122,7 +122,7 @@ export default class EntryManifest {
             let result: ProcessResult;
             if (wantGraph) {
                 try {
-                    result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: embedActive ? ["symbols", "references", "embedding"] : ["symbols", "references"] }); // §mimetype-methods-process-entry-point
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: embedActive ? ["symbols", "references", "embedding", "content"] : ["symbols", "references", "content"] }); // §mimetype-methods-process-entry-point — "content" = the readable projection (mimetypes#48): FTS/embeddings consume it when the handler offers one
                     await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
                 } catch {
                     // A handler predating the references channel throws → metadata-only, clear graph.
