@@ -10,7 +10,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, seedEntryWithChannel } from "./_helpers.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
     op: "SEND", suffix: "", signal: status, target: null,
@@ -134,5 +134,58 @@ test("[§grinder-overflow-error-row] overflow is a terse op='error' log row (413
         assert.ok(evt, "the overflow surfaced THIS turn as a 413 LogCoordinate pointer");
         assert.equal(evt!.folded, undefined, "no by-scheme 'folded' JSON — terseness");
         assert.equal(evt!.layer, undefined, "no mechanism vocabulary — no 'layer'");
+    } finally { await db.close(); }
+});
+
+test("[§grinder-layer1-rollback] stage 2: a huge ENGINE-WRITTEN row on the current turn is folded — never a needless 413 (#332)", async () => {
+    // The run14 shape: the prior turn is tiny, and the overflow lives in THIS turn's pre-model
+    // rows (a wake turn's auto-surfaced stream conclusion — 68KB of search results). Stage 1
+    // (fold the prior turn) cannot reclaim enough; stage 2 folds the current turn's own
+    // engine-written rows and the packet fits — the loop survives to read the folded row.
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        // Turn 1 — small, real (leaves a tiny open log).
+        const wide = engineAt(db, WIDE);
+        await wide.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        // Turn 2 — opened manually; a HUGE OPEN engine-origin row lands on it pre-model (the wake surface).
+        const turnId = await insertTurn(db, loopId, 2, 102);
+        await (db.engine_insert_log_entry as PrepMethod).get({
+            run_id: runId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            origin: "plurnk", source: null, op: "READ", suffix: "", signal: null,
+            scheme: "search", username: null, password: null, hostname: null, port: null,
+            pathname: "/1/1/7", params: null, fragment: null, lineMarker: null,
+            tx: "", mimetype_tx: "text/plain",
+            rx: JSON.stringify({ status: 200, content: "R".repeat(8000) }), mimetype_rx: "application/json",
+            status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+        });
+        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
+        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
+        const telemetry = new TelemetryChannel({ db });
+        const provider = new Mock({ contextSize: 1_000_000, responses: [] });
+        const buildAt = (ctx: number): InstanceType<typeof PacketBuilder> => {
+            const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+            process.env.PLURNK_SERVICE_CTX = String(ctx);
+            process.env.PLURNK_SERVICE_REASONING = "0"; process.env.PLURNK_SERVICE_ASSISTANT = "0"; process.env.PLURNK_SERVICE_SAFETY = "0";
+            const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => { if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i]; });
+            return b;
+        };
+        const args = { initialMessages: MESSAGES, requirements: "", sessionId, runId, loopId, currentTurnSeq: 2, provider, gitStatus: null };
+        const open = await buildAt(WIDE).buildRequestPacket(args);
+        // Pin the ceiling just under the open packet: stage 1 (tiny prior turn) can't save it;
+        // stage 2 (the 8KB current-turn row) must.
+        const builder = buildAt(open.tokens - 50);
+        const packet = await builder.buildRequestPacket(args);
+        const result = await builder.enforceBudget({
+            packet, provider, runId, loopId, turnId, mintSequence: 99,
+            rebuild: () => builder.buildRequestPacket(args),
+        });
+        assert.equal(result.struck, true, "the compaction struck (one strike for the fire)");
+        assert.equal(result.fit, true, "stage 2 folded the current turn's engine row — the packet fits, no 413");
+        const rows = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; op: string; expanded: number }>({ run_id: runId });
+        const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
+        assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
+        assert.equal(bigRow.expanded, 0, "the wake row is FOLDED (re-OPENable) — and not fatal");
     } finally { await db.close(); }
 });
