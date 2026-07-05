@@ -37,8 +37,6 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     assert.deepEqual(mdKeys, [], `no active PLURNK_SERVICE_MD_* doc default ships; got ${mdKeys.join(", ")}`);
     // No active model — the local/cloud/plurnk.ai selection is the user's (#307).
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
-    // The GBNF default is ACTIVE and resolves — a commented-out flag silently ran every
-    // model tier unconstrained for days.
     // Native thinking ships ON and BOUNDED (providers 0.31 activation/capacity split). Off
     // reroutes a think-trained model's thought into the grammar free zone; adaptive is
     // unbounded (28k-token turns). The capacity must equal the partition reserve it spends.
@@ -49,9 +47,14 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_SERVICE_${k}`)));
     assert.ok(part.every(Number.isFinite), "all four partition numbers ship");
     assert.equal(part[0] - part[1] - part[2] - part[3], 65536, "the shipped partition is exactly 64Ki of prompt");
+    // Deliberately OPT-IN (owner ruling): rails on by default refuse to boot against the many
+    // backends that don't enforce grammars — wrong out-of-box posture. Operators (and our own
+    // .env) enable it for grammar-capable backends. This inverts the old ships-active assert.
     const variant = env.get("PLURNK_PROVIDERS_GBNF");
-    assert.ok(variant !== undefined && variant.length > 0 && variant !== "0", "PLURNK_PROVIDERS_GBNF ships active");
-    assert.doesNotThrow(() => fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`)), "the shipped variant resolves in the installed grammar");
+    assert.equal(variant, undefined, "PLURNK_PROVIDERS_GBNF ships OFF (opt-in rails)");
+    // The commented example must still name a REAL variant — an operator uncommenting it
+    // gets working rails, not a resolve error.
+    assert.doesNotThrow(() => fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/plurnk.gbnf")), "the example variant resolves in the installed grammar");
 });
 
 test("[§operator-config-shipped-defaults] under the shipped policy wiring, the personality renders in the packet exactly once", async () => {
