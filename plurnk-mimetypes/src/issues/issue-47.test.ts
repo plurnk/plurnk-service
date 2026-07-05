@@ -141,3 +141,14 @@ describe("Issue #47 — N5: path-aware patterns (directory drawers)", () => {
         });
     });
 });
+
+describe("Issue #47 — N6: ONE glob engine (body-matcher dialect parity)", () => {
+    it("? and [...] work in NO_EMBED exactly as in the glob query dialect", async () => {
+        await withKnob("chunk-?.js, *.mp[34]", () => {
+            assert.equal(matchNoEmbed("/dist/chunk-7.js"), "chunk-?.js");
+            assert.equal(matchNoEmbed("/dist/chunk-77.js"), undefined, "? is one char");
+            assert.equal(matchNoEmbed("/media/song.mp3"), "*.mp[34]");
+            assert.equal(matchNoEmbed("/media/song.mp5"), undefined);
+        });
+    });
+});

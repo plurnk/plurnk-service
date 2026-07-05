@@ -17,10 +17,13 @@
 // Pattern semantics: an entry WITHOUT `/` matches the path's BASENAME; an
 // entry WITH `/` matches the FULL PATH (directory junk-drawers like */dist/*
 // — hashed bundle names defeat basename patterns; the run18 offender was
-// dist/assets/js/12.5188bb.js). `*` is a wildcard and crosses `/`; an entry
-// without `*` is an exact match. Whitespace around entries is trimmed. First
-// match wins and is returned verbatim — the matched pattern is the observable
-// reason.
+// dist/assets/js/12.5188bb.js). Glob syntax is the FAMILY's one engine — the
+// body-matcher dialect's globToRegex (SPEC §11.3): `*` (crosses `/`), `?`,
+// `[...]` classes, anchored; an entry without wildcards is an exact match.
+// Whitespace around entries is trimmed. First match wins and is returned
+// verbatim — the matched pattern is the observable reason.
+
+import { globToRegex } from "./query.ts";
 
 const cache = new Map<string, { source: string; regex: RegExp }[]>();
 
@@ -30,16 +33,9 @@ function compile(raw: string): { source: string; regex: RegExp }[] {
     const patterns = raw.split(",")
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
-        .map((source) => ({
-            source,
-            regex: new RegExp(`^${source.split("*").map(escapeRegex).join(".*")}$`),
-        }));
+        .map((source) => ({ source, regex: globToRegex(source) }));
     cache.set(raw, patterns);
     return patterns;
-}
-
-function escapeRegex(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // The matched pattern for a path under the current PLURNK_MIMETYPES_NO_EMBED,
