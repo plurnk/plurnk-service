@@ -47,7 +47,7 @@ These are relationships *between* flags. Set them as a unit.
 - **Local GPU (llama-server).** `PLURNK_MODEL_local="openai/<name>"`, `OPENAI_BASE_URL=http://127.0.0.1:<port>`, `PLURNK_MODEL=local`, `PLURNK_PROVIDERS_LLAMA_SERVER_local=1`, thinking `on`/`4096` **with the box launched `--reasoning-budget 4096`**. Full rails, exact tokenization.
 - **Cloud, bring-your-own-key.** `PLURNK_MODEL_cloud="openrouter/<model>"`, `OPENROUTER_API_KEY=…`, `PLURNK_MODEL=cloud`. No `LLAMA_SERVER` pin (not llama-server); a `response_format`-grammar backend auto-clamps thinking to none.
 - **plurnk.ai endpoint.** `PLURNK_MODEL_plurnk="plurnk/plurnk"`, `PLURNK_API_KEY=…`, `PLURNK_MODEL=plurnk`.
-- **Headless / CI / constrained container.** `PLURNK_SERVICE_EMBED_DISABLE=1` (skip the embedder — a CPU-only box CPU-embedding a large corpus starves the loop), consider `PLURNK_SERVICE_MAX_TURNS=<n>` as a cost cap, `PLURNK_SERVICE_GIT_ALLOWED=0` to lock out git in a sandbox.
+- **Headless / CI / constrained container.** A CPU-only box should NOT disable semantic search — it should point derivation at a real embedder: `PLURNK_MIMETYPES_EMBED_BASE_URL` (any OpenAI-compatible `/v1/embeddings` — a host GPU turns a CPU-hours corpus grind into seconds). Weak hardware is the target workload, not a reason to shed capability; `PLURNK_SERVICE_EMBED_DISABLE=1` exists for test lanes that deterministically assert non-semantic behavior, nothing else. Consider `PLURNK_SERVICE_MAX_TURNS=<n>` as a cost cap, `PLURNK_SERVICE_GIT_ALLOWED=0` to lock out git in a sandbox.
 
 ## Flag sections (breakdown of `.env.example`)
 
