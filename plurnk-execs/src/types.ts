@@ -81,6 +81,16 @@ export interface ExecArgs {
     // Emit a telemetry/error event. The scheme routes it to the engine's
     // telemetry buffer (service#174 Q3).
     emit: (event: TelemetryEvent) => void;
+    // Request materialization of a substrate entry (Web Search Epic, execs#18 /
+    // service#340): the executor supplies address, content, and metadata; the
+    // CONSUMER creates the entry — applies the tags, announces it through its
+    // ambience (folded row) — so the executor still owns zero substrate
+    // machinery (SPEC §2.6). Consumer collision semantics: upsert + tag-union +
+    // freshness bump. A rejection means "not materialized" — the executor
+    // treats the item as failed (search prunes the row). Optional: a consumer
+    // that doesn't provide it gets graceful degradation (search lists without
+    // materializing).
+    entry?: (path: string, content: string, opts: { tags: string[]; mimetype: string }) => Promise<void>;
 }
 
 // Terminal result of a `run()`. `status` follows the scheme's close-status
