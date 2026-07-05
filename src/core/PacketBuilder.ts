@@ -362,9 +362,9 @@ export default class PacketBuilder {
 
     // SPEC §grinder — the budget grinder. Runs pre-LLM (in runTurn, after the packet
     // is built, before provider.generate); fires only on actual overflow. One rule:
-    // fold ALL the run's open log rows (errors exempt), strike, rebuild, re-measure.
-    // Folds (never deletes). The strike it raises and the hard-stop it can signal
-    // are returned to runLoop, which owns abandonment.
+    // fold the NEWEST turn boundary's open rows (errors exempt) — never history —
+    // strike, rebuild, re-measure. Folds (never deletes). The strike it raises and
+    // the hard-stop it can signal are returned to runLoop, which owns abandonment.
     // §grinder-overflow-only — fires only on actual overflow, never speculatively
     async enforceBudget({ packet, provider, runId, loopId, turnId, mintSequence, tokenRatio = 1, rebuild }: {
         packet: RequestPacket; provider: Provider;
@@ -376,18 +376,20 @@ export default class PacketBuilder {
         const measure = (p: RequestPacket): number => p.tokens;
         if (measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 
-        // ONE rule, every turn — turn 1 and turn 101 alike (§grinder-layer1-rollback): fold ALL of
-        // the run's still-open log rows (errors exempt), strike once, rebuild, re-measure. Folding is
-        // reversible and every folded row stays listed at its coordinate, so nothing is lost — the
-        // model re-OPENs precisely what it needs; the engine never guesses which subset to spare.
-        // The teaching pressure is the STRIKE (§grinder-compaction-strikes), not engine restraint.
+        // ONE rule, every turn — turn 1 and turn 101 alike (§grinder-layer1-rollback): fold the
+        // NEWEST turn boundary's still-open rows (the prior turn's emissions + this turn's
+        // pre-model rows; errors exempt) in one set-op, strike once, rebuild, re-measure.
+        // THE DOCTRINE: the log is the model's memory and the model ALONE curates history — the
+        // grinder never reaches back; it only blocks NEW memories from landing when there is no
+        // room, forcing the model to do its own housekeeping (the strike is the escalation,
+        // §grinder-compaction-strikes; a model that won't curate hard-413s/strikes out).
         // Mint the overflow as a terse op='error' log row BEFORE the rebuild, so the rebuild's
         // re-derived errors section surfaces it THIS turn — the warning lands at strike 1, not a
         // turn late. The row is grinder-exempt, so it stacks into a visible recurrence trail. It
         // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
         // post-generate dispatch rows. §telemetry-uniform-error-channel, §grinder-overflow-error-row
         await this.#telemetry.mintEngineError("budget_overflow", { runId, loopId, turnId, sequence: mintSequence });
-        await (this.#db.engine_grinder_fold_run_logs as PrepMethod).run({ run_id: runId });
+        await (this.#db.engine_grinder_fold_newest_turn as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
         const current = await rebuild();
         return { packet: current, fit: measure(current) <= ceiling, struck: true };
     }

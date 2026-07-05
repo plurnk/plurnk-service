@@ -346,14 +346,17 @@ WHERE le.loop_id = $loop_id
   AND t.sequence >= $current_turn_seq - 1
 ORDER BY t.sequence, le.sequence;
 
--- PREP: engine_grinder_fold_run_logs
--- §grinder-layer1-rollback — ONE rule, every turn: on overflow, fold ALL of the run's still-open
--- log rows in one set-op (the packet renders the run's whole log, so the fold scope IS the render
--- scope). Folded, never deleted: rows + bodies stay, re-OPENable — the model re-OPENs precisely
--- what it needs; the engine never guesses which subset matters. op='error' rows are EXEMPT
--- (§grinder-errors-exempt) — errors never auto-fold; the recurrence trail stays visible.
+-- PREP: engine_grinder_fold_newest_turn
+-- §grinder-layer1-rollback — THE DOCTRINE: the log is the model's memory and the model ALONE
+-- curates it (FOLD/KILL). The grinder never touches history — it only blocks NEW memories from
+-- landing when there is no room: one set-op folds the still-open rows of the newest turn
+-- boundary — the immediately-prior turn's emissions and the current turn's pre-model rows
+-- (foists, wake surfaces). Turn 1 is the same rule (no prior turn; its foists are the newest).
+-- Folded, never deleted; op='error' rows are EXEMPT (§grinder-errors-exempt).
 UPDATE log_entries SET expanded = 0
-WHERE run_id = $run_id AND expanded = 1 AND op != 'error';
+WHERE loop_id = $loop_id AND expanded = 1 AND op != 'error'
+  AND (turn_id = $turn_id
+       OR turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id));
 
 -- PREP: engine_fold_log_entry
 -- §prompt-fold (User Note 6): fold a single log row by id — collapse to its

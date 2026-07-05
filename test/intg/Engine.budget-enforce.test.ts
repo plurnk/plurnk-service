@@ -84,6 +84,31 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
     } finally { await db.close(); }
 });
 
+test("[§grinder-layer1-rollback] THE DOCTRINE: older history is NEVER grinder-folded — the model alone curates it", async () => {
+    // The guard whose absence once let a fold-everything variant run green. Three turns; turn 1's
+    // rows are OLD history by turn 3. Overflow at turn 3 folds the newest boundary (turn 2 + turn
+    // 3's pre-model rows) and MUST leave turn 1's open rows untouched — even though folding them
+    // would help fit. The engine never janitors the model's memory; a model that won't curate
+    // strikes out/413s instead. That consequence IS the design.
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const wide = engineAt(db, WIDE);
+        const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
+        await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const openT1before = (await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ run_id: runId }))
+            .filter((r) => r.turn_seq === 1 && r.expanded === 1).length;
+        assert.ok(openT1before > 0, "precondition: turn 1 left open rows (uncurated history)");
+        await engineAt(db, TINY).runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
+        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ run_id: runId });
+        assert.equal(after.filter((r) => r.turn_seq === 1 && r.expanded === 1).length, openT1before,
+            "turn 1's open rows are UNTOUCHED by the turn-3 grinder fire — history is the model's alone");
+        assert.ok(after.filter((r) => r.turn_seq === 2).every((r) => r.expanded === 0),
+            "the newest completed turn (2) IS folded — the boundary rule fired");
+    } finally { await db.close(); }
+});
+
 test("[§grinder-hard-413-abort] when even the manifest won't fit, the loop abandons at 413 (budget_overflow)", async () => {
     const db = await openMigrated();
     try {
@@ -137,12 +162,11 @@ test("[§grinder-overflow-error-row] overflow is a terse op='error' log row (413
     } finally { await db.close(); }
 });
 
-test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn folds like everything else — never a needless 413 (#332)", async () => {
+test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn is part of the newest boundary — folds, never a needless 413 (#332)", async () => {
     // The run14 shape: the prior turn is tiny, and the overflow lives in THIS turn's pre-model
-    // rows (a wake turn's auto-surfaced stream conclusion — 68KB of search results). Under the
-    // one-rule grinder the current turn's rows fold with everything else and the packet fits —
-    // the loop survives to read the folded, re-OPENable row. (The retired staged design folded
-    // only the prior turn here and died 413 on content the engine itself had opened.)
+    // rows (a wake turn's auto-surfaced stream conclusion — 68KB of search results). The current
+    // turn's pre-model rows are part of the newest turn boundary, so they fold with it and the
+    // packet fits — the loop survives to read the folded, re-OPENable row. History is untouched.
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
