@@ -132,10 +132,10 @@ test("PlurnkStatement: SEND rejects string signal", () => {
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: SEND rejects non-null lineMarker", () => {
-    const stmt = { ...baseFields("SEND"), signal: 200, lineMarker: { marks: [1] } };
-    const { valid } = Validator.validatePlurnkStatement(stmt);
-    assert.equal(valid, false);
+test("PlurnkStatement: SEND accepts a lineMarker (the <T> park, #54)", () => {
+    const stmt = { ...baseFields("SEND"), signal: 102, lineMarker: { marks: [30] } };
+    const { valid, errors } = Validator.validatePlurnkStatement(stmt);
+    assert.equal(valid, true, JSON.stringify(errors));
 });
 
 test("PlurnkStatement: EXEC rejects array signal", () => {

@@ -45,6 +45,10 @@ export default class PlurnkParser {
         return result;
     }
 
+    // The terminal disposition set (#54): 102 continue (optionally parked), 200 done,
+    // 300 stop-the-world question, 499 abandon. 202 retired.
+    static #DISPOSITIONS = new Set([102, 200, 300, 499]);
+
     // Curated op-name confusions (semantic + dead-verb), NOT edit-distance - a full
     // `<<Word…:Word` heredoc carrying one of these is unambiguously an intended op, so the
     // false-positive rate is ~0. Bodies are never scanned (only DEFAULT-mode text items), so
@@ -104,9 +108,13 @@ export default class PlurnkParser {
     // judge the terminal SEND (it never reached statement position), so we only direct the
     // model to the anchor; a present-PLAN, absent-SEND turn gets the terminator imperative.
     static #imperativeTurnShape(items: ParseItem<any>[]): void {
-        const ops = items.filter((i) => i.kind === "statement").map((i: any) => i.statement.op);
-        const hasPlan = ops.includes("PLAN");
-        const hasSend = ops.includes("SEND");
+        const hasPlan = items.some((i: any) => i.kind === "statement" && i.statement.op === "PLAN");
+        // A turn terminates on a DISPOSITION-coded SEND only — a mid-comms SEND (e.g. the
+        // retired 202, now an ordinary code) does not satisfy the terminal requirement, so a
+        // turn ending on one still gets the end-with-terminal imperative (the migration steer).
+        const hasSend = items.some(
+            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && PlurnkParser.#DISPOSITIONS.has(i.statement.signal),
+        );
         if (hasPlan && hasSend) return;
         const isStructErr = (i: ParseItem<any>) => i.kind === "error" && i.error.source === "parser" && i.error.severity === "error";
         const structErrors = items.filter(isStructErr);
@@ -127,11 +135,11 @@ export default class PlurnkParser {
         if (hasSpecificError) return;
         const fix = !hasPlan
             ? "a turn must begin with `<<PLAN:…:PLAN` (the required first operation)"
-            : "a turn must end with a terminal `<<SEND[code]:…:SEND` carrying the loop status";
+            : "a turn must end with a terminal `<<SEND[102|200|300|499]:…:SEND` carrying the loop status";
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 
-    // Lift the mid-turn-termination error. A disposition-coded SEND (102/200/202/300/499) IS the
+    // Lift the mid-turn-termination error. A disposition-coded SEND (102/200/300/499) IS the
     // turn terminal (grammar 0.74.52/0.74.53), so an op or second SEND after one is a genuine
     // error - but the parser reports only a generic "unexpected open tag". Rewrite it to the rule.
     // Runs after the begin/end imperative (which handles the incomplete-shape case and, for a
@@ -141,9 +149,8 @@ export default class PlurnkParser {
         // disposition SEND may have been recovered; that derailment is the real issue, so don't
         // mislabel its fallout as a mid-termination. Mirrors #imperativeTurnShape's guard.
         if (items.some((i: any) => i.kind === "error" && i.error.severity === "error" && i.error.source !== "parser")) return;
-        const DISPOSITIONS = new Set([102, 200, 202, 300, 499]);
         const terminal = items.find(
-            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && DISPOSITIONS.has(i.statement.signal),
+            (i: any) => i.kind === "statement" && i.statement.op === "SEND" && PlurnkParser.#DISPOSITIONS.has(i.statement.signal),
         ) as any;
         if (!terminal) return;
         const t = terminal.statement.position;
@@ -155,7 +162,7 @@ export default class PlurnkParser {
                 i.error.line,
                 i.error.column,
                 "parser",
-                "a disposition SEND (code 102/200/202/300/499) ends the turn - nothing may follow it",
+                "a disposition SEND (code 102/200/300/499) ends the turn - nothing may follow it",
             );
         }
     }

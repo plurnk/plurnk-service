@@ -45,7 +45,8 @@ test("plurnk.md examples block contains the expected statement count", () => {
     // semantic each appear on both FIND and READ — the op chooses projection, not the dialect.)
     // (35 after adding the KILL × log:// crossover: erase all FOLD ops in the loop.)
     // (36 after adding the recursive project-relative FIND(**/notes.md) example.)
-    assert.equal(statements.length, 36, `expected 36 statements, got ${statements.length}`);
+    // (37 after adding the terminal [102]<T> park example, #54.)
+    assert.equal(statements.length, 37, `expected 37 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {

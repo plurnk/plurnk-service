@@ -224,10 +224,12 @@ mode SIGNAL_INT;
 SI_WS   : [ \t]+ -> skip ;
 // A terminal DISPOSITION code lexes to its own token so the parser can make a
 // disposition-coded SEND structurally terminal — a SEND[200] IS a turn termination,
-// distinct from a mid-comms SEND[400] (INT). Both SEND and KILL enter this mode; a
-// KILL carrying one of these numbers is harmless (its signal rule accepts both).
+// distinct from a mid-comms SEND[400] (INT). 202 RETIRED (#54): it lexes as a plain INT,
+// so a turn ending on SEND[202] gets the end-with-terminal imperative (the migration
+// steer for 202-habit models). Both SEND and KILL enter this mode; a KILL carrying one
+// of these numbers is harmless (its signal rule accepts both).
 // Ordered before SI_INT; max-munch keeps `2000` an INT (the longer match wins).
-SI_DISP : ('102' | '200' | '202' | '300' | '499') -> type(DISPOSITION) ;
+SI_DISP : ('102' | '200' | '300' | '499') -> type(DISPOSITION) ;
 SI_INT  : '-'? [0-9]+ -> type(INT) ;
 SI_END  : ']' -> type(RBRACKET), mode(SLOTS) ;
 

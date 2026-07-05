@@ -141,9 +141,13 @@ intOpModifiers
     ;
 
 // Terminal SEND: a disposition signal is REQUIRED — a turn ends on a disposition code.
+// The optional lineMarker is the `<T>` park on a terminal [102] (wait up to T seconds,
+// `<-1>` = indefinite; #54). The parser accepts it on any terminal (forgiving); canon and
+// the GBNF rail put it on [102] only. Mid-comms SENDs take no marker — parking is a
+// terminal act (midModifiers unchanged).
 termModifiers
-    : dispSignal target?
-    | target dispSignal
+    : dispSignal target? lineMarker?
+    | target dispSignal lineMarker?
     ;
 
 // Mid-comms SEND: a plain integer code (or none), optional target.

@@ -46,7 +46,8 @@ The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 <<EXEC::EXEC produces output stream channels on the next turn that you can then FIND, READ, or KILL.
 <<KILL(path)::KILL deletes files and entries, erases log items, and kills streams.
 <<SEND[102]:doing:SEND to submit OPs, emit streams, or launch worker runs.
-<<SEND[202]:holding:SEND to hibernate when awaiting results of long EXEC streams or worker runs.
+<<SEND[102]<60>:polling:SEND parks the run up to 60 seconds; arriving results, worker replies, and user messages wake it early.
+<<SEND[102]<-1>:standing by:SEND parks indefinitely until something arrives.
 <<SEND[200]:done:SEND to terminate a completed run only if all OPs, streams, and runs have already returned.
 
 ### Suffix
@@ -130,7 +131,7 @@ YOU SHOULD distill source information into taxonomized, tagged, and topical know
 YOU MUST terminate the turn by SENDing a message to the user with the proper status code.
 * 102: submit a continuing turn with status code 102: <<SEND[102]:Submitting operations and optimizing log relevance.:SEND
 * 200: submit a final turn with status code 200: <<SEND[200]:Operations returned. Tasks successfully performed.:SEND
-* 202: submit a hibernation turn with status code 202: <<SEND[202]:Awaiting streams and worker responses.:SEND
+* 300: stop and ask the user a multiple-choice question: <<SEND[300]:Deploy to (a) staging or (b) production?:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
 
 ## Examples
@@ -166,6 +167,7 @@ YOU MUST terminate the turn by SENDing a message to the user with the proper sta
 * <<OPEN(log:///**)<1,10>::OPEN
 * <<FOLD(log:///**)<101,200>::FOLD
 * <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
+* <<SEND[102]<300>:Parked awaiting worker capital-checker; wake on reply or in 300s.:SEND
 * <<KILL(known:///draft.md)::KILL
 * <<KILL(obsolete/file.md)::KILL
 * <<KILL(sh:///3/1/2)::KILL
