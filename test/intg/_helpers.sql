@@ -309,3 +309,6 @@ SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname;
 
 -- PREP: test_count_embeddings
 SELECT count(*) AS n FROM entry_embeddings WHERE entry_id = $entry_id;
+
+-- PREP: test_get_log_entry_attrs_by_turn
+SELECT attrs FROM log_entries WHERE turn_id = $turn_id AND op = $op ORDER BY id DESC LIMIT 1;

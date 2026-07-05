@@ -724,6 +724,23 @@ export default class Dispatcher {
         if (status === 202 && prematureRefusal === "groundless-hibernate") {
             return { status: 409, error: "Attempted [202] hibernation with submitted retrieval operation(s) — the results arrive NEXT turn, and nothing here would wake you. SEND[102] to receive them." };
         }
+        // §send-300-choices — SEND[300]:question;choice;choice;… asks the OPERATOR a multiple-choice
+        // question and PARKS the loop awaiting the answer. The park is the ordinary resumable 202
+        // state (same wake edges), the choice set rides the log/entry notification the client already
+        // streams (attrs carry the parsed shape), and the answer returns via the existing
+        // loop.inject → passive-wake path — the operator is the waker (the voice door, by design, so
+        // no groundless refusal applies: the question's recipient just received it). Teaching is
+        // INJECTABLE, never in the core packet — a choice prompt isn't always appropriate to advertise.
+        if (status === 300) {
+            const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
+            const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);
+            if (parts.length < 2) {
+                return { status: 400, error: "SEND[300] is a multiple-choice prompt: question;choice;choice;… — at least a question and one choice." };
+            }
+            const [question, ...choices] = parts;
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw });
+            return { status: 300, attrs: { question, choices } };
+        }
         if (status === 200 || status === 202 || status === 499) {
             // The broadcast terminals (200 done, 202 parked-async, 499 cancelled) advance
             // the loop; each carries its body as the loop's terminal message — the deliverable.
