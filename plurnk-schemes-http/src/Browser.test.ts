@@ -25,6 +25,7 @@ const timeoutError = () => Object.assign(new Error("Timeout 30000ms exceeded"), 
 
 const makeEngine = (cfg: FakeConfig = {}) => {
     const calls = { newContext: 0, newPage: 0, pageClose: 0, contextClose: 0, launch: 0, connect: 0 };
+    const contextOptions: Array<{ isMobile?: boolean; userAgent?: string } | undefined> = [];
     const makePage = () => ({
         async goto() {
             if (cfg.goto) return cfg.goto();
@@ -39,7 +40,7 @@ const makeEngine = (cfg: FakeConfig = {}) => {
         async close() { calls.contextClose++; },
     });
     const makeBrowser = () => ({
-        async newContext() { calls.newContext++; return makeContext(); },
+        async newContext(options?: { isMobile?: boolean; userAgent?: string }) { calls.newContext++; contextOptions.push(options); return makeContext(); },
         on() {},
         async close() {},
     });
@@ -47,7 +48,7 @@ const makeEngine = (cfg: FakeConfig = {}) => {
         async launch() { calls.launch++; return makeBrowser(); },
         async connect() { calls.connect++; return makeBrowser(); },
     } as unknown as ChromiumEngine;
-    return { engine, calls };
+    return { engine, calls, contextOptions };
 };
 
 test("render: returns status, headers, and the serialized DOM", async () => {
@@ -110,6 +111,30 @@ test("abort: aborting the signal closes the page, unblocking an in-flight naviga
     await assert.rejects(p, /Target closed/);
     assert.ok(calls.pageClose >= 1, "page was closed on abort");
     await browser.close();
+});
+
+test("mobile emulation: contexts default to a mobile profile (schemes-http#4)", async () => {
+    const { engine, contextOptions } = makeEngine();
+    const browser = new Browser(() => Promise.resolve(engine));
+    await browser.render("https://example.com/", { runId: 1 });
+    assert.equal(contextOptions[0]?.isMobile, true);
+    assert.match(contextOptions[0]?.userAgent ?? "", /Mobile/);
+    await browser.close();
+});
+
+test("mobile emulation: PLURNK_SCHEMES_HTTP_MOBILE=0 renders desktop (no emulation)", async () => {
+    const prev = process.env.PLURNK_SCHEMES_HTTP_MOBILE;
+    process.env.PLURNK_SCHEMES_HTTP_MOBILE = "0";
+    try {
+        const { engine, contextOptions } = makeEngine();
+        const browser = new Browser(() => Promise.resolve(engine));
+        await browser.render("https://example.com/", { runId: 1 });
+        assert.equal(contextOptions[0], undefined);
+        await browser.close();
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MOBILE;
+        else process.env.PLURNK_SCHEMES_HTTP_MOBILE = prev;
+    }
 });
 
 test("per-run context: reused across renders, dropped by closeContext", async () => {

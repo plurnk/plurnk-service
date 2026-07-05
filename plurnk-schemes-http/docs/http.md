@@ -27,6 +27,10 @@ EDIT(https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Ty
 
 Percent-encode `)`, `<`, and `}` inside a header value (the path-encoding rule).
 
+Host handling: a GitHub `…/blob/…` URL is fetched as its `raw.githubusercontent.com`
+source (line-navigable, exact) rather than the JS code-viewer page — so
+`READ(https://github.com/owner/repo/blob/main/src/x.ts)` returns the file's source.
+
 Cancel / cache:
 
 - `SEND[499](http(s)://…)` — cancel an in-flight request (abort the fetch).

@@ -363,6 +363,42 @@ test("KILL → DELETE (method mapping); distinct from SEND[410] cache drop", asy
     assert.equal(seenMethod, "DELETE");
 });
 
+// ── hostile-host rewrite (schemes-http#4) ──────────────────────────────────
+test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the SPA)", async () => {
+    const { ctx } = makeCtx();
+    let seenUrl = "";
+    const probe = async (url: string | URL | Request) => {
+        seenUrl = String(url);
+        return new Response("// source", { status: 200, headers: { "content-type": "text/plain" } });
+    };
+    const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
+    await withFetch(probe as typeof fetch, async () => {
+        await new Http().read(readStmt(urlTarget(blob, "/nodejs/node/blob/main/src/node_version.h")), ctx);
+    });
+    assert.equal(seenUrl, "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h");
+});
+
+test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
+    const { ctx } = makeCtx();
+    let seenUrl = "";
+    const probe = async (url: string | URL | Request) => { seenUrl = String(url); return new Response("x", { status: 200 }); };
+    const blob = "https://github.com/o/r/blob/feature/foo/src/x.js";
+    await withFetch(probe as typeof fetch, async () => {
+        await new Http().read(readStmt(urlTarget(blob, "/o/r/blob/feature/foo/src/x.js")), ctx);
+    });
+    assert.equal(seenUrl, "https://raw.githubusercontent.com/o/r/feature/foo/src/x.js");
+});
+
+test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
+    const { ctx } = makeCtx();
+    let seenUrl = "";
+    const probe = async (url: string | URL | Request) => { seenUrl = String(url); return new Response("ok", { status: 200 }); };
+    await withFetch(probe as typeof fetch, async () => {
+        await new Http().read(readStmt(urlTarget("https://example.com/x", "/x")), ctx);
+    });
+    assert.equal(seenUrl, "https://example.com/x");
+});
+
 // ── cancellation ──────────────────────────────────────────────────────────
 test("force-cancel via the SubscriptionHandle aborts the fetch → 499", async () => {
     const { ctx, inspect, forceCancel } = makeCtx();

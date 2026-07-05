@@ -33,8 +33,16 @@ interface PwContext {
     newPage(): Promise<PwPage>;
     close(): Promise<void>;
 }
+// The subset of Playwright's newContext options we set for device emulation.
+interface PwContextOptions {
+    userAgent: string;
+    viewport: { width: number; height: number };
+    deviceScaleFactor: number;
+    isMobile: boolean;
+    hasTouch: boolean;
+}
 interface PwBrowser {
-    newContext(): Promise<PwContext>;
+    newContext(options?: PwContextOptions): Promise<PwContext>;
     on(event: "disconnected", cb: () => void): void;
     close(): Promise<void>;
 }
@@ -55,6 +63,23 @@ export interface RenderResult {
     readonly headers: ReadonlyArray<readonly [string, string]>;
     readonly html: string;
 }
+
+// Mobile device emulation (a Pixel-5-class profile). Responsive sites serve a
+// lighter, less-chrome layout to a mobile viewport/UA — a general generation
+// hint, not a per-host rewrite (schemes-http#4). Default ON; set
+// PLURNK_SCHEMES_HTTP_MOBILE=0 to render as desktop (escape hatch for the tail
+// of sites that serve degraded/blocked mobile content). NOTE: Wikipedia gates
+// mobile on the domain, not the UA, so this is a no-op there — by design; its
+// desktop page already extracts clean.
+const MOBILE_CONTEXT: PwContextOptions = Object.freeze({
+    userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    viewport: { width: 393, height: 851 },
+    deviceScaleFactor: 2.75,
+    isMobile: true,
+    hasTouch: true,
+});
+const mobileEmulation = (): PwContextOptions | undefined =>
+    process.env.PLURNK_SCHEMES_HTTP_MOBILE === "0" ? undefined : MOBILE_CONTEXT;
 
 // Required numeric knob — `.env.example` is the canonical list (metaproject
 // env rule: every magic number lives there; no in-code default hides one). An
@@ -177,14 +202,15 @@ export default class Browser {
         return browser;
     }
 
-    // Get-or-create the run's BrowserContext. Desktop default (no device
-    // emulation) — we render the true page, not a mobile-extraction view.
+    // Get-or-create the run's BrowserContext. Mobile-emulated by default (a
+    // lighter responsive layout is the better generation hint); desktop when
+    // PLURNK_SCHEMES_HTTP_MOBILE=0.
     async #getContext(runId: number): Promise<PwContext> {
         this.#touchIdle();
         const existing = this.#contexts.get(runId);
         if (existing) return existing;
         const browser = await this.#getBrowser();
-        const context = await browser.newContext();
+        const context = await browser.newContext(mobileEmulation());
         this.#contexts.set(runId, context);
         return context;
     }

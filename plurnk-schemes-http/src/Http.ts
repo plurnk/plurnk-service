@@ -155,7 +155,7 @@ export default class Http implements SchemeHandler {
     // blocks (grammar#46) ride into both the fetch and the render. Each chunk is
     // labelled with its real mimetype via notifyChunk. Settles via close().
     async #fetchStream(target: UrlPath, ctx: SchemeCtx, method: string, body: string | undefined): Promise<PassthroughResult> {
-        const url = Http.#urlFrom(target);
+        const url = Http.#rewriteHostileHost(Http.#urlFrom(target));
         const pathname = target.pathname;
         const headers = target.headers;  // [key,value][] | undefined — opaque to grammar, honored here
 
@@ -254,6 +254,21 @@ export default class Http implements SchemeHandler {
     // convenience. Use raw so query strings / auth / port survive exactly.
     static #urlFrom(target: UrlPath): string {
         return target.raw;
+    }
+
+    // Known-hostile-host rewrite — the ONE bounded, first-party exception (SPEC
+    // §7, schemes-http#4). A GitHub blob page is a CSP-locked JS SPA that renders
+    // nothing useful, and code wants SOURCE (line-navigable) not markdown pulled
+    // from a rendered code-viewer; raw.githubusercontent serves the exact bytes
+    // on the byte path. Measured through the extractor: blob → SPA/JSON noise,
+    // raw → clean source. The `{ref}/{path}` tail carries through verbatim, so
+    // slash-bearing branch refs map correctly. Wikipedia was measured too and
+    // deliberately gets NO rewrite — desktop already extracts to the full clean
+    // article; every rewrite (action=render, mobile-html) regressed it.
+    static #rewriteHostileHost(url: string): string {
+        const gh = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(url);
+        if (gh !== null) return `https://raw.githubusercontent.com/${gh[1]}/${gh[2]}/${gh[3]}`;
+        return url;
     }
 
     static #bad(status: number, scheme: string, kind: string, message: string): PassthroughResult {
