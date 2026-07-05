@@ -94,6 +94,35 @@ test("search: queries SearXNG, writes results, closes channel, status 200", asyn
     assert.equal(events.length, 0);
 });
 
+test("digest: emits only {title,url,snippet}, dropping SearXNG noise (#17)", async () => {
+    setFetch(async () => ({
+        ok: true, status: 200, json: async () => ({ results: [{
+            title: "Paris", url: "https://ex.com", content: "The capital of France.",
+            template: "default.html", engine: "google", engines: ["google", "bing"], score: 3.2,
+            parsed_url: ["https", "ex.com", "/", ""], positions: [1, 2], category: "general",
+        }] }),
+    }));
+    const { writes } = await invoke("search", "capital of France");
+    assert.deepEqual(JSON.parse(writes[0].chunk), [
+        { title: "Paris", url: "https://ex.com", snippet: "The capital of France." },
+    ], "template/engine/score/parsed_url/positions all dropped — a ~10-20x shrink");
+});
+
+test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload (#17)", async () => {
+    const raw = { title: "t", url: "u", content: "abcdefghij", engine: "x" };
+    setFetch(async () => ({ ok: true, status: 200, json: async () => ({ results: [raw] }) }));
+
+    process.env.PLURNK_EXECS_SEARCH_SNIPPET = "4";
+    let cap = await invoke("search", "q");
+    assert.equal(JSON.parse(cap.writes[0].chunk)[0].snippet, "abcd", "snippet bounded to 4 chars");
+    delete process.env.PLURNK_EXECS_SEARCH_SNIPPET;
+
+    process.env.PLURNK_EXECS_SEARCH_RAW = "1";
+    cap = await invoke("search", "q");
+    assert.deepEqual(JSON.parse(cap.writes[0].chunk), [raw], "RAW → verbatim upstream, engine field intact");
+    delete process.env.PLURNK_EXECS_SEARCH_RAW;
+});
+
 test("tag → categories mapping (news, social→'social media', downloadable→files, images)", async () => {
     const seen: Record<string, string | null> = {};
     setFetch(async (u) => {

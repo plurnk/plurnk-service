@@ -22,10 +22,19 @@ const CATEGORY: Readonly<Record<string, string>> = Object.freeze({
 
 const preview = (q: string): string => (q.length > 60 ? `${q.slice(0, 60)}…` : q);
 
+// The signal fields of a SearXNG result — everything else it returns (template,
+// engine internals, score, parsed_url, positions) is noise the model can't use.
+interface SearxngResult {
+    title?: string;
+    url?: string;
+    content?: string;
+    publishedDate?: string;
+}
+
 // Web search executor (the first non-subprocess runtime). Dispatches a query to
-// a configured SearXNG instance and writes its native JSON results to the
-// `results` channel. Stateless: configuration comes from the environment, read
-// per run.
+// a configured SearXNG instance and writes a compact digest of its results
+// (title + url + snippet) to the `results` channel. Stateless: configuration
+// comes from the environment, read per run.
 //
 //   PLURNK_EXECS_SEARCH_SEARXNG_URL   (required)  base URL of the instance
 //   PLURNK_EXECS_SEARCH_LANGUAGE      (optional)  SearXNG's own default if unset
@@ -33,6 +42,8 @@ const preview = (q: string): string => (q.length > 60 ? `${q.slice(0, 60)}…` :
 //   PLURNK_EXECS_SEARCH_TIMEOUT       (optional)  ms; the consumer's signal is the deadline
 //                                                 (SPEC §2.5) — this is an extra local ceiling
 //   PLURNK_EXECS_SEARCH_SAFESEARCH    (optional)  0|1|2
+//   PLURNK_EXECS_SEARCH_SNIPPET       (optional)  max chars per result snippet; unbounded if unset
+//   PLURNK_EXECS_SEARCH_RAW           (optional)  truthy → emit the verbatim SearXNG payload (debug)
 // No code defaults hide a magic number — suggested values live in the consuming
 // service's .env.example.
 export default class Search extends BaseExecutor {
@@ -119,9 +130,23 @@ export default class Search extends BaseExecutor {
             return fail(`searxng_http_${response.status}`, `SearXNG ${response.status} ${response.statusText} — host=${url.host} query="${preview(query)}"`);
         }
 
-        const data = await response.json() as { results?: unknown[] };
-        const all = data.results ?? [];
-        const results = limitRaw ? all.slice(0, Number(limitRaw)) : all;
+        const data = await response.json() as { results?: SearxngResult[] };
+        const capped = (data.results ?? []).slice(0, limitRaw ? Number(limitRaw) : undefined);
+        // Emit a model-consumable digest, not the raw upstream payload (#17): a
+        // raw SearXNG result is ~10–20× its information content, and a wake that
+        // folds the full response back into the prompt can exceed the budget
+        // outright (a 68KB/query hard 413). Keep title + url + a snippet
+        // (optionally bounded); PLURNK_EXECS_SEARCH_RAW is a debug escape hatch
+        // back to the verbatim payload.
+        const snippetMax = process.env.PLURNK_EXECS_SEARCH_SNIPPET;
+        const results = process.env.PLURNK_EXECS_SEARCH_RAW
+            ? capped
+            : capped.map(({ title, url, content, publishedDate }) => ({
+                title,
+                url,
+                snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
+                ...(publishedDate ? { publishedDate } : {}),
+            }));
         write("results", JSON.stringify(results));
         setState("results", "closed");
         return { status: 200 };
