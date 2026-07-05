@@ -303,3 +303,9 @@ SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;
 -- PREP: test_set_session_settings
 -- Set the sessions.settings JSON bag (client open-context) for a test.
 UPDATE sessions SET settings = $settings WHERE id = $id;
+
+-- PREP: test_entries_by_pathname
+SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname;
+
+-- PREP: test_count_embeddings
+SELECT count(*) AS n FROM entry_embeddings WHERE entry_id = $entry_id;

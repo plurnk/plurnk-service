@@ -5,6 +5,7 @@
 // Mimetypes, so DEFAULT_MIMETYPES's decline only affects tests that don't need
 // the embedder.
 
+import type { PrepMethod } from "../../src/core/Db.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
@@ -122,4 +123,35 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
         const bad = await new Known().find(thresholdStmt(url(""), "database connection error", 1.5), findCtx());
         assert.equal(bad.status, 416, "a fractional marker outside (0,1) is 416");
     } finally { db.close(); }
+});
+
+test("[#337] the pump's chunk ceiling: an oversized entry embeds its HEAD and STAMPS — bounded rows, no eternal re-derive", async () => {
+    // A machine-generated giant (one enormous body) chunks past the ceiling. The pump must
+    // (a) store at most CEILING embedding rows, (b) stamp the deep hash so the next pass
+    // SKIPS it — uncapped, run18's minified bundle was 2,162 chunks of CPU burn per corpus pass.
+    const prev = process.env.PLURNK_SERVICE_SEMANTIC_MAX_CHUNKS;
+    process.env.PLURNK_SERVICE_SEMANTIC_MAX_CHUNKS = "4";
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `cap-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        // ~200 lines of distinct prose — chunks well past a ceiling of 4.
+        const giant = Array.from({ length: 200 }, (_, i) => `line ${i}: the quick brown fox number ${i} jumps over the lazy dog again and again`).join("\n");
+        await new Known().edit(editStmt(url("giant.md"), giant), ctx);
+        await EntryManifest.maintainDerivations(ctx);
+        const entry = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/giant.md" });
+        const rows = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: entry?.id ?? -1 });
+        assert.ok((rows?.n ?? 0) > 0 && (rows?.n ?? 99) <= 4, `embeds its head only: got ${rows?.n} rows for a ceiling of 4`);
+        // The stamp: a second pass derives NOTHING (deep_hash current — the ceiling is full depth by policy).
+        const before = rows?.n;
+        await EntryManifest.maintainDerivations(ctx);
+        const after = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: entry?.id ?? -1 });
+        assert.equal(after?.n, before, "the second pump pass skipped the stamped entry — no eternal re-derive");
+    } finally {
+        db.close();
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_MAX_CHUNKS; else process.env.PLURNK_SERVICE_SEMANTIC_MAX_CHUNKS = prev;
+    }
 });

@@ -108,13 +108,13 @@ export default class EntryManifest {
     // delete-then-insert — interleaved writers would duplicate chunk rows.
     static #deriveChain: Promise<void> = Promise.resolve();
 
-    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
-        const run = EntryManifest.#deriveChain.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks));
+    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number, stampAtCap = false): Promise<void> {
+        const run = EntryManifest.#deriveChain.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks, stampAtCap));
         EntryManifest.#deriveChain = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number, stampAtCap = false): Promise<void> {
         const { db, sessionId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         try {
@@ -139,12 +139,17 @@ export default class EntryManifest {
             await EntrySemantic.indexFts(db, r.entry_id, r.content);
             const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, r.content, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal, maxChunks);
             await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
-            // §semantic-entry-chunk-cap — a CAPPED (inline, latency-staged) pass does NOT stamp:
-            // the hash stays stale so the background pump completes the entry to full depth.
-            // Head-quality answers now, whole-book coverage at steady state.
-            if (capped) {
+            // §semantic-entry-chunk-cap — two cap semantics, one flag apart:
+            //   inline (latency-staged, stampAtCap=false): a capped pass does NOT stamp — the hash
+            //   stays stale so the background pump deepens the entry. Head-quality answers now.
+            //   pump ceiling (stampAtCap=true, PLURNK_SERVICE_SEMANTIC_MAX_CHUNKS): the cap IS full
+            //   depth by policy — STAMP, or a giant entry re-derives every turn forever. #337: a
+            //   minified vuepress bundle chunked to 2,162 embeddings and a lockfile to 1,352 — 45%
+            //   of a bench corpus was machine-generated junk the pump ground through on CPU.
+            if (capped && !stampAtCap) {
                 ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} inline-embedded head-first (${chunks.length} chunks) — the background pump completes it`, level: "info" });
             } else {
+                if (capped) ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} embedded to the ${chunks.length}-chunk ceiling (PLURNK_SERVICE_SEMANTIC_MAX_CHUNKS) — a machine-generated/oversized body; ~query covers its head, FTS covers it whole`, level: "warn" });
                 await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
             }
         } catch {
@@ -204,8 +209,14 @@ export default class EntryManifest {
         const total = pending.length;
         const step = total > 1 ? Math.max(1, Math.floor(total / 10)) : 0; // ~10 milestones, or silent for 0-1
         let completed = 0;
+        // #337 — the pump's per-entry chunk ceiling: an entry chunking past it embeds its head and
+        // STAMPS (deliberate depth). Uncapped, a single minified bundle is thousands of chunks of
+        // zero-semantic-value CPU burn. -1 = uncapped.
+        const rawCeiling = process.env.PLURNK_SERVICE_SEMANTIC_MAX_CHUNKS;
+        const ceiling = rawCeiling === undefined || rawCeiling === "" ? 128 : Number.parseInt(rawCeiling, 10);
+        const pumpCap = Number.isFinite(ceiling) && ceiling > 0 ? ceiling : undefined;
         for (const { r, hash } of pending) {
-            await EntryManifest.deriveOne(ctx, r, hash, embedActive);
+            await EntryManifest.deriveOne(ctx, r, hash, embedActive, pumpCap, true);
             completed++;
             if (step > 0 && (completed === total || completed % step === 0)) {
                 ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `deriving entries ${completed}/${total}`, completed, total, level: "info" });
