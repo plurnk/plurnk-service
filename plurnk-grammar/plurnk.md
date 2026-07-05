@@ -131,7 +131,6 @@ YOU SHOULD distill source information into taxonomized, tagged, and topical know
 YOU MUST terminate the turn by SENDing a message to the user with the proper status code.
 * 102: submit a continuing turn with status code 102: <<SEND[102]:Submitting operations and optimizing log relevance.:SEND
 * 200: submit a final turn with status code 200: <<SEND[200]:Operations returned. Tasks successfully performed.:SEND
-* 300: stop and ask the user a multiple-choice question: <<SEND[300]:Deploy to (a) staging or (b) production?:SEND
 * 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable internal error:SEND
 
 ## Examples
