@@ -109,6 +109,101 @@ The diagnosis is always "what is the packet missing?" — the digest *shows* it.
 
 ---
 
+## Operating Recipes (execute these; don't re-derive them)
+
+### R1 — Bump-adopt (any upstream release)
+1. Survey: for each family package, compare installed vs `npm view @plurnk/<p> version`.
+2. Read the delta: the release's issue/comment trail; for grammar, `diff` the shipped `plurnk.md`/gbnf.
+3. `npm i` the exact new versions. Peer lag (exact pins mismatching) is the alarm working: install the family's full aligned wave, or if upstream shipped half a wave, file the issue and STOP — never `--legacy-peer-deps` into a pub.
+4. Gates: `npm run test:lint` → `test:unit` → `test:intg` (whole tiers, real totals).
+5. `npm ls --all | grep -iE "invalid|missing"` — zero non-optional hits.
+6. If the bump touches teaching/model behavior: one live sanity (R4, single chunk) before calling it adopted.
+
+### R2 — Release (the four gates, then the OTP handoff)
+1. Gates: full drill (lint/unit/intg) · `npm ls` clean graph · `npm run test:installation` PASS · `npm publish --dry-run` clean.
+2. `npm version <x.y.z> --no-git-tag-version`; commit; push.
+3. Hand the user: `! npm publish --otp=<code>`. NEVER publish yourself.
+4. After they confirm: `npm view @plurnk/plurnk-service version` (expect the new tip), then post bench/daughter notes on the affected issues.
+5. Schema changed? Say so loudly in the release commit AND the handoff: dbs recreate (`rm ~/.plurnk/plurnk.db* && plurnk-service migrate`).
+
+### R3 — Forensic capture (a failing/interesting model run)
+1. Drive the exact scenario via a probe script (liveSession/liveLoop from `test/_live-harness.ts`), NOT by re-running the test blind.
+2. Capture the db BEFORE cleanup, verified BY SESSION NAME (open candidates in `test/intg/.tmp/`, match `sessions.name`) — never newest-file.
+3. Copy db(+wal/shm) to `~/repo/plurnk/benchmarks/run<N>/plurnk.db` (next N).
+4. `node bin/digest.ts ~/repo/plurnk/benchmarks/run<N>/plurnk.db` (writes to `test/digest/` for the owner) or `... run<N>/digest` to keep it with the specimen.
+5. Read turn-by-turn: emissions, rx statuses, steers. The three questions in order: what did the model emit · what did the packet show it · what did the engine do.
+6. Issues cite the specimen by number.
+
+### R4 — Live/demo sweep (foreground, attended, honest)
+1. Preconditions: `pgrep -fc 'node.*--test'` ≈ 0 (nothing foreign on the box), llama-server slot idle (`curl -s :11435/slots`).
+2. Chunks, each a foreground Bash call with `--test-concurrency=1`, output `tee`'d to a scratch file (failure detail must survive):
+   live: `npm run test:live` · demo: run-topology+budget-grind+budget-meta · then script-and-run+shell-tasks+stories.
+3. The demo env prefix: `PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md PLURNK_SERVICE_REASONING=4096 PLURNK_SERVICE_ASSISTANT=8192 PLURNK_SERVICE_SAFETY=1024` + the env-file cascade.
+4. Report REAL totals per tier. A red reruns ISOLATED ×2-3: consistent → R3 capture + root-cause; rerun-green → check for box contention before any other theory.
+5. Known accepted reds are listed in § Parked for Depth — everything else is new signal.
+
+### R5 — Issue triage
+1. Mode check first: is this an explicit instruction (execute as given) or a proposal imposing a HOW that is ours to own (evaluate critically)? When unsure, ask — one cheap question.
+2. Demand/locate the specimen (benchmarks/run<N>) before theorizing; file-format findings from model audits are mostly misreadings — verify against the code before accepting.
+3. Route by zone (§ Zones). Cross-repo? Declare it out of scope, name the owning repo, file the instructing issue there (mom→daughter is directive).
+4. Anything matching the escalation fence goes to § Parked for Depth with full written context — never attempted.
+
+### R6 — New operator knob
+1. It lives in `.env.example` with a decision-table comment (what it classifies, the shipped default, what changing it means). No code fallback hides a default; feature-flag bools compare `=== "1"`.
+2. `PLURNK_SERVICE_*` knobs must satisfy the flag-parity test (declared in `.env.example` ⇔ read in src).
+3. Ceilings compose tighten-only (env AND session); defaults compose REPLACE; per-session client knobs ride `session.create settings` with validation in `session_create.ts#parseSettings`.
+
+### R7 — New SPEC anchor + guard test
+1. The behavior gets a `{§kebab-name}` anchor in SPEC.md stating the ONE-SENTENCE story first, mechanism after.
+2. At least one test cites it as `[§kebab-name]` — `spec-anchors.test.ts` enforces the lockstep both ways.
+3. If the anchor states a doctrine (a "never"), write the guard test that FAILS when the doctrine is violated (the grinder's history-untouched test is the model).
+
+## Zones (bounded comprehension — load the brief for the zone you're touching)
+
+### Z1 — Loop lifecycle (`Engine.runLoop`/`runTurn`, daemon drain/wake, parks)
+Story: a loop is turns until a terminal; waiting is a mode of continuing.
+Invariants: a park (`[102]<T>`/`<-1>`, internally loops.status=202) always resumes — by arrival, deadline, or voice; a wake re-queued loop is never broadcast terminal {§run-lifecycle-wake-requeue-not-terminal}; hold-listed exec streams pause the cycle bounded+fail-open {§exec-hold-until-concluded}; the turn-hold never applies outside `PLURNK_SERVICE_EXEC_HOLD`.
+Tests: Engine.run-loop, Daemon.exec-wake, exec-hold, run-topology. Don'ts: never add a loop-status value without owner schema ruling; never make a park terminal.
+
+### Z2 — Op semantics (`Dispatcher`, the pending set, terminals)
+Story: SEND[200] terminates unless the pending set (streams ∪ live children ∪ this turn's retrievals) is non-empty; 499 always terminates; everything else is comms or parks.
+Invariants: judged at the terminal's OWN dispatch, post-batch (KILL+200 repairs in one turn) {§send-premature-terminate}; a refusal is 409 on the record, a strike, and a PERSISTED turn demotion — the digest surface never lies; SEND[300] is ask+park, gated by the questions cascade {§send-300-choices}.
+Tests: premature-terminate-child, send-300-choices, exec-entry-sink. Don'ts: no new gates without a SPEC anchor; never re-derive grammar rules engine-side (parse shapes are grammar's).
+
+### Z3 — Tokenomics (`PacketBuilder`, the grinder, `TokenGauge`)
+Story: the window partitions into reserves + a prompt budget; on overflow the grinder folds the newest turn boundary — NEVER history — then strikes, then 413s.
+Invariants: {§grinder-layer1-rollback} is the project's central doctrine (model-curated memory; the engine only refuses room for NEW memories) — its guard test must never be weakened; token counts key on (content_hash, tokenizer_id) {§tokenomics-derived-token-counts}; the client gauge denominator is the prompt BUDGET, not raw n_ctx; inexact tokenizers run as SURFACED upper bounds.
+Tests: Engine.budget-enforce, token-gauge, context-gauge, budget demo tier. Don'ts: no caps on legitimate content, ever; no grinder scope growth; the calibration ratio never applies to real-vs-real comparisons.
+
+### Z4 — The entry substrate (`_entry-crud/find/manifest/semantic/chunk`)
+Story: entries are the one address space; writes stamp (tokens, content_hash, FTS at write); deep channels (symbols/refs/embeddings) derive async via the pump, deep_hash-gated, smallest-first.
+Invariants: the pump never blocks a turn {§derivation-off-hot-path}; embeddings consume the handler's readable projection when offered (ProcessResult.content); junk-eligibility is the operator's NO_EMBED decision table, never heuristics; writeEntry REPLACES tags — callers wanting union read-then-merge (the exec entry() sink does).
+Tests: semantic, semantic-cold-parity, token-gauge, graph.*. Don'ts: no mimetype handler invocation at write {§mimetype-schemes-do-not-invoke-handlers}; no size caps.
+
+### Z5 — Schemes (in-tree handlers + the exec surface)
+Story: each scheme is a manifest + op methods over the entry substrate; exec runtimes are discovered daughters with a per-session policy cascade.
+Invariants: writableBy gates writes; the capability sheet and docs render only what the session can actually use (#328 — never taught-then-refused); the entry() sink materializes+tags+narrates via the plurnk run's ambient rows (tags ride the SIGNAL slot) {§exec-entry-sink}.
+Tests: Exec.effect, execs-session-policy, exec-entry-sink, run-scheme. Don'ts: never edit another repo's scheme package; daughters own their how.
+
+### Z6 — The daemon surface (RPC methods, notifications, session settings)
+Story: thin JSON-RPC over the engine; sessions carry client-chosen open-context (settings bag); every log row streams as log/entry.
+Invariants: settings validate at session.create (tighten-only ceilings; REPLACE defaults; MCP keys never ride the wire); loop.run acks 100 and outcomes ride loop/terminated; questions ([300]) require allowed(env)+requested(session).
+Tests: Daemon.*, session-ceilings, send-300-choices e2e. Don'ts: no method without params docs; no notification without a registered description.
+
+## Parked for Depth (the escalation fence — add to this list; do NOT attempt from it)
+
+Fence classes (park, never attempt, regardless of how tractable it looks): paradigm changes · SPEC-semantics changes · schema migrations · cross-repo contract design · anything reversing a standing ruling · new gates/rails.
+
+Currently parked:
+- **packet-wire async measurement** (#312 ask 4 remainder): the assembled-packet ruler stays provider-count+calibration; migrating packet-wire's sync measurement to the seam's async exact counts is a deep refactor. Reopener: bench data showing the assembled ruler mattering despite calibration.
+- **The per-URL TTL milestone** (#333): one TTL, one stamp, one predicate at schemes-http's revalidation boundary; gates the READ-of-materialized-entry re-fetch. Design with schemes-http when opened.
+- **The steer-adaptation probe** (cluster-I's deep question): does ANY steer wording break a verbatim self-anchor, or does it need a structural nudge? Baseline specimen: benchmarks/run19.
+- **grammar#55 steer residue** (upstream): the migration steer still names 300 in its code set; watch for the grammar patch, adopt on arrival.
+- **Pinned-alias hard-fail refinement** (offered, unfiled): inexact tokenizer under PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 could fail hard as a true contract failure. Owner's call; needs no code until ruled.
+- **Streamed-channel token residuals**: streamed appends leave content_hash NULL (write-time stamp serves); log-row tokens stay write-time. Harmless; revisit only with evidence.
+- **Cluster-C budget formulas revisit** (pre-launch): jumbo's floor-vs-ceiling arithmetic; the demo tier is the meter.
+- The § Deferred / design items below (packet pluggability audit, out-of-space story, build:global:install) remain owner-gated.
+
 ## TODO
 
 Lean checklist. Ordered by chapter; chapters run in order. Items are imperative one-liners. When something lands, delete the bullet. No ✓ marks, no PR-number tombstones, no embedded discussion.
@@ -129,6 +224,8 @@ A broad survey (open issues + this doc's User Notes + the budget chapter) cluste
 - **Deferred:** global resources `wiki:///` (cluster H, post-v1) · CPU-spike-on-load progress signal (pairs with #272).
 
 > The full raw User-Notes inbox (below, § User Notes) still needs triaging INTO these clusters — do that once the telemetry cluster lands so this doc stops drifting.
+
+### UNVERIFIED BACKLOG BANNER — the epics below drift behind code (two were found fully shipped after sitting as [ ] for weeks). Audit firsthand (R5 rules) before treating ANY item as open; prefer the SURVEY section above as current truth.
 
 ### ACTIVE EPIC — Operation Semantics Contract (URI resolution + matcher rendering) — TOP PRIORITY, no deadline
 
