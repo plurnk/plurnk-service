@@ -52,9 +52,31 @@ function resolveRemote() {
         url: `${base.trim().replace(/\/+$/, "")}/embeddings`,
         model: modelName.trim(),
         key: process.env.PLURNK_MIMETYPES_EMBED_API_KEY,
+        maxTokens: remoteMaxTokens(),
     };
 }
+
+// PLURNK_MIMETYPES_EMBED_MAX_TOKENS — the remote model's token window, an
+// OPERATOR-DECLARED fact (mimetypes#50): the endpoint owner knows their model.
+// Optional: unset → window unknown (hosts take their null-window lane).
+// Malformed → crash. Remote-only by nature — the bundled model's window is a
+// model fact the operator cannot re-declare (checked in local mode below).
+function remoteMaxTokens() {
+    const raw = process.env.PLURNK_MIMETYPES_EMBED_MAX_TOKENS;
+    if (raw === undefined || raw.trim() === "") return undefined;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1) {
+        throw new RangeError(`PLURNK_MIMETYPES_EMBED_MAX_TOKENS must be a positive integer; got ${JSON.stringify(raw)}.`);
+    }
+    return n;
+}
 const REMOTE = resolveRemote();
+if (!REMOTE && process.env.PLURNK_MIMETYPES_EMBED_MAX_TOKENS !== undefined) {
+    throw new RangeError(
+        "PLURNK_MIMETYPES_EMBED_MAX_TOKENS is remote-only: the bundled model's window is a "
+        + "model fact (512), not operator config. Unset it, or set PLURNK_MIMETYPES_EMBED_BASE_URL.",
+    );
+}
 
 // embedBatch() pool size (LOCAL mode only — remote has no pool). REQUIRED, no
 // default: each worker holds its own model copy, so the count is a
@@ -125,7 +147,7 @@ if (REMOTE) {
     const dim = probe.byteLength / 4;
     if (!Number.isInteger(dim) || dim < 1) throw new Error(`remote embeddings: probe returned invalid dimension ${dim} from ${REMOTE.url}`);
     dimension = dim;
-    maxTokens = undefined;
+    maxTokens = REMOTE.maxTokens;
     model = `remote:${REMOTE.model}@d${dimension}`;
 } else {
     const REPO = "Xenova/all-MiniLM-L6-v2";
@@ -151,11 +173,15 @@ export async function embed(text) {
 }
 
 // Untruncated token count in the bundled model's own tokenizer (CLS/SEP
-// included). LOCAL only — remote mode has no tokenizer and will not fake one.
-export async function countTokens(text) {
-    if (REMOTE) throw new Error("countTokens is unavailable in remote embed mode (no local tokenizer; the window belongs to the endpoint)");
-    return countTokensWith((await runtime()).tokenizer, text);
-}
+// included). LOCAL only — in remote mode the export is UNDEFINED, not a
+// throwing function: the seam duck-checks `typeof countTokens === "function"`
+// to distinguish "has a counter" from "hasn't" (mimetypes#50), and a throwing
+// decoy would read as the former.
+export const countTokens = REMOTE
+    ? undefined
+    : async function countTokens(text) {
+        return countTokensWith((await runtime()).tokenizer, text);
+    };
 
 let poolPromise = null;
 function pool() {

@@ -100,12 +100,27 @@ describe("remote mode (#46)", () => {
         );
     });
 
-    it("countTokens refuses in remote mode (no local tokenizer, no faked window)", async () => {
-        const out = await inRemote(
-            `try { await e.countTokens("x"); console.log("counted"); }\n`
-            + `catch (err) { console.log(JSON.stringify(err.message.includes("remote embed mode"))); }`,
-        );
-        assert.equal(JSON.parse(out), true);
-    });
 
+});
+
+describe("remote mode — embedderInfo contract facts (#50)", () => {
+    it("countTokens is UNDEFINED (absent), never a throwing decoy", async () => {
+        const out = await inRemote(`console.log(JSON.stringify(typeof e.countTokens));`);
+        assert.equal(JSON.parse(out), "undefined");
+    });
+    it("PLURNK_MIMETYPES_EMBED_MAX_TOKENS declares the window (operator fact)", async () => {
+        const out = await inRemote(
+            `console.log(JSON.stringify({ mt: e.maxTokens ?? null }));`,
+            { PLURNK_MIMETYPES_EMBED_MAX_TOKENS: "8192" },
+        );
+        assert.deepEqual(JSON.parse(out), { mt: 8192 });
+    });
+    it("a malformed window crashes; unset stays unknown", async () => {
+        await assert.rejects(
+            () => inRemote(`console.log("loaded");`, { PLURNK_MIMETYPES_EMBED_MAX_TOKENS: "lots" }),
+            /must be a positive integer/,
+        );
+        const out = await inRemote(`console.log(JSON.stringify(e.maxTokens ?? null));`);
+        assert.equal(JSON.parse(out), null);
+    });
 });
