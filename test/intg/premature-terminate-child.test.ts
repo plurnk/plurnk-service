@@ -169,3 +169,49 @@ test("[§send-premature-terminate] a model that won't stop premature-200ing with
         assert.notEqual(result.finalStatus, 200, "a model declaring done with work running NEVER gets a false 200");
     } finally { await db.close(); }
 });
+
+test("[§send-premature-terminate] GUARD: 499 is NEVER gated — abandon-by-intent discards pending work legally", async () => {
+    // Doctrine guard (weaker-model protection): the pending set gates [200] only. A model
+    // abandoning (499) with live children AND unreceived retrievals terminates cleanly — discard
+    // by stated intent is the one legitimate discard. If this test reddens, someone widened the
+    // gate; that is a paradigm change and belongs in Parked-for-Depth, not a commit.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `guard-499-${crypto.randomUUID()}`);
+        const parentRun = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
+        const childRun = await insertRun(db, sessionId, parentRun);
+        await insertLoop(db, childRun, 1, "child"); // live child
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const result = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(499, null, "abandoning")] } }] }),
+            sessionId, runId: parentRun, loopId: parentLoop,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        assert.equal(result.status, 499, "the abandon lands — pending work never gates a 499");
+        assert.equal(result.steerStruck, false, "no strike for a legal abandon");
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: parentLoop }))?.status;
+        assert.equal(loopStatus, 499, "the loop is terminal");
+    } finally { await db.close(); }
+});
+
+test("[§send-premature-terminate] GUARD: [202] never terminates or parks a loop — it is ordinary comms (the retired terminal stays retired)", async () => {
+    // Doctrine guard: grammar 0.75.0 retired the [202] terminal; the dispatcher must treat it as
+    // a plain broadcast row — no loop transition, no park. If this reddens, the retired terminal
+    // is creeping back; that is a paradigm change.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `guard-202-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(202, null, "just a status note"), sendStmt(102, null, "continuing")] } }] }),
+            sessionId, runId, loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        assert.equal(loopStatus, 102, "the loop neither terminated nor parked — [202] is a comms row, nothing more");
+    } finally { await db.close(); }
+});

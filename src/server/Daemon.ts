@@ -93,7 +93,7 @@ export default class Daemon {
     // aborted so a later loop.run isn't born cancelled.
     #runAborts = new Map<number, AbortController>();
     // grammar 0.74.20 EXEC `<T,P>` — per-run hibernation poll-wake timer. When a loop parks at
-    // SEND[202] with a polled stream, a timer fires every P seconds to resume it (§exec-poll). One
+    // a park with a polled stream, a timer fires every P seconds to resume it (§exec-poll). One
     // per run (the tightest cadence); cleared/replaced on each park and on cancel.
     #parkTimers: Map<number, NodeJS.Timeout> = new Map();
     #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -336,12 +336,12 @@ export default class Daemon {
                 usage: "{promptTokens, completionTokens, costPico, contextTokens, meta} — summed per-loop totals (#197); contextTokens is the last turn's prompt tokens (#263); meta is the latest turn's OPAQUE provider→client metadata blob (e.g. balancePico), passed through unenforced — the field contract is the provider↔client's, not the service's (#252)",
             },
         });
-        // §run-lifecycle-quiesced — a SOFT completion signal, NOT a terminal. A loop parked at SEND[202]
+        // §run-lifecycle-quiesced — a SOFT completion signal, NOT a terminal. A parked loop ([102]<T>/<-1>)
         // whose subtree is now idle (no open stream, no non-terminal child). The CLI's honest yes/no
         // ("nothing is running under this run right now"), but the loop stays at 202 and is REAWAKABLE —
         // a later irc / loop.run resumes it (then it re-quiesces and re-fires). Never reuses a terminal code.
         this.#registry.registerNotification("loop/quiesced", {
-            description: "A loop parked at SEND[202] reached subtree-quiescence (no open stream, no non-terminal child) — idle/complete-for-now but REAWAKABLE, distinct from loop/terminated. Scoped to the session.",
+            description: "A parked loop ([102]<T>/<-1>) reached subtree-quiescence (no open stream, no non-terminal child) — idle/complete-for-now but REAWAKABLE, distinct from loop/terminated. Scoped to the session.",
             params: {
                 loopId: "number",
                 runId: "number",
@@ -579,7 +579,7 @@ export default class Daemon {
                         signal: controller.signal,
                     });
                     if (result.finalStatus === 202) {
-                        // The loop SLEPT (SEND[202]) — suspended, not terminated. Leave it at 202
+                        // The loop SLEPT (parked via [102]<T>/<-1>) — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // (#handleWakeRun) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect (§exec-poll). §run-lifecycle-wake-liveness.
@@ -871,7 +871,7 @@ export default class Daemon {
         try {
             const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
 
-            // A slept (202) loop means the run PARKED (SEND[202]) → RESUME it IN PLACE: re-queue
+            // A slept (202) loop means the run PARKED ([102]<T>/<-1>) → RESUME it IN PLACE: re-queue
             // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
             // FIRST: the slept status is the run's true disposition regardless of a draining
             // sibling mid-teardown (the #ensureDrain lock serializes the re-claim). No fresh loop,
@@ -916,7 +916,7 @@ export default class Daemon {
 
     /**
      * grammar 0.74.20 EXEC `<T,P>` — schedule a hibernation poll-wake. Called when a loop parks at
-     * SEND[202]; if the run holds an open polled stream, arm a timer for its tightest cadence P that
+     * a park; if the run holds an open polled stream, arm a timer for its tightest cadence P that
      * resumes the slept loop so the model inspects progress. While the loop is ACTIVE there is no
      * poll work — ambient folded stream deltas already surface progress (§exec-stream); the wake
      * matters only across hibernation. A wake-edge-less 202 (no polled stream) gets no timer. §exec-poll

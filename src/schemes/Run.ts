@@ -97,13 +97,13 @@ export default class Run {
         const entryPath = Run.#entryPath(statement.target);
         // Path-absent READ(run://<name>) COLLECTS the run's deliverable (§run-scheme-collect, pull side):
         // its latest loop's terminal message — the SEND[200] result, or an abandonment reason. A worker
-        // still running hasn't delivered yet → 425 steers the model to hibernate [202] until it does (the
+        // still running hasn't delivered yet → 425 steers the model to park until it does (the
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
         if (entryPath === "") {
             const owner = authority === "self" ? await Run.#selfName(ctx) : authority;
             const row = await (ctx.db.run_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null }>({ session_id: ctx.sessionId, name: owner });
             if (row === undefined) return { status: 404, content: `run://${owner} not found in this session`, mimetype: "text/markdown", channel: null };
-            if (!Run.#TERMINAL_LOOP.has(row.status)) return { status: 425, content: `[ worker '${owner}' is still running — SEND[202] to hibernate until it delivers its result ]`, mimetype: "text/markdown", channel: null };
+            if (!Run.#TERMINAL_LOOP.has(row.status)) return { status: 425, content: `[ worker '${owner}' is still running — SEND[102]<-1> to park until it delivers its result ]`, mimetype: "text/markdown", channel: null };
             return { status: 200, content: row.terminal_message ?? `[ worker '${owner}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
         }
         // Path-present: cross-run scratch READ — resolve self, fold the owner into the storage path.
