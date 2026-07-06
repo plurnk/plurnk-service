@@ -28,11 +28,10 @@ export default class TokenGauge {
 
     // Resolve the active model's gauge: the seam's exact tokenizer, or the provider's surfaced
     // upper bound labeled with a heuristic identity (so its rows never masquerade as exact ones).
-    // NOTE (providers#37): a LOCAL ALIAS model string ('turboderp') maps to nothing in the seam
-    // even though the provider's own boot probe SAW the served model name (the gguf). The correct
-    // fix is the provider CONTRACT exposing it (Provider.servedModel) — demanded, not worked
-    // around: until it ships, alias-fronted backends run as a SURFACED upper bound. The warning
-    // is the alarm working, not a bug.
+    // providers#37 (delivered, 0.35.0): Provider.servedModel is the backend's self-reported
+    // identity from the boot probe — an alias-fronted local backend ('turboderp' → the gguf name)
+    // resolves its exact tokenizer from turn 1. Absent (hosted/no-probe), the alias model tries;
+    // inexact runs as a SURFACED upper bound (§312 ask 3) — never a silent number.
     static async resolve(mimetypes: Mimetypes | undefined, provider: Provider, pushTelemetry?: (e: TelemetryEvent) => void): Promise<GaugeResolution> {
         const key = provider.model;
         const cached = TokenGauge.#resolutions.get(key);
@@ -40,7 +39,7 @@ export default class TokenGauge {
         let resolution: GaugeResolution;
         try {
             if (mimetypes === undefined) throw new Error("no mimetypes seam");
-            const r = await mimetypes.tokenizer((provider as { servedModel?: string }).servedModel ?? provider.model);
+            const r = await mimetypes.tokenizer(provider.servedModel ?? provider.model);
             resolution = { tokenizerId: r.exact ? r.tokenizerId : `heuristic:${r.tokenizerId}`, exact: r.exact, count: (text) => r.countTokens(text) };
             if (!r.exact && !TokenGauge.#warned.has(key)) {
                 TokenGauge.#warned.add(key);
