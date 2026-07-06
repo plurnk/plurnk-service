@@ -56,8 +56,8 @@ export default class EntryManifest {
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — depth is re-counted through the live provider, not stored");
         const all = runOwnerPrefix === undefined
-            ? await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId })
-            : await (db.engine_list_run_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId, owner_prefix: runOwnerPrefix });
+            ? await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId, tokenizer_id: ctx.gauge?.tokenizerId ?? "" })
+            : await (db.engine_list_run_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId, owner_prefix: runOwnerPrefix, tokenizer_id: ctx.gauge?.tokenizerId ?? "" });
         const rows = schemeFilter === undefined ? all : all.filter((r) => r.scheme === schemeFilter);
         const tagsById = new Map<number, string[]>();
         const tagRows = runOwnerPrefix === undefined
@@ -232,6 +232,26 @@ export default class EntryManifest {
             completed++;
             if (step > 0 && (completed === total || completed % step === 0)) {
                 ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `deriving entries ${completed}/${total}`, completed, total, level: "info" });
+            }
+        }
+
+        // #312 — the token-warm pass: (content_hash, tokenizer_id)-keyed counts for the ACTIVE
+        // gauge. A model swap to a NEW tokenizer identity makes every row miss (the bulk recount,
+        // reported through the SAME progress channel as embeddings — one 'busy' signal, one cancel);
+        // a swap between vocab-sharing models misses nothing. The deep_hash discipline for tokens.
+        if (ctx.gauge !== undefined) {
+            const stale = await (db.token_stale_channels as PrepMethod).all<{ entry_id: number; content: string; content_hash: string }>({ session_id: sessionId, tokenizer_id: ctx.gauge.tokenizerId });
+            const tTotal = stale.length;
+            const tStep = tTotal > 1 ? Math.max(1, Math.floor(tTotal / 10)) : 0;
+            let counted = 0;
+            for (const row of stale) {
+                if (ctx.signal?.aborted === true) break;
+                const tokens = await ctx.gauge.count(row.content);
+                await (db.token_count_upsert as PrepMethod).run({ content_hash: row.content_hash, tokenizer_id: ctx.gauge.tokenizerId, tokens });
+                counted++;
+                if (tStep > 0 && (counted === tTotal || counted % tStep === 0)) {
+                    ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `recounting tokens ${counted}/${tTotal} (tokenizer ${ctx.gauge.tokenizerId.slice(0, 12)})`, completed: counted, total: tTotal, level: "info" });
+                }
             }
         }
     }

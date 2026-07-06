@@ -66,8 +66,9 @@ RETURNING name;
 DELETE FROM entry_tags WHERE entry_id = $entry_id;
 
 -- PREP: crud_write_channel
-INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
-VALUES ($entry_id, $name, $content, $mimetype, $tokens, $state);
+-- #312 — content_hash stamped at every static write: the join key into token_counts.
+INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, content_hash, state)
+VALUES ($entry_id, $name, $content, $mimetype, $tokens, $content_hash, $state);
 
 -- PREP: crud_write_tag
 INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);

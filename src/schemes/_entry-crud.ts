@@ -4,6 +4,7 @@
 
 import type { PrepMethod } from "../core/Db.ts";
 import EntrySemantic from "./_entry-semantic.ts";
+import TokenGauge from "../core/TokenGauge.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
@@ -74,7 +75,8 @@ export default class EntryCrud {
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
             await (db.crud_write_channel as PrepMethod).run({
                 entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
-                tokens: tokenize(channelData.content), // provider tokens stored at write-time — §tokenomics-tokens-stored-at-write
+                tokens: tokenize(channelData.content), // the write-time upper-bound stamp (§tokenomics-tokens-stored-at-write); the EXACT per-tokenizer count derives async (#312)
+                content_hash: TokenGauge.contentHash(channelData.content),
                 state: channelData.state ?? "static",
             });
         }

@@ -11,6 +11,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
+import TokenGauge from "./TokenGauge.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState from "./git-state.ts";
 import SessionSettings from "./session-settings.ts";
@@ -605,6 +606,11 @@ export default class Engine {
         // catalog and FIND read current data. NOT an action: no log entry, no sequence slot,
         // not dispatched. There is no plurnk:///manifest.json entry — the catalog is served
         // on demand by FIND(scheme:///**), foisted into the run's first turn below.
+        // #312 — the turn's token gauge: the ACTIVE provider's tokenizer identity + exact counter
+        // (mimetypes seam; provider upper bound surfaced as tokenizer_unavailable when inexact).
+        // Threaded per turn — never engine state — so concurrent loops on different providers
+        // each read their own honest numbers.
+        const gauge = await TokenGauge.resolve(this.#mimetypes, provider, (event: TelemetryEvent) => this.#telemetry.push(sessionId, loopId, event));
         const systemCtx: PlurnkSchemeContext = {
             db: this.#db, sessionId, runId, loopId, turnId,
             writer: "plurnk",
@@ -612,6 +618,7 @@ export default class Engine {
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
             tokenize: this.#tokenize,
+            gauge,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
             pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
@@ -982,7 +989,7 @@ export default class Engine {
             const result = await this.dispatch({
                 statement, sessionId, runId, loopId, turnId,
                 sequence: rowSeq,
-                origin, onDispatch,
+                origin, onDispatch, gauge,
             });
             statuses.push(result.status);
             // A refused terminal (the pending-set 409) strikes — couples to the grinder rails

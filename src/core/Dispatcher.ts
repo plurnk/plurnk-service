@@ -37,6 +37,9 @@ export type DispatchContext = {
     sequence: number;
     origin: WriterTier;
     onDispatch?: (logEntryId: number) => void;
+    // #312 — the turn's token gauge (identity + async exact counter), threaded from runTurn so
+    // catalog reads key on the ACTIVE tokenizer. Absent on client/plurnk dispatches (legacy stamp).
+    gauge?: { tokenizerId: string; exact: boolean; count: (text: string) => Promise<number> };
 };
 
 export type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
@@ -105,8 +108,8 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch } = context;
-        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin });
+        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, gauge } = context;
+        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin, gauge });
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
@@ -243,8 +246,8 @@ export default class Dispatcher {
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
     }
 
-    #buildSchemeCtx(ids: { sessionId: number; runId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
-        const { sessionId, runId, loopId, turnId, origin } = ids;
+    #buildSchemeCtx(ids: { sessionId: number; runId: number; loopId: number; turnId: number; origin: WriterTier; gauge?: PlurnkSchemeContext["gauge"] }): PlurnkSchemeContext {
+        const { sessionId, runId, loopId, turnId, origin, gauge } = ids;
         return {
             db: this.#db,
             sessionId, runId, loopId, turnId,
@@ -255,6 +258,7 @@ export default class Dispatcher {
             injectRun: this.#injectRun,
             mimetypes: this.#mimetypes,
             tokenize: this.#tokenize,
+            gauge,
             pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
             executors: this.#executors(),
         };

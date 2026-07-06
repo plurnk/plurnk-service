@@ -78,6 +78,10 @@ export interface PlurnkSchemeContext {
     // test fixtures) — the write helpers fail-hard if a write is attempted
     // without it rather than silently storing 0.
     readonly tokenize?: (text: string) => number;
+    // #312 — the active turn's token gauge: the tokenizer IDENTITY (tokenizer.json sha, or a
+    // heuristic:* label) + the async exact counter. Catalog reads key on the identity; the pump
+    // warms derivations with the counter. Absent outside a model turn (client/plurnk dispatches).
+    readonly gauge?: { tokenizerId: string; exact: boolean; count: (text: string) => Promise<number> };
     // A scheme's default channel — the manifest keys channels by addressable URI (note 4):
     // default → the bare entry path, non-default → path#channel. Engine wires the registry;
     // absent → "body" (correct for body-default entries, e.g. test ctxs without exec).
