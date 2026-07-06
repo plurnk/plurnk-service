@@ -764,6 +764,13 @@ export default class Dispatcher {
         if (status === 200) {
             const pending = await this.#pendingSet(runId, turnId);
             if (pending.length > 0) {
+                // Kind-specific steer (owner wording, xpath/topo forensics): retrievals-only is
+                // gemma's read-and-conclude idiom — no lever to pull, the results simply arrive;
+                // KILL/park advice only muddies it. Streams/children keep the remedy steer.
+                const retrievalsOnly = pending.every((k) => k.startsWith("results of this turn's"));
+                if (retrievalsOnly) {
+                    return { status: 409, error: "Termination attempted despite pending retrieval operations. Continuing to receive results." };
+                }
                 return { status: 409, error: `Attempted [200] termination with pending work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
             }
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: loopId, message: raw === "" ? null : raw });

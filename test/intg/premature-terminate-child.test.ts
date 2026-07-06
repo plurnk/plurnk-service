@@ -215,3 +215,27 @@ test("[§send-premature-terminate] GUARD: [202] never terminates or parks a loop
         assert.equal(loopStatus, 102, "the loop neither terminated nor parked — [202] is a comms row, nothing more");
     } finally { await db.close(); }
 });
+
+test("[§send-premature-terminate] a retrievals-ONLY refusal states the continuation, not a remedy menu (owner wording)", async () => {
+    // xpath/topo forensics: gemma's read-and-conclude idiom hit the KILL/park steer three turns
+    // straight and never adapted — there is no lever to pull for a this-turn retrieval; the
+    // results simply arrive. The steer now says exactly that. Streams/children keep the menu.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `steer-ret-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } }] }),
+            sessionId, runId, loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ run_id: runId });
+        const refused = refusals.find((r) => r.status_rx === 409);
+        assert.ok(refused, "the retrieval gate refused");
+        assert.match(refused!.rx, /Termination attempted despite pending retrieval operations\. Continuing to receive results\./, "the owner's wording, verbatim");
+        assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
+    } finally { await db.close(); }
+});

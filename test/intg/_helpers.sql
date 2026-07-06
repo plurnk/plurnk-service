@@ -329,3 +329,6 @@ SELECT signal FROM log_entries WHERE run_id = $run_id AND op = $op ORDER BY id;
 
 -- PREP: test_error_rows_for_run
 SELECT rx FROM log_entries WHERE run_id = $run_id AND op = 'error';
+
+-- PREP: test_send_rows_for_run
+SELECT rx, status_rx FROM log_entries WHERE run_id = $run_id AND op = 'SEND';
