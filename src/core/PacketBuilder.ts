@@ -120,11 +120,16 @@ export default class PacketBuilder {
         return Math.max(0, effectiveWindow - this.#reasoning - this.#assistant - this.#safety);
     }
 
+    // tokenRatio is real/measured, calibrated by Engine per loop (§tokenomics-ceiling-calibrates-to-usage).
+    // BELOW 1 is legitimate: a certified upper-bound ruler (no exact tokenizer)
+    // overmeasures, and the ceiling expands to observed truth — Engine applies the floor for
+    // exact rulers; this method trusts its input (run24: the floor-at-1 halved gbuild's window).
     ceilingFor(provider: Provider, tokenRatio = 1): number {
+        if (tokenRatio <= 0) throw new Error(`ceilingFor: tokenRatio must be > 0, got ${tokenRatio}`);
         const effectiveWindow = provider.contextSize === null ? this.#ctx : Math.min(this.#ctx, provider.contextSize);
         const promptBudget = effectiveWindow - this.#reasoning - this.#assistant - this.#safety;
         if (promptBudget <= 0) throw new Error(`window partition contradiction: effective window ${effectiveWindow} <= reserves ${this.#reasoning}+${this.#assistant}+${this.#safety} (PLURNK_SERVICE_CTX/REASONING/ASSISTANT/SAFETY)`);
-        return Math.floor(promptBudget / Math.max(1, tokenRatio));
+        return Math.floor(promptBudget / tokenRatio);
     }
 
     // Assemble the request half of the spec'd packet (Packet.json system

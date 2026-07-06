@@ -213,3 +213,59 @@ test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn 
         assert.equal(bigRow.expanded, 0, "the wake row is FOLDED (re-OPENable) — and not fatal");
     } finally { await db.close(); }
 });
+
+test("[§tokenomics-ceiling-calibrates-to-usage] the floor is exact-only — an upper-bound ruler's ceiling expands to observed truth (run24)", async () => {
+    const db = await openMigrated();
+    try {
+        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
+        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
+        const telemetry = new TelemetryChannel({ db });
+        const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+        process.env.PLURNK_SERVICE_CTX = "10000";
+        process.env.PLURNK_SERVICE_REASONING = "0"; process.env.PLURNK_SERVICE_ASSISTANT = "0"; process.env.PLURNK_SERVICE_SAFETY = "0";
+        const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+        ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => { if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i]; });
+        const provider = new Mock({ contextSize: 1_000_000, responses: [] });
+        assert.equal(b.ceilingFor(provider, 1), 10000);
+        assert.equal(b.ceilingFor(provider, 0.5), 20000, "ratio 0.5 (a 2× overmeasuring ruler) DOUBLES the measured-space ceiling — real usage lands on the true budget");
+        assert.equal(b.ceilingFor(provider, 2), 5000, "the tightening lane is unchanged");
+        assert.throws(() => b.ceilingFor(provider, 0), /tokenRatio must be > 0/, "a nonsense ratio fails hard");
+    } finally { await db.close(); }
+});
+
+test("[§tokenomics-ceiling-calibrates-to-usage] a two-turn inexact loop calibrates DOWN from usage ground truth — run24's strangulation is unreachable", async () => {
+    // Turn 1's response reports usage.prompt FAR below the measured packet (the chars/2 ruler's
+    // signature — the Mock has no exact tokenizer, so the gauge is inexact). Old semantics pinned
+    // the ratio at 1 forever; the ruled fix stores the observed ratio, so turn 2's measured-space
+    // ceiling expands and a packet that would have overflowed the strangled budget builds clean.
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        // Turn 1 fits at ratio 1 (no grind, provider called, usage observed). Turn 1's READ pulls
+        // a big entry whose rx renders OPEN in turn 2's packet — heavy enough to overflow a
+        // ratio-1 ceiling; the calibrated ratio (usage.prompt=1 → observed « 1) expands past it.
+        const engine = engineAt(db, 5000);
+        const filler = Array.from({ length: 600 }, (_, i) => `line ${i} of padding content for the ratio scenario`).join("\n");
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/big.md", channel: "body", content: filler, mimetype: "text/markdown", state: "static" });
+        const tinyUsage = (ops: PlurnkStatement[]): MockResponse => ({
+            assistant: { content: "", ops, reasoning: null, usage: { prompt: 1, completion: 0, reasoning: 0, cached: 0, total: 1 } },
+        });
+        const readBig: PlurnkStatement = { op: "READ", suffix: "", signal: null, target: {
+            kind: "url", raw: "known:///big.md", scheme: "known",
+            username: null, password: null, hostname: null, port: null, pathname: "/big.md", params: {}, fragment: null,
+        }, lineMarker: null, body: null, position: { line: 1, column: 1 } } as never;
+        const provider = new Mock({ contextSize: 1_000_000, responses: [
+            tinyUsage([readBig, sendStmt(102, "t1")]),
+            tinyUsage([sendStmt(102, "t2 — the READ rx renders open here")]),
+        ] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const packet = JSON.parse(row!.packet) as { telemetryErrors?: Array<{ status?: number; position?: { coordinate?: string } }> };
+        // Turn 1 MAY overflow (ratio 1, no observation yet — its 413 row re-surfaces as a turn-1
+        // coordinate). The ruled behavior: turn 2, calibrated from turn 1's usage ground truth,
+        // mints NO overflow of its own.
+        const t2Overflow = (packet.telemetryErrors ?? []).find((e) => e.status === 413 && e.position?.coordinate?.startsWith("1/2/") === true);
+        assert.equal(t2Overflow, undefined, "no turn-2 budget_overflow: the calibrated-down ratio expanded the measured ceiling to truth");
+    } finally { await db.close(); }
+});

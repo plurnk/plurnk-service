@@ -851,11 +851,14 @@ export default class Engine {
         const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
         // §tokenomics-ceiling-calibrates-to-usage — learn the loop's real/measured ratio from the
         // provider's OWN prompt count (ground truth for the whole wire request, template overhead
-        // included). Monotone max: the ceiling only ever tightens within a loop.
+        // included). Monotone max within the loop. An EXACT ruler floors at 1 (never expands);
+        // a certified upper-bound ruler calibrates to observed truth in BOTH directions — the
+        // worst-observed packing wins, and expansion toward ground truth cannot overshoot the
+        // window (owner-ruled; run24: the unconditional floor halved gbuild's effective budget).
         if (callMetadata.usage.prompt > 0 && requestPacket.tokens > 0) {
             const observed = callMetadata.usage.prompt / requestPacket.tokens;
-            const prior = this.#tokenRatios.get(loopId) ?? 1;
-            if (observed > prior) this.#tokenRatios.set(loopId, observed);
+            const prior = this.#tokenRatios.get(loopId) ?? (gauge.exact ? 1 : observed);
+            if (observed >= prior) this.#tokenRatios.set(loopId, observed);
         }
         // Surface parse errors to the model's NEXT packet so it can self-
         // correct. Without this, malformed emissions (e.g. a READ matcher
