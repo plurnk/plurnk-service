@@ -31,7 +31,7 @@ Every tunable is an **optional env override** — no code default hides a magic 
 |---|---|---|
 | `PLURNK_EXECS_SEARCH_SEARXNG_URL` | **yes** | search is unavailable — base URL of the instance (`/search` must allow `format=json`) |
 | `PLURNK_EXECS_SEARCH_LANGUAGE` | no | SearXNG's own default |
-| `PLURNK_EXECS_SEARCH_LIMIT` | no | **20** (the hard ceiling); a lower value dials down, higher clamps to 20 |
+| `PLURNK_EXECS_SEARCH_LIMIT` | no | keep all results (else a client-side cap) |
 | `PLURNK_EXECS_SEARCH_TIMEOUT` | no | the consumer's signal is the deadline (SPEC §2.5); this is an extra ceiling (ms) |
 | `PLURNK_EXECS_SEARCH_SAFESEARCH` | no | instance default — `0` / `1` / `2` |
 | `PLURNK_EXECS_SEARCH_SNIPPET` | no | snippet unbounded (else max chars per result snippet) |

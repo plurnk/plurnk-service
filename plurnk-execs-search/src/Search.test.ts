@@ -279,32 +279,6 @@ test("limit caps the candidates BEFORE the page pass — only capped pages are f
     assert.equal(fetched.filter((u) => !u.includes("searxng.test")).length, 3, "17 uncapped candidates never fetched");
 });
 
-test("ceiling: unset LIMIT caps at SEARCH_MAX (20), never unbounded — SearXNG's 40 → 20 fetched & listed", async () => {
-    const results = Array.from({ length: 40 }, (_, i) => ({ title: `t${i}`, url: `https://8.8.8.8/p${i}` }));
-    const pages = Object.fromEntries(results.map((r) => [r.url, page("body")]));
-    const fetched = routes(results, pages); // PLURNK_EXECS_SEARCH_LIMIT unset
-    const { writes } = await invoke("search", "q");
-
-    assert.equal(JSON.parse(writes[0].chunk).length, 20, "unset ⇒ the ceiling, not keep-all");
-    assert.equal(fetched.filter((u) => !u.includes("searxng.test")).length, 20, "only 20 pages fetched — no fetch storm");
-});
-
-test("ceiling: LIMIT above SEARCH_MAX clamps down; a LIMIT below it still wins", async () => {
-    const results = Array.from({ length: 40 }, (_, i) => ({ title: `t${i}`, url: `https://8.8.8.8/p${i}` }));
-    const pages = Object.fromEntries(results.map((r) => [r.url, page("body")]));
-
-    routes(results, pages);
-    process.env.PLURNK_EXECS_SEARCH_LIMIT = "50";
-    let cap = await invoke("search", "q");
-    assert.equal(JSON.parse(cap.writes[0].chunk).length, 20, "operator can't raise above the hard ceiling");
-
-    routes(results, pages);
-    process.env.PLURNK_EXECS_SEARCH_LIMIT = "5";
-    cap = await invoke("search", "q");
-    delete process.env.PLURNK_EXECS_SEARCH_LIMIT;
-    assert.equal(JSON.parse(cap.writes[0].chunk).length, 5, "a lower LIMIT still dials below the ceiling");
-});
-
 test("tag → categories mapping (news, social→'social media', downloadable→files, images)", async () => {
     const seen: Record<string, string | null> = {};
     setFetch(async (u) => {

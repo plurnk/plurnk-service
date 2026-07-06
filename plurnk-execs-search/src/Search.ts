@@ -23,14 +23,6 @@ const CATEGORY: Readonly<Record<string, string>> = Object.freeze({
 
 const preview = (q: string): string => (q.length > 60 ? `${q.slice(0, 60)}…` : q);
 
-// Hard ceiling on results per search — an owner product ruling for the one-load
-// flow (Web Search Epic), NOT a tunable default: every survivor is a live page
-// fetch AND a materialized entry, so an unbounded search is a fetch storm + a
-// context flood. This is a safety invariant (like an RFC-reserved range), fixed
-// in code so no deployment can raise it; PLURNK_EXECS_SEARCH_LIMIT only dials
-// BELOW it.
-const SEARCH_MAX = 20;
-
 // The signal fields of a SearXNG result — everything else it returns (template,
 // engine internals, score, parsed_url, positions) is noise the model can't use.
 interface SearxngResult {
@@ -47,7 +39,7 @@ interface SearxngResult {
 //
 //   PLURNK_EXECS_SEARCH_SEARXNG_URL   (required)  base URL of the instance
 //   PLURNK_EXECS_SEARCH_LANGUAGE      (optional)  SearXNG's own default if unset
-//   PLURNK_EXECS_SEARCH_LIMIT         (optional)  result cap, clamped to ≤ SEARCH_MAX; SEARCH_MAX if unset
+//   PLURNK_EXECS_SEARCH_LIMIT         (optional)  client-side result cap; keep-all if unset
 //   PLURNK_EXECS_SEARCH_TIMEOUT       (optional)  ms; the consumer's signal is the deadline
 //                                                 (SPEC §2.5) — this is an extra local ceiling
 //   PLURNK_EXECS_SEARCH_SAFESEARCH    (optional)  0|1|2
@@ -107,9 +99,8 @@ export default class Search extends BaseExecutor {
         const base = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
         if (!base) return fail("searxng_not_configured", "PLURNK_EXECS_SEARCH_SEARXNG_URL is not set");
 
-        // Optional env tunables — no hidden magic number: LIMIT clamps to the
-        // explicit SEARCH_MAX ceiling (above), the rest fall through to SearXNG
-        // or the signal. Suggested values live in the consumer's .env.example.
+        // All tunables are optional env overrides — no code default hides a
+        // magic number (suggested values live in the consumer's .env.example).
         const language = process.env.PLURNK_EXECS_SEARCH_LANGUAGE;
         const limitRaw = process.env.PLURNK_EXECS_SEARCH_LIMIT;
         const timeoutRaw = process.env.PLURNK_EXECS_SEARCH_TIMEOUT;
@@ -151,10 +142,7 @@ export default class Search extends BaseExecutor {
         }
 
         const data = await response.json() as { results?: SearxngResult[] };
-        // Clamp to the hard ceiling; an operator LIMIT can only lower it. Unset
-        // or non-positive ⇒ the ceiling itself. Never unbounded (one-load flow).
-        const cap = Math.min(Number(limitRaw) || SEARCH_MAX, SEARCH_MAX);
-        const capped = (data.results ?? []).slice(0, cap);
+        const capped = (data.results ?? []).slice(0, limitRaw ? Number(limitRaw) : undefined);
 
         // Debug escape hatch: the verbatim SearXNG payload, no page pass.
         if (process.env.PLURNK_EXECS_SEARCH_RAW) {
