@@ -1037,13 +1037,16 @@ export default class Engine {
                 origin, onDispatch, gauge,
             });
             statuses.push(result.status);
-            // A refused terminal (the pending-set 409) strikes — couples to the grinder rails
-            // exactly as the old premature gate did (§grinder-strike-coupling) — and demotes the
-            // turn to a continue: the loop never went terminal, so the turn didn't either. The
-            // close persisted the provisional status BEFORE dispatch, so the RECORD is demoted
-            // here too (run20's T3 stored 200 with a 409-refused SEND — the digest surface lied).
+            // A refused terminal (the pending-set 409) demotes the turn to a continue: the loop
+            // never went terminal, so the turn didn't either (the close persisted the provisional
+            // status BEFORE dispatch — run20's T3 stored 200 with a 409-refused SEND). Whether it
+            // ALSO strikes is kind-specific (owner ruling): a retrievals-only refusal teaches
+            // without striking — atomic-turn-pretrained models pair fetch-and-answer by habit,
+            // the refusal is correct each time, and maxTurns bounds the walk; striking executed
+            // converging behavior (jumbo/admins specimens: 3 correct refusals → 500 mid-adapt).
+            // Streams/children refusals keep the strike — discarding live work stays serious.
             if (statement === sendOp && result.status === 409) {
-                steerStruck = true;
+                if ((result.attrs as { retrievalOnly?: boolean } | undefined)?.retrievalOnly !== true) steerStruck = true;
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
                 await (this.#db.engine_demote_turn_status as PrepMethod).run({ id: turnId, status: turnStatus });
             }

@@ -98,7 +98,7 @@ test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 —
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
-        assert.equal(result.steerStruck, true, "the pending-set refusal strikes");
+        assert.equal(result.steerStruck, false, "a retrievals-only refusal does NOT strike (owner ruling) — it teaches; the turn still demotes");
         const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[200] row records the refusal as 409");
         // The STORED record agrees with the return (run20's T3 bug: the close persists the
@@ -237,5 +237,28 @@ test("[§send-premature-terminate] a retrievals-ONLY refusal states the continua
         assert.ok(refused, "the retrieval gate refused");
         assert.match(refused!.rx, /Termination attempted despite retrieval operations\. Continuing in order to receive results\./, "the owner's wording, verbatim");
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
+    } finally { await db.close(); }
+});
+
+test("[§send-premature-terminate] retrieval preemies NEVER strike — repeated refusals teach without executing (owner ruling)", async () => {
+    // Atomic-turn pretraining pairs fetch-and-answer in one emission; each refusal is correct,
+    // and maxTurns bounds the walk. FOUR consecutive read-and-conclude turns: every one refused
+    // 409, the loop still ALIVE after all of them — never a strike-out. A live-child refusal
+    // keeps its strike (covered by the STRIKES-OUT test above).
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `preemie-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const readAndConclude = () => ({ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } });
+        const provider = new Mock({ contextSize: 100000, responses: [readAndConclude(), readAndConclude(), readAndConclude(), readAndConclude()] });
+        for (let i = 0; i < 4; i++) await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ status_rx: number }>({ run_id: runId });
+        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 4, "all four conclude-attempts refused — the gate never weakened");
+        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        assert.notEqual(loopStatus, 500, "the loop is NOT struck out — retrieval preemies never strike");
+        assert.equal(loopStatus, 102, "still alive, still teachable");
     } finally { await db.close(); }
 });

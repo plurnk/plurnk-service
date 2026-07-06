@@ -769,7 +769,10 @@ export default class Dispatcher {
                 // KILL/park advice only muddies it. Streams/children keep the remedy steer.
                 const retrievalsOnly = pending.every((k) => k.startsWith("results of this turn's"));
                 if (retrievalsOnly) {
-                    return { status: 409, error: "Termination attempted despite retrieval operations. Continuing in order to receive results." };
+                    // attrs.retrievalOnly — the strike decoupler (owner ruling): atomic-turn-
+                    // pretrained models pair fetch-and-answer by habit; the refusal teaches,
+                    // the strike executed. Engine reads this to skip the strike.
+                    return { status: 409, error: "Termination attempted despite retrieval operations. Continuing in order to receive results.", attrs: { retrievalOnly: true } };
                 }
                 return { status: 409, error: `Attempted [200] termination with pending work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
             }
