@@ -37,11 +37,19 @@ interface Embedder {
     dispose?(): Promise<void> | void;
 }
 
-// What info() hands the host (SPEC §17): the token window + the model's own
-// counter, the two facts its chunker needs to tile losslessly.
+// What info() hands the host (SPEC §17, reshaped by #50): PRESENCE facts,
+// with unknowns explicitly null. null-the-whole-info means exactly one thing —
+// NO embedder resolves. A working embedder with an incomplete self-report (a
+// remote endpoint with no local tokenizer, a legacy embedder predating the
+// chunking surface) returns info with maxTokens/countTokens null: "present,
+// window unknown" and "absent" are different facts and the contract never
+// conflates them again.
 export interface EmbedderInfo {
-    maxTokens: number;
-    countTokens(text: string): Promise<number>;
+    dimension: number;
+    // The token window, or null = unknown (host takes its null-window lane).
+    maxTokens: number | null;
+    // The model's own counter, or null = no counter available.
+    countTokens: ((text: string) => Promise<number>) | null;
     // Model identity (SPEC §17, #31) — the host folds it into each entry's
     // deep_hash so a model-id change re-derives existing embeddings instead of
     // silently excluding them from ~query. Omitted if the embedder predates it.
@@ -134,18 +142,21 @@ export default class Embeddings {
         return this.#promise;
     }
 
-    // Lossless-chunking facts for the host's chunker (SPEC §17, embeddings#1):
-    // the token window + the model's own counter. null when no embedder is
-    // installed OR it predates this surface → host stays on whole-entry chunks.
+    // Embedder presence + chunking facts (SPEC §17; contract fixed by #50).
+    // null ⇔ NO embedder resolves — never anything else. An embedder whose
+    // self-report is incomplete returns info with the unknown facts explicitly
+    // null; the host's presence gate stays truthful for remote/legacy embedders
+    // instead of silently FTS-degrading a working endpoint.
     async info(): Promise<EmbedderInfo | null> {
         const embedder = await this.#resolve();
-        if (!embedder || typeof embedder.maxTokens !== "number" || typeof embedder.countTokens !== "function") {
-            return null;
-        }
-        const { maxTokens, countTokens, model } = embedder;
+        if (!embedder) return null;
+        const { dimension, maxTokens, countTokens, model } = embedder;
         return {
-            maxTokens,
-            countTokens: (text) => countTokens.call(embedder, text),
+            dimension,
+            maxTokens: typeof maxTokens === "number" ? maxTokens : null,
+            countTokens: typeof countTokens === "function"
+                ? (text) => countTokens.call(embedder, text)
+                : null,
             ...(typeof model === "string" && { model }),
         };
     }

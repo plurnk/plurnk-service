@@ -74,14 +74,23 @@ describe("embeddings#1 — embedderInfo()", () => {
         assert.equal(await mk(null).embedderInfo(), null);
     });
 
-    it("E2: null when the embedder predates the chunking surface", async () => {
-        assert.equal(await mk(legacyEmbedder).embedderInfo(), null);
+    it("E2 (recontracted by #50): a legacy embedder is PRESENT with null facts — never null-the-info", async () => {
+        // The old contract returned null here, conflating "present, window
+        // unknown" with "absent" — which silently FTS-degraded working remote
+        // embedders at the host's presence gate (#50 / service#343).
+        const info = await mk(legacyEmbedder).embedderInfo();
+        assert.ok(info, "present embedder must never report as absent");
+        assert.equal(info.dimension, 4);
+        assert.equal(info.maxTokens, null, "unknown window is explicitly null");
+        assert.equal(info.countTokens, null, "no counter is explicitly null");
     });
 
-    it("E3: surfaces maxTokens + a delegating countTokens", async () => {
+    it("E3: surfaces dimension + maxTokens + a delegating countTokens", async () => {
         const info = await mk(fullEmbedder).embedderInfo();
         assert.ok(info, "expected non-null info");
+        assert.equal(info.dimension, 4);
         assert.equal(info.maxTokens, 512);
+        assert.ok(info.countTokens, "full surface has a counter");
         assert.equal(await info.countTokens("hello"), 5, "delegates to the embedder's counter");
     });
 
