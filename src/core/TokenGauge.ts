@@ -28,19 +28,19 @@ export default class TokenGauge {
 
     // Resolve the active model's gauge: the seam's exact tokenizer, or the provider's surfaced
     // upper bound labeled with a heuristic identity (so its rows never masquerade as exact ones).
-    // servedHint is the backend's SELF-REPORTED model name (response callMetadata, recorded on
-    // turns) — a local alias like 'turboderp' maps to nothing, but the llama-server behind it
-    // reports the real gguf name the seam CAN map. Turn 1 has no hint; turn 2+ resolves exact.
-    static async resolve(mimetypes: Mimetypes | undefined, provider: Provider, pushTelemetry?: (e: TelemetryEvent) => void, servedHint?: string): Promise<GaugeResolution> {
-        const key = `${provider.model}|${servedHint ?? ""}`;
+    // NOTE (providers#37): a LOCAL ALIAS model string ('turboderp') maps to nothing in the seam
+    // even though the provider's own boot probe SAW the served model name (the gguf). The correct
+    // fix is the provider CONTRACT exposing it (Provider.servedModel) — demanded, not worked
+    // around: until it ships, alias-fronted backends run as a SURFACED upper bound. The warning
+    // is the alarm working, not a bug.
+    static async resolve(mimetypes: Mimetypes | undefined, provider: Provider, pushTelemetry?: (e: TelemetryEvent) => void): Promise<GaugeResolution> {
+        const key = provider.model;
         const cached = TokenGauge.#resolutions.get(key);
         if (cached !== undefined) return cached;
         let resolution: GaugeResolution;
         try {
             if (mimetypes === undefined) throw new Error("no mimetypes seam");
-            let r = await mimetypes.tokenizer(servedHint ?? provider.model);
-            if (!r.exact && servedHint !== undefined) r = await mimetypes.tokenizer(provider.model); // hint missed — try the alias model too
-            if (!r.exact && servedHint === undefined) { /* nothing else to try */ }
+            const r = await mimetypes.tokenizer((provider as { servedModel?: string }).servedModel ?? provider.model);
             resolution = { tokenizerId: r.exact ? r.tokenizerId : `heuristic:${r.tokenizerId}`, exact: r.exact, count: (text) => r.countTokens(text) };
             if (!r.exact && !TokenGauge.#warned.has(key)) {
                 TokenGauge.#warned.add(key);

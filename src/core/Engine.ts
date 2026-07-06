@@ -610,8 +610,7 @@ export default class Engine {
         // (mimetypes seam; provider upper bound surfaced as tokenizer_unavailable when inexact).
         // Threaded per turn — never engine state — so concurrent loops on different providers
         // each read their own honest numbers.
-        const servedModel = (await (this.#db.engine_last_served_model as PrepMethod).get<{ model: string }>({ run_id: runId }))?.model;
-        const gauge = await TokenGauge.resolve(this.#mimetypes, provider, (event: TelemetryEvent) => this.#telemetry.push(sessionId, loopId, event), servedModel);
+        const gauge = await TokenGauge.resolve(this.#mimetypes, provider, (event: TelemetryEvent) => this.#telemetry.push(sessionId, loopId, event));
         const systemCtx: PlurnkSchemeContext = {
             db: this.#db, sessionId, runId, loopId, turnId,
             writer: "plurnk",

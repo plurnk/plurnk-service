@@ -49,17 +49,18 @@ test("[§tokenomics-derived-token-counts] the catalog serves the ACTIVE gauge's 
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-derived-token-counts] the served-model hint resolves what the alias cannot — 'turboderp' + a recorded gguf turn = exact", async () => {
-    // The live 0.74.0 finding: provider.model is the ALIAS string ('turboderp'), which the seam
-    // can't map — but the llama-server self-reports the real gguf name on every response, and the
-    // turns table records it. The hint makes turn 2+ exact; turn 1 stays a surfaced upper bound.
+test("[§tokenomics-derived-token-counts] an alias-fronted backend runs as a SURFACED upper bound until providers exposes servedModel", async () => {
+    // providers#37: 'turboderp' (a local alias) maps to nothing in the seam — the provider's own
+    // probe saw the real gguf name but the contract doesn't surface it. No service-side
+    // reconstruction: the gauge consumes Provider.servedModel when the contract ships it, and
+    // until then the upper bound runs LOUD (the tokenizer_unavailable warning is the alarm).
     const db = await openMigrated();
     try {
-        const provider = { model: "turboderp", countTokens: (t: string) => Math.ceil(t.length / 2) } as never;
-        const noHint = await TokenGauge.resolve(DEFAULT_MIMETYPES, provider, undefined, undefined);
-        assert.equal(noHint.exact, false, "the bare alias resolves nothing — surfaced upper bound (turn 1)");
-        const hinted = await TokenGauge.resolve(DEFAULT_MIMETYPES, provider, undefined, "gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf");
-        assert.equal(hinted.exact, true, "the served gguf name resolves the real tokenizer (turn 2+)");
-        assert.ok(!hinted.tokenizerId.startsWith("heuristic:"), `an exact identity, never masquerading: ${hinted.tokenizerId}`);
+        const alias = { model: "turboderp", countTokens: (t: string) => Math.ceil(t.length / 2) } as never;
+        const bare = await TokenGauge.resolve(DEFAULT_MIMETYPES, alias, undefined);
+        assert.equal(bare.exact, false, "the bare alias is inexact — surfaced, never silent");
+        const withContract = { model: "turboderp2", servedModel: "gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf", countTokens: (t: string) => Math.ceil(t.length / 2) } as never;
+        const exact = await TokenGauge.resolve(DEFAULT_MIMETYPES, withContract, undefined);
+        assert.equal(exact.exact, true, "the moment the CONTRACT carries servedModel, resolution is exact from turn 1");
     } finally { await db.close(); }
 });
