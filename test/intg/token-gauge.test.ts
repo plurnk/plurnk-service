@@ -48,3 +48,18 @@ test("[§tokenomics-derived-token-counts] the catalog serves the ACTIVE gauge's 
         assert.ok((fallback?.tokens ?? 0) > 0 && fallback?.tokens !== 999, "an unknown identity falls back to the write-time stamp — never a silent zero");
     } finally { await db.close(); }
 });
+
+test("[§tokenomics-derived-token-counts] the served-model hint resolves what the alias cannot — 'turboderp' + a recorded gguf turn = exact", async () => {
+    // The live 0.74.0 finding: provider.model is the ALIAS string ('turboderp'), which the seam
+    // can't map — but the llama-server self-reports the real gguf name on every response, and the
+    // turns table records it. The hint makes turn 2+ exact; turn 1 stays a surfaced upper bound.
+    const db = await openMigrated();
+    try {
+        const provider = { model: "turboderp", countTokens: (t: string) => Math.ceil(t.length / 2) } as never;
+        const noHint = await TokenGauge.resolve(DEFAULT_MIMETYPES, provider, undefined, undefined);
+        assert.equal(noHint.exact, false, "the bare alias resolves nothing — surfaced upper bound (turn 1)");
+        const hinted = await TokenGauge.resolve(DEFAULT_MIMETYPES, provider, undefined, "gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf");
+        assert.equal(hinted.exact, true, "the served gguf name resolves the real tokenizer (turn 2+)");
+        assert.ok(!hinted.tokenizerId.startsWith("heuristic:"), `an exact identity, never masquerading: ${hinted.tokenizerId}`);
+    } finally { await db.close(); }
+});

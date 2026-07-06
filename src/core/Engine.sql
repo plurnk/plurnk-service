@@ -461,3 +461,12 @@ FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
 WHERE e.session_id = $session_id AND ec.name = 'body' AND ec.content_hash IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM token_counts tc WHERE tc.content_hash = ec.content_hash AND tc.tokenizer_id = $tokenizer_id);
+
+-- PREP: engine_last_served_model
+-- #312 — the SERVED model name (from response callMetadata) most recently recorded for this
+-- run: the tokenizer-resolution hint when the configured alias model ('turboderp') isn't a
+-- name the seam can map. Turn 1 has no hint (heuristic, surfaced); turn 2+ resolves exact.
+SELECT t.model FROM turns t
+JOIN loops l ON l.id = t.loop_id
+WHERE l.run_id = $run_id AND t.model IS NOT NULL AND t.model != 'unknown' AND t.model != ''
+ORDER BY t.id DESC LIMIT 1;
