@@ -88,3 +88,31 @@ test("[§semantic-entry-chunk-cap] the null-window lane (mimetypes#50): a window
     assert.ok(r.chunks.length > 0, "a declared window + the seam's counter fallback chunks and embeds — the remote embedder is PRESENT");
     } finally { if (prevDisable !== undefined) process.env.PLURNK_SERVICE_EMBED_DISABLE = prevDisable; }
 });
+
+test("[§derivation-off-hot-path] the pump NEVER re-embeds unchanged content — two passes, one embedBatch (the owner's re-embed suspicion, refuted deterministically)", async () => {
+    const { default: EntryManifest } = await import("../../src/schemes/_entry-manifest.ts");
+    const { default: EntryCrud } = await import("../../src/schemes/_entry-crud.ts");
+    const prevDisable = process.env.PLURNK_SERVICE_EMBED_DISABLE;
+    delete process.env.PLURNK_SERVICE_EMBED_DISABLE;
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `reembed-${crypto.randomUUID()}`);
+        await insertRun(db, sessionId);
+        let embedCalls = 0;
+        const stub = {
+            embedderInfo: async () => ({ dimension: 3, maxTokens: 1000, countTokens: async (t: string) => t.split(/\s+/).length, model: "stub@1" }),
+            embedBatch: async (texts: readonly string[]) => { embedCalls++; return texts.map(() => new Uint8Array(new Float32Array([1, 0, 0]).buffer)); },
+            process: async () => ({}),
+            classify: async () => ({ noEmbed: false }),
+            tokenizer: DEFAULT_MIMETYPES.tokenizer.bind(DEFAULT_MIMETYPES),
+        } as never;
+        const ctx = makeSchemeCtx({ db, sessionId, runId: 1, mimetypes: stub });
+        await EntryCrud.writeEntry("/stable.md", { channels: { body: { content: "the same content every turn", mimetype: "text/markdown" } }, tags: [] }, ctx, "known");
+        await EntryManifest.maintainDerivations(ctx);
+        const after1 = embedCalls;
+        await EntryManifest.maintainDerivations(ctx); // turn 2's pump — unchanged content
+        await EntryManifest.maintainDerivations(ctx); // turn 3's pump
+        assert.ok(after1 >= 1, "the first pass embedded");
+        assert.equal(embedCalls, after1, `unchanged content is NEVER re-embedded — the deep_hash gate holds (calls stayed at ${after1} across two more pumps)`);
+    } finally { await db.close(); if (prevDisable !== undefined) process.env.PLURNK_SERVICE_EMBED_DISABLE = prevDisable; }
+});

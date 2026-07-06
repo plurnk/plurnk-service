@@ -24,6 +24,7 @@
 // SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
 // the sync CLI/script facade). Each PREP block is read through its own accessor.
 
+import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -74,6 +75,7 @@ interface DigestModel {
     runsById: Map<number, RunRow>;
     runRollups: Map<number, RunRollupRow>;
     opMixByRun: Map<number, OpMixRow[]>;
+    embeddings: { entries: number; entries_embedded: number; chunk_rows: number; models: number; token_derivations: number };
 }
 
 // Programmatic entry options (#264 — plurnk-bench reuses Digest without the CLI).
@@ -158,6 +160,7 @@ export default class Digest {
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
         lines.push(`Sessions: ${m.sessions.length}  Runs: ${m.runs.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Log entries: ${m.logEntries.length}`);
+        lines.push(`Semantic:  entries=${m.embeddings.entries} embedded=${m.embeddings.entries_embedded} chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         for (const session of m.sessions) {
             lines.push("");
             lines.push(`## Session #${session.id} — ${session.name}`);
@@ -302,6 +305,21 @@ export default class Digest {
         let logEntries = db.digest_log_entries.all<LogRow>();
         let runRollupRows = db.digest_run_rollups.all<RunRollupRow>();
         let opMixRows = db.digest_run_op_mix.all<OpMixRow>();
+        // The semantic-state analytic (owner ask), feature-detected per table: a HISTORICAL
+        // specimen may predate token_counts/entry_embeddings — an old db is a fact to read,
+        // not a contract violation. Absent tables read as -1. node:sqlite directly (SqlRite's
+        // eager prepare would refuse the whole open over one missing optional table).
+        const probe = new DatabaseSync(dbPath, { readOnly: true });
+        const has = (t: string): boolean => probe.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t) !== undefined;
+        const one = (q: string): number => Number((probe.prepare(q).get() as { n: number }).n);
+        const embeddings = {
+            entries: has("entries") ? one("SELECT count(*) n FROM entries") : -1,
+            entries_embedded: has("entry_embeddings") ? one("SELECT count(DISTINCT entry_id) n FROM entry_embeddings") : -1,
+            chunk_rows: has("entry_embeddings") ? one("SELECT count(*) n FROM entry_embeddings") : -1,
+            models: has("entry_embeddings") ? one("SELECT count(DISTINCT embedding_model) n FROM entry_embeddings") : -1,
+            token_derivations: has("token_counts") ? one("SELECT count(*) n FROM token_counts") : -1,
+        };
+        probe.close();
         db.close();
 
         // Optional run/session selector — narrow to one run or session; everything
@@ -344,7 +362,7 @@ export default class Digest {
         const m: DigestModel = {
             dbPath, digestDir, sessions, runs, loops, turns, logEntries,
             runsBySession, loopsByRun, turnsByLoop, logEntriesByTurn, loopsById, runsById,
-            runRollups, opMixByRun,
+            runRollups, opMixByRun, embeddings,
         };
 
         writeFileSync(join(digestDir, "digest.md"), Digest.#renderWaterfall(m));
