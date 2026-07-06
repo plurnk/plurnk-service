@@ -19,7 +19,7 @@ const capable = {
 } as unknown as Mimetypes;
 
 // A dormant embedder: no capability surface; never tiles.
-const dormant = { process: async () => ({ embedding: undefined, embeddingModel: undefined }) } as unknown as Mimetypes;
+const dormant = { embedderInfo: async () => null, process: async () => ({ embedding: undefined, embeddingModel: undefined }) } as unknown as Mimetypes;
 
 test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body losslessly, embeds each chunk (#plan-semantics)", async () => {
     const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
@@ -92,7 +92,7 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS
 });
 
 test("EntrySemantic.deepConfigSignature: folds the embedder model id — a same-window model swap re-derives (#31)", async () => {
-    const mk = (model: string) => ({ embedderInfo: () => ({ maxTokens: 1000, countTokens: wordCount, model }) }) as unknown as Mimetypes;
+    const mk = (model: string) => ({ embedderInfo: async () => ({ dimension: 3, maxTokens: 1000, countTokens: wordCount, model }) }) as unknown as Mimetypes;
     const a = await EntrySemantic.deepConfigSignature(mk("e5@1"));
     const b = await EntrySemantic.deepConfigSignature(mk("e5@2")); // identical window + knobs, different model
     assert.notEqual(a, b, "a same-window model swap changes the signature → the deep_hash gate re-derives every entry");

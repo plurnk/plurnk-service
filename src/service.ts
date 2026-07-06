@@ -173,8 +173,13 @@ export default class Service {
         const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
         const addr = await daemon.start({ host, port });
-        if (await daemon.mimetypes.embedderInfo() === null) {
+        // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
+        // self-report returns info with the unknowns explicitly null — say which case this is).
+        const embedInfo = await daemon.mimetypes.embedderInfo();
+        if (embedInfo === null) {
             process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Install @plurnk/plurnk-mimetypes-embeddings for vector search, or see README.md#semantic-search\n");
+        } else if (embedInfo.maxTokens === null) {
+            process.stderr.write("plurnk-service: remote embedder active but reports no token window — set PLURNK_MIMETYPES_EMBED_MAX_TOKENS to the endpoint's limit or embedding derivations will refuse\n");
         }
         // §tokenomics-window-partition coupling (F7): per-request numeric reasoning budgets are
         // IGNORED by llama-server — when thinking is on, only the box's --reasoning-budget launch

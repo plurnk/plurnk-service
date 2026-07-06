@@ -71,3 +71,20 @@ test("[§tokenomics-derived-token-counts] a 416 range-miss states the entry's ex
     assert.equal(r.status, 416);
     assert.match(r.content ?? "", /3 lines/, "the miss names the real extent — a fact, not advice");
 });
+
+test("[§semantic-entry-chunk-cap] the null-window lane (mimetypes#50): a window-less remote embedder fails LOUD naming the knob; a declared window chunks via the seam counter", async () => {
+    const { default: EntrySemantic } = await import("../../src/schemes/_entry-semantic.ts");
+    const prevDisable = process.env.PLURNK_SERVICE_EMBED_DISABLE; // the fast-lane gate would null the info before the stub is seen
+    delete process.env.PLURNK_SERVICE_EMBED_DISABLE;
+    try {
+    const embed = async (texts: readonly string[]) => texts.map(() => new Uint8Array(new Float32Array([1, 0, 0]).buffer));
+    const noWindow = { embedderInfo: async () => ({ dimension: 3, maxTokens: null, countTokens: null, model: "remote@x" }), embedBatch: embed, tokenizer: DEFAULT_MIMETYPES.tokenizer.bind(DEFAULT_MIMETYPES) } as never;
+    await assert.rejects(
+        EntrySemantic.deriveEmbeddings(noWindow, "line one\nline two", [], undefined, undefined),
+        /PLURNK_MIMETYPES_EMBED_MAX_TOKENS/,
+        "no window → refuse LOUD, naming the operator's knob — never a silent degrade");
+    const declared = { embedderInfo: async () => ({ dimension: 3, maxTokens: 64, countTokens: null, model: "remote@x" }), embedBatch: embed, tokenizer: DEFAULT_MIMETYPES.tokenizer.bind(DEFAULT_MIMETYPES) } as never;
+    const r = await EntrySemantic.deriveEmbeddings(declared, "line one\nline two\nline three", [], undefined, undefined);
+    assert.ok(r.chunks.length > 0, "a declared window + the seam's counter fallback chunks and embeds — the remote embedder is PRESENT");
+    } finally { if (prevDisable !== undefined) process.env.PLURNK_SERVICE_EMBED_DISABLE = prevDisable; }
+});

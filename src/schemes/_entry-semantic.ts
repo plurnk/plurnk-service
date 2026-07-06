@@ -6,6 +6,10 @@
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+
+// mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it
+// from the contract method itself so this stays the REAL type, never a local fiction.
+type EmbedderInfo = NonNullable<Awaited<ReturnType<Mimetypes["embedderInfo"]>>>;
 import EntryChunk from "./_entry-chunk.ts";
 
 export default class EntrySemantic {
@@ -80,8 +84,14 @@ export default class EntrySemantic {
             if (typeof s.endLine === "number") boundaries.add(s.endLine);
             if (typeof s.line === "number" && s.line > 1) boundaries.add(s.line - 1);
         }
+        // mimetypes#50 — a REMOTE embedder is present with an incomplete self-report: the window
+        // is the operator's to declare (their knob), and the counter resolves through the seam's
+        // tokenizers by the embedder's model name — the chars/2 upper bound when inexact is the
+        // surfaced conservative fallback (smaller chunks are correct chunks).
+        if (info.maxTokens === null) throw new Error("remote embedder reports no token window — set PLURNK_MIMETYPES_EMBED_MAX_TOKENS to the endpoint's limit");
+        const counter = info.countTokens ?? (await mimetypes.tokenizer(info.model ?? "")).countTokens;
         const budget = EntrySemantic.#chunkBudget(info.maxTokens);
-        let specs = await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), info.countTokens);
+        let specs = await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), counter);
         if (specs.length === 0) return { chunks: [], model: undefined, capped: false };
         const capped = specs.length > CHUNK_CAP;
         if (capped) specs = specs.slice(0, CHUNK_CAP); // §semantic-entry-chunk-cap — inline latency stage; the pump completes
@@ -118,13 +128,13 @@ export default class EntrySemantic {
 
     // The embedder capability surface (daughter window + tokenizer + model id), probed
     // through the Mimetypes handle. null until an embedder is installed.
-    static async #embedderInfo(mimetypes: Mimetypes): Promise<{ maxTokens: number; countTokens: (text: string) => Promise<number>; model?: string } | null> {
+    static async #embedderInfo(mimetypes: Mimetypes): Promise<EmbedderInfo | null> {
         // PLURNK_SERVICE_EMBED_DISABLE=1 forces the no-embedder path even when the optional embeddings package
         // IS installed — the whole semantic stack (deriveEmbeddings, the ~query FTS→cosine fusion, the
         // deep_hash config) funnels through here, so one gate makes everything FTS-only. The fast lane
         // (mock-provider tests) sets it so the suite doesn't spin up the MiniLM worker pool for nothing.
         if (process.env.PLURNK_SERVICE_EMBED_DISABLE === "1") return null;
-        return (await (mimetypes as { embedderInfo?: () => Promise<{ maxTokens: number; countTokens: (text: string) => Promise<number>; model?: string } | null> }).embedderInfo?.()) ?? null;
+        return await mimetypes.embedderInfo();
     }
 
     // Folded into the entry's deep_hash so a derivation re-runs when the EMBEDDING
@@ -135,7 +145,7 @@ export default class EntrySemantic {
     static async deepConfigSignature(mimetypes: Mimetypes): Promise<string> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) return "embed:none";
-        return `embed:${info.model ?? "?"}:${info.maxTokens}:${EntrySemantic.#chunkBudget(info.maxTokens)}:${EntrySemantic.#chunkOverlap()}`;
+        return `embed:${info.model ?? "?"}:${info.maxTokens}:${info.maxTokens === null ? "?" : EntrySemantic.#chunkBudget(info.maxTokens)}:${EntrySemantic.#chunkOverlap()}`;
     }
 
     // Build the FTS5 narrow from a ~query: OR the alphanumeric terms (a broad cut —
