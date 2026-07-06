@@ -423,7 +423,7 @@ export default class Engine {
             // change — the model emits EXEC + SEND[102] as ever; the next packet simply contains
             // the finished digest, open and final.
             const holdSet = new Set((process.env.PLURNK_SERVICE_EXEC_HOLD ?? "").split(",").map((x) => x.trim()).filter((x) => x.length > 0));
-            const holdCapMs = Number(process.env.PLURNK_SERVICE_EXEC_HOLD_MS ?? "45000");
+            const holdCapMs = Number(process.env.PLURNK_SERVICE_EXEC_HOLD_MS ?? "300000");
             if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
                 const holdStart = Date.now();
                 while (execHandler.hasActiveHoldSpawns(runId, holdSet) && Date.now() - holdStart < holdCapMs) {
