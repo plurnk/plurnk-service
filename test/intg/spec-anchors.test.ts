@@ -83,3 +83,37 @@ test("spec anchors: every SPEC promise is cited by a test (coverage enforced)", 
         assert.fail(`${gaps.length} SPEC promise(s) cited by NO test — coverage regressed:\n${list}\n\nFix: add a test named "[§<id>] …" that exercises the contract. A red test for an unbuilt contract is acceptable — the anchor must simply be cited.`);
     }
 });
+
+test("every §-reference in code comments resolves to a live SPEC anchor or section — comment refs never rot", async () => {
+    // The THIRD leg of the lockstep (the first two: every {§} cited by a [§] test, every [§]
+    // resolving to a {§}). Code comments citing §-anchors are how implementation maps back to
+    // the SPEC; a renamed anchor silently orphans them. Rule: any hyphenated kebab-style ref in
+    // src/**/*.{ts,sql} or test/ must exist as a {§...} anchor or a `## §...` section heading.
+    // (Single-word/numeric §refs are external-spec or issue refs and are exempt — write issue
+    // refs as #N and qualify external specs by name.)
+    const { readFile: rf, readdir: rd, stat: st } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const spec = await rf(resolve(REPO_ROOT, "SPEC.md"), "utf8");
+    const live = new Set([
+        ...[...spec.matchAll(/\{§([a-z0-9-]+)\}/g)].map((m) => m[1]),
+        ...[...spec.matchAll(/^#{2,4} §([a-z0-9-]+)/gm)].map((m) => m[1]),
+    ]);
+    const walk = async (dir: string, out: string[] = []): Promise<string[]> => {
+        for (const f of await rd(dir)) {
+            const p = join(dir, f);
+            if ((await st(p)).isDirectory()) { if (!/node_modules|\.tmp|\.git|digest/.test(p)) await walk(p, out); }
+            else if (/\.(ts|sql)$/.test(f)) out.push(p);
+        }
+        return out;
+    };
+    const stale: string[] = [];
+    for (const file of [...await walk(resolve(REPO_ROOT, "src")), ...await walk(resolve(REPO_ROOT, "test"))]) {
+        const text = await rf(file, "utf8");
+        for (const [i, line] of text.split("\n").entries()) {
+            for (const m of line.matchAll(/§([a-z][a-z0-9]*(?:-[a-z0-9]+)+)/g)) {
+                if (!live.has(m[1])) stale.push(`${file.replace(String(REPO_ROOT) + "/", "")}:${i + 1} §${m[1]}`);
+            }
+        }
+    }
+    assert.deepEqual(stale, [], `stale §-references in comments (the anchor was renamed or removed — update the ref):\n${stale.join("\n")}`);
+});

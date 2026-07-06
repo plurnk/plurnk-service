@@ -279,7 +279,7 @@ test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", a
             // turn-0 READ for each path (a missing path just surfaces its own 4xx in the log).
             await runLoopToTerminal(ws, 2, { prompt: "look at these", openPaths: ["src/foo.ts", "README.md"] });
             await flush();
-            // file:/// paths store with scheme=NULL (a routing-internal scheme; §entries), so that plus
+            // file:/// paths store with scheme=NULL (a routing-internal scheme; the entries), so that plus
             // a plurnk origin identifies the foists — the prompt EDIT alongside them is scheme='plurnk'.
             const reads = (logEntries() as Array<{ entry: { op: string; origin: string; scheme: string | null; pathname: string } }>)
                 .map((c) => c.entry)

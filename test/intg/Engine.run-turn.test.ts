@@ -328,7 +328,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
 // Rail #40: sudden-death soft warning fires in the last maxStrikes-sized
 // window before maxTurns. Soft: no strike, no loop-status change.
 
-test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
+test("[§loop-terminals] Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         // Every turn continues (SEND[102], never terminal), so the turn ceiling is what stops it.
@@ -339,7 +339,7 @@ test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", 
         const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [], maxTurns: 3 });
         assert.equal(result.hitMaxTurns, true);
         assert.equal(result.reason, "max_turns");
-        assert.equal(result.finalStatus, 429, "the turn ceiling terminates the loop at 429 Too Many Requests (§loop-terminals)");
+        assert.equal(result.finalStatus, 429, "the turn ceiling terminates the loop at 429 Too Many Requests [§loop-terminals]");
     } finally { await db.close(); }
 });
 

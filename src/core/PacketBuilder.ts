@@ -65,7 +65,7 @@ export type RequestPacket = {
     telemetryErrors: object[];
 };
 
-// Packet assembly (SPEC §packet-construction) + the budget grinder (§grinder):
+// Packet assembly (SPEC §packet-assembly) + the budget grinder (§grinder):
 // builds the spec'd request packet, measures it, and reclaims window on overflow.
 export default class PacketBuilder {
 
@@ -127,7 +127,7 @@ export default class PacketBuilder {
         return Math.floor(promptBudget / Math.max(1, tokenRatio));
     }
 
-    // Assemble the request half of the spec'd packet (Packet.json §system
+    // Assemble the request half of the spec'd packet (Packet.json system
     // and §user) BEFORE the provider call. The same packet object is then
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
@@ -190,7 +190,7 @@ export default class PacketBuilder {
         // omitted, section lines still shown). §tokenomics-render-weight-budget
         const ceiling = this.ceilingFor(provider, tokenRatio);
         const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
-        // The default packet: an ordered list of addressable sections (§packet-construction).
+        // The default packet: an ordered list of addressable sections (§packet-assembly).
         // `slot` is a TRUST boundary (and the prompt-cache boundary): system holds only
         // framework-authored, non-injectable sections — the static head (definition/tools/
         // schemes/policy) forms the cached prefix, then the volatile-but-trusted tail of
@@ -239,7 +239,7 @@ export default class PacketBuilder {
             // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
             { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: baseRequirements, tokens: 0 },
         ];
-        // Plugin packet control (§packet-construction): trusted schemes rewrite the
+        // Plugin packet control (§packet-assembly): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         const sections = await this.#schemes.transformSections(defaults);
         // Pass 1: measure the assembled total with the placeholder budget in

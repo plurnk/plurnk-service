@@ -265,10 +265,10 @@ WHERE run_id = $run_id AND origin = 'plurnk' AND op = 'READ'
 ORDER BY id DESC LIMIT 1;
 
 -- PREP: engine_insert_stream_delta
--- §exec-stream / §environment-observation — materialize a channel's unshown byte-delta as a
+-- §exec-stream / §env-delta — materialize a channel's unshown byte-delta as a
 -- foisted READ@200 row (the model READs the stream it never typed). origin=plurnk; fragment is
 -- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 when the channel has CLOSED
--- (the terminal delta auto-OPENs), 0 while it streams (ongoing deltas fold). §exec-stream-fold-open
+-- (the terminal delta auto-OPENs), 0 while it streams (ongoing deltas fold). §exec-stream
 INSERT INTO log_entries (
     run_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded

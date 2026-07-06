@@ -635,7 +635,7 @@ export default class Engine {
 
         this.#queueDerivation(() => EntryManifest.maintainDerivations(systemCtx)); // §derivation-off-hot-path — the turn proceeds; ~queries warm their own slice
 
-        // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, §actor-boundary-manifest-preview):
+        // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, §actor-boundary-catalog-preview):
         // one FIND(scheme:///**) per scheme that holds entries, foisted into the run's first
         // model turn so it opens with its catalog (the per-scheme arrays that replaced the
         // single manifest.json). -1 → each scheme's whole catalog; N → its first N rows
@@ -745,7 +745,7 @@ export default class Engine {
             }
         }
 
-        // §environment-observation — pre-seed the run's ambient observations (what changed since
+        // §env-delta — pre-seed the run's ambient observations (what changed since
         // it last looked) as foisted rows before the packet composes; advance the action index
         // past them so model ops continue after. Two instances of one machine: env-delta (sibling
         // edits · timestamp cursor · always folded) and exec streams (channel bytes · byte cursor ·
@@ -845,7 +845,7 @@ export default class Engine {
         }
 
         // Engine splits wire-level response: emission (content, reasoning,
-        // parsed ops) → packet.assistant per Packet.json §assistant;
+        // parsed ops) → packet.assistant per Packet.json assistant section;
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
         const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
@@ -1175,7 +1175,7 @@ export default class Engine {
         }
     }
 
-    // §environment-observation — exec streams as an instance of the ambient-observe machine:
+    // §env-delta — exec streams as an instance of the ambient-observe machine:
     // each turn, emit each owned channel's unshown byte-delta as a foisted READ@200 row. Folded
     // while the channel streams; the terminal delta (channel closed) auto-OPENs. The cursor is the
     // streamEnd recorded on the channel's prior delta — no exec-specific surfacing, just the

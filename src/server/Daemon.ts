@@ -794,7 +794,7 @@ export default class Daemon {
         // scheme — independent of the signal-listener timing, so an exec mid-spawn
         // (registry row written before it is killable) is reaped too. A late spawn
         // (registering after this) self-aborts against its captured, now-aborted
-        // epoch (§run-lifecycle-exec-loop-bound). Idempotent; fire-and-forget (the
+        // epoch (§exec-timeout). Idempotent; fire-and-forget (the
         // abort is sync, the registry read async; the 499 conclusion surfaces async).
         void this.#reapRunStreams(runId).catch((err: unknown) => {
             console.error(`reapRunStreams(${runId}) failed:`, err);

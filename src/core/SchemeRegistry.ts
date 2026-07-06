@@ -150,7 +150,7 @@ export default class SchemeRegistry {
         return out;
     }
 
-    // Plugin packet control (§packet-construction): pipe the engine's default
+    // Plugin packet control (§packet-assembly): pipe the engine's default
     // section list through every registered scheme that implements
     // transformSections, in registration order. A scheme returns whatever list it
     // wants — add, remove, reorder. The trusted in-process seam; the client wire

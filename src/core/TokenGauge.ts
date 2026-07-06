@@ -31,7 +31,7 @@ export default class TokenGauge {
     // providers#37 (delivered, 0.35.0): Provider.servedModel is the backend's self-reported
     // identity from the boot probe — an alias-fronted local backend ('turboderp' → the gguf name)
     // resolves its exact tokenizer from turn 1. Absent (hosted/no-probe), the alias model tries;
-    // inexact runs as a SURFACED upper bound (§312 ask 3) — never a silent number.
+    // inexact runs as a SURFACED upper bound (#312 ask 3) — never a silent number.
     static async resolve(mimetypes: Mimetypes | undefined, provider: Provider, pushTelemetry?: (e: TelemetryEvent) => void): Promise<GaugeResolution> {
         const key = provider.model;
         const cached = TokenGauge.#resolutions.get(key);

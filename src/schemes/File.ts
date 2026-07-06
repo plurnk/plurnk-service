@@ -12,7 +12,7 @@ import type { FindResult } from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
 import type { ReadEntryResult, EntryData, WriteEntryResult } from "./_entry-crud.ts";
 
-// Resolved + §membership-gated disk-write target, or the error status to return.
+// Resolved + §membership-change-gated-sync disk-write target, or the error status to return.
 type WriteTarget =
     | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string; baseSig: string | null }
     | { ok: false; status: number; error: string };

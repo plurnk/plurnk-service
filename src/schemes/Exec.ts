@@ -187,7 +187,7 @@ export default class Exec {
         // The parsed (target) slot — the executor's DATA SOURCE (jq input file / sqlite db / wasm
         // module; ignored by subprocess). execs 0.4.26 (#15) carries it distinct from cwd.
         const target = cwdFromTarget(statement.target);
-        // Effect classifies by the target only, never by parsing the command (§289): host → propose,
+        // Effect classifies by the target only, never by parsing the command (#289): host → propose,
         // read/pure → auto-run inline (plurnk-service#182).
         const policy = EffectPolicy.decide(resolved.executor.effect(target, command));
         // cwd is ALWAYS the session WORKSPACE (project_root) — the process working directory a relative
@@ -299,7 +299,7 @@ export default class Exec {
             // then re-check `aborted`: a listener added to an already-aborted signal never
             // fires, so a check-then-attach order LOSES an abort that lands in the gap (R1's
             // TOCTOU leak). Attach-then-check closes it; controller.abort is idempotent, so a
-            // doubled fire is harmless. §run-lifecycle-exec-loop-bound
+            // doubled fire is harmless. §exec-timeout
             const onParentAbort = (): void => controller.abort(ExecAbort.teardownReason());
             parent.addEventListener("abort", onParentAbort, { once: true });
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);

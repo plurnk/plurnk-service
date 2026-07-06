@@ -94,7 +94,7 @@ export interface PlurnkSchemeContext {
     readonly pushTelemetry?: (event: TelemetryEvent) => void;
 }
 
-// Optional packet hook (§packet-construction). A scheme implements this to rewrite
+// Optional packet hook (§packet-assembly). A scheme implements this to rewrite
 // the engine's default section list — add, remove, reorder — by returning a new
 // list. The trusted, in-process seam for plugin packet control: list in, list
 // out, applied in registration order after the kernel builds its defaults. The

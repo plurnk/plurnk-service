@@ -30,7 +30,7 @@ interface DemoOpts {
 const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void> => {
     // Sandbox EXEC's cwd to a throwaway temp dir — the model runs shell commands (and,
     // when blind to its output, redirects them to files); without a project_root they'd
-    // default to the daemon's cwd and land in the live repo. §exec-cwd-sandbox
+    // default to the daemon's cwd and land in the live repo. §exec-env-scoped
     const sandbox = await mkdtemp(join(tmpdir(), "plurnk-demo-"));
     const s = await liveSession({ name: `demo-${label}-${crypto.randomUUID()}`, projectRoot: sandbox });
     try {

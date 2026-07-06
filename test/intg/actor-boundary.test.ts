@@ -101,7 +101,7 @@ test("[§actor-boundary-origin-not-filter] origin is attribution (provenance), n
 // The voice door (inject) and the negative (a delta must not wake) are locked here;
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
 // an active loop folds the conclusion into its next turn — is locked in
-// Daemon.exec-wake.test.ts. Together they discharge §141's two-trigger contract.
+// Daemon.exec-wake.test.ts. Together they discharge §actor-boundary-passive-wake's two-trigger contract.
 test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),

@@ -1,4 +1,4 @@
-// The entry catalog (§packet-manifest-catalog) — the complete, unranked directory of every
+// The entry catalog (§packet-catalog) — the complete, unranked directory of every
 // entry the session holds, served by FIND(scheme:///**), one per-scheme array (there is no
 // plurnk:///manifest.json entry). catalogRowsFor renders engine_list_session_entries' rows,
 // uniformly READable, in no relevance order; the model ranks/filters it itself by querying it
@@ -101,7 +101,7 @@ export default class EntryManifest {
     // -32603); contain it here (clear the deep channels, stamp the hash so it doesn't re-attempt)
     // and keep pumping the rest.
     // One entry's full derivation (graph + FTS + embeddings + hash stamp), containment
-    // included — shared by the pump and the ~query inline slice (§semantic-cold-query-
+    // included — shared by the pump and the ~query inline slice (§semantic-cold-query-full-fidelity
     // full-fidelity). Failure clears the deep channels and stamps the hash (no re-attempt).
     // Every derivation write funnels through one chain: the background pump and a ~query's
     // inline slice may target the SAME entry concurrently, and indexFts/indexEmbedding are
@@ -144,7 +144,7 @@ export default class EntryManifest {
             // no projection keep today's raw-body behavior exactly.
             const semanticSource = result.content ?? r.content;
             await EntrySemantic.indexFts(db, r.entry_id, semanticSource);
-            // §21/#47 — the operator's PLURNK_MIMETYPES_NO_EMBED classification: a matched entry
+            // mimetypes SPEC 21 / #47 — the operator's PLURNK_MIMETYPES_NO_EMBED classification: a matched entry
             // (lockfile, minified bundle, sourcemap) is never semantically derived — zero vectors,
             // FTS-only is the honest treatment. The knob IS the decision table; no code heuristics.
             if (result.noEmbed !== undefined) {
