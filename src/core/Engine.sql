@@ -248,7 +248,7 @@ INSERT INTO log_entries (
 -- runtime-tag entry), with content + state + coordinate, so the per-turn injector can emit the
 -- channel's unshown byte-delta. Stays listed until its last delta is shown (cursor == content len).
 SELECT s.id AS subscription_id, e.scheme AS runtime, e.pathname AS coord,
-    ec.name AS channel, ec.content AS content, ec.state AS state
+    ec.name AS channel, ec.content AS content, ec.state AS state, s.close_status AS close_status
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN entry_channels ec ON ec.entry_id = s.entry_id

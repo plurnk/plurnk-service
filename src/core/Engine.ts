@@ -1233,16 +1233,35 @@ export default class Engine {
     }): Promise<number> {
         const { runId, loopId, turnId, fromSequence } = args;
         const channels = await (this.#db.engine_run_stream_channels as PrepMethod).all<{
-            subscription_id: number; runtime: string; coord: string; channel: string; content: string; state: string;
+            subscription_id: number; runtime: string; coord: string; channel: string; content: string; state: string; close_status: number | null;
         }>({ run_id: runId });
         let written = 0;
         for (const ch of channels) {
             const prior = await (this.#db.engine_stream_cursor as PrepMethod).get<{ attrs: string }>({
                 run_id: runId, scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
             });
-            const cursor = prior !== undefined ? ((JSON.parse(prior.attrs) as { streamEnd?: number }).streamEnd ?? 0) : 0;
-            if (ch.content.length <= cursor) continue;  // nothing new to show this turn
+            const priorAttrs = prior !== undefined ? (JSON.parse(prior.attrs) as { streamEnd?: number; terminal?: boolean }) : {};
+            const cursor = priorAttrs.streamEnd ?? 0;
             const closed = ch.state === "closed" || ch.state === "errored";
+            if (ch.content.length <= cursor) {
+                // The cursor-terminal race (owner's dogfood find): a channel written in one final
+                // burst gets fully shown FOLDED while still active; the close then has zero new
+                // bytes and the auto-OPEN terminal delta never fired — the model was never shown
+                // the conclusion of a stream whose result it already holds folded. Emit the
+                // terminal marker ONCE: open, terse, carrying the close status; the content is a
+                // pointer to the already-delivered bytes, never a re-send (§tokenomics-fetch-fits-free).
+                if (closed && priorAttrs.terminal !== true && cursor > 0) {
+                    await (this.#db.engine_insert_stream_delta as PrepMethod).run({
+                        run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                        scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
+                        rx: JSON.stringify({ status: ch.close_status ?? 200, content: `[ stream closed (${ch.close_status ?? 200}) — full output already delivered above; READ ${ch.runtime}://${ch.coord}#${ch.channel} to revisit ]`, mimetype: "text/stream" }),
+                        attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
+                        expanded: 1,
+                    });
+                    written++;
+                }
+                continue;
+            }
             // startLine continues the line count across turns: a multi-turn stream's deltas number
             // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. §exec-stream
             const startLine = (ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0) + 1;
@@ -1250,7 +1269,7 @@ export default class Engine {
                 run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                 scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
                 rx: JSON.stringify({ status: 200, content: ch.content.slice(cursor), mimetype: "text/stream", startLine }),
-                attrs: JSON.stringify({ streamEnd: ch.content.length }),
+                attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: closed }),
                 expanded: closed ? 1 : 0,  // §exec-stream — terminal delta auto-OPENs; ongoing folds
             });
             written++;

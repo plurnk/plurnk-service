@@ -50,3 +50,35 @@ test("[§exec-stream] regression: a model's EXEC result surfaces in the NEXT tur
         } finally { ws.close(); }
     });
 });
+
+test("[§exec-stream] the cursor-terminal race: a one-burst stream fully shown FOLDED before its close still gets an OPEN terminal delta", async () => {
+    // The owner's dogfood find (the search digest): a channel written in one final burst is
+    // fully shown (folded) on an interim turn while still ACTIVE; the close arrives with zero
+    // new bytes, and the auto-OPEN terminal never fired — the model never saw the stream
+    // conclude. Turn 1: EXEC a slow-close command + [102]. Turn 2 (stream active, content
+    // complete): the delta shows folded. Turn 3 (closed, nothing new): the terminal marker
+    // MUST land, open, carrying the close status — never a silent skip.
+    const mock = new Mock({ contextSize: 100000, responses: [
+        makeMockResponse("<<EXEC[sh]:echo burst-payload && sleep 2:EXEC\n<<SEND[102]:spawned:SEND", 10),
+        makeMockResponse("<<SEND[102]:waiting:SEND", 10),
+        makeMockResponse("<<SEND[102]:checking:SEND", 10),
+        makeMockResponse("<<SEND[200]:done:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "cursor-terminal" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", flags: { yolo: true } });
+            assert.equal(finalStatus, 200);
+            const last = turnIds![turnIds!.length - 1];
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: last });
+            const packet = JSON.parse(row?.packet ?? "{}");
+            const entries = logEntries(packet);
+            const deltas = entries.filter((e) => e.op === "READ" && e.origin === "plurnk" && String(e.target ?? "").includes("stdout"));
+            assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
+            const log = packetSection(packet, "log");
+            assert.match(log, /burst-payload/, "the burst content was delivered");
+            assert.match(log, /stream closed \(200\)/, "the OPEN terminal marker landed even though the close brought zero new bytes — the model SEES the conclusion");
+        } finally { ws.close(); }
+    });
+});
