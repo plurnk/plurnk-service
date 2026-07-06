@@ -143,7 +143,7 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "big"), heavy), anyEdit(anyUrl("known", "small"), "x"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
-        assert.match(budget, /Heaviest items:\n\| item \| tokens \|/, "heaviest-items table present");
+        assert.match(budget, /Heaviest items \(FOLD targets — folding reclaims their tokens\):\n\| item \| tokens \|/, "heaviest-items table present, verb attached — the lever is named where the targets are listed");
         // Every listed item is a log:/// handle (log items, not catalog entries), heaviest-first.
         const rows = budget.split("\n").filter((l) => /^\| log:\/\/\//.test(l));
         assert.ok(rows.length >= 2, `at least two entries listed; got ${rows.length}`);
@@ -226,7 +226,7 @@ test("[§tokenomics-pressure-gates-on-occupancy] a high-headroom window renders 
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         assert.match(budget, /Token Ceiling \d+/, "the headline gauge always renders");
-        assert.doesNotMatch(budget, /Heaviest items:/, "no FOLD-target list at low occupancy");
+        assert.doesNotMatch(budget, /Heaviest items/, "no FOLD-target list at low occupancy");
         assert.doesNotMatch(budget, /Turns:/, "no per-turn table at low occupancy");
         assert.doesNotMatch(budget, /Log entries:/, "no log-weight line at low occupancy — numbers only");
     } finally { await db.close(); }

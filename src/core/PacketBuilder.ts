@@ -311,7 +311,7 @@ export default class PacketBuilder {
             // lists log:/// rows (log items), distinct from catalog entries (plurnk.md: "EDIT
             // is only for entries. Do not attempt to edit log items.").
             if (log.largest.length > 0) {
-                lines.push("", "Heaviest items:", "| item | tokens |", "|---|--:|");
+                lines.push("", "Heaviest items (FOLD targets — folding reclaims their tokens):", "| item | tokens |", "|---|--:|");
                 for (const e of log.largest) lines.push(`| ${e.path} | ${e.tokens} |`);
             }
         }
