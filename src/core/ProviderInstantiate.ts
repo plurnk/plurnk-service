@@ -10,7 +10,28 @@ import { resolveActiveAlias, isStandardProvider, standardProviderFromEnv } from 
 import type { Provider, ProviderAlias, ProviderFactory } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
+    // One provider per (provider, model, baseUrl) for the process lifetime: a provider is
+    // stateless per the contract, and loop.run instantiating fresh per aliased call re-probed
+    // the backend (latency) and re-fired providers' construction warnings on every loop (the
+    // owner's boot log: one heuristic warning per loop.run). Cache keyed on the wire identity;
+    // env is process-stable for these fields.
+    static #instances = new Map<string, Promise<Provider>>();
+
     static async instantiateProvider(alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> {
+        if (env === process.env) {
+            const key = `${alias.provider}|${alias.model}|${alias.baseUrl ?? ""}`;
+            let cached = ProviderInstantiate.#instances.get(key);
+            if (cached === undefined) {
+                cached = ProviderInstantiate.#instantiate(alias, env);
+                ProviderInstantiate.#instances.set(key, cached);
+                cached.catch(() => ProviderInstantiate.#instances.delete(key)); // a failed construct never poisons the cache
+            }
+            return cached;
+        }
+        return ProviderInstantiate.#instantiate(alias, env); // custom env (tests) — never cached
+    }
+
+    static async #instantiate(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
         // Standard providers (openai-compat + groq/deepinfra/...) construct via
         // the framework's factory — it carries probeNctx (auto-detect the
         // endpoint's n_ctx, so a local llama-server isn't a no-window black box
