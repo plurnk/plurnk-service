@@ -56,6 +56,11 @@ export type OpenAICompatConfig = {
     // provider exposes the optional `tokenize()` capability — the model's OWN
     // vocab, no client-side tokenizer data needed; default unset (capability absent).
     tokenizeUrl?: string;
+    // #37: the backend's self-reported served model id (from the /v1/models probe),
+    // surfaced as Provider.servedModel. For a local llama-server the wire `model` is
+    // the alias; this is the real name (the .gguf) the tokenizer seam maps. Absent
+    // when no probe ran or it read no row.
+    servedModel?: string;
     // The side-channel thinking intent — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_THINKING + _CAPACITY, read via thinkingFromEnv):
     // { mode: off|adaptive|on, capacity: iff on }. The provider maps it to the
@@ -160,6 +165,7 @@ export default class OpenAICompatProvider implements Provider {
     #retryAttempts: number;
     #logprobs: number | null;
     #rawBody: boolean;
+    #servedModel: string | undefined;
 
     // Optional capability (SPEC §2): exact tokenization served by the backend's
     // own vocab. Assigned in the constructor ONLY when the config carries a
@@ -197,6 +203,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#slotCount = config.slotCount ?? null;
         this.#logprobs = config.logprobs ?? null;
         this.#rawBody = config.rawBody ?? false;
+        this.#servedModel = config.servedModel;
         const { tokenizeUrl } = config;
         if (tokenizeUrl !== undefined) {
             this.tokenize = async (text: string): Promise<number[]> => {
@@ -218,6 +225,8 @@ export default class OpenAICompatProvider implements Provider {
 
     get contextSize(): number | null { return this.#contextSize; }
     get model(): string { return this.#model; }
+    // #37: backend's self-reported served id; undefined when unprobed/unknown.
+    get servedModel(): string | undefined { return this.#servedModel; }
     // Resolved capability (#34): will a transported grammar actually constrain
     // this backend's decode? Introspectable so a consumer can verify the rails
     // are LIVE without spending a generation on a forcing-grammar probe.

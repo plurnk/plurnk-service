@@ -134,6 +134,12 @@ export interface Provider {
     // server splits --ctx-size across slots and reports the divided value).
     readonly contextSize: number | null;
     readonly model: string;
+    // OPTIONAL (#37): the backend's SELF-REPORTED served model id, from a
+    // /v1/models-shaped probe (llama-server today; any such backend). For a local
+    // alias, `model` is the alias but this is the real served name (the .gguf) the
+    // tokenizer seam maps exactly. Read-only, best-effort, no extra probing —
+    // absent when no probe ran. Consumers resolve `servedModel ?? model`.
+    readonly servedModel?: string;
     // OPTIONAL resolved capability (#34): true when a transported grammar will
     // actually constrain the decode (rails LIVE), false/undefined otherwise —
     // introspectable so the consumer can fail hard on a dark-rails boot instead

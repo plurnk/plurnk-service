@@ -27,7 +27,12 @@ interface Provider {
                                           // PER SLOT under llama-server --parallel N
                                           // (the server splits --ctx-size and reports
                                           // the divided value; verified live).
-    readonly model: string;                // configured model id
+    readonly model: string;                // configured model id (the alias for a local backend)
+    // OPTIONAL (#37): backend's SELF-REPORTED served id, from a /v1/models-shaped
+    // probe. For a local alias `model` is the alias; this is the real served name
+    // (the .gguf) the tokenizer seam maps. Absent when unprobed. Consumers resolve
+    // `servedModel ?? model`.
+    readonly servedModel?: string;
 
     // Tokenomic primitives (synchronous, pure)
     countTokens(text: string): number;
@@ -270,6 +275,8 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       gbnfDebug,             // PLURNK_PROVIDERS_GBNF_DEBUG: validate a grammar locally + throw on invalid, but DON'T send it (§13); default false
       streaming,             // SSE transport; default true (false → one non-streamed JSON)
       supportsSlotPinning, slotCount,  // INTERNAL slot-affinity wiring (run→id_slot); never consumer-facing
+      logprobs, rawBody,     // #36 opt-in data capture (PLURNK_PROVIDERS_LOGPROB / _RAWBODY); default off
+      servedModel,           // #37 backend's self-reported served id (from the probe) → Provider.servedModel
   });
   ```
 
@@ -286,7 +293,7 @@ The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the
 
 A spec may carry a **`modelPrefix`** — a constant model-id segment the backend requires but the operator's alias shouldn't repeat. `fireworks` sets `"accounts/fireworks/models/"`, so `PLURNK_MODEL_fast=fireworks/deepseek-v4-pro` carries only the distinctive tail; `standardProviderFromEnv` prepends it idempotently (an already-prefixed id is untouched) to form the wire id, which is **also** the catalog key (models.dev keys fireworks-ai on the full id). Specs without a `modelPrefix` use the model string verbatim.
 
-`contextSize` for a standard provider resolves: `PLURNK_PROVIDERS_CONTEXT_SIZE` → endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models` — llama-server reports its loaded window at `data[].meta.n_ctx`, vLLM top-level; cloud endpoints don't, yielding `null`) → `null`. The same probe fingerprints llama-server (the `meta` block) to enable grammar transport (§13), so it runs even when the env var pins the window. The probe is best-effort: any failure resolves to `null` context / no grammar capability (a legitimate "unknown"), never throws.
+`contextSize` for a standard provider resolves: `PLURNK_PROVIDERS_CONTEXT_SIZE` → endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models` — llama-server reports its loaded window at `data[].meta.n_ctx`, vLLM top-level; cloud endpoints don't, yielding `null`) → `null`. The same probe fingerprints llama-server (the `meta` block) to enable grammar transport (§13), and reads the row's `id` as `servedModel` (#37) — the real served name behind a local alias — so it runs even when the env var pins the window. The probe is best-effort: any failure resolves to `null` context / no grammar capability (a legitimate "unknown"), never throws.
 
 ## §12 Telemetry — provider failures
 

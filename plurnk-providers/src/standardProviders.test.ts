@@ -92,6 +92,27 @@ test("openai: meta.n_ctx wins over a top-level n_ctx", async () => {
     assert.equal(p!.contextSize, 49152);
 });
 
+// — served model identity (#37) —
+
+test("#37: servedModel resolves the backend's real served id when the wire model is an alias", async () => {
+    const served = "gemma-4-26B-A4B-it-qat-UD-Q4_K_XL.gguf";
+    mockEndpoint({ metaNctx: 49152, modelId: served }); // llama-server row reports the real name
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "turboderp"); // wire model is the alias
+    assert.equal(p!.servedModel, served); // seam maps this exactly
+    assert.equal(p!.model, "turboderp"); // the wire model stays the alias
+});
+
+test("#37: servedModel absent when the probe reads no row (consumer falls back to model)", async () => {
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        const streamed = init?.body !== undefined && JSON.parse(String(init.body)).stream === true;
+        if (streamed) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+        return new Response(JSON.stringify({ choices: [{ message: { content: "" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    assert.equal(p!.servedModel, undefined);
+});
+
 test("openai: explicit PLURNK_PROVIDERS_CONTEXT_SIZE wins over n_ctx", async () => {
     mockEndpoint({ nctx: 49152 });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_CONTEXT_SIZE: "400000" }, "m");

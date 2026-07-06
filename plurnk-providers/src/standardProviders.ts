@@ -316,7 +316,7 @@ const resolveHeaders = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, labe
 // llama-server is the backend whose chat-completions accepts a `grammar` field.
 // Best-effort: any failure (unreachable, no field, non-2xx) degrades to
 // { null, false } — a legitimate "unknown", not a swallowed contract violation.
-type EndpointProbe = { nCtx: number | null; llamaServer: boolean; failed: boolean };
+type EndpointProbe = { nCtx: number | null; llamaServer: boolean; servedModel: string | null; failed: boolean };
 
 // One probe failure must never decide capability (#34). Attempts/delay are
 // operator knobs (PLURNK_PROVIDERS_PROBE_ATTEMPTS / _PROBE_DELAY, canonical
@@ -326,7 +326,7 @@ const probeModels = async (chatUrl: string, headers: Record<string, string>, mod
     const modelsUrl = chatUrl.replace(/\/chat\/completions$/, "/models");
     try {
         const res = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(fetchTimeoutMs) });
-        if (!res.ok) return { nCtx: null, llamaServer: false, failed: true };
+        if (!res.ok) return { nCtx: null, llamaServer: false, servedModel: null, failed: true };
         const data = (await res.json()) as { data?: Array<{ id?: string; n_ctx?: number; meta?: { n_ctx?: number } }> };
         const rows = data.data ?? [];
         const row = rows.find((r) => r.id === model) ?? rows[0];
@@ -336,10 +336,14 @@ const probeModels = async (chatUrl: string, headers: Record<string, string>, mod
         return {
             nCtx: typeof n === "number" && n > 0 ? n : null,
             llamaServer: row?.meta !== undefined,
+            // #37: the backend's self-reported id — for a local llama-server the
+            // wire model is the ALIAS, but this row carries the real served name
+            // (the .gguf) the tokenizer seam maps. Absent when the probe read no row.
+            servedModel: typeof row?.id === "string" && row.id.length > 0 ? row.id : null,
             failed: false,
         };
     } catch {
-        return { nCtx: null, llamaServer: false, failed: true };
+        return { nCtx: null, llamaServer: false, servedModel: null, failed: true };
     }
 };
 
@@ -347,7 +351,7 @@ const probeModels = async (chatUrl: string, headers: Record<string, string>, mod
 // retry — a confirmed answer returns immediately. Exhaustion returns the last
 // failed result; the CALLER decides what a still-unknown capability means.
 const probeModelsRetrying = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number, attempts: number, delayMs: number): Promise<EndpointProbe> => {
-    let probe: EndpointProbe = { nCtx: null, llamaServer: false, failed: true };
+    let probe: EndpointProbe = { nCtx: null, llamaServer: false, servedModel: null, failed: true };
     for (let attempt = 0; attempt < attempts; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, delayMs * 2 ** (attempt - 1)));
         probe = await probeModels(chatUrl, headers, model, fetchTimeoutMs);
@@ -420,6 +424,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     let supportsSlotPinning = false;
     let slotCount: number | null = null;
     let tokenizeUrl: string | undefined;
+    let servedModel: string | undefined;
     let reasoningStyle = spec.reasoningStyle;
     if (spec.probeNctx === true) {
         // Operator pin (#34): "1" → llama-server capabilities WITHOUT trusting
@@ -433,6 +438,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         const probeAttempts = parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_ATTEMPTS, "PLURNK_PROVIDERS_PROBE_ATTEMPTS", name);
         const probe = await probeModelsRetrying(url, headers, wireModel, fetchTimeoutMs, probeAttempts, parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_DELAY, "PLURNK_PROVIDERS_PROBE_DELAY", name));
         contextSize ??= probe.nCtx;
+        // #37: the backend's self-reported served id (from the same probe), so an
+        // alias-fronted local model resolves its exact tokenizer. Absent otherwise.
+        servedModel = probe.servedModel ?? undefined;
         const isLlama = pin ?? (probe.llamaServer && spec.detectLlamaServer !== false);
         if (isLlama && spec.detectLlamaServer !== false) {
             grammarStyle = "llamacpp";
@@ -503,5 +511,6 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         supportsSlotPinning,
         slotCount,
         tokenizeUrl,
+        servedModel,
     });
 };
