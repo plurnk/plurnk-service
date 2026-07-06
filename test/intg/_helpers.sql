@@ -135,7 +135,7 @@ FROM log_entries WHERE run_id = $run_id ORDER BY id;
 -- runs in its OWN run now, §connection-lifecycle), so a test queries by the loopId it holds.
 -- origin is the writer tier (model | client | plurnk) — lets a test assert an engine foist
 -- (origin='plurnk') vs a model op without a second query.
-SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, rx, expanded, origin
+SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, rx, expanded, origin, lineMarker
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_run_id_by_loop

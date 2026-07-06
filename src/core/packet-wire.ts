@@ -82,22 +82,6 @@ export default class PacketWire {
         return (header ? `## ${header}\n\n${s.content}` : s.content).replace(/\n+$/, "");
     }
 
-    // The Active User Prompts section (§prompt-fold) — the OPPOSITE of the errors section:
-    // bare HEREDOC bodies, no meta/link line; the heredoc fence (each prompt's own
-    // plurnk://prompt/<loop>/<seq> address) IS the link. Every prompt the current loop holds
-    // renders in order (typically one; an active loop admits injected prompts). The body is
-    // `N:\t` LINE-NUMBERED inside the fence — a SECURITY boundary: numbered, fenced prompt text
-    // can't spoof other parts of the packet (a prompt line `## Plurnk Service Errors` reads as
-    // `3:\t## …`, plainly inside the prompt, not a real section). A fat prompt replays every turn,
-    // so PLURNK_SERVICE_PROMPT_PREVIEW_CHARS caps it: over the cap, render a pointer placeholder instead of
-    // the body — the model OPENs/READs the entry to see it whole (never lost). cap < 0 = no cap.
-    static renderActivePrompts(rows: Array<{ content: string; pathname: string }>, cap: number): string {
-        return rows.map((r) => {
-            const addr = renderAddress("plurnk", r.pathname);
-            if (cap >= 0 && r.content.length > cap) return `[ Prompt exceeds preview limit. Full content: ${addr} ]`;
-            return PacketWire.#wrapHeredocBody(addr, PacketWire.#numberLines(r.content));
-        }).join("\n\n");
-    }
 
     // The errors section content: the structured telemetry events rendered to
     // meta lines (+ snippet blocks). "" when empty (the section is omitted). The

@@ -105,11 +105,11 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.usage_completion, 42);
 
         // 5 log_entries: the turn-0 `model` exemplar (mirrored OPEN at sequence 1,
-        // §model-entry) + 1 client-origin SEND[200] prompt foist + 2 model ops
-        // (EDIT, SEND) + 1 folded `model` echo of THIS turn's verbatim emission.
+        // §model-entry) + the prompt foist EDIT + its auto-READ (§prompt-auto-read) + 2 model
+        // ops (EDIT, SEND) + 1 folded `model` echo of THIS turn's verbatim emission.
         // Turn-as-container model — pre-model writes share the turn's sequence counter.
         const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
-        assert.equal(logCount, 5);
+        assert.equal(logCount, 6);
 
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
@@ -183,9 +183,9 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
 
 test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
     // Turn-as-container model, 1-based. The run's first turn opens with sequence=1
-    // reserved for the turn-0 `model` exemplar (§model-entry), then the prompt
-    // (system-origin EDIT against plurnk:///prompt/<loop_id>) at 2, then the 3 model
-    // ops at 3, 4, 5 and the terminal SEND at 6 — the turn's running counter.
+    // reserved for the turn-0 `model` exemplar (§model-entry), the prompt EDIT at 2,
+    // its auto-READ at 3 (§prompt-auto-read), then the 3 model ops and the terminal
+    // SEND on the running counter.
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -203,10 +203,11 @@ test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prom
             [
                 { idx: 1, op: "model" }, // the turn-0 exemplar, mirrored OPEN at sequence 1 (§model-entry)
                 { idx: 2, op: "EDIT" },  // the prompt (plurnk:///prompt/<loop_id>)
-                { idx: 3, op: "EDIT" },
+                { idx: 3, op: "READ" },  // §prompt-auto-read — the prompt's body arrives as a READ
                 { idx: 4, op: "EDIT" },
                 { idx: 5, op: "EDIT" },
-                { idx: 6, op: "SEND" },
+                { idx: 6, op: "EDIT" },
+                { idx: 7, op: "SEND" },
             ],
         );
     } finally { await db.close(); }
@@ -869,10 +870,10 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         assert.equal(packet.telemetryErrors.length, 1, "1 failure mirrored from turn 1");
         const [err] = packet.telemetryErrors;
         assert.equal(err.position.type, "log-coordinate", "a LogCoordinate pointer, not a JSON blob");
-        // Turn-as-container, 1-based: turn-0 `model` exemplar at 1/1/1 (§model-entry), prompt at 1/1/2;
-        // the model's denied EDIT shifts to 1/1/3. The coordinate carries the op suffix; the terse
-        // detail (the scheme's "writer 'model' denied" fact) lives on the row, READ via the link.
-        assert.equal(err.position.coordinate, "1/1/3/EDIT");
+        // Turn-as-container, 1-based: turn-0 `model` exemplar at 1/1/1 (§model-entry), prompt EDIT
+        // at 1/1/2, its auto-READ at 1/1/3 (§prompt-auto-read); the model's denied EDIT shifts to
+        // 1/1/4. The coordinate carries the op suffix; the terse detail lives on the row.
+        assert.equal(err.position.coordinate, "1/1/4/EDIT");
         assert.equal(err.status, 403);
     } finally { await db.close(); }
 });

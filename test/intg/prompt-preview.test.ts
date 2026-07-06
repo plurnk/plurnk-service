@@ -1,46 +1,55 @@
-// End-to-end: a fat prompt over PLURNK_SERVICE_PROMPT_PREVIEW_CHARS renders as the pointer PLACEHOLDER in
-// the built packet's Active User Prompts section (no inlined body) — while the full body stays intact
-// at its plurnk://prompt/<loop>/<seq> entry. The cap is model-context (what replays each turn); the
-// database entry is never truncated (the full body is always recoverable by READ/OPEN).
+// §prompt-auto-read (owner refactor): the User Prompts section is a PATHS-ONLY list at the
+// system packet's bottom; the prompt's content reaches the model through a foisted auto-READ
+// of its own entry — <1,12> for twelve-plus-line prompts, <1,-1> (whole) below that. Prior
+// prompts stay listed and READable by address — never silently lost.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import Engine from "../../src/core/Engine.ts";
-import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
-import { sendStmt } from "./_dsl.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-test("[prompt-preview] a fat prompt renders capped in the packet but stays whole at its entry", async () => {
-    const prev = process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS;
-    process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS = "50";
-    const db = await openMigrated();
-    try {
-        const fullPrompt = "DESCRIBE ".repeat(40); // 360 chars, well over the 50-char cap
-        const sessionId = await insertSession(db, `prompt-preview-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, fullPrompt);
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+const mock = (): Mock => new Mock({ contextSize: 100000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 40)] });
 
-        const { turnId } = await engine.runTurn({
-            provider, sessionId, runId, loopId,
-            messages: [{ role: "system", content: "PLURNK_MD" }, { role: "user", content: fullPrompt }],
-        });
+type LogRow = { op: string; origin: string; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
 
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
-        const userPrompt = packetSection(JSON.parse(row!.packet), "prompt");
+test("[§prompt-auto-read] a short prompt foists READ(prompt)<1,-1> — whole, the teaching form", async () => {
+    await withDaemon(mock(), async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "par-short" });
+            const resp = await runLoopToTerminal(ws, 2, { prompt: "three\nshort\nlines" });
+            const { loopId } = resp as { loopId: number };
+            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+            const autoRead = rows.find((r) => r.op === "READ" && r.origin === "plurnk" && r.pathname?.startsWith(`/prompt/${loopId}/`) === true);
+            assert.ok(autoRead, "the auto-READ foisted");
+            const marker = JSON.parse(autoRead!.lineMarker ?? "null") as { marks: number[] } | null;
+            assert.deepEqual(marker?.marks, [1, -1], "fewer than 12 lines → whole-read <1,-1>");
+            assert.match(autoRead!.rx ?? "", /three/, "the prompt body arrives through the READ");
+        } finally { ws.close(); }
+    });
+});
 
-        assert.ok(userPrompt.length < fullPrompt.length, "the rendered prompt is capped below the full body");
-        assert.doesNotMatch(userPrompt, /DESCRIBE DESCRIBE/, "the over-cap body is NOT inlined");
-        assert.match(userPrompt, /^\[ Prompt exceeds preview limit\. Full content: plurnk:\/\/prompt\/\d+\/\d+ \]$/, "the over-cap prompt renders the pointer placeholder");
-
-        // The database entry is NEVER truncated — the full body is recoverable by READ.
-        const entry = await (db.drain_get_latest_prompt_body_for_loop as PrepMethod).get<{ content: string }>({ pattern: `/prompt/${loopId}/%` });
-        assert.equal(entry!.content, fullPrompt, "the prompt entry retains the full, untruncated body");
-    } finally {
-        await db.close();
-        if (prev === undefined) delete process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS; else process.env.PLURNK_SERVICE_PROMPT_PREVIEW_CHARS = prev;
-    }
+test("[§prompt-auto-read] a 12+-line prompt foists READ(prompt)<1,12> and the section lists the PATH only", async () => {
+    await withDaemon(mock(), async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "par-long" });
+            const fat = Array.from({ length: 30 }, (_, i) => `prompt line ${i + 1}`).join("\n");
+            const resp = await runLoopToTerminal(ws, 2, { prompt: fat });
+            const { loopId, turnIds } = resp as { loopId: number; turnIds: number[] };
+            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+            const autoRead = rows.find((r) => r.op === "READ" && r.origin === "plurnk" && r.pathname?.startsWith(`/prompt/${loopId}/`) === true);
+            assert.ok(autoRead, "the auto-READ foisted");
+            const marker = JSON.parse(autoRead!.lineMarker ?? "null") as { marks: number[] } | null;
+            assert.deepEqual(marker?.marks, [1, 12], "twelve-plus lines → <1,12>");
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
+            const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; content: string }> };
+            const promptSection = (packet.sections ?? []).find((sec) => sec.name === "prompt");
+            assert.ok(promptSection, "the prompts section exists");
+            assert.equal(promptSection!.slot, "system", "system slot — the very bottom of the system packet");
+            assert.match(promptSection!.content, new RegExp(`^\\* plurnk://prompt/${loopId}/1$`, "m"), "paths-only, the errors shape");
+            assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
+        } finally { ws.close(); }
+    });
 });

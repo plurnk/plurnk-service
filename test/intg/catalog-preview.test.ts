@@ -187,3 +187,21 @@ test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dy
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
     }
 });
+
+test("[§actor-boundary-catalog-preview] an EMPTY workspace still foists the bare FIND(**) — 'nothing here' is orienting, not noise (owner)", async () => {
+    const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    try {
+        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
+        await withDaemon(mock(), async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "session.create", { name: "empty-ws-find" }); // headless: zero tracked files
+                const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                const { loopId } = resp as { loopId: number };
+                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                const bare = rows.find((r) => r.op === "FIND" && r.scheme === null && r.pathname === "**");
+                assert.ok(bare !== undefined, "the bare FIND(**) foists even with zero tracked files — the model is TOLD not to look there");
+            } finally { ws.close(); }
+        });
+    } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }
+});

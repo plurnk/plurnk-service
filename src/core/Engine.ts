@@ -593,10 +593,52 @@ export default class Engine {
                     sequence: nextActionIndex, origin: "plurnk",
                     onDispatch: (id) => { promptLogId = id; onDispatch?.(id); },
                 });
-                // §prompt-fold (User Note 6): the prompt EDIT duplicates the
-                // prompt section, so fold it — logged for forensics, collapsed
-                // in the model's log, re-OPENable.
+                // §prompt-fold: the prompt EDIT's row is folded — the body reaches the model
+                // through the auto-READ below; the EDIT stays forensic, re-OPENable.
                 if (promptLogId !== undefined) await (this.#db.engine_fold_log_entry as PrepMethod).run({ id: promptLogId });
+                nextActionIndex++;
+                // §prompt-auto-read (owner): the prompt's body reaches the model as a foisted
+                // READ of its own entry — first 12 lines (<1,12>), or the whole prompt (<1,-1>)
+                // when it runs fewer than 12 (whole-read form doubles as teaching). Prior prompts
+                // stay listed by path in the system packet's User Prompts section — reachable,
+                // never silently lost.
+                const promptLineCount = promptRow.prompt.split("\n").length;
+                const promptRead: ReadStatement = {
+                    op: "READ", suffix: "", signal: null, target: promptPath,
+                    lineMarker: { marks: promptLineCount >= 12 ? [1, 12] : [1, -1] },
+                    body: null, position: { line: 1, column: 1 },
+                };
+                await this.dispatch({
+                    statement: promptRead, sessionId, runId, loopId, turnId,
+                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                });
+                nextActionIndex++;
+            }
+        }
+
+        // §prompt-auto-read, the mid-loop half (owner): an inject writes a prompt entry for
+        // THIS turn's slot between turns — foist the same auto-READ so an injected prompt
+        // arrives exactly like the first one (first 12 lines, or whole when fewer).
+        if (seq > 1) {
+            const injected = await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${loopId}/${seq}` });
+            const injectedRow = injected.find((r) => typeof r.content === "string" && r.content.length > 0);
+            if (injectedRow !== undefined) {
+                const lineCount = injectedRow.content.split("\n").length;
+                const injTarget: UrlPath = {
+                    kind: "url", raw: `plurnk://prompt/${loopId}/${seq}`,
+                    scheme: "plurnk", username: null, password: null,
+                    hostname: "prompt", port: null,
+                    pathname: `/${loopId}/${seq}`, params: {}, fragment: null,
+                };
+                const injRead: ReadStatement = {
+                    op: "READ", suffix: "", signal: null, target: injTarget,
+                    lineMarker: { marks: lineCount >= 12 ? [1, 12] : [1, -1] },
+                    body: null, position: { line: 1, column: 1 },
+                };
+                await this.dispatch({
+                    statement: injRead, sessionId, runId, loopId, turnId,
+                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                });
                 nextActionIndex++;
             }
         }
@@ -649,12 +691,12 @@ export default class Engine {
                 // one row per scheme that has entries (scheme=null → file). log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
                 const catalogSchemes = await (this.#db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ session_id: sessionId });
-                // known:/// + unknown:/// ALWAYS foist, even at zero entries — else the model
-                // burns a turn running FIND(known:///**) itself, assuming its memory is merely
-                // being withheld. Every other scheme keeps the with-entries default (an empty
-                // catalog foist is noise for schemes the model isn't expected to pre-populate).
+                // known:/// + unknown:/// + file ALWAYS foist, even at zero entries — else the
+                // model burns a turn running the FIND itself, assuming the catalog is merely
+                // being withheld. An empty FIND(**) is orienting, not noise (owner): it tells
+                // the model NOT to look there. Other schemes keep the with-entries default.
                 const foistSchemes = [...catalogSchemes];
-                for (const always of ["known", "unknown"] as const) {
+                for (const always of ["known", "unknown", null] as const) {
                     if (!foistSchemes.some((c) => c.scheme === always)) foistSchemes.push({ scheme: always, entries: 0 });
                 }
                 for (const { scheme, entries } of foistSchemes) {
