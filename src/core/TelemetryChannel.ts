@@ -7,7 +7,7 @@ import type { TelemetryEventNotify } from "./ChannelWrite.ts";
 // Each surfaces as a LogCoordinate TelemetryEvent derived from log≥400 — one channel,
 // no per-kind handling. {§telemetry-uniform-error-channel}
 const ENGINE_ERRORS = Object.freeze({
-    budget_overflow: { status: 413, term: "Budget Overflow: newest log items automatically FOLDed" },
+    budget_overflow: { status: 413, term: "Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made" },
     max_commands_exceeded: { status: 429, term: "Max Commands Exceeded" },
     // premature-terminate is NOT a terse engine-error: it's a SEND op-result (409 + an actionable
     // outcome, §send-premature-terminate) — the SEND row records the [200] attempt faithfully and

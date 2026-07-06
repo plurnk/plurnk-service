@@ -269,3 +269,26 @@ test("[§tokenomics-ceiling-calibrates-to-usage] a two-turn inexact loop calibra
         assert.equal(t2Overflow, undefined, "no turn-2 budget_overflow: the calibrated-down ratio expanded the measured ceiling to truth");
     } finally { await db.close(); }
 });
+
+test("[§tokenomics-fetch-fits-free] the 413 row states the pressure law — fold history first, fetch within the room", async () => {
+    // run24/jumbo forensics: the read→grind→re-read spiral happens because the model is never
+    // TOLD that an oversized retrieval arrives pre-folded. The 413 is the right slot: the signal
+    // fires exactly when the lesson applies. Terse, causal, factual — not an essay.
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const wide = engineAt(db, WIDE);
+        const tiny = engineAt(db, TINY);
+        const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
+        await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const t2 = await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const packet = JSON.parse(row!.packet) as { telemetryErrors: Array<{ status?: number }> };
+        assert.ok(packet.telemetryErrors.find((e) => e.status === 413), "the overflow pointer surfaced (terse LogCoordinate)");
+        // The text lives in the error ROW the pointer names — what the model actually reads.
+        const errRow = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        const text = errRow.map((r) => r.rx).join(" ");
+        assert.match(text, /larger than Tokens Free arrives folded/, "the law rides the signal row");
+        assert.match(text, /FOLD older items first/, "the lever is named");
+    } finally { await db.close(); }
+});
