@@ -235,7 +235,7 @@ test("[§send-premature-terminate] a retrievals-ONLY refusal states the continua
         const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ run_id: runId });
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
-        assert.match(refused!.rx, /Termination attempted despite pending retrieval operations\. Continuing to receive results\./, "the owner's wording, verbatim");
+        assert.match(refused!.rx, /Termination attempted despite retrieval operations\. Continuing in order to receive results\./, "the owner's wording, verbatim");
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }
 });
