@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
+import { Mock } from "@plurnk/plurnk-providers";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
@@ -24,8 +25,10 @@ test("[#263] loopUsage.contextTokens is the last turn's prompt, not the summed t
     } finally { await db.close(); }
 });
 
-// #274 — loopUsage.contextSize is the gauge's DENOMINATOR: the LAST turn's model window, so a
-// /model-switched loop reports the window of the model that actually ran (not the stale active one).
+// #274 — loopUsage.contextSize is the gauge's DENOMINATOR: the LAST turn's PROMPT BUDGET
+// (effective window minus the partition reserves — owner ruling: the raw n_ctx overstates the
+// usable room by the reserve total). A /model-switched loop reports the budget of the model
+// that actually ran (not the stale active one).
 test("[#274] loopUsage.contextSize is the last turn's model window — survives a model switch", async () => {
     const db = await openMigrated();
     try {
@@ -53,5 +56,22 @@ test("[#274] loopUsage.contextSize is null when the provider reports no window",
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
         assert.equal(usage.contextSize, null, "no window → null (the client omits the gauge)");
+    } finally { await db.close(); }
+});
+
+test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client gauge never overstates room", async () => {
+    // .env.test partition: REASONING=256 ASSISTANT=1024 SAFETY=64. A 8192-window model's stored
+    // denominator = 8192 - 1344 = 6848 — the room the packet actually lives under.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ctx-budget-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const provider = new Mock({ contextSize: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: "done", position: { line: 1, column: 1 } }] } }] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
+        const usage = await engine.loopUsage(loopId);
+        const expected = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_ASSISTANT) - Number(process.env.PLURNK_SERVICE_SAFETY);
+        assert.equal(usage.contextSize, expected, `the stored denominator is the partitioned budget (${expected}), never the raw 8192`);
     } finally { await db.close(); }
 });

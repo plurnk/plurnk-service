@@ -793,7 +793,7 @@ export default class Engine {
             await (this.#db.engine_close_turn as PrepMethod).run({
                 id: turnId, status: 413, packet: JSON.stringify(hardPacket),
                 usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 0,
-                usage_context_size: provider.contextSize, // #274 — the model's window, even on a hard-413 turn
+                usage_context_size: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves), even on a hard-413 turn: the gauge denominator the packet actually lives under
                 finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
             });
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
@@ -948,7 +948,7 @@ export default class Engine {
             usage_reasoning: usage.reasoning,
             usage_cached: usage.cached,
             usage_cost_pico: provider.costFor(usage), // §provider-surface-costfor
-            usage_context_size: provider.contextSize, // #274 — the running model's window (gauge denominator)
+            usage_context_size: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves): the raw n_ctx overstated usable room by the reserve total
             finish_reason: finishReason,
             model,
             // #252 — opaque provider→client metadata passthrough (e.g. balancePico the

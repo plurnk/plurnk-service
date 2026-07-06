@@ -111,6 +111,15 @@ export default class PacketBuilder {
     // a 49k window, #311). A fractional ceiling also budgeted the prompt against the window and
     // FORGOT the response lives there too. Reserves exceeding the window is a configuration
     // contradiction — fail hard. ratio floors at 1: an overcounting ruler never expands the budget.
+    // #274/#312 follow-up (owner): the CLIENT-facing gauge denominator — the prompt budget the
+    // packet actually lives under (effective window minus the partition reserves), in REAL token
+    // space (usage.prompt, the numerator, is real; the calibration ratio maps measured→real and
+    // has no business here). The raw n_ctx overstates usable room by the reserve total.
+    promptBudgetFor(provider: Provider): number {
+        const effectiveWindow = provider.contextSize === null ? this.#ctx : Math.min(this.#ctx, provider.contextSize);
+        return Math.max(0, effectiveWindow - this.#reasoning - this.#assistant - this.#safety);
+    }
+
     ceilingFor(provider: Provider, tokenRatio = 1): number {
         const effectiveWindow = provider.contextSize === null ? this.#ctx : Math.min(this.#ctx, provider.contextSize);
         const promptBudget = effectiveWindow - this.#reasoning - this.#assistant - this.#safety;
