@@ -462,3 +462,9 @@ JOIN entries e ON e.id = ec.entry_id
 WHERE e.session_id = $session_id AND ec.name = 'body' AND ec.content_hash IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM token_counts tc WHERE tc.content_hash = ec.content_hash AND tc.tokenizer_id = $tokenizer_id);
 
+
+-- PREP: engine_loop_sequence
+-- The loop's PER-RUN sequence — the model-facing coordinate (prompt/<loop-seq>/<turn-seq>,
+-- matching the log's loop-relative numbering). The raw db id leaked into prompt paths and the
+-- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
+SELECT sequence FROM loops WHERE id = $loop_id;

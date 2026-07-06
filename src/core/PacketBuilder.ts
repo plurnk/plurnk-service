@@ -167,7 +167,8 @@ export default class PacketBuilder {
         // This is what inject + the turn-1 foist write into. Falls back to
         // the runLoop caller's messages.user for tests that bypass the
         // foist mechanism entirely.
-        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${loopId}/%` }))
+        const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
+        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${loopSeqRow?.sequence ?? loopId}/%` }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
         // §prompt-auto-read (owner): the section is a PATHS list (the errors shape — no bodies);
         // each prompt's content reaches the model through its foisted auto-READ in the log, and

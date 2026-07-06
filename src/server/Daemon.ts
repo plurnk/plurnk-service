@@ -746,7 +746,8 @@ export default class Daemon {
     // The drain claims it on its next iteration, so a conclusion or client
     // prompt is never silently dropped. Inherits the ended loop's flags.
     async #reconcileOrphanedWake(runId: number, endedLoopId: number): Promise<void> {
-        const prefix = `/prompt/${endedLoopId}/`;
+        const endedSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
+        const prefix = `/prompt/${endedSeq}/`;
         const orphan = await (this.#db.drain_orphaned_prompt_for_loop as PrepMethod).get<{
             body: string; flags: string | null;
         }>({ loop_id: endedLoopId, pattern: `${prefix}%`, prefix_len: prefix.length });
