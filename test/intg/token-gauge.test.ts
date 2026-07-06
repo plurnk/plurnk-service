@@ -64,3 +64,10 @@ test("[§tokenomics-derived-token-counts] an alias-fronted backend runs as a SUR
         assert.equal(exact.exact, true, "the moment the CONTRACT carries servedModel, resolution is exact from turn 1");
     } finally { await db.close(); }
 });
+
+test("[§tokenomics-derived-token-counts] a 416 range-miss states the entry's extent — ranges become aimable (run24: 24 blind re-guesses)", async () => {
+    const { default: ReadResolve } = await import("../../src/content/read-resolve.ts");
+    const r = await ReadResolve.resolve({ content: "a\nb\nc", mimetype: "text/plain", lineMarker: { marks: [50, 60] }, body: null, mimetypes: DEFAULT_MIMETYPES });
+    assert.equal(r.status, 416);
+    assert.match(r.content ?? "", /3 lines/, "the miss names the real extent — a fact, not advice");
+});

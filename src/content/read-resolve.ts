@@ -35,12 +35,19 @@ export default class ReadResolve {
         if (lineMarker !== null) {
             if (MimetypeBinary.isJsonMimetype(mimetype)) {
                 const sliced = LineMarkerOps.sliceJsonItems(content, lineMarker);
+                // A range miss states the EXTENT (run24: 24 blind 416s — the model re-guessed
+                // ranges against a file whose size it was never told). A fact, not advice.
+                if (sliced.status === 416) return { status: 416, content: "[ range not satisfiable — the JSON has fewer items than requested ]", mimetype: "text/markdown" };
                 if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
                 workingContent = sliced.body ?? "[]";
                 workingStart = null;
                 workingMimetypeForSlice = "application/json";
             } else {
                 const sliced = LineMarkerOps.sliceLines(content, lineMarker);
+                if (sliced.status === 416) {
+                    const totalLines = content.length === 0 ? 0 : content.split("\n").length;
+                    return { status: 416, content: `[ range not satisfiable — entry has ${totalLines} lines ]`, mimetype: "text/markdown" };
+                }
                 if (sliced.status !== 200) return { status: sliced.status, content: null, mimetype };
                 workingContent = sliced.text ?? "";
                 workingStart = sliced.startLine ?? null;
