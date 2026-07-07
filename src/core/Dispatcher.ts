@@ -558,9 +558,17 @@ export default class Dispatcher {
         // folder/glob). The match span is SOURCE LINES, so deliver via a raw line-slice — NOT the
         // scheme's <L> (which is item-index for application/json, structural for xml). Read each
         // distinct entry's content once, then line-slice per match. #286
+        // §matcher-selection-signal — the SELECTION SUMMARY row: the internal FIND that located
+        // the matches is WRITTEN (op=FIND, its full result — per-hit matchSpan + matchPath, the
+        // canonical dialect coordinate) before the per-match deliveries, exactly as if the model
+        // had FINDed then READ. On a degenerate single-line document the N delivery rows are
+        // identical whole-file lines; the summary row is what tells the model its query hit N
+        // times and WHERE (run30: two hits indistinguishable from failure; 17 retries, 508).
+        const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, runId, loopId, turnId, sequence, origin });
+        onDispatch?.(findRowId);
         const wholeByPath = new Map<string, DispatchResult>();
         const fannedStatuses: number[] = [];
-        let written = 0;
+        let written = 1;
         for (const m of matches) {
             let whole = wholeByPath.get(m.pathname);
             if (whole === undefined) {

@@ -64,7 +64,7 @@ test("[§read-multi-file-fanout] a matcher READ fans out to one row per MATCH, e
         });
 
         assert.equal(r.status, 200);
-        assert.equal(r.rowsWritten, 2, "two matches (one per file) → two log rows (c excluded)");
+        assert.equal(r.rowsWritten, 3, "the FIND selection-summary row + two matches (one per file; c excluded)");
         assert.deepEqual(r.fannedStatuses, [200, 200]);
 
         // Each row stores its match's line RAW at its source startLine (in the rx); packet-wire
@@ -74,7 +74,8 @@ test("[§read-multi-file-fanout] a matcher READ fans out to one row per MATCH, e
             const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ run_id: runId, loop_seq: 1, turn_seq: 1, sequence: seq });
             return JSON.parse(row!.rx) as { content?: string; startLine?: number | null };
         };
-        const stored = [await rxOf(1), await rxOf(2)];
+        // Sequence 1 is the FIND selection-summary row (§matcher-selection-signal); deliveries follow.
+        const stored = [await rxOf(2), await rxOf(3)];
         const numbered = stored.map((x) => `${x.startLine}:\t${x.content}`).toSorted();
         assert.deepEqual(numbered, ["1:\tfrance beta", "2:\tfrance alpha"], "each fanned row stores its match line at its source span — render numbers it");
     } finally { await db.close(); }
@@ -104,13 +105,13 @@ test("the running sequence counter advances past the fan-out — a later op land
             statement: readStmt(urlPath("known", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(fan.rowsWritten, 2);
+        assert.equal(fan.rowsWritten, 3, "the FIND summary + one delivery per file");
         await engine.dispatch({
             statement: readStmt(urlPath("known", "/a")),
             sessionId, runId, loopId, turnId, sequence: 1 + (fan.rowsWritten as number), origin: "model",
         });
-        // Row 3 exists and is the single-file READ of /a (its full content).
-        const row3 = await rowBody(db, runId, mimetypes, 3);
+        // Row 4 (after summary + 2 deliveries) is the single-file READ of /a (its full content).
+        const row3 = await rowBody(db, runId, mimetypes, 4);
         assert.equal(row3.status, 200);
         assert.match(row3.content ?? "", /france one/);
     } finally { await db.close(); }

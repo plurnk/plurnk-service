@@ -27,9 +27,13 @@ import EntrySemantic from "./_entry-semantic.ts";
 
 // A FIND match: an entry and the (file, span) where the matcher hit — ONE per match, so a
 // file with N matches yields N items. span === null for a body-less FIND (the whole entry). #286
-export interface Match { pathname: string; span: { lineStart: number; lineEnd: number } | null; }
+// §matcher-selection-signal — `path` is the hit's canonical coordinate in the DAUGHTER's own
+// dialect ($['users'][0]['name']; an xpath node path), when the dialect provides one. The
+// selection signal that survives the degenerate single-line case: spans stay the line-oriented
+// tent pole; the path tells the model WHICH hit each (identical) span was.
+export interface Match { pathname: string; span: { lineStart: number; lineEnd: number } | null; path?: string; }
 // A FIND result row: the entry's catalog row plus the span it matched at (absent for body-less).
-export type MatchItem = CatalogEntry & { matchSpan?: { lineStart: number; lineEnd: number } };
+export type MatchItem = CatalogEntry & { matchSpan?: { lineStart: number; lineEnd: number }; matchPath?: string };
 
 export interface FindResult {
     status: number;
@@ -177,8 +181,12 @@ export default class EntryFind {
                 const spans = match.spans ?? [];
                 // A matched-but-span-less hit (e.g. an xpath computed scalar — count()) still includes
                 // the entry; it has no source location, so the item carries the whole entry (span null).
-                if (spans.length === 0) { matches.push({ pathname: cand.pathname, span: null }); continue; }
-                for (const span of spans) matches.push({ pathname: cand.pathname, span });
+                // Per-hit pairs (undeduped — multiple hits can share one line; run30): one Match
+                // per HIT with its canonical dialect path. Falls back to deduped spans for
+                // matchers that return no hit list.
+                const hits = match.hits ?? spans.map((span) => ({ span }));
+                if (hits.length === 0 || hits.every((h) => h.span === null)) { matches.push({ pathname: cand.pathname, span: null }); continue; }
+                for (const h of hits) matches.push({ pathname: cand.pathname, span: h.span, path: (h as { path?: string }).path });
             }
         }
 
@@ -210,11 +218,17 @@ export default class EntryFind {
         const matches: Match[] = [];
         const seenPath = new Set<string>();
         let itemsTokenTotal = 0;  // content weight summed per UNIQUE entry (items repeat a file across its matches)
+        // Two granularities from one hit list (§matcher-selection-signal ÷ #286): `results` (the
+        // rx the model reads) keeps EVERY hit — on a single-line document the per-hit matchPath is
+        // the only thing distinguishing them; `matches` (the fan-out's delivery list) dedups by
+        // (pathname, span) — N hits on one source line deliver that line ONCE, no identical-row noise.
+        const seenSpan = new Set<string>();
         for (const m of match.matches) {
             const row = byPath.get(EntryManifest.toPath(scheme, m.pathname));
             if (row === undefined) continue;
-            results.push(m.span !== null ? { ...row, matchSpan: m.span } : row);
-            matches.push(m);
+            results.push(m.span !== null ? { ...row, matchSpan: m.span, ...(m.path !== undefined ? { matchPath: m.path } : {}) } : row);
+            const spanKey = `${m.pathname}\0${m.span === null ? "" : `${m.span.lineStart},${m.span.lineEnd}`}`;
+            if (!seenSpan.has(spanKey)) { seenSpan.add(spanKey); matches.push(m); }
             if (!seenPath.has(m.pathname)) {
                 seenPath.add(m.pathname);
                 itemsTokenTotal += Object.values(row.channels).reduce((s, c) => s + c.tokens, 0);

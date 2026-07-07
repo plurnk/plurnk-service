@@ -300,30 +300,39 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
             sequence: 1, origin: "model",
         });
 
-        // Per-match fan-out: the 2nd jsonpath match IS its own row — log:///1/1/2 (Bob) — read it
+        // Per-match fan-out: sequence 1 is the FIND selection-summary row
+        // (§matcher-selection-signal); the matches follow — the 2nd jsonpath match is log:///1/1/3 (Bob). Read it
         // directly (#286), no <L>-slice of a combined result.
-        const r = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId, mimetypes }));
+        const r = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, runId, mimetypes }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /Bob/, "the 2nd row holds the 2nd match");
         assert.doesNotMatch(r.content ?? "", /Alice|Carol/);
     } finally { await db.close(); }
 });
 
-test("[§matcher-selection-signal] the degenerate single-line case carries the SIGNAL — matches + paths on the rx, payload untouched (run30)", async () => {
-    // The tent pole holds: the payload is the source line (here: the whole minified document —
-    // no exception for extraction dialects). The SIGNAL is additive: the model sees its query
-    // hit twice and WHERE, so a working extraction is never indistinguishable from a failure.
+test("[§matcher-selection-signal] THE REAL PATH: a matcher READ's FIND row carries each hit's canonical path in the STORED rx (run30)", async () => {
+    // Through engine.dispatch — the fanout path production takes (a matcher READ becomes
+    // FIND → per-match body-less READs), asserting on the rx AS STORED, which is what the
+    // packet renders. The prior citation proved a direct-call seam dispatch never takes;
+    // this one cannot lie about reaching the model.
     const { db, sessionId, runId, mimetypes } = await setup();
     try {
+        const loopId = await insertLoop(db, runId, 1, "sig");
+        const turnId = await insertTurn(db, loopId, 1, 102);
         await seedJson(db, sessionId, runId, mimetypes, "/team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
-        const r = await new Known().read(
-            readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
-        );
-        assert.equal(r.status, 200);
-        assert.equal(r.matches, 2, "the hit count reaches the model");
-        assert.deepEqual(r.paths, ["$['users'][0]['name']", "$['users'][1]['name']"], "each hit's canonical coordinate reaches the model");
-        assert.match(rxLines(r.content)[0] ?? "", /Alice/, "the payload stays the source line — the whole document here, by design");
-        assert.deepEqual(rxLineNos(r.content), [1], "one source line, honestly numbered");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
+        const result = await engine.dispatch({
+            statement: readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 200);
+        const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; rx: string }>({ loop_id: loopId });
+        const findRow = rows.find((r) => r.op === "FIND");
+        assert.ok(findRow, "the fanout writes its FIND row");
+        const rx = JSON.parse(findRow!.rx) as { results?: Array<{ matchPath?: string; matchSpan?: object }> };
+        const paths = (rx.results ?? []).map((x) => x.matchPath);
+        assert.deepEqual(paths, ["$['users'][0]['name']", "$['users'][1]['name']"], "each hit's canonical coordinate is in the STORED rx — the model can discriminate identical spans");
+        const reads = rows.filter((r) => r.op === "READ");
+        assert.equal(reads.length, 1, "deliveries dedup by span (#286): two hits on ONE source line deliver that line once — the rx above is what discriminates them");
     } finally { await db.close(); }
 });

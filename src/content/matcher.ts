@@ -25,6 +25,10 @@ export interface MatchResult {
     // no exception), while matches+paths tell the model its query HIT, how many times, and where
     // (run30: two hits collapsed to one whole-file line read as failure; 17 retries).
     paths?: string[];
+    // Per-HIT (span, path) pairs, UNDEDUPED and in match order — the zip-safe carrier for FIND
+    // (spans above dedups shared ranges, which collapses multiple hits on one line and breaks
+    // index-zipping; run30's two hits share span (1,1)).
+    hits?: Array<{ span: { lineStart: number; lineEnd: number } | null; path?: string }>;
     lines?: number[];       // matched source line numbers (status 200) — Project Findings extent substrate
     spans?: { lineStart: number; lineEnd: number }[]; // one per match — the (file, span) unit FIND emits + READ delivers (#286)
     error?: string;         // status 400 — malformed matcher expression
@@ -105,6 +109,15 @@ export default class Matcher {
         if (matches.length === 0) return { status: 204, matches: 0 };
         const rendered = Matcher.#renderRows(matches, content, baseLine);
         const paths = matches.map((m) => (m as { matching?: unknown }).matching).filter((x): x is string => typeof x === "string" && x.length > 0);
-        return { status: 200, body: rendered.body, matches: matches.length, lines: rendered.lines, spans: rendered.spans, ...(paths.length > 0 ? { paths } : {}) };
+        const offset = baseLine - 1;
+        const hits = matches.map((m) => {
+            const first = (m.lines ?? [])[0];
+            const matching = (m as { matching?: unknown }).matching;
+            return {
+                span: first === undefined ? null : { lineStart: first.line + offset, lineEnd: first.endLine + offset },
+                ...(typeof matching === "string" && matching.length > 0 ? { path: matching } : {}),
+            };
+        });
+        return { status: 200, body: rendered.body, matches: matches.length, lines: rendered.lines, spans: rendered.spans, hits, ...(paths.length > 0 ? { paths } : {}) };
     }
 }

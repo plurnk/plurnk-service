@@ -56,8 +56,9 @@ const dispatchRows = async (
     statement: PlurnkStatement,
 ): Promise<{ result: { status: number; rowsWritten?: number }; rows: Array<{ content?: string; startLine?: number | null; status?: number }> }> => {
     const result = await engine.dispatch({ statement, ...ids, sequence: 1, origin: "model" }) as { status: number; rowsWritten?: number };
+    // rows = the DELIVERIES: sequence 1 is the FIND selection-summary row (§matcher-selection-signal).
     const rows: Array<{ content?: string; startLine?: number | null; status?: number }> = [];
-    for (let s = 1; s <= (result.rowsWritten ?? 0); s++) {
+    for (let s = 2; s <= (result.rowsWritten ?? 0); s++) {
         const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ run_id: ids.runId, loop_seq: 1, turn_seq: 1, sequence: s });
         if (row !== undefined) rows.push(JSON.parse(row.rx) as { content?: string; startLine?: number | null; status?: number });
     }
@@ -71,7 +72,7 @@ test("[#286] glob READ — multiple matches in ONE file fan out to multiple rows
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target\ndelta target");
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///log.md):*target*:READ", "READ"));
-        assert.equal(result.rowsWritten, 3, "three matching lines in one file → three rows");
+        assert.equal(result.rowsWritten, 4, "the FIND summary + three matching lines in one file");
         assert.deepEqual(rows.map((r) => `${r.startLine}:\t${r.content}`), ["1:\talpha target", "3:\tgamma target", "4:\tdelta target"]);
     } finally { await db.close(); }
 });
@@ -83,7 +84,7 @@ test("[#286] regex READ across files — one row per match, each at its (file, s
         await seedRaw(ctx, "b.md", "error: two\nmore");
         await seedRaw(ctx, "c.md", "clean");
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///**):#error: \\w+#:READ", "READ"));
-        assert.equal(result.rowsWritten, 2, "two matches across two files (c excluded)");
+        assert.equal(result.rowsWritten, 3, "the FIND summary + two matches across two files (c excluded)");
         assert.deepEqual(rows.map((r) => r.content).toSorted(), ["error: one", "error: two"]);
     } finally { await db.close(); }
 });
@@ -93,7 +94,7 @@ test("[#286] jsonpath READ over JSON — per-match rows, each the SOURCE LINE (n
     try {
         await seedRaw(ctx, "team.json", '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///team.json):$.users[*].name:READ", "READ"));
-        assert.equal(result.rowsWritten, 3, "three names → three rows (a structural mimetype does NOT collapse to item-index)");
+        assert.equal(result.rowsWritten, 4, "the FIND summary + three name rows (a structural mimetype does NOT collapse to item-index)");
         assert.deepEqual(rows.map((r) => r.startLine), [3, 4, 5], "each row at its source line");
         assert.match(rows[1].content ?? "", /Bob/);
     } finally { await db.close(); }
@@ -104,7 +105,7 @@ test("[#286] dedup by span — two matches on one source line collapse to a sing
     try {
         await seedRaw(ctx, "one.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
         const { result } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///one.json):$.users[*].name:READ", "READ"));
-        assert.equal(result.rowsWritten, 1, "both hits on line 1 → one row, not two");
+        assert.equal(result.rowsWritten, 2, "the FIND summary + ONE delivery — both hits on line 1 dedup to one row");
     } finally { await db.close(); }
 });
 
@@ -137,7 +138,7 @@ test("[#286] xpath READ over HTML — per-match rows, each the source line of th
     try {
         await seedRaw(ctx, "page.html", "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>");
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///page.html)://li:READ", "READ"));
-        assert.equal(result.rowsWritten, 2, "two <li> nodes → two rows");
+        assert.equal(result.rowsWritten, 3, "the FIND summary + two <li> rows");
         assert.deepEqual(rows.map((r) => r.startLine), [2, 3], "each row at its node's source line");
     } finally { await db.close(); }
 });
@@ -200,7 +201,7 @@ test("[#286] READ(folder/) reads the folder's contents — one row per entry, wh
         await seedRaw(ctx, "docs/b.md", "beta body");
         await seedRaw(ctx, "top.md", "top body");
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///docs/)::READ", "READ"));
-        assert.equal(result.rowsWritten, 2, "two entries in the folder → two rows (top.md excluded)");
+        assert.equal(result.rowsWritten, 3, "the FIND summary + two folder entries (top.md excluded)");
         assert.deepEqual(rows.map((r) => r.content).toSorted(), ["alpha body", "beta body"], "each row is an entry's whole content");
     } finally { await db.close(); }
 });

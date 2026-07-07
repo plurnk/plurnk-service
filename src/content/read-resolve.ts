@@ -17,7 +17,6 @@ export interface ReadSliceResult {
     mimetype: string;
     startLine?: number | null;
     matches?: number;
-    paths?: string[];  // §matcher-selection-signal — the hits' canonical dialect coordinates
     reason?: string;
 }
 
@@ -64,7 +63,7 @@ export default class ReadResolve {
                 return { status: 203, content: matched.body ?? "", mimetype: matched.mimetype ?? "text/markdown", startLine: 1, reason: matched.reason };
             }
             if (matched.status !== 200) return { status: matched.status, content: null, mimetype };
-            return { status: 200, content: matched.body ?? "", mimetype: "text/markdown", startLine: null, matches: matched.matches, ...(matched.paths !== undefined ? { paths: matched.paths } : {}) };
+            return { status: 200, content: matched.body ?? "", mimetype: "text/markdown", startLine: null, matches: matched.matches };
         }
 
         if (lineMarker !== null) {

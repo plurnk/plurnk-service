@@ -202,8 +202,9 @@ test("Log.read: a matcher READ fans out per match — the Nth match is its own r
             },
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
-        // The 2nd match IS its own row — log:///1/1/2 — read it directly (#286), no <L>-slice of a blob.
-        const r = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId }));
+        // Sequence 1 is the FIND selection-summary row (§matcher-selection-signal); the 2nd match
+        // is its own row at log:///1/1/3 — read it directly (#286), no <L>-slice of a blob.
+        const r = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, runId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
         assert.match(r.content ?? "", /beta/, "the 2nd row holds the 2nd match");

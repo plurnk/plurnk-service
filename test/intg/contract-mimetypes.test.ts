@@ -103,13 +103,13 @@ test("[§slice-semantics-compose-pattern] a matcher READ fans out per match — 
             },
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(r.rowsWritten, 2, "two error matches → two log rows, not one combined blob");
+        assert.equal(r.rowsWritten, 3, "the FIND selection-summary row + two error matches, not one combined blob");
 
         // The compose pattern under per-match: the Nth match IS log:///<l>/<t>/N — its own
         // addressable row. No <P>-slice of a combined result (there is no combined result). Each
         // row carries its matching LINE (regex SELECTS, never extracts — plurnk.md:31).
-        const m1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, runId, mimetypes }));
-        const m2 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId, mimetypes }));
+        const m1 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId, mimetypes }));
+        const m2 = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, runId, mimetypes }));
         assert.match(m1.content ?? "", /error: alpha/, "the 1st match is its own row");
         assert.match(m2.content ?? "", /error: gamma/, "the 2nd match is the 2nd row");
         assert.doesNotMatch(m2.content ?? "", /alpha/, "each row holds exactly its own match");
