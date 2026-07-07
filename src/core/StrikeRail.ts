@@ -7,7 +7,14 @@ import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-grammar";
 // range that doesn't exist (416), or a capability a scheme lacks (501) is how discovery
 // works — striking them prices caution into the motions we most want (range-reads ARE
 // the surgical behavior under budget pressure). One simple set, evenly applied.
-const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 416, 501]);
+// 409 (premature-terminate refusal) is SOFT here: whether it strikes is decided by steerStruck
+// (Engine sets it true for a stream/child refusal — discarding live work IS serious — and false
+// for a retrievals-only refusal, which teaches without striking, §send-premature-terminate/#346).
+// Counting the raw 409 status ALSO would double-strike the stream/child case and WRONGLY strike
+// the retrieval-only case (a cloud atomic-turn model repeating read+conclude struck out 500 on
+// firefast despite the ruling). The cycle detector remains the backstop for a genuinely-spinning
+// model (508 loop-detected — the honest signal, not a 500 failure).
+const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 501]);
 
 // Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
 // where the activity isn't fully captured by target alone:
