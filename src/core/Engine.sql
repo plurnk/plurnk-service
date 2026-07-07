@@ -345,6 +345,11 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
   AND le.status_rx >= 400
+  -- §telemetry-uniform-error-channel (owner ruling): HARD failures are represented by their
+  -- minted error ITEM (op='error' — the pointer target with the message as content); their op
+  -- rows are excluded here or every hard failure would surface twice. Soft finding statuses
+  -- (404/416/501) mint nothing and stay pointer-at-the-op-row.
+  AND (le.op = 'error' OR le.status_rx IN (404, 416, 501))
   AND t.sequence >= $current_turn_seq - 1
 ORDER BY t.sequence, le.sequence;
 
@@ -468,3 +473,16 @@ WHERE e.session_id = $session_id AND ec.name = 'body' AND ec.content_hash IS NOT
 -- matching the log's loop-relative numbering). The raw db id leaked into prompt paths and the
 -- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
 SELECT sequence FROM loops WHERE id = $loop_id;
+
+-- PREP: engine_hard_failures_for_turn
+-- §telemetry-uniform-error-channel — the turn's HARD action-bound failures (>= 400, excluding
+-- the soft finding statuses 404/416/501 and error items themselves): each mints an error ITEM
+-- carrying the op row's error/reason message, so the alert surface points at log://.../error
+-- and the message renders instead of folding away inside the op row's rx.
+SELECT le.sequence, le.op, le.status_rx, le.rx
+FROM log_entries le
+WHERE le.turn_id = $turn_id
+  AND le.status_rx >= 400
+  AND le.status_rx NOT IN (404, 416, 501)
+  AND le.op != 'error'
+ORDER BY le.sequence;

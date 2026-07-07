@@ -294,3 +294,42 @@ test("[§send-premature-terminate] one idle-grace turn after a retrieval-409 —
         assert.ok(graceCovered >= 1, `exactly one idle rode the grace (struck ${idleStrikes} of 4 idles)`);
     } finally { await db.close(); }
 });
+
+test("[§telemetry-uniform-error-channel] a HARD failure mints an error ITEM carrying the message — the steer finally renders (owner ruling)", async () => {
+    // The wildcard specimen: the refused SEND's rx held the owner's steer, the row folded, the
+    // errors line said `* 409 log:///1/2/3/SEND`, and the model theorized 'SEND[409] probably
+    // means bad request?' for 201 seconds. The rule now has no exceptions: a hard action-bound
+    // failure mints an op='error' item whose content IS the term + message; the alert surface
+    // points at THAT. Soft finding statuses (404/416/501) mint nothing.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `steer-mint-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const { turnId } = await engine.runTurn({
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), readStmt(knownPath("/nonesuch.md")), sendStmt(200, null, "the answer is Hi")] } }] }),
+            sessionId, runId, loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        const minted = errs.map((e) => JSON.parse(e.rx) as { status?: number; kind?: string; message?: string });
+        const steer = minted.find((m) => m.status === 409);
+        assert.ok(steer, "the refused SEND minted an error item");
+        assert.equal(steer!.kind, "action_failure");
+        assert.match(steer!.message ?? "", /Termination attempted despite retrieval operations\. Continuing in order to receive results\./, "the owner's steer IS the item's content — it renders as the row's body, never folded away unseen");
+        assert.ok(!minted.some((m) => m.status === 404), "the 404 probe miss minted nothing — a finding, not an alert");
+        // The alert surface points at the ERROR item, not the op row (one rule, no exceptions).
+        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
+        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
+        const pb = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry: new TelemetryChannel({ db }), executors: () => undefined });
+        void turnId;
+        const events = await pb.buildTelemetryErrors(loopId, 2) as Array<{ status?: number; position?: { coordinate?: string } }>;
+        const e409 = events.find((e) => e.status === 409);
+        assert.ok(e409, "the 409 surfaces on the alert channel");
+        assert.match(e409!.position?.coordinate ?? "", /\/error$/, "the pointer targets the log://.../error ITEM");
+        const e404 = events.find((e) => e.status === 404);
+        assert.match(e404?.position?.coordinate ?? "", /\/READ$/, "the soft 404 stays pointer-at-the-op-row");
+    } finally { await db.close(); }
+});
