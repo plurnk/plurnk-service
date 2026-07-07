@@ -159,6 +159,9 @@ export default class Engine {
     // only tightens. A chars/4 heuristic ruler undercounts escaped-JSON logs ~1.5×; calibrating
     // against the provider's own count makes a real context overflow unreachable past turn 1.
     #tokenRatios = new Map<number, number>();
+    // §send-premature-terminate — loops owed one idle-grace turn after a retrieval-only 409
+    // (the steer's own advice is to wait; in-memory, fail-open on restart).
+    #retrievalRefusalGrace = new Set<number>();
     // §derivation-off-hot-path — the background derivation chain: the per-turn pump and the
     // session warm ride it instead of the turn (a 2-CPU container CPU-embedding a 335-entry
     // ingest starved every loop for ~28min, #316). Serialized (never two pumps interleaved),
@@ -988,8 +991,18 @@ export default class Engine {
         // The model continued with nothing to do. (Skipped when premature already steered this turn.)
         const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length;
         if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
-            steerStruck = true;
-            pendingEngineErrors.push("idle_turn");
+            // One grace turn after a retrieval-only 409 (admins specimen): the refusal steer says
+            // "continuing in order to receive results" — a model that obediently waits one bare
+            // [102] turn is following OUR advice, and the idle rail was executing it for that.
+            // The grace is exactly one turn; a second consecutive idle strikes as ever.
+            if (this.#retrievalRefusalGrace.delete(loopId)) {
+                // graced — the wait the steer asked for
+            } else {
+                steerStruck = true;
+                pendingEngineErrors.push("idle_turn");
+            }
+        } else {
+            this.#retrievalRefusalGrace.delete(loopId); // a working turn consumes any pending grace
         }
 
         // Close the turn with the final packet, status, and usage stats.
@@ -1058,6 +1071,7 @@ export default class Engine {
             // Streams/children refusals keep the strike — discarding live work stays serious.
             if (statement === sendOp && result.status === 409) {
                 if ((result.attrs as { retrievalOnly?: boolean } | undefined)?.retrievalOnly !== true) steerStruck = true;
+                else this.#retrievalRefusalGrace.add(loopId); // the steer says "continuing to receive" — the NEXT turn's obedient wait must not idle-strike
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
                 await (this.#db.engine_demote_turn_status as PrepMethod).run({ id: turnId, status: turnStatus });
             }

@@ -262,3 +262,35 @@ test("[§send-premature-terminate] retrieval preemies NEVER strike — repeated 
         assert.equal(loopStatus, 102, "still alive, still teachable");
     } finally { await db.close(); }
 });
+
+test("[§send-premature-terminate] one idle-grace turn after a retrieval-409 — obeying the steer never strikes; a second idle does", async () => {
+    // The admins specimen: the steer says 'continuing in order to receive results', the model
+    // waits one bare [102] turn, and the idle rail struck it for obeying. Turn 1: READ+[200]
+    // (refused, grace armed). Turn 2: bare PLAN+[102] (the obedient wait — GRACED). Turns 3-5:
+    // three more bare idles — the rail resumes and strikes out as ever (grace is ONE turn).
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `grace-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "go");
+        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: { raw: "waiting", json: null }, position: { line: 1, column: 1 } } as never;
+        const idle = () => ({ assistant: { content: "", reasoning: null, ops: [planStmt, sendStmt(102, null, "waiting")] } });
+        const provider = new Mock({ contextSize: 100000, responses: [
+            { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "Hi")] } },
+            idle(), idle(), idle(), idle(),
+        ] });
+        const statuses: number[] = [];
+        for (let i = 0; i < 5; i++) {
+            const r = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+            statuses.push(r.status);
+            if ((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status === 500) break;
+        }
+        const errRows = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        const idleStrikes = errRows.filter((r) => /idle_turn/.test(r.rx)).length;
+        assert.ok(idleStrikes >= 1, "later idles still strike — the rail is intact");
+        const graceCovered = 5 - 1 - idleStrikes; // turns minus the refused turn minus struck idles
+        assert.ok(graceCovered >= 1, `exactly one idle rode the grace (struck ${idleStrikes} of 4 idles)`);
+    } finally { await db.close(); }
+});
