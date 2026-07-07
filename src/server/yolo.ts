@@ -42,6 +42,10 @@ export default class Yolo {
         // §dual-yolo-server-yolo-auto-accept
         engine.onProposalPending((event: ProposalPendingEvent) => {
             if (!event.flags.yolo) return;
+            // A [300] question is NOT yolo-able (#346): it exists precisely to stop the world
+            // for a human — auto-accepting answers nothing. The session opted into questions
+            // (settings.questions), so the stop is wanted even under yolo.
+            if (event.op === "SEND" && (event.attrs as { question?: string }).question !== undefined) return;
             try {
                 if (event.staleClobberRisk) {
                     // #note10 — the target diverged on disk this turn; the model's EDIT is

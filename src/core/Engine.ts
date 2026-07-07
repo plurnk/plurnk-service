@@ -1075,6 +1075,13 @@ export default class Engine {
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
                 await (this.#db.engine_demote_turn_status as PrepMethod).run({ id: turnId, status: turnStatus });
             }
+            // A [300] question resolves through the proposal system (#346) — whatever the
+            // resolution (answer/reject/timeout), the LOOP continues to the turn where the model
+            // reads it; the turn record is a continue, never a 300 terminal.
+            if (statement === sendOp && sendOp.signal === 300 && result.status !== 409) {
+                turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
+                await (this.#db.engine_demote_turn_status as PrepMethod).run({ id: turnId, status: turnStatus });
+            }
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
         // §telemetry-uniform-error-channel — every engine + parse failure mints as an op='error'

@@ -751,11 +751,15 @@ export default class Dispatcher {
             if (!(await SessionSettings.questionsEnabled(this.#db, ctx.sessionId))) {
                 return { status: 409, error: "Operator asks ([300]) are not enabled in this environment — no one is watching to answer. Decide yourself and proceed: SEND[102] to continue, or [200] to conclude." };
             }
+            // Owner ruling (#346): the question rides the SAME proposal system as file edits and
+            // MCP auths — stop the world. Returning 202 here routes through the proposal seam
+            // (#isProposal admits signal-300 SENDs): loop/proposal carries {question, choices},
+            // loop.resolve's accept body IS the answer, and applyResolution writes it into the
+            // model-facing rx — the answer arrives as the result of the ask itself. Timeout is
+            // the standard §proposal-timeout-cancels. Zero options = an open question.
             const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);
             const [question = "", ...choices] = parts;
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw });
-            this.#parkDeadlines.set(loopId, -1); // awaiting a human — indefinite, like <-1>
-            return { status: 300, attrs: choices.length > 0 ? { question, choices } : { question } };
+            return { status: 202, attrs: choices.length > 0 ? { question, choices } : { question } };
         }
 
         // [200] — terminate, gated by the pending set (post-batch). The row records the refused
@@ -816,7 +820,11 @@ export default class Dispatcher {
     // bare 202 surfaced model speech as a loop/proposal and froze clients. The 202
     // is overloaded (proposal-pause vs parked-terminal); the op disambiguates it.
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
-        return result.status === 202 && !(statement.op === "SEND" && statement.target === null);
+        // A broadcast SEND park is model speech, not a proposal (#255) — EXCEPT a [300] question,
+        // which IS a proposal by owner ruling (#346: the same stop-the-world system as file edits).
+        if (result.status !== 202) return false;
+        if (statement.op === "SEND" && statement.signal === 300) return true;
+        return !(statement.op === "SEND" && statement.target === null);
     }
 
     async #writeLog({
