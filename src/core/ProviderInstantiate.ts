@@ -16,6 +16,16 @@ export default class ProviderInstantiate {
     // owner's boot log: one heuristic warning per loop.run). Cache keyed on the wire identity;
     // env is process-stable for these fields.
     static #instances = new Map<string, Promise<Provider>>();
+    // #352 — provider handle → the alias name that produced it, so the service scopes its OWN
+    // per-alias partition knobs (PLURNK_SERVICE_*_<alias>) by the provider it's building a packet
+    // for. Service-owned metadata about handles WE created; never a provider-contract field.
+    static #aliasByProvider = new WeakMap<Provider, string>();
+
+    // The alias name a provider was built under, or undefined (a test Mock, a hand-built handle).
+    // PacketBuilder falls back to resolveActiveAlias for the boot-global case.
+    static aliasOf(provider: Provider): string | undefined {
+        return ProviderInstantiate.#aliasByProvider.get(provider);
+    }
 
     static async instantiateProvider(alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> {
         if (env === process.env) {
@@ -32,6 +42,12 @@ export default class ProviderInstantiate {
     }
 
     static async #instantiate(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
+        const provider = await ProviderInstantiate.#construct(alias, env);
+        ProviderInstantiate.#aliasByProvider.set(provider, alias.alias);
+        return provider;
+    }
+
+    static async #construct(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
         // Standard providers (openai-compat + groq/deepinfra/...) construct via
         // the framework's factory — it carries probeNctx (auto-detect the
         // endpoint's n_ctx, so a local llama-server isn't a no-window black box

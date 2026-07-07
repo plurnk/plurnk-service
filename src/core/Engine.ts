@@ -881,7 +881,7 @@ export default class Engine {
             // generate rides the LOOP signal (already chained from the caller's), so a loop-level
             // abort — the §operator-config-loop-timeout wall — cancels a stuck provider call, not
             // just the schemes. Bare runTurn (no runLoop) has no loop entry → the caller's signal.
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), maxTokens: this.#packets.decodeBudget(), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), maxTokens: this.#packets.decodeBudget(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
@@ -1103,7 +1103,7 @@ export default class Engine {
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, params: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain",
-                rx: JSON.stringify({ status: 413, kind: "output_truncated", message: `output truncated at the completion cap (${this.#packets.decodeBudget()} tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue` }),
+                rx: JSON.stringify({ status: 413, kind: "output_truncated", message: `output truncated at the completion cap (${this.#packets.decodeBudget(provider)} tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue` }),
                 mimetype_rx: "application/json", status_rx: 413, tokens: 0, state: "failed", outcome: "output_truncated",
                 attrs: "{}",
             });

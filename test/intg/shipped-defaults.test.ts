@@ -38,15 +38,23 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     // No active model — the local/cloud/plurnk.ai selection is the user's (#307).
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // Native thinking ships ON and BOUNDED (providers 0.31 activation/capacity split). Off
-    // reroutes a think-trained model's thought into the grammar free zone; adaptive is
-    // unbounded (28k-token turns). The capacity must equal the partition reserve it spends.
+    // reroutes a think-trained model's thought into the grammar free zone; adaptive is unbounded.
+    // The F7 coupling (CAPACITY == the serving box's --reasoning-budget) is a LOCAL/llama-server
+    // concern — cloud backends ignore per-request reasoning budgets (#352). So the shipped CAPACITY
+    // couples to the LOCAL reasoning envelope (the turboderp template's 4096), NOT the bare
+    // cloud-generous reserve; both ship as positive ints.
     assert.equal(env.get("PLURNK_PROVIDERS_THINKING"), "on", "thinking ships on");
-    assert.equal(env.get("PLURNK_PROVIDERS_THINKING_CAPACITY"), env.get("PLURNK_SERVICE_REASONING"), "thinking capacity ships equal to the partition's reasoning reserve");
-    // §tokenomics-window-partition — the 64Ki invariant: the shipped numbers partition any
-    // ≥77Ki window to EXACTLY 65536 prompt tokens. Change any of the four and this names it.
+    assert.equal(env.get("PLURNK_PROVIDERS_THINKING_CAPACITY"), "4096", "thinking capacity ships coupled to the LOCAL llama-server reasoning envelope (turboderp 4096)");
+    // §tokenomics-window-partition (#352) — the BARE partition ships cloud-generous (a large
+    // decode envelope the backend self-clamps); the four knobs ship as positive ints, and the
+    // local measured envelope rides the commented turboderp template.
     const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_SERVICE_${k}`)));
-    assert.ok(part.every(Number.isFinite), "all four partition numbers ship");
-    assert.equal(part[0] - part[1] - part[2] - part[3], 65536, "the shipped partition is exactly 64Ki of prompt");
+    assert.ok(part.every((n) => Number.isFinite(n) && n > 0), "all four bare partition numbers ship as positive ints");
+    // #352 — the bare partition is cloud-generous: 163840 − 16384 − 49152 − 1024 = 97280 prompt
+    // budget with a 65536 decode envelope the backend self-clamps (the local turboderp template
+    // is the 64Ki-prompt gemma envelope). Prompt budget stays well above the decode envelope.
+    const promptBudget = part[0] - part[1] - part[2] - part[3];
+    assert.ok(promptBudget > part[1] + part[2], `the bare prompt budget (${promptBudget}) exceeds the decode envelope — a healthy cloud partition`);
     // Ships ACTIVE (#336): safe globally because the boot verify gates on the provider's own
     // constrainsOutput claim — non-enforcing backends drop the grammar cleanly (notice, no
     // refusal); claiming backends are verified end-to-end and fail hard on unconstrained output.

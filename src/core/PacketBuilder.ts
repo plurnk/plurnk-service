@@ -19,6 +19,8 @@ import PacketWire, { type PacketSection } from "./packet-wire.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { Provider } from "@plurnk/plurnk-providers";
+import { scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import ProviderInstantiate from "./ProviderInstantiate.ts";
 
 // Substituted into the budget readout after the assembled packet is measured
 // (the figure depends on the packet's own rendered size — chicken/egg).
@@ -29,8 +31,8 @@ const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
 // §tokenomics-window-partition — the four partition numbers. REQUIRED (fail-hard, the
 // providers-env convention): the ceiling is DERIVED from these, never set directly
 // (PLURNK_BUDGET_CEILING is retired — a settable ceiling let policy contradict physics).
-const readPartitionInt = (name: string, min: number): number => {
-    const raw = process.env[name];
+const readPartitionIntFrom = (env: NodeJS.ProcessEnv, name: string, min: number): number => {
+    const raw = env[name];
     const n = Number.parseInt(raw ?? "", 10);
     if (!Number.isFinite(n) || n < min) throw new Error(`${name} must be an integer >= ${min}; got ${raw}`);
     return n;
@@ -75,12 +77,8 @@ export default class PacketBuilder {
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
-    // §tokenomics-window-partition — policy max, reasoning reserve, content floor, template
-    // overhead. Shipped defaults partition any ≥77Ki window to EXACTLY 65536 prompt tokens.
-    #ctx: number;
-    #reasoning: number;
-    #assistant: number;
-    #safety: number;
+    // §tokenomics-window-partition — the partition is PER-ALIAS (#352), resolved per provider in
+    // #partitionFor and cached by alias; no boot-time global read.
 
     constructor({ db, schemes, telemetry, executors }: {
         db: Db;
@@ -92,16 +90,48 @@ export default class PacketBuilder {
         this.#schemes = schemes;
         this.#telemetry = telemetry;
         this.#executors = executors;
-        this.#ctx = readPartitionInt("PLURNK_SERVICE_CTX", 1);
-        this.#reasoning = readPartitionInt("PLURNK_SERVICE_REASONING", 0);
-        this.#assistant = readPartitionInt("PLURNK_SERVICE_ASSISTANT", 0);
-        this.#safety = readPartitionInt("PLURNK_SERVICE_SAFETY", 0);
+        // Prime the ACTIVE alias's partition NOW — capturing the env at construction, so a caller
+        // that sets PLURNK_SERVICE_* then constructs then restores (the budget tests, boot) reads
+        // the intended window. Per-alias overrides (a loop.run alias the boot env didn't set)
+        // resolve fresh at call time.
+        const bootAlias = resolveActiveAlias(process.env)?.alias ?? "";
+        this.#partitions.set(bootAlias, this.#resolvePartition(bootAlias));
+    }
+
+    // #352 — the generation envelope is PER-ALIAS: gemma keeps its measured llama-server policy
+    // envelope (n_predict honored to the context wall — the cap MUST bound it, providers#10);
+    // cloud aliases get a generous default and the backend self-clamps to its true output limit.
+    // scopeEnvToAlias resolves PLURNK_SERVICE_*_<alias> over the bare fallback with providers' own
+    // battle-tested suffix parser. Cached per alias; the boot-global case falls back to the active
+    // alias when a provider carries no side-table entry (a test Mock).
+    static #KNOBS = ["PLURNK_SERVICE_CTX", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_ASSISTANT", "PLURNK_SERVICE_SAFETY"] as const;
+    #partitions = new Map<string, { ctx: number; reasoning: number; assistant: number; safety: number }>();
+
+    #resolvePartition(alias: string): { ctx: number; reasoning: number; assistant: number; safety: number } {
+        const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
+        return {
+            ctx: readPartitionIntFrom(view, "PLURNK_SERVICE_CTX", 1),
+            reasoning: readPartitionIntFrom(view, "PLURNK_SERVICE_REASONING", 0),
+            assistant: readPartitionIntFrom(view, "PLURNK_SERVICE_ASSISTANT", 0),
+            safety: readPartitionIntFrom(view, "PLURNK_SERVICE_SAFETY", 0),
+        };
+    }
+
+    #partitionFor(provider: Provider): { ctx: number; reasoning: number; assistant: number; safety: number } {
+        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        const hit = this.#partitions.get(alias);
+        if (hit !== undefined) return hit;
+        const part = this.#resolvePartition(alias);
+        this.#partitions.set(alias, part);
+        return part;
     }
 
     // The generation envelope — REASONING + ASSISTANT, one undifferentiated pool, passed on
-    // every generate({maxTokens}): no decode is unbounded (§tokenomics-window-partition).
-    decodeBudget(): number {
-        return this.#reasoning + this.#assistant;
+    // every generate({maxTokens}): no decode is unbounded (§tokenomics-window-partition). Per
+    // alias (#352): gemma's measured envelope; a cloud alias's generous default the backend clamps.
+    decodeBudget(provider: Provider): number {
+        const { reasoning, assistant } = this.#partitionFor(provider);
+        return reasoning + assistant;
     }
 
     // §tokenomics-window-partition ÷ §tokenomics-ceiling-calibrates-to-usage — the prompt ceiling
@@ -116,8 +146,9 @@ export default class PacketBuilder {
     // space (usage.prompt, the numerator, is real; the calibration ratio maps measured→real and
     // has no business here). The raw n_ctx overstates usable room by the reserve total.
     promptBudgetFor(provider: Provider): number {
-        const effectiveWindow = provider.contextSize === null ? this.#ctx : Math.min(this.#ctx, provider.contextSize);
-        return Math.max(0, effectiveWindow - this.#reasoning - this.#assistant - this.#safety);
+        const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
+        const effectiveWindow = provider.contextSize === null ? ctx : Math.min(ctx, provider.contextSize);
+        return Math.max(0, effectiveWindow - reasoning - assistant - safety);
     }
 
     // tokenRatio is real/measured, calibrated by Engine per loop (§tokenomics-ceiling-calibrates-to-usage).
@@ -126,9 +157,13 @@ export default class PacketBuilder {
     // exact rulers; this method trusts its input (run24: the floor-at-1 halved gbuild's window).
     ceilingFor(provider: Provider, tokenRatio = 1): number {
         if (tokenRatio <= 0) throw new Error(`ceilingFor: tokenRatio must be > 0, got ${tokenRatio}`);
-        const effectiveWindow = provider.contextSize === null ? this.#ctx : Math.min(this.#ctx, provider.contextSize);
-        const promptBudget = effectiveWindow - this.#reasoning - this.#assistant - this.#safety;
-        if (promptBudget <= 0) throw new Error(`window partition contradiction: effective window ${effectiveWindow} <= reserves ${this.#reasoning}+${this.#assistant}+${this.#safety} (PLURNK_SERVICE_CTX/REASONING/ASSISTANT/SAFETY)`);
+        const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
+        const effectiveWindow = provider.contextSize === null ? ctx : Math.min(ctx, provider.contextSize);
+        const promptBudget = effectiveWindow - reasoning - assistant - safety;
+        if (promptBudget <= 0) {
+            const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+            throw new Error(`window partition contradiction for alias '${alias}': effective window ${effectiveWindow} <= reserves ${reasoning}+${assistant}+${safety}. A local (llama-server) alias needs its OWN measured envelope — set PLURNK_SERVICE_{CTX,REASONING,ASSISTANT,SAFETY}_${alias || "<alias>"} (the bare defaults are cloud-generous; #352).`);
+        }
         return Math.floor(promptBudget / tokenRatio);
     }
 

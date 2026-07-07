@@ -313,3 +313,38 @@ test("[§tokenomics-output-truncated] a finish=length turn's parse errors are le
         assert.match(errs.map((e) => e.rx).join(" "), /never closed/, "the parse artifacts stay — the record never hides");
     } finally { await db.close(); }
 });
+
+test("[§tokenomics-window-partition] the partition resolves PER ALIAS — the suffix wins over the bare fallback (#352)", async () => {
+    // Driven through the REAL alias resolution: a Mock carries no provider->alias side-table
+    // entry, so #partitionFor falls back to resolveActiveAlias(process.env).alias — set
+    // PLURNK_MODEL to make an alias active and its suffixed knobs win. No production test-hook.
+    const db = await openMigrated();
+    try {
+        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
+        const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
+        const telemetry = new TelemetryChannel({ db });
+        const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig",
+            "PLURNK_SERVICE_CTX", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_ASSISTANT", "PLURNK_SERVICE_SAFETY",
+            "PLURNK_SERVICE_CTX_rig", "PLURNK_SERVICE_REASONING_rig", "PLURNK_SERVICE_ASSISTANT_rig", "PLURNK_SERVICE_SAFETY_rig"];
+        const prev = keys.map((k) => process.env[k]);
+        process.env.PLURNK_SERVICE_CTX = "163840"; process.env.PLURNK_SERVICE_REASONING = "16384";
+        process.env.PLURNK_SERVICE_ASSISTANT = "49152"; process.env.PLURNK_SERVICE_SAFETY = "1024";
+        try {
+            // No active alias → bare (cloud-generous).
+            delete process.env.PLURNK_MODEL; delete process.env.PLURNK_MODEL_rig;
+            for (const k of ["CTX", "REASONING", "ASSISTANT", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}_rig`];
+            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            assert.equal(bare.decodeBudget(new Mock({ contextSize: 1_000_000, responses: [] })), 16384 + 49152, "no alias → bare cloud-generous decode envelope");
+            // 'rig' active with a tight measured suffix → the suffix wins.
+            process.env.PLURNK_MODEL = "rig"; process.env.PLURNK_MODEL_rig = "openai/local.gguf";
+            process.env.PLURNK_SERVICE_CTX_rig = "8192"; process.env.PLURNK_SERVICE_REASONING_rig = "1024";
+            process.env.PLURNK_SERVICE_ASSISTANT_rig = "2048"; process.env.PLURNK_SERVICE_SAFETY_rig = "64";
+            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
+            const provider = new Mock({ contextSize: 1_000_000, responses: [] });
+            assert.equal(rig.decodeBudget(provider), 1024 + 2048, "the active alias's suffixed decode envelope wins over bare");
+            assert.equal(rig.promptBudgetFor(provider), 8192 - 1024 - 2048 - 64, "the suffixed window drives the prompt budget");
+        } finally {
+            keys.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
+        }
+    } finally { await db.close(); }
+});
