@@ -323,6 +323,8 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 - `SEND[200](path)` — write body into resource (WS message, exec stdin).
 - `SEND[499](path)` — cancel active subscription (§stream).
 
+- **Line-oriented matching is the tent pole; the selection signal is additive** {§matcher-selection-signal} — a pattern match returns the SOURCE LINE containing it, with its line number (`42:\tI bought Alice some flowers`, never `1:\tAlice`): the line is the universal coordinate the whole op-algebra composes on (FIND spans → READ delivers → EDIT mutates), and extraction dialects admit NO exception (owner ruling — a bare value has no coordinate and silently breaks the composition). The degenerate case — a MINIFIED single-line document, where "the line" is the whole file — is answered with SIGNAL, not a semantics change: a matcher READ's rx carries `matches` (the hit count) and `paths` (each hit's canonical dialect coordinate, e.g. `$['users'][0]['name']`, when the dialect provides one), so the model knows its query HIT, how many times, and where, even when the payload is the full document (run30: two hits collapsed to one whole-file line indistinguishable from failure; 17 retries). The teaching half is grammar's canon (grammar#56).
+
 `SEND[410](path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is KILL (§move).
 
 Other status codes return 501 from entry-bearing schemes by default. {§send-dispatch-entry-schemes-501-on-non-410}

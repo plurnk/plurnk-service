@@ -18,6 +18,13 @@ export interface MatchResult {
     status: number;
     body?: string;          // N:\t<line> rows (200) or raw fallback content (203)
     matches?: number;       // hit count (status 200 / 204)
+    // §matcher-selection-signal — each hit's canonical location in the DAUGHTER's own coordinate
+    // system (jsonpath: $['users'][0]['name']; xpath: the node path), when the dialect provides
+    // one. The SELECTION SIGNAL that survives the degenerate single-line case: the payload stays
+    // the source line (the tent pole — line-oriented matching composes FIND↔READ↔EDIT and admits
+    // no exception), while matches+paths tell the model its query HIT, how many times, and where
+    // (run30: two hits collapsed to one whole-file line read as failure; 17 retries).
+    paths?: string[];
     lines?: number[];       // matched source line numbers (status 200) — Project Findings extent substrate
     spans?: { lineStart: number; lineEnd: number }[]; // one per match — the (file, span) unit FIND emits + READ delivers (#286)
     error?: string;         // status 400 — malformed matcher expression
@@ -97,6 +104,7 @@ export default class Matcher {
         }
         if (matches.length === 0) return { status: 204, matches: 0 };
         const rendered = Matcher.#renderRows(matches, content, baseLine);
-        return { status: 200, body: rendered.body, matches: matches.length, lines: rendered.lines, spans: rendered.spans };
+        const paths = matches.map((m) => (m as { matching?: unknown }).matching).filter((x): x is string => typeof x === "string" && x.length > 0);
+        return { status: 200, body: rendered.body, matches: matches.length, lines: rendered.lines, spans: rendered.spans, ...(paths.length > 0 ? { paths } : {}) };
     }
 }

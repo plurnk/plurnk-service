@@ -308,3 +308,22 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
         assert.doesNotMatch(r.content ?? "", /Alice|Carol/);
     } finally { await db.close(); }
 });
+
+test("[§matcher-selection-signal] the degenerate single-line case carries the SIGNAL — matches + paths on the rx, payload untouched (run30)", async () => {
+    // The tent pole holds: the payload is the source line (here: the whole minified document —
+    // no exception for extraction dialects). The SIGNAL is additive: the model sees its query
+    // hit twice and WHERE, so a working extraction is never indistinguishable from a failure.
+    const { db, sessionId, runId, mimetypes } = await setup();
+    try {
+        await seedJson(db, sessionId, runId, mimetypes, "/team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
+        const r = await new Known().read(
+            readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
+            makeSchemeCtx({ db, sessionId, mimetypes }),
+        );
+        assert.equal(r.status, 200);
+        assert.equal(r.matches, 2, "the hit count reaches the model");
+        assert.deepEqual(r.paths, ["$['users'][0]['name']", "$['users'][1]['name']"], "each hit's canonical coordinate reaches the model");
+        assert.match(rxLines(r.content)[0] ?? "", /Alice/, "the payload stays the source line — the whole document here, by design");
+        assert.deepEqual(rxLineNos(r.content), [1], "one source line, honestly numbered");
+    } finally { await db.close(); }
+});

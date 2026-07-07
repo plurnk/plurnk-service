@@ -26,7 +26,7 @@ export type EditResult = { status: number; entryId: number | null; channel: stri
 // distinguishes "0 matches" from "empty content."
 // reason — surfaced on 203 dialect-fallback so the model sees why the
 // structured parse failed and got raw content instead.
-export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string };
+export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; paths?: string[]; reason?: string };
 export type OpenFoldResult = { status: number };
 
 export default class EntryOps {
