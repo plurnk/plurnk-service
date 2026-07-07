@@ -235,7 +235,7 @@ test("[§send-premature-terminate] a retrievals-ONLY refusal states the continua
         const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ run_id: runId });
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
-        assert.match(refused!.rx, /Termination attempted despite retrieval operations\. Continuing in order to receive results\./, "the owner's wording, verbatim");
+        assert.match(refused!.rx, /Termination attempted despite retrieval operations\. Results retrieved\./, "the owner's wording, verbatim");
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }
 });
@@ -318,7 +318,7 @@ test("[§telemetry-uniform-error-channel] a HARD failure mints an error ITEM car
         const steer = minted.find((m) => m.status === 409);
         assert.ok(steer, "the refused SEND minted an error item");
         assert.equal(steer!.kind, "action_failure");
-        assert.match(steer!.message ?? "", /Termination attempted despite retrieval operations\. Continuing in order to receive results\./, "the owner's steer IS the item's content — it renders as the row's body, never folded away unseen");
+        assert.match(steer!.message ?? "", /Termination attempted despite retrieval operations\. Results retrieved\./, "the owner's steer IS the item's content — it renders as the row's body, never folded away unseen");
         assert.ok(!minted.some((m) => m.status === 404), "the 404 probe miss minted nothing — a finding, not an alert");
         // The alert surface points at the ERROR item, not the op row (one rule, no exceptions).
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
