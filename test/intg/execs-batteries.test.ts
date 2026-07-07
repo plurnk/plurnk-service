@@ -170,3 +170,40 @@ for (const { tag, body, cwd, expect, gate } of CASES) {
         assert.equal(inline, gate === "inline", `${label} gating: ${gate === "inline" ? "pure/read → inline (ungated)" : "host → proposed (review-gated)"}`);
     });
 }
+
+test("[§exec-runtime-fallthrough] an unregistered tag falls through to the shell — EXEC[echo]:hello runs as `sh: echo hello` (#350)", async () => {
+    // The execs architect's resolution to the go-501 saga: per-tool runtimes never earn tags
+    // (owner, execs#21); the dispatch automates the principle. The output lands under sh://
+    // (it ran on sh, not a phantom echo://), and the registry stays exactly as-is.
+    const db = await openMigrated();
+    try {
+        const schemes = new SchemeRegistry();
+        const exec = schemes.get("exec") as Exec;
+        const engine = new Engine({ db, schemes });
+        const registry = await testExecutors();
+        engine.setExecutors(registry);
+        assert.ok(!registry.availableRuntimes().includes("echo"), "precondition: echo is NOT a registered runtime");
+        const sessionId = await insertSession(db, `batt-ft-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "ft");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const idDeferred = deferred<number>();
+        const dispatchPromise = engine.dispatch({
+            statement: execStmt("echo", null, "hello fallthrough"),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        const proposal = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        if ((JSON.parse(proposal?.attrs ?? "{}") as { inline?: boolean }).inline !== true) engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatchPromise;
+        await exec.idle();
+        assert.equal(result.status, 200, "no 501 — the tag fell through to the shell");
+        const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname });
+        assert.ok(entryRow, "the output entry lands under sh:// — it ran on sh, never a phantom echo://");
+        const out = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
+        assert.match(out?.content ?? "", /hello fallthrough/, "the tag became the command word: `echo hello fallthrough`");
+    } finally { await db.close(); }
+});

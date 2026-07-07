@@ -141,14 +141,19 @@ test("effect is command-aware (#289): the EXEC command body is passed to effect(
     } finally { await db.close(); }
 });
 
-test("[§exec-registry-resolves] unknown runtime → 501 (registry resolves; no such executor)", async () => {
+test("[§exec-registry-resolves] fall-through-INELIGIBLE dispatch → 501 — the refusal lane survives §exec-runtime-fallthrough", async () => {
+    // #350 changed the unknown-tag contract: with sh available, an unregistered tag falls
+    // through to the shell (§exec-runtime-fallthrough, cited in execs-batteries). The 501
+    // remains for the ineligible case: sh itself session-disabled — a client that turned the
+    // shell off gets the refusal for EVERY shell-shaped path, never a side door.
     const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
     try {
+        await (db.test_set_session_settings as PrepMethod).run({ id: sessionId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
         const result = await engine.dispatch({
             statement: execStmt("nonesuch", null, "echo hi"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 501, "an unregistered runtime resolves to 501 — not a proposal, not a spawn");
+        assert.equal(result.status, 501, "sh disabled → the fall-through is ineligible → 501, not a proposal, not a spawn");
         await exec.idle();
     } finally { await db.close(); }
 });

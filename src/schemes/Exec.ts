@@ -157,7 +157,7 @@ export default class Exec {
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
     // (e.g. sh:///1/1/2, §exec/#240). The model READs that entry on a subsequent turn.
     async exec(statement: ExecStatement, ctx: PlurnkSchemeContext): Promise<ExecResult> {
-        const command = statement.body ?? "";
+        let command = statement.body ?? "";
         // #201 — a plurnk-scheme target carries content the scheme resolves at
         // apply-time; an empty body is then legal (the target IS the script).
         const schemeTarget = schemeTargetOf(statement.target);
@@ -166,19 +166,35 @@ export default class Exec {
         }
 
         const requested = typeof statement.signal === "string" ? statement.signal : "";
-        const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
+        let runtime = requested === "" ? "sh" : requested; // empty signal = default shell
+        if (ctx.executors === undefined) throw new Error("exec dispatched without an executor registry");
+        // §exec-runtime-fallthrough (#350, the execs architect's resolution to the go-501 saga):
+        // an UNREGISTERED tag falls through to the shell with the tag as the command word —
+        // EXEC[go]:test ./... runs as sh: `go test ./...`. Per-tool runtimes (go/cargo/make/npm)
+        // never earn tags (owner, execs#21); this automates the principle. The output entry lands
+        // under sh:// (it ran on sh), telemetry records what models reach FOR (the promotion
+        // signal is data, not guesswork), and a typo'd tag becomes the shell's own clear 127.
+        // No new surface: anything expressible as EXEC[foo]:bar was expressible as EXEC[sh]:foo bar.
+        let fellThroughFrom: string | null = null;
+        if (requested !== "" && ctx.executors.entry(runtime) === undefined && ctx.executors.entry("sh") !== undefined) {
+            fellThroughFrom = runtime;
+            command = command.length > 0 ? `${runtime} ${command}` : runtime;
+            runtime = "sh";
+        }
         // #328 — per-session client policy narrows the boot-registered set (subtractive). A tag the
         // session's client layer disables is ABSENT for this session — refused like an unavailable
-        // runtime. The boot layer (process.env) is already applied in the registry, so this checks the
-        // client layer over the already-registered set (§3.3 de-register, distinct from §3.2 deactivate).
+        // runtime. Checked on the EFFECTIVE runtime: a fall-through rides sh's gate, so a session
+        // that disabled sh gets the refusal, never a side door.
         const sessionExecs = (await SessionSettings.read(ctx.db, ctx.sessionId)).execs;
         if (sessionExecs !== null && !Policy.isEnabled(runtime, sessionExecs)) {
             return { status: 501, error: `\`${runtime}\` is disabled for this session by client policy (PLURNK_EXECS_*)` };
         }
-        if (ctx.executors === undefined) throw new Error("exec dispatched without an executor registry");
         const resolved = ctx.executors.entry(runtime); // registry resolves the runtime tag; unknown/unavailable → 501 — §exec-registry-resolves
         if (resolved === undefined) {
             return { status: 501, error: `\`${runtime}\` is not a configured runtime. available: ${ctx.executors.availableRuntimes().join(", ")}` };
+        }
+        if (fellThroughFrom !== null) {
+            ctx.pushTelemetry?.({ source: "exec:dispatch", kind: "exec_runtime_fallthrough", message: `EXEC[${fellThroughFrom}] fell through to sh`, requested: fellThroughFrom, level: "info" } as never);
         }
         if (!resolved.available) {
             const why = resolved.detail === undefined ? "" : `: ${resolved.detail}`;
