@@ -23,8 +23,9 @@ import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 // reasoning_effort; "effort_explicit" (fireworks) sends the EXPLICIT "none"/"adaptive"
 // enum values instead of omitting — reason-by-DEFAULT models (DeepSeek V4 defaults
 // 'high') keep reasoning when the field is omitted, fatal under an active grammar
-// (#30) — and under a transported response_format grammar it is CLAMPED to "none"
-// regardless of intent (measured: low→cycle loops, high→pool-starvation spirals; #32).
+// (#30). Intent maps IDENTICALLY with or without a transported grammar — fireworks
+// masks only the content channel, so reasoning and rails coexist in one call
+// (canary-verified; the #32 clamp is lifted — it caused the plan-less service#331).
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "template" | "anthropic";
 
 // How a caller-supplied GBNF grammar is carried on the wire — backends accept
@@ -235,28 +236,17 @@ export default class OpenAICompatProvider implements Provider {
     countTokens(text: string): number { return this.#countTokens(text); }
     costFor(usage: ProviderUsage): number { return this.#costFor(usage); }
 
-    // One-time surfacing flag for the #32 clamp — warn on the first turn where
-    // topology overrides intent, not on every call.
-    #clampWarned = false;
-
     // Maps the thinking INTENT (off | adaptive | on+capacity, #33) to the
-    // backend's wire mechanism. `grammarClamped` (#32): a transported
-    // response_format grammar forces "none" regardless of intent — measured on
-    // the real stack: `low` → cycle loops, `high` → pool-starvation spirals;
-    // reasoning under an in-band grammar has no working non-none posture.
-    // Surfaced once per provider instance, never silent.
-    #reasoningBody(grammarClamped: boolean): Record<string, unknown> {
+    // backend's wire mechanism — including under a transported grammar. The #32
+    // clamp (force reasoning_effort "none" under response_format) is LIFTED:
+    // canary-verified live that fireworks masks ONLY the content channel — the
+    // reasoning channel rides beside it unmasked, and the plurnk grammar's
+    // reasoning?/preplan regions absorb any in-band spillover. The old measured
+    // failures (low→cycles, high→spirals) were pre-max_tokens-cap; with a bounded
+    // cap the matrix ACCEPTs across efforts (reasoning-rails matrix, TUNING-EPIC
+    // F9). Clamping was the root of the plan-less regression (service#331).
+    #reasoningBody(): Record<string, unknown> {
         const { mode, capacity } = this.#thinking;
-        if (grammarClamped && this.#reasoningStyle === "effort_explicit") {
-            if (mode !== "off" && !this.#clampWarned) {
-                this.#clampWarned = true;
-                process.emitWarning(
-                    `${this.#source}: thinking intent "${mode}" clamped to reasoning_effort "none" — an in-band (response_format) grammar has no working reasoning posture (#32)`,
-                    { code: "PLURNK_REASONING_CLAMPED" },
-                );
-            }
-            return { reasoning_effort: "none" };
-        }
         const on = mode !== "off";
         switch (this.#reasoningStyle) {
             // Native-channel styles. "template" ALWAYS emits — the explicit
@@ -457,7 +447,7 @@ export default class OpenAICompatProvider implements Provider {
             ...this.#samplingBody(sampling),
             model: this.#model,
             messages,
-            ...this.#reasoningBody(sendGrammar !== undefined && this.#grammarStyle === "response_format"),
+            ...this.#reasoningBody(),
             ...this.#grammarBody(sendGrammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
             // #36: request per-token logprobs only when enabled (managed field —

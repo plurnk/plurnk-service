@@ -164,21 +164,18 @@ test("the family temperature default rides every request; caller sampling overri
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
 });
 
-test("effort_explicit under a response_format grammar CLAMPS to none regardless of intent, surfaced once (#32)", async () => {
+test("effort_explicit: intent maps IDENTICALLY with and without a grammar — the #32 clamp is lifted (reasoning+rails coexist)", async () => {
     const warned: Array<string | Error> = [];
     mock.method(process, "emitWarning", (msg: string | Error) => { warned.push(msg); });
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, thinking: { mode: "on", capacity: 8192 }, retryAttempts: 0, reasoningStyle: "effort_explicit", grammarStyle: "response_format", source: "provider:test" });
+    // grammar transported → intent STILL flows through (canary-verified: the mask
+    // covers only content; clamping to "none" was the plan-less #331 regression)
     let calls = installFetchJson(jsonChoice);
     await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
-    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "none"); // intent "on" overridden by topology
-    assert.ok(warned.some((w) => String(w).includes("clamped to reasoning_effort")), "clamp must be surfaced");
-    // second grammar call: clamp still applies, but the warning fired only once
-    calls = installFetchJson(jsonChoice);
-    await p.generate({ runId: "r", messages: [], grammar: 'root ::= "x"' });
-    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "none");
-    assert.equal(warned.filter((w) => String(w).includes("clamped")).length, 1);
+    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
+    assert.equal(warned.filter((w) => String(w).includes("clamped")).length, 0, "no clamp warning — the clamp is gone");
     mock.restoreAll();
-    // no grammar → intent flows through untouched
+    // no grammar → same mapping
     const p2 = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, thinking: { mode: "on", capacity: 8192 }, retryAttempts: 0, reasoningStyle: "effort_explicit", grammarStyle: "response_format" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p2.generate({ runId: "r", messages: [] });
