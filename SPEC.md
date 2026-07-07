@@ -638,7 +638,7 @@ A side-effecting op does not execute on dispatch — it **proposes**. The scheme
 - **`loop.resolve`** (§methods) — a client's accept / reject / cancel.
 - **Server-YOLO** (§dual-yolo) — an in-tree listener resolves `accept` in-process, same tick, no wire roundtrip.
 - **noProposals** — an in-tree listener resolves `reject` (outcome `no_review_channel`).
-- **Timeout** — `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` (§operator-config) elapses with no resolution → the engine synthesizes `cancel` (outcome `timeout`), server-side, needing no client. {§proposal-timeout-cancels}
+- **Timeout is OPT-IN; the shipped default is a world that WAITS** {§proposal-timeout-cancels} — `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` empty (shipped) means a pending proposal — a file edit awaiting review, an MCP auth, a [300] question — waits indefinitely for its human: absence is not an answer, and a synthetic cancel deciding it was is unacceptable (owner ruling, the AG-UI migration's first surfaced decision; the [102]<-1> doctrine's sibling — waiting is a mode of continuing). An operator whose lane needs a bound sets milliseconds; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client.
 
 **The decision drives a one-way state transition** on `log_entries.state` (resolution is idempotent — `WHERE state='proposed'`, so a second resolution 404s):
 

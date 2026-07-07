@@ -29,7 +29,7 @@ export interface ProposalResolution {
 }
 interface ProposalWaiter {
     resolve: (resolution: ProposalResolution) => void;
-    timeoutHandle: ReturnType<typeof setTimeout>;
+    timeoutHandle: ReturnType<typeof setTimeout> | null;
 }
 
 // External observers of pending-proposal events. sessionId is included so
@@ -55,14 +55,16 @@ export interface ProposalPendingEvent {
     staleClobberRisk: boolean;
 }
 
-// Resolution timeout — proposed entries auto-cancel if nothing arrives
-// within this window. SPEC.md §engine-rails (proposal lifecycle) + §methods (loop.resolve).
-const PROPOSAL_TIMEOUT_DEFAULT_MS = 300000;
-const readProposalTimeoutMs = (): number => {
+// Resolution timeout — OFF by default (owner ruling, the AG-UI migration's first surfaced
+// decision): a stopped world awaiting a human WAITS — the human's absence is not an answer,
+// and a silent five-minute cancel is the machine deciding it was. The [102]<-1> doctrine's
+// sibling: waiting is a mode of continuing. An operator whose deployment needs a bound sets
+// PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS explicitly (the decision table); empty = indefinite.
+const readProposalTimeoutMs = (): number | null => {
     const raw = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
-    if (raw === undefined || raw.length === 0) return PROPOSAL_TIMEOUT_DEFAULT_MS;
+    if (raw === undefined || raw.length === 0) return null;
     const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) return PROPOSAL_TIMEOUT_DEFAULT_MS;
+    if (!Number.isFinite(n) || n <= 0) return null;
     return n;
 };
 
@@ -123,7 +125,7 @@ export default class ProposalLifecycle {
         if (waiter === undefined) {
             throw new Error(`Engine.resolveProposal: no pending proposal for log_entry ${logEntryId}`);
         }
-        clearTimeout(waiter.timeoutHandle);
+        if (waiter.timeoutHandle !== null) clearTimeout(waiter.timeoutHandle);
         this.#pending.delete(logEntryId);
         waiter.resolve(resolution);
     }
@@ -152,10 +154,9 @@ export default class ProposalLifecycle {
     awaitResolution(logEntryId: number): Promise<ProposalResolution> {
         const timeoutMs = readProposalTimeoutMs();
         return new Promise<ProposalResolution>((resolve) => {
-            const timeoutHandle = setTimeout(() => {
-                // Timeout: synthesize a cancel resolution and feed it back
-                // through the same path as any other resolution. State
-                // transitions to cancelled with outcome='timeout'.
+            const timeoutHandle = timeoutMs === null ? null : setTimeout(() => {
+                // Operator-bounded lane only: synthesize a cancel resolution through the same
+                // path as any other. State transitions to cancelled with outcome='timeout'.
                 if (this.#pending.has(logEntryId)) {
                     this.#pending.delete(logEntryId);
                     resolve({ decision: "cancel", outcome: "timeout" }); // §proposal-timeout-cancels

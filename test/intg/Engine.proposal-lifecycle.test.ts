@@ -361,3 +361,34 @@ test("[§proposal-timeout-cancels] proposal: timeout fires after PLURNK_SERVICE_
         assert.equal(row?.outcome, "timeout");
     } finally { await db.close(); }
 });
+
+test("[§proposal-timeout-cancels] the SHIPPED default is INDEFINITE — a stopped world waits for its human (owner ruling)", async (t) => {
+    // The AG-UI migration's first surfaced decision: absence is not an answer. With the knob
+    // unset, a pending proposal outlives any would-be window and resolves only when the human
+    // does — the [102]<-1> doctrine's sibling. The operator-bounded lane above keeps its test.
+    const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+    t.after(() => {
+        if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS = original;
+    });
+    delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: editStmt("/x", "y"),
+            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        // Far past the old 300s-scaled window at test speed: the world stays stopped.
+        await new Promise((r) => setTimeout(r, 250));
+        const pending = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string }>({ id: logEntryId });
+        assert.equal(pending?.state, "proposed", "still stopped — no synthetic cancel, however long the human takes");
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatchPromise;
+        assert.equal(result.status, 200, "the human's answer, whenever it arrives, is the only resolution");
+    } finally { await db.close(); }
+});
