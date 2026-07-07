@@ -67,7 +67,8 @@ surfaces as `CUSTOM plurnk.proposal` carrying `{logEntryId, op, target, body, at
 (`attrs.question`/`attrs.choices` for questions). The frontend answers via
 `POST /resolve {threadId, logEntryId, decision, body?}` — a passthrough to the daemon's
 `loop.resolve`, where an accept `body` is the answer. The SSE stream stays open while the
-world is stopped; the run resumes on resolution.
+world is stopped — **indefinitely by default** (service ruling: a stopped world waits for its
+human; the timeout is operator opt-in) — and the run resumes on resolution.
 
 ## The run endpoint {§agui-run-endpoint}
 
