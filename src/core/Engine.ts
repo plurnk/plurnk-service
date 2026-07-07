@@ -1091,6 +1091,23 @@ export default class Engine {
         // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         for (const kind of pendingEngineErrors) await this.#telemetry.mintEngineError(kind, { runId, loopId, turnId, sequence: errSeq++ });
+        // §tokenomics-output-truncated (#351) — packet honesty at the completion cap: a
+        // finish=length turn was GUILLOTINED mid-emission, and its parse errors are truncation
+        // ARTIFACTS. Without the cause stated first, the model reads 'unclosed block' and fixes
+        // syntax forever instead of emitting less per turn (run29: think + 9 edits vs a 12288
+        // decode pool). One terse row, ahead of the artifact rows it explains.
+        if (finishReason === "length" && (parseErrors?.length ?? 0) > 0) {
+            await (this.#db.engine_insert_log_entry as PrepMethod).get({
+                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
+                origin: "model", source: "engine", op: "error", suffix: "", signal: null,
+                scheme: null, username: null, password: null, hostname: null, port: null,
+                pathname: null, params: null, fragment: null, lineMarker: null,
+                tx: "", mimetype_tx: "text/plain",
+                rx: JSON.stringify({ status: 413, kind: "output_truncated", message: `output truncated at the completion cap (${this.#packets.decodeBudget()} tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue` }),
+                mimetype_rx: "application/json", status_rx: 413, tokens: 0, state: "failed", outcome: "output_truncated",
+                attrs: "{}",
+            });
+        }
         // Parse errors carry the parser message + a content-offset line:col (a ContentOffset position),
         // resolved against the model's folded mirror row (§model-entry) — origin 'model', not engine.
         for (const { message, line, column, source } of parseErrors ?? []) {

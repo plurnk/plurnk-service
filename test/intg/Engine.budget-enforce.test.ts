@@ -292,3 +292,24 @@ test("[§tokenomics-fetch-fits-free] the 413 row states the pressure law — fol
         assert.match(text, /FOLD older items first/, "the lever is named");
     } finally { await db.close(); }
 });
+
+test("[§tokenomics-output-truncated] a finish=length turn's parse errors are led by the CAUSE — truncation, not syntax (run29)", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, WIDE);
+        // A truncated emission: an unterminated FIND (the guillotine's signature) + finish=length.
+        const provider = new Mock({ contextSize: 100000, responses: [{
+            // No pre-parsed ops: the engine parses the (guillotined) content itself; finishReason
+            // rides the assistant per the Mock contract.
+            assistant: { content: "<<PLAN:big turn:PLAN\n<<FIND(SPEC.md):#grinder", reasoning: null, finishReason: "length", usage: { prompt: 10, completion: 12281, reasoning: 0, cached: 0, total: 12291 } },
+        } as never] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        assert.ok(errs.length >= 2, "the truncation row AND the parse artifact both recorded");
+        const first = JSON.parse(errs[0]!.rx) as { kind?: string; message?: string };
+        assert.equal(first.kind, "output_truncated", "the CAUSE leads");
+        assert.match(first.message ?? "", /truncation artifacts; emit fewer ops per turn/, "the remedy is the real one — not a syntax fix");
+        assert.match(errs.map((e) => e.rx).join(" "), /never closed/, "the parse artifacts stay — the record never hides");
+    } finally { await db.close(); }
+});
