@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import type { ChatMessage } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -27,21 +27,29 @@ const runOneTurn = async (mock: Mock, name: string): Promise<void> => {
 // PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant (#189/#225): a variant name
 // resolves to that grammar and reaches the provider verbatim; 0/empty → nothing
 // does. The service resolves + plumbs it; the provider applies-or-drops per backend.
-test("PLURNK_PROVIDERS_GBNF gates whether the plurnk grammar reaches generate() (#189)", async () => {
+test("[§gbnf-per-alias] PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias's suffix wins over the bare fallback (#353)", async () => {
+    // The daemon test's active alias (whatever the local .env selects) decides via its suffixed
+    // knob. Bare is the fallback: GBNF only helps sampling-constraining backends, so it ships OFF
+    // by default and each GBNF-capable alias opts in via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
     const dsl = "<<SEND[200]:ok:SEND";
-    const orig = process.env.PLURNK_PROVIDERS_GBNF;
+    // Alias-agnostic: the daemon test's active alias decides — resolve it and set ITS suffix, so
+    // this never hardcodes an operator's private alias name.
+    const alias = resolveActiveAlias(process.env)?.alias ?? "";
+    const suffixKey = `PLURNK_PROVIDERS_GBNF_${alias}`;
+    const keys = ["PLURNK_PROVIDERS_GBNF", suffixKey];
+    const orig = keys.map((k) => process.env[k]);
     try {
-        process.env.PLURNK_PROVIDERS_GBNF = "plurnk.gbnf";
+        process.env.PLURNK_PROVIDERS_GBNF = "";  // bare OFF
+        process.env[suffixKey] = "plurnk.gbnf";  // the active alias opts IN
         const on = new GrammarCapturingMock({ contextSize: 8192, responses: [makeMockResponse(dsl, 10)] });
         await runOneTurn(on, "gbnf-on");
-        assert.ok(on.lastGrammar?.includes("root ::="), "a variant name → that grammar reaches the provider");
+        assert.ok(on.lastGrammar?.includes("root ::="), "the alias suffix → that grammar reaches the provider despite bare being off");
 
-        process.env.PLURNK_PROVIDERS_GBNF = "0";
+        process.env[suffixKey] = "0";  // the active alias opts OUT
         const off = new GrammarCapturingMock({ contextSize: 8192, responses: [makeMockResponse(dsl, 10)] });
         await runOneTurn(off, "gbnf-off");
-        assert.equal(off.lastGrammar, undefined, "disabled → no grammar reaches the provider");
+        assert.equal(off.lastGrammar, undefined, "the alias off → no grammar reaches the provider");
     } finally {
-        if (orig === undefined) delete process.env.PLURNK_PROVIDERS_GBNF;
-        else process.env.PLURNK_PROVIDERS_GBNF = orig;
+        keys.forEach((k, i) => { if (orig[i] === undefined) delete process.env[k]; else process.env[k] = orig[i]!; });
     }
 });

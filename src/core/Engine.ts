@@ -73,7 +73,8 @@ const readFilesItems = (): number | null => {
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
-import { ProviderError } from "@plurnk/plurnk-providers";
+import { ProviderError, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import ProviderInstantiate from "./ProviderInstantiate.ts";
 
 // Split-out call-metadata that travels with the parsed packet but lands in
 // Turn columns instead of packet.assistant.
@@ -187,7 +188,7 @@ export default class Engine {
     #wakeRunNotify: WakeRunNotify | undefined;
 
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
-    #gbnfCache: string | null = null;
+    #gbnfCache = new Map<string, string>();  // variant name -> GBNF text (per-alias selection, #353)
 
     constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, injectRun, cancelRun, telemetryEventNotify, tokenize }: {
         db: Db;
@@ -262,21 +263,28 @@ export default class Engine {
     // GBNF (the full shipped multi-op root, read once + cached). The provider
     // attaches it iff the backend supports it and silently drops it otherwise —
     // capability is providers' concern, not ours. Pure plumbing grammar→provider.
-    async #grammarConstraint(): Promise<string | undefined> {
+    async #grammarConstraint(provider: Provider): Promise<string | undefined> {
         // PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant to constrain sampling to (#225):
         // a bare name (`plurnk-strict.gbnf` | `plurnk.gbnf`) is a variant shipped by
         // @plurnk/plurnk-grammar; an absolute/relative path is a BYO grammar. Empty or "0"
-        // disables — unconstrained generation. (Was a `=== "1"` boolean; the value change
-        // would otherwise read as "off", leaving every turn unconstrained.)
-        const variant = process.env.PLURNK_PROVIDERS_GBNF;
+        // disables — unconstrained generation.
+        //
+        // PER ALIAS (#353): resolved PLURNK_PROVIDERS_GBNF_<alias> over the bare fallback (providers'
+        // scopeEnvToAlias), scoped by the alias that built this provider. GBNF only helps backends
+        // that constrain sampling (llama-server, fireworks); a cloud model that IGNORES the grammar
+        // gets a filter-mode divergence event every turn for nothing. So the bare default is OFF
+        // and the GBNF-capable aliases opt IN via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
+        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        const variant = scopeEnvToAlias(process.env, alias, ["PLURNK_PROVIDERS_GBNF"]).PLURNK_PROVIDERS_GBNF;
         if (variant === undefined || variant === "" || variant === "0") return undefined;
-        if (this.#gbnfCache === null) {
-            const path = variant.startsWith("/") || variant.startsWith(".")
-                ? variant
-                : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`));
-            this.#gbnfCache = await readFile(path, "utf8");
-        }
-        return this.#gbnfCache;
+        const hit = this.#gbnfCache.get(variant);
+        if (hit !== undefined) return hit;
+        const path = variant.startsWith("/") || variant.startsWith(".")
+            ? variant
+            : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`));
+        const text = await readFile(path, "utf8");
+        this.#gbnfCache.set(variant, text);
+        return text;
     }
 
     // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
@@ -881,7 +889,7 @@ export default class Engine {
             // generate rides the LOOP signal (already chained from the caller's), so a loop-level
             // abort — the §operator-config-loop-timeout wall — cancels a stuck provider call, not
             // just the schemes. Bare runTurn (no runLoop) has no loop entry → the caller's signal.
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(), maxTokens: this.#packets.decodeBudget(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(provider), maxTokens: this.#packets.decodeBudget(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network

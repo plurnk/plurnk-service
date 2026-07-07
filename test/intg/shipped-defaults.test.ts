@@ -22,7 +22,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
     const raw = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
     const env = new Map<string, string>();
     for (const line of raw.split("\n")) {
-        const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line);
+        const m = /^([A-Z_][A-Za-z0-9_]*)=(.*)$/.exec(line);  // alias suffixes are lowercase (PLURNK_PROVIDERS_GBNF_<alias>)
         if (m) env.set(m[1], m[2].replace(/^"|"$/g, ""));
     }
     return env;
@@ -30,6 +30,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
 
 test("[§operator-config-shipped-defaults] the template ships no double policy, no active model, a resolving GBNF", async () => {
     const env = await shippedEnv();
+    const rawExample = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
     // The operating policy is a packet SECTION (readSystemPolicy) — a PLURNK_SERVICE_MD_* default pointing
     // at the same file injects it twice (once as ## Plurnk Service Policy, once as a foisted
     // plurnk:///<ALIAS>.md READ). The template must ship NO active doc aliases.
@@ -41,26 +42,27 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     // reroutes a think-trained model's thought into the grammar free zone; adaptive is unbounded.
     // The F7 coupling (CAPACITY == the serving box's --reasoning-budget) is a LOCAL/llama-server
     // concern — cloud backends ignore per-request reasoning budgets (#352). So the shipped CAPACITY
-    // couples to the LOCAL reasoning envelope (the turboderp template's 4096), NOT the bare
+    // couples to the LOCAL reasoning envelope (the local example's 4096), NOT the bare
     // cloud-generous reserve; both ship as positive ints.
     assert.equal(env.get("PLURNK_PROVIDERS_THINKING"), "on", "thinking ships on");
-    assert.equal(env.get("PLURNK_PROVIDERS_THINKING_CAPACITY"), "4096", "thinking capacity ships coupled to the LOCAL llama-server reasoning envelope (turboderp 4096)");
+    assert.equal(env.get("PLURNK_PROVIDERS_THINKING_CAPACITY"), "4096", "thinking capacity ships coupled to the LOCAL llama-server reasoning envelope (4096)");
     // §tokenomics-window-partition (#352) — the BARE partition ships cloud-generous (a large
     // decode envelope the backend self-clamps); the four knobs ship as positive ints, and the
-    // local measured envelope rides the commented turboderp template.
+    // local measured envelope rides the commented per-alias template.
     const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_SERVICE_${k}`)));
     assert.ok(part.every((n) => Number.isFinite(n) && n > 0), "all four bare partition numbers ship as positive ints");
     // #352 — the bare partition is cloud-generous: 163840 − 16384 − 49152 − 1024 = 97280 prompt
-    // budget with a 65536 decode envelope the backend self-clamps (the local turboderp template
+    // budget with a 65536 decode envelope the backend self-clamps (the local per-alias template
     // is the 64Ki-prompt gemma envelope). Prompt budget stays well above the decode envelope.
     const promptBudget = part[0] - part[1] - part[2] - part[3];
     assert.ok(promptBudget > part[1] + part[2], `the bare prompt budget (${promptBudget}) exceeds the decode envelope — a healthy cloud partition`);
-    // Ships ACTIVE (#336): safe globally because the boot verify gates on the provider's own
-    // constrainsOutput claim — non-enforcing backends drop the grammar cleanly (notice, no
-    // refusal); claiming backends are verified end-to-end and fail hard on unconstrained output.
-    const variant = env.get("PLURNK_PROVIDERS_GBNF");
-    assert.ok(variant !== undefined && variant.length > 0 && variant !== "0", "PLURNK_PROVIDERS_GBNF ships active");
-    assert.doesNotThrow(() => fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`)), "the shipped variant resolves in the installed grammar");
+    // Ships PER ALIAS (#353): the bare default is OFF (a cloud model that ignores the grammar earns
+    // a divergence event every turn for nothing); a GBNF-capable alias opts in via a
+    // PLURNK_PROVIDERS_GBNF_<alias> suffix in the OPERATOR'S OWN .env — the template carries the
+    // MECHANISM, never a real alias name (alias names are personal config, not shipped defaults).
+    assert.equal(env.get("PLURNK_PROVIDERS_GBNF"), "", "the bare default ships OFF");
+    assert.ok(!/^PLURNK_PROVIDERS_GBNF_[a-z].*=(?!$)/m.test(rawExample), "no ACTIVE per-alias GBNF opt-in ships in the template — that belongs in the operator's .env");
+    assert.match(rawExample, /# PLURNK_PROVIDERS_GBNF_myalias=plurnk\.gbnf/, "the opt-in mechanism is documented with a placeholder alias");
 });
 
 test("[§operator-config-shipped-defaults] under the shipped policy wiring, the personality renders in the packet exactly once", async () => {
