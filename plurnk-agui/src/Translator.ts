@@ -26,13 +26,22 @@ export default class Translator {
         this.#runId = args.runId;
     }
 
-    runStarted(): AguiEvent[] {
-        return [{ type: "RUN_STARTED", threadId: this.#threadId, runId: this.#runId }];
+    runStarted(snapshot?: unknown): AguiEvent[] {
+        const events: AguiEvent[] = [{ type: "RUN_STARTED", threadId: this.#threadId, runId: this.#runId }];
+        // Spec flow: SNAPSHOT then DELTAs — the frontend's state gauge starts true, not blank.
+        if (snapshot !== undefined) events.push({ type: "STATE_SNAPSHOT", snapshot });
+        return events;
     }
 
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
+        // §agui-row-channel — the FULL wire row rides plurnk.row alongside the core projection:
+        // fold state, tags-in-signal, tokens, coordinates — everything the TUI/nvim render that
+        // the core vocabulary can't hold. Rich clients render from plurnk.row; generic clients
+        // never see the difference. This is the metadata channel the exclusive-portal migration
+        // stands on: core events for the world, plurnk.* for the family.
+        events.push({ type: "CUSTOM", name: "plurnk.row", value: e });
         if (typeof e.turn_id === "number" && e.turn_id !== this.#currentTurn) {
             if (this.#currentTurn !== null) events.push({ type: "STEP_FINISHED", stepName: `turn-${this.#currentTurn}` });
             this.#currentTurn = e.turn_id;

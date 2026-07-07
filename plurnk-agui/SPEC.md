@@ -50,6 +50,16 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   prompt budget, service#345). The bridge never recomputes a number; the daemon's gauge is
   the gauge.
 
+- **The row channel** {§agui-row-channel} — every log row ALSO rides `CUSTOM plurnk.row`
+  carrying the full wire entry (fold state, tags-in-signal, tokens, coordinate) alongside its
+  core projection. Rich clients (TUI/nvim) render plurnk-native fidelity from `plurnk.row`;
+  generic clients never see the difference. This is the metadata channel the exclusive-portal
+  migration stands on.
+- **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
+  daemon's `providers.list` truth (the effective prompt budget, the active model), then
+  `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging
+  up IS the abort signal; no run is orphaned unwatched.
+
 ## Stop-the-world {§agui-proposal-resolve}
 
 Every daemon proposal — file edits, MCP auths, `[300]` operator questions (service#346) —

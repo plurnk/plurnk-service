@@ -88,7 +88,11 @@ export default class Server {
             for (const e of events) res.write(`data: ${JSON.stringify(e)}\n\n`);
         };
 
-        emit(translator.runStarted());
+        // The state gauge starts TRUE: the daemon's providers.list carries the effective prompt
+        // budget (service#345) — passed through verbatim, never recomputed.
+        const providers = await client.call<{ aliases: Array<{ alias: string; model: string; active: boolean; contextSize: number | null }> }>("providers.list", {}).catch(() => null);
+        const active = Array.isArray(providers?.aliases) ? providers.aliases.find((a) => a.active) ?? null : null;
+        emit(translator.runStarted(active === null ? undefined : { budget: { contextSize: active.contextSize }, model: { alias: active.alias, id: active.model } }));
         const done = new Promise<void>((resolve) => {
             const offEntry = client.on("log/entry", (p) => emit(translator.logEntry(p as LogEntryNotification)));
             const offProposal = client.on("loop/proposal", (p) => emit(translator.proposal(p as ProposalNotification)));
@@ -99,12 +103,19 @@ export default class Server {
                 resolve();
             });
         });
-        await client.call("loop.run", {
+        const ack = await client.call<{ loopId: number }>("loop.run", {
             prompt: lastUser.content,
             maxTurns: Number(env("PLURNK_AGUI_MAX_TURNS")),
             flags: { yolo: env("PLURNK_AGUI_YOLO") === "1" },
         });
+        // AG-UI cancellation: the frontend hanging up IS the abort signal — a dropped SSE
+        // stream cancels the loop rather than orphaning a run nobody is watching.
+        let finished = false;
+        req.on("close", () => {
+            if (!finished) void client.call("loop.cancel", { loopId: ack.loopId }).catch(() => {});
+        });
         await done;
+        finished = true;
         res.end();
     }
 
