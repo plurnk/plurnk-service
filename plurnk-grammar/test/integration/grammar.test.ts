@@ -203,23 +203,26 @@ test("value-add: warning carries severity through to the TelemetryEvent level", 
 
 test("value-add: mid-turn termination (op after a disposition SEND) is lifted to the rule", () => {
     const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(known:///a):v:EDIT");
-    assert.ok(errs.some((e) => /a disposition SEND \(code 102\/200\/300\/499\) ends the turn - nothing may follow it/.test(e!.message)));
+    // Shape-only wording: no code enumeration in error messages (the menu is canon's job) -
+    // enumerating painted us into corners twice (202 retirement, the 300 injectable-only leak).
+    assert.ok(errs.some((e) => /a disposition SEND ends the turn - nothing may follow it/.test(e!.message)));
     // No longer the bare token-level fallback.
     assert.equal(errs.some((e) => /unexpected open tag/.test(e!.message)), false);
 });
 
 test("value-add: two disposition SENDs get the termination rule (the second cannot follow the first)", () => {
     const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[102]:cont:SEND\n<<SEND[200]:done:SEND");
-    assert.ok(errs.some((e) => /a disposition SEND .* ends the turn/.test(e!.message)));
+    assert.ok(errs.some((e) => /a disposition SEND ends the turn/.test(e!.message)));
 });
 
 test("202 is RETIRED (#54): an ordinary mid-comms code, and a turn ending on it never terminated", () => {
     // Mid position: plain comms before a real terminal — parses clean.
     const ok = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND");
     assert.equal(ok.items.filter((i) => i.kind === "error").length, 0);
-    // Terminal position: no disposition — the migration steer names the live code set.
+    // Terminal position: no disposition — the shape imperative fires (no code menu in the
+    // message; which codes terminate is canon's teaching, not the error's).
     const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND");
-    assert.ok(errs.some((e) => /end with a terminal `<<SEND\[102\|200\|300\|499\]/.test(e!.message)));
+    assert.ok(errs.some((e) => /end with a terminal `<<SEND\[code\]/.test(e!.message)));
 });
 
 test("value-add: the mid-termination lift is suppressed when the turn derailed mid-op", () => {

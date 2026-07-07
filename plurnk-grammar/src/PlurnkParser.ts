@@ -135,7 +135,7 @@ export default class PlurnkParser {
         if (hasSpecificError) return;
         const fix = !hasPlan
             ? "a turn must begin with `<<PLAN:…:PLAN` (the required first operation)"
-            : "a turn must end with a terminal `<<SEND[102|200|300|499]:…:SEND` carrying the loop status";
+            : "a turn must end with a terminal `<<SEND[code]:…:SEND` carrying the loop status";
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 
@@ -162,7 +162,7 @@ export default class PlurnkParser {
                 i.error.line,
                 i.error.column,
                 "parser",
-                "a disposition SEND (code 102/200/300/499) ends the turn - nothing may follow it",
+                "a disposition SEND ends the turn - nothing may follow it",
             );
         }
     }

@@ -1,6 +1,6 @@
 # Plurnk Service
 
-Plurnk Service is an agentic service for acting on and answering user prompts.
+Plurnk Service is an agentic service for acting on and answering user prompts with multiple Plurnk OPs per turn.
 
 Plurnk Service Features:
 
@@ -39,7 +39,7 @@ The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 <<PLAN:concise plan goes here:PLAN is required at the beginning of a turn.
 <<FIND(path)::FIND returns rows of matching results
 <<READ(path)::READ returns lines of matching content. Every line is prefixed with the line number and a hard tab, `N:	`.
-<<EDIT(path):literal text:EDIT is only for adding or modifying files and entries. Do not attempt to edit log items.
+<<EDIT(path):literal text:EDIT is only for creating or modifying files and entries. Do not attempt to edit log items.
 <<EDIT(path):literal text:EDIT replaces the selected line(s) `<line,line>` with literal body content, never with patterns.
 <<OPEN(log path)::OPEN expands (`+`) the log item body to view it (costs tokens). Not all log items have a body (`*`).
 <<FOLD(log path)::FOLD hides (`-`) the log item body (saves tokens). FOLDed item tokens="" shows token cost if OPENed.
@@ -72,6 +72,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 | none   | glob     | pattern                     |
 
 * Mapping is universal (you can do jsonpath against XML files and xpath on json files, etc...).
+* Matching returns whole lines, never extracted values: `Alice` returns `42:	I bought Alice some flowers`, not `1:	Alice`.
 * Escape a literal `#` inside regex patterns with `\#`.
 
 ### `(path)`
