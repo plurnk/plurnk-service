@@ -1,0 +1,42 @@
+{
+    "name": "@plurnk/plurnk-agui",
+    "version": "0.1.0",
+    "description": "AG-UI bridge for the plurnk daemon — a client of the JSON-RPC wire, a server of the Agent-User Interaction Protocol. Any AG-UI frontend becomes a plurnk client.",
+    "type": "module",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-agui.git"
+    },
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "bin": {
+        "plurnk-agui": "./src/bin/serve.ts"
+    },
+    "files": [
+        "src",
+        ".env.example",
+        "README.md",
+        "SPEC.md"
+    ],
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "start": "node --env-file-if-exists=.env.example --env-file-if-exists=.env src/bin/serve.ts",
+        "test": "npm run test:lint && npm run test:unit && npm run test:intg",
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --env-file-if-exists=.env.example --test src/*.test.ts",
+        "test:intg": "node --env-file-if-exists=.env.example --test test/intg/*.test.ts",
+        "deps:fresh": "npm outdated",
+        "prepare": "git config core.hooksPath .githooks || true",
+        "prepublishOnly": "npm test"
+    },
+    "devDependencies": {
+        "@types/node": "24.10.1",
+        "@types/ws": "8.18.1",
+        "typescript": "5.9.3",
+        "ws": "8.21.0"
+    }
+}

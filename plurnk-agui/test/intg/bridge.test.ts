@@ -1,0 +1,101 @@
+// The full bridge against a FIXTURE daemon speaking the plurnk JSON-RPC wire shapes: POST an
+// AG-UI RunAgentInput, read the SSE stream, resolve a proposal mid-run. The fixture is honest —
+// the bridge's contract IS the daemon wire, so a wire-shaped fixture tests exactly the seam.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { WebSocketServer } from "ws";
+import Server from "../../src/Server.ts";
+
+const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void>; resolved: Array<Record<string, unknown>> }> => {
+    const http = createServer();
+    const wss = new WebSocketServer({ server: http });
+    const resolved: Array<Record<string, unknown>> = [];
+    wss.on("connection", (socket) => {
+        const send = (msg: object): void => socket.send(JSON.stringify(msg));
+        socket.on("message", (raw: Buffer) => {
+            const msg = JSON.parse(raw.toString()) as { id: number; method: string; params: Record<string, unknown> };
+            if (msg.method === "session.attach") { send({ jsonrpc: "2.0", id: msg.id, error: { code: -1, message: "no such session" } }); return; }
+            if (msg.method === "session.create") { send({ jsonrpc: "2.0", id: msg.id, result: { id: 1, name: msg.params.name, runId: 2, runName: "model-x" } }); return; }
+            if (msg.method === "loop.resolve") {
+                resolved.push(msg.params);
+                send({ jsonrpc: "2.0", id: msg.id, result: { ok: true } });
+                // The answered question resolves the world: the model concludes.
+                send({ jsonrpc: "2.0", method: "log/entry", params: { entry: { id: 12, coordinate: "1/2/1/SEND", op: "SEND", origin: "model", signal: 200, status_rx: 200, turn_id: 2, tx: { op: "SEND", body: "Deploying to staging." } } } });
+                send({ jsonrpc: "2.0", method: "loop/terminated", params: { loopId: 1, finalStatus: 200, hitMaxTurns: false, usage: { promptTokens: 100, completionTokens: 20, costPico: 0, contextTokens: 100, contextSize: 6848, meta: {} } } });
+                return;
+            }
+            if (msg.method === "loop.run") {
+                send({ jsonrpc: "2.0", id: msg.id, result: { loopId: 1, action: "enqueued_new_loop", finalStatus: 100 } });
+                // The scripted run: PLAN → a READ with rx → a [300] question proposal (stop the world).
+                send({ jsonrpc: "2.0", method: "log/entry", params: { entry: { id: 10, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, tx: { op: "PLAN", body: "ask the operator" } } } });
+                send({ jsonrpc: "2.0", method: "log/entry", params: { entry: { id: 11, coordinate: "1/1/2/READ", op: "READ", origin: "model", scheme: "known", pathname: "/notes.md", turn_id: 1, tx: { op: "READ", body: null }, rx: { status: 200, content: "notes" }, status_rx: 200 } } });
+                send({ jsonrpc: "2.0", method: "loop/proposal", params: { logEntryId: 42, sessionId: 1, runId: 2, loopId: 1, turnId: 1, op: "SEND", target: { scheme: null, pathname: null }, body: "", attrs: { question: "Which environment?", choices: ["prod", "staging"] }, flags: { yolo: false } } });
+                return;
+            }
+            send({ jsonrpc: "2.0", id: msg.id, result: {} });
+        });
+    });
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+    const addr = http.address() as { port: number };
+    return {
+        url: `ws://127.0.0.1:${addr.port}`,
+        close: () => new Promise((resolve) => { wss.close(); http.close(() => resolve()); }),
+        resolved,
+    };
+};
+
+test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client] e2e: RunAgentInput → SSE projection → /resolve answers the question → RUN_FINISHED", async () => {
+    const daemon = await fixtureDaemon();
+    process.env.PLURNK_AGUI_DAEMON_URL = daemon.url;
+    process.env.PLURNK_AGUI_PORT = "0";
+    const bridge = new Server();
+    const { port } = await bridge.listen();
+    try {
+        const events: Array<{ type: string; name?: string; value?: { logEntryId?: number } }> = [];
+        const streamDone = (async () => {
+            const res = await fetch(`http://127.0.0.1:${port}/`, {
+                method: "POST",
+                headers: { "content-type": "application/json", accept: "text/event-stream" },
+                body: JSON.stringify({ threadId: "t1", runId: "r1", messages: [{ role: "user", content: "deploy the service" }] }),
+            });
+            assert.equal(res.headers.get("content-type"), "text/event-stream");
+            const reader = res.body!.getReader();
+            let buffer = "";
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += new TextDecoder().decode(value);
+                let i;
+                while ((i = buffer.indexOf("\n\n")) >= 0) {
+                    const frame = buffer.slice(0, i); buffer = buffer.slice(i + 2);
+                    if (frame.startsWith("data: ")) events.push(JSON.parse(frame.slice(6)));
+                }
+            }
+        })();
+
+        // Wait for the stop-the-world proposal to reach the frontend, then answer it.
+        for (let i = 0; i < 100 && !events.some((e) => e.name === "plurnk.proposal"); i++) await new Promise((r) => setTimeout(r, 50));
+        const proposal = events.find((e) => e.name === "plurnk.proposal");
+        assert.ok(proposal, "the [300] question surfaced as plurnk.proposal on the SSE stream");
+        const resolveRes = await fetch(`http://127.0.0.1:${port}/resolve`, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ threadId: "t1", logEntryId: proposal!.value!.logEntryId, decision: "accept", body: "staging" }),
+        });
+        assert.equal(resolveRes.status, 200);
+        await streamDone;
+
+        assert.equal(daemon.resolved[0]?.body, "staging", "the accept body reached the daemon's loop.resolve — the answer path");
+        const types = events.map((e) => e.type);
+        assert.equal(types[0], "RUN_STARTED");
+        assert.ok(types.includes("THINKING_TEXT_MESSAGE_CONTENT"), "PLAN projected as thinking");
+        assert.ok(types.includes("TOOL_CALL_RESULT"), "the READ's rx projected as a tool result");
+        assert.ok(types.includes("TEXT_MESSAGE_CONTENT"), "the concluding SEND projected as assistant speech");
+        assert.ok(types.includes("STATE_DELTA"), "the budget truth rode the stream");
+        assert.equal(types[types.length - 1], "RUN_FINISHED", "the stream ends on the run's conclusion");
+    } finally {
+        await bridge.close();
+        await daemon.close();
+    }
+});
