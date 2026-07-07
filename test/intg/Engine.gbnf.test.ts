@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { Mock } from "@plurnk/plurnk-providers";
 import type { ChatMessage } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -32,10 +32,10 @@ test("[§gbnf-per-alias] PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias
     // knob. Bare is the fallback: GBNF only helps sampling-constraining backends, so it ships OFF
     // by default and each GBNF-capable alias opts in via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
     const dsl = "<<SEND[200]:ok:SEND";
-    // Alias-agnostic: the daemon test's active alias decides — resolve it and set ITS suffix, so
-    // this never hardcodes an operator's private alias name.
-    const alias = resolveActiveAlias(process.env)?.alias ?? "";
-    const suffixKey = `PLURNK_PROVIDERS_GBNF_${alias}`;
+    // The test lane's active alias is `mocktest` (.env.test) — deterministic on any machine, never
+    // the operator's personal .env. The Mock carries no side-table alias, so #grammarConstraint
+    // resolves the GBNF knob against resolveActiveAlias → mocktest; we set only ITS suffix.
+    const suffixKey = "PLURNK_PROVIDERS_GBNF_mocktest";
     const keys = ["PLURNK_PROVIDERS_GBNF", suffixKey];
     const orig = keys.map((k) => process.env[k]);
     try {
