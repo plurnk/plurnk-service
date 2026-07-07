@@ -20,10 +20,12 @@ export default class Translator {
     #threadId: string;
     #runId: string;
     #currentTurn: number | null = null;
+    #modelRunId: number | null;
 
-    constructor(args: { threadId: string; runId: string }) {
+    constructor(args: { threadId: string; runId: string; modelRunId?: number | null }) {
         this.#threadId = args.threadId;
         this.#runId = args.runId;
+        this.#modelRunId = args.modelRunId ?? null;
     }
 
     runStarted(snapshot?: unknown): AguiEvent[] {
@@ -36,12 +38,22 @@ export default class Translator {
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
+        // §agui-topology-scope — the session broadcast carries EVERY run's rows (workers, the
+        // plurnk run, siblings); only the THREAD's model run projects onto the core vocabulary.
+        // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
+        // never interleaved into the conversation a generic frontend renders.
+        const runId = (e as { run_id?: number }).run_id;
+        const foreign = this.#modelRunId !== null && typeof runId === "number" && runId !== this.#modelRunId;
         // §agui-row-channel — the FULL wire row rides plurnk.row alongside the core projection:
         // fold state, tags-in-signal, tokens, coordinates — everything the TUI/nvim render that
         // the core vocabulary can't hold. Rich clients render from plurnk.row; generic clients
         // never see the difference. This is the metadata channel the exclusive-portal migration
         // stands on: core events for the world, plurnk.* for the family.
         events.push({ type: "CUSTOM", name: "plurnk.row", value: e });
+        if (foreign) {
+            events.push({ type: "CUSTOM", name: "plurnk.ambient", value: e });
+            return events;
+        }
         if (typeof e.turn_id === "number" && e.turn_id !== this.#currentTurn) {
             if (this.#currentTurn !== null) events.push({ type: "STEP_FINISHED", stepName: `turn-${this.#currentTurn}` });
             this.#currentTurn = e.turn_id;

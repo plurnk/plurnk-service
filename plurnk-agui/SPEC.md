@@ -86,6 +86,15 @@ method registry is the contract; discover it with `{method: "discover"}`. Sessio
 for a thread's FIRST run ride `RunAgentInput.forwardedProps.plurnk` {§agui-forwarded-props}
 (`projectRoot`, `constraints`, `settings` — composing over the bridge's questions default).
 
+- **Topology scoping** {§agui-topology-scope} — the session broadcast carries every run's rows
+  (workers, the plurnk run, siblings); only the THREAD's model run projects onto the core
+  vocabulary. Foreign rows ride `plurnk.row`/`plurnk.ambient` — rich clients render the
+  topology; a worker's SEND never masquerades as the assistant speaking.
+- **Concurrent runs: the daemon decides** — a `POST /` while a run is live passes through to
+  `loop.run`, whose OWN semantics apply (inject-into-the-active-loop or enqueue — the ack's
+  `action` says which). Mechanism, not policy: the bridge adds no queueing of its own; both
+  open streams observe the shared session events and end at `loop/terminated`.
+
 ## The run endpoint {§agui-run-endpoint}
 
 `POST /` (or `/agui`) with an AG-UI `RunAgentInput` body: the last `user` message becomes the

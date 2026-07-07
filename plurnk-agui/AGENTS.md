@@ -47,13 +47,13 @@ WS narrows to bridge-only).
       (rides the auth item below).
 - [x] `forwardedProps.plurnk` → shipped (§agui-forwarded-props): projectRoot, constraints,
       settings on the thread's first run, composing over the bridge's questions default.
-- [ ] Concurrent-run policy per thread: second POST while a run is live → loop.inject vs 409
-      (today: undefined — decide, document, test).
+- [x] Concurrent-run policy: ruled mechanism-not-policy — the daemon's own loop.run semantics
+      (inject/enqueue) apply; the bridge adds no queueing (SPEC).
 - [ ] Frontend TOOLS (RunAgentInput.tools) → an ephemeral exec runtime whose calls stop the
       world like proposals — the model gains client-side tools through the standard field.
       (Design with the execs agent; the biggest unlock, the least defined.)
-- [ ] Worker-run topology: scope the core projection to the started run; workers surface as
-      `plurnk.topology` customs (AG-UI has no multi-agent-tree vocabulary).
+- [x] Worker-run topology: shipped (§agui-topology-scope) — foreign runs ride
+      plurnk.row/ambient; a worker's SEND never masquerades as the assistant.
 - [ ] Auth on the bridge port (the daemon's #116 relay exists; the bridge must not be the
       unauthenticated hole).
 - [ ] loop/quiesced + stream/concluded + embed_progress → plurnk.* customs (today unsubscribed).
