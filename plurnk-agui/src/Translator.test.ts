@@ -8,7 +8,7 @@ const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotificati
     entry: { id: 7, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
 });
 
-test("[§agui-projection] a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
+test("[§agui-projection][§agui-row-channel] a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
     const events = tr.logEntry(entry({ op: "READ", scheme: "known", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200 }));
@@ -90,4 +90,25 @@ test("[§agui-topology-scope] a FOREIGN run's rows never enter the core stream �
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), ...( { run_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
+});
+
+test("[§agui-replay] the session log replays as MESSAGES_SNAPSHOT — model SENDs are the conversation spine", () => {
+    const tr = new Translator({ threadId: "th", runId: "r" });
+    const events = tr.replay([
+        { id: 1, op: "PLAN", origin: "model", tx: { body: "think" } },
+        { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", tx: { body: "The answer is 42." } },
+        { id: 3, op: "EDIT", origin: "plurnk", tx: { body: "ambient" } },
+        { id: 4, op: "SEND", origin: "model", tx: { body: "And done." } },
+    ]);
+    assert.equal(events.length, 1);
+    const snap = events[0] as { type: string; messages: Array<{ role: string; content: string }> };
+    assert.equal(snap.type, "MESSAGES_SNAPSHOT");
+    assert.deepEqual(snap.messages.map((m) => m.content), ["The answer is 42.", "And done."], "SENDs only — everything else stays reachable via live plurnk.row, never duplicated into history");
+    assert.ok(snap.messages.every((m) => m.role === "assistant"));
+});
+
+test("[§agui-zero-dep] zero runtime dependencies — the standing decision, enforced", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { dependencies?: Record<string, string> };
+    assert.deepEqual(pkg.dependencies ?? {}, {}, "runtime deps stay empty until @ag-ui/core is stable without Zod (SPEC §agui-zero-dep)");
 });

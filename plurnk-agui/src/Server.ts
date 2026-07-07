@@ -39,6 +39,17 @@ export default class Server {
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         try {
+            // CORS: browser frontends (the demo page, CopilotKit dev servers) POST cross-origin.
+            res.setHeader("access-control-allow-origin", "*");
+            res.setHeader("access-control-allow-headers", "content-type, authorization");
+            if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
+            // §agui-auth — empty token = local trust (loopback bind is the boundary, the daemon's
+            // own posture); set = every POST carries the bearer, checked before any body read.
+            const token = process.env.PLURNK_AGUI_TOKEN ?? "";
+            if (token.length > 0 && req.headers.authorization !== `Bearer ${token}`) {
+                res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "bearer token required" }));
+                return;
+            }
             if (req.method === "POST" && (req.url === "/" || req.url === "/agui")) return await this.#run(req, res);
             if (req.method === "POST" && req.url === "/resolve") return await this.#resolve(req, res);
             if (req.method === "POST" && req.url === "/plurnk/rpc") return await this.#rpc(req, res);
@@ -57,7 +68,7 @@ export default class Server {
         const name = `${env("PLURNK_AGUI_SESSION_PREFIX")}-${threadId}`;
         // Reattach by NAME via session.list → attach by ID (the daemon's real contract — the
         // earlier attach-by-name silently created a fresh session every bridge restart, found
-        // by the service's own §proposal-list e2e). A rediscovered thread is a REATTACH.
+        // by the service's own the service SPEC proposal-list contract e2e). A rediscovered thread is a REATTACH.
         const listed = await client.call<{ sessions: Array<{ id: number; name: string }> }>("session.list", {});
         const known = Array.isArray(listed?.sessions) ? listed.sessions.find((x) => x.name === name) : undefined;
         let sessionId: number;
@@ -103,7 +114,6 @@ export default class Server {
             "content-type": "text/event-stream",
             "cache-control": "no-cache",
             "connection": "keep-alive",
-            "access-control-allow-origin": "*",
         });
         const emit = (events: AguiEvent[]): void => {
             for (const e of events) res.write(`data: ${JSON.stringify(e)}\n\n`);

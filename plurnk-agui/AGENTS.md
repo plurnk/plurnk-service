@@ -43,8 +43,7 @@ WS narrows to bridge-only).
 - [x] MESSAGES_SNAPSHOT on thread attach — shipped (§agui-replay): the model run's SENDs via
       session.runs + log.read; pending proposals re-surface via proposal.list. Live-proven
       across a bridge restart.
-- [x] `POST /plurnk/rpc` — shipped (§agui-management-plane); auth passthrough still owed
-      (rides the auth item below).
+- [x] `POST /plurnk/rpc` — shipped (§agui-management-plane), gated by §agui-auth.
 - [x] `forwardedProps.plurnk` → shipped (§agui-forwarded-props): projectRoot, constraints,
       settings on the thread's first run, composing over the bridge's questions default.
 - [x] Concurrent-run policy: ruled mechanism-not-policy — the daemon's own loop.run semantics
@@ -54,11 +53,11 @@ WS narrows to bridge-only).
       (Design with the execs agent; the biggest unlock, the least defined.)
 - [x] Worker-run topology: shipped (§agui-topology-scope) — foreign runs ride
       plurnk.row/ambient; a worker's SEND never masquerades as the assistant.
-- [ ] Auth on the bridge port (the daemon's #116 relay exists; the bridge must not be the
-      unauthenticated hole).
+- [x] Auth on the bridge port: shipped (§agui-auth) — bearer token, empty = local trust.
 - [x] loop/quiesced + stream/concluded → plurnk.quiesced/plurnk.stream customs (telemetry already rode plurnk.telemetry).
 - [ ] AG-UI native interrupt mapping for proposals (today: CUSTOM plurnk.proposal + POST /resolve).
-- [ ] Reconnect/backoff on daemon restart (today: fail-hard, the operator restarts the bridge).
-- [ ] Lockstep test (spec-anchors style, port from plurnk-service).
-- [ ] Live round-trip with a real AG-UI frontend (CopilotKit dev harness).
+- [x] Reconnect: RULED fail-hard by design (SPEC) — the bridge is stateless, reattach
+      reconstructs threads by name, and a dead daemon should look dead.
+- [x] Lockstep test: shipped — three legs (promises cited, citations resolve, comment refs never rot); caught five uncited promises + its own title on first run.
+- [x] A zero-dep reference frontend shipped (demo/index.html — fetch + SSE, nothing else): runs, thinking, tools, budget gauge, proposal chooser with free response. CopilotKit round-trip remains a community-side validation.
 - [ ] Owner decision: which agent inherits this repo (client agent is the natural neighbor).

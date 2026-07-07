@@ -50,7 +50,7 @@ const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void
     };
 };
 
-test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client] e2e: RunAgentInput → SSE projection → /resolve answers the question → RUN_FINISHED", async () => {
+test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client][§agui-forwarded-props][§agui-management-plane] e2e: RunAgentInput → SSE projection → /resolve answers the question → RUN_FINISHED", async () => {
     const daemon = await fixtureDaemon();
     process.env.PLURNK_AGUI_DAEMON_URL = daemon.url;
     process.env.PLURNK_AGUI_PORT = "0";
@@ -110,6 +110,25 @@ test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client] e2e:
         const rpcBody = await rpc.json() as { result: { prompts: string[] } };
         assert.deepEqual(rpcBody.result.prompts, ["deploy the service"], "the daemon's response, verbatim");
     } finally {
+        await bridge.close();
+        await daemon.close();
+    }
+});
+
+test("[§agui-auth] a set token gates every POST; empty means local trust", async () => {
+    const daemon = await fixtureDaemon();
+    process.env.PLURNK_AGUI_DAEMON_URL = daemon.url;
+    process.env.PLURNK_AGUI_PORT = "0";
+    process.env.PLURNK_AGUI_TOKEN = "s3cret";
+    const bridge = new Server();
+    const { port } = await bridge.listen();
+    try {
+        const denied = await fetch(`http://127.0.0.1:${port}/plurnk/rpc`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "t", method: "ping" }) });
+        assert.equal(denied.status, 401, "no bearer → 401 before any body work");
+        const allowed = await fetch(`http://127.0.0.1:${port}/plurnk/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer s3cret" }, body: JSON.stringify({ threadId: "t", method: "session.prompts", params: {} }) });
+        assert.equal(allowed.status, 200, "the bearer opens the door");
+    } finally {
+        delete process.env.PLURNK_AGUI_TOKEN;
         await bridge.close();
         await daemon.close();
     }

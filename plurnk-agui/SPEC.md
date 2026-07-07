@@ -95,6 +95,14 @@ for a thread's FIRST run ride `RunAgentInput.forwardedProps.plurnk` {§agui-forw
   `action` says which). Mechanism, not policy: the bridge adds no queueing of its own; both
   open streams observe the shared session events and end at `loop/terminated`.
 
+- **Auth** {§agui-auth} — `PLURNK_AGUI_TOKEN` empty (shipped) = local trust: the loopback bind
+  is the boundary, the daemon's own posture. Set, every POST must carry
+  `Authorization: Bearer <token>`, checked before any body is read.
+- **Daemon loss fails hard — by design, not omission**: the bridge holds no state the daemon
+  doesn't, so a dropped daemon connection kills the affected request loudly and the operator's
+  supervisor restarts the bridge (reattach reconstructs every thread by name). Backoff loops
+  hide outages; a dead daemon should look dead.
+
 ## The run endpoint {§agui-run-endpoint}
 
 `POST /` (or `/agui`) with an AG-UI `RunAgentInput` body: the last `user` message becomes the

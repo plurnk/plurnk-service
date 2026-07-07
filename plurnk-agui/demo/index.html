@@ -1,0 +1,114 @@
+<!doctype html>
+<!-- The simplest possible AG-UI frontend — one static file, zero dependencies — driving the
+     whole plurnk engine through the bridge: runs, thinking, tool calls, budget state,
+     stop-the-world proposals (file edits / [300] questions) answered inline. Open it in a
+     browser next to `plurnk-agui`; it is both a demo and the reference for what a COMMUNITY
+     frontend needs: fetch + SSE parsing, nothing else. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>plurnk · AG-UI demo</title>
+<style>
+    :root { --bg: #14161a; --fg: #d5dae2; --dim: #7c8698; --accent: #7aa2f7; --warn: #e0af68; }
+    body { background: var(--bg); color: var(--fg); font: 14px/1.5 ui-monospace, monospace; max-width: 56rem; margin: 2rem auto; padding: 0 1rem; }
+    header { display: flex; gap: 1rem; align-items: baseline; }
+    h1 { font-size: 1rem; color: var(--accent); }
+    #budget { color: var(--dim); margin-left: auto; }
+    #log { display: grid; gap: .4rem; margin: 1rem 0; }
+    .msg { padding: .5rem .75rem; border-left: 3px solid var(--accent); background: #1a1d23; white-space: pre-wrap; }
+    .thinking { border-color: var(--dim); color: var(--dim); font-style: italic; }
+    .tool { border-color: #414868; color: var(--dim); font-size: .85em; }
+    .proposal { border-color: var(--warn); background: #22201a; display: grid; gap: .5rem; }
+    .proposal nav { display: flex; gap: .5rem; flex-wrap: wrap; }
+    button { background: #24283b; color: var(--fg); border: 1px solid #414868; padding: .3rem .8rem; cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    form { display: flex; gap: .5rem; }
+    input[type=text] { flex: 1; background: #1a1d23; color: var(--fg); border: 1px solid #414868; padding: .5rem .75rem; }
+</style>
+</head>
+<body>
+<header><h1>plurnk · AG-UI</h1><span id="budget"></span></header>
+<main id="log"></main>
+<form id="ask"><input type="text" id="prompt" placeholder="ask the engine…" autofocus><button>run</button></form>
+<script type="module">
+const BRIDGE = location.hash.slice(1) || "http://127.0.0.1:3080";
+const threadId = sessionStorage.threadId ??= crypto.randomUUID().slice(0, 8);
+const log = document.getElementById("log");
+const budget = document.getElementById("budget");
+
+const block = (cls, text) => {
+    const el = document.createElement("div");
+    el.className = `msg ${cls}`;
+    el.textContent = text;
+    log.append(el);
+    el.scrollIntoView({ block: "end" });
+    return el;
+};
+
+const renderProposal = (v) => {
+    const el = block("proposal", v.attrs?.question ?? `${v.op} → ${v.target?.scheme ?? ""}://${v.target?.pathname ?? ""}`);
+    const nav = document.createElement("nav");
+    const answer = async (decision, body) => {
+        await fetch(`${BRIDGE}/resolve`, { method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ threadId, logEntryId: v.logEntryId, decision, ...(body !== undefined ? { body } : {}) }) });
+        nav.replaceChildren(Object.assign(document.createElement("span"), { textContent: `→ ${body ?? decision}` }));
+    };
+    for (const choice of v.attrs?.choices ?? []) {
+        const b = document.createElement("button");
+        b.textContent = choice;
+        b.onclick = () => answer("accept", choice);
+        nav.append(b);
+    }
+    const free = document.createElement("input");
+    free.type = "text"; free.placeholder = "Free response…";
+    free.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); void answer("accept", free.value); } };
+    const reject = document.createElement("button");
+    reject.textContent = "reject";
+    reject.onclick = () => answer("reject");
+    nav.append(free, reject);
+    el.append(nav);
+};
+
+const handle = (e) => {
+    switch (e.type) {
+        case "TEXT_MESSAGE_CONTENT": block("", e.delta); break;
+        case "THINKING_TEXT_MESSAGE_CONTENT": block("thinking", e.delta); break;
+        case "TOOL_CALL_START": block("tool", `⚙ ${e.toolCallName} …`); break;
+        case "MESSAGES_SNAPSHOT": for (const m of e.messages) block("", m.content); break;
+        case "STATE_SNAPSHOT": budget.textContent = e.snapshot?.model?.alias ? `${e.snapshot.model.alias} · budget ${e.snapshot.budget?.contextSize ?? "?"}` : ""; break;
+        case "STATE_DELTA": {
+            const used = e.delta.find((d) => d.path === "/budget/contextTokens")?.value;
+            const size = e.delta.find((d) => d.path === "/budget/contextSize")?.value;
+            if (used !== undefined && size) budget.textContent = `ctx ${Math.round(used / size * 100)}% of ${size}`;
+            break;
+        }
+        case "RUN_ERROR": block("proposal", `run error: ${e.message}`); break;
+        case "CUSTOM": if (e.name === "plurnk.proposal") renderProposal(e.value); break;
+    }
+};
+
+document.getElementById("ask").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const prompt = document.getElementById("prompt").value.trim();
+    if (!prompt) return;
+    document.getElementById("prompt").value = "";
+    block("", `» ${prompt}`).style.borderColor = "#9ece6a";
+    const res = await fetch(BRIDGE + "/", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ threadId, runId: crypto.randomUUID(), messages: [{ role: "user", content: prompt }] }) });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value);
+        let i;
+        while ((i = buffer.indexOf("\n\n")) >= 0) {
+            const frame = buffer.slice(0, i); buffer = buffer.slice(i + 2);
+            if (frame.startsWith("data: ")) handle(JSON.parse(frame.slice(6)));
+        }
+    }
+};
+</script>
+</body>
+</html>
