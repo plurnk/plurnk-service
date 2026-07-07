@@ -784,7 +784,7 @@ export default class Dispatcher {
                     // attrs.retrievalOnly — the strike decoupler (owner ruling): atomic-turn-
                     // pretrained models pair fetch-and-answer by habit; the refusal teaches,
                     // the strike executed. Engine reads this to skip the strike.
-                    return { status: 409, error: "Termination attempted despite retrieval operations. Results retrieved.", attrs: { retrievalOnly: true } };
+                    return { status: 409, error: "Termination attempted despite this turn's retrieval operations. Results retrieved.", attrs: { retrievalOnly: true } };
                 }
                 return { status: 409, error: `Attempted [200] termination with pending work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
             }

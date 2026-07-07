@@ -4,7 +4,7 @@ import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
 
-type OpenFoldResult = { status: number };
+type OpenFoldResult = { status: number; matched?: number };
 
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
 // is wire-rendering self-documentation derived from the row's `op` field;
@@ -133,8 +133,18 @@ export default class Log {
             const row = await (db.log_id_by_coordinate as PrepMethod).get<{ id: number }>({ run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
             return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
         }
-        const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob: pathname });
-        if (matched.length === 0) return coord === null && !pathname.includes("*") ? { status: 400, ids: [] } : { status: 404, ids: [] };
+        // The folder idiom, uniform (§log-curation-folder-idiom): a trailing slash means "the
+        // contents", exactly as READ(known:///docs/) fans out a folder — FOLD(log:///1/2/) folds
+        // turn 1/2's rows. run33: the model reached for whole-turn folds in the slash form six
+        // times (its most natural curation gesture) and got a wall of 400s.
+        const glob = pathname.endsWith("/") ? `${pathname}*` : pathname;
+        const malformed = coord === null && !glob.includes("*");
+        if (malformed) return { status: 400, ids: [] };
+        const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob });
+        // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
+        // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
+        // errors surface (>= 400), and the rx carries matched: 0, clearly shown.
+        if (matched.length === 0) return { status: 204, ids: [] };
         let selected = matched;
         if (lineMarker !== null) {
             const page = paginate(matched, LineMarkerOps.firstLast(lineMarker));
@@ -149,9 +159,10 @@ export default class Log {
         if (statement.target === null) return { status: 400 };
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const r = await this.#resolveIds(pathname, statement.lineMarker, ctx);
+        if (r.status === 204) return { status: 204, matched: 0 };
         if (r.status !== 200) return { status: r.status };
         for (const id of r.ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
-        return { status: 200 };
+        return { status: 200, matched: r.ids.length };
     }
 
     // KILL erases log items (plurnk.md:36, :98) — the model's DB-storage curation lever and

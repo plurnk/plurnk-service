@@ -188,3 +188,33 @@ test("KILL erases an op='error' log item exactly like any other — errors ARE n
         assert.equal(gone, undefined, "the error row is gone");
     } finally { await db.close(); }
 });
+
+test("[§log-curation-folder-idiom] FOLD(log:///1/1/) folds the turn's rows — the trailing slash means the contents, uniform with READ(folder/)", async () => {
+    const { db, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        const r = await new Log().fold(
+            foldStmt(urlPath("log", "/1/1/")),
+            makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(r.status, 200);
+        assert.equal(r.matched, 1, "the count of curated rows, clearly shown");
+        assert.equal(await getExpanded(db, runId), 0, "the turn's row folded");
+    } finally { await db.close(); }
+});
+
+test("[§log-curation-folder-idiom] a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an error (owner ruling)", async () => {
+    const { db, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        const r = await new Log().fold(
+            foldStmt(urlPath("log", "/9/9/")),
+            makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(r.status, 204, "204 stays OFF the errors surface — a sweep that found nothing steers nothing");
+        assert.equal(r.matched, 0, "clearly shown");
+        const star = await new Log().fold(
+            foldStmt(urlPath("log", "/9/9/*")),
+            makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(star.status, 204, "the explicit-glob form agrees");
+    } finally { await db.close(); }
+});
