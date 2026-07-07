@@ -92,7 +92,8 @@ export default class Server {
                 ...(Array.isArray(opts.constraints) ? { constraints: opts.constraints } : {}),
             });
             sessionId = created.id;
-            modelRunId = typeof created.runId === "number" ? created.runId : null;
+            // created.runId is the CLIENT run — the model run is born at loop.run's drain;
+            // the Translator lazily adopts the first model-origin row's run (§agui-topology-scope).
         }
         const thread = { sessionId, client, reattached, modelRunId };
         this.#threads.set(threadId, thread);

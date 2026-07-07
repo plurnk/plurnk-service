@@ -43,6 +43,10 @@ export default class Translator {
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
         // never interleaved into the conversation a generic frontend renders.
         const runId = (e as { run_id?: number }).run_id;
+        // Lazy binding: session.create returns the CLIENT run's id — the model run is born at
+        // loop.run's drain, so a fresh thread adopts its FIRST model-origin row's run as the
+        // model run (workers spawn FROM it later; reattach seeds it from session.runs instead).
+        if (this.#modelRunId === null && e.origin === "model" && typeof runId === "number") this.#modelRunId = runId;
         const foreign = this.#modelRunId !== null && typeof runId === "number" && runId !== this.#modelRunId;
         // §agui-row-channel — the FULL wire row rides plurnk.row alongside the core projection:
         // fold state, tags-in-signal, tokens, coordinates — everything the TUI/nvim render that
