@@ -23,6 +23,7 @@ export type AguiEvent =
     | { type: "TOOL_CALL_ARGS"; toolCallId: string; delta: string }
     | { type: "TOOL_CALL_END"; toolCallId: string }
     | { type: "TOOL_CALL_RESULT"; toolCallId: string; messageId: string; content: string }
+    | { type: "MESSAGES_SNAPSHOT"; messages: Array<{ id: string; role: string; content: string }> }
     | { type: "STATE_SNAPSHOT"; snapshot: unknown }
     | { type: "STATE_DELTA"; delta: Array<{ op: string; path: string; value?: unknown }> }
     | { type: "CUSTOM"; name: string; value: unknown };

@@ -17,7 +17,7 @@ const env = (name: string): string => {
 export default class Server {
     #http: HttpServer;
     #daemonUrl: string;
-    #threads = new Map<string, { sessionId: number; client: DaemonClient }>();
+    #threads = new Map<string, { sessionId: number; client: DaemonClient; reattached: boolean }>();
 
     constructor() {
         this.#daemonUrl = env("PLURNK_AGUI_DAEMON_URL");
@@ -49,22 +49,28 @@ export default class Server {
         }
     }
 
-    async #thread(threadId: string): Promise<{ sessionId: number; client: DaemonClient }> {
+    async #thread(threadId: string): Promise<{ sessionId: number; client: DaemonClient; reattached: boolean }> {
         const existing = this.#threads.get(threadId);
         if (existing !== undefined) return existing;
         const client = await DaemonClient.connect(this.#daemonUrl);
         const name = `${env("PLURNK_AGUI_SESSION_PREFIX")}-${threadId}`;
-        // Attach if the session exists (a bridge restart must not orphan threads); create otherwise.
+        // Reattach by NAME via session.list → attach by ID (the daemon's real contract — the
+        // earlier attach-by-name silently created a fresh session every bridge restart, found
+        // by the service's own §proposal-list e2e). A rediscovered thread is a REATTACH.
+        const listed = await client.call<{ sessions: Array<{ id: number; name: string }> }>("session.list", {});
+        const known = Array.isArray(listed?.sessions) ? listed.sessions.find((x) => x.name === name) : undefined;
         let sessionId: number;
-        try {
-            const attached = await client.call<{ id: number }>("session.attach", { name });
-            sessionId = attached.id;
-        } catch {
+        let reattached = false;
+        if (known !== undefined) {
+            await client.call("session.attach", { id: known.id });
+            sessionId = known.id;
+            reattached = true;
+        } else {
             const settings = env("PLURNK_AGUI_QUESTIONS") === "1" ? { questions: true } : {};
             const created = await client.call<{ id: number }>("session.create", { name, settings });
             sessionId = created.id;
         }
-        const thread = { sessionId, client };
+        const thread = { sessionId, client, reattached };
         this.#threads.set(threadId, thread);
         return thread;
     }
@@ -75,7 +81,8 @@ export default class Server {
         const lastUser = [...(input.messages ?? [])].reverse().find((m) => m.role === "user");
         if (lastUser?.content === undefined || lastUser.content.length === 0) throw new Error("RunAgentInput.messages must carry a user message");
 
-        const { client } = await this.#thread(input.threadId);
+        const thread = await this.#thread(input.threadId);
+        const client = thread.client;
         const translator = new Translator({ threadId: input.threadId, runId: input.runId ?? crypto.randomUUID() });
 
         res.writeHead(200, {
@@ -93,6 +100,21 @@ export default class Server {
         const providers = await client.call<{ aliases: Array<{ alias: string; model: string; active: boolean; contextSize: number | null }> }>("providers.list", {}).catch(() => null);
         const active = Array.isArray(providers?.aliases) ? providers.aliases.find((a) => a.active) ?? null : null;
         emit(translator.runStarted(active === null ? undefined : { budget: { contextSize: active.contextSize }, model: { alias: active.alias, id: active.model } }));
+        // A reattached thread starts ORIENTED, not blind: the session log replays as
+        // MESSAGES_SNAPSHOT (§agui-replay) and any stopped world re-surfaces immediately —
+        // the indefinite-wait ruling's client half (a days-old question is discoverable).
+        if (thread.reattached) {
+            // The conversation spine lives in the MODEL run (service #214) — log.read defaults
+            // to the connection's own run, so resolve the model run via session.runs first.
+            const runs = await client.call<{ runs: Array<{ id: number; name: string }> }>("session.runs", {}).catch(() => null);
+            const modelRun = Array.isArray(runs?.runs) ? runs.runs.find((r) => r.name.startsWith("model-")) : undefined;
+            const history = modelRun === undefined ? null : await client.call<{ entries: Array<Record<string, unknown>> }>("log.read", { runId: modelRun.id, limit: 1000 }).catch(() => null);
+            if (history !== null && Array.isArray(history.entries)) emit(translator.replay(history.entries));
+            const pending = await client.call<{ proposals: Array<Record<string, unknown>> }>("proposal.list", {}).catch(() => null);
+            if (pending !== null && Array.isArray(pending.proposals)) {
+                for (const pr of pending.proposals) emit([{ type: "CUSTOM", name: "plurnk.proposal", value: pr }]);
+            }
+        }
         const done = new Promise<void>((resolve) => {
             const offEntry = client.on("log/entry", (p) => emit(translator.logEntry(p as LogEntryNotification)));
             const offProposal = client.on("loop/proposal", (p) => emit(translator.proposal(p as ProposalNotification)));

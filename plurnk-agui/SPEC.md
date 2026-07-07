@@ -60,6 +60,13 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging
   up IS the abort signal; no run is orphaned unwatched.
 
+- **Reattach replays** {§agui-replay} — a rediscovered thread (the bridge restarted, a second
+  frontend arrived) attaches to its existing session by name→id and opens ORIENTED: the model
+  run's SENDs replay as `MESSAGES_SNAPSHOT` (the conversation spine; everything else stays
+  reachable via live `plurnk.row`), and every pending stop-the-world proposal re-surfaces
+  immediately via the daemon's `proposal.list` — the indefinite-wait ruling's client half: a
+  days-old question is discoverable, never a mystery hang.
+
 ## Stop-the-world {§agui-proposal-resolve}
 
 Every daemon proposal — file edits, MCP auths, `[300]` operator questions (service#346) —

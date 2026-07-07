@@ -115,6 +115,21 @@ export default class Translator {
         return events;
     }
 
+    // §agui-replay — the session log as AG-UI history: model SENDs become assistant messages
+    // (the conversation's spine); everything else stays reachable through live plurnk.row
+    // rendering, not duplicated into message history. Wire rows arrive as the log.read
+    // projection (tx parsed).
+    replay(entries: Array<Record<string, unknown>>): AguiEvent[] {
+        const messages: Array<{ id: string; role: string; content: string }> = [];
+        for (const e of entries) {
+            if (e.op === "SEND" && e.origin === "model") {
+                const text = Translator.#txBody(e.tx);
+                if (text.length > 0) messages.push({ id: String(e.coordinate ?? e.id), role: "assistant", content: text });
+            }
+        }
+        return [{ type: "MESSAGES_SNAPSHOT", messages } as AguiEvent];
+    }
+
     telemetry(event: unknown): AguiEvent[] {
         return [{ type: "CUSTOM", name: "plurnk.telemetry", value: event }];
     }
