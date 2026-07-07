@@ -83,6 +83,26 @@ test("#36 dataCaptureFromEnv: both knobs OFF by default, ON when set (LOGPROB = 
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_LOGPROB: "0" } as NodeJS.ProcessEnv, "x"), { logprobs: 0, rawBody: false }); // set-to-0 = on, chosen-token only
 });
 
+test("scopeEnvToAlias: a caller-supplied knob list scopes CONSUMER vars (service window partition)", async () => {
+    const { scopeEnvToAlias } = await import("./env.ts");
+    const SERVICE_KNOBS = ["PLURNK_SERVICE_CTX", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_ASSISTANT", "PLURNK_SERVICE_SAFETY"];
+    const env = {
+        PLURNK_SERVICE_CTX: "163840", PLURNK_SERVICE_REASONING: "16384", PLURNK_SERVICE_ASSISTANT: "49152", PLURNK_SERVICE_SAFETY: "1024",
+        PLURNK_SERVICE_CTX_turboderp: "78848", PLURNK_SERVICE_REASONING_turboderp: "4096", PLURNK_SERVICE_ASSISTANT_TURBODERP: "8192", // case-folds
+    } as NodeJS.ProcessEnv;
+    const gemma = scopeEnvToAlias(env, "turboderp", SERVICE_KNOBS);
+    assert.equal(gemma.PLURNK_SERVICE_CTX, "78848");
+    assert.equal(gemma.PLURNK_SERVICE_REASONING, "4096");
+    assert.equal(gemma.PLURNK_SERVICE_ASSISTANT, "8192");
+    assert.equal(gemma.PLURNK_SERVICE_SAFETY, "1024"); // bare fallback intact
+    const cloud = scopeEnvToAlias(env, "fireslow", SERVICE_KNOBS);
+    assert.equal(cloud.PLURNK_SERVICE_REASONING, "16384"); // 64k envelope untouched by gemma overrides
+    assert.equal(cloud.PLURNK_SERVICE_ASSISTANT, "49152");
+    // custom list does NOT scope providers-family knobs (closed-list isolation both ways)
+    const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_THINKING_turboderp: "on" } as NodeJS.ProcessEnv, "turboderp", SERVICE_KNOBS);
+    assert.equal(mixed.PLURNK_PROVIDERS_THINKING, "off");
+});
+
 test("#36 capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
     const { scopeEnvToAlias, dataCaptureFromEnv } = await import("./env.ts");
     const env = {

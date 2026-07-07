@@ -95,17 +95,24 @@ const PROVIDERS_KNOBS = Object.freeze([
 // PLURNK_MODEL_/PLURNK_BASEURL_ convention), overlay it onto the bare name.
 // Providers keep reading plain vars — scoping is entirely the caller's overlay,
 // so fromEnv implementations (and daughters) need zero changes.
-export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string): NodeJS.ProcessEnv => {
+//
+// `knobs` (optional) lets a CONSUMER scope its OWN closed knob list with this
+// same parser — e.g. the service's window-partition vars (PLURNK_SERVICE_CTX/
+// REASONING/ASSISTANT/SAFETY), so a 64k cloud envelope and a 12k gemma envelope
+// coexist per-alias without the service reimplementing the suffix/collision
+// rules. Default stays the providers-family list; my call sites pass nothing.
+export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {
     const folded = alias.toLowerCase();
     const out: NodeJS.ProcessEnv = { ...env };
-    for (const knob of PROVIDERS_KNOBS) {
+    for (const knob of knobs) {
         for (const [key, value] of Object.entries(env)) {
             if (value === undefined || value.length === 0) continue;
             if (!key.startsWith(knob + "_")) continue;
             // A bare knob can prefix another bare knob (_THINKING prefixes
-            // _THINKING_CAPACITY): a key that IS a known knob is never a
-            // suffixed override, whatever the alias is named.
-            if ((PROVIDERS_KNOBS as readonly string[]).includes(key)) continue;
+            // _THINKING_CAPACITY, _CTX prefixes a hypothetical _CTX_SIZE): a key
+            // that IS a known knob is never a suffixed override, whatever the
+            // alias is named.
+            if (knobs.includes(key)) continue;
             if (key.slice(knob.length + 1).toLowerCase() !== folded) continue;
             out[knob] = value;
             break;
