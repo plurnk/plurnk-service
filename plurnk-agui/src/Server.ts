@@ -41,6 +41,7 @@ export default class Server {
         try {
             if (req.method === "POST" && (req.url === "/" || req.url === "/agui")) return await this.#run(req, res);
             if (req.method === "POST" && req.url === "/resolve") return await this.#resolve(req, res);
+            if (req.method === "POST" && req.url === "/plurnk/rpc") return await this.#rpc(req, res);
             res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "POST / (AG-UI run) or POST /resolve" }));
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -49,7 +50,7 @@ export default class Server {
         }
     }
 
-    async #thread(threadId: string): Promise<{ sessionId: number; client: DaemonClient; reattached: boolean }> {
+    async #thread(threadId: string, createOptions?: Record<string, unknown>): Promise<{ sessionId: number; client: DaemonClient; reattached: boolean }> {
         const existing = this.#threads.get(threadId);
         if (existing !== undefined) return existing;
         const client = await DaemonClient.connect(this.#daemonUrl);
@@ -66,8 +67,16 @@ export default class Server {
             sessionId = known.id;
             reattached = true;
         } else {
-            const settings = env("PLURNK_AGUI_QUESTIONS") === "1" ? { questions: true } : {};
-            const created = await client.call<{ id: number }>("session.create", { name, settings });
+            // §agui-forwarded-props — RunAgentInput.forwardedProps.plurnk is the spec's sanctioned
+            // side-channel: session.create options (projectRoot, constraints, settings) ride the
+            // thread's FIRST run. The bridge's questions default composes UNDER an explicit one.
+            const opts = createOptions ?? {};
+            const settings = { ...(env("PLURNK_AGUI_QUESTIONS") === "1" ? { questions: true } : {}), ...(typeof opts.settings === "object" && opts.settings !== null ? opts.settings : {}) };
+            const created = await client.call<{ id: number }>("session.create", {
+                name, settings,
+                ...(typeof opts.projectRoot === "string" ? { projectRoot: opts.projectRoot } : {}),
+                ...(Array.isArray(opts.constraints) ? { constraints: opts.constraints } : {}),
+            });
             sessionId = created.id;
         }
         const thread = { sessionId, client, reattached };
@@ -81,7 +90,8 @@ export default class Server {
         const lastUser = [...(input.messages ?? [])].reverse().find((m) => m.role === "user");
         if (lastUser?.content === undefined || lastUser.content.length === 0) throw new Error("RunAgentInput.messages must carry a user message");
 
-        const thread = await this.#thread(input.threadId);
+        const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
+        const thread = await this.#thread(input.threadId, forwarded);
         const client = thread.client;
         const translator = new Translator({ threadId: input.threadId, runId: input.runId ?? crypto.randomUUID() });
 
@@ -139,6 +149,20 @@ export default class Server {
         await done;
         finished = true;
         res.end();
+    }
+
+    // §agui-management-plane — the charter's ONE escape hatch: AG-UI models the RUN plane;
+    // the workspace plane (sessions, entry CRUD, providers, auth) rides a boring JSON-RPC
+    // passthrough. {threadId, method, params} → the thread's own daemon connection (so session
+    // scoping is exactly the thread's), the daemon's response verbatim. The daemon's method
+    // registry is the contract — discover it via {method: "discover"}.
+    async #rpc(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const p = JSON.parse(await Server.#body(req)) as { threadId: string; method: string; params?: object };
+        if (typeof p.threadId !== "string" || p.threadId.length === 0) throw new Error("/plurnk/rpc requires threadId");
+        if (typeof p.method !== "string" || p.method.length === 0) throw new Error("/plurnk/rpc requires method");
+        const thread = await this.#thread(p.threadId);
+        const result = await thread.client.call(p.method, p.params ?? {});
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ result }));
     }
 
     async #resolve(req: IncomingMessage, res: ServerResponse): Promise<void> {

@@ -77,6 +77,15 @@ surfaces as `CUSTOM plurnk.proposal` carrying `{logEntryId, op, target, body, at
 world is stopped — **indefinitely by default** (service ruling: a stopped world waits for its
 human; the timeout is operator opt-in) — and the run resumes on resolution.
 
+## The management plane {§agui-management-plane}
+
+AG-UI models the RUN plane; the workspace plane rides the charter's ONE escape hatch:
+`POST /plurnk/rpc {threadId, method, params}` — a verbatim JSON-RPC passthrough on the
+thread's own daemon connection (session scoping is exactly the thread's). The daemon's
+method registry is the contract; discover it with `{method: "discover"}`. Session options
+for a thread's FIRST run ride `RunAgentInput.forwardedProps.plurnk` {§agui-forwarded-props}
+(`projectRoot`, `constraints`, `settings` — composing over the bridge's questions default).
+
 ## The run endpoint {§agui-run-endpoint}
 
 `POST /` (or `/agui`) with an AG-UI `RunAgentInput` body: the last `user` message becomes the

@@ -8,16 +8,19 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import Server from "../../src/Server.ts";
 
-const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void>; resolved: Array<Record<string, unknown>> }> => {
+const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void>; resolved: Array<Record<string, unknown>>; created: Array<Record<string, unknown>> }> => {
     const http = createServer();
     const wss = new WebSocketServer({ server: http });
     const resolved: Array<Record<string, unknown>> = [];
+    const created: Array<Record<string, unknown>> = [];
     wss.on("connection", (socket) => {
         const send = (msg: object): void => socket.send(JSON.stringify(msg));
         socket.on("message", (raw: Buffer) => {
             const msg = JSON.parse(raw.toString()) as { id: number; method: string; params: Record<string, unknown> };
             if (msg.method === "session.attach") { send({ jsonrpc: "2.0", id: msg.id, error: { code: -1, message: "no such session" } }); return; }
-            if (msg.method === "session.create") { send({ jsonrpc: "2.0", id: msg.id, result: { id: 1, name: msg.params.name, runId: 2, runName: "model-x" } }); return; }
+            if (msg.method === "session.list") { send({ jsonrpc: "2.0", id: msg.id, result: { sessions: [] } }); return; }
+            if (msg.method === "session.create") { created.push(msg.params); send({ jsonrpc: "2.0", id: msg.id, result: { id: 1, name: msg.params.name, runId: 2, runName: "model-x" } }); return; }
+            if (msg.method === "session.prompts") { send({ jsonrpc: "2.0", id: msg.id, result: { prompts: ["deploy the service"] } }); return; }
             if (msg.method === "loop.resolve") {
                 resolved.push(msg.params);
                 send({ jsonrpc: "2.0", id: msg.id, result: { ok: true } });
@@ -43,6 +46,7 @@ const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void
         url: `ws://127.0.0.1:${addr.port}`,
         close: () => new Promise((resolve) => { wss.close(); http.close(() => resolve()); }),
         resolved,
+        created,
     };
 };
 
@@ -58,7 +62,7 @@ test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client] e2e:
             const res = await fetch(`http://127.0.0.1:${port}/`, {
                 method: "POST",
                 headers: { "content-type": "application/json", accept: "text/event-stream" },
-                body: JSON.stringify({ threadId: "t1", runId: "r1", messages: [{ role: "user", content: "deploy the service" }] }),
+                body: JSON.stringify({ threadId: "t1", runId: "r1", messages: [{ role: "user", content: "deploy the service" }], forwardedProps: { plurnk: { projectRoot: "/tmp/ws", settings: { questions: true } } } }),
             });
             assert.equal(res.headers.get("content-type"), "text/event-stream");
             const reader = res.body!.getReader();
@@ -94,6 +98,17 @@ test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client] e2e:
         assert.ok(types.includes("TEXT_MESSAGE_CONTENT"), "the concluding SEND projected as assistant speech");
         assert.ok(types.includes("STATE_DELTA"), "the budget truth rode the stream");
         assert.equal(types[types.length - 1], "RUN_FINISHED", "the stream ends on the run's conclusion");
+        // §agui-forwarded-props — the side-channel reached session.create verbatim.
+        assert.equal(daemon.created[0]?.projectRoot, "/tmp/ws", "forwardedProps.plurnk.projectRoot rode the first run");
+        assert.equal((daemon.created[0]?.settings as { questions?: boolean }).questions, true);
+        // §agui-management-plane — the ONE escape hatch round-trips on the thread's own connection.
+        const rpc = await fetch(`http://127.0.0.1:${port}/plurnk/rpc`, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ threadId: "t1", method: "session.prompts", params: {} }),
+        });
+        assert.equal(rpc.status, 200);
+        const rpcBody = await rpc.json() as { result: { prompts: string[] } };
+        assert.deepEqual(rpcBody.result.prompts, ["deploy the service"], "the daemon's response, verbatim");
     } finally {
         await bridge.close();
         await daemon.close();

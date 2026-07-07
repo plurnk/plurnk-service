@@ -40,12 +40,13 @@ client migration (bridge reaches parity FIRST, then clients move one at a time, 
 WS narrows to bridge-only).
 
 # Worksheet — parity gaps toward the exclusive portal, in order
-- [ ] MESSAGES_SNAPSHOT on thread attach — replay the session log as AG-UI history so a
-      reconnecting/late frontend starts oriented (the TUI-reattach case; the daemon log is the
-      source of truth, synthesize from it).
-- [ ] `POST /plurnk/rpc` — the management-plane passthrough (with the daemon's auth riding).
-- [ ] `forwardedProps.plurnk` → session.create options (projectRoot, settings, constraints)
-      on a thread's first run.
+- [x] MESSAGES_SNAPSHOT on thread attach — shipped (§agui-replay): the model run's SENDs via
+      session.runs + log.read; pending proposals re-surface via proposal.list. Live-proven
+      across a bridge restart.
+- [x] `POST /plurnk/rpc` — shipped (§agui-management-plane); auth passthrough still owed
+      (rides the auth item below).
+- [x] `forwardedProps.plurnk` → shipped (§agui-forwarded-props): projectRoot, constraints,
+      settings on the thread's first run, composing over the bridge's questions default.
 - [ ] Concurrent-run policy per thread: second POST while a run is live → loop.inject vs 409
       (today: undefined — decide, document, test).
 - [ ] Frontend TOOLS (RunAgentInput.tools) → an ephemeral exec runtime whose calls stop the
