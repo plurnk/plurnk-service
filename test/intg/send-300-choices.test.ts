@@ -203,3 +203,39 @@ test("[§send-300-choices] the teaching injects ONLY where enabled — docEntrie
         if (original !== null) writeFileSync(qPath, original); else if (existsSync(qPath)) unlinkSync(qPath);
     }
 });
+
+test("[§proposal-list] a reconnecting client DISCOVERS the stopped world — the pending question, then answers it via loop.resolve", async () => { await withAsk(async () => {
+    // The indefinite-wait ruling's companion: the ask stops the world; a SECOND connection
+    // (the reconnect) lists the pending proposal cold — no notification needed — and answers.
+    const { withDaemon, connect, rpcCall, makeMockResponse, subscribeNotifications, waitFor, flush } = await import("./_rpc.ts");
+    const mock = new Mock({ contextSize: 8192, responses: [
+        makeMockResponse("<<PLAN:ask:PLAN\n<<SEND[300]:Which environment?;production;staging:SEND", 10),
+        makeMockResponse("<<PLAN:conclude:PLAN\n<<SEND[200]:Deploying to staging.:SEND", 10),
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "session.create", { name: "plist-e2e", settings: { questions: true } });
+            const sessionId = (created.result as { id: number }).id;
+            const proposals = subscribeNotifications(ws, "loop/proposal");
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            await rpcCall(ws, 2, "loop.run", { prompt: "deploy", flags: { yolo: true } });
+            await waitFor(() => proposals() as Array<{ attrs?: { question?: string } }>, (items) => items.some((e) => e.attrs?.question !== undefined), { timeoutMs: 15_000 });
+            // THE RECONNECT: a fresh connection attaches and discovers the stopped world cold.
+            const ws2 = await connect(addr);
+            try {
+                await rpcCall(ws2, 1, "session.attach", { id: sessionId });
+                const listed = await rpcCall(ws2, 2, "proposal.list", {});
+                const result = listed.result as { proposals: Array<{ logEntryId: number; op: string; attrs: { question?: string; choices?: string[] } }> };
+                assert.equal(result.proposals.length, 1, "the stopped world is DISCOVERABLE");
+                assert.equal(result.proposals[0]!.attrs.question, "Which environment?");
+                assert.deepEqual(result.proposals[0]!.attrs.choices, ["production", "staging"]);
+                await rpcCall(ws2, 3, "loop.resolve", { logEntryId: result.proposals[0]!.logEntryId, decision: "accept", body: "staging" });
+            } finally { ws2.close(); }
+            await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.some((t) => t.finalStatus === 200), { timeoutMs: 20_000 });
+            await flush();
+            const after = await rpcCall(ws, 9, "proposal.list", {});
+            assert.equal((after.result as { proposals: unknown[] }).proposals.length, 0, "resolved — the list empties");
+        } finally { ws.close(); }
+    });
+}); });

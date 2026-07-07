@@ -50,6 +50,7 @@ import LoopInjectMethod from "./methods/loop_inject.ts";
 import RunForkMethod from "./methods/run_fork.ts";
 import EntryReadMethod from "./methods/entry_read.ts";
 import LogReadMethod from "./methods/log_read.ts";
+import ProposalListMethod from "./methods/proposal_list.ts";
 import ProvidersListMethod from "./methods/providers_list.ts";
 import LoopResolveMethod from "./methods/loop_resolve.ts";
 import McpInstallMethod from "./methods/mcp_install.ts";
@@ -303,6 +304,7 @@ export default class Daemon {
         LoopResolveMethod.register(this.#registry);
         EntryReadMethod.register(this.#registry);
         LogReadMethod.register(this.#registry);
+        ProposalListMethod.register(this.#registry);
         ProvidersListMethod.register(this.#registry);
         McpInstallMethod.register(this.#registry);
         AuthMethod.register(this.#registry);
