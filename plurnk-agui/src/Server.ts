@@ -133,9 +133,11 @@ export default class Server {
             const offEntry = client.on("log/entry", (p) => emit(translator.logEntry(p as LogEntryNotification)));
             const offProposal = client.on("loop/proposal", (p) => emit(translator.proposal(p as ProposalNotification)));
             const offTelemetry = client.on("loop/telemetry", (p) => emit(translator.telemetry(p)));
+            const offQuiesced = client.on("loop/quiesced", (p) => emit([{ type: "CUSTOM", name: "plurnk.quiesced", value: p }]));
+            const offStream = client.on("stream/concluded", (p) => emit([{ type: "CUSTOM", name: "plurnk.stream", value: p }]));
             const offTerm = client.on("loop/terminated", (p) => {
                 emit(translator.terminated(p as TerminatedNotification));
-                offEntry(); offProposal(); offTelemetry(); offTerm();
+                offEntry(); offProposal(); offTelemetry(); offQuiesced(); offStream(); offTerm();
                 resolve();
             });
         });

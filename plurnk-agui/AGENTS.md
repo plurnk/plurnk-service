@@ -56,7 +56,7 @@ WS narrows to bridge-only).
       plurnk.row/ambient; a worker's SEND never masquerades as the assistant.
 - [ ] Auth on the bridge port (the daemon's #116 relay exists; the bridge must not be the
       unauthenticated hole).
-- [ ] loop/quiesced + stream/concluded + embed_progress → plurnk.* customs (today unsubscribed).
+- [x] loop/quiesced + stream/concluded → plurnk.quiesced/plurnk.stream customs (telemetry already rode plurnk.telemetry).
 - [ ] AG-UI native interrupt mapping for proposals (today: CUSTOM plurnk.proposal + POST /resolve).
 - [ ] Reconnect/backoff on daemon restart (today: fail-hard, the operator restarts the bridge).
 - [ ] Lockstep test (spec-anchors style, port from plurnk-service).
