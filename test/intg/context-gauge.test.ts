@@ -75,3 +75,19 @@ test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client
         assert.equal(usage.contextSize, expected, `the stored denominator is the partitioned budget (${expected}), never the raw 8192`);
     } finally { await db.close(); }
 });
+
+test("[#274] providers.list advertises the EFFECTIVE prompt budget — one denominator meaning on every surface (#345)", async () => {
+    const { rpcCall, connect, withDaemon, makeMockResponse } = await import("./_rpc.ts");
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "session.create", { name: "gauge-345" });
+            const resp = await rpcCall(ws, 2, "providers.list");
+            const result = resp.result as { aliases: Array<{ active: boolean; contextSize: number | null }> };
+            const active = result.aliases.find((a) => a.active);
+            const expected = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_ASSISTANT) - Number(process.env.PLURNK_SERVICE_SAFETY);
+            assert.equal(active?.contextSize, expected, `the client's gauge denominator is the budget (${expected}), never the raw window (8192) — 'ctx 38%/49k' against a 35k reality was the lie`);
+        } finally { ws.close(); }
+    });
+});

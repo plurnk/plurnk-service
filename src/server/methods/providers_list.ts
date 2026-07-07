@@ -15,15 +15,17 @@ export default class ProvidersListMethod {
                             provider: a.provider,
                             model: a.model,
                             active: isActive,
-                            // #263 — the model's context window, the denominator for the client's used%/window
-                            // gauge. Known for the active alias (its provider is instantiated at boot); null
-                            // elsewhere and when the provider can't determine it → the client omits the gauge.
-                            contextSize: isActive ? (ctx.provider?.contextSize ?? null) : null,
+                            // #263/#345 — the denominator for the client's used%/window gauge: the model's
+                            // EFFECTIVE PROMPT BUDGET (window minus the partition reserves) — the same number
+                            // loop-usage reports, one meaning on every surface. The raw KV overstated usable
+                            // room by the reserve total ('ctx 38%/49k' against a 35k reality). Known for the
+                            // active alias; null elsewhere → the client omits the gauge.
+                            contextSize: isActive && ctx.provider !== null ? ctx.engine.promptBudgetFor(ctx.provider) : null,
                         };
                     }),
                 };
             },
-            description: "List configured model aliases (PLURNK_MODEL_<alias>), which is active, and the active model's contextSize (#263).",
+            description: "List configured model aliases (PLURNK_MODEL_<alias>), which is active, and the active model's contextSize — the EFFECTIVE prompt budget (window minus reserves, #345), the same denominator loop-usage reports.",
         });
     }
 }

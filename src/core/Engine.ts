@@ -279,6 +279,14 @@ export default class Engine {
     // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
     // turn, §tokenomics). Surfaced on loop.run + loop/terminated so clients render real
     // token/cost numbers. costPico is the stored pico-dollar unit.
+    // #345 — the client-facing budget denominator, ONE meaning on every surface: the prompt
+    // budget the packet actually lives under (effective window minus the partition reserves),
+    // the same number loop-usage stores per turn. providers.list advertised the raw KV and the
+    // client's gauge rendered a window the model can never fill.
+    promptBudgetFor(provider: Provider): number {
+        return this.#packets.promptBudgetFor(provider);
+    }
+
     async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number; contextTokens: number; contextSize: number | null; meta: Record<string, unknown> }> {
         const row = await (this.#db.engine_loop_usage as PrepMethod).get<{ prompt: number; completion: number; cost_pico: number; context: number | null; context_size: number | null; meta: string | null }>({ loop_id: loopId });
         return {

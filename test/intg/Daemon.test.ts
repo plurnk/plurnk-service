@@ -285,9 +285,11 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 assert.equal(gemma?.model, "macher.gguf");
                 assert.equal(gemma?.active, true);
                 assert.equal(opus?.active, false);
-                // #263 — the active alias carries the daemon provider's contextSize (the gauge denominator);
+                // #263/#345 — the active alias carries the EFFECTIVE prompt budget (window minus the
+                // partition reserves — one denominator meaning on every surface, never the raw KV);
                 // an inactive alias is null (provider not instantiated) so the client omits the gauge.
-                assert.equal(gemma?.contextSize, 8192, "active alias carries the provider's context window");
+                const budget = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_ASSISTANT) - Number(process.env.PLURNK_SERVICE_SAFETY);
+                assert.equal(gemma?.contextSize, budget, "active alias carries the effective prompt budget, not the raw window");
                 assert.equal(opus?.contextSize, null, "inactive alias has no window → null");
             } finally {
                 // Restore env so other tests aren't polluted.
