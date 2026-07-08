@@ -298,6 +298,8 @@ Per author contract (`readEntry` / `writeEntry` / `deleteEntry`). Engine drives 
 
 Per author contract (`edit`/`read`/`open`/`fold`/`find`/`send`/`exec?`). Engine dispatches by `PlurnkStatement.op`. {§op-methods-op-dispatch} COPY and MOVE are NOT scheme methods — engine orchestrates over CRUD primitives (§copy/§move).
 
+- **Every op completes before the next begins — except the three concurrency-creators.** {§op-synchronous} Within a turn ops run in sequence, and each is *decisive*: its effect has fully landed by the time the next op — or the terminal gate — reads it. The dispatch `await`s each, so `KILL`, `EDIT`, `COPY`, `MOVE`, `READ` (including the blocking worker-collect, §run-scheme-collect), `FIND`, `OPEN`, `FOLD` never leave work "in flight" for a later op to trip over. The ONLY exceptions are the ops whose *job* is to create concurrency and hand it back tracked: **FORK** and **WORK** (spawn a child run) and **stream-producers** (`EXEC` and friends) return the instant the concurrent thing is launched and registered (the §child-orientation sections), never blocking the turn on its conclusion. This is the OS syscall model exactly — calls block; only `fork`/`spawn`/async-I/O don't — and it is why a same-turn `KILL + SEND[200]` concludes (§send-premature-terminate): `KILL` synchronously flips the run's live loops terminal (`engine_terminate_run_live_loops`) so the gate sees it dead at once, while the physical scope reap rides `cancelRun` asynchronously and invisibly. The obligation is the model's protection: it must never reason about whether its last decisive op has "landed yet."
+
 ### §orchestration Cross-scheme orchestration
 
 ```

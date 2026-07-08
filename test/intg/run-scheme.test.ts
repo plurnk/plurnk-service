@@ -473,3 +473,26 @@ test("[§join-blocking-collect] a bare SEND[102] with NO armed join continues no
         assert.notEqual(status?.status, 202, "the loop did not park — a bare continue without a join stays live");
     } finally { await db.close(); }
 });
+
+test("[§op-synchronous] KILL(run) is decisive — a same-turn KILL then SEND[200] concludes, no premature-terminate 409 (#354)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `kill-sync-${crypto.randomUUID()}`);
+        const parent = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
+        const parentTurn = await insertTurn(db, parentLoop, 1, 200);
+        const worker = await insertRun(db, sessionId, null, "leftover-worker");
+        const workerLoop = await insertLoop(db, worker, 1, "work");          // a LIVE child (status 102)
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelRun: () => {} }); // stub reap — the sync terminal-flip is under test
+
+        // Before: the live child would make a SEND[200] a premature-terminate. KILL must fix it IN this turn.
+        const killWorker: KillStatement = { op: "KILL", suffix: "", signal: null, target: runPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
+        const kill = await engine.dispatch({ statement: killWorker, sessionId, runId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        assert.equal(kill.status, 200, "KILL succeeds");
+        // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.
+        const wstatus = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: workerLoop });
+        assert.equal(wstatus?.status, 499, "the killed worker's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
+        const send = await engine.dispatch({ statement: sendStmt(200, null, "done, worker killed"), sessionId, runId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
+        assert.notEqual(send.status, 409, `no premature-terminate 409 — the killed child is not live pending work; got ${send.status}`);
+    } finally { await db.close(); }
+});

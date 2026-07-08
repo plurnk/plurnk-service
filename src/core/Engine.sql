@@ -65,6 +65,15 @@ UPDATE loops SET status = 102 WHERE id = $loop_id AND status = 100;
 -- strike_threshold) — rides the §run-scheme delta.
 UPDATE loops SET status = $status, terminal_message = $message WHERE id = $loop_id;
 
+-- PREP: engine_terminate_run_live_loops
+-- §op-synchronous — KILL(run) is a DECISIVE op, not a fork/spawn/stream, so it must complete
+-- before the turn moves on. Synchronously flip every LIVE loop of the run to 499 (killed) so the
+-- same-turn premature-terminate gate (engine_run_has_live_child) sees it dead immediately; the
+-- physical scope reap (drain abort, stream teardown) then proceeds async via cancelRun. The
+-- loops_stamp_terminated_at trigger stamps terminated_at on the 499 transition (the §run-scheme delta).
+UPDATE loops SET status = 499, terminal_message = $message
+WHERE run_id = $run_id AND status IN (100, 102, 202);
+
 -- PREP: session_get_settings
 -- #231 — the session's client-chosen open-context bag ({ manifestItems?, mdDocs? }),
 -- read at turn-0 with precedence over env.

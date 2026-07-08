@@ -507,6 +507,12 @@ export default class Dispatcher {
                 runId = row.id;
             }
             if (this.#cancelRun === undefined) throw new Error("run kill: cancelRun capability absent");
+            // §op-synchronous — KILL is DECISIVE: flip the run's live loops to 499 NOW so the
+            // same-turn premature-terminate gate sees it dead (KILL … SEND[200] concludes in ONE
+            // turn — the model never reasons about async reap timing). The physical scope reap
+            // (drain abort + stream teardown) then rides cancelRun; a killed loop can't heal back
+            // because cancelRun aborts its drain's signal.
+            await (this.#db.engine_terminate_run_live_loops as PrepMethod).run({ run_id: runId, message: "killed via run:// KILL" });
             this.#cancelRun(runId);
             return { status: 200 };
         }
