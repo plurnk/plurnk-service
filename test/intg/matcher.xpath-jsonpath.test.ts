@@ -13,6 +13,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import Log from "../../src/schemes/Log.ts";
+import Matcher from "../../src/content/matcher.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
@@ -335,4 +336,16 @@ test("[§matcher-selection-signal] THE REAL PATH: a matcher READ's FIND row carr
         const reads = rows.filter((r) => r.op === "READ");
         assert.equal(reads.length, 1, "deliveries dedup by span (#286): two hits on ONE source line deliver that line once — the rx above is what discriminates them");
     } finally { await db.close(); }
+});
+
+test("[§find-source-agnostic] Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY identity — a pathname OR a log coordinate", async () => {
+    const mimetypes = new Mimetypes(); await mimetypes.ready();
+    const candidates = [
+        { key: "known:///a.md", content: "the engine is fast", mimetype: "text/markdown" },
+        { key: "1/2/3", content: "no match on this log row", mimetype: "text/markdown" },   // a log coordinate key
+        { key: "known:///b.md", content: "engine tuning notes", mimetype: "text/markdown" },
+    ];
+    const r = await Matcher.matchCandidates({ dialect: "regex", raw: "/engine/", pattern: "engine", flags: "" } as MatcherBody, candidates, mimetypes);
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.matches.map((m) => m.key), ["known:///a.md", "known:///b.md"], "hits keyed by the caller's own identity — the matcher never cares whether it's an entry pathname or a log coordinate");
 });

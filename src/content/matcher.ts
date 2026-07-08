@@ -120,4 +120,31 @@ export default class Matcher {
         });
         return { status: 200, body: rendered.body, matches: matches.length, lines: rendered.lines, spans: rendered.spans, hits, ...(paths.length > 0 ? { paths } : {}) };
     }
+
+    // §find-source-agnostic — apply a content matcher to a list of candidates from ANY source
+    // (entries, log rows, …), returning one (key, span) per HIT keyed by the caller's own identity
+    // (a pathname, a log coordinate). The matcher never cares what table content came from; this is
+    // the shared primitive both EntryFind and Log.find run, so every dialect works uniformly by
+    // construction rather than being re-implemented per scheme. 400 (malformed matcher) fails the
+    // whole op; a non-200 candidate (204 no-match / 415 / 203) simply drops out.
+    static async matchCandidates(
+        body: MatcherBody,
+        candidates: ReadonlyArray<{ key: string; content: string; mimetype: string }>,
+        mimetypes: Mimetypes,
+    ): Promise<{ status: number; matches: CandidateMatch[] }> {
+        const matches: CandidateMatch[] = [];
+        for (const cand of candidates) {
+            const match = await Matcher.matchAgainstContent(body, cand.content, cand.mimetype, mimetypes);
+            if (match.status === 400) return { status: 400, matches: [] };
+            if (match.status !== 200) continue;
+            const spans = match.spans ?? [];
+            const hits = match.hits ?? spans.map((span) => ({ span }));
+            if (hits.length === 0 || hits.every((h) => h.span === null)) { matches.push({ key: cand.key, span: null }); continue; }
+            for (const h of hits) matches.push({ key: cand.key, span: h.span, path: (h as { path?: string }).path });
+        }
+        return { status: 200, matches };
+    }
 }
+
+// One content-matcher hit, keyed by the caller's identity (pathname for entries, coordinate for log).
+export interface CandidateMatch { key: string; span: { lineStart: number; lineEnd: number } | null; path?: string; }

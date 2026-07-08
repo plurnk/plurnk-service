@@ -173,21 +173,11 @@ export default class EntryFind {
         } else {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) throw new Error("EntryFind.#matchPathnames: body matcher requires the mimetypes capability in ctx");
-            matches = [];
-            for (const cand of candidates) {
-                const match = await Matcher.matchAgainstContent(statement.body, cand.content, cand.mimetype, mimetypes); // matcher runs on content — §find-glob-filter-on-content
-                if (match.status === 400) return { status: 400, matches: [] };
-                if (match.status !== 200) continue; // 204 no-match / 415 unsupported / 203 fallback → not a content hit
-                const spans = match.spans ?? [];
-                // A matched-but-span-less hit (e.g. an xpath computed scalar — count()) still includes
-                // the entry; it has no source location, so the item carries the whole entry (span null).
-                // Per-hit pairs (undeduped — multiple hits can share one line; run30): one Match
-                // per HIT with its canonical dialect path. Falls back to deduped spans for
-                // matchers that return no hit list.
-                const hits = match.hits ?? spans.map((span) => ({ span }));
-                if (hits.length === 0 || hits.every((h) => h.span === null)) { matches.push({ pathname: cand.pathname, span: null }); continue; }
-                for (const h of hits) matches.push({ pathname: cand.pathname, span: h.span, path: (h as { path?: string }).path });
-            }
+            // §find-source-agnostic — the shared content-matcher primitive (Log.find runs the same
+            // one over log rows). Candidates key by pathname; each hit becomes a Match.
+            const r = await Matcher.matchCandidates(statement.body, candidates.map((c) => ({ key: c.pathname, content: c.content, mimetype: c.mimetype })), mimetypes);
+            if (r.status !== 200) return { status: r.status, matches: [] };
+            matches = r.matches.map((m) => ({ pathname: m.key, span: m.span, ...(m.path !== undefined ? { path: m.path } : {}) }));
         }
 
         if (statement.lineMarker !== null) {

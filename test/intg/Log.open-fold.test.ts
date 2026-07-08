@@ -231,7 +231,7 @@ test("[§log-coordinate-hierarchy] a PARTIAL coordinate is a prefix, slash OPTIO
         assert.equal(noSlash.matched, 1, "the turn's row");
         assert.equal(await getExpanded(db, runId), 0);
         // And the loop prefix: log:///1 selects all of loop 1's rows.
-        await new Log().open(foldStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        await new Log().open(openStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
         const loop = await new Log().fold(
             foldStmt(urlPath("log", "/1")),
             makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
