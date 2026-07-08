@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-agui",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "description": "AG-UI bridge for the plurnk daemon — a client of the JSON-RPC wire, a server of the Agent-User Interaction Protocol. Any AG-UI frontend becomes a plurnk client.",
     "type": "module",
     "license": "MIT",
@@ -34,9 +34,9 @@
         "prepublishOnly": "npm test"
     },
     "devDependencies": {
-        "@types/node": "24.10.1",
+        "@types/node": "^26.1.1",
         "@types/ws": "8.18.1",
-        "typescript": "5.9.3",
+        "typescript": "^7.0.2",
         "ws": "8.21.0"
     }
 }
