@@ -270,7 +270,7 @@ export default class PacketBuilder {
             // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
             { name: "child-streams", slot: "system", header: "Plurnk Service Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
-            { name: "child-runs", slot: "system", header: "Plurnk Service Child Runs", content: PacketWire.renderChildPointers(childRuns), tokens: 0 },
+            { name: "child-runs", slot: "system", header: "Plurnk Service Active Child Worker Runs", content: PacketWire.renderChildPointers(childRuns), tokens: 0 },
             { name: "errors", slot: "system", header: "Plurnk Service Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
             { name: "git", slot: "system", header: "Plurnk Service Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget — LAW (a hard ceiling the model must obey).

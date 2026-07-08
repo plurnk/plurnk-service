@@ -483,7 +483,7 @@ test("[§op-synchronous] KILL(run) is decisive — a same-turn KILL then SEND[20
         const parentTurn = await insertTurn(db, parentLoop, 1, 200);
         const worker = await insertRun(db, sessionId, null, "leftover-worker");
         const workerLoop = await insertLoop(db, worker, 1, "work");          // a LIVE child (status 102)
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelRun: () => {} }); // stub reap — the sync terminal-flip is under test
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelRun: (_runId: number) => true }); // stub reap — the sync terminal-flip is under test
 
         // Before: the live child would make a SEND[200] a premature-terminate. KILL must fix it IN this turn.
         const killWorker: KillStatement = { op: "KILL", suffix: "", signal: null, target: runPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };

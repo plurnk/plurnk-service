@@ -384,9 +384,12 @@ export default class PacketWire {
                 // the model sees what it ran and can reference lines of its own code. The OUTPUT is a
                 // SEPARATE stream (meta.stream), surfaced by the injector, never re-emitted here. §exec-stream
                 body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, (e.tx as { body: string }).body, "text/plain");
-            } else if ((op === "PLAN" || op === "SEND") && e.tx !== null && e.tx !== undefined) {
-                // PLAN's plan / SEND's message ride into the log as N:\t content at the op's log address —
-                // the log mirrors the model's WORK, NEVER a repeated <<OP:…:OP tag (tags are emission
+            } else if ((op === "PLAN" || op === "SEND" || op === "WORK" || op === "FORK") && e.tx !== null && e.tx !== undefined) {
+                // PLAN's plan / SEND's message / WORK's & FORK's seed task ride into the log as N:\t
+                // content at the op's log address — a dispatch's record IS the task it dispatched, so
+                // the next turn reads what each worker is doing (the spawn-then-retask confusion was
+                // this body missing: the log showed "spawned worker-db" with no task). The log
+                // mirrors the model's WORK, NEVER a repeated <<OP:…:OP tag (tags are emission
                 // syntax, not the log paradigm). Bodyless ops (COPY/MOVE/OPEN/FOLD, a non-200 READ/FIND
                 // whose matcher already rides in meta, a span-less EDIT) fall through to their meta line.
                 const b = e.tx.body;
