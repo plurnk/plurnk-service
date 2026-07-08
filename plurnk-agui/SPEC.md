@@ -35,7 +35,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `log/entry` op=model (mirror) | nothing — forensic, not speech |
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `loop/proposal` | `CUSTOM plurnk.proposal` |
-| `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` (loopId, turnIds, costPico, meta) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
+| `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` (sessionId, loopId, turnIds, costPico, meta) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the

@@ -53,10 +53,11 @@ test("[§agui-projection] turn boundaries are STEPs; termination closes the step
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
 });
 
-test("[§agui-numbers-passthrough] plurnk.terminated carries the full terminal truth (loopId, turnIds, costPico) for a client's json record", () => {
-    const tr = t();
+test("[§agui-numbers-passthrough] plurnk.terminated carries the full terminal truth (sessionId, loopId, turnIds, costPico) for a client's json record", () => {
+    const tr = new Translator({ threadId: "th-1", runId: "run-1", sessionId: 512 });
     const term: TerminatedNotification = { loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3], usage: { promptTokens: 10, completionTokens: 5, costPico: 4200, contextTokens: 10, contextSize: 6848, meta: { balancePico: 99 } } };
-    const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification };
+    const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification & { sessionId: number | null } };
+    assert.equal(custom.value.sessionId, 512, "daemon sessionId — one json schema across transports");
     assert.equal(custom.value.loopId, 77, "loopId — absent from core events");
     assert.deepEqual(custom.value.turnIds, [1, 2, 3], "turn count for the record");
     assert.equal(custom.value.usage.costPico, 4200, "costPico — dropped by the budget STATE_DELTA");
