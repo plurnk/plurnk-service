@@ -34,6 +34,10 @@ const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void
                 // The scripted run: PLAN → a READ with rx → a [300] question proposal (stop the world).
                 send({ jsonrpc: "2.0", method: "log/entry", params: { entry: { id: 10, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, tx: { op: "PLAN", body: "ask the operator" } } } });
                 send({ jsonrpc: "2.0", method: "log/entry", params: { entry: { id: 11, coordinate: "1/1/2/READ", op: "READ", origin: "model", scheme: "known", pathname: "/notes.md", turn_id: 1, tx: { op: "READ", body: null }, rx: { status: 200, content: "notes" }, status_rx: 200 } } });
+                // Phase-A coverage: telemetry/event (was dropped by a wrong subscription) and
+                // stream/event (the start line, previously not forwarded) must both project.
+                send({ jsonrpc: "2.0", method: "telemetry/event", params: { loopId: 1, event: { source: "engine:rail", kind: "note", level: "info", message: "orienting" } } });
+                send({ jsonrpc: "2.0", method: "stream/event", params: { entryId: 20, target: "exec://python/1/1/3", channel: "stdout", state: "active", contentLength: 5, loop_seq: 1, turn_seq: 1, sequence: 3 } });
                 send({ jsonrpc: "2.0", method: "loop/proposal", params: { logEntryId: 42, sessionId: 1, runId: 2, loopId: 1, turnId: 1, op: "SEND", target: { scheme: null, pathname: null }, body: "", attrs: { question: "Which environment?", choices: ["prod", "staging"] }, flags: { yolo: false } } });
                 return;
             }
@@ -97,6 +101,8 @@ test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client][§ag
         assert.ok(types.includes("TOOL_CALL_RESULT"), "the READ's rx projected as a tool result");
         assert.ok(types.includes("TEXT_MESSAGE_CONTENT"), "the concluding SEND projected as assistant speech");
         assert.ok(types.includes("STATE_DELTA"), "the budget truth rode the stream");
+        assert.ok(events.some((e) => e.name === "plurnk.telemetry"), "telemetry/event projected (the loop/telemetry subscription matched nothing before)");
+        assert.ok(events.some((e) => e.name === "plurnk.stream" && (e.value as { state?: string })?.state === "active"), "stream/event (the start line) projected to plurnk.stream");
         assert.equal(types[types.length - 1], "RUN_FINISHED", "the stream ends on the run's conclusion");
         // §agui-forwarded-props — the side-channel reached session.create verbatim.
         assert.equal(daemon.created[0]?.projectRoot, "/tmp/ws", "forwardedProps.plurnk.projectRoot rode the first run");

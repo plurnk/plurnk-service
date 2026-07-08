@@ -143,12 +143,19 @@ export default class Server {
         const done = new Promise<void>((resolve) => {
             const offEntry = client.on("log/entry", (p) => emit(translator.logEntry(p as LogEntryNotification)));
             const offProposal = client.on("loop/proposal", (p) => emit(translator.proposal(p as ProposalNotification)));
-            const offTelemetry = client.on("loop/telemetry", (p) => emit(translator.telemetry(p)));
+            // The daemon's telemetry notification is `telemetry/event` (SPEC §8.6) — the
+            // earlier `loop/telemetry` subscription matched nothing, so plurnk.telemetry
+            // never fired for any bridge client.
+            const offTelemetry = client.on("telemetry/event", (p) => emit(translator.telemetry(p)));
             const offQuiesced = client.on("loop/quiesced", (p) => emit([{ type: "CUSTOM", name: "plurnk.quiesced", value: p }]));
+            // The stream lifecycle rides ONE family channel: `stream/event` (the start
+            // line the TUI renders) AND `stream/concluded` both project to plurnk.stream;
+            // the payload self-discriminates (event carries `state`, concluded `closeStatus`).
+            const offStreamEvent = client.on("stream/event", (p) => emit([{ type: "CUSTOM", name: "plurnk.stream", value: p }]));
             const offStream = client.on("stream/concluded", (p) => emit([{ type: "CUSTOM", name: "plurnk.stream", value: p }]));
             const offTerm = client.on("loop/terminated", (p) => {
                 emit(translator.terminated(p as TerminatedNotification));
-                offEntry(); offProposal(); offTelemetry(); offQuiesced(); offStream(); offTerm();
+                offEntry(); offProposal(); offTelemetry(); offQuiesced(); offStreamEvent(); offStream(); offTerm();
                 resolve();
             });
         });
