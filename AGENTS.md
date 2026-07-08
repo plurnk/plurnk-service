@@ -2,6 +2,8 @@
 
 plurnk-service is the MOM of the ecosystem: the primary service daemon — the engine, the DB, the packet, the op surface. General ecosystem ground, policy, and rules live in `../AGENTS.md` (the metaproject doc) and bind here too; this file holds only what is **specific to plurnk-service**.
 
+**Stance: plurnk is an agent OS — the model is the CPU, plurnk is the kernel.** Before treating any problem as "agent behavior," route it to the OS subsystem that owns it and apply that subsystem's solved theory (paging, fork-join, VFS, scheduling, signals) rather than re-deriving it at the prompt. The offload — moving capability from the weak model into the deterministic substrate — *is* the recovery-rails moat. The Rosetta stone (component → OS analogue → theory): **`ARCHITECTURE.md`**.
+
 #### Service Conventions
 
 - **The DB is the application.** State and state transitions live in SQL (triggers, generated columns, views, FTS5, JSON1, CHECK constraints). TS is the thin glue: parameterized statements + named views + transport (network, IO, tokenization, plugin dispatch). When SQL becomes onerous, convoluted, or hacky for a specific case, retreat to TS for that case.
