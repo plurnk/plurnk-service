@@ -69,10 +69,6 @@ web_modules/
 .env
 .env.*
 !.env.example
-# .env.test is committed test config (no secrets) — it isolates the suite from
-# operator env, e.g. neutralizing PLURNK_MD_POLICY so a present ~/.plurnk/AGENTS.md
-# can't foist a turn-0 POLICY-doc READ into tests. Real secrets stay in .env (ignored).
-!.env.test
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
