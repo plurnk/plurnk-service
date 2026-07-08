@@ -870,11 +870,11 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         assert.equal(packet.telemetryErrors.length, 1, "1 failure mirrored from turn 1");
         const [err] = packet.telemetryErrors;
         assert.equal(err.position.type, "log-coordinate", "a LogCoordinate pointer, not a JSON blob");
-        // §telemetry-uniform-error-channel (owner ruling): a 403 is a HARD failure — it MINTS an
-        // error ITEM carrying the denial message, and the alert surface points at THAT item, not
-        // the op row (whose rx folds away unseen). The denied EDIT sits at 1/1/4; its minted
-        // error item lands after the turn's rows.
-        assert.match(err.position.coordinate, /\/error$/, "the pointer targets the log://.../error item");
+        // §log-row-self-explains: the pointer targets the OP ROW — the row carries its own
+        // failure message on its meta line, so the pointer leads to a record that states its why.
+        // Turn-as-container, 1-based: model exemplar 1/1/1, prompt EDIT 1/1/2, auto-READ 1/1/3;
+        // the model's denied EDIT is 1/1/4.
+        assert.equal(err.position.coordinate, "1/1/4/EDIT", "the pointer targets the failing op row itself");
         assert.equal(err.status, 403);
     } finally { await db.close(); }
 });

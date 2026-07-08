@@ -1099,36 +1099,16 @@ export default class Engine {
         // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
         for (const kind of pendingEngineErrors) await this.#telemetry.mintEngineError(kind, { runId, loopId, turnId, sequence: errSeq++ });
-        // §telemetry-uniform-error-channel (owner ruling) — HARD action-bound failures mint an
-        // error ITEM: the errors section points at log://.../error items whose content carries the
-        // term + message, one rule with no exceptions. Without the mint, the failing op row's rx
-        // (holding e.g. the premature-terminate steer) folds and the message NEVER renders — the
-        // wildcard specimen: a model theorizing 'SEND[409] probably means bad request?' for 201s
-        // over a bare pointer. Soft statuses (404/416/501 — exploratory findings, not alerts) stay
-        // pointer-at-the-op-row and mint nothing. 409 is strike-SOFT (steerStruck is the strike
-        // authority) but alert-HARD: the refusal carries the instruction the model must see.
-        const hardRows = await (this.#db.engine_hard_failures_for_turn as PrepMethod).all<{
-            sequence: number; op: string; status_rx: number; rx: string | null;
-        }>({ turn_id: turnId });
-        for (const h of hardRows) {
-            let message = "";
-            try { const parsed = JSON.parse(h.rx ?? "{}") as { error?: unknown; reason?: unknown }; message = typeof parsed.error === "string" ? parsed.error : typeof parsed.reason === "string" ? parsed.reason : ""; } catch { /* a non-JSON rx mints with the status alone */ }
-            await (this.#db.engine_insert_log_entry as PrepMethod).get({
-                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
-                origin: "model", source: "engine", op: "error", suffix: "", signal: null,
-                scheme: null, username: null, password: null, hostname: null, port: null,
-                pathname: null, params: null, fragment: null, lineMarker: null,
-                tx: "", mimetype_tx: "text/plain",
-                rx: JSON.stringify({ status: h.status_rx, kind: "action_failure", subject: `${h.op} at sequence ${h.sequence}`, message }),
-                mimetype_rx: "application/json", status_rx: h.status_rx, tokens: 0, state: "failed", outcome: "action_failure",
-                attrs: "{}",
-            });
-        }
+        // §log-row-self-explains (Q2, owner-clarified) — a model-op failure is the MODEL'S OWN op
+        // result: the op row carries its failure message on its meta line (packet-wire), and the
+        // errors section points at the row. No separate minted item (the retired action_failure
+        // mint dressed op results as source:"engine" faults — the jumbo model chased a phantom
+        // "engine run 400 error" off a message-less item). Genuine engine-internal faults CRASH
+        // (fail-hard, §turn-never-blank) and never mint model-facing rows.
         // §tokenomics-output-truncated (#351) — packet honesty at the completion cap: a
         // finish=length turn was GUILLOTINED mid-emission, and its parse errors are truncation
-        // ARTIFACTS. Without the cause stated first, the model reads 'unclosed block' and fixes
-        // syntax forever instead of emitting less per turn (run29: think + 9 edits vs a 12288
-        // decode pool). One terse row, ahead of the artifact rows it explains.
+        // ARTIFACTS. This one MINTS (actionless — no op row exists to self-explain): the cause
+        // must lead the artifact rows it explains, or the model fixes syntax forever.
         if (finishReason === "length" && (parseErrors?.length ?? 0) > 0) {
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
                 run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,

@@ -6,7 +6,7 @@ import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
 import type { FindResult, MatchItem, Match } from "./_entry-find.ts";
 
-type OpenFoldResult = { status: number; matched?: number };
+type OpenFoldResult = { status: number; matched?: number; error?: string };
 
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
 // is wire-rendering self-documentation derived from the row's `op` field;
@@ -195,7 +195,7 @@ export default class Log {
     // Resolve a log:/// target — a concrete coordinate, or a path-glob optionally paginated
     // by <L> (OPEN/FOLD only) — to the matched row ids. The ONE resolution OPEN/FOLD and
     // KILL share: fold flips `expanded` on the ids, kill deletes them.
-    async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[] }> {
+    async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
         const { db, runId } = ctx;
         const coord = parseCoordinate(pathname);
         if (coord !== null && lineMarker === null) {
@@ -204,7 +204,7 @@ export default class Log {
         }
         // §log-coordinate-hierarchy — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(pathname);
-        if (glob === null) return { status: 400, ids: [] };
+        if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
         const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob });
         // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
         // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
@@ -225,7 +225,7 @@ export default class Log {
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const r = await this.#resolveIds(pathname, statement.lineMarker, ctx);
         if (r.status === 204) return { status: 204, matched: 0 };
-        if (r.status !== 200) return { status: r.status };
+        if (r.status !== 200) return { status: r.status, ...(r.error !== undefined ? { error: r.error } : {}) };
         for (const id of r.ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
         return { status: 200, matched: r.ids.length };
     }

@@ -315,6 +315,18 @@ export default class PacketWire {
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
 
+            // §log-row-self-explains — a FAILED op row carries its failure message ON THE META LINE,
+            // so the record explains itself in every packet, folded or open. The old shape (a bare
+            // status; the message buried in an rx no render shows) is what sent the wildcard model
+            // theorizing "SEND[409] probably means bad request?" for 201s, and the jumbo model
+            // chasing a phantom "engine error" off a message-less item. The row IS the model's op
+            // result — it states its own why; the errors section stays a terse pointer at it.
+            if (typeof e.status === "number" && e.status >= 400 && rx !== null && typeof rx === "object") {
+                const why = (rx as { error?: unknown; reason?: unknown; message?: unknown });
+                const text = typeof why.error === "string" ? why.error : typeof why.reason === "string" ? why.reason : typeof why.message === "string" ? why.message : null;
+                if (text !== null && text.length > 0) meta.error = text;
+            }
+
             // READ + FIND enrichment: the matcher body (from tx) + `items`, the count
             // of rows the op returned — a matcher's hits, or a bare catalog FIND's entry
             // count. Without it the model can't tell "0 results" from "empty content",
