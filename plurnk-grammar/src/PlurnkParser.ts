@@ -29,7 +29,7 @@ const CONTAINER_RULES = new Set<number>([
 
 export default class PlurnkParser {
     // Parse a model TURN. Two hard requirements: a PLAN anchor (first op, only free-text
-    // preamble may precede it) and a terminal SEND (carries the loop status code). A PLAN-less
+    // preamble may precede it) and a terminal SEND (carries the submit code). A PLAN-less
     // or SEND-less packet does NOT parse and surfaces as error items. Prose is tolerated
     // anywhere else (preamble, between ops, trailing) and surfaces as text items - in Plurnk
     // Script that prose is the comment mechanism. The GBNF rail already requires PLAN, so the
@@ -135,7 +135,7 @@ export default class PlurnkParser {
         if (hasSpecificError) return;
         const fix = !hasPlan
             ? "a turn must begin with `<<PLAN:…:PLAN` (the required first operation)"
-            : "a turn must end with a terminal `<<SEND[code]:…:SEND` carrying the loop status";
+            : "a turn must end with a terminal `<<SEND[code]:…:SEND`";
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 

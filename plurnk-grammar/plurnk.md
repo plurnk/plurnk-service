@@ -34,7 +34,7 @@ The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 | FOLD | [filter tags] | (log path)  | <result,result>   | :pattern:          | FOLD |
 | EXEC | [executor]    | (path)      | <timeout, poll>   | :code:             | EXEC |
 | KILL | [signal]      | (path)      | -                 | ::                 | KILL |
-| SEND | [status code] | (recipient) | -                 | :message:          | SEND |
+| SEND | [submit code] | (recipient) | -                 | :message:          | SEND |
 
 <<PLAN:concise plan goes here:PLAN is required at the beginning of a turn.
 <<FIND(path)::FIND returns rows of matching results
@@ -132,13 +132,13 @@ YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs
 YOU MUST KILL leftover worker runs and streams, or await them with SEND[102]<seconds>, before SEND[200] final turn.
 YOU MUST avoid and recover from Budget Overflow errors by FOLDing or KILLing big or irrelevant log items to save tokens.
 YOU MUST NOT share internal knowledgebase paths. Users can't access them.
-YOU MUST NOT emit free text between operations. Users can only see finishing SEND messages with the proper status code.
+YOU MUST NOT emit free text between operations. Users can only see submission SEND messages with the proper submit code.
 
 YOU MUST start the turn with a concise PLAN.
-YOU MUST finish the turn by SENDing either a brief message or a Github-flavored markdown response to the user with the proper status code.
-* 102: submit a continuing turn with status code 102: <<SEND[102]:FOLDing irrelevant log items and performing retrieval operations.:SEND
-* 200: submit a final turn with status code 200: <<SEND[200]:Retrieval operations received. Tasks successfully performed.:SEND
-* 499: submit a failed loop with status code 499: <<SEND[499]:Aborted: Unrecoverable error:SEND
+YOU MUST submit the OPs by SENDing either a brief response or a Github-flavored markdown response to the user with the proper submit code.
+* 102: submit a continuing turn with submit code 102: <<SEND[102]:FOLDing irrelevant log items and performing retrieval operations.:SEND
+* 200: submit a final turn with submit code 200: <<SEND[200]:Retrieval operations received. Tasks successfully performed.:SEND
+* 499: submit a failed loop with submit code 499: <<SEND[499]:Aborted: Unrecoverable error:SEND
 
 ## Examples
 
