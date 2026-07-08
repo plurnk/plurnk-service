@@ -22,7 +22,7 @@ import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop } from "../_live-harness.ts";
+import { liveSession, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -47,16 +47,13 @@ interface BudgetRun {
 // the partition env at construction (inside liveSession), so set before / restore
 // after — mirrors budget-grind. `projectRoot` overrides the default fixture (the SPEC demo).
 const runUnderBudget = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
-    const prev = process.env.PLURNK_SERVICE_CTX;
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
     const root = opts.projectRoot ?? fixture!.workspace;
     const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt });
     const ceiling = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
-    // promptBudget = ceiling exactly; real assistant reserve keeps maxTokens sane live.
-    process.env.PLURNK_SERVICE_CTX = String(ceiling + 8192);
-    process.env.PLURNK_SERVICE_REASONING = "0";
-    process.env.PLURNK_SERVICE_ASSISTANT = "8192";
-    process.env.PLURNK_SERVICE_SAFETY = "0";
+    // promptBudget = ceiling exactly; real assistant reserve keeps maxTokens sane live. Rides the
+    // active alias's suffix — bare is overridden by the model's own .env window knobs.
+    const restore = pinAliasPartition({ CTX: String(ceiling + 8192), REASONING: "0", ASSISTANT: "8192", SAFETY: "0" });
     try {
         const s = await liveSession({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
@@ -82,7 +79,7 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
         if (opts.cleanupRoot) await opts.cleanupRoot();
         throw err;
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_SERVICE_CTX; else process.env.PLURNK_SERVICE_CTX = prev;
+        restore();
     }
 };
 

@@ -139,3 +139,17 @@ export const lastRx = async (db: Db, modelRunId: number, op: string): Promise<st
     const row = await (db.test_get_log_rx_by_run_op as PrepMethod).get<{ rx: string }>({ run_id: modelRunId, op });
     return row?.rx ?? "";
 };
+
+// Pin the window partition for the demo/live tier's ACTIVE alias. A real model carries its window
+// as PLURNK_SERVICE_*_<alias> knobs in .env, and those SUFFIX knobs win over bare PLURNK_SERVICE_*
+// via scopeEnvToAlias — so a ceiling-pinning test that sets bare vars is silently overridden by the
+// model's real window (the budget-grind/-meta/floor-probe regression: turboderp's 35840 leaked
+// past a tight pin). Setting the ACTIVE alias's suffix wins over its own .env knobs; alias-agnostic,
+// so it holds when the demo model pivots (turboderp ↔ gbuild). Returns a restore fn.
+export const pinAliasPartition = (part: { CTX: string; REASONING: string; ASSISTANT: string; SAFETY: string }): (() => void) => {
+    const alias = resolveActiveAlias(process.env)?.alias ?? "";
+    const entries = (["CTX", "REASONING", "ASSISTANT", "SAFETY"] as const).map((k) => [`PLURNK_SERVICE_${k}_${alias}`, part[k]] as const);
+    const prev = entries.map(([k]) => [k, process.env[k]] as const);
+    for (const [k, v] of entries) process.env[k] = v;
+    return () => { for (const [k, v] of prev) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } };
+};

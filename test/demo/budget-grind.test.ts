@@ -15,7 +15,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop } from "../_live-harness.ts";
+import { liveSession, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -44,16 +44,13 @@ const NO_CURATION_FACTOR = 1.45;
 
 test("demo: budget grind — under a pinned ceiling, the model must curate to keep assembled context under budget", async () => {
     const fixture = await seedDemoFixture("budget");
-    const prevCeiling = process.env.PLURNK_SERVICE_CTX;
     const userPromptText = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
     const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText });
     const CEILING = Math.round(floor * GRIND_FACTOR);
     const NO_CURATION = Math.round(floor * NO_CURATION_FACTOR);
     // promptBudget = CEILING exactly; a real assistant reserve keeps maxTokens sane for live gemma.
-    process.env.PLURNK_SERVICE_CTX = String(CEILING + 8192);
-    process.env.PLURNK_SERVICE_REASONING = "0";
-    process.env.PLURNK_SERVICE_ASSISTANT = "8192";
-    process.env.PLURNK_SERVICE_SAFETY = "0"; // captured by the daemon's engine at construction (liveSession, below)
+    // Rides the active alias's suffix — bare is overridden by the model's own .env window knobs.
+    const restore = pinAliasPartition({ CTX: String(CEILING + 8192), REASONING: "0", ASSISTANT: "8192", SAFETY: "0" });
     try {
         const s = await liveSession({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {
@@ -78,8 +75,7 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
             assert.ok(peak < NO_CURATION, `the model curated rather than letting the log run away (peaked ${peak}, no-curation ~${NO_CURATION}+; communicated ceiling ${CEILING})`);
         } finally { await s.cleanup(); }
     } finally {
-        if (prevCeiling === undefined) delete process.env.PLURNK_SERVICE_CTX;
-        else process.env.PLURNK_SERVICE_CTX = prevCeiling;
+        restore();
         await fixture.cleanup();
     }
 });
