@@ -1,57 +1,57 @@
 {
-    "name": "@plurnk/plurnk-providers",
-    "version": "0.37.0",
-    "description": "Framework + contract for plurnk LLM transports: built-in standard OpenAI-compatible providers plus scope-agnostic discovery of first-party and third-party provider packages.",
-    "keywords": [
-        "plurnk",
-        "llm",
-        "provider",
-        "tokenizer"
-    ],
-    "homepage": "https://github.com/plurnk/plurnk-providers#readme",
-    "bugs": {
-        "url": "https://github.com/plurnk/plurnk-providers/issues"
+  "name": "@plurnk/plurnk-providers",
+  "version": "0.37.0",
+  "description": "Framework + contract for plurnk LLM transports: built-in standard OpenAI-compatible providers plus scope-agnostic discovery of first-party and third-party provider packages.",
+  "keywords": [
+    "plurnk",
+    "llm",
+    "provider",
+    "tokenizer"
+  ],
+  "homepage": "https://github.com/plurnk/plurnk-providers#readme",
+  "bugs": {
+    "url": "https://github.com/plurnk/plurnk-providers/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plurnk/plurnk-providers.git"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "license": "MIT",
+  "author": "@wikitopian",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-providers.git"
-    },
-    "engines": {
-        "node": ">=26"
-    },
-    "license": "MIT",
-    "author": "@wikitopian",
-    "type": "module",
-    "publishConfig": {
-        "access": "public"
-    },
-    "exports": {
-        ".": {
-            "types": "./dist/index.d.ts",
-            "default": "./dist/index.js"
-        },
-        "./package.json": "./package.json"
-    },
-    "files": [
-        "dist/**/*",
-        "README.md",
-        "SPEC.md"
-    ],
-    "scripts": {
-        "test:lint": "tsc --noEmit",
-        "test:unit": "node --test src/**/*.test.ts",
-        "test": "npm run test:lint && npm run test:unit",
-        "build:dist": "tsc -p tsconfig.build.json",
-        "build": "npm run build:dist",
-        "prepare": "npm run build"
-    },
-    "devDependencies": {
-        "@types/node": "^26.0.0",
-        "typescript": "^6.0.3"
-    },
-    "dependencies": {
-        "@plurnk/gbnf": "0.1.1",
-        "@plurnk/plurnk-aliases": "0.1.0",
-        "@plurnk/plurnk-models": "0.2.0"
-    }
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "SPEC.md"
+  ],
+  "scripts": {
+    "test:lint": "tsc --noEmit",
+    "test:unit": "node --test src/**/*.test.ts",
+    "test": "npm run test:lint && npm run test:unit",
+    "build:dist": "tsc -p tsconfig.build.json",
+    "build": "npm run build:dist",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@plurnk/gbnf": "0.1.1",
+    "@plurnk/plurnk-aliases": "0.1.0",
+    "@plurnk/plurnk-models": "0.2.0"
+  }
 }
