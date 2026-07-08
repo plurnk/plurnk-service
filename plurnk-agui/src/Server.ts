@@ -146,7 +146,9 @@ export default class Server {
             // The daemon's telemetry notification is `telemetry/event` (SPEC §8.6) — the
             // earlier `loop/telemetry` subscription matched nothing, so plurnk.telemetry
             // never fired for any bridge client.
-            const offTelemetry = client.on("telemetry/event", (p) => emit(translator.telemetry(p)));
+            // Project the EVENT, not the {loopId, event} envelope — consumers (WS TUI,
+            // CLI, the transport seam) read the TelemetryEvent directly.
+            const offTelemetry = client.on("telemetry/event", (p) => emit(translator.telemetry((p as { event?: unknown }).event ?? p)));
             const offQuiesced = client.on("loop/quiesced", (p) => emit([{ type: "CUSTOM", name: "plurnk.quiesced", value: p }]));
             // The stream lifecycle rides ONE family channel: `stream/event` (the start
             // line the TUI renders) AND `stream/concluded` both project to plurnk.stream;

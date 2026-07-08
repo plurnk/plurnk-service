@@ -101,7 +101,7 @@ test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client][§ag
         assert.ok(types.includes("TOOL_CALL_RESULT"), "the READ's rx projected as a tool result");
         assert.ok(types.includes("TEXT_MESSAGE_CONTENT"), "the concluding SEND projected as assistant speech");
         assert.ok(types.includes("STATE_DELTA"), "the budget truth rode the stream");
-        assert.ok(events.some((e) => e.name === "plurnk.telemetry"), "telemetry/event projected (the loop/telemetry subscription matched nothing before)");
+        assert.ok(events.some((e) => e.name === "plurnk.telemetry" && (e.value as { source?: string })?.source === "engine:rail"), "telemetry/event projected UNWRAPPED — value is the TelemetryEvent, not the {loopId,event} envelope");
         assert.ok(events.some((e) => e.name === "plurnk.stream" && (e.value as { state?: string })?.state === "active"), "stream/event (the start line) projected to plurnk.stream");
         assert.equal(types[types.length - 1], "RUN_FINISHED", "the stream ends on the run's conclusion");
         // §agui-forwarded-props — the side-channel reached session.create verbatim.
