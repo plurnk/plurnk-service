@@ -78,7 +78,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 ### `(path)`
 
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
-* `run://name` is the run entity (WORK to spawn a fresh worker, FORK to branch the current run, KILL to stop); `run://name/path` is an entry in its workspace.
+* `run://name` is the run entity (WORK to spawn a fresh worker, READ to collect its result (the read waits until it delivers), FORK to branch the current run, KILL to stop); `run://name/path` is an entry in its workspace.
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
@@ -119,6 +119,7 @@ Body content is character-perfect, exactly matching whitespace.
 ## Delegation
 
 To spawn a new WORKer run: <<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
+To COLLECT a worker's result: <<READ(run://capital-checker)::READ the read waits until the worker delivers, then yields its answer.
 To FORK the current run: <<FORK(run://recheck):Re-derive the capital from a primary source:FORK
 To SEND a run a message: <<SEND(run://recheck):Also, what's the capital of Germany?:SEND
 To KILL another run: <<KILL(run://recheck)::KILL
