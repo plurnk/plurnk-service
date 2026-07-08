@@ -1,5 +1,7 @@
 ### Plurnk AG-UI — Project Grounding
 
+**Steward: the client agent (@plurnk/plurnk)** — inherited 2026-07-08 from the plurnk-service steward that built the bridge to parity (plurnk-agui#1). The two open worksheet items (Frontend TOOLS, AG-UI interrupt mapping) and the client-migration phase are the incoming owner's to drive.
+
 The AG-UI bridge daughter: a CLIENT of the plurnk daemon's JSON-RPC wire (the same protocol
 every plurnk client speaks — the daemon's contract, never redefined here) and a SERVER of the
 Agent-User Interaction Protocol (SSE). The metaproject conventions (`../AGENTS.md`) apply in
@@ -60,4 +62,4 @@ WS narrows to bridge-only).
       reconstructs threads by name, and a dead daemon should look dead.
 - [x] Lockstep test: shipped — three legs (promises cited, citations resolve, comment refs never rot); caught five uncited promises + its own title on first run.
 - [x] A zero-dep reference frontend shipped (demo/index.html — fetch + SSE, nothing else): runs, thinking, tools, budget gauge, proposal chooser with free response. CopilotKit round-trip remains a community-side validation.
-- [ ] Owner decision: which agent inherits this repo (client agent is the natural neighbor).
+- [x] Owner decision: RESOLVED 2026-07-08 — the client agent (@plurnk/plurnk) inherits this repo (plurnk-agui#1). It owns the three frontends the bridge becomes the portal for; ownership converges on the agent that migrates them. Transition executed by the outgoing service steward.
