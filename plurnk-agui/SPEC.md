@@ -35,7 +35,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `log/entry` op=model (mirror) | nothing — forensic, not speech |
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `loop/proposal` | `CUSTOM plurnk.proposal` |
-| `loop/terminated` | `STATE_DELTA` (budget) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
+| `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` (loopId, turnIds, costPico, meta) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
@@ -43,7 +43,8 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
 - **The custom namespace** {§agui-custom-namespace} — everything plurnk-specific rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`, `plurnk.proposal`,
-  `plurnk.telemetry`). Generic frontends skip unknown customs; plurnk-aware frontends render
+  `plurnk.telemetry`, `plurnk.terminated` — the full loop outcome the budget `STATE_DELTA`
+  can't hold). Generic frontends skip unknown customs; plurnk-aware frontends render
   them richly. Nothing plurnk-specific ever masquerades as a core event.
 - **Numbers pass through verbatim** {§agui-numbers-passthrough} — the budget `STATE_DELTA`
   carries the daemon's own usage figures (`contextTokens`, `contextSize` = the effective
