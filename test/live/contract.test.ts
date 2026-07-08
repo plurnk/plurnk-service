@@ -48,19 +48,25 @@ test("live: EDIT <L> — replace the second line of an entry", { timeout: TIMEOU
     } finally { await s.cleanup(); }
 });
 
-test("live: FIND — select entries by a content match", { timeout: TIMEOUT }, async () => {
-    const s = await liveSession({ name: `live-contract-find-content-${crypto.randomUUID()}` });
+test("live: content-match selection — the model culls entries by CONTENT (fruit), verified forensically", { timeout: TIMEOUT }, async () => {
+    const s = await liveSession({ name: `live-contract-content-select-${crypto.randomUUID()}` });
     try {
-        // FIND's body matcher runs against entry CONTENT, not the pathname (the
-        // path-glob is the target). Seed distinct bodies; the model FINDs the
-        // entries whose content matches — never the ones it doesn't.
-        await seedEntry(s.db, s.sessionId, { pathname: "fruits/apple.md", content: "a crisp autumn apple, freshly picked" });
-        await seedEntry(s.db, s.sessionId, { pathname: "fruits/lemon.md", content: "a sour yellow lemon" });
-        await seedEntry(s.db, s.sessionId, { pathname: "notes/todo.md", content: "buy milk and bread" });
-        const { modelRunId } = await liveLoop(s, 2, { prompt: "Find every known entry whose content mentions a fruit (apple or lemon)." }, { timeoutMs: TIMEOUT });
-        const rx = await lastRx(s.db, modelRunId, "FIND");
-        assert.match(rx, /apple|lemon/);
-        assert.doesNotMatch(rx, /todo/); // the non-fruit entry is not a content hit
+        // Content-based SELECTION: the model must decide which entries qualify by reading their
+        // CONTENT, not their path. Two guards make this a real test of that:
+        //   1. De-leaked — the fruit lives ONLY in content. The paths are neutral stems
+        //      (alpha/bravo/charlie) and the prompt says "a fruit", never "apple/lemon". The old
+        //      fixture leaked the answer in BOTH the prompt ("apple or lemon") and the paths
+        //      (fruits/apple.md), so a model that read nothing still passed — a near-tautology.
+        //   2. Forensic outcome, no narration, no dictated op (harness doctrine, top of file): we
+        //      assert what SURVIVES in the db. A content-matcher FIND or a body-less list + READs —
+        //      either path to the right cull passes; the model chooses how.
+        await seedEntry(s.db, s.sessionId, { pathname: "pantry/alpha.md", content: "a crisp autumn apple, freshly picked" });
+        await seedEntry(s.db, s.sessionId, { pathname: "pantry/bravo.md", content: "a sour yellow lemon" });
+        await seedEntry(s.db, s.sessionId, { pathname: "pantry/charlie.md", content: "buy milk and bread" });
+        await liveLoop(s, 3, { prompt: "Tidy the pantry: delete every known entry whose content does not name a fruit." }, { timeoutMs: TIMEOUT });
+        assert.equal(await readBody(s.db, "pantry/charlie.md"), undefined, "milk & bread is no fruit — read, classified, deleted");
+        assert.match(await readBody(s.db, "pantry/alpha.md") ?? "", /apple/, "the apple entry is a fruit — kept");
+        assert.match(await readBody(s.db, "pantry/bravo.md") ?? "", /lemon/, "the lemon entry is a fruit — kept");
     } finally { await s.cleanup(); }
 });
 

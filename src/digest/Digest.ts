@@ -4,9 +4,9 @@
 // emits per-run forensic artifacts to test/digest/. First-order forensic
 // surface; read-only; safe to re-run.
 //
-//   test/digest/digest.md           Run-shape header + waterfall (per-turn:
-//                                   status, model emission summary, indented
-//                                   op list with target + status + error)
+//   test/digest/digest.md           Health triage rollup (clean/degenerate-win/failed loops) +
+//                                   run-shape header + waterfall (per-loop health verdict; per-turn:
+//                                   status, ⚠ errs=N, model emission summary, indented op list)
 //   test/digest/digest.json         Same data, machine-queryable
 //   test/digest/reasoning.md        Per-turn reasoning text (full)
 //   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message the LLM
@@ -121,6 +121,26 @@ export default class Digest {
         return `  ← ${le.op}[${le.status_rx}] ${target}${state}${outcome}${fail}${errLine}`;
     }
 
+    // The "degenerate win" lens (owner ask): a loop's health = how many errors/strikes it earned
+    // vs whether it still concluded. A green that limped across on 16 errors is a FAILING artifact
+    // wearing a passing badge; the digest must make that impossible to miss. errors = ≥400 op rows;
+    // errorItems = minted op='error' rows (truncation/budget/steer/cycle — the strike signals).
+    static #loopHealth(loop: LoopRow, m: DigestModel): { errors: number; errorItems: number; verdict: string } {
+        let errors = 0;
+        let errorItems = 0;
+        for (const t of m.turnsByLoop.get(loop.id) ?? []) {
+            for (const le of m.logEntriesByTurn.get(t.id) ?? []) {
+                if (le.status_rx >= 400) errors += 1;
+                if (le.op === "error") errorItems += 1;
+            }
+        }
+        const s = loop.status;
+        const verdict = s >= 400 ? `FAILED(${s})`
+            : s >= 200 && s < 300 ? (errors > 0 ? "DEGENERATE-WIN" : "CLEAN")
+            : `status=${s}`;
+        return { errors, errorItems, verdict };
+    }
+
     static #renderTurnLine(turn: TurnRow, m: DigestModel): string {
         const packet = Digest.#parseJson(turn.packet, {}) as { assistant?: { content?: unknown; reasoning?: unknown } };
         const assistant = packet.assistant ?? {};
@@ -130,7 +150,9 @@ export default class Digest {
         const cost = turn.usage_cost_pico > 0 ? ` cost=$${(turn.usage_cost_pico / 1e12).toFixed(6)}` : "";
         const finishReason = turn.finish_reason ?? "—";
         const model = turn.model ?? "—";
-        const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason} model=${model} ${tokens}${cost}`;
+        const errs = (m.logEntriesByTurn.get(turn.id) ?? []).filter((le) => le.status_rx >= 400).length;
+        const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
+        const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason} model=${model} ${tokens}${cost}${errBadge}`;
         const summary = content.length > 0 ? `  ↳ emission: ${Digest.#summarize(content, 100)}` : `  ↳ emission: (empty)`;
         const reasoningLine = reasoning && reasoning.length > 0
             ? `  ↳ reasoning: ${Digest.#summarize(reasoning, 100)}`
@@ -161,6 +183,15 @@ export default class Digest {
         lines.push(`DB: ${m.dbPath}`);
         lines.push(`Sessions: ${m.sessions.length}  Runs: ${m.runs.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Log entries: ${m.logEntries.length}`);
         lines.push(`Semantic:  entries=${m.embeddings.entries} embedded=${m.embeddings.entries_embedded} chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
+        // Triage rollup up top: how many conversations limped vs died vs ran clean, and the total
+        // error/strike load. The whole point of the "degenerate win" lens — see it before scrolling.
+        const health = m.loops.map((l) => Digest.#loopHealth(l, m));
+        const clean = health.filter((h) => h.verdict === "CLEAN").length;
+        const degen = health.filter((h) => h.verdict === "DEGENERATE-WIN").length;
+        const failed = health.filter((h) => h.verdict.startsWith("FAILED")).length;
+        const totalErrs = health.reduce((s, h) => s + h.errors, 0);
+        const totalItems = health.reduce((s, h) => s + h.errorItems, 0);
+        lines.push(`Health:    ${clean} clean · ${degen > 0 ? `⚠ ${degen} degenerate-win` : "0 degenerate-win"} · ${failed} failed  (${m.loops.length} loops; ${totalErrs} error rows, ${totalItems} minted error-items total)`);
         for (const session of m.sessions) {
             lines.push("");
             lines.push(`## Session #${session.id} — ${session.name}`);
@@ -175,7 +206,11 @@ export default class Digest {
                 const runLoops = m.loopsByRun.get(run.id) ?? [];
                 for (const loop of runLoops) {
                     lines.push("");
-                    lines.push(`#### Loop ${loop.sequence} (id=${loop.id}, status=${loop.status})`);
+                    const h = Digest.#loopHealth(loop, m);
+                    const badge = h.verdict === "CLEAN"
+                        ? " — CLEAN"
+                        : ` — ${h.verdict === "DEGENERATE-WIN" ? "⚠ DEGENERATE-WIN" : h.verdict} (${h.errors} errors, ${h.errorItems} error-items)`;
+                    lines.push(`#### Loop ${loop.sequence} (id=${loop.id}, status=${loop.status})${badge}`);
                     lines.push("");
                     lines.push(`Prompt: ${Digest.#summarize(loop.prompt, 160)}`);
                     const flags = Digest.#parseJson(loop.flags, {}) as Record<string, unknown>;
