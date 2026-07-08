@@ -436,3 +436,40 @@ test("[§run-scheme-scratch] self EDIT writes the run partition; cross-run READ 
         assert.equal(writeCross.status, 403, "cross-run WRITE is denied — read a sister's notes, never write them");
     } finally { await db.close(); }
 });
+
+test("[§join-blocking-collect] READ(run://running-child) arms a join — the turn's bare SEND[102] PARKS, never spins (#354)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `join-collect-${crypto.randomUUID()}`);
+        const parent = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
+        const parentTurn = await insertTurn(db, parentLoop, 1, 200);
+        const worker = await insertRun(db, sessionId, null, "worker"); // a worker still running (live loop 102),
+        await insertLoop(db, worker, 1, "count");                     // nothing delivered yet
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+
+        // 1. READ the running worker → 425 (still running) AND arms the join on this loop.
+        const read = await engine.dispatch({ statement: readStmt(runPath("worker")), sessionId, runId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        assert.equal(read.status, 425, "the worker hasn't delivered — 425 still-running");
+        // 2. the turn's bare SEND[102] (continue) becomes a PARK — the blocking join, not a spin.
+        const send = await engine.dispatch({ statement: sendStmt(102, null, null), sessionId, runId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
+        assert.equal((send.attrs as { join?: boolean } | undefined)?.join, true, "the bare continue was converted to a join-park");
+        const parked = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: parentLoop });
+        assert.equal(parked?.status, 202, "the parent PARKED (202) awaiting the worker — the model never had to know SEND[102]<-1>");
+    } finally { await db.close(); }
+});
+
+test("[§join-blocking-collect] a bare SEND[102] with NO armed join continues normally — the park is join-driven, not blanket (#354)", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `join-none-${crypto.randomUUID()}`);
+        const run = await insertRun(db, sessionId);
+        const loop = await insertLoop(db, run, 1, "go");
+        const turn = await insertTurn(db, loop, 1, 200);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const send = await engine.dispatch({ statement: sendStmt(102, null, null), sessionId, runId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        assert.notEqual((send.attrs as { join?: boolean } | undefined)?.join, true, "no READ armed a join — a plain continue");
+        const status = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop });
+        assert.notEqual(status?.status, 202, "the loop did not park — a bare continue without a join stays live");
+    } finally { await db.close(); }
+});

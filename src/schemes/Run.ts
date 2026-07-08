@@ -103,7 +103,10 @@ export default class Run {
             const owner = authority === "self" ? await Run.#selfName(ctx) : authority;
             const row = await (ctx.db.run_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null }>({ session_id: ctx.sessionId, name: owner });
             if (row === undefined) return { status: 404, content: `run://${owner} not found in this session`, mimetype: "text/markdown", channel: null };
-            if (!Run.#TERMINAL_LOOP.has(row.status)) return { status: 425, content: `[ worker '${owner}' is still running — SEND[102]<-1> to park until it delivers its result ]`, mimetype: "text/markdown", channel: null };
+            // §join-blocking-collect (#354) — a still-running worker is a BLOCKING JOIN: the READ
+            // arms the join (awaitRun), and the turn's bare SEND[102] parks until the worker delivers.
+            // The model doesn't drive the park — the engine does (a blocking read() hiding the scheduler).
+            if (!Run.#TERMINAL_LOOP.has(row.status)) return { status: 425, content: `[ worker '${owner}' is still running — parking this turn until it delivers its result ]`, mimetype: "text/markdown", channel: null, awaitRun: owner };
             return { status: 200, content: row.terminal_message ?? `[ worker '${owner}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
         }
         // Path-present: cross-run scratch READ — resolve self, fold the owner into the storage path.

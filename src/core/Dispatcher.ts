@@ -76,8 +76,11 @@ export default class Dispatcher {
     // §send-premature-terminate/[102]<T> — the engine-owned park-deadline registry (loopId → seconds;
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
+    // §join-blocking-collect (#354) — loops with a READ(run://running-child) armed this turn; a bare
+    // SEND[102] parks on it (blocking join). Engine-owned, twin of #parkDeadlines.
+    #joinTargets: Set<number>;
 
-    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeRunNotify, injectRun, cancelRun, parkDeadlines }: {
+    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeRunNotify, injectRun, cancelRun, parkDeadlines, joinTargets }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -91,6 +94,7 @@ export default class Dispatcher {
         injectRun?: InjectRunNotify;
         cancelRun?: CancelRunNotify;
         parkDeadlines?: Map<number, number>;
+        joinTargets?: Set<number>;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -105,6 +109,7 @@ export default class Dispatcher {
         this.#injectRun = injectRun;
         this.#cancelRun = cancelRun;
         this.#parkDeadlines = parkDeadlines ?? new Map();
+        this.#joinTargets = joinTargets ?? new Set();
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
@@ -164,6 +169,9 @@ export default class Dispatcher {
         if ((statement.op === "OPEN" || statement.op === "FOLD") && result.status < 400) {
             return { ...result, rowsWritten: 0 };
         }
+        // §join-blocking-collect (#354) — Run.read on a still-running child returns an awaitRun signal;
+        // arm the join so THIS turn's bare SEND[102] parks (the blocking collect) instead of spinning.
+        if (typeof (result as { awaitRun?: unknown }).awaitRun === "string") this.#joinTargets.add(loopId);
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve; §proposal-202-pauses). When a
@@ -741,6 +749,18 @@ export default class Dispatcher {
         // indefinitely (the butler/worker pattern — owner-ruled ungated; the instrumentation renders
         // it legibly). Internally the parked state remains loops.status=202: the model-facing SIGNAL
         // retired, the engine's park state did not.
+        // §join-blocking-collect (#354) — a READ(run://running-child) this turn armed a join. A BARE
+        // continue becomes an indefinite PARK: the blocking collect, on the same park machinery <-1>
+        // uses. The armed READ said "I want this result"; parking IS the collect (the model never had
+        // to know the park syntax — the engine holds the join). Any SEND clears the per-turn arm; a
+        // terminal with a live child stays the existing premature-terminate steer (#354 decision #1).
+        const joinArmed = this.#joinTargets.delete(loopId);
+        if (status === 102 && statement.lineMarker === null && joinArmed) {
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw.length > 0 ? raw : "parked — awaiting a worker's result (blocking collect)" });
+            this.#parkDeadlines.set(loopId, -1); // indefinite: the bounded child's terminal is the wake edge
+            return { status: 102, attrs: { parked: -1, join: true } };
+        }
+
         if (status === 102 && statement.lineMarker !== null) {
             const seconds = statement.lineMarker.marks[0];
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw });

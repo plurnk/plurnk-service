@@ -32,6 +32,9 @@ export type SchemeReadResult = {
     reason?: string;
     startLine?: number | null;
     matches?: number | null;
+    // §join-blocking-collect (#354) — a READ(run://running-child) sets this to the worker name it is
+    // blocked on; the dispatcher arms a join so the turn's bare SEND[102] parks (the blocking collect).
+    awaitRun?: string;
 };
 
 // Per-call helper. Engine constructs a fresh ctx for every op invocation.
