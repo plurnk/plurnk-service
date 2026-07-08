@@ -397,6 +397,22 @@ test("GBNF: op-count bound — K=14 mid-steps derive, 15 do not; exhaustion forc
     assert.equal(derives("root-turn", turn([...Array(13).fill(midSend), edit], "<<SEND[200]:done:SEND")), true);
 });
 
+test("GBNF: pattern bodies (FIND/READ/OPEN/FOLD) forbid a literal newline — in-body quicksand fix (packet002)", () => {
+    // packet002 forensic: `<<FIND(SPEC.md):#grinder#:READ` (FIND closed with the wrong tag) left
+    // the model stuck in the FIND body — every subsequent newline was legal body content, so the
+    // turn never terminated and burned 8192 tokens (50x "(End of turn)" against a masked EOS).
+    // Fix: a literal newline in a pattern body is unsampleable, so the ONLY exit is the real close
+    // — the model is ejected to statement level within one line. Content bodies are untouched.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FIND(SPEC.md):#grinder#:READ\n<<SEND[102]:x:SEND"), false); // the exact trap
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FIND(SPEC.md):#grinder#:FIND\n<<SEND[102]:x:SEND"), true);  // closed correctly
+    for (const op of ["FIND", "READ", "OPEN", "FOLD"]) {
+        assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n<<${op}(a):line1\nline2:${op}\n<<SEND[102]:c:SEND`), false, `${op} pattern body must not span lines`);
+    }
+    // Content bodies (EDIT/SEND/...) stay multiline — the narrowing is pattern-only.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<EDIT(a):line1\nline2:EDIT\n<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:multi\nline:SEND"), true);
+});
+
 test("GBNF: mid-batch comms SENDs derive (targeted/pathless, NON-disposition codes) before the final", () => {
     const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[102]:done:SEND";
     assert.equal(derives("root-turn", batch), true);

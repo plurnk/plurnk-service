@@ -30,6 +30,9 @@ const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(c
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
 const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN"] as const;
+// Ops whose body is a MATCHER pattern (single-line by contract) vs a content body. Pattern
+// bodies forbid literal line terminators (the in-body quicksand fix); content bodies allow them.
+const PATTERN_OPS = new Set<string>(["FIND", "READ", "OPEN", "FOLD"]);
 // ε, 1, 2 — same-op nesting depth 1 (a credible edge case) and 2 (a possible corner
 // case). Beyond depth 2 an emission is about as likely to be degenerate as legitimate,
 // so the constrained subset stops there; a consumer with a genuinely deeper recursive
@@ -54,20 +57,29 @@ const EXEC_TAIL = cls([R("a", "z"), R("0", "9"), ...C("_-")]);
 // Body alphabet excludes control chars (tab/newline/CR allowed) plus the chars
 // tracked by the close-literal automaton state.
 const CONTROL_RANGES: Array<[number, number]> = [[0x00, 0x08], [0x0B, 0x0C], [0x0E, 0x1F], [0x7F, 0x7F]];
-const bodyOther = (excluded: string): GItem => cls([...CONTROL_RANGES, ...C(excluded)], true);
+// Line terminators — allowed in CONTENT bodies (multiline EDIT/SEND/COPY/MOVE/EXEC/PLAN),
+// FORBIDDEN in PATTERN bodies (FIND/READ/OPEN/FOLD), which are single-line by contract (a
+// regex matching a newline writes the two-char escape `\n`, never a literal one). Excluding
+// them collapses the in-body quicksand trap: a mismatched close (`<<FIND…:READ`) leaves the
+// model stuck in the FIND body — with no newline to break its line, the ONLY exit is the real
+// close `:FIND`, so it is ejected to statement level within ONE line instead of rambling to the
+// max_tokens wall (packet002 forensic: gemma, 8192 tokens, 50x "(End of turn)" against a masked EOS).
+const LINE_TERMINATORS: Array<[number, number]> = [[0x0A, 0x0A], [0x0D, 0x0D]];
+const bodyOther = (excluded: string, singleLine = false): GItem =>
+    cls([...CONTROL_RANGES, ...(singleLine ? LINE_TERMINATORS : []), ...C(excluded)], true);
 
 // Complement automaton for one close literal: state k = matched the first k chars
 // of `close`. Reaching len(close) is forbidden, so the literal never occurs inside
 // the body; the statement's trailing close literal is the unique occurrence. Close
 // literals are ":" + word — no internal ":" and no borders, so on a mismatch the
 // only live restart is ":" → state 1.
-const bodyRules = (model: GModel, name: string, close: string): void => {
+const bodyRules = (model: GModel, name: string, close: string, singleLine = false): void => {
     for (let k = 0; k < close.length; k++) {
         const expected = close[k];
         const alts: GRule = [];
         if (k + 1 < close.length) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
         if (k > 0) alts.push([lit(":"), ref(`${name}-b1`)]);
-        alts.push([bodyOther(k === 0 ? ":" : `:${expected}`), ref(`${name}-b0`)]);
+        alts.push([bodyOther(k === 0 ? ":" : `:${expected}`, singleLine), ref(`${name}-b0`)]);
         alts.push([]);
         model.set(`${name}-b${k}`, alts);
     }
@@ -210,7 +222,7 @@ export const buildModel = (): GModel => {
             const name = op.toLowerCase() + (suffix === "" ? "" : `-${suffix}`);
             const open = `<<${op}${suffix}`;
             const close = `:${op}${suffix}`;
-            bodyRules(model, name, close);
+            bodyRules(model, name, close, PATTERN_OPS.has(op));
             const body = [lit(":"), ref(`${name}-b0`), lit(close)];
             if (op === "SEND") {
                 // A SEND is comms; the LAST SEND before EOS is the turn's disposition. Mid
