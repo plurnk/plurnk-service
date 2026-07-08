@@ -38,3 +38,17 @@ UPDATE log_entries SET expanded = $expanded WHERE id = $id;
 -- render). A hard delete: the row is gone, freeing storage; the derived errors pointer
 -- for an `op='error'` row vanishes with it.
 DELETE FROM log_entries WHERE id = $id;
+
+-- PREP: log_find_candidates
+-- §find-source-agnostic ÷ §log-coordinate-hierarchy — the run's log rows as FIND candidates,
+-- coordinate-glob-scoped (the same GLOB semantics log_match_coordinates curates by), each with the
+-- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
+SELECT
+    (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
+    le.op, le.rx, le.mimetype_rx, le.tokens
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.run_id = $run_id
+  AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
+ORDER BY l.sequence, t.sequence, le.sequence;

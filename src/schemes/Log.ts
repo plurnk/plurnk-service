@@ -1,8 +1,10 @@
-import type { FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { FindStatement, FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import { LineMarkerOps } from "../content/index.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
+import Matcher from "../content/matcher.ts";
+import type { FindResult, MatchItem, Match } from "./_entry-find.ts";
 
 type OpenFoldResult = { status: number; matched?: number };
 
@@ -14,6 +16,33 @@ const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Z]+))?$/;
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
 // path is unambiguously a prefix — the trailing slash is OPTIONAL (`log:///1/2` ≡ `log:///1/2/`).
 const PARTIAL_COORDINATE = /^\d+(?:\/\d+)?\/?$/;
+
+// The ONE content projection of a stored rx — what READ shows and therefore what FIND matches
+// (§find-source-agnostic: the matcher must see exactly the content the model can retrieve).
+// rx.content (with its own mimetype) when the op produced a body; the rx itself as compact JSON
+// otherwise (EDIT/SEND acks — inspectable, matchable); the raw string if the rx isn't JSON.
+const rxProjection = (rawRx: string): { content: string; mimetype: string } => {
+    try {
+        const rx = JSON.parse(rawRx) as { content?: unknown; mimetype?: unknown };
+        if (typeof rx.content === "string") {
+            return { content: rx.content, mimetype: typeof rx.mimetype === "string" ? rx.mimetype : "text/plain" };
+        }
+        return { content: JSON.stringify(rx), mimetype: "application/json" };
+    } catch {
+        return { content: rawRx, mimetype: "text/plain" };
+    }
+};
+
+// A log target pathname → the coordinate GLOB it scopes (§log-coordinate-hierarchy): a partial
+// coordinate (`1`, `1/2`, with or without slash) is a prefix over its descendants; a trailing
+// slash is the folder idiom; a full coordinate/glob passes through. null = malformed.
+const coordinateGlob = (pathname: string): string | null => {
+    if (pathname === "" ) return "*";
+    if (pathname.endsWith("/")) return `${pathname}*`;
+    if (PARTIAL_COORDINATE.test(pathname)) return `${pathname}/*`;
+    if (parseCoordinate(pathname) !== null || pathname.includes("*")) return pathname;
+    return null;
+};
 
 const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; sequence: number } | null => {
     const match = COORDINATE.exec(pathname);
@@ -81,33 +110,7 @@ export default class Log {
 
         if (row === undefined) return { status: 404, content: null, mimetype: null };
 
-        // Unwrap the stored rx (JSON-serialized DispatchResult). The original
-        // op's body is at rx.content with its own mimetype at rx.mimetype.
-        // Returning rx.content directly (NOT a "EDIT target\nstatus: N\n
-        // response: …" summary wrap) is what makes matcher chaining work:
-        // `<<READ(log:///N/M/K):$[0].matched:READ` then sees the prior op's
-        // actual result body and can jsonpath / xpath it cleanly.
-        //
-        // For ops that don't produce a content body (EDIT/COPY/MOVE/SEND
-        // return status+metadata), surface the rx itself as a JSON document
-        // so the model can still inspect what happened.
-        let underlyingContent: string;
-        let underlyingMimetype: string;
-        try {
-            const rx = JSON.parse(row.rx) as { content?: unknown; mimetype?: unknown };
-            if (typeof rx.content === "string") {
-                underlyingContent = rx.content;
-                underlyingMimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
-            } else {
-                // Non-content op (EDIT/SEND/etc.) — render the whole rx as compact JSON
-                // (the model parses it natively; pretty-print is whitespace the wire doesn't need).
-                underlyingContent = JSON.stringify(rx);
-                underlyingMimetype = "application/json";
-            }
-        } catch {
-            underlyingContent = row.rx;
-            underlyingMimetype = "text/plain";
-        }
+        const { content: underlyingContent, mimetype: underlyingMimetype } = rxProjection(row.rx);
 
         return ReadResolve.resolve({
             content: underlyingContent,
@@ -116,6 +119,68 @@ export default class Log {
             body: statement.body,
             mimetypes: ctx.mimetypes,
         });
+    }
+
+    // §log-uniform-query — FIND over the run's log rows, on the SAME source-agnostic primitive
+    // every entry scheme runs (Matcher.matchCandidates, §find-source-agnostic): candidates are the
+    // coordinate-scoped rows projected exactly as READ shows them (rxProjection), so every content
+    // dialect works on log BY CONSTRUCTION and FIND(log)→READ(coordinate) composes like any scheme.
+    // ~semantic stays 501 until the pump embeds log rows (epic S5); @graph is 501 (log rows carry
+    // no symbol channels — an honest absence, not an exception).
+    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
+        const { db, runId, mimetypes } = ctx;
+        const empty = (status: number): FindResult => ({ status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] });
+        if (statement.target === null) return empty(400);
+        // log rows have no tag concept (engine-written events) — a tag filter matches nothing.
+        if (Array.isArray(statement.signal) && statement.signal.length > 0) return empty(204);
+        if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph")) return empty(501);
+
+        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
+        const glob = coordinateGlob(pathname);
+        if (glob === null) return empty(400);
+        const rows = await (db.log_find_candidates as PrepMethod).all<{ coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number }>({ run_id: runId, glob });
+        const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
+        const projected = rows.map((r) => ({ key: r.coordinate, ...rxProjection(r.rx) }));
+
+        let matches: Match[];
+        if (statement.body === null) {
+            matches = projected.map((c) => ({ pathname: c.key, span: null }));
+        } else {
+            if (mimetypes === undefined) return empty(501);
+            const r = await Matcher.matchCandidates(statement.body, projected, mimetypes);
+            if (r.status !== 200) return empty(r.status);
+            matches = r.matches.map((m) => ({ pathname: m.key, span: m.span, ...(m.path !== undefined ? { path: m.path } : {}) }));
+        }
+        if (statement.lineMarker !== null) {
+            const page = paginate(matches, LineMarkerOps.firstLast(statement.lineMarker));
+            if (page.status !== 200) return empty(page.status);
+            matches = page.items ?? [];
+        }
+        if (matches.length === 0) return empty(204);
+
+        // The result rows mirror the catalog-row shape (§find-result-catalog-rows): one item per
+        // match, keyed by the row's self-documenting path, carrying {mimetype, tokens, lines} so
+        // the model budgets its READs — uniform with every scheme's FIND.
+        const results: MatchItem[] = [];
+        const seenPath: string[] = [];
+        const seen = new Set<string>();
+        let itemsTokenTotal = 0;
+        for (const m of matches) {
+            const row = byCoord.get(m.pathname);
+            if (row === undefined) continue;
+            const path = `log:///${m.pathname}`;
+            const proj = rxProjection(row.rx);
+            const item: MatchItem = {
+                path,
+                channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
+            } as MatchItem;
+            results.push(m.span !== null ? { ...item, matchSpan: m.span, ...(m.path !== undefined ? { matchPath: m.path } : {}) } : item);
+            if (!seen.has(m.pathname)) { seen.add(m.pathname); seenPath.push(m.pathname); itemsTokenTotal += row.tokens; }
+        }
+        // matches[].pathname is the fan-out's retarget key — `/loop/turn/seq/OP` re-parses as a
+        // coordinate (the /OP suffix is accepted), so READ(log://)<matcher> fan-out delivers rows.
+        const fanMatches = matches.map((m) => ({ ...m, pathname: `/${m.pathname}` }));
+        return { status: 200, content: JSON.stringify(results), mimetype: "application/json", results, itemsTokenTotal, pathnames: seenPath.map((p) => `/${p}`), matches: fanMatches };
     }
 
     async open(statement: OpenStatement, ctx: PlurnkSchemeContext): Promise<OpenFoldResult> {
@@ -137,15 +202,9 @@ export default class Log {
             const row = await (db.log_id_by_coordinate as PrepMethod).get<{ id: number }>({ run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
             return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
         }
-        // §log-coordinate-hierarchy — a partial coordinate (`1`, `1/2`) is a prefix glob over its
-        // descendants; the trailing slash is an optional alias (`1/2` ≡ `1/2/` ≡ `1/2/*`), uniform
-        // with READ(known:///docs/). run33/jumbo: the model reached for whole-turn folds as
-        // `log:///1/2` (the natural form) and got a wall of 400s.
-        const glob = pathname.endsWith("/") ? `${pathname}*`
-            : PARTIAL_COORDINATE.test(pathname) ? `${pathname}/*`
-            : pathname;
-        const malformed = coord === null && !glob.includes("*");
-        if (malformed) return { status: 400, ids: [] };
+        // §log-coordinate-hierarchy — one resolution for every consumer (curation here, find below).
+        const glob = coordinateGlob(pathname);
+        if (glob === null) return { status: 400, ids: [] };
         const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob });
         // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
         // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
