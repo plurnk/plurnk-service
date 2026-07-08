@@ -8,11 +8,12 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import Server from "../../src/Server.ts";
 
-const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void>; resolved: Array<Record<string, unknown>>; created: Array<Record<string, unknown>> }> => {
+const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void>; resolved: Array<Record<string, unknown>>; created: Array<Record<string, unknown>>; ran: Array<Record<string, unknown>> }> => {
     const http = createServer();
     const wss = new WebSocketServer({ server: http });
     const resolved: Array<Record<string, unknown>> = [];
     const created: Array<Record<string, unknown>> = [];
+    const ran: Array<Record<string, unknown>> = [];
     wss.on("connection", (socket) => {
         const send = (msg: object): void => socket.send(JSON.stringify(msg));
         socket.on("message", (raw: Buffer) => {
@@ -30,6 +31,7 @@ const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void
                 return;
             }
             if (msg.method === "loop.run") {
+                ran.push(msg.params);
                 send({ jsonrpc: "2.0", id: msg.id, result: { loopId: 1, action: "enqueued_new_loop", finalStatus: 100 } });
                 // The scripted run: PLAN → a READ with rx → a [300] question proposal (stop the world).
                 send({ jsonrpc: "2.0", method: "log/entry", params: { entry: { id: 10, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, tx: { op: "PLAN", body: "ask the operator" } } } });
@@ -51,6 +53,7 @@ const fixtureDaemon = async (): Promise<{ url: string; close: () => Promise<void
         close: () => new Promise((resolve) => { wss.close(); http.close(() => resolve()); }),
         resolved,
         created,
+        ran,
     };
 };
 
@@ -66,7 +69,7 @@ test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client][§ag
             const res = await fetch(`http://127.0.0.1:${port}/`, {
                 method: "POST",
                 headers: { "content-type": "application/json", accept: "text/event-stream" },
-                body: JSON.stringify({ threadId: "t1", runId: "r1", messages: [{ role: "user", content: "deploy the service" }], forwardedProps: { plurnk: { projectRoot: "/tmp/ws", settings: { questions: true } } } }),
+                body: JSON.stringify({ threadId: "t1", runId: "r1", messages: [{ role: "user", content: "deploy the service" }], forwardedProps: { plurnk: { projectRoot: "/tmp/ws", settings: { questions: true }, alias: "opus", flags: { mode: "ask" } } } }),
             });
             assert.equal(res.headers.get("content-type"), "text/event-stream");
             const reader = res.body!.getReader();
@@ -107,6 +110,10 @@ test("[§agui-run-endpoint][§agui-thread-is-session][§agui-daemon-client][§ag
         // §agui-forwarded-props — the side-channel reached session.create verbatim.
         assert.equal(daemon.created[0]?.projectRoot, "/tmp/ws", "forwardedProps.plurnk.projectRoot rode the first run");
         assert.equal((daemon.created[0]?.settings as { questions?: boolean }).questions, true);
+        // C0 — per-run knobs from forwardedProps.plurnk reach loop.run (the TUI's /model + mode).
+        assert.equal(daemon.ran[0]?.alias, "opus", "forwardedProps.plurnk.alias → loop.run.alias");
+        assert.equal((daemon.ran[0]?.flags as { mode?: string })?.mode, "ask", "forwardedProps.plurnk.flags → loop.run.flags");
+
         // §agui-management-plane — the ONE escape hatch round-trips on the thread's own connection.
         const rpc = await fetch(`http://127.0.0.1:${port}/plurnk/rpc`, {
             method: "POST", headers: { "content-type": "application/json" },

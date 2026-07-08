@@ -161,10 +161,16 @@ export default class Server {
                 resolve();
             });
         });
+        // Per-run knobs ride forwardedProps.plurnk (a family client's model switch,
+        // ask/act flags, maxTurns) and override the bridge's env defaults — so the TUI
+        // keeps /model + mode. Env is the floor when the client sends nothing.
+        const fwdFlags = typeof forwarded?.flags === "object" && forwarded.flags !== null ? forwarded.flags as Record<string, unknown> : {};
         const ack = await client.call<{ loopId: number }>("loop.run", {
             prompt: lastUser.content,
-            maxTurns: Number(env("PLURNK_AGUI_MAX_TURNS")),
-            flags: { yolo: env("PLURNK_AGUI_YOLO") === "1" },
+            maxTurns: typeof forwarded?.maxTurns === "number" ? forwarded.maxTurns : Number(env("PLURNK_AGUI_MAX_TURNS")),
+            flags: { yolo: env("PLURNK_AGUI_YOLO") === "1", ...fwdFlags },
+            ...(typeof forwarded?.alias === "string" ? { alias: forwarded.alias } : {}),
+            ...(typeof forwarded?.model === "string" ? { model: forwarded.model } : {}),
         });
         // AG-UI cancellation: the frontend hanging up IS the abort signal — a dropped SSE
         // stream cancels the loop rather than orphaning a run nobody is watching.
