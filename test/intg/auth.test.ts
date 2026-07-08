@@ -1,8 +1,8 @@
-// #306 — the auth.authorize / auth.authorize.complete OAuth relay (general URL-auth, MCP-routed today).
-// execs-mcp owns the mechanics (discovery/PKCE/exchange, tested there against a mock auth server) and
-// the client owns the browser leg; the service is a stateless passthrough keyed by the target EXEC tag.
-// The live end-to-end needs a mock auth server; here we pin the service's own surface — the param
-// guards that must fire BEFORE any OAuth call.
+// #353 — the auth.authorize / auth.authorize.poll device-grant relay (general URL-auth, MCP-routed
+// today). execs-mcp owns the mechanics (discovery / DCR / device-authorization / token poll, tested
+// there against a mock auth server) and the client drives the poll loop; the service is a stateless
+// passthrough keyed by the target EXEC tag. The live end-to-end needs a mock auth server; here we pin
+// the service's own surface — the param guards that must fire BEFORE any OAuth call.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -19,16 +19,13 @@ const handler = (name: string) => {
     return h;
 };
 
-test("auth.authorize: guards target + redirectUri before touching the OAuth mechanics", async () => {
+test("auth.authorize: guards target before touching the OAuth mechanics", async () => {
     const h = handler("auth.authorize");
-    await assert.rejects(() => h({ redirectUri: "http://127.0.0.1:9/cb" }, ctx), /target must be a non-empty string/, "missing target rejected");
-    await assert.rejects(() => h({ target: "notion" }, ctx), /redirectUri must be a non-empty string/, "missing redirectUri rejected");
+    await assert.rejects(() => h({}, ctx), /target must be a non-empty string/, "missing target rejected");
 });
 
-test("auth.authorize.complete: guards target + code + pkce + redirectUri before exchange/inject", async () => {
-    const h = handler("auth.authorize.complete");
-    await assert.rejects(() => h({ code: "c", pkce: {}, redirectUri: "r" }, ctx), /target must be/, "missing target rejected");
-    await assert.rejects(() => h({ target: "notion", pkce: {}, redirectUri: "r" }, ctx), /code must be/, "missing code rejected");
-    await assert.rejects(() => h({ target: "notion", code: "c", redirectUri: "r" }, ctx), /pkce must be the blob/, "missing pkce rejected");
-    await assert.rejects(() => h({ target: "notion", code: "c", pkce: {} }, ctx), /redirectUri must match/, "missing redirectUri rejected");
+test("auth.authorize.poll: guards target + device before polling/injecting", async () => {
+    const h = handler("auth.authorize.poll");
+    await assert.rejects(() => h({ device: {} }, ctx), /target must be/, "missing target rejected");
+    await assert.rejects(() => h({ target: "notion" }, ctx), /device must be the opaque blob/, "missing device rejected");
 });

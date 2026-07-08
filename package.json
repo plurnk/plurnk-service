@@ -61,7 +61,7 @@
         "@plurnk/plurnk-execs": "^0.4.36",
         "@plurnk/plurnk-execs-all": "^0.1.24",
         "@plurnk/plurnk-execs-common": "^0.2.18",
-        "@plurnk/plurnk-execs-mcp": "^0.5.7",
+        "@plurnk/plurnk-execs-mcp": "^0.6.0",
         "@plurnk/plurnk-execs-search": "^0.3.2",
         "@plurnk/plurnk-grammar": "^0.75.3",
         "@plurnk/plurnk-mimetypes": "^0.19.0",
