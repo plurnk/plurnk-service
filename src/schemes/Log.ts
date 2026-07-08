@@ -10,6 +10,10 @@ type OpenFoldResult = { status: number; matched?: number };
 // is wire-rendering self-documentation derived from the row's `op` field;
 // parsing accepts it (or omits it) and identifies the row by coordinate.
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Z]+))?$/;
+// §log-coordinate-hierarchy — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
+// `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
+// path is unambiguously a prefix — the trailing slash is OPTIONAL (`log:///1/2` ≡ `log:///1/2/`).
+const PARTIAL_COORDINATE = /^\d+(?:\/\d+)?\/?$/;
 
 const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; sequence: number } | null => {
     const match = COORDINATE.exec(pathname);
@@ -133,11 +137,13 @@ export default class Log {
             const row = await (db.log_id_by_coordinate as PrepMethod).get<{ id: number }>({ run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
             return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
         }
-        // The folder idiom, uniform (§log-curation-folder-idiom): a trailing slash means "the
-        // contents", exactly as READ(known:///docs/) fans out a folder — FOLD(log:///1/2/) folds
-        // turn 1/2's rows. run33: the model reached for whole-turn folds in the slash form six
-        // times (its most natural curation gesture) and got a wall of 400s.
-        const glob = pathname.endsWith("/") ? `${pathname}*` : pathname;
+        // §log-coordinate-hierarchy — a partial coordinate (`1`, `1/2`) is a prefix glob over its
+        // descendants; the trailing slash is an optional alias (`1/2` ≡ `1/2/` ≡ `1/2/*`), uniform
+        // with READ(known:///docs/). run33/jumbo: the model reached for whole-turn folds as
+        // `log:///1/2` (the natural form) and got a wall of 400s.
+        const glob = pathname.endsWith("/") ? `${pathname}*`
+            : PARTIAL_COORDINATE.test(pathname) ? `${pathname}/*`
+            : pathname;
         const malformed = coord === null && !glob.includes("*");
         if (malformed) return { status: 400, ids: [] };
         const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob });

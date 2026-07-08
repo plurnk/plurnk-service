@@ -218,3 +218,25 @@ test("[§log-curation-folder-idiom] a zero-match sweep is a NO-OP SUCCESS — 20
         assert.equal(star.status, 204, "the explicit-glob form agrees");
     } finally { await db.close(); }
 });
+
+test("[§log-coordinate-hierarchy] a PARTIAL coordinate is a prefix, slash OPTIONAL — FOLD(log:///1/1) ≡ FOLD(log:///1/1/) folds the turn (#353-jumbo)", async () => {
+    const { db, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        // The natural whole-turn fold the jumbo model reached for (no trailing slash) now resolves.
+        const noSlash = await new Log().fold(
+            foldStmt(urlPath("log", "/1/1")),
+            makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(noSlash.status, 200, "log:///1/1 (no slash) folds turn 1/1 — no more 400");
+        assert.equal(noSlash.matched, 1, "the turn's row");
+        assert.equal(await getExpanded(db, runId), 0);
+        // And the loop prefix: log:///1 selects all of loop 1's rows.
+        await new Log().open(foldStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        const loop = await new Log().fold(
+            foldStmt(urlPath("log", "/1")),
+            makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(loop.status, 200, "log:///1 folds loop 1's rows");
+        assert.ok((loop.matched ?? 0) >= 1, "the loop prefix matched");
+    } finally { await db.close(); }
+});
