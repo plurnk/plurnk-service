@@ -63,7 +63,7 @@
         "@plurnk/plurnk-mimetypes": "^0.17.0",
         "@types/node": "^26.0.0",
         "@types/turndown": "^5.0.6",
-        "typescript": "^6.0.3"
+        "typescript": "^7.0.2"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": ">=0.16.0"
