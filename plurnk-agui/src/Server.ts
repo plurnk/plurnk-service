@@ -109,7 +109,7 @@ export default class Server {
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
         const thread = await this.#thread(input.threadId, forwarded);
         const client = thread.client;
-        const translator = new Translator({ threadId: input.threadId, runId: input.runId ?? crypto.randomUUID(), modelRunId: thread.modelRunId });
+        const translator = new Translator({ threadId: input.threadId, runId: input.runId ?? crypto.randomUUID(), modelRunId: thread.modelRunId, sessionId: thread.sessionId });
 
         res.writeHead(200, {
             "content-type": "text/event-stream",

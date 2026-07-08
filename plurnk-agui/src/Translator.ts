@@ -21,11 +21,13 @@ export default class Translator {
     #runId: string;
     #currentTurn: number | null = null;
     #modelRunId: number | null;
+    #sessionId: number | null;
 
-    constructor(args: { threadId: string; runId: string; modelRunId?: number | null }) {
+    constructor(args: { threadId: string; runId: string; modelRunId?: number | null; sessionId?: number | null }) {
         this.#threadId = args.threadId;
         this.#runId = args.runId;
         this.#modelRunId = args.modelRunId ?? null;
+        this.#sessionId = args.sessionId ?? null;
     }
 
     runStarted(snapshot?: unknown): AguiEvent[] {
@@ -124,11 +126,12 @@ export default class Translator {
             ],
         });
         // Family channel — the full terminal truth the core STATE_DELTA can't hold
-        // (loopId, turnIds, costPico, usage meta), so a plurnk client rebuilds its
-        // json record from the stream without a second round-trip. Numbers verbatim
+        // (loopId, turnIds, costPico, usage meta) PLUS the daemon sessionId, so a
+        // plurnk client rebuilds its json record from the stream with ONE schema
+        // across transports (WS or bridge) — no second round-trip. Numbers verbatim
         // (§agui-numbers-passthrough). Generic frontends ignore it; the RUN_FINISHED/
         // RUN_ERROR below is their terminal signal.
-        events.push({ type: "CUSTOM", name: "plurnk.terminated", value: n });
+        events.push({ type: "CUSTOM", name: "plurnk.terminated", value: { ...n, sessionId: this.#sessionId } });
         if (n.finalStatus === 200) {
             events.push({ type: "RUN_FINISHED", threadId: this.#threadId, runId: this.#runId });
         } else {
