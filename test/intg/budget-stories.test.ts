@@ -203,8 +203,11 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
-        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(t.status, 413, "un-foldable → hard-413");
+        // §grinder-hard-413-recovery: the first overflow is the recovery turn (consumes the one
+        // grant + the one Mock response); the SECOND is the hard-413 this test pins.
+        await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: [response([sendStmt(102, null, "on it")])] }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: [] }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
+        assert.equal(t.status, 413, "recovery declined → hard-413");
         assert.equal(t.budgetHardStop, true, "the hard-stop fired before generate()");
         const packet = await packetOf(db, t.turnId);
         assert.equal(packet.assistant.ops.length, 0, "stored assistant is empty — the model never spoke (dispatch short-circuited)");
@@ -305,7 +308,8 @@ test("budget: the un-foldable hard-413 record reports a positive overshoot hones
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
-        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: [response([sendStmt(102, null, "on it")])] }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t = await engine.runTurn({ provider: new Mock({ contextSize: WINDOW, responses: [] }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
         assert.equal(t.status, 413);
         const { ceiling, usage, percent, free } = budgetHeadline((await packetOf(db, t.turnId)).packet);
         assert.ok(usage > ceiling, `usage ${usage} exceeds ceiling ${ceiling} — a real overshoot`);

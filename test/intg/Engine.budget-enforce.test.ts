@@ -109,14 +109,26 @@ test("[§grinder-layer1-rollback] THE DOCTRINE: older history is NEVER grinder-f
     } finally { await db.close(); }
 });
 
-test("[§grinder-hard-413-abort] when even the manifest won't fit, the loop abandons at 413 (budget_overflow)", async () => {
+test("[§grinder-hard-413-abort] a DECLINED recovery abandons at 413 (budget_overflow) — the terminal that follows being told", async () => {
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
-        const result = await engine.runLoop({ provider: new Mock({ contextSize: 4096, responses: okSends(3) }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
+        // Sendable within the 4096 window, over the TINY policy ceiling: recovery turn granted;
+        // the model continues without curing it; the second hard overflow is the abort.
+        const result = await engine.runLoop({ provider: new Mock({ contextSize: 4096, responses: [response([sendStmt(102, "carrying on")]), response([sendStmt(102, "carrying on")])] }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.finalStatus, 413, "hard-stop abandons the loop at 413 Content Too Large");
         assert.equal(result.reason, "budget_overflow", "abandonment reason is the budget, not a strike or max-turns");
+    } finally { await db.close(); }
+});
+
+test("[§grinder-hard-413-recovery] a recovery turn that CONCLUDES is a legitimate 200 — finishing IS a way to stop overflowing", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, TINY);
+        const result = await engine.runLoop({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
+        assert.equal(result.finalStatus, 200, "the told model wrapped up — over-policy but done beats dead");
     } finally { await db.close(); }
 });
 
@@ -137,7 +149,9 @@ test("[§grinder-compaction-strikes] turn-1 overflow folds the turn's own foists
         const engine = engineAt(db, TINY);
         const t1 = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t1.budgetStruck, true, "every compaction strikes — turn 0/1 is NOT exempt (#4): a fold happened, so it counts");
-        assert.equal(t1.budgetHardStop, true, "the TINY env wall is below even the folded scaffolding, so it still hard-stops");
+        // §grinder-hard-413-recovery: the first hard overflow is now the RECOVERY turn (sendable
+        // within the 4096 window), not a hard stop — the strike above is what this test pins.
+        assert.equal(t1.budgetHardStop, false, "first overflow → recovery turn, not death");
     } finally { await db.close(); }
 });
 
@@ -346,5 +360,38 @@ test("[§tokenomics-window-partition] the partition resolves PER ALIAS — the s
         } finally {
             keys.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
         }
+    } finally { await db.close(); }
+});
+
+test("[§grinder-hard-413-recovery] the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs, strike counted; the SECOND terminates 413", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, TINY);
+        // Physically sendable (window 200k >> the packet) but hopelessly over the policy ceiling
+        // (TINY=2): the model gets its ONE told-and-heard turn. It CONTINUES (102) without curing
+        // the overflow — the second hard overflow then dies honestly. (A recovery turn that
+        // CONCLUDES 200 is legitimate — finishing IS a way to stop overflowing.)
+        const mock = new Mock({ contextSize: 200_000, responses: [response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")])] });
+        const result = await engine.runLoop({ provider: mock, sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
+        assert.equal(result.finalStatus, 413, "still terminates 413 — the model was told and (structurally) could not comply");
+        assert.equal(result.reason, "budget_overflow");
+        assert.equal(mock.remaining, 2, "generate ran EXACTLY once — the recovery turn happened; the second overflow skipped the LLM");
+        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        const steer = errs.map((e) => JSON.parse(e.rx) as { kind?: string; message?: string }).find((e) => e.kind === "budget_overflow" && (e.message ?? "").includes("recovery turn"));
+        assert.ok(steer, "the recovery steer was minted — over-budget, the remedy (KILL/FOLD history), and the consequence, stated");
+    } finally { await db.close(); }
+});
+
+test("[§grinder-hard-413-recovery] physically unsendable → 413 IMMEDIATELY, no recovery generate — physics doesn't negotiate", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, TINY);
+        // A 1-token provider window: the packet cannot reach the model at all.
+        const mock = new Mock({ contextSize: 1, responses: okSends(3) });
+        const result = await engine.runLoop({ provider: mock, sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
+        assert.equal(result.finalStatus, 413);
+        assert.equal(mock.remaining, 3, "generate never ran — an unsendable packet earns no recovery turn");
     } finally { await db.close(); }
 });

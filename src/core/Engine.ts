@@ -145,6 +145,9 @@ export default class Engine {
     // and fronts their public surface.
     #telemetry: TelemetryChannel;
     #strikes: StrikeRail;
+    // §grinder-hard-413-recovery — loops granted their ONE over-ceiling recovery turn. Cleared on a
+    // fitting turn (the model curated; a LATER overflow earns a fresh recovery) and at loop cleanup.
+    #hardOverflowRecovery = new Set<number>();
     #packets: PacketBuilder;
     #proposals: ProposalLifecycle;
     #dispatcher: Dispatcher;
@@ -391,6 +394,7 @@ export default class Engine {
             }
             this.#loopAborts.delete(loopId);
             this.#strikes.delete(loopId);
+            this.#hardOverflowRecovery.delete(loopId);
             this.#telemetry.delete(loopId);
             this.#tokenRatios.delete(loopId);
         };
@@ -851,8 +855,41 @@ export default class Engine {
         if (enforced.struck) nextActionIndex += 1; // the budget-overflow error row consumed a sequence
         requestPacket = enforced.packet;
         if (!enforced.fit) {
-            // Hard 413: won't fit even with only the manifest left. Skip the LLM,
-            // close the turn, and let runLoop abandon (499).
+            // §grinder-hard-413-recovery (Q4, owner ruling: recoverable strike, NO margin) — the
+            // overflow lives in foldable HISTORY the model owns, and the grinder won't touch
+            // history (§grinder-layer1-rollback doctrine). So the first hard overflow is a
+            // RECOVERY TURN, not death: the packet is over the POLICY ceiling but usually well
+            // within PHYSICS (the jumbo pin: ceiling 13k, real window 49k) — send it once, with a
+            // minted steer naming the remedy, and a strike (budgetStruck). The model curates →
+            // next turn fits → the grant clears. It declines → the second consecutive hard
+            // overflow terminates 413 — death only after the model was told. Physically
+            // unsendable (over the provider's real window too) → 413 immediately; physics
+            // doesn't negotiate. The pointer stays at 100% of budget — a margin would mask it.
+            const physicallySendable = provider.contextSize === null
+                ? true
+                : requestPacket.tokens * Math.max(tokenRatio, 1) <= provider.contextSize - this.#packets.decodeBudget(provider);
+            if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
+                this.#hardOverflowRecovery.add(loopId);
+                await (this.#db.engine_insert_log_entry as PrepMethod).get({
+                    run_id: runId, loop_id: loopId, turn_id: turnId, sequence: nextActionIndex++,
+                    origin: "model", source: "engine", op: "error", suffix: "", signal: null,
+                    scheme: null, username: null, password: null, hostname: null, port: null,
+                    pathname: null, params: null, fragment: null, lineMarker: null,
+                    tx: "", mimetype_tx: "text/plain",
+                    rx: JSON.stringify({ status: 413, kind: "budget_overflow", message: "the packet exceeds the budget even after the newest turn folded — this is your ONE recovery turn: KILL or FOLD history items now (the budget table lists the heaviest) to reclaim room; a second consecutive overflow terminates the loop" }),
+                    mimetype_rx: "application/json", status_rx: 413, tokens: 0, state: "failed", outcome: "budget_overflow",
+                    attrs: "{}",
+                });
+                // Rebuild so the recovery-steer row just minted renders in THIS packet's log +
+                // errors sections (the same re-derive contract the soft grind uses).
+                nextActionIndex += 1;
+                requestPacket = await this.#packets.buildRequestPacket({
+                    initialMessages: messages, requirements, sessionId, runId, loopId,
+                    currentTurnSeq: seq, provider, gitStatus, tokenRatio,
+                });
+            } else {
+            // Hard 413: physically unsendable, or the model already declined its recovery turn.
+            // Skip the LLM, close the turn, and let runLoop abandon.
             const hardPacket = this.#packets.completePacket(requestPacket, { content: "", ops: [], reasoning: null }, null, provider);
             await (this.#db.engine_close_turn as PrepMethod).run({
                 id: turnId, status: 413, packet: JSON.stringify(hardPacket),
@@ -861,6 +898,11 @@ export default class Engine {
                 finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
             });
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
+            }
+        } else {
+            // A fitting turn clears the recovery grant — the model curated; a later overflow
+            // earns a fresh recovery turn (chronic overflow still strikes out via the rail).
+            this.#hardOverflowRecovery.delete(loopId);
         }
         const modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
         // No decode cap. Our budget governs the TRANSMISSION packet (the grinder folds
