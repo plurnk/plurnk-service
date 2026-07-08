@@ -42,7 +42,7 @@ export async function closeAll(): Promise<void> {
     await Promise.allSettled(open.map(async (p) => { (await p).close(); }));
 }
 
-// Inject the OAuth bearer (from completeAuth) for a server and evict its cached
+// Inject the OAuth bearer (from a completed device-grant poll) for a server and evict its cached
 // client so the next connect carries the token (plurnk-execs-mcp#1). This is the
 // correct injection primitive for an env-declared server: it overlays the token
 // on the resolved config (registerServer can't — an env server wins over an
@@ -134,11 +134,10 @@ export default class Mcp extends BaseExecutor {
             if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
             // An HTTP server that requires OAuth 401s the connect. The executor is
             // a PRODUCER — it can't run the interactive consent round-trip — so it
-            // surfaces the need and stops. The consumer runs the OAuth flow through
-            // its proposal system (propose the authorization link → user consents →
-            // token), injects the bearer via registerServer / a
-            // PLURNK_EXECS_MCP_<server>_HEADERS `Authorization: Bearer …`, and
-            // re-dispatches (plurnk-execs#13 — oauth-via-proposal).
+            // surfaces the need and stops. The consumer drives the RFC 8628 device
+            // grant (oauth.ts `authorize` → show code → `poll` → bearer), injects
+            // the token via install() / a PLURNK_EXECS_MCP_<server>_HEADERS
+            // `Authorization: Bearer …`, and re-dispatches (plurnk-execs-mcp#2).
             if (isAuthRequired(err)) {
                 emit({ source: `exec:${runtime}`, kind: "mcp_auth_required", message: `MCP server '${runtime}' requires authorization`, server: runtime, resource: cfg.url });
                 setState("results", "errored");

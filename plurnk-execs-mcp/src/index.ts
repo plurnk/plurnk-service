@@ -12,7 +12,8 @@ export {
     serverNames,
 } from "./config.ts";
 export type { ServerConfig } from "./config.ts";
-// OAuth mechanics — the executor owns the protocol (discovery/DCR/PKCE/exchange);
-// the consumer proposes the URL, the client hosts the loopback redirect.
-export { authorize, completeAuth } from "./oauth.ts";
-export type { AuthPkce } from "./oauth.ts";
+// OAuth mechanics — the executor owns the protocol (discovery/DCR + RFC 8628
+// device grant); the consumer relays, the client shows the code and drives the
+// poll. No redirect, no local server (plurnk-execs-mcp#2).
+export { authorize, poll } from "./oauth.ts";
+export type { AuthDevice, PollStatus } from "./oauth.ts";
