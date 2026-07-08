@@ -50,3 +50,20 @@ test("[§grammar-enforcement-verified-at-boot] a NON-CLAIMING backend (constrain
         "a CLAIMING backend that returns unconstrained output still fails hard",
     );
 });
+
+test("[§grammar-enforcement-verified-at-boot] a PER-ALIAS grammar (bare empty) STILL verifies — the #353 regression guard", async () => {
+    // The bug this pins: after GBNF went per-alias (#352), the verify read the BARE knob (now
+    // empty), so a grammar riding a suffix (turboderp) SKIPPED verification — enforced but
+    // unconfirmed, the #34 hole reopened. The env below is the shape live/demo actually ships:
+    // bare OFF, the active alias opts in via its suffix. The verify must resolve per-alias and run.
+    const env = { PLURNK_PROVIDERS_GBNF: "", PLURNK_MODEL: "rig", PLURNK_MODEL_rig: "openai/local", PLURNK_PROVIDERS_GBNF_rig: "plurnk.gbnf" };
+    // An UNCONSTRAINED backend must now FAIL (proving the verify ran, not skipped): if it were
+    // still reading the empty bare knob it would silently return and this would not throw.
+    await assert.rejects(
+        () => ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("I am unconstrained"), env),
+        /did not honor the forcing grammar|does not enforce|unconstrained/i,
+        "per-alias GBNF resolves and the end-to-end verify RUNS — a non-enforcing backend fails hard, never silently skipped",
+    );
+    // And an enforcing backend passes through the per-alias path.
+    await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("PLURNK-RAILS-LIVE"), env);
+});

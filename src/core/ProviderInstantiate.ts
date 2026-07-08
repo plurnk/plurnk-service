@@ -6,7 +6,7 @@
 // The pure helpers (parseAliasesFromEnv, resolveActiveAlias) live in
 // @plurnk/plurnk-providers as framework-grade env parsing.
 
-import { resolveActiveAlias, isStandardProvider, standardProviderFromEnv } from "@plurnk/plurnk-providers";
+import { resolveActiveAlias, scopeEnvToAlias, isStandardProvider, standardProviderFromEnv } from "@plurnk/plurnk-providers";
 import type { Provider, ProviderAlias, ProviderFactory } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
@@ -100,7 +100,13 @@ export default class ProviderInstantiate {
     // refusal to run beats silent garbage that reads as model failure. No-op when GBNF is off.
     static #VERIFY_TOKEN = "PLURNK-RAILS-LIVE";
     static async verifyGrammarEnforcement(provider: Provider, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-        const gbnf = env.PLURNK_PROVIDERS_GBNF;
+        // #353 — resolve GBNF PER ALIAS, exactly as Engine.#grammarConstraint does. The per-alias
+        // move (#352) left this reading the BARE knob (now empty by default), so the boot verify
+        // was SILENTLY SKIPPED for every alias whose grammar rides a suffix (turboderp) — the rails
+        // ran UNVERIFIED, the #34 hole this method exists to close reopened. The alias is the one
+        // that built this provider (the side-table), falling back to the active alias.
+        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(env)?.alias ?? "";
+        const gbnf = scopeEnvToAlias(env, alias, ["PLURNK_PROVIDERS_GBNF"]).PLURNK_PROVIDERS_GBNF;
         if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // rails not requested — nothing to verify
         // #336 — gate on the provider's own claim: a grammarStyle-'none' provider DROPS the grammar
         // cleanly (never on the wire, constrainsOutput:false), so a global GBNF default must not
