@@ -271,7 +271,7 @@ export default class Engine {
         //
         // PER ALIAS (#353): resolved PLURNK_PROVIDERS_GBNF_<alias> over the bare fallback (providers'
         // scopeEnvToAlias), scoped by the alias that built this provider. GBNF only helps backends
-        // that constrain sampling (llama-server, fireworks); a cloud model that IGNORES the grammar
+        // that constrain sampling (llama-server, response_format backends); a cloud model that IGNORES the grammar
         // gets a filter-mode divergence event every turn for nothing. So the bare default is OFF
         // and the GBNF-capable aliases opt IN via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
