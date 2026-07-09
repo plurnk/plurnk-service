@@ -232,6 +232,17 @@ export default class Daemon {
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
         this.#engine.resolveProposal(logEntryId, resolution);
     }
+
+    // The client-interface seam (#355) — drive/steer a loop. The module supplies only session/run/prompt;
+    // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
+    // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
+    // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
+    async runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+        if (this.#provider === null) throw new Error("runLoop: no provider configured");
+        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+        const { action, loopId, turnSeq } = await this.inject({ ...args, provider: this.#provider, systemPrompt });
+        return { action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
+    }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
     get schemes(): SchemeRegistry { return this.#schemes; }

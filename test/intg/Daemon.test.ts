@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, makeMockResponse } from "./_rpc.ts";
 import { insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 
@@ -462,5 +462,32 @@ test("the client-interface seam — pendingProposals reads a session's stopped-w
         // resolveProposal delegates to Engine.resolveProposal — an unknown id throws (no registered waiter),
         // proving the seam routes into the engine's proposal machinery, not a shadow implementation.
         assert.throws(() => daemon.resolveProposal(999999, { decision: "accept" }), /no pending proposal/i, "resolveProposal delegates to the engine");
+    });
+});
+
+test("the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law (#355)", async () => {
+    // The loop-control hook: the module supplies only session/run/prompt; runLoop fills in the provider
+    // and the law-file system prompt (core's), fires the drain via the unified inject, and returns. The
+    // outcome arrives on the event source, not a socket. `cancelDrain` (already public) is the cancel hook.
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    await withDaemon(mock, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = (await rpcCall(ws, 1, "session.create", { name: "seam-runloop" })).result as { id: number };
+            const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
+            const events: Array<{ method: string; params: unknown }> = [];
+            daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
+
+            const res = await daemon.runLoop({ sessionId: created.id, runId: run.id, prompt: "go" });
+            assert.equal(res.action, "enqueued_new_loop", "runLoop enqueued a fresh loop");
+            assert.ok(res.loopId > 0, "runLoop returned the new loop id");
+
+            const terminals = await waitFor(
+                () => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === res.loopId),
+                (ts) => ts.length > 0,
+                { timeoutMs: 8000 },
+            );
+            assert.equal((terminals[0].params as { finalStatus?: number }).finalStatus, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
+        } finally { ws.close(); }
     });
 });
