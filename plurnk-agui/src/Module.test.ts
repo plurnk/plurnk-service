@@ -46,7 +46,7 @@ const post = async (port: number, body: object): Promise<AguiEvent[]> => {
     return text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
 };
 
-test("§3 an action run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
+test("[§agui-management-plane] an action run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0, sessionPrefix: "agui" })(seam);
     try {
@@ -67,7 +67,7 @@ test("§3 an action run executes via the seam: result custom + RUN_FINISHED, no 
     } finally { await mod.close(); }
 });
 
-test("a resume tool-result resolves the paused proposal without driving a loop", async () => {
+test("[§agui-proposal-resolve] a resume tool-result resolves the paused proposal without driving a loop", async () => {
     const { seam, resolves } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0, sessionPrefix: "agui" })(seam);
     try {

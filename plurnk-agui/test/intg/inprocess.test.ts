@@ -19,7 +19,7 @@ const SERVICE = resolve(import.meta.dirname, "../../../plurnk-service");
 // plurnk-service + ~/.plurnk/.env — see the file header). Skips clean otherwise.
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
-test("in-process module: boot plug-point → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async () => {
+test("[§agui-daemon-client][§agui-run-endpoint][§agui-thread-is-session] in-process module: boot plug-point → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async () => {
     const { openMigrated } = await import(join(SERVICE, "test/intg/_helpers.ts"));
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));

@@ -39,7 +39,7 @@ export interface RunAgentInput {
 }
 
 // The daemon wire — the slice of the plurnk JSON-RPC protocol this bridge consumes.
-// The daemon owns these shapes; the bridge is an ordinary client (§agui-daemon-client).
+// The daemon owns these shapes; the module consumes them from the in-process seam.
 export interface LogEntryNotification {
     entry: {
         id: number;

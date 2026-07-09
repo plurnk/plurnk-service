@@ -7,11 +7,9 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
 
 ## Architecture
 
-- **The bridge is an ordinary daemon client** {§agui-daemon-client} — it connects to
-  `PLURNK_AGUI_DAEMON_URL`, calls the public methods (`session.create`/`session.attach`,
-  `loop.run`, `loop.resolve`), and subscribes to the public notifications (`log/entry`,
-  `loop/proposal`, `loop/terminated`). It holds no state the daemon doesn't: a bridge restart
-  loses nothing (threads reattach by session name).
+- **The module is an in-process daughter of the daemon** {§agui-daemon-client} — activated
+  at boot (`registerModule` → the core seam handle); it opens the AG-UI+ listener and owns
+  the client interface. No WebSocket, no separate process.
 - **An AG-UI thread IS a plurnk session** {§agui-thread-is-session} — `threadId` maps to the
   session `<PLURNK_AGUI_SESSION_PREFIX>-<threadId>`, created on the thread's first run with
   `settings.questions` per `PLURNK_AGUI_QUESTIONS`, reattached on every run after. Plurnk's
@@ -81,31 +79,20 @@ surfaces as `CUSTOM plurnk.proposal` carrying `{logEntryId, op, target, body, at
 world is stopped — **indefinitely by default** (service ruling: a stopped world waits for its
 human; the timeout is operator opt-in) — and the run resumes on resolution.
 
-## The management plane {§agui-management-plane}
+## The action surface {§agui-management-plane}
 
-AG-UI models the RUN plane; the workspace plane rides the charter's ONE escape hatch:
-`POST /plurnk/rpc {threadId, method, params}` — a verbatim JSON-RPC passthrough on the
-thread's own daemon connection (session scoping is exactly the thread's). The daemon's
-method registry is the contract; discover it with `{method: "discover"}`. Session options
-for a thread's FIRST run ride `RunAgentInput.forwardedProps.plurnk` {§agui-forwarded-props}
-(`projectRoot`, `constraints`, `settings` — composing over the bridge's questions default).
+A verb is a §3 action run: `forwardedProps.plurnk.action = {kind, …params}` in, one
+`CUSTOM plurnk.action.result` (`{kind, ok, result|error}`) out, `RUN_FINISHED`. There is
+no side-channel RPC endpoint; the run envelope is the whole interface. Unknown kinds
+error honestly (`ok:false`). `loop.inject` rides this surface; its steered effect
+streams on the original run's open SSE.
 
-- **Topology scoping** {§agui-topology-scope} — the session broadcast carries every run's rows
-  (workers, the plurnk run, siblings); only the THREAD's model run projects onto the core
-  vocabulary. Foreign rows ride `plurnk.row`/`plurnk.ambient` — rich clients render the
-  topology; a worker's SEND never masquerades as the assistant speaking.
-- **Concurrent runs: the daemon decides** — a `POST /` while a run is live passes through to
-  `loop.run`, whose OWN semantics apply (inject-into-the-active-loop or enqueue — the ack's
-  `action` says which). Mechanism, not policy: the bridge adds no queueing of its own; both
-  open streams observe the shared session events and end at `loop/terminated`.
+## Topology scope {§agui-topology-scope}
 
-- **Auth** {§agui-auth} — `PLURNK_AGUI_TOKEN` empty (shipped) = local trust: the loopback bind
-  is the boundary, the daemon's own posture. Set, every POST must carry
-  `Authorization: Bearer <token>`, checked before any body is read.
-- **Daemon loss fails hard — by design, not omission**: the bridge holds no state the daemon
-  doesn't, so a dropped daemon connection kills the affected request loudly and the operator's
-  supervisor restarts the bridge (reattach reconstructs every thread by name). Backoff loops
-  hide outages; a dead daemon should look dead.
+The session broadcast carries EVERY run's rows (workers, the plurnk run, siblings);
+only the thread's model run projects onto the core vocabulary. Foreign-run rows ride
+`plurnk.row`/`plurnk.ambient` — visible to rich clients as topology, never interleaved
+into the conversation a generic frontend renders.
 
 ## The run endpoint {§agui-run-endpoint}
 

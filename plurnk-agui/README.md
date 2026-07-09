@@ -16,9 +16,6 @@ owns the transport+security line at that edge: bearer auth, per-session authoriz
 input validation. Below the seam: plurnk terms (loop/turn/proposal). Above: AG-UI terms
 (run/message/tool-call/state). This module is the translation.
 
-A legacy standalone bridge (`plurnk-agui` bin: WS client → SSE server) ships during the
-migration and retires at cutover.
-
 ## The interface (AG-UI+)
 
 One endpoint: `POST /` with `RunAgentInput` (`threadId`, `runId`, `messages`,
@@ -54,9 +51,6 @@ import { Module } from "@plurnk/plurnk-agui";
 daemon.registerModule(Module.init({ host: "127.0.0.1", port: 3044, sessionPrefix: "agui" }));
 // The daemon reads PLURNK_HOST/PLURNK_PORT: plurnk has ONE client surface, this listener.
 ```
-
-Legacy bridge: `npx plurnk-agui` fronts `ws://127.0.0.1:3044`, listens on `:3080`;
-config is `.env` over the shipped `.env.example` (every knob documented there).
 
 ## Dependencies
 
