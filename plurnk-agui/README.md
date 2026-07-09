@@ -51,7 +51,8 @@ One endpoint: `POST /` with `RunAgentInput` (`threadId`, `runId`, `messages`,
 
 ```ts
 import { Module } from "@plurnk/plurnk-agui";
-daemon.registerModule(Module.init({ host: "127.0.0.1", port: 3080, sessionPrefix: "agui" }));
+daemon.registerModule(Module.init({ host: "127.0.0.1", port: 3044, sessionPrefix: "agui" }));
+// The daemon reads PLURNK_HOST/PLURNK_PORT: plurnk has ONE client surface, this listener.
 ```
 
 Legacy bridge: `npx plurnk-agui` fronts `ws://127.0.0.1:3044`, listens on `:3080`;
