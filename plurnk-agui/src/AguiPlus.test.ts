@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { proposalToolCall, proposalToolCallId, proposalToolName, resolutionFromToolResult, stateSnapshot, stateDelta } from "./AguiPlus.ts";
+import { proposalToolCall, proposalToolCallId, proposalToolName, resolutionFromToolResult, stateSnapshot, stateDelta, parseAction, actionResult } from "./AguiPlus.ts";
 import type { ProposalNotification } from "./types.ts";
 
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
@@ -72,4 +72,15 @@ test("§2 reads → STATE: snapshot nests under plurnk; delta passes patches thr
     const delta = stateDelta([{ op: "replace", path: "/plurnk/providers/0/active", value: false }]);
     assert.equal(delta.type, "STATE_DELTA");
     assert.equal((delta as { delta: Array<{ path: string }> }).delta[0].path, "/plurnk/providers/0/active");
+});
+
+test("§3 actions: parse a forwardedProps request, project the outcome", () => {
+    assert.deepEqual(parseAction({ plurnk: { action: { kind: "session.rename", name: "new-name" } } }), { kind: "session.rename", params: { name: "new-name" } });
+    assert.equal(parseAction({ plurnk: {} }), null, "no action → null");
+    assert.equal(parseAction({ plurnk: { action: { name: "x" } } }), null, "an action without a kind → null");
+    assert.equal(parseAction(undefined), null, "no forwardedProps → null");
+    const ok = actionResult("session.rename", { ok: true, result: { name: "new-name" } });
+    assert.deepEqual(ok, { type: "CUSTOM", name: "plurnk.action.result", value: { kind: "session.rename", ok: true, result: { name: "new-name" } } });
+    const err = actionResult("op.exec", { ok: false, error: "rejected 403" });
+    assert.deepEqual((err as { value: { ok: boolean; error: string } }).value, { kind: "op.exec", ok: false, error: "rejected 403" });
 });

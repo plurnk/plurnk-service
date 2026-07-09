@@ -69,3 +69,23 @@ export interface AguiPlusState {
 }
 export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({ type: "STATE_SNAPSHOT", snapshot: { plurnk: s } });
 export const stateDelta = (patches: Array<{ op: string; path: string; value?: unknown }>): AguiEvent => ({ type: "STATE_DELTA", delta: patches });
+
+// ── §3 — management actions: forwardedProps in, CUSTOM out ────────────
+// Reads are STATE (§2); ACTIONS are verbs (rename, set-root, constrain, exec, fork,
+// …), so they ride a run envelope. A family client requests one via
+// forwardedProps.plurnk.action; the module executes it through the seam and returns
+// the outcome as a CUSTOM event. AG-UI has no vocabulary for plurnk workspace ops,
+// so this is a legitimate Tier-2 metadata extension (the standard's own
+// forwardedProps channel in, a plurnk.* custom out).
+export interface ActionRequest { kind: string; params: Record<string, unknown> }
+export const parseAction = (forwardedProps: unknown): ActionRequest | null => {
+    const action = (forwardedProps as { plurnk?: { action?: unknown } } | undefined)?.plurnk?.action;
+    if (action === null || typeof action !== "object") return null;
+    const kind = (action as { kind?: unknown }).kind;
+    if (typeof kind !== "string" || kind.length === 0) return null;
+    const { kind: _kind, ...params } = action as Record<string, unknown>;
+    return { kind, params };
+};
+export type ActionOutcome = { ok: true; result?: unknown } | { ok: false; error: string };
+export const actionResult = (kind: string, outcome: ActionOutcome): AguiEvent =>
+    ({ type: "CUSTOM", name: "plurnk.action.result", value: { kind, ...outcome } });
