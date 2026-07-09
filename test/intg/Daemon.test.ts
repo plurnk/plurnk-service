@@ -537,3 +537,37 @@ test("the client-interface seam — readLog returns a session's journal, ownersh
         } finally { ws.close(); }
     });
 });
+
+test("the client-interface seam — the metadata reads surface providers, sessions, runs, and constraints (#355)", async () => {
+    // The render surface beyond the journal: providers+budget, sessions, runs, and the constraint overlay.
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    await withDaemon(mock, async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = (await rpcCall(ws, 1, "session.create", { name: "seam-meta" })).result as { id: number };
+
+            // providers + budget — the active test alias is mocktest, carrying the effective prompt budget.
+            const providers = daemon.listProviders();
+            const active = providers.aliases.find((a) => a.active);
+            assert.ok(active !== undefined, "listProviders reports the active alias");
+            assert.equal(active!.alias, "mocktest");
+            assert.equal(typeof active!.contextSize, "number", "the active alias carries the effective prompt budget (#345)");
+
+            // sessions + runs — the created session and its client run are present.
+            const sessions = await daemon.listSessions();
+            assert.ok(sessions.some((s) => s.id === created.id), "listSessions includes the created session");
+            const runs = await daemon.listRuns(created.id);
+            assert.ok(runs.length >= 1, "listRuns returns the session's client run");
+
+            // constraints — a fresh session carries a clean, empty overlay.
+            const constraints = await daemon.listConstraints(created.id);
+            assert.deepEqual(constraints, [], "listConstraints is empty on a fresh session");
+
+            // prompts + membership effects — thin delegations; assert the wiring resolves cleanly.
+            const prompts = await daemon.listPrompts(created.id);
+            assert.ok(Array.isArray(prompts), "listPrompts returns the session's prompt history");
+            const members = await daemon.listMembers(created.id);
+            assert.ok(members !== undefined && members !== null, "listMembers resolves the session's membership effects");
+        } finally { ws.close(); }
+    });
+});

@@ -22,6 +22,8 @@ import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
+import GitMembership from "../core/git-membership.ts";
+import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import Yolo from "./yolo.ts";
 import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
@@ -291,6 +293,31 @@ export default class Daemon {
         const entries: LogEntryWire[] = [];
         for (const r of rows) entries.push(await LogEntry.fetchLogEntry(this.#db, r.id));
         return entries;
+    }
+
+    // The metadata-read hooks (#355) — the module's render surface beyond the journal. Thin delegations
+    // into core's envelope / membership / provider machinery; the module fans the results into its own views.
+    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; contextSize: number | null }> } {
+        const active = resolveActiveAlias();
+        return {
+            aliases: parseAliasesFromEnv().map((a) => {
+                const isActive = active !== null && active.alias === a.alias;
+                return {
+                    alias: a.alias, provider: a.provider, model: a.model, active: isActive,
+                    // contextSize = the EFFECTIVE prompt budget (window minus reserves, #345) — the same
+                    // denominator loop-usage reports; known for the active alias, null elsewhere.
+                    contextSize: isActive && this.#provider !== null ? this.#engine.promptBudgetFor(this.#provider) : null,
+                };
+            }),
+        };
+    }
+
+    listSessions() { return Envelope.listSessions(this.#db); }
+    listRuns(sessionId: number) { return Envelope.listRunsForSession(this.#db, sessionId); }
+    listPrompts(sessionId: number, limit: number = 100) { return Envelope.listPromptsForSession(this.#db, sessionId, limit); }
+    listMembers(sessionId: number) { return GitMembership.resolveMembershipEffects(this.#db, sessionId, undefined); }
+    listConstraints(sessionId: number) {
+        return (this.#db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId });
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
