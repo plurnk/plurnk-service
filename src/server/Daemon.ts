@@ -16,8 +16,11 @@ import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MethodRegistry from "./MethodRegistry.ts";
 import type { DrainLoopResult, NotifyTarget, Provider } from "./MethodRegistry.ts";
+import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import ClientConnection from "./ClientConnection.ts";
 import LogEntry from "./logEntry.ts";
+import Envelope from "./envelope.ts";
+import ClientTurn from "./clientTurn.ts";
 import Yolo from "./yolo.ts";
 import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
@@ -242,6 +245,27 @@ export default class Daemon {
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         const { action, loopId, turnSeq } = await this.inject({ ...args, provider: this.#provider, systemPrompt });
         return { action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
+    }
+
+    // The op-dispatch hook (#355) — execute one parsed op on behalf of a client: journaled as a
+    // client-origin turn (the log is core's, a client op is a first-class citizen), dispatched through
+    // the engine, then emitted as log/entry on the event source. One seam op backs the whole op_*
+    // family (read/edit/copy/find/fold/look/move/open/send/exec); the module parses at its edge with the
+    // grammar package and hands over the statement, then fans the emitted entry out to its own clients.
+    async dispatchAsClient(args: { sessionId: number; runId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+        const { sessionId, runId, statement } = args;
+        const clientLoopId = await Envelope.ensureClientLoop(this.#db, runId);
+        const turnId = await ClientTurn.insertClientTurn(this.#db, clientLoopId);
+        const entryIds: number[] = [];
+        const result = await this.#engine.dispatch({
+            statement, sessionId, runId, loopId: clientLoopId, turnId, sequence: 1,
+            origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); },
+        });
+        for (const logEntryId of entryIds) {
+            const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
+            this.#broadcast({ sessionId }, null, "log/entry", { entry });
+        }
+        return result as { status: number; [key: string]: unknown };
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }

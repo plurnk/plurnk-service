@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, makeMockResponse } from "./_rpc.ts";
 import { insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import Dsl from "../../src/server/dsl.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 
 interface RpcResponse {
@@ -488,6 +489,30 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 { timeoutMs: 8000 },
             );
             assert.equal((terminals[0].params as { finalStatus?: number }).finalStatus, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
+        } finally { ws.close(); }
+    });
+});
+
+test("the client-interface seam — dispatchAsClient runs a client op through the engine and emits log/entry (#355)", async () => {
+    // The op keystone: one seam op backs the whole op_* family. The module parses at its edge and hands
+    // over the statement; the op is journaled client-origin, dispatched, and the entry emitted on the source.
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = (await rpcCall(ws, 1, "session.create", { name: "seam-dispatch" })).result as { id: number };
+            const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
+            const entries: Array<{ method: string; params: unknown }> = [];
+            daemon.subscribeToEvents((_s, method, params) => { entries.push({ method, params }); });
+
+            // WRITE then READ known:///x through the seam — a positive roundtrip proving dispatch + journal.
+            const wrote = await daemon.dispatchAsClient({ sessionId: created.id, runId: run.id, statement: Dsl.buildEdit({ target: "known:///x", content: "seam" }) });
+            assert.equal(wrote.status, 201, "the client EDIT created the entry through the seam (201)");
+            const read = await daemon.dispatchAsClient({ sessionId: created.id, runId: run.id, statement: Dsl.buildRead({ target: "known:///x" }) });
+            assert.equal(read.status, 200);
+            assert.equal(read.content, "seam", "the value roundtripped — the op executed through the engine, not a shadow path");
+
+            const emitted = entries.filter((e) => e.method === "log/entry");
+            assert.ok(emitted.length >= 2, "each dispatched client op emitted a log/entry on the event source (agui fans out to its own clients)");
         } finally { ws.close(); }
     });
 });
