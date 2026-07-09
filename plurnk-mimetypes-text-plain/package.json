@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-plain",
-    "version": "0.7.5",
+    "version": "0.7.6",
     "description": "text/plain (head-oriented prose) and text/stream (tail-oriented live data) mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
