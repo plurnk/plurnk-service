@@ -40,6 +40,7 @@
         "build": "npm run build:dist"
     },
     "devDependencies": {
+        "@plurnk/plurnk-grammar": "0.76.0",
         "@types/node": "^26.1.1",
         "@types/ws": "8.18.1",
         "typescript": "^7.0.2",

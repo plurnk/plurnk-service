@@ -27,9 +27,11 @@ export interface PendingProposal {
     attrs: string | null;
 }
 
-// A parsed plurnk op statement — the grammar package's output (parsed at the module's
-// edge), handed to dispatchAsClient. Opaque to the seam beyond its op.
-export interface PlurnkStatement { op: string; [key: string]: unknown }
+// The grammar owns the protocol: the statement handed to dispatchAsClient IS
+// @plurnk/plurnk-grammar's PlurnkStatement (parsed at the module's edge). Type-only
+// import — erased at compile, so the published package stays zero-runtime-deps.
+import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+export type { PlurnkStatement };
 
 // A journal entry as the daemon ships it (readLog / the log/entry event carry this).
 export type LogEntryWire = Record<string, unknown>;
