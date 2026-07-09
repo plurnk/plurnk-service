@@ -54,7 +54,7 @@
         "jsonc-parser": "^3.3.1"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.17.0",
+        "@plurnk/plurnk-mimetypes": "^0.19.0",
         "@types/node": "^26.0.0",
         "typescript": "^7.0.2"
     },
