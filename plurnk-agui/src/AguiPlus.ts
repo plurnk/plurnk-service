@@ -17,11 +17,12 @@ export const logEntryIdFromToolCallId = (toolCallId: string): number | null => {
     return m === null ? null : Number(m[1]);
 };
 
-// Tool-call NAME — tunable (open decision on the epic: plurnk-namespaced vs a
-// conventional `request_approval` for generic-frontend legibility). A [300]
-// question is a proposal variant (op SEND) → a distinct name so a frontend renders
-// ask vs approve. The choreography is name-independent; only labeling changes.
-export const proposalToolName = (op: string): string => (op === "SEND" ? "plurnk.ask" : "plurnk.approve");
+// Tool-call NAME — AG-UI terminology all the way up to the seam (operator ruling,
+// 2026-07-09): the client-facing name is AG-UI-conventional, NOT plurnk-namespaced.
+// A side-effecting proposal is an approval request; a [300] question elicits input.
+// The plurnk correlation rides the opaque toolCallId (`prop:<logEntryId>`), so the
+// generic names carry no plurnk vocabulary upward.
+export const proposalToolName = (op: string): string => (op === "SEND" ? "request_user_input" : "request_approval");
 
 // The run's tail when it hits a pause: the tool-call, then the CALLER emits
 // RUN_FINISHED to terminate. The loop stays paused in-engine — untouched.

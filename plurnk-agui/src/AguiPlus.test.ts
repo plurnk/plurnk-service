@@ -18,7 +18,7 @@ const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotificatio
 test("§1 proposalToolCall: emits START/ARGS/END with the correlating id + the op in args", () => {
     const evs = proposalToolCall(proposal());
     assert.equal(evs.length, 3);
-    assert.deepEqual(evs[0], { type: "TOOL_CALL_START", toolCallId: "prop:42", toolCallName: "plurnk.approve" });
+    assert.deepEqual(evs[0], { type: "TOOL_CALL_START", toolCallId: "prop:42", toolCallName: "request_approval" });
     assert.equal(evs[1].type, "TOOL_CALL_ARGS");
     const args = JSON.parse((evs[1] as { delta: string }).delta);
     assert.equal(args.op, "EDIT");
@@ -27,10 +27,10 @@ test("§1 proposalToolCall: emits START/ARGS/END with the correlating id + the o
     assert.deepEqual(evs[2], { type: "TOOL_CALL_END", toolCallId: "prop:42" });
 });
 
-test("§1 a [300] question renders as ask, not approve (op SEND)", () => {
-    assert.equal(proposalToolName("SEND"), "plurnk.ask");
-    assert.equal(proposalToolName("EDIT"), "plurnk.approve");
-    assert.equal((proposalToolCall(proposal({ op: "SEND" }))[0] as { toolCallName: string }).toolCallName, "plurnk.ask");
+test("§1 AG-UI-conventional names: a [300] question elicits input, a side-effect requests approval", () => {
+    assert.equal(proposalToolName("SEND"), "request_user_input");
+    assert.equal(proposalToolName("EDIT"), "request_approval");
+    assert.equal((proposalToolCall(proposal({ op: "SEND" }))[0] as { toolCallName: string }).toolCallName, "request_user_input");
 });
 
 test("§1 THE round-trip: run N's tool-call → run N+1's tool-result maps back to the exact proposal", () => {
