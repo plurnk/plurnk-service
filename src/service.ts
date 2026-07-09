@@ -13,6 +13,7 @@ import Daemon from "./server/Daemon.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { Module as AguiModule } from "@plurnk/plurnk-agui";
 
 // The `plurnk-service` executable: launches the daemon (start) or runs migrations.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -172,6 +173,24 @@ export default class Service {
         const alias = resolveActiveAlias();
         const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
+        // AG-UI daughter module (#355) — registered when PLURNK_AGUI_PORT is set; its init runs at
+        // boot with the seam handle and opens the module's own listener. Unset = dormant (the dep
+        // ships either way; the knob decides). The module owns its knobs' semantics; we pass env through.
+        const aguiPort = process.env.PLURNK_AGUI_PORT;
+        if (aguiPort !== undefined && aguiPort.length > 0) {
+            const aguiInit = AguiModule.init({
+                host: process.env.PLURNK_AGUI_HOST ?? host,
+                port: Number(aguiPort),
+                sessionPrefix: process.env.PLURNK_AGUI_SESSION_PREFIX ?? "agui",
+                ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
+                ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
+            });
+            // agui 0.3.0's DaemonSeam mirror types `statement` as a loose sketch, not the grammar's
+            // PlurnkStatement — the settled contract (#355: the module parses at its edge and hands over
+            // grammar-shaped statements) holds at runtime, so bridge the mirror gap here, at the
+            // composition root only. Comes off when the mirror adopts the grammar type (types-only import).
+            daemon.registerModule(aguiInit as unknown as Parameters<typeof daemon.registerModule>[0]);
+        }
         const addr = await daemon.start({ host, port });
         // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
         // self-report returns info with the unknowns explicitly null — say which case this is).
