@@ -631,3 +631,25 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
         } finally { ws.close(); }
     });
 });
+
+test("the client-interface seam — forkRun branches a run's log, ownership + name invariants held (#355)", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = (await rpcCall(ws, 1, "session.create", { name: "seam-fork" })).result as { id: number };
+            const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
+            await daemon.dispatchAsClient({ sessionId: created.id, runId: run.id, statement: Dsl.buildEdit({ target: "known:///x", content: "branch me" }) });
+
+            const branch = await daemon.forkRun({ sessionId: created.id, runId: run.id, name: "mybranch" });
+            assert.ok(branch.runId > 0 && branch.runId !== run.id, "forkRun created a new run");
+            assert.equal(branch.parentRunId, run.id, "the branch is lineaged to its parent");
+            assert.equal(branch.runName, "mybranch");
+
+            // invariants: a reserved name and a foreign run are both refused.
+            await assert.rejects(() => daemon.forkRun({ sessionId: created.id, runId: run.id, name: "plurnk" }), /reserved/);
+            const other = (await rpcCall(ws, 2, "session.create", { name: "seam-fork-other" })).result as { id: number };
+            const otherRun = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: other.id }))!;
+            await assert.rejects(() => daemon.forkRun({ sessionId: created.id, runId: otherRun.id }), /not in session/);
+        } finally { ws.close(); }
+    });
+});

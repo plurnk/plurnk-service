@@ -24,6 +24,7 @@ import Envelope from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
 import GitMembership from "../core/git-membership.ts";
+import Fork from "../core/fork.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import Yolo from "./yolo.ts";
 import NoProposals from "./noProposals.ts";
@@ -402,6 +403,25 @@ export default class Daemon {
         for (const c of channelRows) channels[c.name] = { content: c.content, contentLength: c.contentLength, mimetype: c.mimetype, tokens: c.tokens, state: c.state };
         const tagRows = await (this.#db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: row.id });
         return { status: 200, entry: { id: row.id, scope: row.scope, sessionId: row.session_id, scheme: row.scheme, pathname: row.pathname, channels, tags: tagRows.map((t) => t.tag) } };
+    }
+
+    // The fork hook (#355) — branch a run's log into a new run in the same session (#228), sharing the
+    // session's world (entries + overlay), copying nothing of it. The module resolves the default (the
+    // session's model run) from its own connection state and passes the concrete runId; the seam owns the
+    // ownership check and the run-name namespace + uniqueness invariants (names are immutable — no rename).
+    async forkRun(args: { sessionId: number; runId: number; name?: string }): Promise<{ runId: number; runName: string | null; parentRunId: number }> {
+        const { sessionId, runId, name } = args;
+        const owner = await (this.#db.envelope_get_run_by_id as PrepMethod).get<{ session_id: number }>({ id: runId });
+        if (owner === undefined) throw new Error(`forkRun: run ${runId} not found`);
+        if (owner.session_id !== sessionId) throw new Error(`forkRun: run ${runId} is not in session ${sessionId}`);
+        if (name !== undefined) {
+            if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) throw new Error(`forkRun: name "${name}" is reserved for a non-client actor`);
+            const taken = await (this.#db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name });
+            if (taken !== undefined) throw new Error(`forkRun: a run named "${name}" already exists — run names are immutable, pick another`);
+        }
+        const branchRunId = await Fork.fork(this.#db, runId, name);
+        const branch = await (this.#db.envelope_get_run_by_id as PrepMethod).get<{ name: string }>({ id: branchRunId });
+        return { runId: branchRunId, runName: branch?.name ?? null, parentRunId: runId };
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
