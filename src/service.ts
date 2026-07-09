@@ -148,13 +148,24 @@ export default class Service {
             if (v !== undefined) tuning[opt] = v;
         }
         mkdirSync(dirname(dbPath), { recursive: true });
-        const db = await SqlRite.open({
-            path: dbPath,
-            dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
-            functions: [resolve(Service.#codeDir, `schemes/cosine${Service.#ext}`)],
-            ...tuning,
-        });
-        return db as unknown as Db;
+        try {
+            const db = await SqlRite.open({
+                path: dbPath,
+                dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
+                functions: [resolve(Service.#codeDir, `schemes/cosine${Service.#ext}`)],
+                ...tuning,
+            });
+            return db as unknown as Db;
+        } catch (cause) {
+            // SQLite's bare "disk I/O error" names neither file nor culprit. The classic footgun fails
+            // exactly this way: the main DB was deleted while -wal/-shm sidecars survived (often still
+            // held by a running daemon). Fail hard, legibly — name the path and the stale sidecars.
+            const sidecars = [`${dbPath}-wal`, `${dbPath}-shm`].filter((p) => existsSync(p));
+            const hint = sidecars.length > 0
+                ? ` — stale sidecar(s) present (${sidecars.join(", ")}): a prior daemon may still hold the old database; stop it and delete the sidecars`
+                : "";
+            throw new Error(`open ${dbPath} failed${hint}`, { cause });
+        }
     }
 
     static async #migrate(): Promise<void> {

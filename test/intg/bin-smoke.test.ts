@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, ChildProcess } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -149,4 +149,32 @@ test("bin: --help prints usage without booting daemon", async () => {
     });
     assert.equal(result.code, 0, `--help exits 0; got ${result.code}, stderr=${result.stderr}`);
     assert.match(result.stdout, /usage: plurnk-service/);
+});
+
+test("bin: a failed DB open names the path and any stale sidecars — never a bare 'disk I/O error'", async () => {
+    // The classic footgun: the main DB deleted while -wal/-shm sidecars survive (often held by a
+    // still-running daemon) — SQLite reports only "disk I/O error". Repro deterministically by
+    // squatting a DIRECTORY on the -wal path; assert the boot error is legible: path + sidecar hint.
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-sidecar-"));
+    try {
+        const dbPath = join(dir, "plurnk.db");
+        await mkdir(`${dbPath}-wal`);
+        const result = await new Promise<{ code: number | null; stderr: string }>((resolvePromise, rejectPromise) => {
+            const child = spawn(process.execPath, [BIN_PATH, "start"], {
+                env: { ...process.env, HOME: dir, PLURNK_SERVICE_DB_PATH: dbPath, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", PLURNK_WS_PORT: "0" },
+                stdio: ["ignore", "ignore", "pipe"],
+            });
+            let stderr = "";
+            child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+            child.once("exit", (code) => resolvePromise({ code, stderr }));
+            child.once("error", rejectPromise);
+            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error(`sidecar-boot timeout; stderr=${stderr}`)); }, 10_000);
+        });
+        assert.equal(result.code, 1, "a poisoned DB home fails the boot hard");
+        assert.match(result.stderr, /open .*plurnk\.db failed/, "the error names the DB path");
+        assert.match(result.stderr, /stale sidecar/, "the error names the surviving sidecars and the likely culprit");
+        assert.match(result.stderr, /plurnk\.db-wal/, "the offending sidecar path is spelled out");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 });
