@@ -742,6 +742,17 @@ export default class Dispatcher {
         return pending;
     }
 
+    // J — a live obligation to WAIT on: a spawned child or an open stream (NOT retrievals, which land
+    // next turn regardless). The wait-side twin of #pendingSet's stream+child legs (§wait-obligation-matrix).
+    async #hasLiveWork(runId: number): Promise<boolean> {
+        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+        if (openSubs.length > 0) return true;
+        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
+        if (execHandler?.hasActiveSpawns?.(runId) === true) return true;
+        const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
+        return liveChild !== undefined;
+    }
+
     async #handleSendBroadcast(statement: PlurnkStatement, ctx: { sessionId: number; runId: number; loopId: number; turnId: number }): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const { runId, loopId, turnId } = ctx;
@@ -767,11 +778,25 @@ export default class Dispatcher {
             return { status: 102, attrs: { parked: -1, join: true } };
         }
 
-        if (status === 102 && statement.lineMarker !== null) {
-            const seconds = statement.lineMarker.marks[0];
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw });
-            if (typeof seconds === "number") this.#parkDeadlines.set(loopId, seconds);
-            return { status: 102, attrs: { parked: seconds } };
+        // §wait-obligation-matrix — the WAIT: SEND[202], and the legacy SEND[102]<T> the terminal
+        // redesign spelled the same park with, are one obligation-checked wait (waitpid). A live
+        // obligation (a spawned child or open stream, J) BLOCKS the loop until it concludes and
+        // reawakens it (§run-lifecycle-child-wake); a wait on nothing (∅) is already satisfied and
+        // resolves like 200, so <-1>+∅ self-resolves rather than hang the agent; a pending own
+        // retrieval (R) just lands next turn, so the wait continues.
+        if (status === 202 || (status === 102 && statement.lineMarker !== null)) {
+            const marks = statement.lineMarker?.marks[0];
+            const seconds = typeof marks === "number" ? marks : -1; // bare 202 / absent T = indefinite, bounded by the join
+            if (await this.#hasLiveWork(runId)) {
+                await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw.length > 0 ? raw : "waiting on live work" });
+                this.#parkDeadlines.set(loopId, seconds);
+                return { status: 202, attrs: { waiting: seconds } };
+            }
+            const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
+            if (retrievals.length > 0) return { status: 102 }; // R lands next turn — continue, don't conclude over it
+            // ∅ — a wait on zero obligations is already satisfied; conclude like 200 (incl. <-1>+∅).
+            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: loopId, message: raw === "" ? null : raw });
+            return { status: 200 };
         }
 
         // §send-300-choices — ask the operator and park (the answer returns via loop.inject).

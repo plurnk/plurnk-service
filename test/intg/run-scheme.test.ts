@@ -496,3 +496,55 @@ test("[§op-synchronous] KILL(run) is decisive — a same-turn KILL then SEND[20
         assert.notEqual(send.status, 409, `no premature-terminate 409 — the killed child is not live pending work; got ${send.status}`);
     } finally { await db.close(); }
 });
+
+test("[§wait-obligation-matrix] SEND[202]: a live obligation BLOCKS, no obligation resolves like 200, and <-1>+∅ self-resolves rather than hang", async () => {
+    const db = await openMigrated();
+    try {
+        // 202 + J (a live child) → the loop BLOCKS at 202, to be reawakened when the child concludes.
+        const s1 = await insertSession(db, `wait-J-${crypto.randomUUID()}`);
+        const parent = await insertRun(db, s1);
+        const pLoop = await insertLoop(db, parent, 1, "orchestrate");
+        const pTurn = await insertTurn(db, pLoop, 1, 200);
+        const child = await insertRun(db, s1, parent, "worker");
+        await insertLoop(db, child, 1, "work"); // a live child (latest loop 102)
+        const eng1 = new Engine({ db, schemes: new SchemeRegistry() });
+        const blocked = await eng1.dispatch({ statement: sendStmt(202, null, "awaiting worker"), sessionId: s1, runId: parent, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
+        assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
+        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
+
+        // 202 + ∅ (no live work) → resolves like 200 — a wait on zero obligations is already satisfied.
+        const s2 = await insertSession(db, `wait-void-${crypto.randomUUID()}`);
+        const run = await insertRun(db, s2);
+        const loop = await insertLoop(db, run, 1, "solo");
+        const turn = await insertTurn(db, loop, 1, 200);
+        const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
+        const satisfied = await eng2.dispatch({ statement: sendStmt(202, null, "standing by"), sessionId: s2, runId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        assert.equal(satisfied.status, 200, "202 on nothing resolves like 200");
+        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 200, "the loop concluded, never hung");
+
+        // 202<-1> + ∅ — the old degenerate hang (indefinite wait on nothing) — folds to done, not honored.
+        const s3 = await insertSession(db, `wait-hang-${crypto.randomUUID()}`);
+        const run3 = await insertRun(db, s3);
+        const loop3 = await insertLoop(db, run3, 1, "solo");
+        const turn3 = await insertTurn(db, loop3, 1, 200);
+        const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
+        const indef = { ...sendStmt(202, null, "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
+        const noHang = await eng3.dispatch({ statement: indef, sessionId: s3, runId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
+        assert.equal(noHang.status, 200, "202<-1> on nothing self-resolves — a bid to hang, refused by completing");
+        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop3 }))?.status, 200, "the degenerate hang concluded instead");
+    } finally { await db.close(); }
+});
+
+test("[§run-lifecycle-idle-is-concluded] an idle run's wait concludes (200) — it does not park into a held-open 202", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `idle-concludes-${crypto.randomUUID()}`);
+        const run = await insertRun(db, sessionId);
+        const loop = await insertLoop(db, run, 1, "nothing to do");
+        const turn = await insertTurn(db, loop, 1, 200);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const r = await engine.dispatch({ statement: sendStmt(202, null, "idle"), sessionId, runId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
+        assert.equal(r.status, 200, "an idle run with nothing in flight concludes, not parks");
+        assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 202, "no held-open 202 — the loop reached a real terminal");
+    } finally { await db.close(); }
+});

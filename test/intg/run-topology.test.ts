@@ -93,62 +93,51 @@ test("[§run-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (mu
     });
 });
 
-test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a sibling parked at 202 — the voice door", async () => {
-    // FORENSIC: does an irc to a PARKED run resume its slept loop IN PLACE (like a stream/child wake),
-    // or start a fresh loop? Driver spawns 'butler' (parks awaiting a message); we wait until it's
-    // actually parked, then irc it as a client. Assert butler's run reaches a terminal (it woke).
-    // Paradigm note (grammar 0.75.0): a parent can no longer WORK + [200] in one breath — the fresh
-    // child is PENDING at the terminal's dispatch (the unreapable-parent rule, working as designed).
-    // The correct shape: spawn, PARK ([102]<-1>), and let the child's conclusion wake you.
+test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a CONCLUDED sibling — the voice door mints a fresh loop", async () => {
+    // Under §run-lifecycle-idle-is-concluded, an actor with nothing to wait on CONCLUDES — it does not
+    // park awaiting voice. So the voice door (a sibling's irc) reawakens it as a NEW loop carrying the
+    // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
+    // resume-in-place of a slept loop — there is no slept loop to resume.
     const mock = new Mock({ contextSize: 8192, responses: [
-        makeMockResponse("<<WORK(run://butler):await the entry code, then confirm it:WORK\n<<SEND[102]<-1>:spawned butler; standing by:SEND", 10),
-        makeMockResponse("<<SEND[102]<-1>:awaiting the entry code:SEND", 10),   // butler t1 — parks
-        makeMockResponse("<<SEND[200]:received and confirmed:SEND", 10),     // butler — woken by the irc
-        makeMockResponse("<<SEND[200]:butler done; concluding:SEND", 10),    // parent — woken by the child's conclusion
+        makeMockResponse("<<SEND[200]:standing by for the entry code:SEND", 10),        // loop 1 — idle actor concludes
+        makeMockResponse("<<SEND[200]:received the entry code and confirmed:SEND", 10), // loop 2 — woken by the irc
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const sessionId = ((await rpcCall(ws, 1, "session.create", { name: "irc-wake" })).result as { id: number }).id;
+            await rpcCall(ws, 1, "session.create", { name: "irc-wake" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            // No terminal wait — the parent PARKS after spawning (it terminates only after the
-            // butler concludes, at the very end of this test's causal chain).
-            await rpcCall(ws, 2, "loop.run", { prompt: "spawn the butler", flags: { yolo: true } });
-            const butler = (await waitForDb(() => (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "butler" }), (r) => r !== undefined))!;
-            const slept = (await waitForDb(() => (db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: butler.id }), (r) => r !== undefined))!;
-            // The voice door: a client ircs butler.
-            await rpcCall(ws, 3, "op.send", { status: 200, recipient: "run://butler", body: "the entry code is 4815" });
-            // #55 — RESUME IN PLACE, not a fresh loop: the SLEPT loop ITSELF carries the wake to its
-            // terminal (202 → 200). A fresh-loop orphan would leave slept stuck at 202 forever.
-            const sleptStatus = (await waitForDb(
-                () => (db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: slept.id }),
-                (s) => s?.status === 200,
-                { timeoutMs: 8000 },
-            ))?.status;
-            assert.equal(sleptStatus, 200, "the irc resumed butler's slept loop IN PLACE (202→200), not a fresh loop orphaning it");
+            const run = await rpcCall(ws, 2, "loop.run", { prompt: "be a butler; await the entry code", flags: { yolo: true } });
+            const modelRunId = (run.result as { modelRunId: number }).modelRunId;
+            const loopId = (run.result as { loopId: number }).loopId;
+            // The actor concludes its first (idle) loop — nothing to wait on.
+            await waitFor(() => terminated() as Array<{ loopId: number }>, (ts) => ts.some((t) => t.loopId === loopId), { timeoutMs: 8000 });
+            const before = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }))!.n;
+            // Address the concluded actor by name, then irc it — the voice door.
+            const runs = ((await rpcCall(ws, 3, "session.runs", {})).result as { runs: Array<{ name: string; origin: string }> }).runs;
+            const actor = runs.find((r) => r.origin === "model")!;
+            await rpcCall(ws, 4, "op.send", { status: 200, recipient: `run://${actor.name}`, body: "the entry code is 4815" });
+            // A FRESH loop is minted (there was no slept loop to resume).
+            const after = await waitForDb(() => (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }), (r) => (r?.n ?? 0) > before, { timeoutMs: 8000 });
+            assert.ok((after?.n ?? 0) > before, "the irc reawakened the concluded actor as a FRESH loop — the voice door mints a new loop, never resumes a park");
         } finally { ws.close(); }
     });
 });
 
-test("[§run-lifecycle-quiesced] a 202 with an idle subtree fires loop/quiesced — reawakable, not a terminal", async () => {
+test("[§run-lifecycle-idle-is-concluded] an idle run's wait concludes (loop/terminated 200) — it never parks or quiesces", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [
-        // Park at 202 with nothing running under it — an idle subtree.
-        makeMockResponse("<<SEND[102]<-1>:nothing running; parking idle:SEND", 10),
+        // A wait with nothing running under it — an idle subtree. A wait on zero obligations concludes.
+        makeMockResponse("<<SEND[202]:nothing running; done for now:SEND", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "quiesce" });
-            const quiesced = subscribeNotifications(ws, "loop/quiesced");
+            await rpcCall(ws, 1, "session.create", { name: "idle-concludes" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            // loop.run returns immediately (100); the turn parks at 202 with no stream/child.
-            await rpcCall(ws, 2, "loop.run", { prompt: "park with nothing to do", flags: { yolo: true } });
-            const q = await waitFor(() => quiesced() as Array<{ runId: number; status: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
-            assert.equal(q.length, 1, "one quiesced signal for the idle-parked 202");
-            assert.equal(q[0].status, 202, "quiesced carries 202 (parked, reawakable) — never a terminal code");
-            await flush();
-            // The honest distinction: idle ≠ concluded. The loop did NOT terminate — it's reawakable.
-            assert.equal((terminated() as unknown[]).length, 0, "a quiesced 202 is NOT a terminal — no loop/terminated");
+            await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do", flags: { yolo: true } });
+            const t = await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
+            assert.equal(t.length, 1, "the idle run concluded — one loop/terminated, no held-open 202");
+            assert.equal(t[0].finalStatus, 200, "a wait on zero obligations resolves to 200 (§wait-obligation-matrix)");
         } finally { ws.close(); }
     });
 });
@@ -193,36 +182,34 @@ test("[§run-delegation-inherits-flags] spawn and fork carry the delegating loop
 });
 
 test("[§run-lifecycle-wake-requeue-not-terminal] a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async () => {
-    // Deterministic reproduction of the delegation-flags flake: simulate the conclusion-wake
-    // landing between the parent's turn-end and its own drain's next status check by flipping
-    // the loop to 100 (+ next prompt) from INSIDE turn 1's generate. Pre-fix, runLoop read the
-    // 100 as an external terminal and the drain broadcast a queued loop as terminated.
-    const mock = new Mock({ contextSize: 8192, responses: [
-        makeMockResponse("<<SEND[102]<-1>:parking:SEND", 10),
-        makeMockResponse("<<SEND[200]:woke and finished:SEND", 10),
+    // The delegation-flags flake: a conclusion-wake re-queues a parent's loop (202→100) between its
+    // turn-end and its drain's next status check; pre-fix, runLoop read the queued 100 as an external
+    // terminal and broadcast a QUEUED loop as loop/terminated{100}.
+    // Under §wait-obligation-matrix a loop blocks at 202 only on a live obligation, so the wake is a
+    // REAL child-wake: the parent blocks on a spawned child, the child's conclusion re-queues the parent
+    // (202→100) and the drain re-claims it (100→102). Exactly one terminal must fire for the parent, 200.
+    const mock = new Mock({ contextSize: 100000, responses: [
+        makeMockResponse("<<WORK(run://helper):do a quick thing:WORK\n<<SEND[202]:awaiting helper:SEND", 10), // parent — blocks on its child
+        makeMockResponse("<<SEND[200]:helper done:SEND", 10),                    // helper — concludes, waking the parent
+        makeMockResponse("<<SEND[200]:helper delivered; concluding:SEND", 10),   // parent — re-queued by the wake, concludes
+        makeMockResponse("<<SEND[200]:done:SEND", 10),                           // buffer
+        makeMockResponse("<<SEND[200]:done:SEND", 10),                           // buffer
     ] });
-    await withDaemon(mock, async (db, daemon, addr) => {
+    await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "session.create", { name: "wake-requeue" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "go", flags: { yolo: true } });
+            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a helper and await it", flags: { yolo: true } });
             const loopId = (accept.result as { loopId: number }).loopId;
-            // The loop parks at 202 (SEND[202]). Simulate the wake: prompt + re-queue to 100.
-            await waitForDb(
-                async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status,
-                (status) => status === 202,
-            );
-            await daemon.inject({
-                sessionId: 1, runId: (accept.result as { modelRunId?: number }).modelRunId ?? 2,
-                prompt: "the child concluded", provider: mock, systemPrompt: "SD",
-            });
+            // The parent's loop is re-queued in place by the child-wake, then continues to its own terminal.
             const seen = await waitFor(
                 () => terminated() as Array<{ loopId: number; finalStatus: number }>,
                 (ts) => ts.some((t) => t.loopId === loopId),
+                { timeoutMs: 8000 },
             );
             const finals = seen.filter((t) => t.loopId === loopId).map((t) => t.finalStatus);
-            assert.deepEqual(finals, [200], `exactly one terminal broadcast, 200 — never a queued 100; got ${JSON.stringify(finals)}`);
+            assert.deepEqual(finals, [200], `exactly one terminal broadcast for the parent, 200 — never a queued 100; got ${JSON.stringify(finals)}`);
         } finally { ws.close(); }
     });
 });

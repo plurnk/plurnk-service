@@ -338,18 +338,6 @@ export default class Daemon {
                 usage: "{promptTokens, completionTokens, costPico, contextTokens, meta} — summed per-loop totals (#197); contextTokens is the last turn's prompt tokens (#263); meta is the latest turn's OPAQUE provider→client metadata blob (e.g. balancePico), passed through unenforced — the field contract is the provider↔client's, not the service's (#252)",
             },
         });
-        // §run-lifecycle-quiesced — a SOFT completion signal, NOT a terminal. A parked loop ([102]<T>/<-1>)
-        // whose subtree is now idle (no open stream, no non-terminal child). The CLI's honest yes/no
-        // ("nothing is running under this run right now"), but the loop stays at 202 and is REAWAKABLE —
-        // a later irc / loop.run resumes it (then it re-quiesces and re-fires). Never reuses a terminal code.
-        this.#registry.registerNotification("loop/quiesced", {
-            description: "A parked loop ([102]<T>/<-1>) reached subtree-quiescence (no open stream, no non-terminal child) — idle/complete-for-now but REAWAKABLE, distinct from loop/terminated. Scoped to the session.",
-            params: {
-                loopId: "number",
-                runId: "number",
-                status: "number — always 202 (parked, reawakable); NOT a terminal",
-            },
-        });
         // §notifications-stream-event-on-channel-change
         this.#registry.registerNotification("stream/event", {
             description: "A channel's content grew or its state transitioned. Scoped to the entry's session. Metadata-only; clients fetch new content via entry.read or op.read.",
@@ -613,7 +601,9 @@ export default class Daemon {
                             await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: loopRow.id });
                             continue;
                         }
-                        void this.#maybeSignalQuiesced(sessionId, runId, loopRow.id);
+                        // The loop is blocked at 202 on a live obligation (§wait-obligation-matrix);
+                        // that obligation's conclusion is its wake edge (the owed-wake above covers the
+                        // conclude-before-block race). An idle wait never reaches here — it concluded at dispatch.
                         continue;
                     }
                     this.#owedWakes.delete(runId); // the loop concluded (non-202) — no park to honor a held wake at
@@ -967,22 +957,10 @@ export default class Daemon {
         });
     }
 
-    /** §run-lifecycle-quiesced — a loop just parked at 202. If its subtree is idle (no open stream, no
-     *  non-terminal child) it has nothing left running under it: emit the soft `loop/quiesced` signal —
-     *  the client's honest "idle/done-for-now". The loop STAYS parked (reawakable); this is not a
-     *  terminal. A subtree with a live thing emits nothing — its conclusion is the wake edge. */
-    async #maybeSignalQuiesced(sessionId: number, runId: number, loopId: number): Promise<void> {
-        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
-        if (openSubs.length > 0) return; // a stream still runs — not idle
-        const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
-        if (liveChild !== undefined) return; // a child still runs — not idle
-        this.#broadcast({ sessionId }, null, "loop/quiesced", { loopId, runId, status: 202 });
-    }
-
-    /** A run's drain exited. If the run truly CONCLUDED — no parked 202 loop, no open stream — it has
-     *  quiesced: wake its PARENT in place if the parent is parked (the structured-concurrency join — a
-     *  child finishing is a wake edge for a parent that parked awaiting it, §run-lifecycle). A run that
-     *  parked at 202, or still holds a stream, is NOT concluded — its own wake edges drive it, not this.
+    /** A run's drain exited. If the run truly CONCLUDED — no 202-blocked loop, no open stream — then
+     *  wake its PARENT in place if the parent is blocked on the join (the structured-concurrency join — a
+     *  child finishing is the wake edge for a parent that waited on it, §run-lifecycle-child-wake). A run
+     *  blocked at 202, or still holding a stream, is NOT concluded — its own wake edges drive it, not this.
      *  The parent reads the child's deliverable from its own log (the §run-scheme-collect delta) on
      *  resume — control edge here, never an injected prompt. Recurses up via the parent's own drain-exit. */
     async #onDrainExit(sessionId: number, runId: number, provider: Provider, systemPrompt: string): Promise<void> {

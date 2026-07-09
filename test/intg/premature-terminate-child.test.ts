@@ -108,22 +108,23 @@ test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 —
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] a [102]<-1> emission PARKS the loop — waiting is a mode of continuing", async () => {
+test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run self-resolves (200) — the void never hangs", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `park-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const park = { op: "SEND" as const, suffix: "", signal: 102, target: null, lineMarker: { marks: [-1] }, body: "standing by", position: { line: 1, column: 1 } };
+        // The legacy indefinite-park syntax routes through the obligation-checked wait: with no live
+        // work under it, a wait on nothing is already satisfied and concludes — it cannot hang the agent.
+        const wait = { op: "SEND" as const, suffix: "", signal: 102, target: null, lineMarker: { marks: [-1] }, body: "standing by", position: { line: 1, column: 1 } };
         await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [park] } }] }),
+            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 202, "the loop parked (the internal resumable state; the model-facing signal is [102]<-1>)");
-        assert.equal(engine.parkDeadlines.get(loopId), -1, "the deadline registry carries the indefinite marker for the daemon");
+        assert.equal(loopStatus, 200, "an indefinite wait on zero obligations self-resolves to done, never a held-open 202");
     } finally { await db.close(); }
 });
 
@@ -196,25 +197,6 @@ test("[§send-premature-terminate] GUARD: 499 is NEVER gated — abandon-by-inte
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] GUARD: [202] never terminates or parks a loop — it is ordinary comms (the retired terminal stays retired)", async () => {
-    // Doctrine guard: grammar 0.75.0 retired the [202] terminal; the dispatcher must treat it as
-    // a plain broadcast row — no loop transition, no park. If this reddens, the retired terminal
-    // is creeping back; that is a paradigm change.
-    const db = await openMigrated();
-    try {
-        const sessionId = await insertSession(db, `guard-202-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(202, null, "just a status note"), sendStmt(102, null, "continuing")] } }] }),
-            sessionId, runId, loopId,
-            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
-        });
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 102, "the loop neither terminated nor parked — [202] is a comms row, nothing more");
-    } finally { await db.close(); }
-});
 
 test("[§send-premature-terminate] a retrievals-ONLY refusal states the continuation, not a remedy menu (owner wording)", async () => {
     // xpath/topo forensics: gemma's read-and-conclude idiom hit the KILL/park steer three turns
