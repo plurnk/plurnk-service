@@ -59,6 +59,7 @@ config is `.env` over the shipped `.env.example` (every knob documented there).
 
 ## Dependencies
 
-Zero at runtime. The AG-UI event shapes are hand-defined plain JSON: `@ag-ui/core` is 0.0.x
-and carries Zod, so the types live here until the official SDK stabilizes — adopting it later
-is a types-only swap.
+**Zero at runtime — no Zod, no SDK.** The AG-UI event shapes are hand-defined plain TS
+(the official `@ag-ui/core` is 0.0.x and would drag Zod in, so it is deliberately NOT a
+dependency). If the official SDK ever stabilizes dependency-free, adopting it is a
+types-only swap.

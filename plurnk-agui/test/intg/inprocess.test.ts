@@ -15,7 +15,9 @@ import type { AguiEvent } from "../../src/types.ts";
 
 const SERVICE = resolve(import.meta.dirname, "../../../plurnk-service");
 
-const gated = process.env.PLURNK_MODEL === undefined || process.env.PLURNK_MODEL.length === 0;
+// Needs a configured model AND the service's provider env (layer .env.example from
+// plurnk-service + ~/.plurnk/.env — see the file header). Skips clean otherwise.
+const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
 test("in-process module: boot plug-point → AG-UI+ run → real model → SSE", { skip: gated, timeout: 180_000 }, async () => {
     const { openMigrated } = await import(join(SERVICE, "test/intg/_helpers.ts"));
@@ -24,7 +26,7 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
 
     const db = await openMigrated();
     const provider = await liveProvider();
-    const daemon = new Daemon({ db, provider });
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
     const sandbox = await mkdtemp(join(tmpdir(), "agui-inproc-"));
 
     // Hook D — the plug-point. The daemon hands the module its seam handle at boot;
