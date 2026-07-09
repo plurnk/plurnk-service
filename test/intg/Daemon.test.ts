@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor } from "./_rpc.ts";
+import { insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 
 interface RpcResponse {
@@ -435,5 +436,31 @@ test("the client-interface seam — subscribeToEvents delivers session-scoped en
             await flush();
             assert.equal(received.length, countAfter, "unsubscribe stops delivery — the seam is a clean subscription");
         } finally { ws.close(); }
+    });
+});
+
+test("the client-interface seam — pendingProposals reads a session's stopped-world; resolveProposal delegates the decision (#355)", async () => {
+    await withDaemon(null, async (db, daemon, _addr) => {
+        const sessionId = await insertSession(db, `prop-seam-${crypto.randomUUID()}`);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1, "p");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        // A stopped-world proposal (state='proposed') the module would render as a TOOL_CALL.
+        await (db.engine_insert_log_entry as PrepMethod).get({
+            run_id: runId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
+            scheme: "known", username: null, password: null, hostname: null, port: null,
+            pathname: "/x", params: null, fragment: null, lineMarker: null,
+            tx: "<<EDIT(known:///x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
+            rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
+            status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
+        });
+        const pending = await daemon.pendingProposals(sessionId);
+        assert.equal(pending.length, 1, "the seam reads the session's stopped-world proposal");
+        assert.equal(pending[0].op, "EDIT");
+        assert.equal(pending[0].loopId, loopId);
+        // resolveProposal delegates to Engine.resolveProposal — an unknown id throws (no registered waiter),
+        // proving the seam routes into the engine's proposal machinery, not a shadow implementation.
+        assert.throws(() => daemon.resolveProposal(999999, { decision: "accept" }), /no pending proposal/i, "resolveProposal delegates to the engine");
     });
 });

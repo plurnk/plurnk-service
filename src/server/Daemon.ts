@@ -7,6 +7,7 @@ import type { WebSocket } from "ws";
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import type { Db, PrepMethod } from "../core/Db.ts";
+import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import ChannelWrite, { type WakeRunPayload } from "../core/ChannelWrite.ts";
 import { Paths } from "../index.ts";
 import Engine from "../core/Engine.ts";
@@ -64,6 +65,23 @@ export interface DaemonOptions {
 export interface DaemonAddress {
     host: string;
     port: number;
+}
+
+// A stopped-world proposal a transport module renders as a TOOL_CALL (#355 seam read). The raw
+// `state='proposed'` row shape (§proposal-list); the module reshapes it at its edge.
+export interface PendingProposal {
+    logEntryId: number;
+    runId: number;
+    loopId: number;
+    turnId: number;
+    op: string;
+    suffix: string;
+    scheme: string | null;
+    pathname: string | null;
+    tx: string | null;
+    attrs: string | null;
+    at: string;
+    loop_flags: string | null;
 }
 
 export default class Daemon {
@@ -201,6 +219,18 @@ export default class Daemon {
     subscribeToEvents(handler: (sessionId: number | null, method: string, params: unknown) => void): () => void {
         this.#eventSubscribers.add(handler);
         return () => { this.#eventSubscribers.delete(handler); };
+    }
+
+    // The client-interface seam (#355) — proposal HITL. A transport module reads the stopped-world
+    // proposals for a session (rendering each as a TOOL_CALL) and feeds back the human's decision. The
+    // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
+    // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
+    async pendingProposals(sessionId: number): Promise<PendingProposal[]> {
+        return (this.#db.proposal_list_pending as PrepMethod).all<PendingProposal>({ session_id: sessionId });
+    }
+
+    resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
+        this.#engine.resolveProposal(logEntryId, resolution);
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
