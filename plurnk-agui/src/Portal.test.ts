@@ -24,7 +24,7 @@ const mockSeam = (pending: PendingProposal[] = []) => {
         dispatchAsClient: async () => ({ status: 200 }),
         readLog: async () => [],
         listProviders: () => ({ aliases: [] }),
-    } satisfies DaemonSeam;
+    } satisfies Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "runLoop" | "cancelDrain" | "dispatchAsClient" | "readLog" | "listProviders">;
     return { seam, fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)), runs, resolves, cancelled: () => cancelled };
 };
 

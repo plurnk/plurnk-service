@@ -13,13 +13,17 @@ import type { ToolResultMessage } from "./AguiPlus.ts";
 
 interface Thread { runId: number; router: EventRouter; emit: (events: AguiEvent[]) => void }
 
+// The engine needs only the run-flow slice of the seam (session-lifecycle and reads
+// belong to the Module edge above it) — declare exactly that.
+type PortalSeam = Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "runLoop" | "cancelDrain">;
+
 export default class Portal {
-    #seam: DaemonSeam;
+    #seam: PortalSeam;
     #threads = new Map<number, Thread>(); // by sessionId (the AG-UI thread's bound session)
     #hitl: ProposalHitl;
     #off: (() => void) | null = null;
 
-    constructor(seam: DaemonSeam) {
+    constructor(seam: PortalSeam) {
         this.#seam = seam;
         // HITL fans its tool-calls through the same session→thread route as the router.
         this.#hitl = new ProposalHitl(seam, (sessionId, events) => this.#fan(sessionId, events));
@@ -47,9 +51,12 @@ export default class Portal {
 
     // Bind a client's SSE to a session/run. The emit consumer ends its stream when it
     // sees RUN_FINISHED / RUN_ERROR (the router's terminal projection) — the engine
-    // just fans; the edge owns the socket lifecycle.
-    openThread(args: { sessionId: number; runId: number; threadId: string; emit: (events: AguiEvent[]) => void }): void {
-        const router = new EventRouter({ threadId: args.threadId, runId: String(args.runId), modelRunId: args.runId, sessionId: args.sessionId });
+    // just fans; the edge owns the socket lifecycle. `runId` is the DRIVE run (the
+    // client envelope's); `modelRunId` binds the render (null → the router lazily
+    // adopts the first model-origin row's run — a fresh session's model run is born
+    // at the drain).
+    openThread(args: { sessionId: number; runId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelRunId?: number | null }): void {
+        const router = new EventRouter({ threadId: args.threadId, runId: String(args.runId), modelRunId: args.modelRunId ?? null, sessionId: args.sessionId });
         this.#threads.set(args.sessionId, { runId: args.runId, router, emit: args.emit });
     }
 

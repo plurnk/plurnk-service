@@ -57,4 +57,22 @@ export interface DaemonSeam {
     readLog(args: { sessionId: number; runId: number; loopId?: number; turnId?: number; sinceId?: number; limit?: number; loopSeq?: number; turnSeq?: number; sequence?: number }): Promise<LogEntryWire[]>;
     // Providers + effective prompt budget (contextSize) for the STATE gauge.
     listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; contextSize: number | null }> };
+    // Session lifecycle — establish the envelope a thread binds to. createSession
+    // returns the full envelope INCLUDING modelRunId (no lazy inference — the WS
+    // bridge's adopt-first-model-row dance is dead).
+    createSession(args: { name?: string; projectRoot?: string | null; settings?: string; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope>;
+    attachSession(args: { sessionId: number; runId?: number; runName?: string }): Promise<ClientEnvelope>;
+    listSessions(): Promise<Array<{ id: number; name: string }>>;
+    listRuns(sessionId: number): Promise<Array<{ id: number; name: string }>>;
+}
+
+// The envelope a session-lifecycle call returns (core's shape, verbatim).
+export interface ClientEnvelope {
+    sessionId: number;
+    sessionName: string;
+    projectRoot: string | null;
+    runId: number;
+    runName: string;
+    modelRunId: number | null;
+    clientLoopId: number | null;
 }
