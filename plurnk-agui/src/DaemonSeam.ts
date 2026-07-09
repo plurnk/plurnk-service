@@ -66,6 +66,15 @@ export interface DaemonSeam {
     attachSession(args: { sessionId: number; runId?: number; runName?: string }): Promise<ClientEnvelope>;
     listSessions(): Promise<Array<{ id: number; name: string }>>;
     listRuns(sessionId: number): Promise<Array<{ id: number; name: string }>>;
+    // Session metadata + workspace membership (the verb surface).
+    listPrompts(sessionId: number, limit?: number): Promise<Array<{ prompt: string }>> | Array<{ prompt: string }>;
+    renameSession(sessionId: number, name: string): Promise<{ id: number; name: string }>;
+    constrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
+    unconstrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
+    listConstraints(sessionId: number): Promise<Array<{ effect: string; glob: string }>> | Array<{ effect: string; glob: string }>;
+    // Entry shape/channel read + run branching.
+    readEntry(args: { sessionId: number; target: string; channel?: string; offset?: number }): Promise<{ status: number; entry: unknown }>;
+    forkRun(args: { sessionId: number; runId: number; name?: string }): Promise<{ runId: number; runName: string | null; parentRunId: number }>;
 }
 
 // The envelope a session-lifecycle call returns (core's shape, verbatim).

@@ -211,6 +211,25 @@ export default class Module {
                     const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: env.runId, prompt: p.prompt });
                     return { ok: true, result: ack };
                 }
+                case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
+                case "session.rename": {
+                    if (typeof p.name !== "string" || p.name.length === 0) return { ok: false, error: "session.rename requires name" };
+                    return { ok: true, result: await this.#seam.renameSession(env.sessionId, p.name) };
+                }
+                case "session.constrain": {
+                    if (typeof p.effect !== "string" || typeof p.glob !== "string") return { ok: false, error: "session.constrain requires effect + glob" };
+                    return { ok: true, result: await this.#seam.constrain(env.sessionId, p.effect, p.glob) };
+                }
+                case "session.unconstrain": {
+                    if (typeof p.effect !== "string" || typeof p.glob !== "string") return { ok: false, error: "session.unconstrain requires effect + glob" };
+                    return { ok: true, result: await this.#seam.unconstrain(env.sessionId, p.effect, p.glob) };
+                }
+                case "session.constraints": return { ok: true, result: { constraints: await this.#seam.listConstraints(env.sessionId) } };
+                case "entry.read": {
+                    if (typeof p.target !== "string") return { ok: false, error: "entry.read requires target" };
+                    return { ok: true, result: await this.#seam.readEntry({ sessionId: env.sessionId, target: p.target, ...(typeof p.channel === "string" ? { channel: p.channel } : {}), ...(typeof p.offset === "number" ? { offset: p.offset } : {}) }) };
+                }
+                case "run.fork": return { ok: true, result: await this.#seam.forkRun({ sessionId: env.sessionId, runId: env.modelRunId ?? env.runId, ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 default: return { ok: false, error: `unknown action kind '${a.kind}' — the seam surface is the contract` };
             }
         } catch (err) {
