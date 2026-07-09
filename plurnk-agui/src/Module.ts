@@ -13,7 +13,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
-import { stateSnapshot } from "./AguiPlus.ts";
+import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
 import type { DaemonSeam, ClientEnvelope } from "./DaemonSeam.ts";
 import type { AguiEvent, RunAgentInput } from "./types.ts";
 
@@ -150,6 +150,15 @@ export default class Module {
         ]);
         if (finished) return;
 
+        // §3 — a management ACTION run (forwardedProps.plurnk.action): execute via the
+        // seam, project the outcome as plurnk.action.result, finish. No loop driven.
+        const action = parseAction(input.forwardedProps);
+        if (action !== null) {
+            const outcome = await this.#action(action, env);
+            emit([actionResult(action.kind, outcome), { type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId }]);
+            return;
+        }
+
         // Terminate-resume, the resume half: a tool-result message resolves the paused
         // proposal; the continued loop streams on THIS run. No new loop is driven.
         const toolResult = [...(input.messages ?? [])].reverse().find((m) => m.role === "tool") as { toolCallId?: string; content?: string } | undefined;
@@ -178,6 +187,35 @@ export default class Module {
             this.#seam.cancelDrain(runId);
             finish();
         });
+    }
+
+    // The action executor — the verb surface, scoped to the thread's own session.
+    // Every kind maps to a seam operation; an unknown kind is an honest error, never a
+    // silent pass-through (the seam is the whole surface — no RPC fallback beneath it).
+    // loop.inject rides here too (§4): the seam's unified runLoop folds a prompt into
+    // the active drain; the steered effect streams on the original run's open SSE.
+    async #action(a: ActionRequest, env: ClientEnvelope): Promise<ActionOutcome> {
+        const p = a.params;
+        try {
+            switch (a.kind) {
+                case "ping": return { ok: true, result: {} };
+                case "providers.list": return { ok: true, result: this.#seam.listProviders() };
+                case "session.list": return { ok: true, result: { sessions: await this.#seam.listSessions() } };
+                case "session.runs": return { ok: true, result: { runs: await this.#seam.listRuns(env.sessionId) } };
+                case "log.read": {
+                    const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: env.modelRunId ?? env.runId, ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}) });
+                    return { ok: true, result: { entries } };
+                }
+                case "loop.inject": {
+                    if (typeof p.prompt !== "string" || p.prompt.length === 0) return { ok: false, error: "loop.inject requires prompt" };
+                    const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: env.runId, prompt: p.prompt });
+                    return { ok: true, result: ack };
+                }
+                default: return { ok: false, error: `unknown action kind '${a.kind}' — the seam surface is the contract` };
+            }
+        } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
     }
 
     #threadRouterReplay(sessionId: number, entries: Array<Record<string, unknown>>): AguiEvent[] {
