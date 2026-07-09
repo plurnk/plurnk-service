@@ -8,6 +8,8 @@ The framing that keeps us honest. `SPEC.md` is the contract; `AGENTS.md` is the 
 
 So the engineering question is never "how do we get the model to do X." It is **"which subsystem owns X, and what does its decades of theory already say."** Be an OS on purpose, citing the literature. Building an OS *accidentally* — re-deriving paging, concurrency, filesystems one case at a time — is the tar pit that swallows armies. Building one *deliberately* is a solved problem wearing an agent's face.
 
+**And it is time to stop calling it an analogy.** A metaphor that merely illuminates is optional; this one has *dictated every correct decision*. The topo deadlock dissolved into fork-join; the context crisis into demand paging; the terminal contract into `waitpid`; the module boundary into the driver model. A framing that keeps *being* the right answer is no longer a comparison — it is a recognition. **Plurnk is an operating system** — for a new class of CPU: a slow, stochastic, *teachable* one. We build it as such, without hedging: everything a kernel does for a processor that cannot be trusted to do those things itself.
+
 ## The Rosetta stone
 
 | Plurnk component | OS analogue | Theory to reach for first | Current locus |
@@ -31,9 +33,25 @@ So the engineering question is never "how do we get the model to do X." It is **
 | **GBNF grammar constraint** | The ISA — instruction validity on the CPU's output | Grammar-constrained decoding; a type system for emissions | §gbnf-per-alias |
 | **Membership** (git `ls-files`, fail-closed) | The FS permission / mount boundary | ACLs; mount namespaces; fail-closed defaults | §membership |
 | **MCP hotload / executor registration** | Loadable kernel modules / hotplug | LKMs; dynamic linking; device hotplug | executor-registration seam |
+| **agui** — the client-protocol module | The network / protocol-stack driver — in-kernel, faces the wire | Microkernel driver model; trust in-process, validation at the stack's outer edge | `plurnk-agui`, migrating in-process (§Core and its modules) |
 | **Budget partition / budget-the-law** | Resource quotas / cgroups | Resource accounting; quotas | §tokenomics-window-partition |
 | **Policy** (`~/.plurnk/AGENTS.md`, project AGENTS) | Config / init / policy layer | Policy–mechanism separation | §system-policy |
 | **Recovery rails** (deterministic) | Fault tolerance | Deterministic / fault-tolerant systems — the raison d'être | (the whole system) |
+
+## Core and its modules
+
+The Rosetta stone maps *subsystems*; this maps *composition*. An OS is a small protected kernel, surrounded by drivers, faced by user-space — and plurnk is built the same way, on purpose:
+
+```
+{ grammar, docs }  →  service { execs · mimes · schemes · providers · agui }  →  { cli/tui, nvim }
+   the ISA + canon         core (the kernel) + its daughter modules                user-space clients
+```
+
+**Core is the kernel, and we keep it that way deliberately.** Two things are true at once: core owns too much complexity, *and* core works. The discipline that follows is not "gut core to simplify it" — it is **protect a complex-but-working core by pushing new complexity outward, into daughter modules behind uniform seams, never inward.** A driver absorbs a device's quirks so the kernel never learns them; a **daughter module** — execs, mimetypes, schemes, providers, **agui** — absorbs its domain's complexity (a vendor's API, a mimetype's parsing, a wire protocol's rituals) so core never has to. The kernel stays coherent because the complexity lives at the edges, in modules it does not own.
+
+**agui is a daughter module, not an external client — specifically, the protocol/network driver.** It owns the client-facing wire the way a netdev driver owns a link. It runs *in-process*, trusted like execs and schemes: a fault or security boundary between it and core would merely rebuild the socket in software — two trust domains, doubled validation. But it is **singular in exposure** — alone among the daughters it faces *external input*, so it *is* the wall. Peer in trust, singular in exposure: the transport/security perimeter (auth, per-session authorization, schema validation, backpressure) sits at agui's **outer** edge, never between it and core. Exactly a network driver — in-kernel and trusted, and itself the code that sanitizes hostile wire input before it reaches anything else.
+
+**The client interface belongs to the module, not to core.** Core owns the *internals that make agui's job possible* — the engine, the ops, the proposal/pause state, and the in-process seam agui consumes. agui owns *rendering* that state as a client protocol. So the protocols themselves — WebSocket/SSE, AG-UI events, resolve rituals — are documented in **the owning module's** SPEC (plurnk-agui), never here. Core's WebSocket RPC remains its *external* surface for genuinely-external callers; *client interaction* is delegated outward to agui, which is the whole point of the arrangement: **core sheds the client-interface chore and owns less, not more.** The downstream `cli/tui` and `nvim` are user-space — true *customers* of agui's protocol, which is exactly why that perimeter is load-bearing: a client-side agent builds against it knowing nothing of core internals.
 
 ## The discipline
 
@@ -42,7 +60,9 @@ So the engineering question is never "how do we get the model to do X." It is **
 3. **Offload, don't coach.** The lever is moving capability from the model into the deterministic substrate — not adding words to a message or a prompt to make a weak CPU smarter. Terse signposts + solved mechanism beats verbose teaching every time.
 4. **Deviate only where the CPU genuinely differs** (below), and do it deliberately, not accidentally.
 
-## Where the analogy has teeth — and where it bends
+## Where this OS is strange — the CPU is unlike silicon
+
+Not where a metaphor cracks — where this OS is *unlike any built before*, because it is built for a processor unlike any before it. These are its defining properties, not its exceptions:
 
 - **The CPU can be *taught*.** Canon (grammar `plurnk.md`) and packet-state can change the workload's behavior — a lever a normal CPU doesn't give you. Use it, but don't *lean* on it: a weak CPU ignores correct teaching (the topo parent saw the park pattern and spin-waited anyway). When teaching is present and ignored, the answer is a deterministic rail, not louder teaching.
 - **The CPU is non-deterministic and slow.** So the OS must be *more* robust than a normal one — deterministic recovery isn't a nicety, it's the product.
