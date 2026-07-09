@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, makeMockResponse } from "./_rpc.ts";
-import { insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { insertSession, insertRun, insertLoop, insertTurn, openMigrated } from "./_helpers.ts";
+import Daemon from "../../src/server/Daemon.ts";
+import type { CoreSeam } from "../../src/server/Daemon.ts";
 import Dsl from "../../src/server/dsl.ts";
 import type { Executor, RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 
@@ -689,4 +691,29 @@ test("the client-interface seam — hotloadRuntime registers a live tag, dispatc
             assert.throws(() => daemon.hotloadRuntime("known", fakeEntry("known")), /reserved/i, "a reserved built-in name is rejected");
         } finally { ws.close(); }
     });
+});
+
+test("the client-interface seam — the boot plug-point hands a registered module a live CoreSeam handle (#355)", async () => {
+    // Hook D: register a module before start(); at boot it receives the curated seam and wires itself.
+    // "Here's your handle, open your own listener." Proven by driving the live seam from inside the init.
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: new Mock({ contextSize: 8192, responses: [] }) });
+    try {
+        let handed: CoreSeam | null = null;
+        let createdInInit: number | null = null;
+        daemon.registerModule(async (seam) => {
+            handed = seam;
+            const env = await seam.createSession({ name: "from-module-init" });
+            createdInInit = env.sessionId;
+        });
+        await daemon.start({ host: "127.0.0.1", port: 0 });
+
+        assert.ok(handed !== null, "the module init ran at boot with the seam handle");
+        assert.ok(createdInInit !== null && createdInInit > 0, "the init drove a LIVE seam — createSession worked during boot");
+        const seam = handed as CoreSeam;
+        assert.ok((await seam.listSessions()).some((s) => s.id === createdInInit), "the module's seam and the daemon are one live surface");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
 });

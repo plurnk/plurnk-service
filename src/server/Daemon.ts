@@ -437,6 +437,14 @@ export default class Daemon {
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
+    // The boot plug-point (#355 hook D) — register a daughter module before start(); its init runs at
+    // boot with the curated CoreSeam handle, where it opens its own transport/listener. Direct wiring, no
+    // plugin-kind abstraction: a second transport earns one if it ever appears. "Here's your handle."
+    #moduleInits: Array<(seam: CoreSeam) => void | Promise<void>> = [];
+    registerModule(init: (seam: CoreSeam) => void | Promise<void>): void {
+        this.#moduleInits.push(init);
+    }
+
     async start({ host = "127.0.0.1", port = 3044 }: DaemonOptions = {}): Promise<DaemonAddress> {
         if (this.#wss !== null) throw new Error("daemon already started");
 
@@ -460,12 +468,20 @@ export default class Daemon {
         return new Promise<DaemonAddress>((resolve, reject) => {
             const wss = new WebSocketServer({ host, port });
 
-            wss.on("listening", () => {
+            wss.on("listening", async () => {
                 this.#wss = wss;
                 wss.on("connection", (ws: WebSocket) => this.#onConnection(ws));
                 const addr = wss.address();
                 if (addr === null || typeof addr === "string") {
                     reject(new Error("WebSocketServer.address() returned unexpected value"));
+                    return;
+                }
+                // Hand each registered daughter module the seam handle now that the daemon is live
+                // (#355 hook D) — the module opens its own transport/listener here. An init failure fails boot.
+                try {
+                    for (const init of this.#moduleInits) await init(this);
+                } catch (err) {
+                    reject(err instanceof Error ? err : new Error(String(err)));
                     return;
                 }
                 resolve({ host: addr.address, port: addr.port });
@@ -1268,3 +1284,18 @@ export default class Daemon {
         }
     }
 }
+
+// The curated seam handed to a daughter module at boot (#355 hook D) — the client-interface contract,
+// not the daemon's guts. A module couples to this (or its own structural mirror) and nothing else; the
+// non-seam surface (start/stop/#internals) is not part of the contract. Derived from Daemon so the two
+// never drift.
+export type CoreSeam = Pick<Daemon,
+    | "subscribeToEvents"
+    | "pendingProposals" | "resolveProposal"
+    | "runLoop" | "cancelDrain" | "dispatchAsClient"
+    | "readLog" | "readEntry"
+    | "listProviders" | "listSessions" | "listRuns" | "listPrompts" | "listMembers" | "listConstraints"
+    | "createSession" | "attachSession" | "setProjectRoot" | "renameSession" | "constrain" | "unconstrain"
+    | "forkRun"
+    | "hotloadRuntime"
+>;
