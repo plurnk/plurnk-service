@@ -211,6 +211,13 @@ export default class Module {
                     const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: env.runId, prompt: p.prompt });
                     return { ok: true, result: ack };
                 }
+                case "session.create": {
+                    // An explicit named session: the NAME is the threadId (the module's
+                    // thread→envelope binding stays consistent — subsequent runs address it).
+                    const threadId = typeof p.name === "string" && p.name.length > 0 ? p.name : crypto.randomUUID().slice(0, 8);
+                    const { env: created } = await this.#envelope(threadId, p);
+                    return { ok: true, result: { id: created.sessionId, name: threadId, runId: created.runId } };
+                }
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
                 case "session.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) return { ok: false, error: "session.rename requires name" };
