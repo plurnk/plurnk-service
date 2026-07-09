@@ -571,3 +571,35 @@ test("the client-interface seam — the metadata reads surface providers, sessio
         } finally { ws.close(); }
     });
 });
+
+test("the client-interface seam — session lifecycle: create/attach/rename/set-root/constrain (#355)", async () => {
+    // Inputs arrive pre-validated at the module's edge; core owns the envelope, the reserved-name +
+    // name-uniqueness invariants, membership, and the session/created emit. Driven entirely through the seam.
+    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    await withDaemon(mock, async (_db, daemon, _addr) => {
+        const events: Array<{ method: string; params: unknown }> = [];
+        daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
+
+        // create — with a constraint seeded atomically; returns the envelope + emits session/created.
+        const env = await daemon.createSession({ name: "seam-life", constraints: [{ effect: "hide", glob: "secret/**" }] });
+        assert.ok(env.sessionId > 0 && env.runId > 0, "createSession returns the envelope (session + client run)");
+        assert.ok(events.some((e) => e.method === "session/created" && (e.params as { id?: number }).id === env.sessionId), "session/created emitted on the event source");
+        assert.deepEqual(await daemon.listConstraints(env.sessionId), [{ effect: "hide", glob: "secret/**" }], "the seeded constraint landed atomically with the session");
+
+        // attach — core's namespace invariant refuses a reserved run name; a plain attach returns an envelope.
+        await assert.rejects(() => daemon.attachSession({ sessionId: env.sessionId, runName: "plurnk" }), /reserved/, "attachSession refuses a reserved run name");
+        assert.equal((await daemon.attachSession({ sessionId: env.sessionId })).sessionId, env.sessionId, "attachSession returns an envelope on the same session");
+
+        // set-root + rename — mutations return the applied value; a name collision is refused.
+        assert.equal(await daemon.setProjectRoot(env.sessionId, "/tmp/seam-root"), "/tmp/seam-root");
+        assert.equal((await daemon.renameSession(env.sessionId, "seam-life-2")).name, "seam-life-2");
+        await daemon.createSession({ name: "seam-life-other" });
+        await assert.rejects(() => daemon.renameSession(env.sessionId, "seam-life-other"), /taken/, "renameSession refuses a taken name");
+
+        // constrain / unconstrain roundtrip on the overlay.
+        await daemon.constrain(env.sessionId, "pick", "vendored/x");
+        assert.ok((await daemon.listConstraints(env.sessionId)).some((c) => c.glob === "vendored/x"), "constrain added the overlay entry");
+        await daemon.unconstrain(env.sessionId, "pick", "vendored/x");
+        assert.ok(!(await daemon.listConstraints(env.sessionId)).some((c) => c.glob === "vendored/x"), "unconstrain removed it");
+    });
+});

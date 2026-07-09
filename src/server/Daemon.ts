@@ -21,6 +21,7 @@ import ClientConnection from "./ClientConnection.ts";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
+import type { ClientEnvelope } from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
 import GitMembership from "../core/git-membership.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
@@ -318,6 +319,52 @@ export default class Daemon {
     listMembers(sessionId: number) { return GitMembership.resolveMembershipEffects(this.#db, sessionId, undefined); }
     listConstraints(sessionId: number) {
         return (this.#db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId });
+    }
+
+    // Session lifecycle (#355): the module's session-management surface. Inputs arrive already validated
+    // at the module's edge ("I am the wall" — settings as the stored JSON string, constraints as a typed
+    // array, roots absolute); core owns the envelope, its reserved-name + name-uniqueness invariants,
+    // membership resolution, warmSessionDerivations, and the session/created emit. No connection state
+    // (which client is on which session) lives here — that's the module's.
+    async createSession(args: { name?: string; projectRoot?: string | null; settings?: string; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope> {
+        const envelope = await Envelope.createClientEnvelope(this.#db, { name: args.name, projectRoot: args.projectRoot ?? null, settings: args.settings });
+        const constraints = args.constraints ?? [];
+        for (const { effect, glob } of constraints) {
+            await (this.#db.crud_insert_session_constraint as PrepMethod).run({ session_id: envelope.sessionId, effect, glob });
+        }
+        if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.sessionId, undefined);
+        void this.#engine.warmSessionDerivations(envelope.sessionId).catch(() => {});
+        this.#broadcast("all", null, "session/created", { id: envelope.sessionId, name: envelope.sessionName, projectRoot: envelope.projectRoot });
+        return envelope;
+    }
+
+    async attachSession(args: { sessionId: number; runId?: number; runName?: string }): Promise<ClientEnvelope> {
+        // attachToSession owns the reserved-name + run-ownership invariants; the seam just delegates + warms.
+        const envelope = await Envelope.attachToSession(this.#db, args.sessionId, { runId: args.runId, runName: args.runName });
+        void this.#engine.warmSessionDerivations(envelope.sessionId).catch(() => {});
+        return envelope;
+    }
+
+    setProjectRoot(sessionId: number, projectRoot: string | null) {
+        return Envelope.updateSessionProjectRoot(this.#db, sessionId, projectRoot);
+    }
+
+    async renameSession(sessionId: number, name: string): Promise<{ id: number; name: string }> {
+        const taken = await (this.#db.envelope_get_session_by_name as PrepMethod).get<{ id: number }>({ name });
+        if (taken !== undefined && taken.id !== sessionId) throw new Error(`session name "${name}" is already taken`);
+        return { id: sessionId, name: await Envelope.updateSessionName(this.#db, sessionId, name) };
+    }
+
+    async constrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
+        await (this.#db.crud_insert_session_constraint as PrepMethod).run({ session_id: sessionId, effect, glob });
+        await GitMembership.resolveGitMembership(this.#db, sessionId, undefined);
+        return { effect, glob };
+    }
+
+    async unconstrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
+        await (this.#db.crud_delete_session_constraint as PrepMethod).run({ session_id: sessionId, effect, glob });
+        await GitMembership.resolveGitMembership(this.#db, sessionId, undefined);
+        return { effect, glob };
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
