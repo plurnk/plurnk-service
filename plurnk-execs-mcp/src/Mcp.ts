@@ -3,8 +3,9 @@ import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotoc
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
-import { serverConfig, isInjected, installAllowed, setAuthHeaders, type ServerConfig } from "./config.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
+import { serverConfig, isInjected, installAllowed, setAuthHeaders, registerServer, deregisterServer, parseTarget, type ServerConfig } from "./config.ts";
+import { runtimeDecl } from "./runtimes.ts";
 
 const CLIENT_VERSION = "0.1.0";
 
@@ -188,3 +189,44 @@ export default class Mcp extends BaseExecutor {
         }
     }
 }
+
+// What the kernel needs to build a RegistryEntry and register a hotloaded tag —
+// all execs-framework types the kernel already imports, so no execs-mcp → kernel
+// edge (which would be circular: the kernel depends on execs-mcp). The consumer's
+// `hotload` callback wraps these; the atomic dual-registry mutation + one-name-
+// one-owner arbitration stay in the kernel (plurnk-service#355).
+export interface HotloadRegistration {
+    decl: RuntimeDecl;
+    executor: BaseExecutor;
+    availability: RuntimeAvailability;
+}
+
+// Install an MCP server as a live EXEC[<name>] runtime (plurnk-execs-mcp#3 /
+// service#355). Self-contained MCP orchestration — the auth-precedent home:
+// execs-mcp owns its mechanics, the kernel stays driver-agnostic behind the
+// generic `hotload` seam. NOT to be confused with install() above (the OAuth
+// bearer overlay). Probes before registering: a client-triggered install of a
+// target that won't connect returns 502 and rolls back its injected config,
+// rather than parking a dead tag (env-declared servers, operator-vetted, register
+// while down — a different trust level). Gate: PLURNK_EXECS_MCP_INSTALL (the
+// is-install-enabled boundary; who-may-install is the consumer's perimeter call).
+export const installServer = async (
+    name: string,
+    { target, headers, hotload }: {
+        target: string;
+        headers?: Record<string, string>;
+        hotload: (reg: HotloadRegistration) => void | Promise<void>;
+    },
+): Promise<{ status: number; detail: string }> => {
+    if (!installAllowed()) return { status: 501, detail: "runtime install disabled (PLURNK_EXECS_MCP_INSTALL is off)" };
+    registerServer(name, parseTarget(target, { headers }));
+    const decl = runtimeDecl(name);
+    const executor = new Mcp({ runtime: name, glyph: decl.glyph ?? "" });
+    const availability = await executor.probe();
+    if (!availability.available) {
+        deregisterServer(name);
+        return { status: 502, detail: availability.detail ?? `MCP server '${name}' unreachable` };
+    }
+    await hotload({ decl, executor, availability });
+    return { status: 200, detail: availability.detail ?? "installed" };
+};

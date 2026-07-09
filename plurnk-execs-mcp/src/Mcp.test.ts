@@ -2,9 +2,9 @@ import test, { before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
-import Mcp, { closeAll } from "./Mcp.ts";
+import Mcp, { closeAll, installServer, type HotloadRegistration } from "./Mcp.ts";
 import { runtimes, runtimeDecl } from "./runtimes.ts";
-import { installAllowed, serverConfig, serverNames, registerServer, isInjected, parseTarget } from "./config.ts";
+import { installAllowed, serverConfig, serverNames, registerServer, deregisterServer, isInjected, parseTarget } from "./config.ts";
 import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
@@ -263,6 +263,50 @@ test("hotload: an injected server runs at run() when PLURNK_EXECS_MCP_INSTALL is
         const { result, writes } = await invoke("hotecho2", "", { target: "echo" });
         assert.equal(result.status, 200);
         assert.equal(JSON.parse(writes[0].chunk).content[0].text, "{}");
+    } finally {
+        delete process.env.PLURNK_EXECS_MCP_INSTALL;
+    }
+});
+
+// --- installServer: hotload an MCP server as a live runtime (service#355) -----
+
+test("installServer: gate off (PLURNK_EXECS_MCP_INSTALL unset) → 501, nothing injected, no hotload", async () => {
+    delete process.env.PLURNK_EXECS_MCP_INSTALL;
+    let hotloaded = false;
+    const r = await installServer("gated", { target: `node ${FIXTURE}`, hotload: () => { hotloaded = true; } });
+    assert.equal(r.status, 501);
+    assert.equal(hotloaded, false);
+    assert.equal(serverConfig("gated"), null, "no config injected when the gate is off");
+});
+
+test("installServer: a reachable target → 200 + hotload gets {decl, executor, availability}", async () => {
+    process.env.PLURNK_EXECS_MCP_INSTALL = "1";
+    let reg: HotloadRegistration | undefined;
+    try {
+        const r = await installServer("dyn", { target: `node ${FIXTURE}`, hotload: (x) => { reg = x; } });
+        assert.equal(r.status, 200);
+        assert.match(r.detail, /2 tools/);
+        assert.ok(reg, "hotload callback received the registration");
+        assert.equal(reg.decl.name, "dyn");
+        assert.equal(reg.decl.glyph, "🔌");
+        assert.equal(reg.availability.available, true);
+        assert.match(String(reg.availability.detail), /stdio: 2 tools/);
+        assert.equal(typeof reg.executor.run, "function", "the Mcp executor is handed over (a BaseExecutor)");
+        assert.notEqual(serverConfig("dyn"), null, "a successful install leaves the server registered");
+    } finally {
+        deregisterServer("dyn");
+        delete process.env.PLURNK_EXECS_MCP_INSTALL;
+    }
+});
+
+test("installServer: a dead target → 502, injected config rolled back, no hotload (ship-the-502 ruling)", async () => {
+    process.env.PLURNK_EXECS_MCP_INSTALL = "1";
+    let hotloaded = false;
+    try {
+        const r = await installServer("deadone", { target: "node /no/such/mcp-server.mjs", hotload: () => { hotloaded = true; } });
+        assert.equal(r.status, 502);
+        assert.equal(hotloaded, false, "a server that won't connect never reaches the registry");
+        assert.equal(serverConfig("deadone"), null, "its injected config is rolled back on failure");
     } finally {
         delete process.env.PLURNK_EXECS_MCP_INSTALL;
     }

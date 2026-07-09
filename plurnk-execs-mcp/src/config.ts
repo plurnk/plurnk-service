@@ -107,6 +107,13 @@ export const registerServer = (name: string, config: ServerConfig): void => {
     injected.set(key, config);
 };
 
+// Roll back a runtime-injected server (installServer's failure path — a target
+// that won't connect must not leave a dangling config that boot discovery would
+// later materialize into a dead tag). No-op for an env-declared name.
+export const deregisterServer = (name: string): void => {
+    injected.delete(name.toLowerCase());
+};
+
 // Whether `name` resolves to a runtime-injected server that env does NOT also
 // claim — the executor gates exactly these on installAllowed() at connect
 // (defense in depth behind the consumer's route gate). An env-declared server is

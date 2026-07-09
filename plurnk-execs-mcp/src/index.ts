@@ -1,6 +1,7 @@
 export { default as Mcp } from "./Mcp.ts";
 export { default } from "./Mcp.ts";
-export { closeAll, install } from "./Mcp.ts";
+export { closeAll, install, installServer } from "./Mcp.ts";
+export type { HotloadRegistration } from "./Mcp.ts";
 export { runtimes, runtimeDecl } from "./runtimes.ts";
 // Runtime surface for the consumer's `/mcp` hotload route + boot config:
 export {

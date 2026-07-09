@@ -32,9 +32,13 @@ The transport is inferred from the target: an `http(s)://` value connects over H
 
 | Var | Default | Notes |
 |---|---|---|
-| `PLURNK_EXECS_MCP_INSTALL` | off | may **arbitrary** MCP tooling be **added at runtime** (a future `/mcp` hotload route)? Off ⇒ only env-declared servers exist |
+| `PLURNK_EXECS_MCP_INSTALL` | off | may **arbitrary** MCP tooling be **added at runtime** (via `installServer`, below)? Off ⇒ only env-declared servers exist |
 
 The single security boundary is what may be *added*, not what may be *activated*. Servers you declare in env are always honored; enabling or disabling an already-present tag is never gated. Runtime hotloading of operator-unvetted servers is refused unless `PLURNK_EXECS_MCP_INSTALL=1`.
+
+### Runtime install
+
+**`installServer(name, { target, headers?, hotload })`** → `{ status, detail }` — install an MCP server as a live `EXEC[<name>]` runtime mid-session (plurnk-execs-mcp#3 / plurnk-service#355). Self-contained MCP orchestration: it checks the `PLURNK_EXECS_MCP_INSTALL` gate, injects the config, builds the `Mcp` executor, connect-probes it, and hands the consumer's `hotload` callback a `HotloadRegistration` `{ decl, executor, availability }` — all execs-framework types, so the kernel owns the registry and execs-mcp never touches its `RegistryEntry`. Probes before registering: a target that won't connect returns `502` and rolls back its config rather than parking a dead tag (env-declared servers, operator-vetted, register while down). `501` when the gate is off. Distinct from `install()` above (the OAuth bearer overlay). The *who-may-install* permission is the consumer's edge decision; *is-install-enabled* is this gate.
 
 ```bash
 # http server
