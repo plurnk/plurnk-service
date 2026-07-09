@@ -25,7 +25,8 @@ import type { ClientEnvelope } from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
-import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
+import type { Executor, RegistryEntry } from "../core/ExecutorRegistry.ts";
+import type { RuntimeDecl, RuntimeAvailability } from "@plurnk/plurnk-execs";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import Yolo from "./yolo.ts";
 import NoProposals from "./noProposals.ts";
@@ -426,11 +427,21 @@ export default class Daemon {
     }
 
     // The module-load hook (#355 / #289) — register a runtime into the live registry, driver-agnostic:
-    // the kernel knows nothing about MCP or any specific driver. A module builds the RegistryEntry (an
-    // MCP install: execs-mcp does the gate + parseTarget + probe + entry) and hands it here; the engine's
-    // scheme-face arbitration (reserved / cross-family collision, #240) gates the tag before registering.
-    hotloadRuntime(tag: string, entry: RegistryEntry): void {
-        this.#engine.hotloadRuntime(tag, entry);
+    // the kernel knows nothing about MCP or any specific driver. The struct is the booth window agreed
+    // with the execs agent (execs-mcp installServer's hotload callback): framework types only — the decl
+    // (tag + glyph/example/documentation), the executor, the driver's probe result. RegistryEntry never
+    // leaves the kernel; it's wrapped here, mirroring boot. The engine's scheme-face arbitration
+    // (reserved / cross-family collision, #240) gates the tag before registering.
+    hotloadRuntime(reg: { decl: RuntimeDecl; executor: Executor; availability: RuntimeAvailability }): void {
+        const { decl, executor, availability } = reg;
+        this.#engine.hotloadRuntime(decl.name, {
+            executor,
+            glyph: decl.glyph ?? "",
+            example: decl.example ?? "",
+            documentation: decl.documentation ?? "",
+            available: availability.available,
+            detail: availability.detail,
+        } satisfies RegistryEntry);
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }

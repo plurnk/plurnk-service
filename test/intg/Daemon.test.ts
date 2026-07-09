@@ -6,11 +6,13 @@ import { insertSession, insertRun, insertLoop, insertTurn, openMigrated } from "
 import Daemon from "../../src/server/Daemon.ts";
 import type { CoreSeam } from "../../src/server/Daemon.ts";
 import Dsl from "../../src/server/dsl.ts";
-import type { Executor, RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
+import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 
-// A stand-in runtime — the seam stores the entry + a lazy scheme face (read only at dispatch), so
-// registration needs no live driver. Mirrors mcp-hotload.test.ts's fake, for the generic hotload hook.
-const fakeEntry = (tag: string): RegistryEntry => ({
+// A stand-in registration in the booth-window shape (execs-mcp installServer's hotload struct):
+// framework types only — decl + executor + the driver's probe result. The kernel wraps the
+// RegistryEntry itself; registration needs no live driver (the scheme face reads lazily at dispatch).
+const fakeRegistration = (tag: string) => ({
+    decl: { name: tag, glyph: "🔌", example: `<<EXEC[${tag}]:?:EXEC`, documentation: "" },
     executor: {
         runtime: tag, glyph: "🔌",
         get manifest() { return { name: tag } as unknown as never; },
@@ -20,7 +22,7 @@ const fakeEntry = (tag: string): RegistryEntry => ({
         probe: async () => ({ available: true, detail: "fake" }),
         effect: () => "read",
     } as unknown as Executor,
-    glyph: "🔌", example: `<<EXEC[${tag}]:?:EXEC`, documentation: "", available: true, detail: "fake",
+    availability: { available: true, detail: "fake" },
 });
 import { Mock } from "@plurnk/plurnk-providers";
 
@@ -681,14 +683,14 @@ test("the client-interface seam — hotloadRuntime registers a live tag, dispatc
             const created = (await rpcCall(ws, 1, "session.create", { name: "seam-hotload" })).result as { id: number };
             const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
 
-            daemon.hotloadRuntime("seamtag", fakeEntry("seamtag"));
+            daemon.hotloadRuntime(fakeRegistration("seamtag"));
             // the tag is live — EXEC[seamtag] dispatches through the engine to the registered executor.
             const exec = await daemon.dispatchAsClient({ sessionId: created.id, runId: run.id, statement: Dsl.buildExec({ runtime: "seamtag", command: "ping" }) });
             assert.equal(exec.status, 200, "the hotloaded runtime is dispatchable through the seam's dispatch path");
 
             // one-name-one-owner arbitration flows through the seam: a dup and a reserved name fail-hard.
-            assert.throws(() => daemon.hotloadRuntime("seamtag", fakeEntry("seamtag")), /already/i, "a dup tag is rejected");
-            assert.throws(() => daemon.hotloadRuntime("known", fakeEntry("known")), /reserved/i, "a reserved built-in name is rejected");
+            assert.throws(() => daemon.hotloadRuntime(fakeRegistration("seamtag")), /already/i, "a dup tag is rejected");
+            assert.throws(() => daemon.hotloadRuntime(fakeRegistration("known")), /reserved/i, "a reserved built-in name is rejected");
         } finally { ws.close(); }
     });
 });
