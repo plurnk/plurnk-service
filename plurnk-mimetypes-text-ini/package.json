@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-ini",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "description": "text/x-ini (INI / config) mimetype handler for plurnk-service. Sections and keys as symbols. Hand-rolled, no parser dependency.",
     "type": "module",
     "license": "MIT",
