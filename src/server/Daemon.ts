@@ -451,8 +451,9 @@ export default class Daemon {
     // The boot plug-point (#355 hook D) — register a daughter module before start(); its init runs at
     // boot with the curated CoreSeam handle, where it opens its own transport/listener. Direct wiring, no
     // plugin-kind abstraction: a second transport earns one if it ever appears. "Here's your handle."
-    #moduleInits: Array<(seam: CoreSeam) => void | Promise<void>> = [];
-    registerModule(init: (seam: CoreSeam) => void | Promise<void>): void {
+    // The init's return value is ignored — a module may hand back its instance (or nothing).
+    #moduleInits: Array<(seam: CoreSeam) => unknown> = [];
+    registerModule(init: (seam: CoreSeam) => unknown): void {
         this.#moduleInits.push(init);
     }
 

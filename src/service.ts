@@ -184,11 +184,7 @@ export default class Service {
             ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
             ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
         });
-        // agui 0.3.0's DaemonSeam mirror types `statement` as a loose sketch, not the grammar's
-        // PlurnkStatement — the settled contract (#355: the module parses at its edge and hands over
-        // grammar-shaped statements) holds at runtime, so bridge the mirror gap here, at the
-        // composition root only. Comes off when the mirror adopts the grammar type (types-only import).
-        daemon.registerModule(aguiInit as unknown as Parameters<typeof daemon.registerModule>[0]);
+        daemon.registerModule(aguiInit);
         const addr = await daemon.start({ host, port: wsPort });
         // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
         // self-report returns info with the unknowns explicitly null — say which case this is).

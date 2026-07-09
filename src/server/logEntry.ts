@@ -6,7 +6,9 @@ import type { Db, PrepMethod } from "../core/Db.ts";
 
 // Every log entry carries its logical coordinate — loop_seq/turn_seq/sequence — so the
 // client renders ordering without re-deriving it from DB keys. §methods-log-coordinate
-export interface LogEntryWire {
+// A type alias, not an interface: a serialized wire bag must satisfy index-signature
+// consumers (Record<string, unknown>), which TS grants aliases but not interfaces (#355).
+export type LogEntryWire = {
     id: number;
     run_id: number;
     loop_id: number;
@@ -34,7 +36,7 @@ export interface LogEntryWire {
     mimetype_rx: string;
     status_rx: number;
     tokens: number;
-}
+};
 
 export default class LogEntry {
     static #parseJsonOrNull(v: unknown): unknown {
