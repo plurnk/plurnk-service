@@ -6,6 +6,8 @@ import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import type { ClientEnvelope } from "./envelope.ts";
+import type { Executor } from "../core/ExecutorRegistry.ts";
+import type { RuntimeDecl, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 export type { Provider } from "@plurnk/plurnk-providers";
 
@@ -38,6 +40,9 @@ export interface DaemonSurface {
         drainPromise?: Promise<unknown>;
     }>;
     cancelDrain(runId: number, reason?: string): boolean;
+    // The booth window (#355) — a driver's install hands its registration through here; the
+    // daemon wraps the kernel's RegistryEntry itself. Framework types only.
+    hotloadRuntime(reg: { decl: RuntimeDecl; executor: Executor; availability: RuntimeAvailability }): void;
 }
 
 export interface HandlerContext {
