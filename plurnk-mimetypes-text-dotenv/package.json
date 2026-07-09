@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-dotenv",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "description": "text/x-dotenv (.env) mimetype handler for plurnk-service. Variables as symbols, values exposed. Hand-rolled, no parser dependency.",
     "type": "module",
     "license": "MIT",
