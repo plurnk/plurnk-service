@@ -27,6 +27,13 @@ export interface PendingProposal {
     attrs: string | null;
 }
 
+// A parsed plurnk op statement — the grammar package's output (parsed at the module's
+// edge), handed to dispatchAsClient. Opaque to the seam beyond its op.
+export interface PlurnkStatement { op: string; [key: string]: unknown }
+
+// A journal entry as the daemon ships it (readLog / the log/entry event carry this).
+export type LogEntryWire = Record<string, unknown>;
+
 export interface DaemonSeam {
     // Hook B — the in-process event source. `handler` receives every session-scoped
     // engine event as (sessionId, method, params); sessionId is null for a global
@@ -37,4 +44,17 @@ export interface DaemonSeam {
     // Hook A-resolve — feed the human's decision. The gate/validation/applyResolution
     // stay core; this is only the resolve. Throws for an unknown/already-resolved id.
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void;
+    // Loop-control — drive/steer a loop. Returns immediately; the outcome arrives on the
+    // event source (loop/terminated). The provider + law-file prompt stay core.
+    runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
+    // Loop-control — cancel a run's active drain. Returns whether a drain was cancelled.
+    cancelDrain(runId: number, reason?: string): boolean;
+    // The op keystone — execute one parsed op as a client-origin turn; the emitted
+    // log/entry arrives on the event source. Backs the whole op_* family; the module
+    // parses with the grammar at its edge and hands over the statement.
+    dispatchAsClient(args: { sessionId: number; runId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }>;
+    // Journal read — the module's primary render input (ownership-verified per session).
+    readLog(args: { sessionId: number; runId: number; loopId?: number; turnId?: number; sinceId?: number; limit?: number; loopSeq?: number; turnSeq?: number; sequence?: number }): Promise<LogEntryWire[]>;
+    // Providers + effective prompt budget (contextSize) for the STATE gauge.
+    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; contextSize: number | null }> };
 }

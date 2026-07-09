@@ -8,12 +8,15 @@ import type { AguiEvent, ProposalNotification } from "./types.ts";
 import type { DaemonSeam, PendingProposal } from "./DaemonSeam.ts";
 import { proposalToolCall, resolutionFromToolResult, type ToolResultMessage } from "./AguiPlus.ts";
 
+// The HITL core needs only the proposal slice of the seam — declare exactly that.
+type HitlSeam = Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal">;
+
 export default class ProposalHitl {
-    #seam: DaemonSeam;
+    #seam: HitlSeam;
     #emit: (sessionId: number, events: AguiEvent[]) => void; // fan-out to the session's client(s)
     #off: (() => void) | null = null;
 
-    constructor(seam: DaemonSeam, emit: (sessionId: number, events: AguiEvent[]) => void) {
+    constructor(seam: HitlSeam, emit: (sessionId: number, events: AguiEvent[]) => void) {
         this.#seam = seam;
         this.#emit = emit;
     }

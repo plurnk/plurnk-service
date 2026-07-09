@@ -11,7 +11,7 @@ import type { AguiEvent } from "./types.ts";
 const mockSeam = (pending: PendingProposal[] = []) => {
     let handler: ((s: number | null, m: string, p: unknown) => void) | null = null;
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
-    const seam: DaemonSeam = {
+    const seam: Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal"> = {
         subscribeToEvents: (h) => { handler = h; return () => { handler = null; }; },
         pendingProposals: async () => pending,
         resolveProposal: (logEntryId, resolution) => { resolves.push({ logEntryId, resolution }); },
