@@ -4,6 +4,22 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, makeMockResponse } from "./_rpc.ts";
 import { insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 import Dsl from "../../src/server/dsl.ts";
+import type { Executor, RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
+
+// A stand-in runtime — the seam stores the entry + a lazy scheme face (read only at dispatch), so
+// registration needs no live driver. Mirrors mcp-hotload.test.ts's fake, for the generic hotload hook.
+const fakeEntry = (tag: string): RegistryEntry => ({
+    executor: {
+        runtime: tag, glyph: "🔌",
+        get manifest() { return { name: tag } as unknown as never; },
+        get defaultChannel() { return "results"; },
+        get channels() { return { results: { mimetype: "application/json" } }; },
+        run: async () => ({ status: 200 }),
+        probe: async () => ({ available: true, detail: "fake" }),
+        effect: () => "read",
+    } as unknown as Executor,
+    glyph: "🔌", example: `<<EXEC[${tag}]:?:EXEC`, documentation: "", available: true, detail: "fake",
+});
 import { Mock } from "@plurnk/plurnk-providers";
 
 interface RpcResponse {
@@ -650,6 +666,27 @@ test("the client-interface seam — forkRun branches a run's log, ownership + na
             const other = (await rpcCall(ws, 2, "session.create", { name: "seam-fork-other" })).result as { id: number };
             const otherRun = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: other.id }))!;
             await assert.rejects(() => daemon.forkRun({ sessionId: created.id, runId: otherRun.id }), /not in session/);
+        } finally { ws.close(); }
+    });
+});
+
+test("the client-interface seam — hotloadRuntime registers a live tag, dispatchable through the engine (#355)", async () => {
+    // The generic module-load hook: a module (agui, for MCP) builds the RegistryEntry with its own
+    // driver and hands it here; the kernel knows nothing about the driver. Tested with a stand-in.
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = (await rpcCall(ws, 1, "session.create", { name: "seam-hotload" })).result as { id: number };
+            const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
+
+            daemon.hotloadRuntime("seamtag", fakeEntry("seamtag"));
+            // the tag is live — EXEC[seamtag] dispatches through the engine to the registered executor.
+            const exec = await daemon.dispatchAsClient({ sessionId: created.id, runId: run.id, statement: Dsl.buildExec({ runtime: "seamtag", command: "ping" }) });
+            assert.equal(exec.status, 200, "the hotloaded runtime is dispatchable through the seam's dispatch path");
+
+            // one-name-one-owner arbitration flows through the seam: a dup and a reserved name fail-hard.
+            assert.throws(() => daemon.hotloadRuntime("seamtag", fakeEntry("seamtag")), /already/i, "a dup tag is rejected");
+            assert.throws(() => daemon.hotloadRuntime("known", fakeEntry("known")), /reserved/i, "a reserved built-in name is rejected");
         } finally { ws.close(); }
     });
 });

@@ -25,6 +25,7 @@ import type { ClientEnvelope } from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
+import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import Yolo from "./yolo.ts";
 import NoProposals from "./noProposals.ts";
@@ -422,6 +423,14 @@ export default class Daemon {
         const branchRunId = await Fork.fork(this.#db, runId, name);
         const branch = await (this.#db.envelope_get_run_by_id as PrepMethod).get<{ name: string }>({ id: branchRunId });
         return { runId: branchRunId, runName: branch?.name ?? null, parentRunId: runId };
+    }
+
+    // The module-load hook (#355 / #289) — register a runtime into the live registry, driver-agnostic:
+    // the kernel knows nothing about MCP or any specific driver. A module builds the RegistryEntry (an
+    // MCP install: execs-mcp does the gate + parseTarget + probe + entry) and hands it here; the engine's
+    // scheme-face arbitration (reserved / cross-family collision, #240) gates the tag before registering.
+    hotloadRuntime(tag: string, entry: RegistryEntry): void {
+        this.#engine.hotloadRuntime(tag, entry);
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
