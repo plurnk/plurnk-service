@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-git",
-    "version": "0.1.17",
+    "version": "0.1.18",
     "description": "git + GitHub-CLI runtime executor for plurnk-service's exec scheme — shells the system git/gh binaries (no third-party lib) for EXEC[git] / EXEC[gh].",
     "keywords": [
         "plurnk",
@@ -65,9 +65,9 @@
     "devDependencies": {
         "@types/node": "^26.0.0",
         "typescript": "^7.0.2",
-        "@plurnk/plurnk-execs": "0.4.36"
+        "@plurnk/plurnk-execs": "0.4.37"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "0.4.36"
+        "@plurnk/plurnk-execs": "0.4.37"
     }
 }
