@@ -516,3 +516,24 @@ test("the client-interface seam — dispatchAsClient runs a client op through th
         } finally { ws.close(); }
     });
 });
+
+test("the client-interface seam — readLog returns a session's journal, ownership-verified (#355)", async () => {
+    // The module's primary render input. Seeded here via the dispatch seam, read back via readLog, and the
+    // cross-session invariant proven: a session reads only its own runs (core holds it, not the module).
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = (await rpcCall(ws, 1, "session.create", { name: "seam-read" })).result as { id: number };
+            const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
+            await daemon.dispatchAsClient({ sessionId: created.id, runId: run.id, statement: Dsl.buildEdit({ target: "known:///x", content: "read me" }) });
+
+            const entries = await daemon.readLog({ sessionId: created.id, runId: run.id });
+            assert.ok(entries.length >= 1, "readLog returned the session's journal entries");
+            assert.ok(entries.some((e) => e.op === "EDIT"), "the client EDIT is in the journal the seam read");
+
+            const other = (await rpcCall(ws, 2, "session.create", { name: "seam-read-other" })).result as { id: number };
+            const otherRun = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: other.id }))!;
+            await assert.rejects(() => daemon.readLog({ sessionId: created.id, runId: otherRun.id }), /not in session/, "readLog refuses a run outside the session — core holds its own invariant");
+        } finally { ws.close(); }
+    });
+});

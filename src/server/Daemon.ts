@@ -19,6 +19,7 @@ import type { DrainLoopResult, NotifyTarget, Provider } from "./MethodRegistry.t
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import ClientConnection from "./ClientConnection.ts";
 import LogEntry from "./logEntry.ts";
+import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
 import Yolo from "./yolo.ts";
@@ -266,6 +267,30 @@ export default class Daemon {
             this.#broadcast({ sessionId }, null, "log/entry", { entry });
         }
         return result as { status: number; [key: string]: unknown };
+    }
+
+    // The log-read hook (#355) — a session's journal, the module's primary render input. The run is
+    // ownership-verified against the session (a session reads only its own runs — the model run included,
+    // #214); entries filter by loop/turn/since-id or the full L/T/S display coordinate. Core owns the
+    // journal + the invariant; the module shapes the entries into AG-UI messages at its edge.
+    async readLog(args: {
+        sessionId: number; runId: number;
+        loopId?: number; turnId?: number; sinceId?: number; limit?: number;
+        loopSeq?: number; turnSeq?: number; sequence?: number;
+    }): Promise<LogEntryWire[]> {
+        const { sessionId, runId } = args;
+        const target = await (this.#db.envelope_get_run_by_id as PrepMethod).get<{ session_id: number }>({ id: runId });
+        if (target === undefined) throw new Error(`run ${runId} not found`);
+        if (target.session_id !== sessionId) throw new Error(`run ${runId} is not in session ${sessionId}`);
+        const rows = await (this.#db.log_read_recent_ids as PrepMethod).all<{ id: number }>({
+            run_id: runId,
+            loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null,
+            loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
+            limit: Math.min(args.limit ?? 100, 1000),
+        });
+        const entries: LogEntryWire[] = [];
+        for (const r of rows) entries.push(await LogEntry.fetchLogEntry(this.#db, r.id));
+        return entries;
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
