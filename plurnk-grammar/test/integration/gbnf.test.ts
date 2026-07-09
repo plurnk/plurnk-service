@@ -304,7 +304,7 @@ test("PlurnkParser.parse: a mid-turn termination is ILLEGAL — a disposition-co
         return r.items.some((i) => i.kind === "error") || r.unparsedTail !== undefined;
     };
     const valid = (s: string): boolean => !invalid(s);
-    // A disposition code {102,200,300,499} IS the turn terminal (the lexer tokens it as
+    // A disposition code {102,200,202,300,499} IS the turn terminal (the lexer tokens it as
     // DISPOSITION), so the grammar ends the turn there — a statement after it is a genuine
     // parse ERROR, not a mid comms demotion the way a positional last-SEND grammar would allow.
     assert.equal(invalid("<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND\n<<EDIT(known://a):v:EDIT\n<<SEND[102]:cont:SEND"), true);
@@ -316,34 +316,37 @@ test("PlurnkParser.parse: a mid-turn termination is ILLEGAL — a disposition-co
     assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[400]:report:SEND\n<<EDIT(known://a):v:EDIT\n<<SEND[200]:done:SEND"), true);
     assert.equal(valid("<<PLAN:p:PLAN\n<<SEND(run://peer):hint:SEND\n<<SEND[102]:cont:SEND"), true);
     assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\nall set, boss"), true);
-    // 202 RETIRED (#54): no longer a disposition, so a mid SEND[202] is ordinary comms —
-    // and a turn ENDING on it never terminated.
-    assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND"), true);
-    assert.equal(invalid("<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND"), true);
+    // 202 is a disposition again (waitpid contract): a mid SEND[202] is a mid-termination
+    // parse error, and a turn ENDING on it terminates cleanly.
+    assert.equal(invalid("<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND"), true);
+    assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[202]:awaiting worker:SEND"), true);
+    // ANTLR tolerates a park on [102] (owner ruling: "102<T> passes" - the engine folds it);
+    // the GBNF rail is where [102]<T> is unsampleable.
+    assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[102]<60>:holding:SEND"), true);
 });
 
 // -------------------------------------------------------------------------
 // SEND disposition codes (terminal vs mid)
 // -------------------------------------------------------------------------
 
-test("GBNF: 202 is RETIRED (#54) — not a terminal; an ordinary mid-comms code; the park replaces it", () => {
-    // The old hibernation terminal is unsampleable: an emission ending on SEND[202] never
-    // completes (202 parses as a mid comms, and the turn still needs a real terminal).
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]:parked until the fork reports:SEND"), false);
-    // As a mid comms code before a real terminal, 202 is now legal (just a number, like 201).
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND"), true);
-    // Waiting is a mode of continuing: the park carries the wait.
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]<60>:holding for the stream:SEND"), true);
+test("GBNF: 202 is BACK (waitpid contract) — the obligation-checked wait terminal; mid is unsampleable", () => {
+    // A turn ends on SEND[202]: the wait disposition (engine verifies against live obligations).
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]:awaiting the fork's report:SEND"), true);
+    // 202 is a disposition again, so a mid SEND[202] is unsampleable (it IS the terminal).
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND"), false);
+    // The park moved with the wait: [102] is a pure continue, no park at the rail.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]<60>:holding for the stream:SEND"), false);
 });
 
-test("GBNF: the terminal [102] park <T> — bounded, indefinite, targeted; no park on other terminals", () => {
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]<30>:polling:SEND"), true);          // bounded park
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]<-1>:standing by:SEND"), true);      // indefinite (butler)
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102](run://w)<60>:parked:SEND"), true);  // targeted + park
+test("GBNF: the terminal [202] park <T>/<T,P>/<-1> — bounded, polled, indefinite, targeted; no park elsewhere", () => {
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<30>:polling:SEND"), true);          // bounded wait
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<-1>:standing by:SEND"), true);      // indefinite (join-bounded)
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<60,5>:watching stream:SEND"), true); // timeout + poll cadence (mirrors EXEC)
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202](run://w)<60>:awaiting:SEND"), true); // targeted + park
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]<30>:cont:SEND"), false);            // 102 is a pure continue — the wait is 202's meaning
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]<30>:done:SEND"), false);            // 200 ends the loop — no wait to carry
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[300]<30>:choose:SEND"), false);          // 300 waits on the operator exclusively — indefinite by definition
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499]<30>:abort:SEND"), false);
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]<1,5>:x:SEND"), false);              // no poll param — wakes are event-driven
 });
 
 test("GBNF: SEND[499] is a terminal disposition; 500 is not a valid terminal (engine verdict)", () => {
@@ -448,13 +451,12 @@ test("GBNF: terminal disposition codes are UNSAMPLEABLE mid — a coded SEND IS 
     // The bug this closes: a mid SEND[200] after a READ demoted a premature terminate to a legal
     // comms SEND, which the dispatcher (first disposition-coded SEND wins) acted on — bypassing
     // the last-SEND model. Reserving the disposition codes for the terminal makes premature
-    // termination unsampleable at the mask. Set is {102,200,300,499} since #54 (202 retired).
-    for (const code of ["102", "200", "300", "499"]) {
+    // termination unsampleable at the mask. Set is {102,200,202,300,499} (waitpid contract).
+    for (const code of ["102", "200", "202", "300", "499"]) {
         assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n<<SEND[${code}]:x:SEND\n<<SEND[102]:c:SEND`), false, `mid SEND[${code}] must reject`);
     }
-    // Non-disposition codes stay legal mid comms (boundary cases around the reserved four;
-    // 202 is an ordinary comms code now).
-    for (const code of ["100", "201", "202", "203", "301", "400", "498", "500", "999"]) {
+    // Non-disposition codes stay legal mid comms (boundary cases around the reserved five).
+    for (const code of ["100", "201", "203", "301", "400", "498", "500", "999"]) {
         assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n<<SEND[${code}]:x:SEND\n<<SEND[102]:c:SEND`), true, `mid SEND[${code}] must derive`);
     }
     // The exact probed bypass — READ then a mid SEND[200] then a terminal — is now closed.

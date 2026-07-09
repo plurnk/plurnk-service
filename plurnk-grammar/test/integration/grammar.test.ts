@@ -215,14 +215,17 @@ test("value-add: two disposition SENDs get the termination rule (the second cann
     assert.ok(errs.some((e) => /a disposition SEND ends the turn/.test(e!.message)));
 });
 
-test("202 is RETIRED (#54): an ordinary mid-comms code, and a turn ending on it never terminated", () => {
-    // Mid position: plain comms before a real terminal — parses clean.
-    const ok = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND");
+test("202 is BACK (waitpid contract): the wait disposition — terminal, mid-reserved, ANTLR-tolerant on a [102] park", () => {
+    // Terminal position: a turn ends on SEND[202] cleanly (the obligation-check is the engine's).
+    const ok = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[202]:awaiting worker:SEND");
     assert.equal(ok.items.filter((i) => i.kind === "error").length, 0);
-    // Terminal position: no disposition — the shape imperative fires (no code menu in the
-    // message; which codes terminate is canon's teaching, not the error's).
-    const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[202]:parked:SEND");
-    assert.ok(errs.some((e) => /end with a terminal `<<SEND\[code\]/.test(e!.message)));
+    assert.equal(ok.unparsedTail, undefined);
+    // Mid position: a disposition again — the mid-termination rule fires.
+    const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND");
+    assert.ok(errs.some((e) => /a disposition SEND ends the turn/.test(e!.message)));
+    // A park on [102] parses ANTLR-side (owner ruling: "102<T> passes"; GBNF is where it's unsampleable).
+    const tol = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[102]<60>:holding:SEND");
+    assert.equal(tol.items.filter((i) => i.kind === "error").length, 0);
 });
 
 test("value-add: the mid-termination lift is suppressed when the turn derailed mid-op", () => {

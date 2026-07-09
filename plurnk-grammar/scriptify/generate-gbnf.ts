@@ -228,13 +228,16 @@ export const buildModel = (): GModel => {
                 // A SEND is comms; the LAST SEND before EOS is the turn's disposition. Mid
                 // SENDs carry any NON-disposition 3-digit status (status-mid) or none, targeted
                 // or pathless, empty body allowed. The TERMINAL SEND requires a disposition code
-                // and a non-empty body - a turn must not end empty-handed. Terminal set (#54):
-                // 102 continue, 200 done, 300 stop-the-world question, 499 abandon. 202 RETIRED
-                // (waiting is a mode of continuing). A terminal [102] may carry a park `<T>`:
-                // wait up to T seconds, any arrival wakes early, `<-1>` = stand by indefinitely.
-                // No `<T>` on 200/300/499 (200/499 end the loop; 300 waits on the operator
-                // exclusively, indefinite by definition). Context discipline (200-with-pending)
-                // is the ENGINE's pending-set rule, NOT a rail - the grammar polices shape only.
+                // and a non-empty body - a turn must not end empty-handed. Terminal set (waitpid
+                // contract, service SPEC §wait-obligation-matrix): 102 continue, 200 done,
+                // 202 wait (obligation-checked; the engine verifies against live spawns/streams/
+                // retrievals), 300 stop-the-world question, 499 abandon. The park `<T>`/`<T,P>`/
+                // `<-1>` rides [202] ONLY - waiting is 202's meaning, so [102] is a pure continue
+                // (the rail does not offer a park there; ANTLR tolerates one per owner ruling,
+                // the engine folds it). No `<T>` on 200/300/499 (200/499 end the loop; 300 waits
+                // on the operator exclusively, indefinite by definition). Context discipline
+                // (200-with-pending, 202-on-nothing resolves like 200) is the ENGINE's
+                // obligation matrix, NOT a rail - the grammar polices shape only.
                 // Tails are factored behind the shared `<<SEND…` opener trie (no leading
                 // `lit(open)` - the trie matches it). `<<SEND` is a prefix of `<<SEND1`, so
                 // its tails sit at the interior trie node beside the digit branch.
@@ -247,7 +250,8 @@ export const buildModel = (): GModel => {
                     [...body],                                                          // pathless, statusless
                 ] });
                 sendFinalEntries.push({ literal: open, tails: [
-                    [lit("[102]"), opt(ref("target")), opt(ref("park")), ...bodyNE],
+                    [lit("[102]"), opt(ref("target")), ...bodyNE],
+                    [lit("[202]"), opt(ref("target")), opt(ref("park")), ...bodyNE],
                     [lit("["), ref("status-final-rest"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
             } else if (op === "EXEC") {
@@ -352,26 +356,28 @@ export const buildModel = (): GModel => {
     // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
     model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
-    // Terminal set (#54, 2026-07-05): 102 continue (optionally parked via `<T>`), 200 done,
-    // 300 = a stop-the-world multiple-choice question to the user (HTTP 300 Multiple Choices;
-    // waker is exclusively the operator, indefinite by definition, no `<T>`), 499 abandon.
-    // 202 RETIRED - waiting is a mode of continuing, carried by the [102] park, not a distinct
-    // terminal (the park-vs-conclude CHOICE was the fumble; see run19). NOT 500: "failed" is
-    // an ENGINE verdict, never a model SEND (persisted-only) - see plurnk-service#33.
-    // The [102] branch carries its park inline (sendFinalEntries above); status-final-rest is
-    // the remaining terminal codes.
-    // park: `<T>` = wait up to T seconds, any arrival wakes early; `<-1>` = indefinite standby
-    // (the butler/worker pattern, explicit; ungated per owner ruling - risk is instrumented).
-    // status-mid: any 3-digit code EXCEPT the terminal disposition codes {102,200,300,499}.
+    // Terminal set (waitpid contract, service SPEC §wait-obligation-matrix): 102 continue,
+    // 200 done, 202 wait (back on the menu 2026-07-09 with a NEW meaning - obligation-checked,
+    // the engine verifies it against live spawns/streams/retrievals; a wait on nothing resolves
+    // like 200, so the old groundless-hibernate fumble cannot recur), 300 = a stop-the-world
+    // multiple-choice question to the user (waker exclusively the operator, indefinite by
+    // definition, no `<T>`), 499 abandon. NOT 500: "failed" is an ENGINE verdict, never a
+    // model SEND (persisted-only) - see plurnk-service#33.
+    // The [102]/[202] branches ride inline (sendFinalEntries above); status-final-rest is
+    // the remaining terminal codes. park rides [202] ONLY: `<T>` = wait up to T seconds, any
+    // arrival wakes early; `<T,P>` adds a poll cadence (mirrors EXEC's `<timeout,poll>`);
+    // `<-1>` = indefinite standby (bounded by the join's own liveness guarantee).
+    // status-mid: any 3-digit code EXCEPT the terminal disposition codes {102,200,202,300,499}.
     // A SEND carrying a terminal code IS the terminal (the dispatcher acts on the FIRST
     // disposition-coded SEND, so it terminates there), hence it can ONLY be the last op.
-    // Reserving the four from mid position keeps the grammar's last-SEND model and the
+    // Reserving the five from mid position keeps the grammar's last-SEND model and the
     // dispatcher's first-disposition model coincident. A mid SEND stays comms: statusless, or
-    // a non-disposition code (a 4xx error report to a peer; 202 is now an ordinary comms
-    // code). Encoded as the complement of the four over DDD, as a first-digit trie.
+    // a non-disposition code (a 4xx error report to a peer). Encoded as the complement of
+    // the five over DDD, as a first-digit trie.
     model.set("status-final-rest", [[lit("200")], [lit("300")], [lit("499")]]);
-    model.set("park", [[lit("<"), ref("park-t"), lit(">")]]);
+    model.set("park", [[lit("<"), ref("park-t"), opt(ref("park-poll")), lit(">")]]);
     model.set("park-t", [[lit("-1")], [plus(DIGIT)]]);
+    model.set("park-poll", [[lit(","), plus(DIGIT)]]);
     model.set("status-mid", [
         [cls([R("0", "0"), R("5", "9")]), DIGIT, DIGIT],   // 0xx / 5xx-9xx: no disposition code here
         [lit("1"), ref("status-mid-1")],
@@ -380,7 +386,7 @@ export const buildModel = (): GModel => {
         [lit("4"), ref("status-mid-4")],
     ]);
     model.set("status-mid-1", [[lit("0"), cls([R("0", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]); // forbid 102
-    model.set("status-mid-2", [[lit("0"), cls([R("1", "9")])], [cls([R("1", "9")]), DIGIT]]);              // forbid 200 (202 is ordinary comms now)
+    model.set("status-mid-2", [[lit("0"), cls([R("1", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]); // forbid 200 and 202
     model.set("status-mid-3", [[lit("0"), cls([R("1", "9")])], [cls([R("1", "9")]), DIGIT]]);              // forbid 300
     model.set("status-mid-4", [[lit("9"), cls([R("0", "8")])], [cls([R("0", "8")]), DIGIT]]);              // forbid 499
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);

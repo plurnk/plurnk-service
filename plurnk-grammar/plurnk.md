@@ -34,7 +34,7 @@ The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 | FOLD | [filter tags] | (log path)  | <result,result>   | :pattern:          | FOLD |
 | EXEC | [executor]    | (path)      | <timeout, poll>   | :code:             | EXEC |
 | KILL | [signal]      | (path)      | -                 | ::                 | KILL |
-| SEND | [submit code] | (recipient) | -                 | :message:          | SEND |
+| SEND | [submit code] | (recipient) | <timeout, poll>   | :message:          | SEND |
 
 <<PLAN:concise plan goes here:PLAN is required at the beginning of a turn.
 <<FIND(path)::FIND returns rows of matching results
@@ -46,8 +46,7 @@ The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 <<EXEC::EXEC produces output stream channels on the next turn that you can then FIND, READ, or KILL.
 <<KILL(path)::KILL deletes files and entries, erases log items, and kills streams.
 <<SEND[102]:doing:SEND to submit OPs, emit streams, or launch worker runs.
-<<SEND[102]<60>:polling:SEND parks the run up to 60 seconds; arriving results, worker replies, and user messages wake it early.
-<<SEND[102]<-1>:standing by:SEND parks indefinitely until something arrives.
+<<SEND[202]:standing by:SEND waits on your live workers, streams, and results; their arrival wakes it.
 <<SEND[200]:done:SEND to terminate a completed run only if all OPs, streams, and runs have already returned.
 
 ### Suffix
@@ -131,7 +130,7 @@ YOU SHOULD document all relevant questions and uncertainties into taxonomized, t
 YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
 
 YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
-YOU MUST KILL leftover worker runs and streams, or await them with SEND[102]<seconds>, before SEND[200] final turn.
+YOU MUST KILL leftover worker runs and streams, or await them with SEND[202], before SEND[200] final turn.
 YOU MUST avoid and recover from Budget Overflow errors by FOLDing or KILLing big or irrelevant log items to save tokens.
 YOU MUST NOT share internal knowledgebase paths. Users can't access them.
 YOU MUST NOT emit free text between operations. Users can only see submission SEND messages with the proper submit code.
@@ -139,6 +138,7 @@ YOU MUST NOT emit free text between operations. Users can only see submission SE
 YOU MUST start the turn with a concise PLAN.
 YOU MUST submit the OPs by SENDing either a brief response or a Github-flavored markdown response to the user with the proper submit code.
 * 102: submit a continuing turn with submit code 102: <<SEND[102]:FOLDing irrelevant log items and performing retrieval operations.:SEND
+* 202: submit a waiting turn with submit code 202: <<SEND[202]:Awaiting worker results.:SEND
 * 200: submit a final turn with submit code 200: <<SEND[200]:Retrieval operations received. Tasks successfully performed.:SEND
 * 499: submit a failed loop with submit code 499: <<SEND[499]:Aborted: Unrecoverable error:SEND
 
@@ -175,7 +175,7 @@ YOU MUST submit the OPs by SENDing either a brief response or a Github-flavored 
 * <<OPEN(log:///**)<1,10>::OPEN
 * <<FOLD(log:///**)<101,200>::FOLD
 * <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
-* <<SEND[102]<300>:Parked awaiting worker capital-checker; wake on reply or in 300s.:SEND
+* <<SEND[202]:Awaiting worker capital-checker.:SEND
 * <<KILL(known:///draft.md)::KILL
 * <<KILL(obsolete/file.md)::KILL
 * <<KILL(sh:///3/1/2)::KILL

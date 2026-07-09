@@ -45,9 +45,10 @@ export default class PlurnkParser {
         return result;
     }
 
-    // The terminal disposition set (#54): 102 continue (optionally parked), 200 done,
-    // 300 stop-the-world question, 499 abandon. 202 retired.
-    static #DISPOSITIONS = new Set([102, 200, 300, 499]);
+    // The terminal disposition set (waitpid contract, service SPEC §wait-obligation-matrix):
+    // 102 continue, 200 done, 202 wait (obligation-checked), 300 stop-the-world question,
+    // 499 abandon.
+    static #DISPOSITIONS = new Set([102, 200, 202, 300, 499]);
 
     // Curated op-name confusions (semantic + dead-verb), NOT edit-distance - a full
     // `<<Word…:Word` heredoc carrying one of these is unambiguously an intended op, so the
