@@ -85,11 +85,21 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
 
 // A git-committed workspace holding the real SPEC.md — a genuine ~42k-token member
 // the model can FIND/READ but cannot hold whole under the tight ceiling.
-const seedSpecFixture = async (): Promise<{ workspace: string; cleanup: () => Promise<void> }> => {
-    const workspace = await mkdtemp(join(tmpdir(), "plurnk-budget-spec-"));
-    const spec = await readFile(join(process.cwd(), "SPEC.md"), "utf8");
-    await writeFile(join(workspace, "SPEC.md"), spec);
-    execSync('git init -q && git config user.email "demo@plurnk.test" && git config user.name "demo" && git add . && git commit -q --no-verify -m "spec"', { cwd: workspace });
+const seedLedgerFixture = async (): Promise<{ workspace: string; cleanup: () => Promise<void> }> => {
+    const workspace = await mkdtemp(join(tmpdir(), "plurnk-budget-ledger-"));
+    // UNIFORM line density, deliberately. The real SPEC.md was a token-sizing TRAP: its {§}-anchor
+    // lines run 200-600 chars (~143 tokens/line, 2x the entry average), so the tokens/lines metadata
+    // UNDERSTATES the dense sections and even correct sizing overflows — that probed a pathology, not
+    // the model's good-faith curation. Here every line is ~the same width, so the (tokens÷lines) clue
+    // is RELIABLE: the model can FIND the fact, size a precise chunk-read against a doc it cannot hold
+    // whole, curate, and answer. One fact, buried mid-doc, findable by a keyword no filler line uses.
+    const lines: string[] = [];
+    for (let i = 1; i <= 600; i += 1) {
+        lines.push(`Entry ${String(i).padStart(4, "0")}: routine ledger record number ${i}; standard operational note, nothing of special interest is filed on this particular line.`);
+    }
+    lines[316] = "Entry 0317: the emergency shutdown code for the primary reactor core is CRIMSON-MERIDIAN-84, filed by the audit team and paged to no one.";
+    await writeFile(join(workspace, "ledger.md"), `${lines.join("\n")}\n`);
+    execSync('git init -q && git config user.email "demo@plurnk.test" && git config user.name "demo" && git add . && git commit -q --no-verify -m "ledger"', { cwd: workspace });
     return { workspace, cleanup: async () => { await rm(workspace, { recursive: true, force: true }); } };
 };
 
@@ -123,18 +133,20 @@ test("budget-meta: the config-host storyline still completes under a tight ceili
 // patterns/chunks — and if it reads broadly first, the grinder auto-folds that read
 // and the model recovers with a sliced/matched re-read. Outcome: it finds that the
 // grinder reverts the PRIOR turn first.
-test("budget-meta: jumbo SPEC.md under a tight ceiling — auto-fold then pattern/chunk recovery finds the fact", { timeout: TIMEOUT }, async () => {
-    const spec = await seedSpecFixture();
+test("budget-meta: a jumbo uniform-density doc under a tight ceiling — FIND then precise chunk-read finds the buried fact", { timeout: TIMEOUT }, async () => {
+    const doc = await seedLedgerFixture();
     const run = await runUnderBudget({
-        label: "spec-jumbo",
-        prompt: "SPEC.md describes a budget 'grinder' that runs when a packet is over budget. According to SPEC.md, what does the grinder revert or fold first?",
-        projectRoot: spec.workspace,
-        cleanupRoot: spec.cleanup,
+        label: "ledger-jumbo",
+        prompt: "ledger.md records an emergency shutdown code for the primary reactor core. What is that code?",
+        projectRoot: doc.workspace,
+        cleanupRoot: doc.cleanup,
     });
     try {
-        if (!/prior/i.test(run.lastContent)) await run.dump();
-        // The grinder reverts the PRIOR turn first (SPEC §grinder) — the model found it
-        // despite never being able to hold SPEC.md whole under the ceiling.
-        assert.match(run.lastContent, /prior/i, `model recovered the buried fact under budget pressure; got: ${run.lastContent.slice(0, 300)}`);
+        if (!/CRIMSON-MERIDIAN-84/i.test(run.lastContent)) await run.dump();
+        // The doc cannot be held whole under the ceiling, so good-faith management is: FIND(#shutdown#)
+        // to locate the one line, size a precise chunk-read around it from the reliable uniform
+        // tokens/line clue, curate the rest, and answer. The buried code proves it read precisely and
+        // curated — not read blindly. Uniform density means correct sizing never overflows: a fair test.
+        assert.match(run.lastContent, /CRIMSON-MERIDIAN-84/i, `model FOUND + read the buried code under budget pressure; got: ${run.lastContent.slice(0, 300)}`);
     } finally { await run.cleanup(); }
 });
