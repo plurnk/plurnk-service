@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-application-ipynb",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "description": "application/x-ipynb+json (Jupyter notebook) mimetype handler for plurnk-service. Cells as symbols; notebook projected to clean reading markdown via the content channel. Hand-rolled, no parser dependency.",
     "type": "module",
     "license": "MIT",
