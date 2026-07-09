@@ -10,8 +10,12 @@ type OpenFoldResult = { status: number; matched?: number; error?: string };
 
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
 // is wire-rendering self-documentation derived from the row's `op` field;
-// parsing accepts it (or omits it) and identifies the row by coordinate.
-const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Z]+))?$/;
+// parsing accepts it (or omits it) and identifies the row by coordinate. The op
+// suffix is case-INSENSITIVE: model ops render UPPERCASE (READ/EDIT/FIND) but the
+// engine-minted rows are lowercase (`error`, `model`), and those are curatable too —
+// a `[A-Z]+`-only suffix silently rejected FOLD(log:///1/6/2/error), so the model
+// could not reclaim budget by folding its own error rows and spiralled to 413 (jumbo).
+const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z]+))?$/;
 // §log-coordinate-hierarchy — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
 // path is unambiguously a prefix — the trailing slash is OPTIONAL (`log:///1/2` ≡ `log:///1/2/`).

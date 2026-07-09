@@ -240,3 +240,32 @@ test("[§log-coordinate-hierarchy] a PARTIAL coordinate is a prefix, slash OPTIO
         assert.ok((loop.matched ?? 0) >= 1, "the loop prefix matched");
     } finally { await db.close(); }
 });
+
+test("[§log-coordinate-hierarchy] FOLD/OPEN curate ENGINE-MINTED rows — the lowercase op suffix (error/model) parses, not just model ops (jumbo root cause)", async () => {
+    const { db, sessionId, runId, loopId, turnId } = await setup();
+    try {
+        // An engine-minted ERROR row (op='error', LOWERCASE) at seq=2 — the kind that bloats the log
+        // under budget pressure and MUST be curatable. A `[A-Z]+`-only coordinate suffix silently 400'd
+        // FOLD(log:///1/1/2/error), so the model could not reclaim budget by folding its own error rows
+        // and spiralled to a hard-413 (the jumbo failure). Curation must work IDENTICALLY on every log
+        // row, engine-minted or model-authored — the universal-op contract admits no exception.
+        await (db.engine_insert_log_entry as PrepMethod).get({
+            run_id: runId, loop_id: loopId, turn_id: turnId, sequence: 2,
+            origin: "model", source: null, op: "error", suffix: "", signal: null,
+            scheme: null, username: null, password: null, hostname: null, port: null,
+            pathname: null, params: null, fragment: null, lineMarker: null,
+            tx: "", mimetype_tx: "text/plain",
+            rx: JSON.stringify({ status: 413, kind: "budget_overflow", message: "over budget" }),
+            mimetype_rx: "application/json", status_rx: 413, tokens: 50, state: "failed", outcome: "budget_overflow", attrs: "{}",
+        });
+        const ctx = makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" });
+        // The model's EXACT gesture — fold the error row by its self-documenting coordinate.
+        const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/2/error")), ctx);
+        assert.equal(fold.status, 200, "an error row folds by coordinate — the model can reclaim budget by curating its OWN error rows");
+        const folded = await (db.test_get_log_expanded as PrepMethod).get<{ expanded: number }>({ run_id: runId, loop_seq: 1, turn_seq: 1, sequence: 2 });
+        assert.equal(folded?.expanded, 0, "the error row is folded away");
+        // OPEN it back — full parity with model-op rows.
+        const open = await new Log().open(openStmt(urlPath("log", "/1/1/2/error")), ctx);
+        assert.equal(open.status, 200, "OPEN(log:///1/1/2/error) restores it — the lowercase suffix parses for OPEN too");
+    } finally { await db.close(); }
+});
