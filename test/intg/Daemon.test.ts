@@ -603,3 +603,31 @@ test("the client-interface seam — session lifecycle: create/attach/rename/set-
         assert.ok(!(await daemon.listConstraints(env.sessionId)).some((c) => c.glob === "vendored/x"), "unconstrain removed it");
     });
 });
+
+test("the client-interface seam — readEntry returns an entry's shape and the #192 incremental slice (#355)", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = (await rpcCall(ws, 1, "session.create", { name: "seam-entry" })).result as { id: number };
+            const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
+            await daemon.dispatchAsClient({ sessionId: created.id, runId: run.id, statement: Dsl.buildEdit({ target: "known:///x", content: "hello world" }) });
+
+            // full shape — the written content is on one of the entry's channels.
+            const entry = (await daemon.readEntry({ sessionId: created.id, target: "known:///x" })).entry!;
+            const found = Object.entries(entry.channels).find(([, c]) => c.content.includes("hello"));
+            assert.ok(found !== undefined, "readEntry returns the entry's channels with content");
+            const [channel, chan] = found!;
+            assert.equal(chan.content, "hello world");
+            assert.equal(chan.contentLength, 11);
+
+            // #192 incremental slice — that channel's content from an offset; only the delta leaves storage.
+            const sliced = (await daemon.readEntry({ sessionId: created.id, target: "known:///x", channel, offset: 6 })).entry!;
+            assert.equal(sliced.channels[channel].content, "world", "the incremental read returns only the delta from the offset");
+            assert.equal(sliced.channels[channel].contentLength, 11, "contentLength is the full length — the next poll resumes from there");
+
+            // a missing entry is 404; an offset without a channel is refused.
+            assert.equal((await daemon.readEntry({ sessionId: created.id, target: "known:///nope" })).status, 404);
+            await assert.rejects(() => daemon.readEntry({ sessionId: created.id, target: "known:///x", offset: 3 }), /offset requires channel/);
+        } finally { ws.close(); }
+    });
+});

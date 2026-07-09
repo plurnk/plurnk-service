@@ -91,6 +91,19 @@ export interface PendingProposal {
     loop_flags: string | null;
 }
 
+// The entry shape a client renders (#355 readEntry) — all channels + tags + metadata for one path.
+export interface ChannelShape { content: string; contentLength: number; mimetype: string; tokens: number; state: string; }
+export interface EntryShape {
+    id: number;
+    scope: string;
+    sessionId: number;
+    scheme: string;
+    pathname: string;
+    channels: Record<string, ChannelShape>;
+    tags: string[];
+}
+type ChannelRow = { name: string } & ChannelShape;
+
 export default class Daemon {
     #db: Db;
     #engine: Engine;
@@ -365,6 +378,30 @@ export default class Daemon {
         await (this.#db.crud_delete_session_constraint as PrepMethod).run({ session_id: sessionId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, sessionId, undefined);
         return { effect, glob };
+    }
+
+    // The entry-shape hook (#355) — one entry's channels + tags + metadata at a path. With channel+offset,
+    // returns just that channel's content sliced from the offset: the incremental streaming read (#192,
+    // the delta leaves storage, not the whole channel). The module renders growing output by re-polling.
+    async readEntry(args: { sessionId: number; target: string; channel?: string; offset?: number }): Promise<{ status: number; entry: EntryShape | null }> {
+        const m = args.target.match(/^([a-z][a-z0-9+.-]*):\/\/(.*)$/);
+        if (m === null) throw new Error(`readEntry: target must be URL-shaped (scheme://pathname); got: ${args.target}`);
+        if (args.offset !== undefined && args.channel === undefined) throw new Error("readEntry: offset requires channel (which channel to slice)");
+        const scheme = m[1];
+        const pathname = m[2].split("#")[0];
+        const row = await (this.#db.entry_read_lookup as PrepMethod).get<{ id: number; scope: string; session_id: number; scheme: string; pathname: string }>({ session_id: args.sessionId, scheme, pathname });
+        if (row === undefined) return { status: 404, entry: null };
+        let channelRows: ChannelRow[];
+        if (args.channel === undefined) {
+            channelRows = await (this.#db.entry_read_channels as PrepMethod).all<ChannelRow>({ entry_id: row.id });
+        } else {
+            const r = await (this.#db.entry_read_channel_slice as PrepMethod).get<ChannelRow>({ entry_id: row.id, channel: args.channel, offset: args.offset ?? 0 });
+            channelRows = r === undefined ? [] : [r];
+        }
+        const channels: EntryShape["channels"] = {};
+        for (const c of channelRows) channels[c.name] = { content: c.content, contentLength: c.contentLength, mimetype: c.mimetype, tokens: c.tokens, state: c.state };
+        const tagRows = await (this.#db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: row.id });
+        return { status: 200, entry: { id: row.id, scope: row.scope, sessionId: row.session_id, scheme: row.scheme, pathname: row.pathname, channels, tags: tagRows.map((t) => t.tag) } };
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
