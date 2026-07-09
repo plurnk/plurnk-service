@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor } from "./_rpc.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 
 interface RpcResponse {
@@ -414,5 +414,26 @@ test("client loop status transitions to 200 on clean disconnect (after a client 
 
         status = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(status, 200);
+    });
+});
+
+test("the client-interface seam — subscribeToEvents delivers session-scoped engine events in-process (#355)", async () => {
+    // The emit half of #broadcast, exposed as an in-process source: a transport module (plurnk-agui)
+    // subscribes here and fans out to its OWN clients, instead of being welded to the WS connections.
+    await withDaemon(null, async (_db, daemon, addr) => {
+        const received: Array<{ sessionId: number | null; method: string; params: unknown }> = [];
+        const unsubscribe = daemon.subscribeToEvents((sessionId, method, params) => { received.push({ sessionId, method, params }); });
+        const ws = await connect(addr);
+        try {
+            const s = ((await rpcCall(ws, 1, "session.create", { name: "seam" })).result as { id: number }).id;
+            const isCreated = (e: { method: string; params: unknown }): boolean => e.method === "session/created" && (e.params as { id?: number }).id === s;
+            await waitFor(() => received, (r) => r.some(isCreated), { timeoutMs: 4000 });
+            assert.ok(received.some(isCreated), "the in-process subscriber received the engine event — the emit source is decoupled from the WS fan-out");
+            unsubscribe();
+            const countAfter = received.length;
+            await rpcCall(ws, 2, "session.create", { name: "seam-2" });
+            await flush();
+            assert.equal(received.length, countAfter, "unsubscribe stops delivery — the seam is a clean subscription");
+        } finally { ws.close(); }
     });
 });

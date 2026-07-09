@@ -77,6 +77,10 @@ export default class Daemon {
     #discoveryCwd: string;
     #wss: WebSocketServer | null = null;
     #connections = new Set<ClientConnection>();
+    // The emit half of the broadcast, exposed as an in-process event source (#355). A transport
+    // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never fans out
+    // for it. The WS fan-out below is legacy scaffolding that retires at the AG-UI+ cutover.
+    #eventSubscribers = new Set<(sessionId: number | null, method: string, params: unknown) => void>();
 
     // Run-level drain registry. At most one drain per run. The stored object
     // is the drain's identity handle: start/exit compare it by reference so a
@@ -188,6 +192,16 @@ export default class Daemon {
     }
 
     get registry(): MethodRegistry { return this.#registry; }
+
+    // The client-interface seam (#355). A transport module subscribes to the daemon's in-process
+    // event source: it receives every session-scoped engine event as `(sessionId, method, params)`
+    // and fans out to its OWN clients — core emits, it never fans out for the module. Returns an
+    // unsubscribe. `sessionId` is the event's session, or null for a global event (e.g. session/created).
+    // The engine and its events are core; the fan-out belongs to the module.
+    subscribeToEvents(handler: (sessionId: number | null, method: string, params: unknown) => void): () => void {
+        this.#eventSubscribers.add(handler);
+        return () => { this.#eventSubscribers.delete(handler); };
+    }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
     get schemes(): SchemeRegistry { return this.#schemes; }
@@ -997,12 +1011,17 @@ export default class Daemon {
             return;
         }
         if (target === "all") {
+            // A global engine event (e.g. session/created) — emitted to the seam with sessionId null (#355).
+            for (const sub of this.#eventSubscribers) sub(null, method, params);
             for (const conn of this.#connections) {
                 conn.sendNotification(method, params);
             }
             return;
         }
         const sessionId = target.sessionId;
+        // Publish the raw event to the in-process source first (#355) — transport modules subscribe
+        // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
+        for (const sub of this.#eventSubscribers) sub(sessionId, method, params);
         // Stamp the scope onto the envelope (#191, §notifications-envelope-carries-sessionid). A notification is broadcast
         // to exactly one session but carried nothing identifying it, so a
         // multi-session client (one connection, many sessions) couldn't route it
