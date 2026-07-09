@@ -33,7 +33,8 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             HOME: dir,   // isolate the ~/.plurnk first-run bootstrap into the temp dir
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
-            PLURNK_PORT: "0",   // OS picks a free port
+            PLURNK_PORT: "0",      // the AG-UI+ surface — OS picks a free port
+            PLURNK_WS_PORT: "0",   // the transitional WS listener — likewise ephemeral
         };
         delete env.PLURNK_MODEL;
 

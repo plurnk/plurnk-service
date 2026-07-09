@@ -456,7 +456,7 @@ export default class Daemon {
         this.#moduleInits.push(init);
     }
 
-    async start({ host = "127.0.0.1", port = 3044 }: DaemonOptions = {}): Promise<DaemonAddress> {
+    async start({ host = "127.0.0.1", port = 3046 }: DaemonOptions = {}): Promise<DaemonAddress> {
         if (this.#wss !== null) throw new Error("daemon already started");
 
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*

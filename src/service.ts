@@ -167,31 +167,29 @@ export default class Service {
     static async #start(): Promise<void> {
         const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
         const host = Service.#requireEnv("PLURNK_HOST");
+        // PLURNK_PORT is the client surface — the AG-UI+ listener (the agui daughter module binds it
+        // at boot). The legacy WebSocket RPC rides the transitional PLURNK_WS_PORT until cutover.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
+        const wsPort = Number(Service.#requireEnv("PLURNK_WS_PORT"));
 
         const db = await Service.#openDb(dbPath);
         const alias = resolveActiveAlias();
         const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
-        // AG-UI daughter module (#355) — registered when PLURNK_AGUI_PORT is set; its init runs at
-        // boot with the seam handle and opens the module's own listener. Unset = dormant (the dep
-        // ships either way; the knob decides). The module owns its knobs' semantics; we pass env through.
-        const aguiPort = process.env.PLURNK_AGUI_PORT;
-        if (aguiPort !== undefined && aguiPort.length > 0) {
-            const aguiInit = AguiModule.init({
-                host: process.env.PLURNK_AGUI_HOST ?? host,
-                port: Number(aguiPort),
-                sessionPrefix: process.env.PLURNK_AGUI_SESSION_PREFIX ?? "agui",
-                ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
-                ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
-            });
-            // agui 0.3.0's DaemonSeam mirror types `statement` as a loose sketch, not the grammar's
-            // PlurnkStatement — the settled contract (#355: the module parses at its edge and hands over
-            // grammar-shaped statements) holds at runtime, so bridge the mirror gap here, at the
-            // composition root only. Comes off when the mirror adopts the grammar type (types-only import).
-            daemon.registerModule(aguiInit as unknown as Parameters<typeof daemon.registerModule>[0]);
-        }
-        const addr = await daemon.start({ host, port });
+        // AG-UI daughter module (#355) — THE client surface, always on: its init runs at boot with the
+        // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
+        const aguiInit = AguiModule.init({
+            host, port,
+            sessionPrefix: process.env.PLURNK_AGUI_SESSION_PREFIX ?? "agui",
+            ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
+            ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
+        });
+        // agui 0.3.0's DaemonSeam mirror types `statement` as a loose sketch, not the grammar's
+        // PlurnkStatement — the settled contract (#355: the module parses at its edge and hands over
+        // grammar-shaped statements) holds at runtime, so bridge the mirror gap here, at the
+        // composition root only. Comes off when the mirror adopts the grammar type (types-only import).
+        daemon.registerModule(aguiInit as unknown as Parameters<typeof daemon.registerModule>[0]);
+        const addr = await daemon.start({ host, port: wsPort });
         // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
         // self-report returns info with the unknowns explicitly null — say which case this is).
         const embedInfo = await daemon.mimetypes.embedderInfo();
@@ -212,7 +210,7 @@ export default class Service {
             process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);
         }
         const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
-        process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} db=${dbPath} ${aliasStr}\n`);
+        process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} agui=http://${host}:${port} db=${dbPath} ${aliasStr}\n`);
 
         const shutdown = async (): Promise<void> => { await daemon.stop(); await db.close(); process.exit(0); };
         process.on("SIGINT", shutdown);

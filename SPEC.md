@@ -824,8 +824,9 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | Var                                  | Default            | Status     | Purpose                                                       |
 |--------------------------------------|--------------------|------------|---------------------------------------------------------------|
 | `PLURNK_SERVICE_DB_PATH`                     | `./plurnk.db`      | enforced   | SQLite file path.                                             |
-| `PLURNK_HOST`                        | `127.0.0.1`        | enforced   | Bind address for the daemon WebSocket. Local-only by default. |
-| `PLURNK_PORT`                        | `3044`             | enforced   | TCP port for the daemon WebSocket.                            |
+| `PLURNK_HOST`                        | `127.0.0.1`        | enforced   | Bind address for both listeners. Local-only by default.      |
+| `PLURNK_PORT`                        | `3044`             | enforced   | TCP port for the client surface — the AG-UI+ listener (the plurnk-agui daughter module binds it at boot). |
+| `PLURNK_WS_PORT`                     | `3046`             | enforced   | Transitional: TCP port for the legacy WebSocket RPC; removed at the AG-UI+ cutover. |
 | `PLURNK_SERVICE_MAX_TURNS`                   | `-1`               | enforced   | Operator turn **ceiling** — `-1` = no cap; a positive value caps a per-call `loop.run({maxTurns})`. |
 | `PLURNK_SERVICE_MAX_COMMANDS`                | `99`               | enforced   | Per-emission op cap. Overflow ops drop silently; one `max_commands_exceeded` telemetry entry surfaces on the next packet. |
 | `PLURNK_SERVICE_RPC_TIMEOUT`                 | `30000`            | enforced   | ms deadline for non-`longRunning` RPC handlers; expiry answers `-32007 Timeout` (§errors) and the abandoned handler's late outcome is logged, never re-answered. `longRunning` registrations (proposal-pausing ops, external installs) are exempt. {§operator-config-rpc-timeout} |
@@ -875,7 +876,9 @@ plurnk-service runs as a daemon. Clients (TUI/CLI/neovim/web/Telegram/etc.) driv
 
 ### §transport Transport
 
-WebSocket (`ws` npm). One message per `ws.send`. UTF-8 JSON. One full-duplex connection per client. Bind: `PLURNK_HOST:PLURNK_PORT` (default `127.0.0.1:3044`).
+The client surface is AG-UI+ on `PLURNK_HOST:PLURNK_PORT` (default `127.0.0.1:3044`), bound by the plurnk-agui daughter module at boot — the module owns that protocol (its SPEC lives in plurnk-agui). The legacy transport below is transitional and is removed at the AG-UI+ cutover.
+
+WebSocket (`ws` npm). One message per `ws.send`. UTF-8 JSON. One full-duplex connection per client. Bind: `PLURNK_HOST:PLURNK_WS_PORT` (default `127.0.0.1:3046`).
 
 Out of scope for v0: auth, TLS, multiplexing. Local-loopback + filesystem permissions are the access control.
 
