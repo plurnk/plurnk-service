@@ -15,14 +15,14 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|K
 
 ### Syntax
 
-<<OPsuffix[signal]?(path)?<Line/Result>?:body?:OPsuffix
+<<OPsuffix[signal]?(path)?<scope>?:body?:OPsuffix
 
 ### OPs
 
 Fields are optional unless otherwise specified.
 The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 
-| OP   | `[signal]`    | `(path)`    | `<Line / Result>` | :body:             | OP   |
+| OP   | `[signal]`    | `(path)`    | `<scope>`         | :body:             | OP   |
 |------|---------------|-------------|-------------------|--------------------|------|
 | PLAN | -             | -           | -                 | :plan, free text:  | PLAN |
 | FIND | [filter tags] | (path)      | <result,result>   | :pattern:          | FIND |
@@ -97,7 +97,9 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 | FORK | no   | no    | yes | no     | no  |
 | KILL | yes  | yes   | yes | yes    | yes |
 
-### `<Line / Result>`
+### `<scope>`
+
+This field can contain one or more numeric entries limiting the scope of the operation to specific lines, results, thresholds, or timeouts.
 
 <<READ(file.md)<N>::READ views line N
 <<FIND(src/**)<N,M>::FIND retrieves results N through M, inclusive
@@ -105,16 +107,17 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 
 Sentinels: <0> before position 1 (prepend), `<-1>` after the last position (append).
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
-On structured files, entries, and items, `<Result>` addresses result index, not line number.
+On structured files, entries, and items, `<scope>` addresses result index, not line number.
 
 <<FIND(known:///**)<0.7>:~france:FIND retrieves results with a semantic score of 0.7 or greater.
 <<READ(known:///**)<0.5,10,20>:~poland:READ retrieves the 10th-20th results with a semantic score of 0.5 or greater.
 A leading decimal is a `~`-similarity threshold (results scoring at least that value); following integers are positions, threshold first then range.
 
-### Body
+### :body:
 
 Empty (no body) OPs contain two colons: <<READ(AGENTS.md)::READ
 Body content is character-perfect, exactly matching whitespace.
+On filtering operations, the matching pattern goes in the body.
 
 ## Delegation
 

@@ -67,7 +67,7 @@ test("plurnk.md examples cover every OP", () => {
 
 // CI tripwire: EVERY heredoc anywhere in plurnk.md must parse to one clean statement,
 // not just the `## Examples` block. The inline examples (the OP one-liners, the
-// `<Line / Result>` samples, the imperative recovery ops, and the spawn/fork lines)
+// `<scope>` samples, the imperative recovery ops, and the spawn/fork lines)
 // otherwise carry no coverage — which is exactly how a bogus `get` target and a
 // missing `<<` opener slipped past review before. Extract by matched open/close tag
 // (suffix-aware, non-greedy, multiline), then parse each in isolation.
