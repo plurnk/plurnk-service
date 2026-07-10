@@ -23,6 +23,16 @@ const CATEGORY: Readonly<Record<string, string>> = Object.freeze({
 
 const preview = (q: string): string => (q.length > 60 ? `${q.slice(0, 60)}…` : q);
 
+// The configured SearXNG base URL, or null if unusable — trimmed and validated,
+// NOT merely truthy: a blank/whitespace/malformed value (an env floor easily
+// emits `URL= ` with a trailing space) must read as unconfigured. Truthy-only
+// checks let " " through, and `new URL("/search", " ")` then throws uncaught →
+// the run never resolves nor times out (plurnk-execs-search#3).
+const searxngUrl = (): string | null => {
+    const u = (process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL ?? "").trim();
+    return u && URL.canParse(u) ? u : null;
+};
+
 // The signal fields of a SearXNG result — everything else it returns (template,
 // engine internals, score, parsed_url, positions) is noise the model can't use.
 interface SearxngResult {
@@ -66,10 +76,10 @@ export default class Search extends BaseExecutor {
     // not a reachability ping — boot answers "is search set up?"; live
     // reachability is the run path's job (it emits searxng_unreachable).
     override async probe(): Promise<RuntimeAvailability> {
-        const url = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
+        const url = searxngUrl();
         return url
             ? { available: true, detail: url }
-            : { available: false, detail: "PLURNK_EXECS_SEARCH_SEARXNG_URL not set" };
+            : { available: false, detail: "PLURNK_EXECS_SEARCH_SEARXNG_URL is not set to a valid URL" };
     }
 
     // Search reads external state without mutating the host.
@@ -96,8 +106,8 @@ export default class Search extends BaseExecutor {
             return fail("external_bang_refused", `external bang refused: "${preview(query)}"`, 400);
         }
 
-        const base = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
-        if (!base) return fail("searxng_not_configured", "PLURNK_EXECS_SEARCH_SEARXNG_URL is not set");
+        const base = searxngUrl();
+        if (base === null) return fail("searxng_not_configured", "PLURNK_EXECS_SEARCH_SEARXNG_URL is not set to a valid URL");
 
         // All tunables are optional env overrides — no code default hides a
         // magic number (suggested values live in the consumer's .env.example).
@@ -115,7 +125,12 @@ export default class Search extends BaseExecutor {
 
         // The consumer's signal is the deadline (SPEC §2.5); an optional search
         // timeout adds a local ceiling on top of it.
-        const fetchSignal = timeoutRaw ? AbortSignal.any([signal, AbortSignal.timeout(Number(timeoutRaw))]) : signal;
+        // A malformed TIMEOUT is the same throw-class: AbortSignal.timeout(NaN)
+        // throws, so only arm the extra ceiling for a finite positive value.
+        const timeoutMs = Number(timeoutRaw);
+        const fetchSignal = timeoutRaw && Number.isFinite(timeoutMs) && timeoutMs > 0
+            ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+            : signal;
         let response: Response;
         try {
             response = await fetch(url, { signal: fetchSignal });

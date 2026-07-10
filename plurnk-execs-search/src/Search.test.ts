@@ -102,6 +102,27 @@ test("probe: available when SEARXNG_URL is set, unavailable otherwise", async ()
     assert.match(String(unset.detail), /not set/);
 });
 
+test("probe: blank / whitespace / malformed URL reads as unavailable, not just unset (#3)", async () => {
+    for (const v of ["", "   ", "not-a-url"]) {
+        process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = v;
+        const r = await new Search({ runtime: "search", glyph: "🔎" }).probe();
+        assert.equal(r.available, false, `"${v}" is not a usable URL — must gate false`);
+    }
+});
+
+test("run: a whitespace / malformed URL fails clean (500), never constructs a bad URL, never hangs (#3)", async () => {
+    let fetched = false;
+    setFetch(async () => { fetched = true; return { ok: true, status: 200, json: async () => ({ results: [] }) }; });
+    for (const v of ["   ", "not-a-url"]) {
+        process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = v;
+        const { result, events, states } = await invoke("search", "q");
+        assert.equal(result.status, 500, `"${v}" → clean 500, not an uncaught throw`);
+        assert.equal(events[0].kind, "searxng_not_configured");
+        assert.equal(states.at(-1)?.state, "errored");
+    }
+    assert.equal(fetched, false, "a bad base never reaches fetch (and never `new URL`s to throw)");
+});
+
 test("search: queries SearXNG, loads pages, digests survivors, closes channel, status 200", async () => {
     const fetched = routes(
         [{ title: "a", url: "https://8.8.8.8/a" }, { title: "b", url: "https://8.8.8.9/b" }],
