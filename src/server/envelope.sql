@@ -33,7 +33,7 @@ VALUES ($session_id, $name, $origin)
 RETURNING id, name, origin;
 
 -- PREP: envelope_get_run_by_id
-SELECT id, name, session_id FROM runs WHERE id = $id;
+SELECT id, name, session_id, origin FROM runs WHERE id = $id;
 
 -- PREP: envelope_get_run_by_name
 SELECT id, name FROM runs WHERE session_id = $session_id AND name = $name;

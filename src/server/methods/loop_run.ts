@@ -7,11 +7,9 @@ import type MethodRegistry from "../MethodRegistry.ts";
 import { Paths } from "../../index.ts";
 import { parseAliasesFromEnv } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../core/ProviderInstantiate.ts";
-import SessionSettings from "../../core/session-settings.ts";
 import Envelope from "../envelope.ts";
-import DispatchAsPlurnk from "./_dispatchAsPlurnk.ts";
+import LoopDocs from "../loopDocs.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
-import type { EditStatement } from "@plurnk/plurnk-grammar";
 
 // Per-call flags shape on loop.run. Each flag persists to loops.flags;
 // Engine.dispatch consults via SchemeRegistry.resolveForLoop to gate
@@ -123,26 +121,9 @@ export default class LoopRunMethod {
                 // #231 — materialize env docs (PLURNK_SERVICE_MD_*) UNION the session's client docs
                 // (settings.mdDocs); client wins on alias collision. Engine.runTurn foists a
                 // READ of the same set at turn-0.
-                const { mdDocs } = await SessionSettings.read(ctx.db, sessionId);
-                const docStmts: EditStatement[] = (await SessionSettings.resolveDocs(mdDocs)).map((doc) => ({
-                    op: "EDIT", suffix: "", signal: null,
-                    target: { kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: `/${doc.entryName}`, params: {}, fragment: null },
-                    lineMarker: null, body: doc.content, position: { line: 1, column: 1 },
-                }));
-                // #note12 — materialize the daughter scheme/exec reference docs at
-                // plurnk://docs/<name>.md so the catalogue's doc-links READ + carry token cost.
-                // Per-inject like the operator mdDocs above (idempotent EDITs). One-time
-                // session-scope seeding is a future refinement — seeding at session.create
-                // shifts every session's initial entry/run state (origin, counts, coordinates)
-                // and breaks the no-loop.run op.* tests, not worth the churn for the redundancy saved.
-                for (const { name, content } of await ctx.engine.docEntries(sessionId)) {
-                    docStmts.push({
-                        op: "EDIT", suffix: "", signal: null,
-                        target: { kind: "url", raw: `plurnk://docs/${name}.md`, scheme: "plurnk", username: null, password: null, hostname: "docs", port: null, pathname: `/${name}.md`, params: {}, fragment: null },
-                        lineMarker: null, body: content, position: { line: 1, column: 1 },
-                    });
-                }
-                if (docStmts.length > 0) await DispatchAsPlurnk.dispatch(ctx.engine, ctx.db, sessionId, docStmts);
+                // Pre-loop docs (operator/client mdDocs + the teaching docs) — ONE truth shared
+                // with the seam's runLoop route (LoopDocs).
+                await LoopDocs.materialize(ctx.engine, ctx.db, sessionId);
 
                 // Delegate to the daemon's unified inject surface. Active-drain
                 // → write prompt entry for next turn (returns immediately).

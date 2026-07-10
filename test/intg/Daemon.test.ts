@@ -495,11 +495,15 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "session.create", { name: "seam-runloop" })).result as { id: number };
-            const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
             const events: Array<{ method: string; params: unknown }> = [];
             daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
-            const res = await daemon.runLoop({ sessionId: created.id, runId: run.id, prompt: "go" });
+            // §machine-processes — loops run in the MODEL run the seam resolves; a client run is
+            // refused loudly (the module's envelope runId is the client run — never the loop home).
+            const clientRun = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
+            await assert.rejects(() => daemon.runLoop({ sessionId: created.id, runId: clientRun.id, prompt: "go" }), /client run/, "runLoop refuses a client-origin run");
+            const modelRunId = await daemon.ensureModelRun(created.id);
+            const res = await daemon.runLoop({ sessionId: created.id, runId: modelRunId, prompt: "go" });
             assert.equal(res.action, "enqueued_new_loop", "runLoop enqueued a fresh loop");
             assert.ok(res.loopId > 0, "runLoop returned the new loop id");
 

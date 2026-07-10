@@ -23,7 +23,7 @@ import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
-import DispatchAsPlurnk from "./methods/_dispatchAsPlurnk.ts";
+import LoopDocs from "./loopDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import type { Executor, RegistryEntry } from "../core/ExecutorRegistry.ts";
@@ -264,18 +264,28 @@ export default class Daemon {
     async runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         if (this.#provider === null) throw new Error("runLoop: no provider configured");
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-        // The teaching docs (#270) materialize at plurnk://docs/<name>.md BEFORE the loop starts, so
-        // the turn-1 FIND(plurnk://docs/**) discovery foist finds them — the marquee first-turn
-        // feature. Core's teaching, so it rides the seam path; loop_run does the same on the legacy
-        // route. Missing here, every agui-driven session started docless and the foist reported 0.
-        const docStmts: PlurnkStatement[] = (await this.#engine.docEntries(args.sessionId)).map(({ name, content }) => ({
-            op: "EDIT", suffix: "", signal: null,
-            target: { kind: "url", raw: `plurnk://docs/${name}.md`, scheme: "plurnk", username: null, password: null, hostname: "docs", port: null, pathname: `/${name}.md`, params: {}, fragment: null },
-            lineMarker: null, body: content, position: { line: 1, column: 1 },
-        } as PlurnkStatement));
-        await DispatchAsPlurnk.dispatch(this.#engine, this.#db, args.sessionId, docStmts);
-        const { action, loopId, turnSeq } = await this.inject({ ...args, provider: this.#provider, systemPrompt });
+        // §machine-processes — the model NEVER runs in a client-origin run (its packets would carry
+        // client op.* rows). The module resolves the model run via ensureModelRun and passes it (or a
+        // fork); a client run here is a caller error, refused loudly rather than silently rehomed.
+        const target = await (this.#db.envelope_get_run_by_id as PrepMethod).get<{ session_id: number; origin: string }>({ id: args.runId });
+        if (target === undefined) throw new Error(`runLoop: run ${args.runId} not found`);
+        if (target.origin === "client") throw new Error(`runLoop: run ${args.runId} is a client run — loops run in model runs (§machine-processes); resolve one with ensureModelRun(sessionId)`);
+        // Pre-loop docs (both sets: operator/client mdDocs + the teaching docs the turn-1
+        // FIND(plurnk://docs/**) foist discovers) — ONE truth shared with the legacy loop.run route.
+        await LoopDocs.materialize(this.#engine, this.#db, args.sessionId);
+        // §operator-config-max-turns-ceiling — the operator ceiling clamps a per-call maxTurns; a
+        // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
+        const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
+        const requested = args.maxTurns ?? ceiling;
+        const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
+        const { action, loopId, turnSeq } = await this.inject({ ...args, ...(maxTurns >= 0 ? { maxTurns } : {}), provider: this.#provider, systemPrompt });
         return { action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
+    }
+
+    // §machine-processes — the session's model run (created on first use), distinct from the client
+    // run so the model's packets never carry client op.* rows. The module binds its threads to this.
+    ensureModelRun(sessionId: number): Promise<number> {
+        return Envelope.ensureModelRun(this.#db, sessionId);
     }
 
     // The op-dispatch hook (#355) — execute one parsed op on behalf of a client: journaled as a
@@ -1315,7 +1325,7 @@ export default class Daemon {
 export type CoreSeam = Pick<Daemon,
     | "subscribeToEvents"
     | "pendingProposals" | "resolveProposal"
-    | "runLoop" | "cancelDrain" | "dispatchAsClient"
+    | "runLoop" | "cancelDrain" | "dispatchAsClient" | "ensureModelRun"
     | "readLog" | "readEntry"
     | "listProviders" | "listSessions" | "listRuns" | "listPrompts" | "listMembers" | "listConstraints"
     | "createSession" | "attachSession" | "setProjectRoot" | "renameSession" | "constrain" | "unconstrain"
