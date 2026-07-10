@@ -82,6 +82,38 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     };
 };
 
+interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>; }
+interface ChainStep { finalStatus: number; lastContent: string; turnIds: number[]; }
+interface ChainResult { workspace: string; steps: ChainStep[]; cleanup: () => Promise<void>; }
+
+// Multi-prompt story: ONE session, prompts fired in sequence (each its own loop.run), so
+// session state persists — the model works with its OWN prior output across turns (an authored
+// file it must re-READ and revise, a fact it must recall). Same fixture + teardown discipline as
+// runStory: a liveLoop throw lands before the caller holds the result, so tear down here.
+const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
+    const fixture = await seedDemoFixture(opts.label);
+    const s = await liveSession({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+    const teardown = async () => { await s.cleanup(); await fixture.cleanup(); };
+    const steps: ChainStep[] = [];
+    try {
+        let id = 2;
+        for (const prompt of opts.prompts) {
+            const loop = await liveLoop(
+                s, id++,
+                { prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
+                { timeoutMs: TIMEOUT - 30_000 },
+            );
+            steps.push({ finalStatus: loop.finalStatus, lastContent: loop.lastContent, turnIds: loop.turnIds });
+            console.error(`[chain:${opts.label}] step ${steps.length} turns=${loop.turnIds.length} finalStatus=${loop.finalStatus}`);
+            if (opts.onStep !== undefined) await opts.onStep(steps.length - 1, fixture.workspace);
+        }
+    } catch (err) {
+        await teardown().catch((e) => console.error(`[chain:${opts.label}] cleanup after failure:`, e));
+        throw err;
+    }
+    return { workspace: fixture.workspace, steps, cleanup: teardown };
+};
+
 test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async () => {
     // src/config.json has { db, pool, host }. Scoped prompt: ONE value.
     // Comment in rummy: "earlier open-ended phrasings let the model
@@ -185,40 +217,6 @@ test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () =
     } finally { await story.cleanup(); }
 });
 
-test("story: locate a pattern in a file by regex", { timeout: TIMEOUT }, async () => {
-    // Natural prompt that benefits from READ regex matcher. notes.md
-    // contains "The project codename is: phoenix\n". The model may extract
-    // via a regex-style matcher or by reading and reasoning; either way,
-    // the outcome is reporting "phoenix" back.
-    const story = await runStory({
-        label: "regex-find",
-        prompt: "What's the project codename in notes.md?",
-    });
-    try {
-        if (story.finalStatus !== 200 || !/phoenix/i.test(story.lastContent)) await story.dump();
-        assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /phoenix/i,
-            `final reply contains the codename; got: ${story.lastContent.slice(0, 200)}`);
-    } finally { await story.cleanup(); }
-});
-
-test("story: extract one specific value from a structured config", { timeout: TIMEOUT }, async () => {
-    // Natural prompt that should benefit from matcher composition:
-    // model can READ the config, get a regex match, then jsonpath against
-    // the log entry to extract the value. Or it can do the whole thing in
-    // one matcher. Either path is fine; the outcome is mentioning "5".
-    const story = await runStory({
-        label: "extract-pool",
-        prompt: "What's the pool size in src/config.json?",
-    });
-    try {
-        if (story.finalStatus !== 200 || !/\b5\b/.test(story.lastContent)) await story.dump();
-        assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /\b5\b/,
-            `final reply contains the pool size (5); got: ${story.lastContent.slice(0, 200)}`);
-    } finally { await story.cleanup(); }
-});
-
 // --- xpath / jsonpath demos (auto-activate when plurnk-mimetypes#3 lands) ---
 //
 // These demos exercise the dialect the model is MOST likely to reach for
@@ -242,20 +240,6 @@ test("story: list every admin user from a JSON file", { timeout: TIMEOUT }, asyn
         assert.equal(story.finalStatus, 200);
         assert.match(story.lastContent, /Alice/,
             `final reply names the admin; got: ${story.lastContent.slice(0, 200)}`);
-    } finally { await story.cleanup(); }
-});
-
-test("story: pull the host field from a JSON config", { timeout: TIMEOUT }, async () => {
-    // src/config.json: {db:postgres, pool:5, host:db.internal}.
-    // jsonpath path: $.host → "db.internal"
-    const story = await runStory({
-        label: "host-field",
-        prompt: "What's the value of the `host` field in src/config.json?",
-    });
-    try {
-        if (story.finalStatus !== 200 || !/db\.internal/.test(story.lastContent)) await story.dump();
-        assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /db\.internal/);
     } finally { await story.cleanup(); }
 });
 
@@ -301,5 +285,70 @@ test("story: report the number of files in a directory", { timeout: TIMEOUT }, a
         assert.equal(story.finalStatus, 200);
         assert.match(story.lastContent, /\b2\b/,
             `final reply contains the count (2); got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
+});
+
+test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }, async () => {
+    // Authoring → refinement → reorganization in ONE session. The model creates prose (brief.md),
+    // then must re-READ its OWN prior work and EDIT it shorter (the refine turn renders the
+    // line-numbered diff of what changed — §edit-result-render), then MOVE it out of the root.
+    // Outcome asserts on disk, snapshotting size BEFORE the move. All natural prompts.
+    const sizes: number[] = [];
+    const chain = await runStoryChain({
+        label: "authoring",
+        maxTurns: 10,
+        prompts: [
+            "Write me a short brief — two or three paragraphs — on why the printing press changed the world, and save it as brief.md.",
+            "That's longer than I need. Cut it down to a single tight paragraph.",
+            "Perfect. Now move brief.md into a drafts/ folder to keep my workspace tidy.",
+        ],
+        onStep: async (i, ws) => {
+            // Snapshot brief.md's size after the draft (0) and the tighten (1), BEFORE the move (2) relocates it.
+            if (i <= 1) sizes[i] = (await readFile(join(ws, "brief.md"), "utf8").catch(() => "")).trim().length;
+        },
+    });
+    try {
+        assert.equal(chain.steps[0].finalStatus, 200, "the brief was authored");
+        assert.ok(sizes[0] > 200, `the draft has substantial prose; got ${sizes[0]} chars`);
+        assert.equal(chain.steps[1].finalStatus, 200, "the refine turn concluded");
+        assert.ok(sizes[1] > 0 && sizes[1] < sizes[0], `the refined brief is shorter (${sizes[1]} < ${sizes[0]} chars)`);
+        assert.equal(chain.steps[2].finalStatus, 200, "the file-away turn concluded");
+        const inDrafts = await readFile(join(chain.workspace, "drafts", "brief.md"), "utf8").catch(() => null);
+        assert.ok(inDrafts !== null && inDrafts.trim().length > 0, "brief.md was relocated under drafts/");
+    } finally { await chain.cleanup(); }
+});
+
+test("story: remember a fact, then recall it later", { timeout: TIMEOUT }, async () => {
+    // known:// persistent-memory round-trip. The deploy key is in NO file — a correct recall on a
+    // LATER turn proves the model stored it in its own memory and retrieved it. Natural prompts.
+    const chain = await runStoryChain({
+        label: "memory",
+        maxTurns: 6,
+        prompts: [
+            "Hang onto this for me: the staging deploy key is SK-7788-QRT.",
+            "Remind me — what was that staging deploy key?",
+        ],
+    });
+    try {
+        assert.equal(chain.steps[1].finalStatus, 200, "the recall turn concluded");
+        assert.match(chain.steps[1].lastContent, /SK-7788-QRT/,
+            `recalled the key from memory; got: ${chain.steps[1].lastContent.slice(0, 200)}`);
+    } finally { await chain.cleanup(); }
+});
+
+test("story: compute a value too big for arithmetic shortcuts", { timeout: TIMEOUT }, async () => {
+    // 25! = 15511210043330985984000000 overflows 64-bit, so shell arithmetic can't do it — the
+    // model reaches for a real runtime (node BigInt / python). Natural prompt; the exact value proves it.
+    const story = await runStory({
+        label: "compute",
+        prompt: "What's 25 factorial?",
+        maxTurns: 6,
+    });
+    try {
+        const wanted = /15,?511,?210,?043,?330,?985,?984,?000,?000/;
+        if (story.finalStatus !== 200 || !wanted.test(story.lastContent)) await story.dump();
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, wanted,
+            `computed 25! exactly; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });

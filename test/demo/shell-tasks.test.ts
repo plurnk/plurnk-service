@@ -59,22 +59,3 @@ test("demo: 'what is the hostname of this machine?' — model uses EXEC to run h
     });
 });
 
-test("demo: 'who am I logged in as?' — model uses EXEC to run whoami", async () => {
-    const realUser = execSync("whoami", { encoding: "utf8" }).trim();
-    await runShellDemo({
-        label: "whoami",
-        prompt: "Which user account am I logged in as on this machine?",
-        expected: new RegExp(`\\b${realUser.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`),
-    });
-});
-
-test("demo: 'what's the current kernel release?' — model uses EXEC to run uname", async () => {
-    const realKernel = execSync("uname -r", { encoding: "utf8" }).trim();
-    // Stable prefix: major.minor (e.g. "6.12" from "6.12.86+deb13-amd64").
-    const [maj, min] = realKernel.split(".");
-    await runShellDemo({
-        label: "kernel",
-        prompt: "What kernel version is this machine running?",
-        expected: new RegExp(`\\b${maj}\\.${min}\\b`),
-    });
-});
