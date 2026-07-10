@@ -12,7 +12,7 @@ The command runs with a **scoped** environment: the host daemon's own secrets �
 
 ## Channels
 
-Output streams into two channels on the `exec://` entry: `#stdout` (default) and `#stderr` (both `text/stream`); `READ` the entry to see them. A host-effecting command proposes for review before it runs; a read-only one runs inline and returns its output the same turn. A non-zero exit closes the entry with status 500, the message on `stderr`.
+Output streams into two channels on the `exec://` entry: `#stdout` (default) and `#stderr` (both `text/stream`); `READ` the entry to see them. A host-effecting command proposes for review before it runs; a read-only one runs without the review pause. Either way the output arrives on the stream channels — never in the same turn's body; READ the entry (or let the next turn's fold-back surface it) to see the result. A non-zero exit closes the entry with status 500, the message on `stderr`.
 
 ## Deadlines & polling — `<timeout, poll>`
 
