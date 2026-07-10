@@ -147,7 +147,7 @@ export default class Module {
             }
         };
 
-        this.#portal.openThread({ sessionId, runId, threadId: input.threadId, emit, modelRunId: runId });
+        this.#portal.openThread({ sessionId, runId, threadId: input.threadId, emit, modelRunId: runId, inputRunId: input.runId });
         emit([
             { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
             stateSnapshot({ providers: this.#seam.listProviders().aliases, session: { id: sessionId, name: env.sessionName, projectRoot: env.projectRoot } }),
@@ -155,11 +155,15 @@ export default class Module {
         if (finished) return;
 
         // §3 — a management ACTION run (forwardedProps.plurnk.action): execute via the
-        // seam, project the outcome as plurnk.action.result, finish. No loop driven.
+        // seam; the outcome rides the session's CURRENT thread binding (Portal.finishRun),
+        // never this closure — a proposal-gated action (op.exec → 202) terminates THIS
+        // run and completes after the resume run rebinds the stream.
         const action = parseAction(input.forwardedProps);
         if (action !== null) {
-            const outcome = await this.#action(action, env);
-            emit([actionResult(action.kind, outcome), { type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId }]);
+            void this.#action(action, env)
+                .then((outcome) => this.#portal.finishRun(sessionId, [actionResult(action.kind, outcome)]))
+                .catch((err: unknown) => this.#portal.finishRun(sessionId, [actionResult(action.kind, { ok: false, error: err instanceof Error ? err.message : String(err) })]));
+            req.on("close", finish);
             return;
         }
 
@@ -245,7 +249,9 @@ export default class Module {
                     // proposal-gated by the engine like any client op.
                     if (typeof p.command !== "string" || p.command.length === 0) return { ok: false, error: "op.exec requires command" };
                     const statement = { op: "EXEC", suffix: "", signal: null, target: null, lineMarker: null, body: p.command, position: { line: 1, col: 1 } } as unknown as PlurnkStatement;
-                    return { ok: true, result: await this.#seam.dispatchAsClient({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), statement }) };
+                    // Client ops journal as client-origin turns in the CLIENT run (run-split:
+                    // only LOOPS live in the model run).
+                    return { ok: true, result: await this.#seam.dispatchAsClient({ sessionId: env.sessionId, runId: env.runId, statement }) };
                 }
                 case "op.parse": {
                     // Raw DSL parsed at the module's edge (the grammar is a family-internal
@@ -254,7 +260,7 @@ export default class Module {
                     if (typeof p.text !== "string" || p.text.length === 0) return { ok: false, error: "op.parse requires text" };
                     const parsed = PlurnkParser.parseClient(p.text);
                     const results: Array<Record<string, unknown>> = [];
-                    const runId = await this.#seam.ensureModelRun(env.sessionId);
+                    const runId = env.runId; // client ops ride the client run
                     for (const item of parsed.items) {
                         if (item.kind === "error") { results.push({ status: 400, error: String(item.error.message ?? item.error) }); continue; }
                         if (item.kind !== "statement") continue; // interstitial text isn't dispatchable

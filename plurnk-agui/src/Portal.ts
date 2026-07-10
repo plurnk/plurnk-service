@@ -11,7 +11,7 @@ import type { DaemonSeam } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
 import type { ToolResultMessage } from "./AguiPlus.ts";
 
-interface Thread { runId: number; router: EventRouter; emit: (events: AguiEvent[]) => void }
+interface Thread { runId: number; router: EventRouter; emit: (events: AguiEvent[]) => void; threadId: string; inputRunId: string }
 
 // The engine needs only the run-flow slice of the seam (session-lifecycle and reads
 // belong to the Module edge above it) — declare exactly that.
@@ -55,9 +55,19 @@ export default class Portal {
     // client envelope's); `modelRunId` binds the render (null → the router lazily
     // adopts the first model-origin row's run — a fresh session's model run is born
     // at the drain).
-    openThread(args: { sessionId: number; runId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelRunId?: number | null }): void {
+    openThread(args: { sessionId: number; runId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelRunId?: number | null; inputRunId?: string }): void {
         const router = new EventRouter({ threadId: args.threadId, runId: String(args.runId), modelRunId: args.modelRunId ?? null, sessionId: args.sessionId });
-        this.#threads.set(args.sessionId, { runId: args.runId, router, emit: args.emit });
+        this.#threads.set(args.sessionId, { runId: args.runId, router, emit: args.emit, threadId: args.threadId, inputRunId: args.inputRunId ?? String(args.runId) });
+    }
+
+    // Emit extra events + RUN_FINISHED through the session's CURRENT thread binding —
+    // an action that paused on a proposal completes AFTER the resume run rebound the
+    // stream, so its result must ride whichever response is live now, never the
+    // closure of the request that spawned it.
+    finishRun(sessionId: number, events: AguiEvent[]): void {
+        const t = this.#threads.get(sessionId);
+        if (t === undefined) return; // client hung up between pause and resume; pending re-surfaces on reconnect
+        t.emit([...events, { type: "RUN_FINISHED", threadId: t.threadId, runId: t.inputRunId }]);
     }
 
     closeThread(sessionId: number): void { this.#threads.delete(sessionId); }
