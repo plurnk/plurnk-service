@@ -28,6 +28,22 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
     assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"\/out\.txt","tokens":0\}/, "single meta line; path = log URI identity; target = action operand; tokens:0 on a no-body row");
 });
 
+test("EDIT with an accept-path span (rx.body from a proposed file edit) renders the line-numbered diff", () => {
+    // A PROPOSED file EDIT's accept delivers its editedSpan under rx.body (the generic accept-rx key),
+    // where the inline entry-scheme EDIT delivers the same span under rx.span. Both must render — the
+    // model has to SEE what its write changed in the EDIT row itself, or it re-EDITs the file across
+    // turns (the observed 0-token bodyless-EDIT gap). §edit-result-render.
+    const out = PacketWire.renderLog([{
+        coordinate: "1/4/2",
+        origin: "model",
+        op: "EDIT",
+        status: 200,
+        target: { scheme: null, pathname: "/src/app.js" },
+        rx: { status: 200, body: "3:\tapp.listen(8080);\n4:\t// error handler configured" },
+    }], tok);
+    assert.match(out, /<<:::\/src\/app\.js\n3:\tapp\.listen\(8080\);\n4:\t\/\/ error handler configured\n:::\/src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
+});
+
 test("log entry: a run:// spawn renders the worker NAME in the target — authority survives (§run-scheme)", () => {
     // The spawn-blindness root cause: the run name lives in the URI authority (run://<name>),
     // not the path. Rendering scheme+path alone collapsed every spawn to a bare `run://`, so the

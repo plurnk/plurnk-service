@@ -5,15 +5,16 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, mkdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { ParsedPath, KillStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { urlPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -42,6 +43,23 @@ const seedKnown = (ctx: Ctx, pathname: string, content: string) =>
 
 const knownEntry = (ctx: Ctx, pathname: string) =>
     (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "known" });
+
+// Materialize a FILE member the production way: on disk + a scheme=null entry + body channel +
+// synced_sig — so it's a tracked member (editable, movable, deletable), not untracked disk.
+const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: string): Promise<void> => {
+    const abs = join(root, rel);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, content, "utf8");
+    const seeded = await (ctx.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${rel}` });
+    await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content, mimetype: "text/plain", tokens: 0 });
+    const st = await stat(abs);
+    await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: seeded?.id, synced_sig: `${st.mtimeMs}:${st.size}` });
+};
+
+const fileMember = (ctx: Ctx, rel: string) =>
+    (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${rel}` });
+
+const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 const proposeAndResolve = async (ctx: Ctx, statement: Parameters<Engine["dispatch"]>[0]["statement"], decision: "accept" | "reject") => {
     const id = deferred<number>();
@@ -89,5 +107,68 @@ test("[#2-move-to-file-reject] a rejected MOVE into file:/// preserves the sourc
         const result = await proposeAndResolve(ctx, moveStmt(urlPath("known", "/keepme"), urlPath("file", "/rejected-move.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
         assert.notEqual(await knownEntry(ctx, "keepme"), undefined, "the source MUST survive a rejected MOVE — the delete was deferred behind the dest write");
+    });
+});
+
+test("[#2-move-file-to-file] MOVE file:/// → file:/// into a NEW subdir lands the dest AND unlinks the source (no silent 501 noop)", async () => {
+    // The file→file MOVE that was a silent noop: File lacked deleteEntry, so #handleMove returned a
+    // bare 501 before any write — the model's correct MOVE did nothing while the run concluded 200.
+    await withWorkspace(async (root, ctx) => {
+        await seedFileMember(ctx, root, "brief.md", "the brief\n");
+        // BARE paths — exactly what the model emits (`MOVE(brief.md):drafts/brief.md`). The source
+        // read must normalize `brief.md` → the `/brief.md` member key, or it 404s a real member.
+        const result = await proposeAndResolve(ctx, moveStmt(localPath("brief.md"), localPath("drafts/brief.md")), "accept");
+        assert.equal(result.status, 200);
+        assert.equal(await readFile(join(root, "drafts/brief.md"), "utf8"), "the brief\n", "dest written into the freshly-created subdir");
+        await assert.rejects(readFile(join(root, "brief.md"), "utf8"), "source file unlinked — a MOVE, not a COPY");
+        assert.equal(await fileMember(ctx, "brief.md"), undefined, "source entry deregistered");
+    });
+});
+
+test("[§membership-edit-membership-gate] EDIT onto an existing NON-member file is refused (403) and never clobbers it", async () => {
+    // The unfair edge: a file exists on disk but was never tracked (git/client left it out), so it's
+    // INVISIBLE to the model. The model, blind to it, tries to "create" it — and MUST NOT be able to
+    // overwrite it. The refusal is opaque (never reveals the file exists) so the model can't probe the
+    // untracked filesystem by watching which creates fail.
+    await withWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "AGENTS.md"), "SECRET untracked policy\n", "utf8"); // on disk, NOT a member
+        // A refused create returns 403 outright — it never PROPOSES (no review to accept), so dispatch directly.
+        const result = await ctx.engine.dispatch({
+            statement: editStmt(urlPath("file", "/AGENTS.md"), "# the model's clobbering content"),
+            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 403, "create over an existing non-member is refused outright, never a proposal, never clobbered");
+        assert.equal(await readFile(join(root, "AGENTS.md"), "utf8"), "SECRET untracked policy\n", "the untracked file is untouched");
+    });
+});
+
+test("KILL of a file is a destructive host delete → it PROPOSES; on accept the file is unlinked + deregistered", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedFileMember(ctx, root, "doomed.txt", "delete me\n");
+        const result = await proposeAndResolve(ctx, killStmt(localPath("doomed.txt")), "accept");
+        assert.equal(result.status, 200, "KILL proposed for review, then applied on accept");
+        await assert.rejects(readFile(join(root, "doomed.txt"), "utf8"), "the host file was unlinked");
+        assert.equal(await fileMember(ctx, "doomed.txt"), undefined, "the entry was deregistered");
+    });
+});
+
+test("a REJECTED KILL of a file preserves it — a destructive delete never bypasses review", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedFileMember(ctx, root, "keep.txt", "keep me\n");
+        const result = await proposeAndResolve(ctx, killStmt(localPath("keep.txt")), "reject");
+        assert.ok(result.status >= 400, "rejected proposal is a 4xx");
+        assert.equal(await readFile(join(root, "keep.txt"), "utf8"), "keep me\n", "the file survives — review gates the destructive op, never a silent unlink");
+    });
+});
+
+test("KILL of a NON-member file is 404 — the model can't delete untracked disk it can't see", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await writeFile(join(root, "untracked.txt"), "not yours\n", "utf8"); // on disk, NOT a member
+        const result = await ctx.engine.dispatch({
+            statement: killStmt(localPath("untracked.txt")),
+            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 404, "a non-member KILL is 404 — invisible, never touched");
+        assert.equal(await readFile(join(root, "untracked.txt"), "utf8"), "not yours\n", "the untracked file is untouched");
     });
 });

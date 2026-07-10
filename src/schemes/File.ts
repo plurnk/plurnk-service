@@ -1,4 +1,4 @@
-import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-grammar";
@@ -10,16 +10,16 @@ import type { ReadResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
-import type { ReadEntryResult, EntryData, WriteEntryResult } from "./_entry-crud.ts";
+import type { ReadEntryResult, EntryData, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 
 // Resolved + §membership-change-gated-sync disk-write target, or the error status to return.
 type WriteTarget =
     | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string; baseSig: string | null }
     | { ok: false; status: number; error: string };
-import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
 
 type EditResult = { status: number; body?: string; attrs?: object; error?: string };
-type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
+type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; span?: string; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
 
 // Workspace root for file ops is sourced from `sessions.project_root`,
@@ -140,7 +140,11 @@ export default class File {
     // has no entry → 404). The write-back side (writeEntry) is deliberately absent;
     // see the SECURITY note above.
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        return EntryCrud.readEntry(pathname, ctx, null);
+        // §scheme-address — normalize the model-typed path (bare `brief.md`) to its `/rel` member key,
+        // the same parity READ/EDIT/deleteEntry have. Without it a COPY/MOVE FROM a bare file path
+        // misses the canonical-stored member and 404s a source that plainly exists.
+        const root = await loadSessionRoot(ctx.db, ctx.sessionId);
+        return EntryCrud.readEntry(root === null ? pathname : File.#toMemberKey(pathname, root), ctx, null);
     }
 
     // §membership disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -224,7 +228,7 @@ export default class File {
         }
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched, baseSig, existed: fileExists } };
+        return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched, span: editedSpan(original, patched), baseSig, existed: fileExists } };
     }
 
     // COPY/MOVE INTO file:/// — the dest write. Same §membership gate as edit, same 202
@@ -247,13 +251,27 @@ export default class File {
     // applyResolution — called by Engine.dispatch after a proposed log
     // entry resolves with decision=accept. Two responsibilities:
     //   1. Write the patched content to disk.
-    //   2. Register the file as an entry so it appears in the manifest
-    //      and the model can READ its landed work. Without (2), the
-    //      model has no artifact of completion to read and tends to
-    //      re-EDIT the same file across turns. The log's EDIT row + the
-    //      manifest entry are what tell the model "your prior work landed."
+    //   2. Register the file as an entry so it appears in the manifest and the
+    //      model can READ its full landed work.
+    // The accepted result returns the editedSpan diff as its body, so the EDIT row
+    // itself carries the line-numbered confirmation of what changed — parity with the
+    // entry-scheme EDIT's span; default-folding reclaims it at the next turn boundary.
     async applyResolution(args: ApplyArgs, ctx: PlurnkSchemeContext): Promise<ApplyResult> {
         const { attrs, body } = args;
+        // Delete-apply (deferred behind review — the KILL proposal, or the MOVE source-delete gated by
+        // its dest proposal): unlink the host file + deregister the entry on accept. A real unlink
+        // failure surfaces as 500, never a silent noop; ENOENT ⇒ file already gone, still deregister.
+        if (typeof attrs.deletePath === "string") {
+            const root = await loadSessionRoot(ctx.db, ctx.sessionId);
+            if (root === null) return { status: 500, outcome: "no project_root" };
+            try {
+                await rm(join(root, attrs.deletePath));
+            } catch (err) {
+                if ((err as NodeJS.ErrnoException).code !== "ENOENT") return { status: 500, outcome: "delete_failed", body: err instanceof Error ? err.message : String(err) };
+            }
+            await EntryCrud.deleteEntry(attrs.deletePath, ctx, null);
+            return { status: 200 };
+        }
         const canonical = attrs.canonical;
         const relPath = attrs.path;
         const patched = body ?? attrs.patched;
@@ -329,6 +347,19 @@ export default class File {
                 body: err instanceof Error ? err.message : String(err),
             };
         }
-        return { status: 200 };
+        return { status: 200, body: attrs.span };
+    }
+
+    // deleteEntry — the KILL / MOVE-source counterpart of writeEntry. Deleting a host file is
+    // DESTRUCTIVE, so it PROPOSES for review (202), exactly as edit() does — never an ungated unlink.
+    // §membership — only a MEMBER reaches the proposal; a non-member is invisible (404), so untracked
+    // disk is never probed or touched. applyResolution unlinks + deregisters on accept.
+    async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
+        const root = await loadSessionRoot(ctx.db, ctx.sessionId);
+        if (root === null) return { status: 400 };
+        const rel = File.#toMemberKey(pathname, root);
+        const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
+        if (member === undefined) return { status: 404 };
+        return { status: 202, attrs: { deletePath: rel } };
     }
 }

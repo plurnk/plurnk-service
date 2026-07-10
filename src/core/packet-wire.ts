@@ -372,12 +372,15 @@ export default class PacketWire {
                 // a number numbers from it; absent → 1 (whole-content default).
                 const start = rx.startLine === null ? null : (typeof rx.startLine === "number" ? rx.startLine : 1);
                 body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
-            } else if (op === "EDIT" && rx !== null && typeof rx === "object" && typeof (rx as { span?: unknown }).span === "string") {
+            } else if (op === "EDIT" && rx !== null && typeof rx === "object" && (typeof (rx as { span?: unknown }).span === "string" || typeof (rx as { body?: unknown }).body === "string")) {
                 // EDIT (§edit-result-render): the resulting span as it looks now. editedSpan already
                 // line-numbered it with the changed region's REAL offsets (e.g. 50:\t…), so wrap
                 // verbatim — re-numbering here would double it (1:\t50:\t…) and lose the true line
                 // position. Empty span (content emptied) ⇒ no body — the meta line stands alone.
-                const span = (rx as { span: string }).span;
+                // The inline entry-scheme EDIT delivers the span under `span`; a PROPOSED file EDIT's
+                // accept delivers the same span under `body` (the generic accept-rx key) — render either.
+                const r = rx as { span?: string; body?: string };
+                const span = typeof r.span === "string" ? r.span : (r.body ?? "");
                 if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
             } else if (op === "EXEC" && e.tx !== null && e.tx !== undefined && typeof (e.tx as { body?: unknown }).body === "string") {
                 // EXEC: the literal command body, :::-fenced + line-numbered at the op's log address —

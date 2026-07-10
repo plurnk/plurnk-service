@@ -17,10 +17,9 @@ import { schemeNameOf } from "./plurnk-uri.ts";
 export type ProposalDecision = "accept" | "reject" | "cancel";
 export interface ProposalResolution {
     decision: ProposalDecision;
-    // Final body the resolver wants written/applied (e.g., reviewer-
-    // edited content). INPUT to applyResolution; not in the model-facing
-    // rx — the model sees the result via the entry/index now (post-F.5
-    // and EDIT-registers-entry), not via input echoes.
+    // Final body the resolver wants written/applied (e.g., reviewer-edited
+    // content) — INPUT to applyResolution, not echoed back verbatim. The applied
+    // result reaches the model via the scheme's applyResult body (e.g. the EDIT diff).
     body?: string;
     // Operational reason (rejected / timeout / write_failed / policy_veto / etc.).
     // Stored on log_entries.outcome COLUMN for forensics; a NON-accept also

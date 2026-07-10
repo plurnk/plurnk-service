@@ -33,6 +33,9 @@ export interface WriteEntryResult {
 
 export interface DeleteEntryResult {
     status: number;
+    // A host-effecting delete (file) returns 202 to PROPOSE for review; attrs carry the target so
+    // applyResolution can unlink on accept. Plurnk-internal deletes (known://) execute inline (200).
+    attrs?: object;
 }
 
 export default class EntryCrud {

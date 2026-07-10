@@ -225,8 +225,13 @@ export default class Dispatcher {
             if (effective.decision === "accept") {
                 const moveSource = (result.attrs as { moveSource?: { scheme: string; pathname: string } } | undefined)?.moveSource;
                 if (moveSource !== undefined) {
-                    const srcHandler = this.#schemes.get(moveSource.scheme) as SchemeWithCrud | undefined;
-                    if (srcHandler !== undefined && typeof srcHandler.deleteEntry === "function") await srcHandler.deleteEntry(moveSource.pathname, schemeCtx);
+                    const srcHandler = this.#schemes.get(moveSource.scheme) as (SchemeWithCrud & { applyResolution?: (a: { attrs: object }, c: PlurnkSchemeContext) => Promise<{ status: number }> }) | undefined;
+                    if (srcHandler !== undefined && typeof srcHandler.deleteEntry === "function") {
+                        const del = await srcHandler.deleteEntry(moveSource.pathname, schemeCtx);
+                        // A host-effecting source-delete PROPOSES (202); the MOVE proposal already gated the whole
+                        // create+kill, so apply the source-delete now — never raise a second review for one MOVE.
+                        if (del.status === 202 && del.attrs !== undefined && typeof srcHandler.applyResolution === "function") await srcHandler.applyResolution({ attrs: del.attrs }, schemeCtx);
+                    }
                 }
             }
             const post = await this.#proposals.applyResolution(logEntryId, effective);
@@ -518,8 +523,10 @@ export default class Dispatcher {
         }
         const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
         if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };
+        // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
+        // carries the delete target to review (§isProposal fires on 202). Plurnk-internal deletes execute inline.
         const delResult = await handler.deleteEntry(pathnameFromPath(path), ctx);
-        return { status: delResult.status };
+        return delResult.attrs !== undefined ? { status: delResult.status, attrs: delResult.attrs } : { status: delResult.status };
     }
 
     // Multi-file READ fan-out (SPEC §matcher-result — "the companion to FIND's survey"). A glob
