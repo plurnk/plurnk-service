@@ -1,6 +1,6 @@
 {
   "name": "@plurnk/plurnk-docs",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "The plurnk teaching corpus — scheme docs, default operating policy, and requirements consumed by @plurnk/plurnk-service",
   "type": "module",
   "license": "MIT",
