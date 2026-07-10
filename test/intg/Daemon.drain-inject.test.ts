@@ -107,8 +107,10 @@ test("[§methods-loop-cancel] loop.cancel: no active drain → cancelled=false",
 test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     // Generous response queue so neither loop exhausts Mock regardless
     // of how many turns each runs before cancel/termination.
+    // 16384: the cancel-then-restart drain accumulates the exec entry across turns, cresting at the 8192 edge;
+    // grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the drain restart, not a budget probe.
     const mock = new Mock({
-        contextSize: 8192,
+        contextSize: 16384,
         responses: [
             sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
@@ -222,8 +224,10 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
     // must promote the orphaned prompt to a fresh loop that surfaces it — so two
     // loops terminate for the run, not one (it would be one if the wake were
     // lost; no other op here spawns a loop — the EXEC proposal is rejected).
+    // 16384: the inject-then-reconcile path accumulates both loops' rows across turns, cresting at the 8192 edge;
+    // grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the reconcile, not a budget probe.
     const mock = new Mock({
-        contextSize: 8192,
+        contextSize: 16384,
         responses: [
             sendOnly("<<EXEC[sh]:true:EXEC\n<<SEND[200]:loop 1 ends at turn 1:SEND"),  // pause, then end
             sendOnly("<<SEND[200]:reconciled loop ran:SEND"),                          // the promoted loop

@@ -11,7 +11,9 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subs
 test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked at 202", async () => {
     // Response order is forced by causality: the parent can't resume until the child concludes,
     // and the child can't run until the parent spawns it — so the Mock queue is deterministic.
-    const mock = new Mock({ contextSize: 8192, responses: [
+    // 16384: the parent's final resume carries the whole child subtree; that accumulation crests at the 8192 edge
+    // and grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake topology, not a budget probe.
+    const mock = new Mock({ contextSize: 16384, responses: [
         // Parent turn 1: spawn a child run, then hibernate awaiting it.
         makeMockResponse("<<WORK(run://worker):compute the thing and finish:WORK\n<<SEND[102]<-1>:spawned worker; waiting on it:SEND", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
@@ -56,7 +58,9 @@ test("[§run-lifecycle-child-wake] a child FAILING (499) also wakes the parent �
 test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent→child→grandchild)", async () => {
     // Each level parks until the one below concludes — so the order is forced and the recursion shows:
     // grandchild concludes → wakes child → child concludes → wakes parent → parent concludes.
-    const mock = new Mock({ contextSize: 8192, responses: [
+    // 16384: a 2-deep chain piles grandchild→child→parent results into the parent's final resume, cresting at the
+    // 8192 edge; grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake recursion, not a budget probe.
+    const mock = new Mock({ contextSize: 16384, responses: [
         makeMockResponse("<<WORK(run://child):do subwork:WORK\n<<SEND[102]<-1>:awaiting child:SEND", 10),       // parent t1
         makeMockResponse("<<WORK(run://grandchild):do leaf work:WORK\n<<SEND[102]<-1>:awaiting grandchild:SEND", 10), // child t1
         makeMockResponse("<<SEND[200]:leaf done:SEND", 10),                                                   // grandchild
