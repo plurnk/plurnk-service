@@ -123,9 +123,9 @@
     "devDependencies": {
         "@types/node": "^26.0.0",
         "typescript": "^7.0.2",
-        "@plurnk/plurnk-execs": "0.4.38"
+        "@plurnk/plurnk-execs": "0.4.39"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "0.4.38"
+        "@plurnk/plurnk-execs": "0.4.39"
     }
 }
