@@ -243,7 +243,10 @@ test("loop.run requires non-empty prompt", async () => {
 test("loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
     const dsl = "<<EDIT(known:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const responses = Array.from({ length: 5 }, () => makeMockResponse(dsl, 10));
-    const mock = new Mock({ contextSize: 8192, responses });
+    // Generous context: this test isolates the maxTurns ceiling, so the budget must NOT fire first.
+    // At 8192 the 3-turn EDIT accumulation + the foisted docs tips into a 413 before turn 3's cap
+    // (base-packet size drifts with grammar/scheme doc growth); the headroom keeps the test on-topic.
+    const mock = new Mock({ contextSize: 32768, responses });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
