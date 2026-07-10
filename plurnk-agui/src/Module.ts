@@ -22,7 +22,6 @@ import type { AguiEvent, RunAgentInput } from "./types.ts";
 export interface ModuleOptions {
     host: string;
     port: number;                 // 0 = ephemeral
-    sessionPrefix: string;        // `<prefix>-<threadId>` names the session
     token?: string;               // empty/undefined = local trust (loopback bind is the boundary)
     maxTurns?: number;
 }
@@ -89,15 +88,13 @@ export default class Module {
         }
     }
 
-    // threadId → envelope: reattach by name, else create (session options ride the
-    // first run's forwardedProps.plurnk, as before).
+    // THE PLURNK PARADIGM (operator ruling 2026-07-10): the name IS the identity,
+    // verbatim. A threadId is a session name — attach it if it exists, create it with
+    // EXACTLY that name if it doesn't. No prefixes, no forged names, no dual lookup.
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const cached = this.#threads.get(threadId);
         if (cached !== undefined) return { env: cached, reattached: true };
-        const name = `${this.#opts.sessionPrefix}-${threadId}`;
-        // A daemon-named session (session.create without a name) binds its own name as
-        // the threadId, unprefixed — reattach must match either spelling.
-        const known = (await this.#seam.listSessions()).find((s) => s.name === name || s.name === threadId);
+        const known = (await this.#seam.listSessions()).find((s) => s.name === threadId);
         let env: ClientEnvelope;
         let reattached = false;
         if (known !== undefined) {
@@ -106,7 +103,7 @@ export default class Module {
         } else {
             const opts = forwarded ?? {};
             env = await this.#seam.createSession({
-                name,
+                name: threadId,
                 ...(typeof opts.projectRoot === "string" ? { projectRoot: opts.projectRoot } : {}),
                 ...(Array.isArray(opts.constraints) ? { constraints: opts.constraints as Array<{ effect: string; glob: string }> } : {}),
                 ...(typeof opts.settings === "object" && opts.settings !== null ? { settings: JSON.stringify(opts.settings) } : {}),
@@ -241,13 +238,11 @@ export default class Module {
                     return { ok: true, result: ack };
                 }
                 case "session.create": {
-                    // A named session: the NAME is the threadId (thread→envelope binding
-                    // stays consistent — subsequent runs address it). NO name = the daemon
-                    // names it (session-<n>, the wire's contract) and that name becomes the
-                    // threadId — bound directly, unprefixed.
+                    // The name IS the identity: an explicit name creates/attaches EXACTLY
+                    // that session; no name = the daemon names it and the real name binds.
                     if (typeof p.name === "string" && p.name.length > 0) {
                         const { env: created } = await this.#envelope(p.name, p);
-                        return { ok: true, result: { id: created.sessionId, name: p.name, runId: created.runId } };
+                        return { ok: true, result: { id: created.sessionId, name: created.sessionName, runId: created.runId } };
                     }
                     const created = await this.#seam.createSession({
                         ...(typeof p.projectRoot === "string" ? { projectRoot: p.projectRoot } : {}),
@@ -256,6 +251,15 @@ export default class Module {
                     });
                     this.#threads.set(created.sessionName, created);
                     return { ok: true, result: { id: created.sessionId, name: created.sessionName, runId: created.runId } };
+                }
+                case "session.attach": {
+                    // A REAL attach: rebind the thread map to the chosen session and hand
+                    // back its envelope — the picker does what it says (the unwired kind +
+                    // a nil-masking fallback produced the 2026-07-10 front-door disaster).
+                    if (typeof p.id !== "number") return { ok: false, error: "session.attach requires id" };
+                    const att = await this.#seam.attachSession({ sessionId: p.id, ...(typeof p.runId === "number" ? { runId: p.runId } : {}) });
+                    this.#threads.set(att.sessionName, att);
+                    return { ok: true, result: { id: att.sessionId, name: att.sessionName, runId: att.runId, modelRunId: att.modelRunId } };
                 }
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
                 case "session.rename": {

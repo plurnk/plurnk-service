@@ -26,7 +26,7 @@ test("[§agui-projection][§agui-run-endpoint] the official @ag-ui/client accept
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
     let module: Module | null = null;
     daemon.registerModule(async (seam: DaemonSeam) => {
-        module = await Module.init({ host: "127.0.0.1", port: 0, sessionPrefix: "agui" })(seam);
+        module = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     });
     await daemon.start({ host: "127.0.0.1", port: 0 });
     const addr = (module as Module | null)?.address();

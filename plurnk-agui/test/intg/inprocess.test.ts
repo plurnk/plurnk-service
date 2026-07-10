@@ -33,7 +33,7 @@ test("[§agui-daemon-client][§agui-run-endpoint][§agui-thread-is-session] in-p
     // the module opens its own listener. This IS the daughter-module activation.
     let module: Module | null = null;
     daemon.registerModule(async (seam: DaemonSeam) => {
-        module = await Module.init({ host: "127.0.0.1", port: 0, sessionPrefix: "agui" })(seam);
+        module = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     });
     await daemon.start({ host: "127.0.0.1", port: 0 });
     assert.ok(module !== null, "the plug-point activated the module at boot");

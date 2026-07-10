@@ -51,7 +51,7 @@ const post = async (port: number, body: object): Promise<AguiEvent[]> => {
 
 test("[§agui-management-plane] an action run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
     const { seam } = mockSeam();
-    const mod = await Module.init({ host: "127.0.0.1", port: 0, sessionPrefix: "agui" })(seam);
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         const events = await post(mod.address().port, { threadId: "t1", runId: "r1", forwardedProps: { plurnk: { action: { kind: "providers.list" } } } });
         const result = events.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { kind: string; ok: boolean; result: { aliases: Array<{ alias: string }> } } };
@@ -72,7 +72,7 @@ test("[§agui-management-plane] an action run executes via the seam: result cust
 
 test("[§agui-proposal-resolve] a resume tool-result resolves the paused proposal without driving a loop", async () => {
     const { seam, resolves } = mockSeam();
-    const mod = await Module.init({ host: "127.0.0.1", port: 0, sessionPrefix: "agui" })(seam);
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         const events = await post(mod.address().port, {
             threadId: "t2", runId: "r1",
@@ -83,5 +83,30 @@ test("[§agui-proposal-resolve] a resume tool-result resolves the paused proposa
         });
         assert.equal(events[0].type, "RUN_STARTED");
         assert.deepEqual(resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited" } }, "the tool-result reached resolveProposal");
+    } finally { await mod.close(); }
+});
+
+test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attach is real", async () => {
+    const created: Array<{ name?: string }> = [];
+    const attached: number[] = [];
+    const { seam } = mockSeam();
+    const base = seam.createSession.bind(seam);
+    seam.createSession = async (args) => { created.push(args); return { ...(await base(args)), sessionName: args.name ?? "session-1" }; };
+    seam.attachSession = async (args) => { attached.push(args.sessionId); return { sessionId: args.sessionId, sessionName: "alpha", projectRoot: null, runId: 10, runName: "client-1", modelRunId: 20, clientLoopId: null }; };
+    seam.listSessions = async () => [{ id: 4, name: "alpha" }];
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        // 1) A thread named like an existing session attaches to IT — the exact name.
+        const run = await post(mod.address().port, { threadId: "alpha", runId: "r1", forwardedProps: { plurnk: { action: { kind: "ping" } } } });
+        assert.equal(run[run.length - 1].type, "RUN_FINISHED");
+        assert.deepEqual(attached, [4], "thread 'alpha' attached session 'alpha' — no agui- prefix lookup");
+        // 2) A new thread creates a session with EXACTLY its name.
+        await post(mod.address().port, { threadId: "beta", runId: "r2", forwardedProps: { plurnk: { action: { kind: "ping" } } } });
+        assert.deepEqual(created.map((c) => c.name), ["beta"], "created verbatim — never 'agui-beta', never a uuid");
+        // 3) session.attach is a REAL action kind returning the envelope.
+        const att = await post(mod.address().port, { threadId: "alpha", runId: "r3", forwardedProps: { plurnk: { action: { kind: "session.attach", id: 4 } } } });
+        const result = att.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { id: number; name: string } } };
+        assert.equal(result.value.ok, true, "session.attach is wired, not unknown-kind");
+        assert.equal(result.value.result.name, "alpha");
     } finally { await mod.close(); }
 });
