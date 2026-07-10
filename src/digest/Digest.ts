@@ -31,6 +31,13 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import PacketWire from "../core/packet-wire.ts";
+import ProviderInstantiate from "../core/ProviderInstantiate.ts";
+import type { ChatMessage } from "@plurnk/plurnk-providers";
+
+// The requiem prompt (#requiem): the model's exit interview. Absolution up front — the system is
+// under test, not the model — so RLHF'd self-blame doesn't crowd out the system indictment. The
+// operator's wording, one absolution sentence added.
+const REQUIEM_PROMPT = "This run was a test of the Plurnk System. The system is under test, not you — any faults you encountered are defects in the system's design or documentation, and cataloguing them is the task, never a criticism of your performance. Please numerically list all of the errors, issues, and ambiguities you encountered in the Plurnk System while attempting to perform your tasks.";
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
 // flags, tx, rx) arrive as strings, parsed on use.
@@ -318,6 +325,70 @@ export default class Digest {
             return env.startsWith("~/") ? resolve(homedir(), env.slice(2)) : env;
         }
         return resolve(homedir(), ".plurnk", "plurnk.db");
+    }
+
+    // The requiem (#requiem): the model's OWN exit interview, the one reader in the correct epistemic
+    // position (it has none of our context about what the packet is "supposed" to mean). Reconstructs
+    // each run's final packet from the stored sections (byte-identical to what the model saw), appends
+    // its last emission + the requiem prompt, and calls the provider UNCONSTRAINED (no grammar — free
+    // prose, or the leash would distort the testimony). One requiem per run (workers included).
+    // Fail-hard on no provider: testimony with no witness is an error, not a skip.
+    static async requiem(opts: DigestOptions & { signal?: AbortSignal }): Promise<{ path: string; runs: number }> {
+        const dbPath = resolve(opts.dbPath);
+        if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
+        const digestDir = opts.digestDir ?? join(process.cwd(), "test", "digest");
+        mkdirSync(digestDir, { recursive: true });
+
+        const provider = await ProviderInstantiate.loadActiveProvider();
+        if (provider === null) throw new Error("requiem: no active provider — set PLURNK_MODEL; a requiem needs a witness to testify");
+
+        const moduleDir = dirname(fileURLToPath(import.meta.url));
+        const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
+        const runs = db.digest_runs.all<RunRow>();
+        const loopById = new Map(db.digest_loops.all<LoopRow>().map((l) => [l.id, l]));
+
+        // Each run's turns that carry a MODEL packet (non-empty sections — setup/plurnk turns have none),
+        // ordered; the last is the run's final context. A run with no model packet (client/plurnk) is silent.
+        const byRun = new Map<number, Array<{ loopSeq: number; turnSeq: number; sections: Parameters<typeof PacketWire.renderSlot>[0]; assistant: string }>>();
+        for (const t of db.digest_turns.all<TurnRow>()) {
+            const loop = loopById.get(t.loop_id);
+            if (loop === undefined) continue;
+            const packet = Digest.#parseJson(t.packet, {}) as { sections?: unknown; assistant?: { content?: unknown } };
+            const sections = (Array.isArray(packet.sections) ? packet.sections : []) as Parameters<typeof PacketWire.renderSlot>[0];
+            if (sections.length === 0) continue;
+            const arr = byRun.get(loop.run_id) ?? [];
+            arr.push({ loopSeq: loop.sequence, turnSeq: t.sequence, sections, assistant: typeof packet.assistant?.content === "string" ? packet.assistant.content : "" });
+            byRun.set(loop.run_id, arr);
+        }
+
+        const out: string[] = [
+            "# plurnk-service requiem",
+            "",
+            "The model's own exit interview: each run's FINAL packet + its last emission, then the requiem",
+            "prompt, answered UNCONSTRAINED (no grammar). The model is the only reader without our context",
+            "about what the packet is supposed to mean. Testimony, NOT a bug list — most items are the model",
+            "chafing at discipline it is meant to chafe at (§filter-model-audit-findings); the signal is the",
+            "recurring, specific complaint across many requiems. Triage adversarially.",
+            "",
+        ];
+        for (const run of runs) {
+            const entries = byRun.get(run.id);
+            if (entries === undefined || entries.length === 0) continue;
+            entries.sort((a, b) => a.loopSeq - b.loopSeq || a.turnSeq - b.turnSeq);
+            const last = entries[entries.length - 1];
+            const messages: ChatMessage[] = [
+                { role: "system", content: PacketWire.renderSlot(last.sections, "system") },
+                { role: "user", content: PacketWire.renderSlot(last.sections, "user") },
+                ...(last.assistant.length > 0 ? [{ role: "assistant" as const, content: last.assistant }] : []),
+                { role: "user", content: REQUIEM_PROMPT },
+            ];
+            const resp = await provider.generate({ messages, runId: String(run.id), maxTokens: 4096, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
+            out.push(`## Run #${run.id} — ${run.name}`, "", `_(${resp.assistant.finishReason ?? "?"}, ${resp.assistant.usage.completion} tok)_`, "", resp.assistant.content.trim() || "(no testimony)", "");
+        }
+
+        const path = join(digestDir, "requiem.md");
+        writeFileSync(path, out.join("\n"));
+        return { path, runs: byRun.size };
     }
 
     static run(opts: DigestOptions): void {
