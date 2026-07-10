@@ -25,13 +25,13 @@ The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 | OP   | `[signal]`    | `(path)`    | `<scope>`         | :body:             | OP   |
 |------|---------------|-------------|-------------------|--------------------|------|
 | PLAN | -             | -           | -                 | :plan, free text:  | PLAN |
-| FIND | [filter tags] | (path)      | <result,result>   | :pattern:          | FIND |
-| READ | [filter tags] | (path)      | <line,line>       | :pattern:          | READ |
+| FIND | [tags]        | (path)      | <result,result>   | :pattern:          | FIND |
+| READ | [tags]        | (path)      | <line,line>       | :pattern:          | READ |
 | EDIT | [tags]        | (path)      | <line,line>       | :literal text:     | EDIT |
-| COPY | [apply tags]  | (path)      | <line,line>       | :destination path: | COPY |
-| MOVE | [apply tags]  | (path)      | <line,line>       | :destination path: | MOVE |
-| OPEN | [filter tags] | (log path)  | <result,result>   | :pattern:          | OPEN |
-| FOLD | [filter tags] | (log path)  | <result,result>   | :pattern:          | FOLD |
+| COPY | [tags]        | (path)      | <line,line>       | :destination path: | COPY |
+| MOVE | [tags]        | (path)      | <line,line>       | :destination path: | MOVE |
+| OPEN | [tags]        | (log path)  | <result,result>   | :pattern:          | OPEN |
+| FOLD | [tags]        | (log path)  | <result,result>   | :pattern:          | FOLD |
 | EXEC | [executor]    | (path)      | <timeout, poll>   | :code:             | EXEC |
 | KILL | [signal]      | (path)      | -                 | ::                 | KILL |
 | SEND | [submit code] | (recipient) | <timeout, poll>   | :message:          | SEND |
