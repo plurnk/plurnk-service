@@ -161,7 +161,11 @@ export default class Module {
         const action = parseAction(input.forwardedProps);
         if (action !== null) {
             void this.#action(action, env)
-                .then((outcome) => this.#portal.finishRun(sessionId, [actionResult(action.kind, outcome)]))
+                // One queue barrier: a dispatch's channel notifies are enqueued but not yet
+                // delivered when its promise resolves — drain them so Portal's stream
+                // bookkeeping arms BEFORE the finish decision (then stream/concluded,
+                // not a timer, releases any deferral).
+                .then(async (outcome) => { await new Promise((r) => setImmediate(r)); this.#portal.finishRun(sessionId, [actionResult(action.kind, outcome)]); })
                 .catch((err: unknown) => this.#portal.finishRun(sessionId, [actionResult(action.kind, { ok: false, error: err instanceof Error ? err.message : String(err) })]));
             req.on("close", finish);
             return;

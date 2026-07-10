@@ -11,7 +11,7 @@ import type { DaemonSeam } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
 import type { ToolResultMessage } from "./AguiPlus.ts";
 
-interface Thread { runId: number; router: EventRouter; emit: (events: AguiEvent[]) => void; threadId: string; inputRunId: string }
+interface Thread { runId: number; router: EventRouter; emit: (events: AguiEvent[]) => void; threadId: string; inputRunId: string; openStreams: Set<number>; deferredFinish: AguiEvent[] | null }
 
 // The engine needs only the run-flow slice of the seam (session-lifecycle and reads
 // belong to the Module edge above it) — declare exactly that.
@@ -35,7 +35,17 @@ export default class Portal {
         this.#off = this.#seam.subscribeToEvents((sessionId, method, params) => {
             if (sessionId === null) return; // global (session/created) handled out-of-band
             const thread = this.#threads.get(sessionId);
-            if (thread !== undefined) this.#fan(sessionId, thread.router.route(method, params));
+            if (thread === undefined) return;
+            // Stream lifecycle bookkeeping for deferred finishes (see finishRun).
+            const entryId = (params as { entryId?: unknown }).entryId;
+            if (method === "stream/event" && typeof entryId === "number") thread.openStreams.add(entryId);
+            if (method === "stream/concluded" && typeof entryId === "number") thread.openStreams.delete(entryId);
+            this.#fan(sessionId, thread.router.route(method, params));
+            if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
+                const deferred = thread.deferredFinish;
+                thread.deferredFinish = null;
+                this.finishRun(sessionId, deferred);
+            }
         });
     }
 
@@ -57,7 +67,7 @@ export default class Portal {
     // at the drain).
     openThread(args: { sessionId: number; runId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelRunId?: number | null; inputRunId?: string }): void {
         const router = new EventRouter({ threadId: args.threadId, runId: String(args.runId), modelRunId: args.modelRunId ?? null, sessionId: args.sessionId });
-        this.#threads.set(args.sessionId, { runId: args.runId, router, emit: args.emit, threadId: args.threadId, inputRunId: args.inputRunId ?? String(args.runId) });
+        this.#threads.set(args.sessionId, { runId: args.runId, router, emit: args.emit, threadId: args.threadId, inputRunId: args.inputRunId ?? String(args.runId), openStreams: new Set(), deferredFinish: null });
     }
 
     // Emit extra events + RUN_FINISHED through the session's CURRENT thread binding —
@@ -67,6 +77,10 @@ export default class Portal {
     finishRun(sessionId: number, events: AguiEvent[]): void {
         const t = this.#threads.get(sessionId);
         if (t === undefined) return; // client hung up between pause and resume; pending re-surfaces on reconnect
+        // A dispatch resolves BEFORE its channel notifies flush (async): if streams it
+        // opened are still live, defer the finish until their stream/concluded lands —
+        // deterministic (event-driven), never a timer.
+        if (t.openStreams.size > 0) { t.deferredFinish = events; return; }
         t.emit([...events, { type: "RUN_FINISHED", threadId: t.threadId, runId: t.inputRunId }]);
     }
 
