@@ -59,6 +59,7 @@
         "access": "public"
     },
     "dependencies": {
+        "@plurnk/plurnk-execs-mcp": "0.7.1",
         "@plurnk/plurnk-grammar": "0.76.4"
     }
 }

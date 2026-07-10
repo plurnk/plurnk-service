@@ -16,6 +16,7 @@ import Portal from "./Portal.ts";
 import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
 import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
+import { authorize as mcpAuthorize, poll as mcpPoll } from "@plurnk/plurnk-execs-mcp";
 import type { AguiEvent, RunAgentInput } from "./types.ts";
 
 export interface ModuleOptions {
@@ -94,7 +95,9 @@ export default class Module {
         const cached = this.#threads.get(threadId);
         if (cached !== undefined) return { env: cached, reattached: true };
         const name = `${this.#opts.sessionPrefix}-${threadId}`;
-        const known = (await this.#seam.listSessions()).find((s) => s.name === name);
+        // A daemon-named session (session.create without a name) binds its own name as
+        // the threadId, unprefixed — reattach must match either spelling.
+        const known = (await this.#seam.listSessions()).find((s) => s.name === name || s.name === threadId);
         let env: ClientEnvelope;
         let reattached = false;
         if (known !== undefined) {
@@ -236,11 +239,21 @@ export default class Module {
                     return { ok: true, result: ack };
                 }
                 case "session.create": {
-                    // An explicit named session: the NAME is the threadId (the module's
-                    // thread→envelope binding stays consistent — subsequent runs address it).
-                    const threadId = typeof p.name === "string" && p.name.length > 0 ? p.name : crypto.randomUUID().slice(0, 8);
-                    const { env: created } = await this.#envelope(threadId, p);
-                    return { ok: true, result: { id: created.sessionId, name: threadId, runId: created.runId } };
+                    // A named session: the NAME is the threadId (thread→envelope binding
+                    // stays consistent — subsequent runs address it). NO name = the daemon
+                    // names it (session-<n>, the wire's contract) and that name becomes the
+                    // threadId — bound directly, unprefixed.
+                    if (typeof p.name === "string" && p.name.length > 0) {
+                        const { env: created } = await this.#envelope(p.name, p);
+                        return { ok: true, result: { id: created.sessionId, name: p.name, runId: created.runId } };
+                    }
+                    const created = await this.#seam.createSession({
+                        ...(typeof p.projectRoot === "string" ? { projectRoot: p.projectRoot } : {}),
+                        ...(Array.isArray(p.constraints) ? { constraints: p.constraints as Array<{ effect: string; glob: string }> } : {}),
+                        ...(typeof p.settings === "object" && p.settings !== null ? { settings: JSON.stringify(p.settings) } : {}),
+                    });
+                    this.#threads.set(created.sessionName, created);
+                    return { ok: true, result: { id: created.sessionId, name: created.sessionName, runId: created.runId } };
                 }
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
                 case "session.rename": {
@@ -283,6 +296,16 @@ export default class Module {
                         results.push(await this.#seam.dispatchAsClient({ sessionId: env.sessionId, runId, statement: item.statement as unknown as PlurnkStatement }));
                     }
                     return { ok: true, result: { results } };
+                }
+                case "auth.authorize": {
+                    // Stateless relay to the execs-mcp driver (settled: no auth seam — the
+                    // driver owns its mechanics; the bearer overlays its own config registry).
+                    if (typeof p.target !== "string" || p.target.length === 0) return { ok: false, error: "auth.authorize requires target" };
+                    return { ok: true, result: await mcpAuthorize(p.target) };
+                }
+                case "auth.authorize.poll": {
+                    if (typeof p.target !== "string" || p.target.length === 0) return { ok: false, error: "auth.authorize.poll requires target" };
+                    return { ok: true, result: await mcpPoll(p.target, { device: p.device as never }) };
                 }
                 case "run.fork": return { ok: true, result: await this.#seam.forkRun({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 default: return { ok: false, error: `unknown action kind '${a.kind}' — the seam surface is the contract` };
