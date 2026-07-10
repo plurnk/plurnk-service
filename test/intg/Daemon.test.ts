@@ -705,6 +705,45 @@ test("the client-interface seam — hotloadRuntime registers a live tag, dispatc
     });
 });
 
+test("the client-interface seam — a dispatched EXEC's stdout streams as stream/event on the event source (#355)", async () => {
+    // Client-raised parity check: a seam-dispatched exec must emit incremental stream/event, not just
+    // the log/entry + stream/concluded. dispatchAsClient routes through engine.dispatch identically to
+    // the WS op.exec path; the stream fires via the engine's global streamEventNotify. Pinned so the
+    // per-chunk path can't silently regress. (A streaming stub with a DECLARED channel — the exec seeds
+    // the executor's channel topology eagerly, so the write appends and the notify fires.)
+    await withDaemon(new Mock({ contextSize: 8192, responses: [] }), async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            daemon.hotloadRuntime({
+                decl: { name: "streamtag", glyph: "🔌", example: "", documentation: "" },
+                executor: {
+                    runtime: "streamtag", glyph: "🔌",
+                    get manifest() { return { name: "streamtag", protocol: "streamtag:", channels: { stdout: { mimetype: "text/plain" } }, defaultChannel: "stdout", category: "action", scope: "run", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+                    get defaultChannel() { return "stdout"; },
+                    get channels() { return { stdout: { mimetype: "text/plain" } }; },
+                    effect: () => "read",
+                    probe: async () => ({ available: true, detail: "fake" }),
+                    run: async (args: { write: (c: string, x: string, m: string) => void; setState: (c: string, s: string) => void }) => {
+                        args.write("stdout", "alpha\n", "text/plain");
+                        args.write("stdout", "beta\n", "text/plain");
+                        args.setState("stdout", "closed");
+                        return { status: 200, exitCode: 0 };
+                    },
+                } as unknown as Executor,
+                availability: { available: true, detail: "fake" },
+            });
+            const created = (await rpcCall(ws, 1, "session.create", { name: "seam-stream" })).result as { id: number };
+            const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: created.id }))!;
+            const events: string[] = [];
+            daemon.subscribeToEvents((_s, method) => { events.push(method); });
+
+            await daemon.dispatchAsClient({ sessionId: created.id, runId: run.id, statement: Dsl.buildExec({ runtime: "streamtag", command: "go" }) });
+            await waitFor(() => events.filter((m) => m === "stream/event"), (s) => s.length > 0, { timeoutMs: 4000 });
+            assert.ok(events.filter((m) => m === "stream/event").length > 0, "the exec's stdout arrived as stream/event on the seam — not just log/entry + stream/concluded");
+        } finally { ws.close(); }
+    });
+});
+
 test("the client-interface seam — the boot plug-point hands a registered module a live CoreSeam handle (#355)", async () => {
     // Hook D: register a module before start(); at boot it receives the curated seam and wires itself.
     // "Here's your handle, open your own listener." Proven by driving the live seam from inside the init.
