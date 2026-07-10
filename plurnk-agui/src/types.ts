@@ -16,6 +16,8 @@ export type AguiEvent =
     | { type: "TEXT_MESSAGE_START"; messageId: string; role: "assistant" }
     | { type: "TEXT_MESSAGE_CONTENT"; messageId: string; delta: string }
     | { type: "TEXT_MESSAGE_END"; messageId: string }
+    | { type: "THINKING_START"; title?: string }
+    | { type: "THINKING_END" }
     | { type: "THINKING_TEXT_MESSAGE_START" }
     | { type: "THINKING_TEXT_MESSAGE_CONTENT"; delta: string }
     | { type: "THINKING_TEXT_MESSAGE_END" }

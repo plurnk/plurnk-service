@@ -71,10 +71,14 @@ export default class Translator {
         }
         const id = e.coordinate ?? String(e.id);
         if (e.op === "PLAN") {
+            // Spec-verified nesting (@ag-ui/client): the text triple must live inside a
+            // THINKING_START/END step — the official SDK rejects a bare triple.
             const text = Translator.#txBody(e.tx);
+            events.push({ type: "THINKING_START" });
             events.push({ type: "THINKING_TEXT_MESSAGE_START" });
             if (text.length > 0) events.push({ type: "THINKING_TEXT_MESSAGE_CONTENT", delta: text });
             events.push({ type: "THINKING_TEXT_MESSAGE_END" });
+            events.push({ type: "THINKING_END" });
             return events;
         }
         if (e.op === "SEND") {

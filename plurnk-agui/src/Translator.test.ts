@@ -24,7 +24,7 @@ test("[§agui-projection][§agui-row-channel] a model op row is a TOOL_CALL trip
 test("[§agui-projection] PLAN is thinking; SEND is assistant speech with the signal on plurnk.send", () => {
     const tr = t();
     const plan = tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: { raw: "do the thing" } }) }));
-    assert.deepEqual(plan.map((e) => e.type), ["CUSTOM", "STEP_STARTED", "THINKING_TEXT_MESSAGE_START", "THINKING_TEXT_MESSAGE_CONTENT", "THINKING_TEXT_MESSAGE_END"]);
+    assert.deepEqual(plan.map((e) => e.type), ["CUSTOM", "STEP_STARTED", "THINKING_START", "THINKING_TEXT_MESSAGE_START", "THINKING_TEXT_MESSAGE_CONTENT", "THINKING_TEXT_MESSAGE_END", "THINKING_END"]);
     const send = tr.logEntry(entry({ op: "SEND", signal: 200, status_rx: 200, tx: JSON.stringify({ body: "done and dusted" }) }));
     assert.deepEqual(send.map((e) => e.type), ["CUSTOM", "TEXT_MESSAGE_START", "TEXT_MESSAGE_CONTENT", "TEXT_MESSAGE_END", "CUSTOM"]);
     const custom = send[4] as { name: string; value: { signal: unknown } };
