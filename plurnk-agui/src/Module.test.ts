@@ -36,6 +36,8 @@ const mockSeam = () => {
         listConstraints: async () => [{ effect: "pick", glob: "src/**" }],
         readEntry: async () => ({ status: 200, entry: { body: "x" } }),
         forkRun: async () => ({ runId: 11, runName: "fork-1", parentRunId: 10 }),
+        listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
+        look: async () => ({ status: 200, content: "looked" }),
     };
     return { seam, resolves };
 };

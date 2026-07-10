@@ -76,6 +76,12 @@ export interface DaemonSeam {
     constrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
     unconstrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
     listConstraints(sessionId: number): Promise<Array<{ effect: string; glob: string }>> | Array<{ effect: string; glob: string }>;
+    // Workspace membership (gutter signs / the /members verb).
+    listMembers(sessionId: number): Promise<{ members: Array<{ path: string; effect: string }>; hidden: string[] }>;
+    // The pure READ-projection query (svc#358): parse at the module's edge, rewrite
+    // LOOK→READ, hand the statement; resolves run-relative on the client loop,
+    // returns content, mints NO log row. Engine.look throws on a non-READ statement.
+    look(args: { sessionId: number; runId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }>;
     // Entry shape/channel read + run branching.
     readEntry(args: { sessionId: number; target: string; channel?: string; offset?: number }): Promise<{ status: number; entry: unknown }>;
     forkRun(args: { sessionId: number; runId: number; name?: string }): Promise<{ runId: number; runName: string | null; parentRunId: number }>;

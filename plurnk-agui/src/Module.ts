@@ -299,6 +299,17 @@ export default class Module {
                     }
                     return { ok: true, result: { results } };
                 }
+                case "session.members": return { ok: true, result: await this.#seam.listMembers(env.sessionId) };
+                case "op.look": {
+                    // Parse at the edge; LOOK is the wire spelling of the read-projection —
+                    // rewrite to READ (Engine.look enforces READ-only).
+                    if (typeof p.text !== "string" || p.text.length === 0) return { ok: false, error: "op.look requires text" };
+                    const parsed = PlurnkParser.parseClient(p.text);
+                    const item = parsed.items.find((i) => i.kind === "statement");
+                    if (item === undefined || item.kind !== "statement") return { ok: false, error: "op.look: no statement parsed" };
+                    const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
+                    return { ok: true, result: await this.#seam.look({ sessionId: env.sessionId, runId: env.runId, statement }) };
+                }
                 case "auth.authorize": {
                     // Stateless relay to the execs-mcp driver (settled: no auth seam — the
                     // driver owns its mechanics; the bearer overlays its own config registry).
