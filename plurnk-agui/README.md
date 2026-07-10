@@ -37,7 +37,7 @@ One endpoint: `POST /` with `RunAgentInput` (`threadId`, `runId`, `messages`,
   `alias`/`model`) every run.
 - **Cancel**: dropping the SSE aborts a live loop (hangup is the abort); a
   proposal-terminated run leaves the paused loop for the resume.
-- An AG-UI `threadId` **is** a plurnk session (`<prefix>-<threadId>`) — extended context
+- An AG-UI `threadId` **is** a plurnk session — the exact name, verbatim — and extended context
   persists across runs; history replays as `MESSAGES_SNAPSHOT` on reattach.
 - **Tier 2 metadata** (`CUSTOM plurnk.*`: row, stream, telemetry, terminated) carries
   what AG-UI has no term for — fold state, coordinates, tags, token truth. Generic
