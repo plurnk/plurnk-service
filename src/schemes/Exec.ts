@@ -378,8 +378,12 @@ export default class Exec {
         // owns zero substrate: it hands us (path, content, {tags, mimetype}) and WE create/update
         // the entry (writeEntry upsert; tags UNIONED — writeEntry alone replaces), then narrate ONE
         // EDIT row in the reserved plurnk run's log (the fs-fiction pattern, source = the calling
-        // run) — the existing env-delta ambience folds it into every run's next packet, meta line
-        // carrying path + tokens. NO page body ever rides a packet; the digest is the open part.
+        // run) — the existing env-delta ambience folds it into every run's next packet. The row is a
+        // FULL fiction: tx carries the statement (body = the written content — the journal records
+        // the write, replay/fork-complete), rx carries the span (§edit-result-render, the whole
+        // content numbered — a wholesale write's span IS the content; no diff, which would be a
+        // pathological cost against a rewritten multi-MB page). Rendered folded by default, so no
+        // body rides a packet uninvited — the meta line carries the honest OPEN cost.
         // Serialized: parallel entry() calls (allSettled) write in order; a rejection prunes that
         // survivor executor-side without breaking the chain. Lazy narration context: one plurnk-run
         // turn per spawn, not per entry.
@@ -411,8 +415,11 @@ export default class Exec {
                     origin: "plurnk", source: String(ctx.runId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
                     scheme: parsed.scheme, username: null, password: null, hostname: null, port: null,
                     pathname, params: null, fragment: null, lineMarker: null,
-                    tx: "", mimetype_tx: "text/plain",
-                    rx: JSON.stringify({ status: written.status, entryId: written.entryId, tags }), mimetype_rx: "application/json",
+                    tx: JSON.stringify({ op: "EDIT", body: content }), mimetype_tx: "application/json",
+                    rx: JSON.stringify({
+                        status: written.status, entryId: written.entryId, tags,
+                        span: content.split("\n").map((l, n) => `${n + 1}:\t${l}`).join("\n"),
+                    }), mimetype_rx: "application/json",
                     status_rx: written.status, tokens: ctx.tokenize?.(content) ?? 0, state: "resolved", outcome: null,
                     attrs: JSON.stringify({ tags }),
                 });

@@ -429,6 +429,13 @@ export default class PacketWire {
             // 0 for a genuinely empty body — never call countTokens("") (some providers return
             // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
             meta.tokens = body.length > 0 ? countTokens(body) : 0;
+            // lines beside tokens on any row with a navigable body — the count of `N:\t`-numbered
+            // lines (fences and unnumbered prose don't count), so the model can plan a <start,end>
+            // slice before paying for an OPEN. Omitted when the body isn't line-addressable.
+            if (body.length > 0) {
+                const navigable = body.split("\n").filter((l) => /^\d+:\t/.test(l)).length;
+                if (navigable > 0) meta.lines = navigable;
+            }
 
             // Body-state marker — body-aware so `-` never sits on a bodyless row:
             // `*` no body (nothing to OPEN) · `+` open (body shown) · `-` folded (OPEN to expand).

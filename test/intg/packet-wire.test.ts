@@ -307,7 +307,7 @@ test("[§model-entry] a folded model row renders meta-only — the verbatim hide
         coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: true,
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^- \{"op":"model"/, "folded → '-' marker, meta line only");
+    assert.match(out, /^- \{"lines":2,"op":"model"/, "folded → '-' marker, meta line only — lines counts the navigable body");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
 
@@ -316,7 +316,7 @@ test("[§model-entry] an open model row mirrors the model's own emission back, l
         coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: false,
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^\+ \{"op":"model"/, "open → '+' marker");
+    assert.match(out, /^\+ \{"lines":2,"op":"model"/, "open → '+' marker — lines counts the navigable body");
     assert.match(out, /1:\t<<PLAN:Initialize:PLAN/, "the model sees its own emission — line 1");
     assert.match(out, /2:\t<<SEND\[102\]:Initialized:SEND/, "line 2, referenceable when reasoning through a syntax error");
 });

@@ -9,6 +9,7 @@ import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -85,8 +86,37 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
         assert.equal(narrations[0]?.source, String(runId), "source attributes the CALLING run");
-        assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries tokens — the folded meta line shows size without a byte of body");
+        assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries the write's real token weight");
         assert.ok(/turkeys_query/.test(narrations[0]?.attrs ?? ""), "attrs carry the slug tags for the meta line");
+
+        // The row is a FULL fiction — the journal records the write itself, not just that one happened:
+        // tx carries the statement with the written content (replay/fork-complete), rx carries the
+        // full-content span (§edit-result-render — a wholesale write's span IS the content, numbered).
+        const full = await (db.test_log_entries_by_run_op_full as PrepMethod).all<{ pathname: string; tx: string; rx: string }>({ run_id: plurnkRun.id, op: "EDIT" });
+        const second = full.filter((r) => r.pathname === "/example.org/turkeys")[1];
+        assert.ok(second !== undefined, "the second narration row is present");
+        const tx = JSON.parse(second.tx) as { op: string; body: string };
+        assert.equal(tx.body, "wild turkeys are large birds, revised", "tx.body IS the written content — the journal can replay the write");
+        const rx = JSON.parse(second.rx) as { status: number; span: string };
+        assert.equal(rx.span, "1:\twild turkeys are large birds, revised", "rx.span is the whole written content, line-numbered from 1");
+
+        // The packet gate (the render the model actually sees): folded by default the meta line
+        // carries the honest OPEN cost — real tokens + lines, `-` marker, no body riding; opened,
+        // the span renders under the fence. Never again a `* {...,"tokens":0}` row hiding a page.
+        const view = (folded: boolean): object[] => [{
+            coordinate: "1/1/2", origin: "plurnk", op: "EDIT", suffix: "", signal: null,
+            target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", params: null, fragment: null },
+            status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
+            folded, source: String(runId), attrs: null,
+        }];
+        const countTokens = (t: string): number => Math.ceil(t.length / 4);
+        const foldedLine = PacketWire.renderLog(view(true), countTokens);
+        assert.match(foldedLine, /^- \{/, "a sink EDIT row is folded by default — `-` marker, OPENable");
+        assert.match(foldedLine, /"tokens":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
+        assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
+        assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
+        const openLine = PacketWire.renderLog(view(false), countTokens);
+        assert.ok(openLine.includes("1:\twild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
         const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ run_id: plurnkRun.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await db.close(); }
