@@ -429,36 +429,48 @@ export default class Exec {
             return run;
         };
         try {
-            const result = await executor.run({
-                runtime, command, cwd, target, signal,
-                entry: entrySink,
-                env: ExecEnv.scoped(),  // SPEC §exec {§exec-env-scoped} — never plurnk's own secrets
-                write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
-                    entryId, channel, chunk, notify: ctx.streamEventNotify, coordinate,
-                })),
-                setState: (channel, state: ChannelState) => enqueue(() => ChannelWrite.setChannelState(db, {
-                    entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
-                })),
-                emit: (event) => {
-                    // The executor daughter's TelemetryEvent predates grammar's required `level`;
-                    // inject a default (forwarding the producer's own severity when it supplies one). #276
-                    const level = (event as { level?: TelemetryEvent["level"] }).level ?? "info";
-                    ctx.pushTelemetry?.({ ...event, level } as TelemetryEvent);
-                },
-            });
-            // Drain the queue so the subscription doesn't close before
-            // final chunk events / state transitions have committed.
-            await queue;
+            let result: { status: number; exitCode?: number } | null = null;
+            try {
+                result = await executor.run({
+                    runtime, command, cwd, target, signal,
+                    entry: entrySink,
+                    env: ExecEnv.scoped(),  // SPEC §exec {§exec-env-scoped} — never plurnk's own secrets
+                    write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
+                        entryId, channel, chunk, notify: ctx.streamEventNotify, coordinate,
+                    })),
+                    setState: (channel, state: ChannelState) => enqueue(() => ChannelWrite.setChannelState(db, {
+                        entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
+                    })),
+                    emit: (event) => {
+                        // The executor daughter's TelemetryEvent predates grammar's required `level`;
+                        // inject a default (forwarding the producer's own severity when it supplies one). #276
+                        const level = (event as { level?: TelemetryEvent["level"] }).level ?? "info";
+                        ctx.pushTelemetry?.({ ...event, level } as TelemetryEvent);
+                    },
+                });
+                // Drain the queue so the subscription doesn't close before
+                // final chunk events / state transitions have committed.
+                await queue;
+            } catch (cause) {
+                // A rejecting driver must still CONCLUDE its stream — uncaught, the subscription sat
+                // open forever and the floating spawn promise was an unhandled rejection.
+                exitLabel = `driver_crashed: ${cause instanceof Error ? cause.message : String(cause)}`;
+            }
 
-            const exitCode = result.exitCode ?? -1;
-            closeStatus = result.status;
-            // A timeout aborts the spawn → the executor reports 499; restamp it 504 so the model
-            // sees "ran out of time" distinct from a deliberate kill/cancel (§exec-timeout).
-            if (timedOut && closeStatus === 499) closeStatus = 504;
-            exitLabel = closeStatus === 504 ? `timed out after ${timeoutSec}s`
-                : closeStatus === 499 ? "aborted"
-                : closeStatus === 500 && exitCode === -1 ? "spawn_failed"
-                : `exit ${exitCode}`;
+            if (result !== null) {
+                const exitCode = result.exitCode ?? -1;
+                closeStatus = result.status;
+                // A timeout aborts the spawn → the executor reports 499; restamp it 504 so the model
+                // sees "ran out of time" distinct from a deliberate kill/cancel (§exec-timeout).
+                if (timedOut && closeStatus === 499) closeStatus = 504;
+                // The service's own abort knowledge outranks a driver's claim: a spawn we reaped
+                // (teardown/kill/cancel) did not succeed, whatever status it resolved under abort.
+                if (signal.aborted && !timedOut && closeStatus < 400) { closeStatus = 499; exitLabel = "reaped"; }
+                else exitLabel = closeStatus === 504 ? `timed out after ${timeoutSec}s`
+                    : closeStatus === 499 ? "aborted"
+                    : closeStatus === 500 && exitCode === -1 ? "spawn_failed"
+                    : `exit ${exitCode}`;
+            }
             await ChannelWrite.closeSubscription(db, { subscriptionId, status: closeStatus });
 
             const stdoutMeta = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });

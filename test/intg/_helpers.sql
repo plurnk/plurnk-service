@@ -304,6 +304,10 @@ SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;
 -- Set the sessions.settings JSON bag (client open-context) for a test.
 UPDATE sessions SET settings = $settings WHERE id = $id;
 
+-- PREP: test_open_subscription_for_run
+-- ($run_id unused: the honesty tests' db holds exactly one spawn)
+SELECT s.id FROM subscriptions s WHERE s.closed_at IS NULL AND $run_id IS NOT NULL LIMIT 1;
+
 -- PREP: test_entries_by_scheme_prefix
 SELECT pathname FROM entries WHERE session_id = $session_id AND scheme = $scheme AND pathname LIKE $prefix ORDER BY pathname;
 
