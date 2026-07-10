@@ -56,6 +56,14 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             if (match !== null && !settled) {
                 settled = true;
                 clearTimeout(timer);
+                // The banner must report BOUND ports, not configured ones — both booted with
+                // port 0 here, so a 0 in either field means a parser downstream gets garbage.
+                const agui = stdoutBuf.match(/agui=http:\/\/[^:]+:(\d+)/);
+                if (agui === null || Number(agui[1]) === 0) {
+                    child.kill("SIGKILL");
+                    rejectPromise(new Error(`banner agui= field missing or unbound (configured-port leak): ${stdoutBuf}`));
+                    return;
+                }
                 resolvePromise({ child, host: match[1], port: Number(match[2]), tmpdir: dir });
             }
         });

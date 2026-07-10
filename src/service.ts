@@ -195,8 +195,12 @@ export default class Service {
             ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
             ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
         });
-        daemon.registerModule(aguiInit);
+        // Capture the module so the banner reports the BOUND address, not the configured one —
+        // with PLURNK_PORT=0 the configured value is 0 and banner parsers get garbage.
+        let agui: Awaited<ReturnType<typeof aguiInit>> | null = null;
+        daemon.registerModule(async (seam) => { agui = await aguiInit(seam); });
         const addr = await daemon.start({ host, port: wsPort });
+        const aguiAddr = (agui as Awaited<ReturnType<typeof aguiInit>> | null)?.address() ?? { host, port };
         // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
         // self-report returns info with the unknowns explicitly null — say which case this is).
         const embedInfo = await daemon.mimetypes.embedderInfo();
@@ -217,7 +221,7 @@ export default class Service {
             process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);
         }
         const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
-        process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} agui=http://${host}:${port} db=${dbPath} ${aliasStr}\n`);
+        process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${aliasStr}\n`);
 
         const shutdown = async (): Promise<void> => { await daemon.stop(); await db.close(); process.exit(0); };
         process.on("SIGINT", shutdown);
