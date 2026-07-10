@@ -218,10 +218,10 @@ export default class ProposalLifecycle {
                 };
             }
             // Propagate applyResolution.outcome onto the accepted resolution
-            // (operational metadata, e.g. exec's "exit_N") AND its body — an
-            // inline (read/pure) run returns its output as the body, which has
-            // to reach the model-facing result this turn, not just stream to
-            // the entry. Host accepts carry no body (fire-and-forget).
+            // (operational metadata, e.g. exec's "started") AND its body — the applied result the
+            // model must see THIS turn: a file EDIT's line-numbered diff, a [300] answer. EXEC
+            // never uses the body rail — its output streams uniformly (§exec-stream, NO same-turn
+            // in-body exception; inline only skips the review pause) and is READ next turn.
             const withOutcome = applyResult.outcome !== undefined && resolution.outcome === undefined
                 ? { ...resolution, outcome: applyResult.outcome }
                 : resolution;
