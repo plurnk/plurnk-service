@@ -67,7 +67,8 @@ export interface DaemonSeam {
     listSessions(): Promise<Array<{ id: number; name: string }>>;
     listRuns(sessionId: number): Promise<Array<{ id: number; name: string }>>;
     // Session metadata + workspace membership (the verb surface).
-    listPrompts(sessionId: number, limit?: number): Promise<Array<{ prompt: string }>> | Array<{ prompt: string }>;
+    // Prior user prompts, newest-first — bare strings (the seam's shape; the wire's always was).
+    listPrompts(sessionId: number, limit?: number): Promise<string[]>;
     renameSession(sessionId: number, name: string): Promise<{ id: number; name: string }>;
     constrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
     unconstrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
