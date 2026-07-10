@@ -40,6 +40,9 @@ export type DispatchContext = {
     // #312 — the turn's token gauge (identity + async exact counter), threaded from runTurn so
     // catalog reads key on the ACTIVE tokenizer. Absent on client/plurnk dispatches (legacy stamp).
     gauge?: { tokenizerId: string; exact: boolean; count: (text: string) => Promise<number> };
+    // §send-200-failed-ops — this emission's parse-error count, threaded from runTurn (parse errors
+    // mint AFTER dispatch, so the terminal gate can't see them as rows). Absent off-run.
+    turnParseErrors?: number;
 };
 
 export type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
@@ -113,7 +116,7 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, gauge } = context;
+        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, gauge, turnParseErrors } = context;
         const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin, gauge });
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
@@ -133,7 +136,7 @@ export default class Dispatcher {
             // those are system failures.
             try {
                 if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, { sessionId, runId, loopId, turnId });
+                    result = await this.#handleSendBroadcast(statement, { sessionId, runId, loopId, turnId, turnParseErrors });
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleRunControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -760,7 +763,7 @@ export default class Dispatcher {
         return liveChild !== undefined;
     }
 
-    async #handleSendBroadcast(statement: PlurnkStatement, ctx: { sessionId: number; runId: number; loopId: number; turnId: number }): Promise<DispatchResult> {
+    async #handleSendBroadcast(statement: PlurnkStatement, ctx: { sessionId: number; runId: number; loopId: number; turnId: number; turnParseErrors?: number }): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
         const { runId, loopId, turnId } = ctx;
         const status = statement.signal;
@@ -832,6 +835,17 @@ export default class Dispatcher {
         // attempt faithfully (status_rx=409, never erased); the loop stays a continue; the strike
         // couples in runTurn. [499] abandons regardless — discard by stated intent.
         if (status === 200) {
+            // §send-200-failed-ops (#363, owner ruling: never 200 over a failed op) — the failure
+            // twin of the pending set: this turn's failed op results (and this emission's parse
+            // errors, threaded — they mint as rows only after dispatch) are UNSEEN until the next
+            // packet, so concluding over them is concluding blind. Refused 409; next turn, the
+            // errors in-log and weighed, [200] stands. [499] below is never gated — declaring
+            // failure IS weighing it.
+            const failedRows = await (this.#db.engine_turn_failures as PrepMethod).all<{ id: number }>({ turn_id: turnId });
+            const failCount = failedRows.length + (ctx.turnParseErrors ?? 0);
+            if (failCount > 0) {
+                return { status: 409, error: `Termination attempted despite ${failCount} failed operation(s) this turn. The errors land in your log next turn — weigh them, then conclude (or SEND[499] to abandon).` };
+            }
             const pending = await this.#pendingSet(runId, turnId);
             if (pending.length > 0) {
                 // Kind-specific steer (owner wording, xpath/topo forensics): retrievals-only is

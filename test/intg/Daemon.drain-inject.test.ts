@@ -229,8 +229,10 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
     const mock = new Mock({
         contextSize: 16384,
         responses: [
-            sendOnly("<<EXEC[sh]:true:EXEC\n<<SEND[200]:loop 1 ends at turn 1:SEND"),  // pause, then end
-            sendOnly("<<SEND[200]:reconciled loop ran:SEND"),                          // the promoted loop
+            // The rejected EXEC is a same-turn failure — §send-200-failed-ops refuses a [200] over
+            // it, so loop 1 ends turn 1 by ABANDON (499, never gated): the orphan premise holds.
+            sendOnly("<<EXEC[sh]:true:EXEC\n<<SEND[499]:loop 1 abandons at turn 1:SEND"),  // pause, then end
+            sendOnly("<<SEND[200]:reconciled loop ran:SEND"),                              // the promoted loop
         ],
     });
 
@@ -260,7 +262,8 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
                 { timeoutMs: 5000 },
             );
             assert.equal(ts.length, 2, "the orphaned wake was reconciled into a second loop (would be 1 if lost)");
-            assert.ok(ts.every((t) => t.finalStatus === 200), "both loops ended cleanly");
+            const statuses = ts.map((t) => t.finalStatus).toSorted((a, b) => a - b);
+            assert.deepEqual(statuses, [200, 499], "loop 1 abandoned (499, over the rejected EXEC); the reconciled loop concluded 200");
         } finally { ws.close(); }
     });
 });

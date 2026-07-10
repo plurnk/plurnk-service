@@ -1114,6 +1114,9 @@ export default class Engine {
                 statement, sessionId, runId, loopId, turnId,
                 sequence: rowSeq,
                 origin, onDispatch, gauge,
+                // §send-200-failed-ops — parse errors mint as rows AFTER this loop; the terminal
+                // gate needs them NOW, so the count rides the dispatch context.
+                turnParseErrors: parseErrors?.length ?? 0,
             });
             statuses.push(result.status);
             // A refused terminal (the pending-set 409) demotes the turn to a continue: the loop

@@ -448,6 +448,17 @@ UPDATE log_entries
 SELECT id FROM log_entries
 WHERE turn_id = $turn_id AND origin = 'model' AND op IN ('READ', 'FIND', 'OPEN');
 
+-- PREP: engine_turn_failures
+-- §send-200-failed-ops — THIS turn's failed op results (the model's own ops, status >= 400), whose
+-- errors the model cannot have seen (they land next packet). A [200] over them concludes blind
+-- past a failure — refused 409; [499] abandons regardless (declaring failure IS weighing it).
+-- op='error' rows are EXCLUDED: the error CHANNEL is already-surfaced signal (the grinder's
+-- overflow row mints pre-packet — the recovery turn SAW it; §grinder-hard-413-recovery's
+-- concluding-is-legitimate stands), and the current emission's parse errors ride the threaded
+-- count instead (they mint as rows only after dispatch).
+SELECT id FROM log_entries
+WHERE turn_id = $turn_id AND origin = 'model' AND status_rx >= 400 AND op != 'error';
+
 -- PREP: engine_demote_turn_status
 -- §send-premature-terminate — a terminal REFUSED at dispatch (the pending-set 409) demotes the
 -- turn to a continue AFTER the close already persisted the provisional status (the close writes

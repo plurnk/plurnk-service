@@ -36,11 +36,14 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
     // Model emits EDIT against the proposing scheme (202), then SEND[200].
     // With noProposals on, the proposal auto-rejects in-process; the EDIT
     // lands as status 400 (action did NOT occur) — identical to a human
-    // declining — NOT a 403 "scheme inactive under current loop flags". The
-    // loop still completes on the SEND[200]; the rejected EDIT does not gate
-    // it. The model knows WHETHER (400) without learning HOW (the orchestration).
-    const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse(dsl, 50)] });
+    // declining — NOT a 403 "scheme inactive under current loop flags".
+    // The model knows WHETHER (400) without learning HOW (the orchestration).
+    // §send-200-failed-ops: the rejection is a same-turn unseen failure, so the
+    // first [200] is refused; the loop concludes NEXT turn, the 400 weighed.
+    const mock = new Mock({ contextSize: 16384, responses: [
+        makeMockResponse("<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND", 50),
+        makeMockResponse("<<SEND[200]:the edit was declined; concluding:SEND", 50),
+    ] });
 
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -50,7 +53,7 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal", flags: { noProposals: true },
             });
-            assert.equal(result.finalStatus, 200, "loop completes on SEND[200]; the rejected EDIT doesn't gate it");
+            assert.equal(result.finalStatus, 200, "loop concludes on the SECOND [200], the rejection weighed (§send-200-failed-ops)");
 
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
             const edit = rows.find((r) => r.op === "EDIT" && r.scheme === "proposing-test");
