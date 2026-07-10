@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-common",
-    "version": "0.2.20",
+    "version": "0.2.21",
     "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell + node + python floor plus whichever host interpreters (perl, ruby, php, lua, awk, bc, …) are present.",
     "keywords": [
         "plurnk",
@@ -36,7 +36,7 @@
             {
                 "name": "sh",
                 "glyph": "🐚",
-                "example": "<<EXEC<-1,300>:npm run test:EXEC"
+                "example": "<<EXEC:uname -sr:EXEC\n<<EXEC<-1,300>:npm run test:EXEC"
             },
             {
                 "name": "bash",
