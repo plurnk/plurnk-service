@@ -59,6 +59,6 @@
         "access": "public"
     },
     "dependencies": {
-        "@plurnk/plurnk-grammar": "0.76.2"
+        "@plurnk/plurnk-grammar": "0.76.4"
     }
 }
