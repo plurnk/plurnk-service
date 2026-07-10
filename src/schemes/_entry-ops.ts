@@ -205,8 +205,17 @@ export default class EntryOps {
         if (targetChannel === null) return { status: 400, content: null, mimetype: null, channel: null };
 
         const pathname = EntryOps.#pathnameOf(statement);
+        // An xpath is a question about the DOM — a fragmentless xpath READ routes to the raw `html`
+        // channel (the archive the decisive markdown body was projected from). A fragment still wins.
+        let readChannel = targetChannel;
+        if (fragment === null && statement.body !== null && statement.body.dialect === "xpath") {
+            const html = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string }>({
+                session_id: sessionId, scheme, pathname, channel: "html",
+            });
+            if (html !== undefined) readChannel = "html";
+        }
         const row = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string; mimetype: string }>({
-            session_id: sessionId, scheme, pathname, channel: targetChannel,
+            session_id: sessionId, scheme, pathname, channel: readChannel,
         });
         if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };  // §read-read-404
 
@@ -233,6 +242,6 @@ export default class EntryOps {
             body: statement.body,
             mimetypes: ctx.mimetypes,
         });
-        return { ...r, channel: targetChannel }; // READ returns the resolved channel's content + mimetype — §read-read-content
+        return { ...r, channel: readChannel }; // READ returns the resolved channel's content + mimetype — §read-read-content
     }
 }

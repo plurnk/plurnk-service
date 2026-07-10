@@ -379,7 +379,7 @@ Engine → scheme guarantees:
 
 Author-facing contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). Below: firing semantics + consumption surface.
 
-**Firing semantics.** Render-time consumers. Engine invokes during packet assembly; handlers read current channel content (possibly mid-stream), produce structural view, result lands in the manifest catalog. Schemes do NOT call mimetype handlers at write time. {§mimetype-schemes-do-not-invoke-handlers}
+**Firing semantics.** Render-time consumers. Engine invokes during packet assembly; handlers read current channel content (possibly mid-stream), produce structural view, result lands in the manifest catalog. Schemes do NOT call mimetype handlers at write — writes are verbatim. Two content lifecycles sit outside that rule and are not exceptions to it: (1) **write-time indexing** — the FTS keyword half derives at write (handler-free, plain string→FTS) so a cold session's first query narrows; the vector half and every structural VIEW (symbols/@graph, tokens, lines, extent) derive at RENDER, re-computed each packet so a model/tokenizer change can never leave a stored snapshot lying. (2) **fetch-time materialization** — the web-fetch tool (the exec sink) projects a fetched `text/html` page through the handler's readable projection ONCE and stores THAT as the decisive `body` (`text/markdown` — what READ serves, FIND matches, and every price reports), archiving the raw page under `html` (xpath + fidelity). This sets the body's identity, not a re-derived view; an AUTHORED/workspace html file is written verbatim (its attributes are data). {§mimetype-schemes-do-not-invoke-handlers}
 
 ### §mimetype-manifest Manifest
 

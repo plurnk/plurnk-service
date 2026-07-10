@@ -232,7 +232,7 @@ export default class Engine {
         this.#proposals = new ProposalLifecycle({
             db, schemes, telemetry: this.#telemetry,
             streamEventNotify, wakeRunNotify,
-            tokenize: this.#tokenize, executors, loopSignal,
+            tokenize: this.#tokenize, mimetypes: this.#mimetypes, executors, loopSignal,
         });
         this.#dispatcher = new Dispatcher({
             db, schemes, mimetypes: this.#mimetypes,

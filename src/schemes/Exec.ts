@@ -396,7 +396,21 @@ export default class Exec {
                 const pathname = foldAuthorityIntoPath(parsed.hostname, parsed.pathname);
                 const prior = await EntryCrud.readEntry(pathname, ctx, parsed.scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
-                const written = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype: opts.mimetype } }, tags }, ctx, parsed.scheme);
+                // The web-fetch entry point: a fetched html page stores the handler's readable
+                // projection as the decisive `body` (text/markdown — what READ serves, FIND matches,
+                // FTS indexes, every price reports) with the raw page under `html` (xpath + archive).
+                // Scoped HERE, not writeEntry: only auto-fetched web content projects; authored files
+                // stay verbatim (a `<user email=…>` roster's attribute data must survive a default READ).
+                let channels: EntryData["channels"] = { body: { content, mimetype: opts.mimetype } };
+                let decisive = content;
+                if (opts.mimetype === "text/html" && ctx.mimetypes !== undefined) {
+                    const projected = (await ctx.mimetypes.process({ content, hint: "text/html" }, { channels: ["content"] })).content;
+                    if (typeof projected === "string" && projected.length > 0) {
+                        channels = { body: { content: projected, mimetype: "text/markdown" }, html: { content, mimetype: opts.mimetype } };
+                        decisive = projected;
+                    }
+                }
+                const written = await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme);
                 if (narration === null) {
                     const run = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: "plurnk" })
                         ?? await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: "plurnk", origin: "plurnk" });
@@ -418,9 +432,9 @@ export default class Exec {
                     tx: JSON.stringify({ op: "EDIT", body: content }), mimetype_tx: "application/json",
                     rx: JSON.stringify({
                         status: written.status, entryId: written.entryId, tags,
-                        span: content.split("\n").map((l, n) => `${n + 1}:\t${l}`).join("\n"),
+                        span: decisive.split("\n").map((l, n) => `${n + 1}:\t${l}`).join("\n"),
                     }), mimetype_rx: "application/json",
-                    status_rx: written.status, tokens: ctx.tokenize?.(content) ?? 0, state: "resolved", outcome: null,
+                    status_rx: written.status, tokens: ctx.tokenize?.(decisive) ?? 0, state: "resolved", outcome: null,
                     attrs: JSON.stringify({ tags }),
                 });
             };

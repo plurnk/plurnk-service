@@ -72,6 +72,10 @@ export default class EntryCrud {
             await (db.crud_delete_tags as PrepMethod).run({ entry_id: entryId });
         }
 
+        // Writes are VERBATIM — the scheme never transforms what it's handed. Web-page projection
+        // (raw html → decisive markdown body + raw `html` archive) lives at the web-fetch entry point
+        // (the exec sink), NOT here: an authored/workspace html file is DATA whose attributes are the
+        // payload (a `<user email=…>` roster), and a reader-view projection would strip it.
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
             await (db.crud_write_channel as PrepMethod).run({
                 entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,

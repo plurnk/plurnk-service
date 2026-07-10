@@ -35,8 +35,8 @@ const wire = async () => {
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args) => {
-                await args.entry?.("https://example.org/turkeys", "wild turkeys are large birds", { tags: ["turkeys_query"], mimetype: "text/html" });
-                await args.entry?.("https://example.org/turkeys", "wild turkeys are large birds, revised", { tags: ["second_query"], mimetype: "text/html" });
+                await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds</p>", { tags: ["turkeys_query"], mimetype: "text/html" });
+                await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds, revised</p>", { tags: ["second_query"], mimetype: "text/html" });
                 let pruned = false;
                 try { await args.entry?.("not a url at all", "junk", { tags: ["x"], mimetype: "text/html" }); } catch { pruned = true; }
                 args.write("results", JSON.stringify([{ title: "Turkeys", url: "https://example.org/turkeys", pruned }]), "application/json");
@@ -96,9 +96,9 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         const second = full.filter((r) => r.pathname === "/example.org/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");
         const tx = JSON.parse(second.tx) as { op: string; body: string };
-        assert.equal(tx.body, "wild turkeys are large birds, revised", "tx.body IS the written content — the journal can replay the write");
+        assert.equal(tx.body, "<p>wild turkeys are large birds, revised</p>", "tx.body IS the raw transmitted content — the journal can replay the write");
         const rx = JSON.parse(second.rx) as { status: number; span: string };
-        assert.equal(rx.span, "1:\twild turkeys are large birds, revised", "rx.span is the whole written content, line-numbered from 1");
+        assert.equal(rx.span, "1:\twild turkeys are large birds, revised", "rx.span is the DECISIVE stored form (the readable projection), line-numbered — not the raw markup");
 
         // The packet gate (the render the model actually sees): folded by default the meta line
         // carries the honest OPEN cost — real tokens + lines, `-` marker, no body riding; opened,

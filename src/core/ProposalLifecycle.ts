@@ -3,6 +3,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
 import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
@@ -79,6 +80,7 @@ export default class ProposalLifecycle {
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeRunNotify: WakeRunNotify | undefined;
     #tokenize: (text: string) => number;
+    #mimetypes: Mimetypes | undefined;
     // Boot-discovered runtime executors, late-injected on Engine — thunked.
     #executors: () => ExecutorRegistry | undefined;
     // Per-loop abort signal, owned by Engine.runLoop — thunked.
@@ -95,13 +97,14 @@ export default class ProposalLifecycle {
     // chains come later if a real consumer needs them.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, telemetry, streamEventNotify, wakeRunNotify, tokenize, executors, loopSignal }: {
+    constructor({ db, schemes, telemetry, streamEventNotify, wakeRunNotify, tokenize, mimetypes, executors, loopSignal }: {
         db: Db;
         schemes: SchemeRegistry;
         telemetry: TelemetryChannel;
         streamEventNotify?: StreamEventNotify;
         wakeRunNotify?: WakeRunNotify;
         tokenize: (text: string) => number;
+        mimetypes?: Mimetypes;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
     }) {
@@ -111,6 +114,7 @@ export default class ProposalLifecycle {
         this.#streamEventNotify = streamEventNotify;
         this.#wakeRunNotify = wakeRunNotify;
         this.#tokenize = tokenize;
+        this.#mimetypes = mimetypes;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
     }
@@ -199,6 +203,7 @@ export default class ProposalLifecycle {
                 streamEventNotify: this.#streamEventNotify,
                 wakeRunNotify: this.#wakeRunNotify,
                 tokenize: this.#tokenize,
+                mimetypes: this.#mimetypes,
                 pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
                 executors: this.#executors(),
             };
