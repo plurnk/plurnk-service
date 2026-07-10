@@ -123,4 +123,8 @@ test("[§agui-zero-dep] zero runtime dependencies — the standing decision, enf
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { dependencies?: Record<string, string> };
     const deps = Object.keys(pkg.dependencies ?? {});
     assert.ok(deps.every((d) => d.startsWith("@plurnk/")), `only family-internal runtime deps (operator ruling 2026-07-10); found: ${deps.join(", ")} (SPEC §agui-zero-dep)`);
+    // Vacuous-pass guard: the grammar is a RUNTIME import (Module's op.parse) — it must
+    // live in dependencies, not devDependencies (npm --save-exact updates an existing
+    // devDep in place; this caught a 0.6.0 packaging bug).
+    assert.ok(deps.includes("@plurnk/plurnk-grammar"), "the grammar runtime import is declared in dependencies");
 });
