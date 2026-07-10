@@ -130,7 +130,7 @@ export default class Module {
         const finish = (): void => {
             if (finished) return;
             finished = true;
-            this.#portal.closeThread(sessionId);
+            this.#portal.closeRun(sessionId, boundRun);
             res.end();
         };
         const emit = (events: AguiEvent[]): void => {
@@ -147,7 +147,7 @@ export default class Module {
             }
         };
 
-        this.#portal.openThread({ sessionId, runId, threadId: input.threadId, emit, modelRunId: runId, inputRunId: input.runId });
+        const boundRun = this.#portal.openThread({ sessionId, runId, threadId: input.threadId, emit, modelRunId: runId, inputRunId: input.runId });
         emit([
             { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
             stateSnapshot({ providers: this.#seam.listProviders().aliases, session: { id: sessionId, name: env.sessionName, projectRoot: env.projectRoot } }),
@@ -160,13 +160,25 @@ export default class Module {
         // run and completes after the resume run rebinds the stream.
         const action = parseAction(input.forwardedProps);
         if (action !== null) {
+            const finishAction = (outcome: ActionOutcome): void => {
+                const events = [actionResult(action.kind, outcome)];
+                // Plain action (stream still open): answer on OUR OWN stream — concurrent
+                // actions share a session, and the session binding is whoever bound last
+                // (results would cross streams). Only a proposal-pause (this stream already
+                // terminated) hands off to the session binding, which the resume run rebinds.
+                if (!finished) {
+                    emit([...events, { type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId }]);
+                    return;
+                }
+                this.#portal.finishRun(sessionId, events);
+            };
             void this.#action(action, env)
                 // One queue barrier: a dispatch's channel notifies are enqueued but not yet
                 // delivered when its promise resolves — drain them so Portal's stream
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,
                 // not a timer, releases any deferral).
-                .then(async (outcome) => { await new Promise((r) => setImmediate(r)); this.#portal.finishRun(sessionId, [actionResult(action.kind, outcome)]); })
-                .catch((err: unknown) => this.#portal.finishRun(sessionId, [actionResult(action.kind, { ok: false, error: err instanceof Error ? err.message : String(err) })]));
+                .then(async (outcome) => { await new Promise((r) => setImmediate(r)); finishAction(outcome); })
+                .catch((err: unknown) => finishAction({ ok: false, error: err instanceof Error ? err.message : String(err) }));
             req.on("close", finish);
             return;
         }

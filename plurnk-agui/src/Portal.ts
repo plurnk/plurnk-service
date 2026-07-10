@@ -19,7 +19,9 @@ type PortalSeam = Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "r
 
 export default class Portal {
     #seam: PortalSeam;
-    #threads = new Map<number, Thread>(); // by sessionId (the AG-UI thread's bound session)
+    // Broadcast semantics (the WS wire fanned to every connection): a session fans to
+    // ALL its open runs — concurrent action runs must not clobber each other's gates.
+    #threads = new Map<number, Set<Thread>>();
     #hitl: ProposalHitl;
     #off: (() => void) | null = null;
 
@@ -34,17 +36,17 @@ export default class Portal {
         this.#hitl.start();
         this.#off = this.#seam.subscribeToEvents((sessionId, method, params) => {
             if (sessionId === null) return; // global (session/created) handled out-of-band
-            const thread = this.#threads.get(sessionId);
-            if (thread === undefined) return;
-            // Stream lifecycle bookkeeping for deferred finishes (see finishRun).
             const entryId = (params as { entryId?: unknown }).entryId;
-            if (method === "stream/event" && typeof entryId === "number") thread.openStreams.add(entryId);
-            if (method === "stream/concluded" && typeof entryId === "number") thread.openStreams.delete(entryId);
-            this.#fan(sessionId, thread.router.route(method, params));
-            if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
-                const deferred = thread.deferredFinish;
-                thread.deferredFinish = null;
-                this.finishRun(sessionId, deferred);
+            for (const thread of this.#threads.get(sessionId) ?? []) {
+                if (method === "stream/event" && typeof entryId === "number") thread.openStreams.add(entryId);
+                if (method === "stream/concluded" && typeof entryId === "number") thread.openStreams.delete(entryId);
+                const out = thread.router.route(method, params);
+                if (out.length > 0) thread.emit(out);
+                if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
+                    const deferred = thread.deferredFinish;
+                    thread.deferredFinish = null;
+                    thread.emit([...deferred, { type: "RUN_FINISHED", threadId: thread.threadId, runId: thread.inputRunId }]);
+                }
             }
         });
     }
@@ -56,7 +58,8 @@ export default class Portal {
     }
 
     #fan(sessionId: number, events: AguiEvent[]): void {
-        if (events.length > 0) this.#threads.get(sessionId)?.emit(events);
+        if (events.length === 0) return;
+        for (const t of this.#threads.get(sessionId) ?? []) t.emit(events);
     }
 
     // Bind a client's SSE to a session/run. The emit consumer ends its stream when it
@@ -65,26 +68,29 @@ export default class Portal {
     // client envelope's); `modelRunId` binds the render (null → the router lazily
     // adopts the first model-origin row's run — a fresh session's model run is born
     // at the drain).
-    openThread(args: { sessionId: number; runId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelRunId?: number | null; inputRunId?: string }): void {
+    openThread(args: { sessionId: number; runId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelRunId?: number | null; inputRunId?: string }): unknown {
         const router = new EventRouter({ threadId: args.threadId, runId: String(args.runId), modelRunId: args.modelRunId ?? null, sessionId: args.sessionId });
-        this.#threads.set(args.sessionId, { runId: args.runId, router, emit: args.emit, threadId: args.threadId, inputRunId: args.inputRunId ?? String(args.runId), openStreams: new Set(), deferredFinish: null });
+        const t: Thread = { runId: args.runId, router, emit: args.emit, threadId: args.threadId, inputRunId: args.inputRunId ?? String(args.runId), openStreams: new Set(), deferredFinish: null };
+        let set = this.#threads.get(args.sessionId);
+        if (set === undefined) { set = new Set(); this.#threads.set(args.sessionId, set); }
+        set.add(t);
+        return t;
     }
+
+    closeRun(sessionId: number, t: unknown): void { this.#threads.get(sessionId)?.delete(t as Thread); }
 
     // Emit extra events + RUN_FINISHED through the session's CURRENT thread binding —
     // an action that paused on a proposal completes AFTER the resume run rebound the
     // stream, so its result must ride whichever response is live now, never the
     // closure of the request that spawned it.
     finishRun(sessionId: number, events: AguiEvent[]): void {
-        const t = this.#threads.get(sessionId);
-        if (t === undefined) return; // client hung up between pause and resume; pending re-surfaces on reconnect
-        // A dispatch resolves BEFORE its channel notifies flush (async): if streams it
-        // opened are still live, defer the finish until their stream/concluded lands —
-        // deterministic (event-driven), never a timer.
-        if (t.openStreams.size > 0) { t.deferredFinish = events; return; }
-        t.emit([...events, { type: "RUN_FINISHED", threadId: t.threadId, runId: t.inputRunId }]);
+        for (const t of this.#threads.get(sessionId) ?? []) {
+            if (t.openStreams.size > 0) { t.deferredFinish = events; continue; } // defer past live streams (event-driven, no timer)
+            t.emit([...events, { type: "RUN_FINISHED", threadId: t.threadId, runId: t.inputRunId }]);
+        }
     }
 
-    closeThread(sessionId: number): void { this.#threads.delete(sessionId); }
+
 
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
