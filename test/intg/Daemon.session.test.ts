@@ -31,6 +31,7 @@ const withDaemon = async <T>(fn: (db: Db, addr: { host: string; port: number }) 
     const db = await openMigrated();
     const daemon = new Daemon({ db });
     const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
+    if (addr === null) throw new Error("daemon.start with a port returned no address");
     try { return await fn(db, addr); }
     finally { await daemon.stop(); await db.close(); }
 };

@@ -49,6 +49,7 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
     const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
+    if (addr === null) throw new Error("daemon.start with a port returned no address");
     const ws = await connect(addr);
     // SANDBOX: every live/demo session roots at a fresh empty dir, NEVER the host repo. With
     // PLURNK_SERVICE_GIT_ALLOWED=1 + PLURNK_SERVICE_GIT_AUTO=1 + PLURNK_SERVICE_FILES_ITEMS=-1 (the live/demo .env), an

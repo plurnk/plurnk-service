@@ -24,12 +24,12 @@ const runBin = (args, env = {}) => {
 const bootStart = (env = {}) => new Promise((res) => {
     // Run from OUTSIDE the install dir so discovery must resolve plugins package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
-    const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: { ...process.env, HOME: sandbox, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", PLURNK_WS_PORT: "0", ...env } });
+    const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: { ...process.env, HOME: sandbox, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", ...env } });
     let stdout = "", stderr = "", listening = false;
     // Resolve on EXIT (after a graceful SIGTERM) so both pipes fully drain — the
     // embedder notice rides stderr and races the stdout startup line otherwise.
     const hardKill = setTimeout(() => child.kill("SIGKILL"), 20_000);
-    child.stdout.on("data", (c) => { stdout += c; if (/plurnk-service ws:\/\//.test(stdout) && !listening) { listening = true; setTimeout(() => child.kill("SIGTERM"), 300); } });
+    child.stdout.on("data", (c) => { stdout += c; if (/plurnk-service agui=http:\/\//.test(stdout) && !listening) { listening = true; setTimeout(() => child.kill("SIGTERM"), 300); } });
     child.stderr.on("data", (c) => { stderr += c; });
     child.once("exit", () => { clearTimeout(hardKill); res({ stdout, stderr, listening }); });
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, error: true }); });
@@ -57,7 +57,7 @@ ok(existsSync(resolve(sandbox, ".plurnk", ".env")) && existsSync(resolve(sandbox
 void home;
 
 const boot = await bootStart({ PLURNK_DB_PATH: resolve(sandbox, "start.db") });
-ok(boot.listening === true, "`start` boots the daemon (WebSocket listening)");
+ok(boot.listening === true, "`start` boots the daemon (the AG-UI listener bound — single-listener production, #357)");
 ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the shipped embedder is active");
 // #307 — a fresh install resolves NO model: the boot line says so, the stderr pointer names the
 // three options, and nothing can phone the hosted relay without the user uncommenting it.

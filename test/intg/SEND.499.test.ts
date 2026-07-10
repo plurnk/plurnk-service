@@ -142,6 +142,7 @@ test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscr
     const db = await openMigrated();
     const daemon = new Daemon({ db });
     const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
+    if (addr === null) throw new Error("daemon.start with a port returned no address"); // port 0 = WS listener requested — null is a contract violation
     const ws = new WebSocket(`ws://${addr.host}:${addr.port}`);
     await new Promise<void>((resolve) => { ws.once("open", () => resolve()); });
 

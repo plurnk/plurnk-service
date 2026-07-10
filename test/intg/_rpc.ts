@@ -136,6 +136,7 @@ export const withDaemon = async <T>(
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
     const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
+    if (addr === null) throw new Error("daemon.start with a port returned no address"); // port 0 = WS listener requested — null is a contract violation
     try { return await fn(db, daemon, addr); }
     finally { await daemon.stop(); await db.close(); }
 };

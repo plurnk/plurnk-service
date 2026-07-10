@@ -70,7 +70,10 @@ import AuthMethod from "./methods/auth.ts";
 
 export interface DaemonOptions {
     host?: string;
-    port?: number;
+    // port: null boots the daemon WITHOUT the WS listener (#357 — production is single-listener:
+    // the AG-UI module binds the client surface via the seam). A number (0 = ephemeral) opens the
+    // WS RPC listener — the intg harness's private transport pending its seam migration.
+    port?: number | null;
 }
 
 export interface DaemonAddress {
@@ -118,6 +121,7 @@ export default class Daemon {
     #nodeModulesPath: string;
     #discoveryCwd: string;
     #wss: WebSocketServer | null = null;
+    #started = false; // start() runs once — with or without the WS listener (#357)
     #connections = new Set<ClientConnection>();
     // The emit half of the broadcast, exposed as an in-process event source (#355). A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never fans out
@@ -489,8 +493,9 @@ export default class Daemon {
         this.#moduleInits.push(init);
     }
 
-    async start({ host = "127.0.0.1", port = 3046 }: DaemonOptions = {}): Promise<DaemonAddress> {
-        if (this.#wss !== null) throw new Error("daemon already started");
+    async start({ host = "127.0.0.1", port = 3046 }: DaemonOptions = {}): Promise<DaemonAddress | null> {
+        if (this.#started) throw new Error("daemon already started");
+        this.#started = true;
 
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
         // packages; pre-warm it so first index render doesn't pay the cost.
@@ -508,6 +513,13 @@ export default class Daemon {
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
+
+        // #357 — single-listener production: no WS port requested → boot the daughter modules
+        // (they open their own transports via the seam) and run listenerless.
+        if (port === null) {
+            for (const init of this.#moduleInits) await init(this);
+            return null;
+        }
 
         return new Promise<DaemonAddress>((resolve, reject) => {
             const wss = new WebSocketServer({ host, port });
@@ -538,19 +550,22 @@ export default class Daemon {
     }
 
     async stop(): Promise<void> {
-        if (this.#wss === null) return;
+        if (!this.#started) return;
+        this.#started = false;
 
         for (const conn of this.#connections) conn.close();
         this.#connections.clear();
 
-        await new Promise<void>((resolve, reject) => {
-            this.#wss?.close((err) => {
-                if (err !== undefined) reject(err);
-                else resolve();
+        // The WS listener is optional (#357 — listenerless production boot); the drain below is not.
+        if (this.#wss !== null) {
+            await new Promise<void>((resolve, reject) => {
+                this.#wss?.close((err) => {
+                    if (err !== undefined) reject(err);
+                    else resolve();
+                });
             });
-        });
-
-        this.#wss = null;
+            this.#wss = null;
+        }
 
         // Drain order: (1) abort in-flight loops via #activeDrains so
         // strike paths don't keep going, (2) await each drain's promise

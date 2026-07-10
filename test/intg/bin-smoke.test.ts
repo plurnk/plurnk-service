@@ -2,8 +2,8 @@
 // exercise the in-tree Daemon class directly; nothing else catches rot in the
 // entrypoint (config cascade, env→arg mapping, signal handlers, the dynamic
 // provider load path, the startup-line stdout format clients may parse). This test
-// spawns the actual entry, waits for it to listen, sends one `discover` RPC, and
-// ensures clean SIGTERM shutdown.
+// spawns the actual entry, waits for the AG-UI listener (production is
+// single-listener, #357), probes it over HTTP, and ensures clean SIGTERM shutdown.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +12,6 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { WebSocket } from "ws";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -33,8 +32,7 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             HOME: dir,   // isolate the ~/.plurnk first-run bootstrap into the temp dir
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
-            PLURNK_PORT: "0",      // the AG-UI+ surface — OS picks a free port
-            PLURNK_WS_PORT: "0",   // the transitional WS listener — likewise ephemeral
+            PLURNK_PORT: "0",      // the AG-UI+ surface — THE listener; OS picks a free port
         };
         delete env.PLURNK_MODEL;
 
@@ -52,16 +50,15 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
 
         child.stdout?.on("data", (chunk: Buffer) => {
             stdoutBuf += chunk.toString("utf8");
-            const match = stdoutBuf.match(/plurnk-service ws:\/\/([^:]+):(\d+)/);
+            const match = stdoutBuf.match(/plurnk-service agui=http:\/\/([^:]+):(\d+)/);
             if (match !== null && !settled) {
                 settled = true;
                 clearTimeout(timer);
-                // The banner must report BOUND ports, not configured ones — both booted with
-                // port 0 here, so a 0 in either field means a parser downstream gets garbage.
-                const agui = stdoutBuf.match(/agui=http:\/\/[^:]+:(\d+)/);
-                if (agui === null || Number(agui[1]) === 0) {
+                // The banner must report the BOUND port, not the configured one — booted with
+                // port 0 here, so a 0 in the field means a parser downstream gets garbage.
+                if (Number(match[2]) === 0) {
                     child.kill("SIGKILL");
-                    rejectPromise(new Error(`banner agui= field missing or unbound (configured-port leak): ${stdoutBuf}`));
+                    rejectPromise(new Error(`banner agui= port unbound (configured-port leak): ${stdoutBuf}`));
                     return;
                 }
                 resolvePromise({ child, host: match[1], port: Number(match[2]), tmpdir: dir });
@@ -101,40 +98,14 @@ const stopDaemon = async (booted: BootedDaemon): Promise<{ code: number | null; 
     return result;
 };
 
-const rpcCall = (ws: WebSocket, id: number, method: string, params: unknown = {}): Promise<{ result?: unknown; error?: { message: string } }> => {
-    return new Promise((resolvePromise, rejectPromise) => {
-        const onMessage = (data: unknown): void => {
-            const parsed = JSON.parse(String(data));
-            if (parsed.id === id) {
-                ws.off("message", onMessage);
-                resolvePromise(parsed);
-            }
-        };
-        ws.on("message", onMessage);
-        ws.once("error", rejectPromise);
-        ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
-    });
-};
-
-test("bin: spawns, listens on assigned port, accepts discover RPC, exits cleanly on SIGTERM", async () => {
+test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits cleanly on SIGTERM", async () => {
     const booted = await bootDaemon();
-    let ws: WebSocket | null = null;
     try {
-        ws = await new Promise<WebSocket>((resolvePromise, rejectPromise) => {
-            const sock = new WebSocket(`ws://${booted.host}:${booted.port}`);
-            sock.once("open", () => resolvePromise(sock));
-            sock.once("error", rejectPromise);
-        });
-
-        const response = await rpcCall(ws, 1, "discover");
-        assert.ok(response.result, "discover returned a result");
-        const cat = response.result as { methods: Record<string, unknown>; notifications: Record<string, unknown> };
-        assert.ok(typeof cat.methods === "object" && cat.methods !== null, "catalog has methods");
-        assert.ok(typeof cat.notifications === "object" && cat.notifications !== null, "catalog has notifications");
-        assert.ok("session.create" in cat.methods, "session.create method registered");
-        assert.ok("telemetry/event" in cat.notifications, "telemetry/event notification registered");
+        // Any HTTP response proves the module's listener is live and serving — the route
+        // surface is the agui module's own contract, not this launcher smoke's business.
+        const res = await fetch(`http://${booted.host}:${booted.port}/`, { signal: AbortSignal.timeout(5000) });
+        assert.ok(res.status > 0, `the AG-UI listener answered HTTP (status ${res.status})`);
     } finally {
-        if (ws !== null) ws.close();
         const { code, signal } = await stopDaemon(booted);
         assert.ok(code === 0 || signal === "SIGTERM",
             `daemon exited cleanly (code=${code} signal=${signal})`);

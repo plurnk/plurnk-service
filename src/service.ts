@@ -178,10 +178,9 @@ export default class Service {
     static async #start(): Promise<void> {
         const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
         const host = Service.#requireEnv("PLURNK_HOST");
-        // PLURNK_PORT is the client surface — the AG-UI+ listener (the agui daughter module binds it
-        // at boot). The legacy WebSocket RPC rides the transitional PLURNK_WS_PORT until cutover.
+        // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui daughter module binds
+        // it at boot via the seam). Production is single-listener (#357): no daemon WS port.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
-        const wsPort = Number(Service.#requireEnv("PLURNK_WS_PORT"));
 
         const db = await Service.#openDb(dbPath);
         const alias = resolveActiveAlias();
@@ -199,7 +198,7 @@ export default class Service {
         // with PLURNK_PORT=0 the configured value is 0 and banner parsers get garbage.
         let agui: Awaited<ReturnType<typeof aguiInit>> | null = null;
         daemon.registerModule(async (seam) => { agui = await aguiInit(seam); });
-        const addr = await daemon.start({ host, port: wsPort });
+        await daemon.start({ host, port: null }); // listenerless boot — the agui module opens the one listener
         const aguiAddr = (agui as Awaited<ReturnType<typeof aguiInit>> | null)?.address() ?? { host, port };
         // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
         // self-report returns info with the unknowns explicitly null — say which case this is).
@@ -221,7 +220,7 @@ export default class Service {
             process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);
         }
         const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
-        process.stdout.write(`plurnk-service ws://${addr.host}:${addr.port} agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${aliasStr}\n`);
+        process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${aliasStr}\n`);
 
         const shutdown = async (): Promise<void> => { await daemon.stop(); await db.close(); process.exit(0); };
         process.on("SIGINT", shutdown);

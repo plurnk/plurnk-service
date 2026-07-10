@@ -29,7 +29,7 @@ CLI flags are the **1:1 mirror** of the env vars: strip `PLURNK_`, lowercase, `_
 
 ## The prefix law (who owns a flag)
 
-The prefix is the **owning package**: `PLURNK_SERVICE_*` (this daemon), `PLURNK_PROVIDERS_*`, `PLURNK_MIMETYPES_*`, `PLURNK_EXECS_*`, `PLURNK_SCHEMES_HTTP_*`, `PLURNK_AGUI_*` (the AG-UI module's own knobs), `PLURNK_CLIENT_*` (the CLI). **Bare `PLURNK_*` is reserved** for the front-door + cross-package set no single package owns: `PLURNK_MODEL[_*]`, `PLURNK_BASEURL_*`, `PLURNK_HOST`/`PLURNK_PORT`/`PLURNK_WS_PORT`/`PLURNK_WS` (the connection rendezvous), and `PLURNK_PLUGINS_TRUSTED_ONLY` (the cross-family plugin gate). Vendor keys (`OPENAI_API_KEY`, `FIREWORKS_API_KEY`…) are vendor conventions — untouched.
+The prefix is the **owning package**: `PLURNK_SERVICE_*` (this daemon), `PLURNK_PROVIDERS_*`, `PLURNK_MIMETYPES_*`, `PLURNK_EXECS_*`, `PLURNK_SCHEMES_HTTP_*`, `PLURNK_AGUI_*` (the AG-UI module's own knobs), `PLURNK_CLIENT_*` (the CLI). **Bare `PLURNK_*` is reserved** for the front-door + cross-package set no single package owns: `PLURNK_MODEL[_*]`, `PLURNK_BASEURL_*`, `PLURNK_HOST`/`PLURNK_PORT` (the connection rendezvous), and `PLURNK_PLUGINS_TRUSTED_ONLY` (the cross-family plugin gate). Vendor keys (`OPENAI_API_KEY`, `FIREWORKS_API_KEY`…) are vendor conventions — untouched.
 
 A bare flag is a signal: more than one component depends on it. A prefixed one is single-owner. When a flag is `REQUIRED`, an unset or old-named value **fails the boot loudly** naming the var — never a silent default.
 
@@ -54,7 +54,7 @@ These are relationships *between* flags. Set them as a unit.
 Each mirrors a `# --- section ---` in the floor; consult the floor for exact defaults.
 
 - **Storage** — `PLURNK_SERVICE_DB_PATH`, and the optional `PLURNK_SERVICE_SQLITE_*` passthroughs (sqlrite already sets a safe WAL posture; tune only for a hot/large DB).
-- **Daemon transport** — bare `PLURNK_HOST`/`PLURNK_PORT` (the client surface: the AG-UI+ listener, bound by the plurnk-agui module at boot); `PLURNK_WS_PORT` (transitional: the legacy WebSocket RPC, removed at cutover); bare `PLURNK_WS` is the client's dial string (the daemon ignores it).
+- **Daemon transport** — bare `PLURNK_HOST`/`PLURNK_PORT`: THE client surface (the AG-UI+ listener, bound by the plurnk-agui module at boot). Production is single-listener; every first-party client rides it.
 - **Model aliases** — bare `PLURNK_MODEL` selects the active provider; `PLURNK_MODEL_<alias>` defines one; `PLURNK_BASEURL_<alias>` overrides its endpoint. The front door — keep these bare and short.
 - **Loop control / Engine rails** — `PLURNK_SERVICE_MAX_TURNS` (−1 = uncapped), `_MAX_COMMANDS`, `_MAX_STRIKES`, `_MIN_CYCLES`, `_MAX_CYCLE_PERIOD`, `_RPC_TIMEOUT`, `_LOOP_TIMEOUT`, `_PROPOSAL_TIMEOUT_MS`, `_EXEC_WAIT_MS`, `_EXEC_KILL_GRACE_MS`, `_SESSION_RUNS_MAX_ACTIVE`. Guardrails; the shipped values are sane.
 - **Git** — `PLURNK_SERVICE_GIT_ALLOWED` (0 = hard sandbox lockout), `_GIT_AUTO`.
