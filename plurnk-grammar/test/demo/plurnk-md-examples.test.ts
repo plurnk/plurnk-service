@@ -46,7 +46,9 @@ test("plurnk.md examples block contains the expected statement count", () => {
     // (35 after adding the KILL × log:// crossover: erase all FOLD ops in the loop.)
     // (36 after adding the recursive project-relative FIND(**/notes.md) example.)
     // (37 after adding the terminal [102]<T> park example, #54.)
-    assert.equal(statements.length, 37, `expected 37 statements, got ${statements.length}`);
+    // (36 after #62: the bag's bare SEND[202] moved into the Delegation breath - the
+    // two-turn park/wake/conclude trace - which lives outside this block.)
+    assert.equal(statements.length, 36, `expected 36 statements, got ${statements.length}`);
 });
 
 test("plurnk.md examples cover every OP", () => {

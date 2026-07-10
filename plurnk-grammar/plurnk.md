@@ -19,22 +19,21 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|K
 
 ### OPs
 
-Fields are optional unless otherwise specified.
-The `(path)` is required for every operation except PLAN, EXEC, and SEND.
+A `?` marks an optional field, as in the Syntax line; unmarked fields are required.
 
-| OP   | `[signal]`    | `(path)`    | `<scope>`         | :body:             | OP   |
-|------|---------------|-------------|-------------------|--------------------|------|
-| PLAN | -             | -           | -                 | :plan, free text:  | PLAN |
-| FIND | [tags]        | (path)      | <result,result>   | :pattern:          | FIND |
-| READ | [tags]        | (path)      | <line,line>       | :pattern:          | READ |
-| EDIT | [tags]        | (path)      | <line,line>       | :literal text:     | EDIT |
-| COPY | [tags]        | (path)      | <line,line>       | :destination path: | COPY |
-| MOVE | [tags]        | (path)      | <line,line>       | :destination path: | MOVE |
-| OPEN | [tags]        | (log path)  | <result,result>   | :pattern:          | OPEN |
-| FOLD | [tags]        | (log path)  | <result,result>   | :pattern:          | FOLD |
-| EXEC | [executor]    | (path)      | <timeout, poll>   | :code:             | EXEC |
-| KILL | [signal]      | (path)      | -                 | ::                 | KILL |
-| SEND | [submit code] | (recipient) | <timeout, poll>   | :message:          | SEND |
+| OP   | `[signal]`     | `(path)`     | `<scope>`          | :body:             | OP   |
+|------|----------------|--------------|--------------------|--------------------|------|
+| PLAN | -              | -            | -                  | :plan, free text:  | PLAN |
+| FIND | [tags]?        | (path)       | <result,result>?   | :pattern:?         | FIND |
+| READ | [tags]?        | (path)       | <line,line>?       | :pattern:?         | READ |
+| EDIT | [tags]?        | (path)       | <line,line>?       | :literal text:?    | EDIT |
+| COPY | [tags]?        | (path)       | <line,line>?       | :destination path: | COPY |
+| MOVE | [tags]?        | (path)       | <line,line>?       | :destination path: | MOVE |
+| OPEN | [tags]?        | (log path)   | <result,result>?   | :pattern:?         | OPEN |
+| FOLD | [tags]?        | (log path)   | <result,result>?   | :pattern:?         | FOLD |
+| EXEC | [executor]?    | (path)?      | <timeout, poll>?   | :code:?            | EXEC |
+| KILL | [signal]?      | (path)       | -                  | ::                 | KILL |
+| SEND | [submit code]? | (recipient)? | <timeout, poll>?   | :message:          | SEND |
 
 <<PLAN:concise plan goes here:PLAN is required at the beginning of a turn.
 <<FIND(path)::FIND returns a JSON array of matches: each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
@@ -121,8 +120,18 @@ On filtering operations, the matching pattern goes in the body.
 
 ## Delegation
 
-To spawn a new WORKer run: <<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
-To COLLECT a worker's result: <<READ(run://capital-checker)::READ
+Delegation breathes across turns:
+
+<<PLAN:Delegate the capital question, then wait.:PLAN
+<<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
+<<SEND[202]:Awaiting capital-checker.:SEND
+
+The worker's answer arrives in the log and wakes the run:
+
+<<PLAN:Deliver the collected answer.:PLAN
+<<SEND[200]:The capital of France is Paris.:SEND
+
+To COLLECT a worker's result on demand: <<READ(run://capital-checker)::READ
 To FORK the current run: <<FORK(run://recheck):Re-derive the capital from a primary source:FORK
 To SEND a run a message: <<SEND(run://recheck):Also, what's the capital of Germany?:SEND
 To KILL another run: <<KILL(run://recheck)::KILL
@@ -178,7 +187,6 @@ YOU MUST submit the OPs by SENDing either a brief response or a Github-flavored 
 * <<OPEN(log:///**)<1,10>::OPEN
 * <<FOLD(log:///**)<101,200>::FOLD
 * <<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
-* <<SEND[202]:Awaiting worker capital-checker.:SEND
 * <<KILL(known:///draft.md)::KILL
 * <<KILL(obsolete/file.md)::KILL
 * <<KILL(sh:///3/1/2)::KILL
