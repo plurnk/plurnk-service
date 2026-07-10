@@ -121,5 +121,6 @@ test("[§agui-replay] the session log replays as MESSAGES_SNAPSHOT — model SEN
 test("[§agui-zero-dep] zero runtime dependencies — the standing decision, enforced", async () => {
     const { readFile } = await import("node:fs/promises");
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { dependencies?: Record<string, string> };
-    assert.deepEqual(pkg.dependencies ?? {}, {}, "runtime deps stay empty until @ag-ui/core is stable without Zod (SPEC §agui-zero-dep)");
+    const deps = Object.keys(pkg.dependencies ?? {});
+    assert.ok(deps.every((d) => d.startsWith("@plurnk/")), `only family-internal runtime deps (operator ruling 2026-07-10); found: ${deps.join(", ")} (SPEC §agui-zero-dep)`);
 });

@@ -14,7 +14,9 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
   session `<PLURNK_AGUI_SESSION_PREFIX>-<threadId>`, created on the thread's first run with
   `settings.questions` per `PLURNK_AGUI_QUESTIONS`, reattached on every run after. Plurnk's
   extended context persists across AG-UI runs because the session does.
-- **Zero runtime dependencies** {§agui-zero-dep} — the AG-UI event shapes are hand-defined
+- **Family-internal runtime deps only** {§agui-zero-dep} — `@plurnk/*` packages (the grammar,
+  for edge parsing) are welcome, exact-pinned; third-party runtime deps (e.g. `@ag-ui/core`
+  with its Zod) stay out. Event shapes remain hand-defined plain JSON.
   plain JSON (`src/types.ts`); the SSE encoding is `data: <json>\n\n`. The protocol is young;
   a zero-dep daughter beats tracking SDK churn, and adopting the official SDK later is a
   types-only swap.

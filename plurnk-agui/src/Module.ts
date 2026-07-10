@@ -14,7 +14,8 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
 import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
-import type { DaemonSeam, ClientEnvelope } from "./DaemonSeam.ts";
+import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
+import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { AguiEvent, RunAgentInput } from "./types.ts";
 
 export interface ModuleOptions {
@@ -238,6 +239,28 @@ export default class Module {
                 case "entry.read": {
                     if (typeof p.target !== "string") return { ok: false, error: "entry.read requires target" };
                     return { ok: true, result: await this.#seam.readEntry({ sessionId: env.sessionId, target: p.target, ...(typeof p.channel === "string" ? { channel: p.channel } : {}), ...(typeof p.offset === "number" ? { offset: p.offset } : {}) }) };
+                }
+                case "op.exec": {
+                    // EXEC constructed structurally (no DSL text): the model-facing shape,
+                    // proposal-gated by the engine like any client op.
+                    if (typeof p.command !== "string" || p.command.length === 0) return { ok: false, error: "op.exec requires command" };
+                    const statement = { op: "EXEC", suffix: "", signal: null, target: null, lineMarker: null, body: p.command, position: { line: 1, col: 1 } } as unknown as PlurnkStatement;
+                    return { ok: true, result: await this.#seam.dispatchAsClient({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), statement }) };
+                }
+                case "op.parse": {
+                    // Raw DSL parsed at the module's edge (the grammar is a family-internal
+                    // runtime dep, operator-approved) → each statement dispatched; parse
+                    // failures return as 400 results, mirroring the legacy op.parse.
+                    if (typeof p.text !== "string" || p.text.length === 0) return { ok: false, error: "op.parse requires text" };
+                    const parsed = PlurnkParser.parseClient(p.text);
+                    const results: Array<Record<string, unknown>> = [];
+                    const runId = await this.#seam.ensureModelRun(env.sessionId);
+                    for (const item of parsed.items) {
+                        if (item.kind === "error") { results.push({ status: 400, error: String(item.error.message ?? item.error) }); continue; }
+                        if (item.kind !== "statement") continue; // interstitial text isn't dispatchable
+                        results.push(await this.#seam.dispatchAsClient({ sessionId: env.sessionId, runId, statement: item.statement as unknown as PlurnkStatement }));
+                    }
+                    return { ok: true, result: { results } };
                 }
                 case "run.fork": return { ok: true, result: await this.#seam.forkRun({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 default: return { ok: false, error: `unknown action kind '${a.kind}' — the seam surface is the contract` };
