@@ -230,7 +230,9 @@ export default class Module {
                 case "session.list": return { ok: true, result: { sessions: await this.#seam.listSessions() } };
                 case "session.runs": return { ok: true, result: { runs: await this.#seam.listRuns(typeof p.id === "number" ? p.id : env.sessionId) } };
                 case "log.read": {
-                    const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}) });
+                    // Default run: the conversation (model run); p.runId pins another.
+                    const readRun = typeof p.runId === "number" ? p.runId : await this.#seam.ensureModelRun(env.sessionId);
+                    const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: readRun, ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}), ...(typeof p.loopId === "number" ? { loopId: p.loopId } : {}), ...(typeof p.turnId === "number" ? { turnId: p.turnId } : {}), ...(typeof p.loopSeq === "number" ? { loopSeq: p.loopSeq } : {}), ...(typeof p.turnSeq === "number" ? { turnSeq: p.turnSeq } : {}), ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}) });
                     return { ok: true, result: { entries } };
                 }
                 case "loop.inject": {
