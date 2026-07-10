@@ -509,6 +509,12 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 { timeoutMs: 8000 },
             );
             assert.equal((terminals[0].params as { finalStatus?: number }).finalStatus, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
+
+            // The marquee first-turn feature holds on the seam path: runLoop materialized the
+            // teaching docs BEFORE the loop, so the turn-1 FIND(plurnk://docs/**) foist finds them.
+            // (The gap that shipped: agui-driven sessions started docless and the foist reported 0.)
+            const docs = await (db.test_entries_by_scheme_prefix as PrepMethod).all<{ pathname: string }>({ session_id: created.id, scheme: "plurnk", prefix: "/docs/%" });
+            assert.ok(docs.length > 0, "runLoop materialized plurnk://docs/*.md — the discovery foist has something to find");
         } finally { ws.close(); }
     });
 });

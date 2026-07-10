@@ -23,6 +23,7 @@ import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
+import DispatchAsPlurnk from "./methods/_dispatchAsPlurnk.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import type { Executor, RegistryEntry } from "../core/ExecutorRegistry.ts";
@@ -263,6 +264,16 @@ export default class Daemon {
     async runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         if (this.#provider === null) throw new Error("runLoop: no provider configured");
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+        // The teaching docs (#270) materialize at plurnk://docs/<name>.md BEFORE the loop starts, so
+        // the turn-1 FIND(plurnk://docs/**) discovery foist finds them — the marquee first-turn
+        // feature. Core's teaching, so it rides the seam path; loop_run does the same on the legacy
+        // route. Missing here, every agui-driven session started docless and the foist reported 0.
+        const docStmts: PlurnkStatement[] = (await this.#engine.docEntries(args.sessionId)).map(({ name, content }) => ({
+            op: "EDIT", suffix: "", signal: null,
+            target: { kind: "url", raw: `plurnk://docs/${name}.md`, scheme: "plurnk", username: null, password: null, hostname: "docs", port: null, pathname: `/${name}.md`, params: {}, fragment: null },
+            lineMarker: null, body: content, position: { line: 1, column: 1 },
+        } as PlurnkStatement));
+        await DispatchAsPlurnk.dispatch(this.#engine, this.#db, args.sessionId, docStmts);
         const { action, loopId, turnSeq } = await this.inject({ ...args, provider: this.#provider, systemPrompt });
         return { action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
     }
