@@ -382,7 +382,9 @@ export default class Digest {
                 ...(last.assistant.length > 0 ? [{ role: "assistant" as const, content: last.assistant }] : []),
                 { role: "user", content: REQUIEM_PROMPT },
             ];
-            const resp = await provider.generate({ messages, runId: String(run.id), maxTokens: 4096, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
+            // Generous budget: a thinking model spends the reasoning channel BEFORE emitting content;
+            // 4096 total left content empty (finish=length) on ~40% of a real sweep. Headroom for both.
+            const resp = await provider.generate({ messages, runId: String(run.id), maxTokens: 16384, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
             out.push(`## Run #${run.id} — ${run.name}`, "", `_(${resp.assistant.finishReason ?? "?"}, ${resp.assistant.usage.completion} tok)_`, "", resp.assistant.content.trim() || "(no testimony)", "");
         }
 
