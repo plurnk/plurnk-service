@@ -456,11 +456,12 @@ export default class AstBuilder {
         // A leading `#` dispatches a path-name regex (`#pattern#flags`) — an
         // addressing pattern over paths, not a single address. `#` is collision-
         // free here: scheme paths never lead with it, and `#channel` is a postfix.
-        // Try-then-fall-back-to-local mirrors the matcher dispatch: a malformed
-        // `#…` (no closing `#`, bad flags) is just a local path that starts with `#`.
+        // Unlike the matcher dispatch (which THROWS on a malformed claim, #59), a
+        // malformed `#…` target falls back to a local path - a file may legitimately
+        // be named `#…`, so the fallback has a real referent here.
         if (raw.startsWith("#")) {
             const regex = AstBuilder.#tryParseRegex(raw);
-            if (regex !== null) return { kind: "regex", raw, ...regex };
+            if (regex.ok) return { kind: "regex", raw, pattern: regex.pattern, flags: regex.flags };
         }
         if (!AstBuilder.#SCHEME_PATTERN.test(raw)) {
             return { kind: "local", raw };
@@ -548,46 +549,67 @@ export default class AstBuilder {
         return params;
     }
 
-    // Matcher dispatch: try the prefix-indicated dialect; if it doesn't parse cleanly,
-    // fall through to glob. Same robustness principle for every prefix — dispatch is a
-    // hint, not a gate. Lets literal `//`-comments, `#…`-strings, and `$`-prefixed
-    // shell-ish text reach the model as glob matches instead of hard-erroring.
-    // Regex is `#pattern#flags` (`#` chosen over `/` so it never collides with path
-    // `/` or regex's own `|` alternation). Semantic (`~`) and graph (`@`) have no
-    // parse step — any text is a valid query — so they dispatch directly.
+    // Matcher dispatch: the leading prefix CLAIMS its dialect - the canon table's
+    // contract (`#` regex, `//` xpath, `$` jsonpath, `~` semantic, `@` graph, none
+    // glob). A claimed body that fails its dialect's parse is a positioned visitor
+    // ERROR, never a silent glob fallback: the fallback converted a syntax fumble
+    // into a lying 204 no-matches (#59 - four burned matcher turns and a confidently
+    // wrong "no occurrences exist" about a file with two matches). Semantic and graph
+    // have no parse step - any text is a valid query - so every prefix now claims
+    // unconditionally. Regex is `#pattern#flags` (`#` chosen over `/` so it never
+    // collides with path `/` or regex's own `|` alternation).
     static #parseMatcherBody(body: string, pos: Position): MatcherBody {
         if (body.startsWith("//")) {
-            try { xpath.parse(body); return { dialect: "xpath", raw: body }; }
-            catch { /* fall through to glob */ }
-        } else if (body.startsWith("#")) {
-            const regex = AstBuilder.#tryParseRegex(body);
-            if (regex !== null) return { dialect: "regex", raw: body, ...regex };
-        } else if (body.startsWith("$")) {
-            try { JSONPath({ path: body, json: {} }); return { dialect: "jsonpath", raw: body }; }
-            catch { /* fall through to glob */ }
-        } else if (body.startsWith("~")) {
-            return { dialect: "semantic", raw: body };
-        } else if (body.startsWith("@")) {
-            return { dialect: "graph", raw: body };
+            try { xpath.parse(body); }
+            catch (e) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor",
+                    `pattern leads with \`//\` but is not a valid xpath selector - ${AstBuilder.#detail(e)}`);
+            }
+            return { dialect: "xpath", raw: body };
         }
+        if (body.startsWith("#")) {
+            const regex = AstBuilder.#tryParseRegex(body);
+            if (regex.ok) return { dialect: "regex", raw: body, pattern: regex.pattern, flags: regex.flags };
+            throw new PlurnkParseError(pos.line, pos.column, "visitor",
+                regex.reason === "unclosed"
+                    ? "pattern leads with `#` but never closes the `#pattern#flags` fence - add the closing `#`"
+                    : `pattern leads with \`#\` but is not a valid \`#pattern#flags\` regex - ${regex.detail}`);
+        }
+        if (body.startsWith("$")) {
+            try { JSONPath({ path: body, json: {} }); }
+            catch (e) {
+                throw new PlurnkParseError(pos.line, pos.column, "visitor",
+                    `pattern leads with \`$\` but is not a valid jsonpath - ${AstBuilder.#detail(e)}`);
+            }
+            return { dialect: "jsonpath", raw: body };
+        }
+        if (body.startsWith("~")) return { dialect: "semantic", raw: body };
+        if (body.startsWith("@")) return { dialect: "graph", raw: body };
         return { dialect: "glob", raw: body };
     }
 
+    static #detail(e: unknown): string {
+        return e instanceof Error ? e.message : String(e);
+    }
+
     // Splits a `#pattern#flags` literal. Assumes raw[0] is the opening `#`. `\#`
-    // escapes a literal hash inside the pattern. Returns null on no closing `#` or
-    // an invalid pattern/flags pair, so callers can fall back (glob / local path).
-    static #tryParseRegex(raw: string): { pattern: string; flags: string } | null {
+    // escapes a literal hash inside the pattern. Discriminated result: the MATCHER
+    // caller throws the precise malformation (#59); the TARGET caller falls back to
+    // a local path (a file may legitimately be named `#…`; a matcher pattern may not).
+    static #tryParseRegex(raw: string):
+        { ok: true; pattern: string; flags: string } | { ok: false; reason: "unclosed" } | { ok: false; reason: "invalid"; detail: string } {
         let i = 1;
         while (i < raw.length) {
             if (raw[i] === "\\") { i += 2; continue; }
             if (raw[i] === "#") break;
             i++;
         }
-        if (i >= raw.length) return null;
+        if (i >= raw.length) return { ok: false, reason: "unclosed" };
         const pattern = raw.slice(1, i);
         const flags = raw.slice(i + 1);
-        try { new RegExp(pattern, flags); } catch { return null; }
-        return { pattern, flags };
+        try { new RegExp(pattern, flags); }
+        catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e) }; }
+        return { ok: true, pattern, flags };
     }
 
     static #parseSendBody(raw: string): SendBody {

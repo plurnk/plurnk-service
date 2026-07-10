@@ -445,21 +445,45 @@ test("valid regex body accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
-test("regex body missing closing hash falls back to glob, not error", () => {
+test("#59: a `#`-leading body that never closes the fence is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<FIND(log://x):#unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
-    const stmt = result.items.find((i) => i.kind === "statement");
-    if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
-    assert.equal(stmt.statement.body?.dialect, "glob");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /never closes the `#pattern#flags` fence - add the closing `#`/);
+    assert.equal(errors[0]!.error.source, "visitor");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
 
-test("invalid regex pattern (unterminated character class) falls back to glob, not error", () => {
+test("#59: invalid regex pattern (unterminated character class) is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<FIND(log://x):#[abc#:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /is not a valid `#pattern#flags` regex/);
+});
+
+test("#59: the live specimen — `#hello#i:` (stray fence colon in flags) errors with the library detail", () => {
+    // gemma's actual emission: a lying 204 told it "no matches" about a file with two;
+    // it burned four matcher turns and delivered a confidently wrong conclusion.
+    const result = PlurnkParser.parseStatements("<<READ(f.txt):#hello#i::READ");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /is not a valid `#pattern#flags` regex - Invalid flags/);
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
+});
+
+test("#59: the claim is per-statement — sibling statements still build around the errored matcher", () => {
+    const result = PlurnkParser.parseStatements("<<READ(a.txt):#ok#i:READ\n<<READ(f.txt):#bad#i::READ\n<<KILL(log:///1/2/3)::KILL");
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 1);
+});
+
+test("#59 residual: specimen 2 (`:<1,-1>:#hello#i:`) leads with `:`, claims nothing, stays a glob", () => {
+    // A line-marker bled into the body is a DIFFERENT fumble - no prefix claim fires.
+    // Documented residual: we claim declared intent, we don't heuristic every fumble.
+    const result = PlurnkParser.parseStatements("<<READ(f.txt)::<1,-1>:#hello#i::READ");
     const stmt = result.items.find((i) => i.kind === "statement");
-    if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
+    assert.ok(stmt && stmt.kind === "statement");
+    if (stmt.kind !== "statement" || stmt.statement.op !== "READ") return;
     assert.equal(stmt.statement.body?.dialect, "glob");
 });
 
@@ -484,24 +508,18 @@ test("valid xpath body with complex predicate accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-test("invalid xpath body (unterminated predicate) falls back to glob, not error", () => {
+test("#59: invalid xpath body (unterminated predicate) is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<FIND(doc.xml)://book[unterminated:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
-    const stmt = result.items.find((i) => i.kind === "statement");
-    assert.ok(stmt && stmt.kind === "statement");
-    if (stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
-    assert.equal(stmt.statement.body?.dialect, "glob");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /leads with `\/\/` but is not a valid xpath selector/);
 });
 
-test("invalid xpath body (stray operators) falls back to glob, not error", () => {
+test("#59: `//`-leading glob-intent body (stray operators) errors — the prefix claims xpath", () => {
     const result = PlurnkParser.parseStatements("<<FIND(doc.xml)://**/foo{bar}:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
-    const stmt = result.items.find((i) => i.kind === "statement");
-    assert.ok(stmt && stmt.kind === "statement");
-    if (stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
-    assert.equal(stmt.statement.body?.dialect, "glob");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /is not a valid xpath selector/);
 });
 
 test("valid jsonpath body ($.greeting) accepted", () => {
@@ -515,13 +533,11 @@ test("valid jsonpath body with descendant and wildcard accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
-test("invalid jsonpath body (unclosed paren) falls back to glob, not error", () => {
+test("#59: invalid jsonpath body (unclosed paren) is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<READ(books.json):$[(:READ");
     const errors = result.items.filter((i) => i.kind === "error");
-    assert.equal(errors.length, 0, "disambiguation should fall back, not error");
-    const stmt = result.items.find((i) => i.kind === "statement");
-    if (!stmt || stmt.kind !== "statement" || stmt.statement.op !== "READ") return;
-    assert.equal(stmt.statement.body?.dialect, "glob");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /leads with `\$` but is not a valid jsonpath/);
 });
 
 
@@ -924,24 +940,21 @@ test("MatcherBody: graph neighborhood query (@symbol) dispatches graph", () => {
     assert.equal(b.raw, "@createCoder");
 });
 
-test("MatcherBody: //-prefix code comment falls back to glob (xpath disambiguation)", () => {
+test("#59: a `//`-leading literal (code comment) errors — the prefix claims xpath, steer toward `#regex#`", () => {
+    // The old fallback quietly glob'd this; under claiming, searching for literal
+    // comment text gets a one-turn steer (write `#// TODO#` regex) instead of a
+    // silent misclassification.
     const result = PlurnkParser.parseStatements("<<READ(src/app.js):// TODO: add error handling:READ");
-    const item = result.items[0];
-    assert.equal(item.kind, "statement");
-    if (item.kind !== "statement" || item.statement.op !== "READ") return;
-    const b = item.statement.body;
-    assert.ok(b);
-    assert.equal(b.dialect, "glob");
-    assert.equal(b.raw, "// TODO: add error handling");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /leads with `\/\/` but is not a valid xpath selector/);
 });
 
-test("MatcherBody: //-prefix string with non-xpath syntax falls back to glob", () => {
+test("#59: a `//`-leading string with non-xpath syntax errors under the claim", () => {
     const result = PlurnkParser.parseStatements("<<READ(file.txt):// foo {bar}:READ");
-    const item = result.items[0];
-    if (item.kind !== "statement" || item.statement.op !== "READ") return;
-    const b = item.statement.body;
-    assert.ok(b);
-    assert.equal(b.dialect, "glob");
+    const errors = result.items.filter((i) => i.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]!.error.message, /is not a valid xpath selector/);
 });
 
 test("MatcherBody: valid xpath still dispatches xpath even after disambiguation", () => {
