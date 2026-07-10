@@ -28,6 +28,7 @@ const mockSeam = () => {
         attachSession: async () => { throw new Error("unexpected attach"); },
         listSessions: async () => [],
         listRuns: async () => [{ id: 10, name: "client-1" }],
+        ensureModelRun: async () => 20,
         listPrompts: async () => ["hi"],
         renameSession: async (_id, name) => ({ id: 3, name }),
         constrain: async (_id, effect, glob) => ({ effect, glob }),

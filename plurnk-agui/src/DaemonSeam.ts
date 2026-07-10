@@ -46,8 +46,11 @@ export interface DaemonSeam {
     // Hook A-resolve — feed the human's decision. The gate/validation/applyResolution
     // stay core; this is only the resolve. Throws for an unknown/already-resolved id.
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void;
-    // Loop-control — drive/steer a loop. Returns immediately; the outcome arrives on the
-    // event source (loop/terminated). The provider + law-file prompt stay core.
+    // Run-split (service SPEC, machine-processes): loops live in the session's MODEL run, never the
+    // client run (connection scratch). Resolve it here — created on first use.
+    ensureModelRun(sessionId: number): Promise<number>;
+    // Loop-control — drive/steer a loop on the MODEL run (runLoop refuses a client-origin
+    // run loudly). Returns immediately; the outcome arrives on the event source.
     runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
     // Loop-control — cancel a run's active drain. Returns whether a drain was cancelled.
     cancelDrain(runId: number, reason?: string): boolean;

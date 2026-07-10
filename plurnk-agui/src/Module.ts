@@ -118,7 +118,10 @@ export default class Module {
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
         const sessionId = env.sessionId;
-        const runId = env.runId; // the DRIVE run (client envelope); the model run binds the render below
+        // Run-split (service SPEC, machine-processes): loops drive in the session's MODEL run — the
+        // client run is connection scratch. ensureModelRun creates it on first use, so
+        // it also BINDS the render (no lazy first-row adoption needed).
+        const runId = await this.#seam.ensureModelRun(sessionId);
 
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
@@ -143,7 +146,7 @@ export default class Module {
             }
         };
 
-        this.#portal.openThread({ sessionId, runId, threadId: input.threadId, emit, modelRunId: env.modelRunId });
+        this.#portal.openThread({ sessionId, runId, threadId: input.threadId, emit, modelRunId: runId });
         emit([
             { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
             stateSnapshot({ providers: this.#seam.listProviders().aliases, session: { id: sessionId, name: env.sessionName, projectRoot: env.projectRoot } }),
@@ -171,7 +174,7 @@ export default class Module {
         if (lastUser?.content === undefined || lastUser.content.length === 0) throw new Error("RunAgentInput.messages must carry a user message or a tool result");
 
         if (reattached) {
-            const history = await this.#seam.readLog({ sessionId, runId: env.modelRunId ?? runId, limit: 1000 }).catch(() => null);
+            const history = await this.#seam.readLog({ sessionId, runId, limit: 1000 }).catch(() => null);
             if (history !== null) emit([...this.#threadRouterReplay(sessionId, history)]);
         }
         await this.#portal.run({
@@ -203,12 +206,12 @@ export default class Module {
                 case "session.list": return { ok: true, result: { sessions: await this.#seam.listSessions() } };
                 case "session.runs": return { ok: true, result: { runs: await this.#seam.listRuns(env.sessionId) } };
                 case "log.read": {
-                    const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: env.modelRunId ?? env.runId, ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}) });
+                    const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}) });
                     return { ok: true, result: { entries } };
                 }
                 case "loop.inject": {
                     if (typeof p.prompt !== "string" || p.prompt.length === 0) return { ok: false, error: "loop.inject requires prompt" };
-                    const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: env.runId, prompt: p.prompt });
+                    const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), prompt: p.prompt });
                     return { ok: true, result: ack };
                 }
                 case "session.create": {
@@ -236,7 +239,7 @@ export default class Module {
                     if (typeof p.target !== "string") return { ok: false, error: "entry.read requires target" };
                     return { ok: true, result: await this.#seam.readEntry({ sessionId: env.sessionId, target: p.target, ...(typeof p.channel === "string" ? { channel: p.channel } : {}), ...(typeof p.offset === "number" ? { offset: p.offset } : {}) }) };
                 }
-                case "run.fork": return { ok: true, result: await this.#seam.forkRun({ sessionId: env.sessionId, runId: env.modelRunId ?? env.runId, ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
+                case "run.fork": return { ok: true, result: await this.#seam.forkRun({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 default: return { ok: false, error: `unknown action kind '${a.kind}' — the seam surface is the contract` };
             }
         } catch (err) {
