@@ -228,7 +228,7 @@ export default class Module {
                 case "ping": return { ok: true, result: {} };
                 case "providers.list": return { ok: true, result: this.#seam.listProviders() };
                 case "session.list": return { ok: true, result: { sessions: await this.#seam.listSessions() } };
-                case "session.runs": return { ok: true, result: { runs: await this.#seam.listRuns(env.sessionId) } };
+                case "session.runs": return { ok: true, result: { runs: await this.#seam.listRuns(typeof p.id === "number" ? p.id : env.sessionId) } };
                 case "log.read": {
                     const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}) });
                     return { ok: true, result: { entries } };
