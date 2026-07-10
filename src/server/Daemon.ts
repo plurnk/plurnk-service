@@ -309,6 +309,17 @@ export default class Daemon {
         return result as { status: number; [key: string]: unknown };
     }
 
+    // op.look (#283/#358) — the pure READ-projection query on the seam: resolve a READ through the
+    // full scheme resolver and return its content, writing NO log row — the client's off-run
+    // inspection primitive (the module rewrites LOOK→READ and parses at its edge, exactly like
+    // dispatchAsClient). Rides the client loop so log:/// coordinates resolve run-relative;
+    // invisible to the model. Engine.look enforces READ-only.
+    async look(args: { sessionId: number; runId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+        const { sessionId, runId, statement } = args;
+        const clientLoopId = await Envelope.ensureClientLoop(this.#db, runId);
+        return await this.#engine.look({ statement, sessionId, runId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
+    }
+
     // The log-read hook (#355) — a session's journal, the module's primary render input. The run is
     // ownership-verified against the session (a session reads only its own runs — the model run included,
     // #214); entries filter by loop/turn/since-id or the full L/T/S display coordinate. Core owns the
@@ -1326,7 +1337,7 @@ export type CoreSeam = Pick<Daemon,
     | "subscribeToEvents"
     | "pendingProposals" | "resolveProposal"
     | "runLoop" | "cancelDrain" | "dispatchAsClient" | "ensureModelRun"
-    | "readLog" | "readEntry"
+    | "readLog" | "readEntry" | "look"
     | "listProviders" | "listSessions" | "listRuns" | "listPrompts" | "listMembers" | "listConstraints"
     | "createSession" | "attachSession" | "setProjectRoot" | "renameSession" | "constrain" | "unconstrain"
     | "forkRun"
