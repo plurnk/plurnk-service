@@ -40,7 +40,10 @@ test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked 
 
 test("[§run-lifecycle-child-wake] a child FAILING (499) also wakes the parent — any conclusion is a wake edge", async () => {
     // A child that abandons (SEND[499]) is still "done"; the parent must wake, not wait forever.
-    const mock = new Mock({ contextSize: 8192, responses: [
+    // 16384: the parent's woken turn carries the whole child history + collect delta, cresting at the
+    // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
+    // budget-edge class as the grammar 0.76.4 bumps above). Headroom for the wake, not a budget probe.
+    const mock = new Mock({ contextSize: 16384, responses: [
         makeMockResponse("<<WORK(run://flaky):try the risky thing:WORK\n<<SEND[102]<-1>:waiting on flaky:SEND", 10),
         makeMockResponse("<<SEND[499]:flaky gave up:SEND", 10),
         makeMockResponse("<<SEND[200]:flaky is done (failed); concluding:SEND", 10),
