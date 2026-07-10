@@ -37,7 +37,7 @@ The `(path)` is required for every operation except PLAN, EXEC, and SEND.
 | SEND | [submit code] | (recipient) | <timeout, poll>   | :message:          | SEND |
 
 <<PLAN:concise plan goes here:PLAN is required at the beginning of a turn.
-<<FIND(path)::FIND returns rows of matching results
+<<FIND(path)::FIND returns a JSON array of matches: each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
 <<READ(path)::READ returns lines of matching content. Every line is prefixed with the line number and a hard tab, `N:	`.
 <<EDIT(path):literal text:EDIT is only for creating or modifying files and entries. Do not attempt to edit log items.
 <<EDIT(path):literal text:EDIT replaces the selected line(s) `<line,line>` with literal body content, never with patterns.
