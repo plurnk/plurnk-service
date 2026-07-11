@@ -38,6 +38,37 @@ _(Migrated from PROJECT.md, 2026-06-27 — the project reorg is reverted; the wo
 
 # Scratch
 
+## Current checklist (2026-07-11 — post-churn; audit firsthand before treating any [ ] as open)
+
+**Un-cut work on main** (published = 0.86.1; digits-are-free: next cut is 0.86.2):
+- be8a77c #367 core share (ask-mode 403 steer + capability-sheet mode filter)
+- 9e2454a #378 ask-mode read-only regression fix ({§mode-ask-read-only} anchored + guarded)
+- 92c31ad #376 seam readLog pin
+- 1352b52 #370 render parity batch
+- ff4c766 #366 createConversationRun (client integrates threadId ↔ runName)
+- 042e24c #377 unpollable-window refusal ({§tokenomics-window-unpollable-deliberate}) (NOTE: render-facing — the 0.86.2 cut drill should eyeball a digest for the new one-form addresses + COPY spans, per packet-analysis-is-the-real-gate)
+
+**Follow-up forensics (next session):**
+- [ ] **topo two-stage pipeline stall** — 0.86.2 drill chunk-2 red at 811s (a STALL-to-timeout, not the usual ~150s contention fail). Corpse kept in test/intg/.tmp (session demo-topo/pipeline-*, ~07:4x window 2026-07-11). Digest before dismissing as the heavy-topo variance class.
+- [ ] **retrieval-steer rewording live-check** — 89ab959 changed the retrieval-only 409 text (owner wording); watch the memory story + self-audit in the next drill for the park-instead-of-answer shape.
+
+**Next up (warmest, unblocked):**
+- [x] **#376** — seam exonerated by repro + pinned (readlog-run-filter.test.ts, 92c31ad); live specimen isolates to the client's module process or version drift — returned to her with an isolation step. Open, hers.
+- [x] **#370** — shipped (1352b52): items 1-4 (run:// one form, catalog-relative file renders, COPY/MOVE span parity, idle-409 remedy). Item 5 DROPPED — collided with anchored §tokenomics-over-budget-floor; was an uncritical model-complaint adoption.
+- [x] **#366** — shipped (ff4c766): createConversationRun on the seam; three doors complete (ensure/fork/create).
+
+**Deliberately parked (do NOT start amid churn — owner ruling 2026-07-11):**
+- [ ] **SPEC anchor sweep** — the #378 class generalized: contract-bearing SPEC prose with no {§} anchor gets no guard test and rots silently (line 65 did). Sweep SPEC for un-anchored settled decisions; anchor + [§]-guard each. SERIOUS HOUSEKEEPING — scope with the owner first, not churn-adjacent.
+- [ ] **#364 phase 2** — WS physical deletion (MethodRegistry/methods/ClientConnection/ws dep). Gated on the post-WS disposition of the auth relay (#306), the RPC-deadline knob, and mcp_install. Design decision first.
+
+**Watching (theirs, not mine):**
+- [x] **#377** — shipped (042e24c), service half of the boot check; providers 0.38.0 carries their half. providers#43 remains theirs for the broader envelope validation.
+- [ ] **agui#3** — SSE dies at Node's default 300s requestTimeout (root of #372). #372 stays open until her ship + bench re-verifies.
+- [ ] **grammar#63 residue** — WORK/FORK param-table rows shipped in 0.76.6; EDIT omitted-scope doc still theirs.
+- [ ] **execs-common#2 §3** — steered to "skip §3, ship the sh.md fix" (done in 0.2.22); their close.
+
+**Standing session lessons now in memory** (adopt-the-lattice-front, digits-are-free, check-before-asserting-state, check-prior-art-and-ownership-before-building, spec-before-code) — read MEMORY.md, don't re-learn.
+
 Untracked dev scratchpad — the owner's stakeholder space and plurnk-service's dev-management. AGENTS.md
 is **policy** now (it foists into the model's packet); this file holds everything that is NOT policy:
 the live TODO + open epics, the owner's note inbox, and the toolchain/working-hygiene orientation.
