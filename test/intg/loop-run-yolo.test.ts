@@ -195,26 +195,3 @@ test("loop.run rejects non-object flags", async () => {
         } finally { ws.close(); }
     });
 });
-
-test("discover catalog advertises loop.run.flags param", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "discover");
-            const cat = response.result as { methods: Record<string, { params: Record<string, string> }> };
-            assert.ok(cat.methods["loop.run"].params.flags !== undefined);
-            assert.match(cat.methods["loop.run"].params.flags, /yolo/);
-        } finally { ws.close(); }
-    });
-});
-
-test("discover catalog advertises loop/proposal.flags param", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "discover");
-            const cat = response.result as { notifications: Record<string, { params: Record<string, string> }> };
-            assert.ok(cat.notifications["loop/proposal"].params.flags !== undefined);
-        } finally { ws.close(); }
-    });
-});

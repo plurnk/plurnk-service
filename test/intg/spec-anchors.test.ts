@@ -13,7 +13,7 @@
 //   In tests:    `test("[§<tag>] <description>", ...)`.
 //
 // Tags are terse, kebab-cased, section-independent: the prefix names the section
-// (`§discovery`), the postfix the promise (`§discovery-discover`). No digits —
+// (`§transport`), the postfix the promise (`§op-look`). No digits —
 // renumbering SPEC never orphans a citation; the tag travels with the promise.
 
 import test from "node:test";

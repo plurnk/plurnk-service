@@ -21,6 +21,7 @@ import ClientConnection from "./ClientConnection.ts";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
+import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import ClientTurn from "./clientTurn.ts";
 import LoopDocs from "./loopDocs.ts";
@@ -266,6 +267,7 @@ export default class Daemon {
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
     async runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+        ClientInput.validateLoopFlags("loop.run", args.flags); // seam fail-hard (#364) — a truthy string must never flip YOLO
         if (this.#provider === null) throw new Error("runLoop: no provider configured");
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // §machine-processes — the model NEVER runs in a client-origin run (its packets would carry
@@ -336,7 +338,7 @@ export default class Daemon {
         const { sessionId, runId } = args;
         const target = await (this.#db.envelope_get_run_by_id as PrepMethod).get<{ session_id: number }>({ id: runId });
         if (target === undefined) throw new Error(`run ${runId} not found`);
-        if (target.session_id !== sessionId) throw new Error(`run ${runId} is not in session ${sessionId}`);
+        if (target.session_id !== sessionId) throw new Error(`run ${runId} is not in this session (${sessionId})`);
         const rows = await (this.#db.log_read_recent_ids as PrepMethod).all<{ id: number }>({
             run_id: runId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null,
@@ -378,9 +380,14 @@ export default class Daemon {
     // array, roots absolute); core owns the envelope, its reserved-name + name-uniqueness invariants,
     // membership resolution, warmSessionDerivations, and the session/created emit. No connection state
     // (which client is on which session) lives here — that's the module's.
-    async createSession(args: { name?: string; projectRoot?: string | null; settings?: string; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope> {
-        const envelope = await Envelope.createClientEnvelope(this.#db, { name: args.name, projectRoot: args.projectRoot ?? null, settings: args.settings });
-        const constraints = args.constraints ?? [];
+    async createSession(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope> {
+        // The SEAM fail-hards on malformed client input (#364 — validation flushed out of the
+        // retired WS handlers so every module inherits it): settings bag (#231/#232/#249/#328),
+        // constraints (#200), absolute projectRoot.
+        const projectRoot = ClientInput.assertProjectRoot("session.create", args.projectRoot);
+        const settings = ClientInput.parseSettings(args.settings);
+        const constraints = ClientInput.parseConstraints(args.constraints);
+        const envelope = await Envelope.createClientEnvelope(this.#db, { name: args.name, projectRoot, settings });
         for (const { effect, glob } of constraints) {
             await (this.#db.crud_insert_session_constraint as PrepMethod).run({ session_id: envelope.sessionId, effect, glob });
         }
@@ -398,6 +405,7 @@ export default class Daemon {
     }
 
     setProjectRoot(sessionId: number, projectRoot: string | null) {
+        projectRoot = ClientInput.assertProjectRoot("session.set_root", projectRoot);
         return Envelope.updateSessionProjectRoot(this.#db, sessionId, projectRoot);
     }
 
@@ -408,12 +416,14 @@ export default class Daemon {
     }
 
     async constrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
+        ClientInput.assertConstraint("session.constrain", effect, glob);
         await (this.#db.crud_insert_session_constraint as PrepMethod).run({ session_id: sessionId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, sessionId, undefined);
         return { effect, glob };
     }
 
     async unconstrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
+        ClientInput.assertConstraint("session.unconstrain", effect, glob);
         await (this.#db.crud_delete_session_constraint as PrepMethod).run({ session_id: sessionId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, sessionId, undefined);
         return { effect, glob };
@@ -448,6 +458,7 @@ export default class Daemon {
     // session's model run) from its own connection state and passes the concrete runId; the seam owns the
     // ownership check and the run-name namespace + uniqueness invariants (names are immutable — no rename).
     async forkRun(args: { sessionId: number; runId: number; name?: string }): Promise<{ runId: number; runName: string | null; parentRunId: number }> {
+        if (args.name !== undefined && (typeof args.name !== "string" || args.name.length === 0)) throw new Error("run.fork: name must be a non-empty string"); // seam fail-hard (#364)
         const { sessionId, runId, name } = args;
         const owner = await (this.#db.envelope_get_run_by_id as PrepMethod).get<{ session_id: number }>({ id: runId });
         if (owner === undefined) throw new Error(`forkRun: run ${runId} not found`);
@@ -576,6 +587,10 @@ export default class Daemon {
         // streams (background execs) linked to them, so idle() doesn't block on
         // a long-running command. Covers runs whose drain already exited but
         // whose exec is still in flight.
+        // Settle the stopped world FIRST: a drain paused at a pending proposal awaits a resolution
+        // that will never arrive once clients are gone — allSettled(drains) below would deadlock
+        // the stop forever (a daemon with a pending HITL proposal could not shut down).
+        this.#engine.cancelAllProposals("daemon_stopping");
         for (const scope of this.#runAborts.values()) { if (!scope.signal.aborted) scope.abort("daemon_stopping"); }
         for (const t of this.#pollTimers.values()) clearTimeout(t); // drop pending hibernation poll-wakes
         this.#pollTimers.clear();

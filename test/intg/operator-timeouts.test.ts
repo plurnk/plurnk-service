@@ -61,7 +61,7 @@ test("[§operator-config-rpc-timeout] a longRunning handler outlives the deadlin
     try {
         const registry = new MethodRegistry();
         registry.registerMethod("test.slow", {
-            longRunning: true, // the proposal-pause exemption — §method-registration-register
+            longRunning: true, // the proposal-pause exemption — the retired registration contract
             handler: async () => { await delay(80); return { ok: true }; },
             description: "slow but exempt",
         });

@@ -5,18 +5,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
-
-test("daemon registers telemetry/event in discover catalog", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const r = await rpcCall(ws, 1, "discover");
-            const cat = r.result as { notifications: Record<string, { description?: string }> };
-            assert.ok(cat.notifications["telemetry/event"] !== undefined);
-        } finally { ws.close(); }
-    });
-});
-
 test("[§notifications-telemetry-event] notifyTelemetryEvent broadcasts to clients attached to the loop's session", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);

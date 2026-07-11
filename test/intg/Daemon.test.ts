@@ -33,69 +33,13 @@ interface RpcResponse {
     error?: { code: number; message: string; data?: unknown };
 }
 
-test("Daemon: start binds to ephemeral port and reports the address", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        assert.equal(addr.host, "127.0.0.1");
-        assert.ok(addr.port > 0);
+test("Daemon: listenerless boot — the seam is live with no socket bound (#364)", async () => {
+    await withDaemon(null, async (_db, daemon, _addr) => {
+        // No port, no listener — the seam itself is the surface. A basic seam read proves boot.
+        const sessions = await daemon.listSessions();
+        assert.ok(Array.isArray(sessions), "the seam answers");
     });
 });
-
-test("Daemon: ping returns empty result without requiring init", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "ping");
-            assert.deepEqual(response.result, {});
-            assert.equal(response.error, undefined);
-        } finally { ws.close(); }
-    });
-});
-
-test("[§discovery-discover] Daemon: discover returns catalog", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "discover");
-            const cat = response.result as { protocolVersion: string; methods: Record<string, unknown>; notifications: Record<string, unknown> };
-            assert.equal(cat.protocolVersion, "0.1.0");
-            assert.ok(cat.methods.ping !== undefined);
-            assert.ok(cat.methods.discover !== undefined);
-            assert.ok(cat.methods["session.create"] !== undefined);
-            assert.ok(cat.methods["session.list"] !== undefined);
-            assert.ok(cat.methods["session.attach"] !== undefined);
-            assert.ok(cat.notifications["session/created"] !== undefined);
-        } finally { ws.close(); }
-    });
-});
-
-test("[§errors-error-codes] Daemon: unknown method returns -32601 method-not-found", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "nonexistent.method");
-            assert.equal(response.error?.code, -32601);
-        } finally { ws.close(); }
-    });
-});
-
-test("Daemon: malformed JSON returns -32700 parse-error", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const messagePromise = new Promise<RpcResponse>((resolve) => {
-                ws.once("message", (data) => {
-                    const text = typeof data === "string" ? data : (data as Buffer).toString("utf8");
-                    resolve(JSON.parse(text) as RpcResponse);
-                });
-            });
-            ws.send("this is not json");
-            const response = await messagePromise;
-            assert.equal(response.id, null);
-            assert.equal(response.error?.code, -32700);
-        } finally { ws.close(); }
-    });
-});
-
 test("session.create returns id+name and emits notification", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -323,47 +267,6 @@ test("providers.list returns parsed aliases with active marker", async () => {
         } finally { ws.close(); }
     });
 });
-
-test("loop.run with unknown alias returns a clear, case-fold-aware error", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "alias-test" });
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "session.attach", { id: session?.id });
-            // Request an UPPERCASE alias (guaranteed-unconfigured): the suggestion must lowercase
-            // it (aliases case-fold), never echo PLURNK_MODEL_ZQX — the misdirection that read to
-            // the owner as "capitalizing my aliases".
-            const response = await rpcCall(ws, 2, "loop.run", { prompt: "hi", alias: "ZQX" });
-            assert.equal(response.error?.code, -32603);
-            const msg = response.error?.message ?? "";
-            assert.match(msg, /unknown alias 'ZQX'/, "echoes the requested alias verbatim");
-            assert.match(msg, /PLURNK_MODEL_zqx\b/, "suggests the case-folded (lowercase) key");
-            assert.doesNotMatch(msg, /PLURNK_MODEL_ZQX/, "never the uppercased key — casing is not the cause");
-            assert.match(msg, /case-fold/, "tells the operator casing isn't the issue");
-            assert.match(msg, /the daemon knows:/, "lists the daemon's known aliases to expose an env gap");
-        } finally { ws.close(); }
-    });
-});
-
-test("loop.run accepts a client-resolved provider/model, instantiated with the daemon's keys", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "client-model" });
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "session.attach", { id: session?.id });
-            // Malformed: needs the '<provider>/<model>' shape (same split as the env knob).
-            const bad = await rpcCall(ws, 2, "loop.run", { prompt: "hi", model: "noslash" });
-            assert.equal(bad.error?.code, -32603);
-            assert.match(bad.error?.message ?? "", /model must be '<provider>\/<model>'/);
-            // Well-formed but unknown provider: the client-resolved path reaches instantiation
-            // (proving it bypassed the daemon's alias lookup) and fails clearly on the missing package.
-            const unknown = await rpcCall(ws, 3, "loop.run", { prompt: "hi", model: "nope-xyz/some-model" });
-            assert.equal(unknown.error?.code, -32603);
-            assert.match(unknown.error?.message ?? "", /@plurnk\/plurnk-providers-nope-xyz.*not installed/);
-        } finally { ws.close(); }
-    });
-});
-
 test("session.runs lists runs in the session, most-recent first", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const session = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name: "list-runs" });
@@ -412,33 +315,6 @@ test("session/created notification broadcasts to other connected clients", async
         } finally { observer.close(); creator.close(); }
     });
 });
-
-test("client loop status transitions to 200 on clean disconnect (after a client op spawns the loop)", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        const response = await rpcCall(ws, 1, "session.create", { name: "lifecycle" });
-        const result = response.result as { id: number };
-        const run = await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: result.id });
-
-        // No loop yet — allocation is lazy.
-        assert.equal(await (db.test_get_loop_by_run as PrepMethod).get({ run_id: run?.id }), undefined);
-
-        // First op lazily creates the client loop.
-        await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "y" });
-        const loop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ run_id: run?.id });
-        const loopId = loop!.id;
-
-        let status = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(status, 102);
-
-        ws.close();
-        await new Promise((r) => setTimeout(r, 50));
-
-        status = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(status, 200);
-    });
-});
-
 test("the client-interface seam — subscribeToEvents delivers session-scoped engine events in-process (#355)", async () => {
     // The emit half of #broadcast, exposed as an in-process source: a transport module (plurnk-agui)
     // subscribes here and fans out to its OWN clients, instead of being welded to the WS connections.
@@ -563,7 +439,7 @@ test("the client-interface seam — readLog returns a session's journal, ownersh
 
             const other = (await rpcCall(ws, 2, "session.create", { name: "seam-read-other" })).result as { id: number };
             const otherRun = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: other.id }))!;
-            await assert.rejects(() => daemon.readLog({ sessionId: created.id, runId: otherRun.id }), /not in session/, "readLog refuses a run outside the session — core holds its own invariant");
+            await assert.rejects(() => daemon.readLog({ sessionId: created.id, runId: otherRun.id }), /not in this session/, "readLog refuses a run outside the session — core holds its own invariant");
         } finally { ws.close(); }
     });
 });

@@ -877,9 +877,7 @@ plurnk-service runs as a daemon. Clients (TUI/CLI/neovim/web/Telegram/etc.) driv
 
 The client surface is AG-UI+ on `PLURNK_HOST:PLURNK_PORT` (default `127.0.0.1:3044`), bound by the plurnk-agui daughter module at boot — the module owns that protocol (its SPEC lives in plurnk-agui). Production is **single-listener**: the daemon opens no transport of its own; daughter modules open theirs through the seam.
 
-The WebSocket RPC below is the **intg harness's private in-process transport** (opened only when `Daemon.start` is asked for a port; the production boot passes none) — not a client contract. It is slated for deletion once the harness rides the seam directly.
-
-WebSocket (`ws` npm). One message per `ws.send`. UTF-8 JSON. One full-duplex connection per client.
+The daemon speaks **no wire protocol of its own**: the intg harness dispatches into the seam directly (a JSON-RPC-shaped in-process mimic, `test/intg/_seam.ts`), certifying the same surface a module consumes.
 
 Out of scope for v0: auth, TLS, multiplexing. Local-loopback + filesystem permissions are the access control.
 
@@ -911,7 +909,6 @@ registry.registerMethod("loop.run", {
 - `description`: one-liner surfaced by `discover`.
 - `params`: `"type — meaning"` per param; `?` suffix = optional. Self-documenting, not enforced.
 - `requiresInit`: rejects until a session is attached.
-- `longRunning`: exempt from `PLURNK_SERVICE_RPC_TIMEOUT`. {§method-registration-register}
 
 ### §discovery Discovery
 
@@ -941,9 +938,7 @@ registry.registerMethod("loop.run", {
 }
 ```
 
-`capabilities` lists registered plug-ins by `(kind, name)`. Cold clients call `discover` first. No hardcoded method names or capability lists in any client. {§discovery-discover}
 
-`versions` rides the same round-trip so a client shows update status without per-invocation registry IO: `{ service: { installed, latest? }, client: { latest? } }`. `service.installed` is the daemon's own `package.json` version (honest self-report); `latest` is a **cached, best-effort** npm-registry poll (TTL `PLURNK_SERVICE_VERSION_POLL_TTL`) for the service (`@plurnk/plurnk-service`) and client (`@plurnk/plurnk`) packages — offline or registry-down omits `latest`, and the poll never blocks or fails `discover`. The client owns reading its own installed version and the semver compare. {§discovery-versions}
 
 ### §methods Core method set
 
@@ -972,7 +967,6 @@ registry.registerMethod("loop.run", {
 
 **Re-binding.** `session.create` and `session.attach` may be called on a connection that already has a session attached — the connection switches in place, releasing the prior client loop (closed at 200). No reconnect needed to change session or run. {§methods-rebind}
 
-**Auto-envelope.** Clients calling a `requiresInit: true` method without first attaching get auto-created session → run → client loop. Records persist normally; auto-created ≠ auto-deleted. Cleanup is a future `session.delete` / `session.archive` endpoint. {§methods-auto-envelope}
 
 **Reserved run names.** `plurnk` is reserved for the runtime actor (§authority-terms). `session.attach` rejects it — case-insensitively, *before* the lookup-or-create — so a client can neither forge a `plurnk` run nor resume the runtime's, closing impersonation of `origin=plurnk`. The auto-namer never emits a reserved name. {§methods-run-name-reserved}
 
@@ -1098,7 +1092,6 @@ Plurnk-specific (`-32000` to `-32099`):
 | -32006 | Mimetype unavailable                               |
 | -32007 | Timeout                                            |
 
-Error responses MAY include `data: {…}` with structured context (404'd path, timed-out method, etc.). {§errors-error-codes}
 
 ### §versioning Versioning
 

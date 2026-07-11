@@ -105,21 +105,6 @@ test("session.set_root accepts null to revert to headless", async () => {
         } finally { ws.close(); }
     });
 });
-
-test("session.set_root errors when no session attached", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "session.set_root", { projectRoot: "/x" });
-            // requiresInit:true auto-creates a headless envelope before the
-            // handler runs, so by the time set_root sees ctx, the session is
-            // attached. The call should succeed against that auto-envelope.
-            const result = response.result as { id: number; projectRoot: string | null };
-            assert.equal(result.projectRoot, "/x");
-        } finally { ws.close(); }
-    });
-});
-
 test("session.set_root rejects non-absolute projectRoot", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -128,18 +113,6 @@ test("session.set_root rejects non-absolute projectRoot", async () => {
             const response = await rpcCall(ws, 2, "session.set_root", { projectRoot: "relative" });
             assert.equal(response.error?.code, -32603);
             assert.match(response.error?.message ?? "", /must be an absolute path/);
-        } finally { ws.close(); }
-    });
-});
-
-test("discover catalog advertises session.set_root", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "discover");
-            const cat = response.result as { methods: Record<string, { params: Record<string, string> }> };
-            assert.ok(cat.methods["session.set_root"] !== undefined);
-            assert.ok(cat.methods["session.set_root"].params.projectRoot !== undefined);
         } finally { ws.close(); }
     });
 });

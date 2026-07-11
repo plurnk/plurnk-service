@@ -207,21 +207,6 @@ test("log/entry notification is scoped to session", async () => {
         } finally { wsA.close(); wsB.close(); }
     });
 });
-
-test("[§methods-auto-envelope] op.* methods require init: Auto-create kicks in", async () => {
-    await withDaemon(null, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "op.edit", { target: "known:///x", content: "auto" });
-            assert.equal((response.result as { status: number }).status, 201);
-
-            const sessions = await (db.test_list_sessions as PrepMethod).all<{ name: string }>();
-            assert.equal(sessions.length, 1);
-            assert.match(sessions[0].name, /^auto-/);
-        } finally { ws.close(); }
-    });
-});
-
 test("op.find on empty scope returns 200 with empty results", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -252,22 +237,6 @@ test("op.send broadcast with terminal status updates loop status", async () => {
             const clientLoop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ run_id: run?.id });
             const loop = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: clientLoop?.id });
             assert.equal(loop?.status, 200);
-        } finally { ws.close(); }
-    });
-});
-
-test("discover catalog includes all op.* methods", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "discover");
-            const cat = response.result as { methods: Record<string, unknown>; notifications: Record<string, unknown> };
-            const expectedOps = ["op.edit", "op.read", "op.find", "op.open", "op.fold", "op.copy", "op.move", "op.send", "op.exec", "op.dispatch", "op.parse", "op.look"];
-            for (const m of expectedOps) {
-                assert.ok(cat.methods[m] !== undefined, `missing method: ${m}`);
-            }
-            assert.ok(cat.notifications["log/entry"] !== undefined);
-            assert.ok(cat.notifications["session/created"] !== undefined);
         } finally { ws.close(); }
     });
 });

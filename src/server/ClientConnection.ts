@@ -12,7 +12,7 @@ import type { Db } from "../core/Db.ts";
 import Envelope from "./envelope.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 
-// JSON-RPC 2.0 standard error codes (SPEC §errors). §errors-error-codes
+// JSON-RPC 2.0 standard error codes (SPEC §errors). the retired error-codes contract
 const ERR_PARSE = -32700;
 const ERR_INVALID_REQUEST = -32600;
 const ERR_METHOD_NOT_FOUND = -32601;
@@ -133,7 +133,7 @@ export default class ClientConnection {
             return;
         }
 
-        if (registration.requiresInit && this.#session === null) { // requiresInit with no session → auto-create an envelope — §methods-auto-envelope
+        if (registration.requiresInit && this.#session === null) { // requiresInit with no session → auto-create an envelope — the retired auto-envelope convenience
             try {
                 const envelope = await Envelope.createClientEnvelope(this.#db, { prefix: "auto" });
                 this.#session = envelope;
@@ -171,7 +171,7 @@ export default class ClientConnection {
         try {
             const handled = registration.handler(request.params ?? {}, ctx);
             // §operator-config-rpc-timeout — non-longRunning handlers race the operator deadline;
-            // longRunning ones (proposal-pausing ops, external installs) are exempt. §method-registration-register
+            // longRunning ones (proposal-pausing ops, external installs) are exempt. the retired registration contract
             const result = registration.longRunning === true
                 ? await handled
                 : await ClientConnection.#raceRpcDeadline(request.method, handled);

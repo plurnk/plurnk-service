@@ -139,6 +139,19 @@ export default class ProposalLifecycle {
         return [...this.#pending.keys()];
     }
 
+    // Daemon shutdown: settle EVERY pending waiter with a cancel so the stopped world can't
+    // deadlock the stop — a drain paused inside dispatch awaiting a resolution that will never
+    // come held Promise.allSettled(drains) open forever (a daemon with a pending HITL proposal
+    // could not shut down; the #344 wedge class). §proposal-cancel-aborts — same cancel lane as
+    // a timeout, outcome names the cause.
+    cancelAll(outcome: string): void {
+        for (const [logEntryId, waiter] of [...this.#pending.entries()]) {
+            if (waiter.timeoutHandle !== null) clearTimeout(waiter.timeoutHandle);
+            this.#pending.delete(logEntryId);
+            waiter.resolve({ decision: "cancel", outcome });
+        }
+    }
+
     // Subscribe to proposal-pending events. Daemon registers a listener
     // that broadcasts the loop/proposal WS notification; YOLO listener
     // (Phase E.3) registers one that auto-resolves. Listeners fire BEFORE

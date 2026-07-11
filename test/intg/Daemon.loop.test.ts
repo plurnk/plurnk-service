@@ -260,21 +260,6 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
         } finally { ws.close(); }
     });
 });
-
-test("discover catalog includes loop.run and loop/terminated", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const response = await rpcCall(ws, 1, "discover");
-            const cat = response.result as { methods: Record<string, { longRunning?: boolean }>; notifications: Record<string, unknown> };
-            assert.ok(cat.methods["loop.run"] !== undefined);
-            assert.equal(cat.methods["loop.run"].longRunning, false,
-                "loop.run accepts and returns immediately (Model 3); the loop runs async, surfaced via loop/terminated");
-            assert.ok(cat.notifications["loop/terminated"] !== undefined);
-        } finally { ws.close(); }
-    });
-});
-
 test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", async () => {
     const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {

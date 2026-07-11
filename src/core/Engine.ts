@@ -1437,6 +1437,12 @@ export default class Engine {
 
     // External API to feed a resolution into a pending proposal — the loop/resolve
     // RPC handler, the in-tree YOLO listener, or the timeout watcher.
+    // Shutdown lane: settle every pending proposal with a cancel so a stopped world can never
+    // deadlock the stop (§proposal-cancel-aborts; the #344 wedge class).
+    cancelAllProposals(outcome: string): void {
+        this.#proposals.cancelAll(outcome);
+    }
+
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
         this.#proposals.resolve(logEntryId, resolution);
     }

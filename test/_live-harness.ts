@@ -12,7 +12,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { WebSocket } from "ws";
+import type SeamSocket from "./intg/_seam.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import type { Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../src/core/ProviderInstantiate.ts";
@@ -23,7 +23,7 @@ import { connect, rpcCall, runLoopToTerminal } from "./intg/_rpc.ts";
 
 export interface LiveSession {
     db: Db;
-    ws: WebSocket;
+    ws: SeamSocket;
     sessionId: number;
     cleanup: () => Promise<void>;
 }
@@ -48,9 +48,8 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
     const provider = await liveProvider();
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
-    const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
-    if (addr === null) throw new Error("daemon.start with a port returned no address");
-    const ws = await connect(addr);
+    await daemon.start({ port: null }); // listenerless — the harness rides the seam (#364)
+    const ws = await connect({ daemon });
     // SANDBOX: every live/demo session roots at a fresh empty dir, NEVER the host repo. With
     // PLURNK_SERVICE_GIT_ALLOWED=1 + PLURNK_SERVICE_GIT_AUTO=1 + PLURNK_SERVICE_FILES_ITEMS=-1 (the live/demo .env), an
     // in-repo projectRoot makes git membership materialize + embed ALL of plurnk-service every turn
@@ -76,7 +75,7 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
 // (the run the model's ops landed in, for run-scoped forensic queries) is
 // guaranteed by loop.run; absence is a hard failure, not a silent 0.
 export const liveLoop = async (
-    s: { ws: WebSocket; db: Db },
+    s: { ws: SeamSocket; db: Db },
     id: number,
     params: { prompt: string; maxTurns?: number },
     opts: { timeoutMs: number },

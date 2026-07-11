@@ -1,10 +1,11 @@
-// Shared WebSocket / Daemon test helpers. Used by every Daemon.* and
-// SEND[*] integration test.
+// Shared Daemon test helpers — the harness rides the CoreSeam (#364): connect() hands back a
+// SeamSocket (the ws-mimic whose every method dispatches into the seam), so the whole intg tier
+// certifies the one client surface. Used by every Daemon.* and SEND[*] integration test.
 
-import { WebSocket } from "ws";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Daemon from "../../src/server/Daemon.ts";
+import SeamSocket from "./_seam.ts";
 import type { MockResponse, Provider } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
@@ -16,9 +17,10 @@ export interface RpcResponse {
     error?: { code: number; message: string };
 }
 
-export interface DaemonAddr { host: string; port: number }
+// The "address" is the daemon itself — there is no socket to dial (#364).
+export interface DaemonAddr { daemon: Daemon }
 
-export const rpcCall = (ws: WebSocket, id: number, method: string, params?: object): Promise<RpcResponse> =>
+export const rpcCall = (ws: SeamSocket, id: number, method: string, params?: object): Promise<RpcResponse> =>
     new Promise((resolve, reject) => {
         const onMessage = (data: Buffer | string) => {
             const text = typeof data === "string" ? data : data.toString("utf8");
@@ -34,7 +36,7 @@ export const rpcCall = (ws: WebSocket, id: number, method: string, params?: obje
 
 // Subscribe to a notification stream. Returns a getter that yields the
 // captured params in order.
-export const subscribeNotifications = (ws: WebSocket, method: string): (() => unknown[]) => {
+export const subscribeNotifications = (ws: SeamSocket, method: string): (() => unknown[]) => {
     const captured: unknown[] = [];
     ws.on("message", (data) => {
         const text = typeof data === "string" ? data : (data as Buffer).toString("utf8");
@@ -98,7 +100,7 @@ export const waitForDb = async <T>(
 // way: fire loop.run, then await its loop/terminated. Returns the terminal status (+ the
 // loopId and the `accepted` status, for callers that assert the 100).
 export const runLoopToTerminal = async (
-    ws: WebSocket, id: number, params: object,
+    ws: SeamSocket, id: number, params: object,
     { timeoutMs = 8000 }: { timeoutMs?: number } = {},
 ): Promise<{
     loopId: number; finalStatus: number; accepted: number; action?: string; modelRunId?: number;
@@ -119,12 +121,8 @@ export const runLoopToTerminal = async (
     return { ...term, accepted, action, modelRunId };
 };
 
-export const connect = (addr: DaemonAddr): Promise<WebSocket> =>
-    new Promise((resolve, reject) => {
-        const ws = new WebSocket(`ws://${addr.host}:${addr.port}`);
-        ws.once("open", () => resolve(ws));
-        ws.once("error", reject);
-    });
+export const connect = (addr: DaemonAddr): Promise<SeamSocket> =>
+    Promise.resolve(new SeamSocket(addr.daemon));
 
 // Open db + daemon, run the callback, clean up. Provider is optional —
 // a Mock for deterministic tiers, or a real Provider (loadActiveProvider)
@@ -135,9 +133,8 @@ export const withDaemon = async <T>(
 ): Promise<T> => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
-    const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
-    if (addr === null) throw new Error("daemon.start with a port returned no address"); // port 0 = WS listener requested — null is a contract violation
-    try { return await fn(db, daemon, addr); }
+    await daemon.start({ port: null }); // listenerless — the harness rides the seam, not a socket
+    try { return await fn(db, daemon, { daemon }); }
     finally { await daemon.stop(); await db.close(); }
 };
 

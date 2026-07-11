@@ -5,18 +5,6 @@ import assert from "node:assert/strict";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { seedEntryWithChannel } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
-
-test("daemon registers stream/event in discover catalog", async () => {
-    await withDaemon(null, async (_db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            const r = await rpcCall(ws, 1, "discover");
-            const cat = r.result as { notifications: Record<string, { description?: string }> };
-            assert.ok(cat.notifications["stream/event"] !== undefined);
-        } finally { ws.close(); }
-    });
-});
-
 test("[§notifications-envelope-carries-sessionid] notifyStreamEvent broadcasts to a session's clients, envelope stamped with the scope", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);

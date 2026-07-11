@@ -190,7 +190,6 @@ export default class Service {
         // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
         const aguiInit = AguiModule.init({
             host, port,
-            sessionPrefix: process.env.PLURNK_AGUI_SESSION_PREFIX ?? "agui",
             ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
             ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
         });
