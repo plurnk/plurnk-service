@@ -357,3 +357,22 @@ SELECT id FROM turns WHERE loop_id = $loop_id AND sequence = $sequence;
 
 -- PREP: test_count_op
 SELECT COUNT(*) n FROM log_entries WHERE op = $op;
+
+-- PREP: test_terminate_loop_after_turn
+-- The fan-out race fixture: mark a loop terminal with terminated_at strictly AFTER the given
+-- turn's timestamp (+2s), with a deliverable — a child concluding during the parent's generation.
+UPDATE loops SET status = 200, terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT timestamp FROM turns WHERE id = $turn_id), '+2 seconds'), terminal_message = 'the value is 42'
+WHERE id = $loop_id;
+
+-- PREP: test_probe_raw
+SELECT (SELECT timestamp FROM turns WHERE id = $turn_id) AS tts,
+       (SELECT terminated_at FROM loops WHERE id = $loop_id) AS cterm,
+       (SELECT r.parent_run_id FROM loops l JOIN runs r ON r.id = l.run_id WHERE l.id = $loop_id) AS cparent;
+
+-- PREP: test_stamp_terminated_after_turn
+-- Companion to test_terminate_loop_after_turn: the loops_stamp_terminated_at trigger fires on the
+-- status TRANSITION and re-stamps 'now', clobbering an in-same-statement terminated_at (a 1ms race
+-- against the turn insert — a real flake). This second UPDATE touches terminated_at ONLY (no
+-- status change → no trigger), so the fixture's +2s value survives deterministically.
+UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT timestamp FROM turns WHERE id = $turn_id), '+2 seconds')
+WHERE id = $loop_id;

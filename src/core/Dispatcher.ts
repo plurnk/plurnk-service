@@ -771,6 +771,10 @@ export default class Dispatcher {
         if (liveChild !== undefined) pending.push("live worker runs");
         const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
         if (retrievals.length > 0) pending.push("results of this turn's READ/FIND/OPEN (they arrive NEXT turn)");
+        // §send-undelivered-child-term — a worker that concluded DURING this turn's generation is no
+        // longer "live" but its deliverable hasn't reached any packet yet; concluding discards it.
+        const undelivered = await (this.#db.engine_run_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ run_id: runId, turn_id: turnId });
+        if (undelivered !== undefined) pending.push("worker results that arrived during this turn (they land NEXT turn)");
         return pending;
     }
 
@@ -826,6 +830,13 @@ export default class Dispatcher {
             }
             const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
             if (retrievals.length > 0) return { status: 102 }; // R lands next turn — continue, don't conclude over it
+            // §send-undelivered-child-term — the fan-out race: a worker that concluded DURING this
+            // turn's generation is not live (J misses it), but its collect delta is queued for the
+            // NEXT build. The wait is NOT on nothing — the results are on the doorstep. Parking
+            // would hang (the wake edges already fired into an unparked run); R semantics: continue,
+            // the deltas land next turn, the model weighs them and concludes.
+            const undelivered = await (this.#db.engine_run_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ run_id: runId, turn_id: turnId });
+            if (undelivered !== undefined) return { status: 102 };
             // ∅ — a wait on zero obligations is already satisfied; conclude like 200 (incl. <-1>+∅).
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: loopId, message: raw === "" ? null : raw });
             return { status: 200 };

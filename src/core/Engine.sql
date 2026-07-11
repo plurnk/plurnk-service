@@ -498,3 +498,16 @@ WHERE e.session_id = $session_id AND ec.name = 'body' AND ec.content_hash IS NOT
 -- matching the log's loop-relative numbering). The raw db id leaked into prompt paths and the
 -- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
 SELECT sequence FROM loops WHERE id = $loop_id;
+
+-- PREP: engine_run_has_undelivered_child_term
+-- A child run whose loop TERMINATED after the current turn's timestamp — its deliverable
+-- (the §run-scheme collect delta) is queued for the NEXT packet build and has not been seen.
+-- The 1ms-wide fan-out race: workers concluding DURING the parent's generation are not "live"
+-- (the wait's J leg misses them) but their results are pending — concluding or ∅-collapsing
+-- over them silently discards deliverables the model spawned. {§send-undelivered-child-term}
+SELECT 1 AS pending FROM loops l
+JOIN runs r ON r.id = l.run_id
+WHERE r.parent_run_id = $run_id
+  AND l.terminated_at IS NOT NULL
+  AND l.terminated_at > (SELECT timestamp FROM turns WHERE id = $turn_id)
+LIMIT 1;
