@@ -36,29 +36,29 @@ const harness = () => {
     return { writes, states, events, args };
 };
 
-test("BaseExecutor: constructor binds runtime tag and glyph", () => {
+test("§2 BaseExecutor: constructor binds runtime tag and glyph", () => {
     const ex = new EchoExecutor({ runtime: "news", glyph: "📰" });
     assert.equal(ex.runtime, "news");
     assert.equal(ex.glyph, "📰");
 });
 
-test("BaseExecutor: declares its own channel topology", () => {
+test("§2.1 BaseExecutor: declares its own channel topology", () => {
     const ex = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     assert.deepEqual(ex.channels, { results: { mimetype: "application/json" } });
 });
 
-test("BaseExecutor: default effect is the conservative `host`", () => {
+test("§2.3 BaseExecutor: default effect is the conservative `host`", () => {
     const ex = new EchoExecutor({ runtime: "x", glyph: "•" });
     assert.equal(ex.effect(null), "host");
     assert.equal(ex.effect("/some/path"), "host");
 });
 
-test("BaseExecutor: default probe is available", async () => {
+test("§2.2 BaseExecutor: default probe is available", async () => {
     const ex = new EchoExecutor({ runtime: "x", glyph: "•" });
     assert.deepEqual(await ex.probe(), { available: true });
 });
 
-test("BaseExecutor.run: writes to declared channel and closes it", async () => {
+test("§2 BaseExecutor.run: writes to declared channel and closes it", async () => {
     const ex = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     const h = harness();
     const result = await ex.run(h.args({ runtime: "search", command: "pie recipes" }));
@@ -71,7 +71,7 @@ test("BaseExecutor.run: writes to declared channel and closes it", async () => {
     assert.equal(h.events.length, 0);
 });
 
-test("BaseExecutor.run: matched tag flows through to the executor", async () => {
+test("§2 BaseExecutor.run: matched tag flows through to the executor", async () => {
     const ex = new EchoExecutor({ runtime: "images", glyph: "🖼" });
     const h = harness();
     await ex.run(h.args({ runtime: "images", command: "golden retriever" }));
@@ -81,7 +81,7 @@ test("BaseExecutor.run: matched tag flows through to the executor", async () => 
 
 // --- executor-is-a-scheme face (schemes#20 / service#240) ---
 
-test("BaseExecutor: scheme manifest derives from the tag + declared channels", () => {
+test("§2.6 BaseExecutor: scheme manifest derives from the tag + declared channels", () => {
     const m = new EchoExecutor({ runtime: "sqlite", glyph: "🗃" }).manifest;
     assert.equal(m.name, "sqlite", "scheme name is the tag");
     assert.equal(m.glyph, "🗃");
@@ -95,7 +95,7 @@ test("BaseExecutor: scheme manifest derives from the tag + declared channels", (
     assert.equal(m.foldedByDefault, true, "output streams land folded — the containment default");
 });
 
-test("BaseExecutor: defaultChannel is the first declared channel, overridable", () => {
+test("§2.6 BaseExecutor: defaultChannel is the first declared channel, overridable", () => {
     class Subproc extends BaseExecutor {
         get channels(): Readonly<Record<string, ChannelDecl>> {
             return { stdout: { mimetype: "text/stream" }, stderr: { mimetype: "text/stream" } };
@@ -108,7 +108,7 @@ test("BaseExecutor: defaultChannel is the first declared channel, overridable", 
     assert.equal(new Custom({ runtime: "sh", glyph: "🐚" }).defaultChannel, "stderr");
 });
 
-test("ExecArgs.write: an executor stamps the real per-call output mimetype (service#240)", async () => {
+test("§2.1 ExecArgs.write: an executor stamps the real per-call output mimetype (service#240)", async () => {
     class TypedExec extends BaseExecutor {
         get channels(): Readonly<Record<string, ChannelDecl>> {
             return { results: { mimetype: "application/json" } };
@@ -124,7 +124,7 @@ test("ExecArgs.write: an executor stamps the real per-call output mimetype (serv
     assert.deepEqual(h.writes[0], { channel: "results", chunk: "[1,2,3]", mimetype: "application/json" });
 });
 
-test("ExecArgs.write: mimetype is optional — omitting it leaves no stamp (back-compat)", async () => {
+test("§2.1 ExecArgs.write: mimetype is optional — omitting it leaves no stamp (back-compat)", async () => {
     const h = harness();
     await new EchoExecutor({ runtime: "x", glyph: "" }).run(h.args());
     assert.equal(h.writes[0].mimetype, undefined);

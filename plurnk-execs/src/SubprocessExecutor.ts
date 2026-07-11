@@ -110,7 +110,16 @@ export default class SubprocessExecutor extends BaseExecutor {
 
             // Filter-style runtimes feed their program/input via stdin; closing
             // it also delivers EOF (awk BEGIN-only). Left untouched otherwise.
-            if (stdin !== undefined) child.stdin?.end(stdin);
+            // A fast-exiting child (`jq` on a small file — dead in milliseconds)
+            // can already be gone when this write lands; the end() then EPIPEs,
+            // and with no 'error' listener the rejection escapes and fails the
+            // consumer even though the exec succeeded (#23 — the probe lane got
+            // the same guard in #16). The child's exit code is the truth; a
+            // stdin write racing child exit is expected noise, not a failure.
+            if (stdin !== undefined && child.stdin) {
+                child.stdin.on("error", () => { /* EPIPE-class race with exit — outcome is the exit code */ });
+                child.stdin.end(stdin);
+            }
 
             const killGroup = (sig: NodeJS.Signals | number): void => {
                 if (child.pid === undefined) return;
