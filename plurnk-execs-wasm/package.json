@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-wasm",
-    "version": "0.1.21",
+    "version": "0.1.22",
     "description": "WebAssembly runtime executor for plurnk-service's exec scheme — in-process sandboxed execution of WAT (text) and wasm (binary) modules.",
     "keywords": [
         "plurnk",
@@ -69,9 +69,9 @@
     "devDependencies": {
         "@types/node": "^26.0.0",
         "typescript": "^7.0.2",
-        "@plurnk/plurnk-execs": "0.4.39"
+        "@plurnk/plurnk-execs": "0.4.40"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "0.4.39"
+        "@plurnk/plurnk-execs": "0.4.40"
     }
 }
