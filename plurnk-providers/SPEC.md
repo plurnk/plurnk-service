@@ -253,7 +253,7 @@ A sibling package satisfies the contract when:
 11. No DB access, no imports from `@plurnk/plurnk-service`.
 12. No runtime import of `@plurnk/plurnk-grammar` parser entry points.
 13. `generate` invoked with `grammar` against a backend without grammar support sends no grammar-related wire fields and does not error (§13).
-14. `generate` that transported a grammar and received conforming output resolves; output the grammar rejects (or an incomplete match) rejects with a `grammar_unenforced` `ProviderError` (§13). (Inherited from `OpenAICompatProvider`; bespoke siblings on a non-compat transport implement it.)
+14. `generate` that transported a grammar ALWAYS resolves with the bytes; non-conforming output (reject or incomplete) attaches a `grammar_unenforced` `TelemetryEvent` on `response.telemetry` with the divergence position — an observation, never a throw (#24, §13). (Inherited from `OpenAICompatProvider`; bespoke siblings on a non-compat transport implement it.)
 
 Sibling-specific behavioral tests (wire-format compliance, model-family quirks, retry logic) live in each package's own test surface.
 
@@ -304,7 +304,7 @@ Transport failures surface as a `ProviderError` (extends `Error`, so existing ca
 ```
 
 - `source` is `provider:<vendor>` (schema pattern `^[a-z]+(:[a-z][a-z0-9-]*)?$`); standard providers set it from their name, siblings via the `source` config field (default `"provider"`).
-- `kind` ∈ `rate_limit | network_failure | model_refused | invalid_response | unauthorized | quota_exceeded | grammar_unenforced`. HTTP status maps: 401/403→`unauthorized`, 402→`quota_exceeded`, 429→`rate_limit`, ≥500→`network_failure`, other 4xx→`invalid_response`; timeouts/fetch errors→`network_failure`. (`model_refused` is response-level — minted consumer-side from a `content_filter` finish reason, not from a thrown error.) **`grammar_unenforced`** is response-level too, with two deliveries (§13): on the **constrained** path it's a thrown `ProviderError` (terminal, never retried — the backend ignored a grammar it was sent); in **GBNF-filter mode** it's a **non-fatal `TelemetryEvent` on a successful response** (`ProviderResponse.telemetry`), carrying the divergence `position` so the consumer can drive model self-correction (#24).
+- `kind` ∈ `rate_limit | network_failure | model_refused | invalid_response | unauthorized | quota_exceeded | grammar_unenforced`. HTTP status maps: 401/403→`unauthorized`, 402→`quota_exceeded`, 429→`rate_limit`, ≥500→`network_failure`, other 4xx→`invalid_response`; timeouts/fetch errors→`network_failure`. (`model_refused` is response-level — minted consumer-side from a `content_filter` finish reason, not from a thrown error.) **`grammar_unenforced`** is response-level too, and ALWAYS an observation, never a throw (#24, §2 Promises): whether the grammar was transported or withheld (GBNF-filter mode), a completed exchange returns its bytes with a **non-fatal `TelemetryEvent`** on `ProviderResponse.telemetry` carrying the divergence `position`, so the consumer can drive discard/retry/self-correction. `ProviderError` stays reserved for exchanges that did NOT complete.
 - `message` is terse and factual (no guidance prose); `position` is `null` (provider failures aren't localizable into prior content).
 - **Caller-initiated abort is NOT telemetry** — an aborted `signal` rethrows the original abort, never a `ProviderError`.
 

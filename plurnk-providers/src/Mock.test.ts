@@ -21,7 +21,7 @@ test("Mock: contextSize passes null through", () => {
     assert.equal(m.contextSize, null);
 });
 
-// — Tokenomics (SPEC §10.4, §10.5) —
+// — Tokenomics (SPEC §10.3, §10.4, §10.5) —
 
 test("Mock: countTokens('') is 0; non-empty is a positive integer", () => {
     const m = build();

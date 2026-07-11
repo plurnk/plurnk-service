@@ -295,7 +295,7 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
     assert.equal("response_format" in body, false);
 });
 
-// — grammar conformance OBSERVATION (SPEC §13): a completed exchange always
+// — grammar conformance OBSERVATION (SPEC §10.14, §13): a completed exchange always
 //   returns; bytes flow; a non-accept verdict rides response.telemetry —
 
 const grammarProvider = () => new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, thinking: { mode: "off", capacity: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
@@ -346,7 +346,7 @@ test("observation: empty content under a non-empty grammar returns with the verd
     assert.equal(res.telemetry?.[0].kind, "grammar_unenforced");
 });
 
-test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated", async () => {
+test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated — no wire fields, no error (SPEC §10.13)", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, thinking: { mode: "off", capacity: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
     streamingContent("anything goes");
     const { assistant } = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' }); // grammar passed but never transported
@@ -633,7 +633,7 @@ test("retry: retryAttempts 0 surfaces the first transient failure immediately", 
     assert.equal(calls.length, 1); // no retry budget
 });
 
-test("retry: a caller abort during backoff rejects promptly with no further attempt", async () => {
+test("retry: a caller abort during backoff rejects promptly with no further attempt (mid-flight abort, SPEC §10.9)", async () => {
     const ac = new AbortController();
     const calls = installFetchScript([{ status: 503, retryAfter: 5 }]); // 5s backoff we never wait out
     const p = new OpenAICompatProvider({ ...retryCfg, retryAttempts: 3 });
