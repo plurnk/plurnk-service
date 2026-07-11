@@ -87,7 +87,7 @@ test("[§send-300-choices] e2e: the ask stops the world via loop/proposal; loop.
     // {question, choices}, answers via the EXISTING loop.resolve {decision:"accept", body}, the
     // answer lands in the ask's own rx, and the next turn concludes with it.
     const { withDaemon, connect, rpcCall, makeMockResponse, subscribeNotifications, waitFor, flush } = await import("./_rpc.ts");
-    const mock = new Mock({ contextSize: 8192, responses: [
+    const mock = new Mock({ contextSize: 16384, responses: [
         makeMockResponse("<<PLAN:ask the operator:PLAN\n<<SEND[300]:Which environment?;production;staging:SEND", 10),
         makeMockResponse("<<PLAN:conclude with the chosen environment:PLAN\n<<SEND[200]:Deploying to staging as instructed.:SEND", 10),
     ] });
@@ -208,7 +208,7 @@ test("[§proposal-list] a reconnecting client DISCOVERS the stopped world — th
     // The indefinite-wait ruling's companion: the ask stops the world; a SECOND connection
     // (the reconnect) lists the pending proposal cold — no notification needed — and answers.
     const { withDaemon, connect, rpcCall, makeMockResponse, subscribeNotifications, waitFor, flush } = await import("./_rpc.ts");
-    const mock = new Mock({ contextSize: 8192, responses: [
+    const mock = new Mock({ contextSize: 16384, responses: [
         makeMockResponse("<<PLAN:ask:PLAN\n<<SEND[300]:Which environment?;production;staging:SEND", 10),
         makeMockResponse("<<PLAN:conclude:PLAN\n<<SEND[200]:Deploying to staging.:SEND", 10),
     ] });
