@@ -37,6 +37,7 @@ const mockSeam = () => {
         readEntry: async () => ({ status: 200, entry: { body: "x" } }),
         forkRun: async () => ({ runId: 11, runName: "fork-1", parentRunId: 10 }),
         createConversationRun: async (a) => ({ runId: 77, runName: a.name ?? "model-fresh" }),
+        setProjectRoot: async (_sid, root) => root,
         listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
         look: async () => ({ status: 200, content: "looked" }),
     };
@@ -302,5 +303,21 @@ test("[§agui-run-endpoint] SSE heartbeat: a silent run stays alive — comment 
         const beats = (raw.match(/^: hb$/gm) ?? []).length;
         assert.ok(beats >= 2, `the silent window carried heartbeats (got ${beats}) — no client bodyTimeout can starve mid-generate`);
         assert.match(raw, /RUN_FINISHED/, "the run still ends clean");
+    } finally { await mod.close(); }
+});
+
+test("session.root is a REAL action kind — a rootless session gains its workspace late (#140)", async () => {
+    const set: Array<[number, string | null]> = [];
+    const { seam } = mockSeam();
+    seam.listSessions = async () => [{ id: 3, name: "w" }];
+    seam.attachSession = async () => ({ sessionId: 3, sessionName: "w", projectRoot: null, runId: 10, runName: "c", modelRunId: 20, clientLoopId: null });
+    seam.setProjectRoot = async (sid, root) => { set.push([sid, root]); return root; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const ev = await post(mod.address().port, { threadId: "w", runId: "r1", forwardedProps: { plurnk: { session: "w", action: { kind: "session.root", path: "/home/user/repo" } } } });
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { projectRoot: string | null }; error?: string } };
+        assert.equal(r.value.ok, true, r.value.error ?? "session.root must be a known kind");
+        assert.deepEqual(set, [[3, "/home/user/repo"]], "the root reached the seam");
+        assert.equal(r.value.result.projectRoot, "/home/user/repo");
     } finally { await mod.close(); }
 });

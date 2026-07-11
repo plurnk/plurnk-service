@@ -40,7 +40,7 @@ export default class Module {
     // auth) does NOT — so it must not bind or forge a session (operator ruling 2026-07-10:
     // "every run/thread requires a world, not everything"). Only these kinds bind a session.
     static #WORLD_SCOPED = Object.freeze(new Set([
-        "session.runs", "log.read", "loop.inject", "loop.cancel", "session.prompts", "session.rename",
+        "session.runs", "log.read", "loop.inject", "loop.cancel", "session.prompts", "session.rename", "session.root",
         "session.constrain", "session.unconstrain", "session.constraints", "entry.read",
         "op.exec", "op.parse", "session.members", "op.look", "run.fork",
     ]));
@@ -356,6 +356,12 @@ export default class Module {
                 // run's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(convRun ?? await this.#seam.ensureModelRun(env.sessionId)) } };
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
+                // Late root arrival (svc#140): a rootless session gains its workspace;
+                // the service resolves pending repo constraints when it lands.
+                case "session.root": {
+                    if (typeof p.path !== "string" && p.path !== null) return { ok: false, error: "session.root requires path (or null to clear)" };
+                    return { ok: true, result: { projectRoot: await this.#seam.setProjectRoot(env.sessionId, p.path as string | null) } };
+                }
                 case "session.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) return { ok: false, error: "session.rename requires name" };
                     return { ok: true, result: await this.#seam.renameSession(env.sessionId, p.name) };
