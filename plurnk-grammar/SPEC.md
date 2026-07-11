@@ -84,7 +84,7 @@ Optionality:
 | `OP`        | required      |
 | `suffix`    | optional; used for nesting and `:OPkeyword` escape (see §8) |
 | `[signal]`  | optional, OP-dependent contents |
-| `(path)`    | required for all OPs except SEND (recipient) EXEC (cwd), and PLAN (no operand), where it is optional |
+| `(path)`    | required for all OPs except SEND (recipient), EXEC (cwd), and PLAN (no operand), where it is optional; WORK/FORK require a `run://` target naming the child |
 | `<L>`       | optional; single position or range (see §7) |
 | `:`         | required (header → body delimiter) |
 | `body`      | optional, OP-dependent meaning |
@@ -100,29 +100,31 @@ All other restrictions are runtime concerns, not grammar concerns.
 ## 3. Lexical Elements
 
 - `<<` — open delimiter.
-- `OP` — exactly one of: `FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `SEND`, `EXEC`, `KILL`, `PLAN`.
+- `OP` — exactly one of: `FIND`, `READ`, `EDIT`, `COPY`, `MOVE`, `OPEN`, `FOLD`, `SEND`, `EXEC`, `WORK`, `FORK`, `KILL`, `PLAN`. (Exported as the `PLURNK_OPS` const; see §12.)
 - `suffix` — `[A-Za-z0-9_]*` immediately concatenated to `OP`, no separator.
 - `[` … `]` — signal slot; contents are OP-dependent (see §4).
 - `(` … `)` — path slot; contents are a URI (see §5).
-- `<L>` — line marker. Shape: `<` `-?[0-9]+` (`-` `-?[0-9]+`)? `>`. A single signed integer denotes a position; two signed integers separated by `-` denote an inclusive range.
+- `<L>` — the scope marker (canon vocabulary: `<scope>`; AST field: `lineMarker`). One or more signed numeric components, comma- or dash-separated, decimals admitted — full shape and arity in §7.
 - `:` — body delimiter. Appears between header and body, and (with the OP+suffix following) at the close.
 - `body` — opaque byte stream between the opening `:` and the matching close tag `:OPsuffix`.
 - `:OPsuffix` close — `:` immediately followed by the open tag's `OP` and `suffix` (character-matching, no whitespace).
 
 ## 4. Per-OP Semantics
 
-| OP     | `[signal]`        | `(path)` | `body`                  | `<LineN>`     |
+| OP     | `[signal]`        | `(path)` | `body`                  | `<scope>`     |
 |--------|-------------------|----------|-------------------------|---------------|
 | FIND   | tag filter (CSV)  | required | pattern matcher         | result-set pagination |
 | READ   | tag filter (CSV)  | required | pattern matcher         | per-entry lines |
 | EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
-| COPY   | tags to apply (CSV) | required | destination URI, or a fork prompt for run:// (opaque; scheme interprets) | entry lines |
+| COPY   | tags to apply (CSV) | required | destination URI (plain resource copy — the run-fork overload was retired for the dedicated FORK verb, 0.74.54) | entry lines |
 | MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
-| SEND   | HTTP status code (single integer) | optional | message payload (JSON by convention for structured responses) | not applicable |
-| EXEC   | executor (single string; `sh` default, `node`, `python`, …) | optional (cwd) | command or code snippet | not applicable |
-| KILL   | unix signal (single integer; wired, untaught in canon) | required | opaque annotation (logged, no runtime meaning) | not applicable |
+| SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
+| EXEC   | executor (single string; `sh` default, `node`, `python`, …) | optional (cwd) | command or code snippet | `<timeout, poll>` — spawn lifetime cap + poll cadence |
+| WORK   | none (parses as null) | required `run://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
+| FORK   | none (parses as null) | required `run://` target naming the branch | optional hint for the context-inheriting branch | none (parses as null) |
+| KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |
 | PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
 
 The `<L>` slot is optional. Its referent shifts by OP (per the column
@@ -143,15 +145,17 @@ EDIT line-marker semantics (single source of authority):
 
 | OP   | Produces |
 |------|----------|
-| FIND | list of matching paths |
-| READ | content of matched entries (or matched substrings if `body` is a pattern) |
+| FIND | JSON array of catalog objects — each carries its `path` plus per-channel `mimetype`, `tokens`, and `lines` (plus `matchSpan`/`matchPath` on matcher hits) |
+| READ | content of matched entries, line-numbered `N:\t` (whole source lines, never extracted values) |
 | EDIT | status; resulting entry content on success |
 | COPY | status; destination path on success |
 | MOVE | status; destination path on success |
-| OPEN | status; list of log rows opened |
-| FOLD | status; list of log rows folded |
+| OPEN | status; list of log items opened |
+| FOLD | status; list of log items folded |
 | SEND | status; recipient ack if applicable |
-| EXEC | exit code, stdout, stderr |
+| EXEC | output stream channels (`#stdout`, `#stderr`), arriving on later turns |
+| WORK | spawn ack; the worker runs concurrently and its deliverable arrives as a log delta on conclusion |
+| FORK | spawn ack; the branch runs concurrently, inheriting the parent's context |
 | KILL | status; killed path |
 | PLAN | status; logged |
 
@@ -207,18 +211,18 @@ Runtime-enforced semantics:
 For FIND, READ, OPEN, and FOLD, `body` is an optional pattern matcher.
 The lexer captures the body opaquely (between the `:body:` fences) —
 dialect dispatch is not a lexer concern. Dialect is determined by the
-body's leading characters, and validated by the Visitor using native
-JS facilities (`new RegExp()` etc.) where applicable. Dispatch is a
-hint, not a gate: a body that fails its prefix-indicated dialect falls
-back to glob instead of erroring, so literal `//`-comments,
-`/path/`-strings, and `$`-prefixed text reach the runtime as glob
-matches.
+body's leading characters and validated by the Visitor using native
+JS facilities where applicable. **The leading prefix CLAIMS its
+dialect** (#59): a claimed body that fails its dialect's parse is a
+positioned `"visitor"` error, never a silent glob fallback — the
+fallback converted a model's syntax fumble into a lying no-matches
+result. Glob is the no-prefix dialect only.
 
 | Leading prefix | Dialect   | Canonical form            | Validation         |
 |----------------|-----------|---------------------------|--------------------|
-| `//`           | xpath     | `//…`                     | `xpath.parse()` in Visitor; glob on failure |
-| `/`            | regex     | `/pattern/flags` (trailing `/` required, flags `[a-z]*`) | `new RegExp()` in Visitor; glob on failure |
-| `$`            | jsonpath  | `$…`                      | `JSONPath()` in Visitor; glob on failure |
+| `#`            | regex     | `#pattern#flags` (closing `#` required; flags `[igmsu]*`; `\#` escapes a literal hash) | `new RegExp()` in Visitor; error on failure |
+| `//`           | xpath     | `//…`                     | `xpath.parse()` in Visitor; error on failure |
+| `$`            | jsonpath  | `$…`                      | `JSONPath()` in Visitor; error on failure |
 | `~`            | semantic  | `~phrase`                 | none — any text is a valid query |
 | `@`            | graph     | `@symbol`, `@<symbol`, `@>symbol` | none — resolved service-side |
 | otherwise      | glob      | `…` (literal substring if no metacharacters) | runtime (glob library) |
@@ -226,17 +230,15 @@ matches.
 Dialect conventions (the Visitor uses these to construct typed AST
 body fields; the lexer is unaware):
 
-- Xpath body begins with `//` (descendant-or-self axis). Absolute-root
-  `/foo` is unreachable (collides with regex prefix); rework as `//foo`.
-- Regex body is a delimited literal: opens with `/`, ends with `/`
-  before the close fence, with optional flag chars `[a-z]*` between
-  the closing `/` and the close fence. Literal `/` inside the pattern
-  must be escaped `\/`.
-- Regex anchors `^` and `$` go inside the slashes: `/^foo$/`.
-- Flag semantics (`i` case-insensitive, `m` multiline, `s` dotall,
-  etc.) follow ECMAScript regex.
-- Semantic body is a free-text similarity query; top-K narrowing rides
-  the host statement's `<L>` slot.
+- Regex is `#pattern#flags` — `#` was chosen over `/` so the delimiter
+  never collides with path `/` or regex's own `|` alternation. A bare
+  `/`-leading body (`/etc/hosts`) is therefore an ordinary glob; only
+  the double-slash `//` prefix claims xpath.
+- Regex anchors `^` and `$` go inside the hashes: `#^foo$#`. Flag
+  semantics (`i`, `g`, `m`, `s`, `u`) follow ECMAScript.
+- Xpath body begins with `//` (descendant-or-self axis).
+- Semantic body is a free-text similarity query; threshold and range
+  narrowing ride the host statement's `<scope>` slot (§7).
 - Graph body is a code-graph reference query: `@symbol` (neighborhood),
   `@<symbol` (inbound references), `@>symbol` (outbound references).
   No parse step in grammar; resolution is service-side.
@@ -255,20 +257,41 @@ body fields; the lexer is unaware):
   `pathname`, `search`, `fragment`). Genuine URL-protocol violations
   (malformed authority, unterminated IPv6 brackets, invalid port, etc.)
   produce a `PlurnkParseError` with source `"visitor"`.
-- **Regex body** (matcher-body OPs only, leading `/` and not `//`):
-  the Visitor extracts `pattern` and `flags` (respecting `\/` escapes)
-  and calls `new RegExp(pattern, flags)`. On failure (missing closing
-  `/`, unterminated character class, invalid flag, etc.), the body
-  falls back to a glob matcher.
+- **Regex body** (matcher-body OPs only, leading `#`): the Visitor
+  splits `#pattern#flags` (respecting `\#` escapes) and calls
+  `new RegExp(pattern, flags)`. An unclosed fence and an invalid
+  pattern/flags pair produce distinct `"visitor"` errors (the latter
+  carries the library's own detail, e.g. `Invalid flags supplied to
+  RegExp constructor 'i:'`).
 - **XPath body** (matcher-body OPs only, leading `//`): the Visitor
   calls `xpath.parse()` from the `xpath` npm package (XPath 1.0
-  parser-only, no DOM execution). On failure (unterminated predicate,
-  invalid operator, etc.), the body falls back to a glob matcher.
+  parser-only, no DOM execution). Failure is a `"visitor"` error.
 - **JsonPath body** (matcher-body OPs only, leading `$`): the Visitor
   calls `JSONPath({ path: body, json: {} })` from the `jsonpath-plus`
   npm package. The empty `{}` ensures syntax parsing happens without
-  document evaluation. On syntax failure (unclosed parens, malformed
-  filter expressions, etc.), the body falls back to a glob matcher.
+  document evaluation. Failure is a `"visitor"` error — note
+  `jsonpath-plus` is lenient (it accepts `$HOME` and `$.users[`), so
+  this claim rarely fires in practice.
+
+Errors here are per-statement: sibling statements in the same turn
+still build, so a consumer executes the rest of the turn and relays the
+errored matcher's message as the teaching failure.
+
+**The target slot is the deliberate asymmetry.** A `(#pattern#flags)`
+*target* (path-name regex, §5) that fails to parse falls back to a
+local path rather than erroring — a file may legitimately be named
+`#…`, so the fallback has a real referent there; a matcher pattern has
+none.
+
+**GBNF note — pattern bodies are single-line at the rail.** The shipped
+`dist/plurnk.gbnf` forbids literal newlines inside FIND/READ/OPEN/FOLD
+bodies (patterns are single-line by contract; a regex matching a
+newline writes the two-char escape `\n`). This collapses the
+mismatched-close-tag trap (`<<FIND(…):…:READ` leaving the sampler stuck
+in an unclosable body) to a single line. Content bodies
+(EDIT/COPY/MOVE/EXEC/SEND/PLAN/WORK/FORK) remain multiline. The ANTLR
+parser accepts multiline pattern bodies (forgiving ingester;
+`L(GBNF) ⊆ L(ANTLR)`).
 
 **Deferred validation:**
 
@@ -284,10 +307,18 @@ benefit over the native or library facilities.
 
 ## 7. Line Markers
 
-A line marker selects a position or range from the sequence an OP
-operates on or produces. The sequence type is OP-specific (see §4
+A line marker limits the scope of its operation — the canon names the
+slot `<scope>`; the AST field remains `lineMarker` (a deliberate
+vocabulary divergence: the canon is the model's language, the schema is
+the versioned wire contract). The referent is OP-specific (see §4
 per-OP table): entry lines for EDIT/COPY/MOVE, matched content lines
-for READ, positions in the matched result set for FIND/OPEN/FOLD.
+for READ, positions in the matched result set for FIND/OPEN/FOLD, and
+`<timeout, poll>` seconds for EXEC (spawn lifetime cap + poll cadence)
+and for SEND (the wait park on a terminal `[202]`, §9: `<T>` bounded,
+`<T,P>` adds a poll cadence, `<-1>` indefinite). The shipped GBNF
+offers the SEND park on `[202]` only — a `[102]` continue is pure at
+the rail — while the ANTLR parser tolerates a marker on any SEND
+(forgiving ingester; the engine folds it).
 
 **Token shape:** `<` NUM ((`-` | `,` `' '?`) NUM)* `>`, where NUM is
 `-?[0-9]+(.[0-9]+)?`. One or more numeric components, comma- or
@@ -378,17 +409,43 @@ outer's close tag is `:EDITa`.
 
 ## 9. SEND Status Codes
 
-SEND status codes align with HTTP semantics so that model training
+SEND submit codes align with HTTP semantics so that model training
 transfers directly:
 
 - `1xx` Informational — continuation; `102 Processing` is the canonical loop-continuation code.
-- `2xx` Success — terminal delivery; `200 OK` is the canonical final-answer code.
-- `3xx` Redirection - `300 Multiple Choices` is the canonical code: a multiple-choice question posed to the user, awaiting their selection.
-- `4xx` Client Error — model-side failure (malformed plurnk, missing path, contract violation).
-- `5xx` Server Error — runtime or infrastructure failure (network, permission, tool unavailable).
+- `2xx` Success — `200 OK` is the canonical final-answer code; `202 Accepted` is the obligation-checked wait.
+- `3xx` Redirection — `300 Multiple Choices`: a stop-the-world multiple-choice question posed to the user, awaiting their selection (emittable; not base-canon-taught — daemon-activated where an interactive user exists).
+- `4xx` Client Error — model-side failure (malformed plurnk, missing path, contract violation); `499` is the model's give-up.
+- `5xx` Server Error — runtime or infrastructure failure. Never model-emitted as a terminal: "failed" is an engine verdict.
 
-SEND with no `(path)` broadcasts to the default control channel. SEND
-with `(path)` directs the message at a specific recipient URI.
+### The terminal contract (waitpid)
+
+The model signals one intention per turn — **continue (102)**, **done
+(200)**, **wait (202)**, or **give up (499)**, plus the operator-facing
+**question (300)** — and the engine verifies the claim against the
+loop's live obligations (spawned children, open streams, pending
+retrievals); the grammar polices *shape* only. The shape rules ARE
+structural:
+
+- The five disposition codes `{102, 200, 202, 300, 499}` lex as a
+  distinct `DISPOSITION` token, making a disposition-coded SEND
+  **structurally terminal**: a statement after it is a parse error
+  (the mid-termination rule), and the GBNF reserves the five from
+  mid-position SENDs (`status-mid` is their complement over `DDD`).
+  This keeps the grammar's last-SEND model and the dispatcher's
+  first-disposition model coincident.
+- A **mid** SEND (before the terminal) is comms: statusless, or any
+  non-disposition code, targeted or pathless, empty body allowed.
+- The **terminal** SEND requires a non-empty body — a turn must not
+  end empty-handed.
+- The **park** rides `[202]` only: `<T>` (wait up to T seconds),
+  `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
+  (indefinite; the join's own liveness bounds it). See §7 for the
+  GBNF-strict / ANTLR-tolerant split.
+
+SEND with no `(path)` broadcasts to the default control channel — the
+turn's disposition. SEND with `(path)` directs the message at a
+specific recipient URI (a worker run, a stream, a peer).
 
 ### Response Body Convention
 
@@ -397,14 +454,12 @@ are emitted as **JSON in the SEND body**, so the model can consume them
 with the same jsonpath dialect it uses for matching:
 
 ```
-<<SEND[400](err://lex)
-{"reason":"unexpected token","position":{"line":47,"column":12},"expected":[")"],"got":"["}
-SEND
+<<SEND[400](err://lex):{"reason":"unexpected token","position":{"line":47,"column":12},"expected":[")"],"got":"["}:SEND
 ```
 
-The model retrieves a field with `<<READ(err://lex)$.reasonREAD` or
+The model retrieves a field with `<<READ(err://lex):$.reason:READ` or
 similar. Plain-text bodies remain valid for simple terminal answers
-(`<<SEND[200]ParisSEND`). The JSON convention is runtime policy; the
+(`<<SEND[200]:Paris:SEND`). The JSON convention is runtime policy; the
 grammar treats body as opaque.
 
 ## 10. Implementation Notes
@@ -498,13 +553,15 @@ PlurnkParser.parseStatements(input: string): ParseResult
 // only parses here. Returns ParseResult<ClientStatement>.
 PlurnkParser.parseClient(input: string): ParseResult<ClientStatement>
 
+// Parse a multi-turn LOG — each turn REQUIRES the `<<TURN: … :TURN` wrapping around
+// its own PLAN-anchored sandwich. The script/log tier; never used for model output.
+PlurnkParser.parseLog(input: string): ParseResult
+
 // Parse a path/URI string into a ParsedPath — the exact decomposition the parser
 // applies to every (target) slot. The top-level helper to reach for (no need to
-// touch AstBuilder). Primary use: resolving a COPY destination. COPY's body is an
-// opaque string — a destination URI for an entry copy, a prompt for a run fork
-// (run://) — so the scheme handler interprets it, then calls this for the
-// destination case. MOVE destinations arrive pre-parsed (body is always a path);
-// COPY's do not, because its body is polymorphic.
+// touch AstBuilder). Primary use: resolving a COPY destination — COPY's body stays
+// a raw string on the wire (the scheme handler calls this to resolve it), while
+// MOVE destinations arrive pre-parsed (body is always a path).
 parsePath(raw: string): ParsedPath | null
 
 type ParseResult = {
@@ -519,13 +576,16 @@ type ParseItem =
 
 type Position = { line: number; column: number };
 
-type PlurnkOp = "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC" | "KILL" | "PLAN";
+// The runtime const is exported alongside the type it derives:
+//   const PLURNK_OPS = ["FIND","READ","EDIT","COPY","MOVE","OPEN","FOLD","SEND","EXEC","WORK","FORK","KILL","PLAN"] as const;
+type PlurnkOp = (typeof PLURNK_OPS)[number];
 
 type PlurnkStatement =
     | FindStatement | ReadStatement | EditStatement
     | CopyStatement | MoveStatement
     | OpenStatement | FoldStatement
     | SendStatement | ExecStatement
+    | WorkStatement | ForkStatement
     | KillStatement | PlanStatement;
 
 // Client tier only (parseClient). LOOK/BUFF are read-shaped — identical fields to
@@ -569,10 +629,12 @@ interface UrlPath {
     fragment: string | null;
 }
 
-// Typed body for FIND/READ/OPEN/FOLD — dialect dispatch with compiled regex.
+// Typed body for FIND/READ/OPEN/FOLD — the leading prefix claims the dialect (§6).
+// The regex variant carries pattern/flags split out of the `#pattern#flags` literal;
+// no compiled RegExp rides the AST (JSON-serializable wire contract).
 type MatcherBody =
     | { dialect: "xpath"; raw: string }
-    | { dialect: "regex"; raw: string; pattern: string; flags: string; regexp: RegExp }
+    | { dialect: "regex"; raw: string; pattern: string; flags: string }
     | { dialect: "jsonpath"; raw: string }
     | { dialect: "semantic"; raw: string }
     | { dialect: "graph"; raw: string }
@@ -598,8 +660,9 @@ interface EditStatement extends StatementBase<string[]> { op: "EDIT"; body: stri
 
 // MOVE — body is the destination URI, parsed identically to the path slot.
 interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; body: ParsedPath | null; }
-// COPY — body is an opaque raw string: a destination URI for entry copies, a
-// prompt for run forks. The scheme handler interprets it; the parser does not.
+// COPY — body is the destination URI, carried as a raw string on the wire (the
+// scheme handler resolves it via parsePath). Plain resource copy only — the
+// run-fork overload was retired for the dedicated FORK verb (0.74.54).
 interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: string | null; }
 
 // SEND — body is raw + best-effort JSON.
@@ -607,6 +670,13 @@ interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBo
 
 // EXEC — body is a command or code snippet. Raw.
 interface ExecStatement extends StatementBase<string> { op: "EXEC"; body: string | null; }
+
+// WORK — spawn a fresh worker run. Target names the child (required, run://);
+// no signal, no scope (both parse as null). Body is the worker's task prompt.
+interface WorkStatement extends StatementBase<never> { op: "WORK"; body: string | null; }
+// FORK — branch the current run, inheriting context. Same shape as WORK;
+// body is an optional hint for the branch.
+interface ForkStatement extends StatementBase<never> { op: "FORK"; body: string | null; }
 
 // KILL — signal is a unix signal number; body is an opaque annotation. Raw.
 interface KillStatement extends StatementBase<number> { op: "KILL"; body: string | null; }
@@ -635,9 +705,8 @@ plurnk --help      Show usage.
 ```
 
 Exit codes: `0` for a clean parse (no error items, no `unparsedTail`),
-`1` otherwise. `RegExp` values inside `MatcherBody` serialize as their
-`/pattern/flags` string form; `PlurnkParseError` instances serialize via
-their `toJSON()` method to `{ line, column, source, message }`.
+`1` otherwise. `PlurnkParseError` instances serialize via their
+`toJSON()` method to `{ line, column, source, severity, message }`.
 
 ## 13. Error Format
 
