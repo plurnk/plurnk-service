@@ -152,7 +152,7 @@ YOU MUST NOT emit free text between operations. Users can only see submission SE
 
 YOU MUST start the turn with a concise PLAN.
 YOU MUST submit the OPs by SENDing either a brief response or a Github-flavored markdown response to the user with the proper submit code.
-* 102: submit a continuing turn with submit code 102: <<SEND[102]:FOLDing irrelevant log items and performing retrieval operations.:SEND
+* 102: submit a continuing turn with submit code 102: <<SEND[102]:Performing retrieval operations.:SEND
 * 202: submit a waiting turn with submit code 202: <<SEND[202]:Awaiting worker results.:SEND
 * 200: submit a final turn with submit code 200: <<SEND[200]:Retrieval operations received. Tasks successfully performed.:SEND
 * 499: submit a failed loop with submit code 499: <<SEND[499]:Aborted: Unrecoverable error:SEND
