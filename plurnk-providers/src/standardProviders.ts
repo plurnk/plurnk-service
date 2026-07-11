@@ -12,6 +12,7 @@
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
 import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, thinkingFromEnv, dataCaptureFromEnv } from "./env.ts";
+import { emitWarningOnce } from "./warnings.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
 import { lookup } from "@plurnk/plurnk-models";
@@ -404,9 +405,11 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     if (staleTokenizer !== undefined && staleTokenizer.length > 0) {
         throw new Error(`${name} provider: ${spec.tokenizerEnvVar} was removed — exact counting moved to the @plurnk/plurnk-mimetypes tokenizer seam (mimetypes#44) and Provider.tokenize(); unset the var (countTokens is a chars/2 upper bound)`);
     }
-    process.emitWarning(
+    // Once per process per (code, message) — #40: construction-per-run daemons
+    // repeated this until operators tuned warnings out.
+    emitWarningOnce(
         `${name} provider: countTokens is a chars/2 upper bound — exact counts come from the mimetypes tokenizer seam or tokenize()`,
-        { code: "PLURNK_TOKENIZER_HEURISTIC" },
+        "PLURNK_TOKENIZER_HEURISTIC",
     );
     const url = resolveUrl(spec, env, name, baseUrlOverride);
     const fetchTimeoutMs = parseRequiredInt(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name);
@@ -457,9 +460,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             // Detection exhausted its retries with NO answer: capability stays
             // un-upgraded, but NEVER silently (#34) — rails going dark without a
             // signal cost the consumer weeks of misattributed rambles.
-            process.emitWarning(
+            emitWarningOnce(
                 `${name} provider: llama-server detection failed after ${probeAttempts} attempts — grammar transport stays OFF (grammarStyle "none"). If this endpoint IS a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER=1 (or its _<alias> form).`,
-                { code: "PLURNK_PROBE_FAILED" },
+                "PLURNK_PROBE_FAILED",
             );
         }
     }
@@ -475,6 +478,16 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // rate, #22); everyone else keys the catalog directly on (name, wireModel).
     const fallback = spec.catalogContextLookup === undefined ? lookup(name, wireModel) : undefined;
     contextSize ??= (spec.catalogContextLookup !== undefined ? spec.catalogContextLookup(wireModel) : fallback?.contextWindow) ?? null;
+    // Underivable window (env, probe, catalog ALL missed) resolves to null — a
+    // legitimate "unknown" (§11), but never a SILENT one: budget-partitioning
+    // consumers fall back to bare numbers tuned for some other model (the #352
+    // failure mode). Surface it once with the remediation.
+    if (contextSize === null) {
+        emitWarningOnce(
+            `${name} provider: context window underivable for "${wireModel}" (no env, endpoint probe, or catalog entry) — contextSize=null; set PLURNK_PROVIDERS_CONTEXT_SIZE (alias-scopable as _<alias>) so window budgets are deliberate`,
+            "PLURNK_CONTEXT_UNKNOWN",
+        );
+    }
     const cost = fallback?.cost;
     const costFor = cost === undefined
         ? undefined

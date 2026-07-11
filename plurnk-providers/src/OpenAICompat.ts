@@ -14,6 +14,7 @@ import { chatCompletionStream, chatCompletion, OpenAiHttpError, type StreamRespo
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
+import { emitWarningOnce } from "./warnings.ts";
 
 // How the thinking intent (PLURNK_PROVIDERS_THINKING: off | adaptive | on, plus
 // THINKING_CAPACITY iff on — #32/#33) translates to each backend's wire mechanism
@@ -355,9 +356,10 @@ export default class OpenAICompatProvider implements Provider {
         try {
             return validateGbnf(grammar, content);
         } catch (cause) {
-            process.emitWarning(
+            // Once per (code, message) — #40: this fires PER TURN otherwise.
+            emitWarningOnce(
                 `${this.#source}: could not verify grammar enforcement — the transported grammar did not parse in @plurnk/gbnf (${(cause as Error).message})`,
-                { code: "PLURNK_GRAMMAR_UNVERIFIABLE" },
+                "PLURNK_GRAMMAR_UNVERIFIABLE",
             );
             return null;
         }

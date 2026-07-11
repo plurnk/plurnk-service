@@ -57,7 +57,8 @@ const installFetchScript = (responses: ScriptedResponse[]) => {
 // Let the pending request + its catch/backoff scheduling drain before asserting.
 const flush = () => new Promise<void>((r) => setImmediate(r));
 
-test.afterEach(() => mock.restoreAll());
+import { resetEmittedWarnings } from "./warnings.ts";
+test.afterEach(() => { mock.restoreAll(); resetEmittedWarnings(); }); // #40: warning-asserting tests stay order-independent
 
 test("effortFromBudget: maps budget to tiers", () => {
     assert.equal(effortFromBudget(1), "low");

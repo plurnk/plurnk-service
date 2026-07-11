@@ -37,7 +37,8 @@ const mockEndpoint = ({ nctx, metaNctx, modelId = "m" }: { nctx?: number; metaNc
     return calls;
 };
 const chatCall = (calls: string[]) => calls.find((u) => u.endsWith("/chat/completions"));
-test.afterEach(() => mock.restoreAll());
+import { resetEmittedWarnings } from "./warnings.ts";
+test.afterEach(() => { mock.restoreAll(); resetEmittedWarnings(); }); // #40: warning-asserting tests stay order-independent
 
 test("isStandardProvider: known vs unknown", () => {
     assert.equal(isStandardProvider("openai"), true);
@@ -123,6 +124,25 @@ test("openai: contextSize null when the endpoint reports no n_ctx (e.g. real Ope
     mockEndpoint({}); // models response without n_ctx
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     assert.equal(p!.contextSize, null);
+});
+
+test("underivable context is SURFACED, never silent: PLURNK_CONTEXT_UNKNOWN names model + remediation", async () => {
+    mockEndpoint({}); // env unset, probe reports nothing, no catalog entry for "m"
+    const warned: Array<string | Error> = [];
+    mock.method(process, "emitWarning", (msg: string | Error) => { warned.push(msg); });
+    await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    const w = warned.map(String).find((x) => x.includes("context window underivable"));
+    assert.ok(w, `expected PLURNK_CONTEXT_UNKNOWN; got: ${warned.join("; ")}`);
+    assert.ok(w!.includes('"m"'), "names the model");
+    assert.ok(w!.includes("PLURNK_PROVIDERS_CONTEXT_SIZE"), "names the remediation var");
+});
+
+test("derivable context emits NO context-unknown warning", async () => {
+    mockEndpoint({ nctx: 49152 });
+    const warned: Array<string | Error> = [];
+    mock.method(process, "emitWarning", (msg: string | Error) => { warned.push(msg); });
+    await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
+    assert.equal(warned.map(String).filter((x) => x.includes("context window underivable")).length, 0);
 });
 
 test("openai: probe failure degrades to null, never throws", async () => {
