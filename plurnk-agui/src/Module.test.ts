@@ -197,3 +197,20 @@ test("session.create WITH a name is worldless and does NOT demand a pre-bound se
         assert.equal(r.value.result.name, "fresh-world", "created the named world, no session-required throw");
     } finally { await mod.close(); }
 });
+
+test("loop.cancel is a REAL action kind — cancels the model run's drain (both clients' stop buttons ride it)", async () => {
+    const cancelled: number[] = [];
+    const { seam } = mockSeam();
+    seam.listSessions = async () => [{ id: 3, name: "w" }];
+    seam.attachSession = async () => ({ sessionId: 3, sessionName: "w", projectRoot: null, runId: 10, runName: "c", modelRunId: 20, clientLoopId: null });
+    seam.ensureModelRun = async () => 20;
+    seam.cancelDrain = (runId) => { cancelled.push(runId); return true; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const ev = await post(mod.address().port, { threadId: "w", runId: "r1", forwardedProps: { plurnk: { session: "w", action: { kind: "loop.cancel", reason: "user_stop" } } } });
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { cancelled: boolean }; error?: string } };
+        assert.equal(r.value.ok, true, r.value.error ?? "loop.cancel must be a known kind");
+        assert.equal(r.value.result.cancelled, true);
+        assert.deepEqual(cancelled, [20], "the MODEL run's drain was cancelled");
+    } finally { await mod.close(); }
+});

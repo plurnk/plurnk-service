@@ -96,7 +96,9 @@ A verb is a §3 action run: `forwardedProps.plurnk.action = {kind, …params}` i
 `CUSTOM plurnk.action.result` (`{kind, ok, result|error}`) out, `RUN_FINISHED`. There is
 no side-channel RPC endpoint; the run envelope is the whole interface. Unknown kinds
 error honestly (`ok:false`). `loop.inject` rides this surface; its steered effect
-streams on the original run's open SSE.
+streams on the original run's open SSE. `loop.cancel` is its counterpart — it aborts
+the model run's active drain (the addressable spelling of the SSE-hangup abort; both
+clients' stop controls ride it).
 
 ## Topology scope {§agui-topology-scope}
 

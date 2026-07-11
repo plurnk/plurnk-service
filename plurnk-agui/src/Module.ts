@@ -38,7 +38,7 @@ export default class Module {
     // auth) does NOT — so it must not bind or forge a session (operator ruling 2026-07-10:
     // "every run/thread requires a world, not everything"). Only these kinds bind a session.
     static #WORLD_SCOPED = Object.freeze(new Set([
-        "session.runs", "log.read", "loop.inject", "session.prompts", "session.rename",
+        "session.runs", "log.read", "loop.inject", "loop.cancel", "session.prompts", "session.rename",
         "session.constrain", "session.unconstrain", "session.constraints", "entry.read",
         "op.exec", "op.parse", "session.members", "op.look", "run.fork",
     ]));
@@ -328,6 +328,9 @@ export default class Module {
                     const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), prompt: p.prompt });
                     return { ok: true, result: ack };
                 }
+                // The stop button (TUI /stop + Ctrl-C, nvim :PlurnkStop): abort the model
+                // run's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
+                case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(await this.#seam.ensureModelRun(env.sessionId)) } };
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
                 case "session.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) return { ok: false, error: "session.rename requires name" };
