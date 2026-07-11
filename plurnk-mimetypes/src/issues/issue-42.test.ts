@@ -1,3 +1,4 @@
+// Coverage: SPEC §11 (parsed-form matcher).
 // Issue #42: Mimetypes.query accepts a parsed-form matcher, not only a raw
 // string — consume the grammar's already-parsed { dialect, pattern, flags } so
 // there's no second parser for the matcher syntax (no drift).

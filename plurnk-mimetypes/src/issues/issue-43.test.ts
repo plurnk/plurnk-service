@@ -1,3 +1,4 @@
+// Coverage: SPEC §20 (classification authority).
 // Issue #43 (schemes, via the owner): per-mimetype classification authority.
 // The truth table below is ABSORBED from plurnk-schemes' retiring
 // MimetypeClassifier tests verbatim — the contract this API exists to own so

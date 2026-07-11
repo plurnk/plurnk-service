@@ -1,3 +1,4 @@
+// Coverage: SPEC §1 (duck contract, 0.15 floor).
 // Issue #21: process({channels:["deepXml"]}) threw "handler.deepXml is not a
 // function" when the resolved handler came from a pre-0.15 package (whose
 // bundled BaseHandler predates the channel methods).

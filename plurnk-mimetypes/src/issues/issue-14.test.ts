@@ -1,3 +1,4 @@
+// Coverage: SPEC §7 (grammar-missing degradation).
 // Issue #14: Framework should own its runtime dependency surface (grammars +
 // loaders), not offload it onto consumers.
 // https://github.com/plurnk/plurnk-mimetypes/issues/14

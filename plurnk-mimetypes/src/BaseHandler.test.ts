@@ -1,3 +1,4 @@
+// Coverage: SPEC §1 (duck contract).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import BaseHandler from "./BaseHandler.ts";

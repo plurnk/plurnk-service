@@ -1,3 +1,4 @@
+// Coverage: SPEC §9 (ANTLR backend).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import AntlrExtractor from "./AntlrExtractor.ts";

@@ -1,3 +1,4 @@
+// Coverage: SPEC §5 (channel selection).
 // Issue #17: 0.15 P1 — channel-selective process() + preview-ectomy
 // (ProcessResult v2). https://github.com/plurnk/plurnk-mimetypes/issues/17
 //

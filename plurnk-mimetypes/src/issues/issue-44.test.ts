@@ -1,3 +1,4 @@
+// Coverage: SPEC §19 (tokenizer seam).
 // Issue #44 (providers agent): the tokenizer seam — exact LLM token counting
 // on the embeddings pattern. Mimetypes.tokenizer(modelRef) resolves through the
 // opt-in @plurnk/plurnk-mimetypes-tokenizers artifact:

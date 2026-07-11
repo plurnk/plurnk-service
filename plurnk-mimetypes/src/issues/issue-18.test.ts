@@ -1,3 +1,4 @@
+// Coverage: SPEC §3 (MimeSymbol container).
 // Issue #18: 0.15 P2 — MimeSymbol v2: container (qualified path) + column
 // positions. https://github.com/plurnk/plurnk-mimetypes/issues/18
 //

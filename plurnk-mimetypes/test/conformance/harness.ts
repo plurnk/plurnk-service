@@ -1,3 +1,4 @@
+// Coverage: SPEC §14 (testing discipline: conformance harness).
 import assert from "node:assert/strict";
 import TreeSitterLanguageHandler from "../../src/treesitter/handler.ts";
 import { lookupTreeSitterLanguage } from "../../src/treesitter/registry.ts";

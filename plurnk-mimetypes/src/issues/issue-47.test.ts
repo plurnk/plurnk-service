@@ -1,3 +1,4 @@
+// Coverage: SPEC §21 (embedding-eligibility suppression).
 // Issue #47 (service#337): derivation-eligibility via PLURNK_MIMETYPES_NO_EMBED
 // — the operator's pattern list IS the classification (owner paradigm: the
 // decision table lives in .env.example, no code fallback, no hidden heuristic).

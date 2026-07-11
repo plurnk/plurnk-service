@@ -1,3 +1,4 @@
+// Coverage: SPEC §11 (body-matcher query defaults).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import BaseHandler from "./BaseHandler.ts";

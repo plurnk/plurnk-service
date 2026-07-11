@@ -1,3 +1,4 @@
+// Coverage: SPEC §17 (embedderInfo contract).
 // embeddings#1: mimetypes.embedderInfo() surfaces the embedder's pure model
 // facts (token window + the model's own counter) for plurnk-service's lossless
 // chunker. The activation key — null keeps the host on whole-entry behavior;

@@ -1,3 +1,4 @@
+// Coverage: SPEC §4 (outline format).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { format } from "./format.ts";

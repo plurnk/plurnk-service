@@ -1,3 +1,4 @@
+// Coverage: SPEC §2 (plurnk discovery block).
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";

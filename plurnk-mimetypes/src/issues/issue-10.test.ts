@@ -1,3 +1,4 @@
+// Coverage: SPEC §12 (channel architecture).
 // Issue #10: Three internal channels per entry — deep-json, deep-xml, symbols.
 // https://github.com/plurnk/plurnk-mimetypes/issues/10
 //

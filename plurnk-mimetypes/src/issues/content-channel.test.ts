@@ -1,3 +1,4 @@
+// Coverage: SPEC §18 (content channel).
 // Content channel — model-facing readable text projection (HTML-only for now).
 // Design conversation 2026-06-14; see SPEC §18.
 //

@@ -1,3 +1,4 @@
+// Coverage: SPEC §12 (deep-xml projection).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { projectJsonToXml } from "./projectJsonToXml.ts";

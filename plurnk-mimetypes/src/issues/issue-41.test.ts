@@ -1,3 +1,4 @@
+// Coverage: SPEC §11 (source-line footprint).
 // Issue #41: structural-query matches report the SOURCE-LINE footprint.
 // https://github.com/plurnk/plurnk-mimetypes/issues/41
 //

@@ -1,3 +1,4 @@
+// Coverage: SPEC §17 (embedding channel).
 // Issue #24: embedding channel — Float32-bytes Uint8Array, scalar per entry
 // (plurnk-service ~semantic).
 // https://github.com/plurnk/plurnk-mimetypes/issues/24

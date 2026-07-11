@@ -1,3 +1,4 @@
+// Coverage: SPEC §9 (tree-sitter backend), §12 (deep-json conventions).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TreeSitterExtractor from "./TreeSitterExtractor.ts";

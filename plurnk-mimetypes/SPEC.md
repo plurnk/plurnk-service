@@ -345,7 +345,7 @@ Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to
 
 For the rare format where neither tree-sitter nor grammars-v4 has coverage and the syntax is simple enough to scan directly: extend `BaseHandler` and implement `extractRaw(content)` returning `MimeSymbol[]` (or `Promise<MimeSymbol[]>` if the scanner needs async I/O, which it shouldn't). The handler README must justify why neither §9.5 nor §9.3 was viable — the bar is intentionally high to keep the family converged on community-maintained grammars.
 
-## 10. Tokenization (removed in v0.15.0)
+## 10. Tokenization (removed in v0.15.0) <!-- coverage: policy -->
 
 The framework neither tokenizes nor budgets. The pre-0.15 tokenize-injection architecture served the preview fitting layer (§5, also removed); both died with their only consumer, plurnk-service's index. Token counting is wholly a consumer concern — the service tokenizes content with its live provider at render time and never trusts write-time counts.
 
@@ -499,7 +499,7 @@ The deep channels are **never model-visible**. They are consumed exclusively by 
 
 Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` addresses for that content — line count for text, item count for structured. Exposed on `ProcessResult` so consumers can hand the model navigation bounds (`READ<100,150>` needs to know whether 150 is in range). Defaults: `extent = totalLines` for text content, `0` for binary; handlers with non-line units (structured archives, paginated documents) override `BaseHandler.extent()`.
 
-## 13. Per-grammar package architecture (framework v0.11.0)
+## 13. Per-grammar package architecture (framework v0.11.0) <!-- coverage: policy -->
 
 ### 13.1 The split
 
@@ -592,7 +592,7 @@ The dialect-symmetry invariant (§11.2) is enforced by a shipped harness, not ey
 
 **The gate must exercise every dialect a handler supports** — the single most important rule, and the one whose absence let the jsonpath/xpath asymmetry hide. A handler that supports both jsonpath and xpath gets a case for each (`$..*` and `//*`); testing one dialect proves nothing about the other. Each handler ships `src/queryLines.conformance.test.ts` (binary handlers assert the contract directly against a built fixture, e.g. pdf). The 30 tree-sitter grammar packages route through the one shared handler, so they are gated centrally in the framework's `src/treesitter/queryLines.conformance.test.ts` across a spread of languages on both dialects — one red build for an ecosystem-wide regression.
 
-## 15. Public API stability
+## 15. Public API stability <!-- coverage: policy -->
 
 All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions. v0.15.0 is a deliberate clean break (issue #16/#17): the preview/fitting/tokenize surface was removed outright.
 

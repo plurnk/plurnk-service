@@ -1,3 +1,4 @@
+// Coverage: SPEC §5 (channel selection), §6 (validate), §7 (error policy).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";

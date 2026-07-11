@@ -1,3 +1,4 @@
+// Coverage: SPEC §17 (embedder teardown).
 // #36: Mimetypes.dispose() releases the embedder's native runtime so a consumer
 // process can drain its event loop and exit. The embeddings package's
 // onnxruntime worker pool holds active+referenced libuv handles; without a way

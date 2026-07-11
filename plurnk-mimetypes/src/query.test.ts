@@ -1,3 +1,4 @@
+// Coverage: SPEC §11 (dialect primitives).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { outlineLineFor, queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";

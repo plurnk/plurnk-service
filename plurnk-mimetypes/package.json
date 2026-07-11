@@ -54,14 +54,15 @@
         "test:lint": "tsc --noEmit",
         "test:unit": "node --test src/*.test.ts src/treesitter/*.test.ts src/issues/*.test.ts",
         "test:intg": "node --test test/integration/**/*.test.ts",
-        "test": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:conf",
+        "test": "npm run test:lint && npm run spec:check && npm run test:unit && npm run test:intg && npm run test:conf",
         "test:conf": "node --test test/conformance/*.test.ts",
         "grammars:check": "node scripts/update-grammars.mjs --check",
         "grammars:update": "node scripts/update-grammars.mjs",
         "grammars:publish": "node scripts/publish-grammars.mjs",
         "deps:check": "node scripts/deps-check.mjs",
         "deps:fresh": "npm outdated",
-        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test"
+        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test",
+        "spec:check": "node scripts/spec-check.mjs"
     },
     "peerDependencies": {
         "antlr-ng": "^1.0.10"
