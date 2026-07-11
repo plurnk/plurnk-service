@@ -119,8 +119,36 @@ export default class PacketBuilder {
         };
     }
 
+    // #377 — a per-alias partition knob present in env (same suffix/fold rule as providers'
+    // scopeEnvToAlias: PLURNK_SERVICE_<KNOB>_<alias>, alias case-folded, a key that IS a bare knob
+    // is never an override).
+    static #hasAliasKnob(alias: string): boolean {
+        if (alias.length === 0) return false;
+        const folded = alias.toLowerCase();
+        for (const knob of PacketBuilder.#KNOBS) {
+            for (const key of Object.keys(process.env)) {
+                if (!key.startsWith(knob + "_")) continue;
+                if ((PacketBuilder.#KNOBS as readonly string[]).includes(key)) continue;
+                if (key.slice(knob.length + 1).toLowerCase() === folded && (process.env[key] ?? "").length > 0) return true;
+            }
+        }
+        return false;
+    }
+
     #partitionFor(provider: Provider): { ctx: number; reasoning: number; assistant: number; safety: number } {
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        // #377 — §tokenomics-window-unpollable-deliberate: "CTX stands in for unknown physics" is
+        // only honest when the CTX is the operator's DELIBERATE policy for THIS alias. An unpollable
+        // window (provider.contextSize null — the provider's machine signal after env/probe/catalog
+        // all miss) riding BARE partition numbers is nobody's policy: numbers tuned for some other
+        // model silently applied, surfacing later as truncation/overflow telemetry (#352's failure
+        // mode recurring for every unpollable model). Fail loud at first use, naming both remedies.
+        if (provider.contextSize === null && !PacketBuilder.#hasAliasKnob(alias)) {
+            // BEFORE the cache lookup — the constructor pre-primes the boot alias's partition, and a
+            // cache hit must never bypass this refusal (the check keys on the PROVIDER's null window,
+            // which the cached partition knows nothing about).
+            throw new Error(`window unpollable for alias '${alias || "<active>"}' and its partition rides bare numbers — nobody chose this envelope for this model. Either set PLURNK_PROVIDERS_CONTEXT_SIZE_${alias || "<alias>"} (so the window is known) or set the per-alias partition (PLURNK_SERVICE_{CTX,REASONING,ASSISTANT,SAFETY}_${alias || "<alias>"}) so the numbers are deliberate.`);
+        }
         const hit = this.#partitions.get(alias);
         if (hit !== undefined) return hit;
         const part = this.#resolvePartition(alias);
