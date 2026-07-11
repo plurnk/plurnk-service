@@ -145,7 +145,9 @@ test("NO session prop is a HARD ERROR (500) — a run has no world to forge from
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] }) });
         assert.equal(res.status, 500, "the missing session surfaces as an honest 500, not a fabricated 200");
-        assert.match((await res.json() as { error: string }).error, /forwardedProps\.plurnk\.session is required/);
+        const body = await res.json() as { error: string };
+        assert.match(body.error, /forwardedProps\.plurnk\.session \(a session name\) is required/);
+        assert.doesNotMatch(body.error, /world|existence/, "the error states the contract, never the machine-model philosophy");
         assert.equal(created, 0, "NO session was forged from the threadId");
     } finally { await mod.close(); }
 });

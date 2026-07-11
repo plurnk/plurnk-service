@@ -108,7 +108,7 @@ export default class Module {
     // run (ensureModelRun) — distinct second conversations gate on plurnk-service#366.
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.session;
-        if (typeof workspace !== "string" || workspace.length === 0) throw new Error("forwardedProps.plurnk.session is required — a run has no existence without a session (its world)");
+        if (typeof workspace !== "string" || workspace.length === 0) throw new Error("forwardedProps.plurnk.session (a session name) is required");
         const cached = this.#threads.get(threadId);
         if (cached !== undefined) return { env: cached, reattached: true };
         const known = (await this.#seam.listSessions()).find((s) => s.name === workspace);
