@@ -145,6 +145,14 @@ export interface Provider {
     // introspectable so the consumer can fail hard on a dark-rails boot instead
     // of discovering it from unconstrained emissions.
     readonly constrainsOutput?: boolean;
+    // OPTIONAL resolved capability (#43): true when this backend decodes
+    // UNBOUNDED absent a caller cap — llama-server honors n_predict to the
+    // context wall (the 30,736-junk-token wall-run, providers#10), so a consumer
+    // MUST bring an output envelope (SPEC §13). Cloud backends that silently
+    // clamp an over-ask (fireworks/xai, verified live) never set this; undefined
+    // = no claim. Introspectable so a consumer can refuse AT BOOT a local alias
+    // with no declared envelope, instead of dying mid-turn in partition math.
+    readonly requiresMaxTokens?: boolean;
     // Provider-owned tokenizer. Synchronous, non-negative integer. Without an
     // exact family configured this is the chars/2 UPPER BOUND (surfaced at
     // construction, never silent) — safe for refusal math, not an exact count.

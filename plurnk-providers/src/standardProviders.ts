@@ -428,6 +428,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     let slotCount: number | null = null;
     let tokenizeUrl: string | undefined;
     let servedModel: string | undefined;
+    let requiresMaxTokens: boolean | undefined;
     let reasoningStyle = spec.reasoningStyle;
     if (spec.probeNctx === true) {
         // Operator pin (#34): "1" → llama-server capabilities WITHOUT trusting
@@ -456,6 +457,10 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             // jinja chat_template_kwargs.enable_thinking, including the explicit
             // FALSE at THINKING=off that grammar-constrained loops require (§13).
             if (reasoningStyle === "think") reasoningStyle = "template";
+            // #43: llama-server honors n_predict to the CONTEXT WALL (providers#10)
+            // — no self-clamp. Surface the fact so a consumer can boot-refuse a
+            // local alias whose output envelope was never declared.
+            requiresMaxTokens = true;
         } else if (pin === null && probe.failed && spec.detectLlamaServer !== false) {
             // Detection exhausted its retries with NO answer: capability stays
             // un-upgraded, but NEVER silently (#34) — rails going dark without a
@@ -525,5 +530,6 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         slotCount,
         tokenizeUrl,
         servedModel,
+        requiresMaxTokens,
     });
 };

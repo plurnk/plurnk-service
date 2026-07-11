@@ -42,6 +42,18 @@ interface Provider {
     // (llama-server /tokenize). Probe-gated — undefined means the backend can't.
     tokenize?(text: string): Promise<number[]>;
 
+    // OPTIONAL resolved capabilities — introspectable facts for boot-time policy:
+    // constrainsOutput (#34): a transported grammar WILL constrain this decode
+    //   (rails live) — consumers fail hard on a dark-rails boot instead of
+    //   discovering it from unconstrained emissions.
+    // requiresMaxTokens (#43): this backend decodes UNBOUNDED absent a caller cap
+    //   (llama-server honors n_predict to the context wall, providers#10) — a
+    //   consumer MUST bring an output envelope (§13), and can refuse AT BOOT a
+    //   local alias whose envelope was never declared. Self-clamping cloud
+    //   backends never set it; undefined = no claim.
+    readonly constrainsOutput?: boolean;
+    readonly requiresMaxTokens?: boolean;
+
     // Transport. `runId` is REQUIRED: the opaque, stable identity of the
     // consumer's work stream — providers may key backend affinity on it and
     // never interpret it. `grammar` is an optional GBNF string for

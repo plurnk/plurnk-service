@@ -63,6 +63,10 @@ export type OpenAICompatConfig = {
     // the alias; this is the real name (the .gguf) the tokenizer seam maps. Absent
     // when no probe ran or it read no row.
     servedModel?: string;
+    // #43: backend decodes unbounded without a caller cap (llama-server n_predict
+    // to the wall) — surfaced as Provider.requiresMaxTokens so consumers can
+    // boot-refuse an envelope-less local alias. Default unset (no claim).
+    requiresMaxTokens?: boolean;
     // The side-channel thinking intent — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_THINKING + _CAPACITY, read via thinkingFromEnv):
     // { mode: off|adaptive|on, capacity: iff on }. The provider maps it to the
@@ -168,6 +172,7 @@ export default class OpenAICompatProvider implements Provider {
     #logprobs: number | null;
     #rawBody: boolean;
     #servedModel: string | undefined;
+    #requiresMaxTokens: boolean | undefined;
 
     // Optional capability (SPEC §2): exact tokenization served by the backend's
     // own vocab. Assigned in the constructor ONLY when the config carries a
@@ -206,6 +211,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#logprobs = config.logprobs ?? null;
         this.#rawBody = config.rawBody ?? false;
         this.#servedModel = config.servedModel;
+        this.#requiresMaxTokens = config.requiresMaxTokens;
         const { tokenizeUrl } = config;
         if (tokenizeUrl !== undefined) {
             this.tokenize = async (text: string): Promise<number[]> => {
@@ -229,6 +235,8 @@ export default class OpenAICompatProvider implements Provider {
     get model(): string { return this.#model; }
     // #37: backend's self-reported served id; undefined when unprobed/unknown.
     get servedModel(): string | undefined { return this.#servedModel; }
+    // #43: resolved "decodes unbounded without a cap" fact; undefined = no claim.
+    get requiresMaxTokens(): boolean | undefined { return this.#requiresMaxTokens; }
     // Resolved capability (#34): will a transported grammar actually constrain
     // this backend's decode? Introspectable so a consumer can verify the rails
     // are LIVE without spending a generation on a forcing-grammar probe.

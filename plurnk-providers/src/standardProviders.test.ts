@@ -271,6 +271,17 @@ test("openai: PLURNK_PROVIDERS_LLAMA_SERVER=1 pins llamacpp capabilities WITHOUT
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_LLAMA_SERVER: "1" }, "m");
     assert.equal(p!.constrainsOutput, true); // pinned: rails live, no probe dependency
     assert.notEqual(p!.tokenize, undefined); // full capability set rides the pin
+    assert.equal(p!.requiresMaxTokens, true); // #43: the unbounded-decode fact rides the pin too
+});
+
+test("#43: llama-server fingerprint surfaces requiresMaxTokens=true; cloud stays undefined (no claim)", async () => {
+    mockEndpoint({ metaNctx: 49152 }); // llama-server fingerprint
+    const local = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
+    assert.equal(local!.requiresMaxTokens, true); // decodes to the wall (providers#10) — consumer must bring an envelope
+    mock.restoreAll();
+    mockEndpoint({}); // plain remote: no fingerprint
+    const cloud = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "k" }, "deepseek-v4-flash");
+    assert.equal(cloud!.requiresMaxTokens, undefined); // self-clamping cloud: no claim, no refusal trigger
 });
 
 test("openai: PLURNK_PROVIDERS_LLAMA_SERVER=0 forces plain-remote even when the fingerprint matches (#34)", async () => {
