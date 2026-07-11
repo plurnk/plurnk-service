@@ -61,8 +61,23 @@ test("[§agui-thread-is-run] two threads, one world: distinct runs, shared files
         // named for it, alongside the model run — histories split, world shared.
         const runs = await action(port, "second-look", "shared-world", "session.runs");
         assert.equal(runs.ok, true);
-        const names = (runs.result as { runs: Array<{ name: string }> }).runs.map((r) => r.name);
+        const runList = (runs.result as { runs: Array<{ id: number; name: string }> }).runs;
+        const names = runList.map((r) => r.name);
         assert.ok(names.includes("second-look"), `thread B's conversation run exists by ITS name: ${names.join(", ")}`);
+
+        // #376 isolation — the runId filter through module HEAD + the REAL seam: the
+        // client ops journaled in each thread's CLIENT run; per-run reads must differ.
+        // (The service's readlog-run-filter pin exonerates the seam in isolation; this
+        // pins the full module→seam path with live params.)
+        const perRun = new Map<number, number>();
+        for (const r of runList) {
+            const read = await action(port, "second-look", "shared-world", "log.read", { runId: r.id });
+            assert.equal(read.ok, true, `log.read runId=${r.id}: ${read.error ?? ""}`);
+            perRun.set(r.id, (read.result as { entries: unknown[] }).entries.length);
+        }
+        const counts = [...perRun.values()];
+        assert.ok(new Set(counts).size > 1 || counts.every((c) => c === 0) === false,
+            `per-run reads are DISTINGUISHABLE (a uniform answer for every runId is the #376 signature): ${JSON.stringify([...perRun])}`);
     } finally {
         await (module as Module | null)?.close();
         await daemon.stop();

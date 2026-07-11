@@ -61,6 +61,6 @@
     },
     "dependencies": {
         "@plurnk/plurnk-execs-mcp": "0.7.3",
-        "@plurnk/plurnk-grammar": "0.76.6"
+        "@plurnk/plurnk-grammar": "0.76.7"
     }
 }
