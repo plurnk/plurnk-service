@@ -54,17 +54,17 @@ test("[§agui-management-plane] an action run executes via the seam: result cust
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
-        const events = await post(mod.address().port, { threadId: "t1", runId: "r1", forwardedProps: { plurnk: { action: { kind: "providers.list" } } } });
+        const events = await post(mod.address().port, { threadId: "t1", runId: "r1", forwardedProps: { plurnk: { session: "t1", action: { kind: "providers.list" } } } });
         const result = events.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { kind: string; ok: boolean; result: { aliases: Array<{ alias: string }> } } };
         assert.equal(result.value.ok, true);
         assert.equal(result.value.result.aliases[0].alias, "opus");
         assert.equal(events[events.length - 1].type, "RUN_FINISHED", "action run finishes clean");
         // inject rides the same surface
-        const inj = await post(mod.address().port, { threadId: "t1", runId: "r2", forwardedProps: { plurnk: { action: { kind: "loop.inject", prompt: "steer" } } } });
+        const inj = await post(mod.address().port, { threadId: "t1", runId: "r2", forwardedProps: { plurnk: { session: "t1", action: { kind: "loop.inject", prompt: "steer" } } } });
         const ack = inj.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { action: string } } };
         assert.equal(ack.value.result.action, "injected_next_turn", "inject folds into the active drain via the unified runLoop");
         // an unknown kind errors honestly
-        const bad = await post(mod.address().port, { threadId: "t1", runId: "r3", forwardedProps: { plurnk: { action: { kind: "nope.nothing" } } } });
+        const bad = await post(mod.address().port, { threadId: "t1", runId: "r3", forwardedProps: { plurnk: { session: "t1", action: { kind: "nope.nothing" } } } });
         const err = bad.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; error: string } };
         assert.equal(err.value.ok, false);
         assert.match(err.value.error, /unknown action kind/);
@@ -76,7 +76,7 @@ test("[§agui-proposal-resolve] a resume tool-result resolves the paused proposa
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         const events = await post(mod.address().port, {
-            threadId: "t2", runId: "r1",
+            threadId: "t2", runId: "r1", forwardedProps: { plurnk: { session: "t2" } },
             messages: [
                 { role: "assistant", content: "" },
                 { role: "tool", toolCallId: "prop:42", content: JSON.stringify({ decision: "accept", body: "edited" }) },
@@ -97,15 +97,15 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     seam.listSessions = async () => [{ id: 4, name: "alpha" }];
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
-        // 1) A thread named like an existing session attaches to IT — the exact name.
-        const run = await post(mod.address().port, { threadId: "alpha", runId: "r1", forwardedProps: { plurnk: { action: { kind: "ping" } } } });
+        // 1) A session named like an existing world attaches to IT — the exact name.
+        const run = await post(mod.address().port, { threadId: "alpha", runId: "r1", forwardedProps: { plurnk: { session: "alpha", action: { kind: "ping" } } } });
         assert.equal(run[run.length - 1].type, "RUN_FINISHED");
-        assert.deepEqual(attached, [4], "thread 'alpha' attached session 'alpha' — no agui- prefix lookup");
-        // 2) A new thread creates a session with EXACTLY its name.
-        await post(mod.address().port, { threadId: "beta", runId: "r2", forwardedProps: { plurnk: { action: { kind: "ping" } } } });
+        assert.deepEqual(attached, [4], "session 'alpha' attached the world 'alpha' — no agui- prefix lookup");
+        // 2) A new session name creates a world with EXACTLY that name.
+        await post(mod.address().port, { threadId: "beta", runId: "r2", forwardedProps: { plurnk: { session: "beta", action: { kind: "ping" } } } });
         assert.deepEqual(created.map((c) => c.name), ["beta"], "created verbatim — never 'agui-beta', never a uuid");
         // 3) session.attach is a REAL action kind returning the envelope.
-        const att = await post(mod.address().port, { threadId: "alpha", runId: "r3", forwardedProps: { plurnk: { action: { kind: "session.attach", id: 4 } } } });
+        const att = await post(mod.address().port, { threadId: "alpha", runId: "r3", forwardedProps: { plurnk: { session: "alpha", action: { kind: "session.attach", id: 4 } } } });
         const result = att.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { id: number; name: string } } };
         assert.equal(result.value.ok, true, "session.attach is wired, not unknown-kind");
         assert.equal(result.value.result.name, "alpha");
@@ -134,16 +134,16 @@ test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the session
     } finally { await mod.close(); }
 });
 
-test("no session prop = the thread names its own workspace (backward-compatible)", async () => {
-    const created: Array<{ name?: string }> = [];
-    const { seam, finish } = mockSeam();
+test("NO session prop is a HARD ERROR (500) — a run has no world to forge from the threadId", async () => {
+    let created = 0;
+    const { seam } = mockSeam();
     seam.listSessions = async () => [];
-    seam.createSession = async (a) => { created.push(a); return { sessionId: 9, sessionName: a.name ?? "x", projectRoot: null, runId: 1, runName: "c", modelRunId: 2, clientLoopId: null }; };
-    seam.ensureModelRun = async () => 2;
-    seam.runLoop = async (a) => { finish(a.sessionId); return { action: "enqueued_new_loop", loopId: 9 }; };
+    seam.createSession = async (a) => { created++; return { sessionId: 9, sessionName: a.name ?? "x", projectRoot: null, runId: 1, runName: "c", modelRunId: 2, clientLoopId: null }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
-        await post(mod.address().port, { threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] });
-        assert.deepEqual(created.map((c) => c.name), ["solo"], "no session prop → a session named for the thread");
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] }) });
+        assert.equal(res.status, 500, "the missing session surfaces as an honest 500, not a fabricated 200");
+        assert.match((await res.json() as { error: string }).error, /forwardedProps\.plurnk\.session is required/);
+        assert.equal(created, 0, "NO session was forged from the threadId");
     } finally { await mod.close(); }
 });

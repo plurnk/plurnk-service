@@ -91,12 +91,14 @@ export default class Module {
     // THE PLURNK PARADIGM (operator ruling 2026-07-10): the name IS the identity,
     // verbatim. The SESSION is the WORLD (service SPEC, machine-processes) — selected by name via
     // `forwardedProps.plurnk.session`; attach it if it exists, create it with EXACTLY that
-    // name if it doesn't. No prefixes, no forged names, no dual lookup. A thread with no
-    // explicit session names its own workspace after the threadId (backward-compatible).
+    // name if it doesn't. No prefixes, no forged names, no dual lookup. The session is
+    // REQUIRED: a run has no existence without a world, so its absence is a contract
+    // violation the client must fix — never a workspace forged from the threadId.
     // The threadId is the CONVERSATION over that world; today it binds the session's model
     // run (ensureModelRun) — distinct second conversations gate on plurnk-service#366.
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
-        const workspace = typeof forwarded?.session === "string" && forwarded.session.length > 0 ? forwarded.session : threadId;
+        const workspace = forwarded?.session;
+        if (typeof workspace !== "string" || workspace.length === 0) throw new Error("forwardedProps.plurnk.session is required — a run has no existence without a session (its world)");
         const cached = this.#threads.get(threadId);
         if (cached !== undefined) return { env: cached, reattached: true };
         const known = (await this.#seam.listSessions()).find((s) => s.name === workspace);

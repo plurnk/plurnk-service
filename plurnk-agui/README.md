@@ -33,8 +33,8 @@ One endpoint: `POST /` with `RunAgentInput` (`threadId`, `runId`, `messages`,
 - **Reads ride STATE**: providers/aliases/budget/session arrive as `STATE_SNAPSHOT` on
   `RUN_STARTED` and `STATE_DELTA` on change — observed, not polled.
 - **The session is the WORLD**: `forwardedProps.plurnk.session` selects the workspace by
-  name, verbatim (attach-or-create); with no `session`, the thread names its own workspace
-  after the `threadId` (backward-compatible). Session options ride the workspace's first run:
+  name, verbatim (attach-or-create). It is REQUIRED — a run has no existence without a world,
+  so its absence is rejected (500), never forged from the `threadId`. Session options ride the workspace's first run:
   `forwardedProps.plurnk` (`projectRoot`, `constraints`, `settings`); per-run knobs
   (`maxTurns`, `flags`, `alias`/`model`) every run.
 - **The thread is the CONVERSATION**: a `threadId` binds a run over the selected world —

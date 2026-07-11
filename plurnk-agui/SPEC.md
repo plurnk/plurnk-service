@@ -14,9 +14,10 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
   — plurnk's machine model (service SPEC §machine-processes) splits the WORLD (a session: one
   curated workspace) from the CONVERSATION (a run: a history over that world). AG-UI's session
   concept is the workspace, selected by name, VERBATIM, via `forwardedProps.plurnk.session`
-  (attach if it exists, create with exactly that name otherwise — no prefix, no forging). A
-  thread with no explicit `session` names its own workspace after the `threadId`
-  (backward-compatible). The `threadId` is the conversation: today it binds the session's MODEL
+  (attach if it exists, create with exactly that name otherwise — no prefix, no forging). The
+  session is REQUIRED: a run has no existence without a world, so its absence is a contract
+  violation the module rejects (500) — never a workspace forged from the `threadId`. The
+  `threadId` is the conversation: today it binds the session's MODEL
   run (`ensureModelRun` — origin identifies it, never a name parse), so extended context
   persists across AG-UI runs because the run's log does. Distinct second conversations over one
   world (a thread that is NOT the model run — a fork, a fresh conversation run) gate on
