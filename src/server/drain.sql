@@ -116,3 +116,9 @@ FROM subscriptions WHERE run_id = $run_id AND closed_at IS NULL AND poll_seconds
 -- A run's parent (run:// spawn / fork set parent_run_id, §lifecycle-terms). NULL = a root run.
 -- Used at drain-exit to wake a parent that parked awaiting this child (§run-lifecycle topology join).
 SELECT parent_run_id FROM runs WHERE id = $run_id;
+
+-- PREP: drain_active_loop_flags
+-- #368 — the LIVE loop's persisted flags for the fold-posture guard: an inject carrying flags
+-- that differ from the loop it would fold into is refused, never a silent posture discard.
+-- The run's currently-executing loop is its most recent non-terminal one.
+SELECT id, flags FROM loops WHERE run_id = $run_id AND status IN (100, 102) ORDER BY sequence DESC LIMIT 1;

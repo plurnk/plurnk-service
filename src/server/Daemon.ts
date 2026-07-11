@@ -33,6 +33,7 @@ import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-provider
 import Yolo from "./yolo.ts";
 import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
+import type { LoopFlags } from "../core/types.ts";
 
 import PingMethod from "./methods/ping.ts";
 import DiscoverMethod from "./methods/discover.ts";
@@ -266,7 +267,7 @@ export default class Daemon {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         ClientInput.validateLoopFlags("loop.run", args.flags); // seam fail-hard (#364) — a truthy string must never flip YOLO
         if (this.#provider === null) throw new Error("runLoop: no provider configured");
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
@@ -745,10 +746,27 @@ export default class Daemon {
      * Rummy parallel: AgentLoop.inject(). Unified surface — both `loop.run`
      * and wake-on-completion go through this method. §actor-boundary-passive-wake
      */
+    // #368 — flags are LOOP-scoped (persisted per loop row; the packet's teaching follows them), so a
+    // prompt folding into a live/parked loop cannot re-flag it mid-flight — and it must never PRETEND
+    // to: an inject carrying flags that DIFFER from the target loop's effective flags is refused
+    // legibly (cancel the loop or omit the flags), never a silent posture discard. Identical or
+    // absent flags fold clean.
+    async #assertFoldPosture(runId: number, flags: Partial<LoopFlags> | undefined, loopId?: number): Promise<void> {
+        if (flags === undefined || Object.keys(flags).length === 0) return;
+        const row = loopId !== undefined
+            ? await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId })
+            : await (this.#db.drain_active_loop_flags as PrepMethod).get<{ id: number; flags: string }>({ run_id: runId });
+        const effective: Record<string, unknown> = { ...DEFAULT_LOOP_FLAGS, ...JSON.parse(row?.flags ?? "{}") as object };
+        const conflicts = Object.entries(flags).filter(([k, v]) => v !== undefined && effective[k] !== v).map(([k, v]) => `${k}: ${JSON.stringify(effective[k])} → ${JSON.stringify(v)}`);
+        if (conflicts.length > 0) {
+            throw new Error(`inject: the prompt would fold into a live loop whose flags differ (${conflicts.join(", ")}) — flags are loop-scoped and never change mid-flight. Cancel the loop (loop.cancel) and re-run with the new flags, or send the prompt without flags to adopt the loop's posture.`);
+        }
+    }
+
     async inject(args: {
         sessionId: number; runId: number; prompt: string;
         provider: Provider; systemPrompt: string;
-        maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[];
+        maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[];
     }): Promise<{
         action: "injected_next_turn" | "enqueued_new_loop";
         loopId: number;
@@ -761,6 +779,7 @@ export default class Daemon {
         // engine.inject returns null when no loop is currently executing, so
         // we enqueue a fresh loop below and ensure a drain claims it.
         if (this.#activeDrains.has(runId)) {
+            await this.#assertFoldPosture(runId, args.flags); // #368 — a fold never silently discards intent
             const result = await this.#engine.inject(runId, prompt);
             if (result !== null) {
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq };
@@ -775,6 +794,7 @@ export default class Daemon {
         if (!this.#activeDrains.has(runId)) {
             const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ run_id: runId });
             if (slept !== undefined) {
+                await this.#assertFoldPosture(runId, args.flags, slept.id); // #368 — the resume path drops nothing silently either
                 const injected = await this.#engine.inject(runId, prompt);
                 await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
                 const started = await this.#ensureDrain({
