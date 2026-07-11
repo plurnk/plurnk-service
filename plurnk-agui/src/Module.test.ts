@@ -181,3 +181,17 @@ test("discover: returns the real capability manifest (methods + notifications) â
         assert.equal(r.value.result.notifications["stream/concluded"], true, "the concluded notification the client depends on");
     } finally { await mod.close(); }
 });
+
+test("session.create WITH a name is worldless and does NOT demand a pre-bound session (regression)", async () => {
+    const { seam } = mockSeam();
+    seam.listSessions = async () => [];
+    seam.createSession = async (a) => ({ sessionId: 12, sessionName: a.name ?? "auto", projectRoot: null, runId: 3, runName: "client-1", modelRunId: null, clientLoopId: null });
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        // No forwardedProps.plurnk.session on the run itself â€” session.create supplies its own world.
+        const ev = await post(mod.address().port, { threadId: "probe", runId: "r1", forwardedProps: { plurnk: { action: { kind: "session.create", name: "fresh-world" } } } });
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { name: string }; error?: string } };
+        assert.equal(r.value.ok, true, r.value.error ?? "");
+        assert.equal(r.value.result.name, "fresh-world", "created the named world, no session-required throw");
+    } finally { await mod.close(); }
+});

@@ -278,7 +278,9 @@ export default class Module {
                     // The name IS the identity: an explicit name creates/attaches EXACTLY
                     // that session; no name = the daemon names it and the real name binds.
                     if (typeof p.name === "string" && p.name.length > 0) {
-                        const { env: created } = await this.#envelope(p.name, p);
+                        // The name IS the world here — feed it as the session so #envelope
+                        // creates/attaches exactly it (p carries no `session` of its own).
+                        const { env: created } = await this.#envelope(p.name, { ...p, session: p.name });
                         return { ok: true, result: { id: created.sessionId, name: created.sessionName, runId: created.runId } };
                     }
                     const created = await this.#seam.createSession({
