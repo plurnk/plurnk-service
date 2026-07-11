@@ -48,7 +48,8 @@ _(Migrated from PROJECT.md, 2026-06-27 — the project reorg is reverted; the wo
 
 **Phase 2 — exec-family reconciliation: DONE (all four commented with verdicts; #340 closed):** execs#22 (published, bench closes), execs-mcp#3 (relay live; seam home rides #364-p2), execs-mcp#2 (service no-op confirmed, theirs), execs#18 (lane complete + live-validated; service residue = #333 only).
 
-**Phase 3 — checklist remainder, dependency order:**
+**Phase 3 — checklist remainder, dependency order:** (#364 DONE 0.88.0-published; #339 fixed; #343/#365 verify-closed; #372 evidence corrected → agui#3)
+- [ ] **#310 re-triage** — weak-model scratch-substitution: judge against run40/42 evidence (membership gates + ask-mode may have moved it); a forensic judgment, not shovel work. NEXT.
 - [ ] **#364 phase 2** — now the big rock; its three dispositions RESOLVED by audit: mcp_install (thin relay → trivial seam/module home), auth relay (stateless passthrough → same), RPC-deadline (dies with the registry; §operator-config-rpc-timeout re-homes or retires with owner). Then: migrate 3 raw-WS test files, delete MethodRegistry/methods/ClientConnection/ws dep, move dsl.ts → test/intg/.
 - [ ] SPEC anchor sweep — PARKED for owner scoping (serious housekeeping)
 - [ ] Prepub: full drill (incl. steer-rewording live-check) → cut 0.87.0
