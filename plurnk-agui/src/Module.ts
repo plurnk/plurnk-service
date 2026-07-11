@@ -24,6 +24,7 @@ export interface ModuleOptions {
     port: number;                 // 0 = ephemeral
     token?: string;               // empty/undefined = local trust (loopback bind is the boundary)
     maxTurns?: number;
+    heartbeatMs?: number;         // SSE comment-frame cadence (agui#3); default 15s, 0 disables
 }
 
 export default class Module {
@@ -167,9 +168,16 @@ export default class Module {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
         let pausedOnProposal = false;
+        // The heartbeat (agui#3): a long model generation emits NO events, and consumer
+        // stacks kill silent bodies (undici's default 300s bodyTimeout — bench's
+        // 'terminated' deaths at 371s/711s = last event + 300s). An SSE comment frame
+        // every few seconds keeps every consumer fed; parsers skip comments by spec.
+        const cadence = this.#opts.heartbeatMs ?? 15_000;
+        const heartbeat = cadence > 0 ? setInterval(() => { res.write(": hb\n\n"); }, cadence) : null;
         const finish = (): void => {
             if (finished) return;
             finished = true;
+            if (heartbeat !== null) clearInterval(heartbeat);
             this.#portal.closeRun(sessionId, boundRun);
             res.end();
         };

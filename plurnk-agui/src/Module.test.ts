@@ -287,3 +287,20 @@ test("[§agui-thread-is-run] loop.inject on a distinct thread folds into THAT co
         assert.deepEqual(driven, [44], "the steer reached the thread's own run");
     } finally { await mod.close(); }
 });
+
+test("[§agui-run-endpoint] SSE heartbeat: a silent run stays alive — comment frames flow between events (agui#3: undici bodyTimeout kills silent streams)", async () => {
+    const { seam, finish } = mockSeam();
+    seam.listSessions = async () => [{ id: 3, name: "w" }];
+    seam.attachSession = async () => ({ sessionId: 3, sessionName: "w", projectRoot: null, runId: 10, runName: "c", modelRunId: 20, clientLoopId: null });
+    seam.ensureModelRun = async () => 20;
+    // A SLOW loop: no events for ~200ms (a long model generation), then terminated.
+    seam.runLoop = async (a) => { setTimeout(() => finish(a.sessionId), 200); return { action: "enqueued_new_loop", loopId: 9 }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0, heartbeatMs: 40 })(seam);
+    try {
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { session: "w" } } }) });
+        const raw = await res.text();
+        const beats = (raw.match(/^: hb$/gm) ?? []).length;
+        assert.ok(beats >= 2, `the silent window carried heartbeats (got ${beats}) — no client bodyTimeout can starve mid-generate`);
+        assert.match(raw, /RUN_FINISHED/, "the run still ends clean");
+    } finally { await mod.close(); }
+});
