@@ -8,6 +8,8 @@ import { renderAddress } from "./plurnk-uri.ts";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import SessionSettings from "./session-settings.ts";
+import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
+import type { LoopFlags } from "./types.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
@@ -225,7 +227,11 @@ export default class PacketBuilder {
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.buildTelemetryErrors(loopId, currentTurnSeq);
         const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
-        const tools = this.#collectTools(await this.#sessionEnabled(sessionId), await SessionSettings.questionsEnabled(this.#db, sessionId));
+        // #367 — the capability sheet must reflect the LOOP MODE, not just session-enablement: an
+        // ask-mode loop advertises only what its dispatch gate (resolveForLoop) will accept, so the
+        // model is never taught a tag it'll then be 403'd on (the taught→emitted→rejected→508 spiral).
+        const activeSchemes = this.#schemes.resolveForLoop(await this.#loadLoopFlags(loopId));
+        const tools = this.#collectTools(await this.#sessionEnabled(sessionId), await SessionSettings.questionsEnabled(this.#db, sessionId), activeSchemes);
         // Budget readout (SPEC.md §tokenomics). Two-pass: render the budget from
         // the structured log's subtotals with a {{tokensFree}} placeholder, build
         // the section list, measure the assembled total, resolve free, substitute.
@@ -371,7 +377,15 @@ export default class PacketBuilder {
     // it can do before the rules. Each available executor tag contributes its self-documenting
     // example (plurnk-execs#7), retiring the blind EXEC.
     // The capability sheet — the live tool surface (wired executor tags). §tools-capability-sheet
-    #collectTools(sessionEnabled: (tag: string) => boolean, questionsOn = false): string[] {
+    // Mirror of Dispatcher.#loadLoopFlags — the packet reads the SAME persisted flags the gate does.
+    async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
+        const row = await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId });
+        if (row === undefined) return DEFAULT_LOOP_FLAGS;
+        try { return { ...DEFAULT_LOOP_FLAGS, ...JSON.parse(row.flags) as Partial<LoopFlags> }; }
+        catch { return DEFAULT_LOOP_FLAGS; }
+    }
+
+    #collectTools(sessionEnabled: (tag: string) => boolean, questionsOn = false, activeSchemes?: Set<string>): string[] {
         const tools: string[] = [];
         // §send-300-choices — the one-liner rides ONLY where questions are enabled (allowed +
         // client-requested); the fuller questions.md doc injects through docEntries the same way.
@@ -388,6 +402,7 @@ export default class PacketBuilder {
             for (const tag of executors.availableRuntimes()) {
                 if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
                 if (!sessionEnabled(tag)) continue; // #328 — session-disabled tags aren't advertised
+                if (activeSchemes !== undefined && !activeSchemes.has(tag)) continue; // #367 — mode-excluded tags aren't taught (tag == runtime scheme)
                 const entry = executors.entry(tag);
                 // #240 — identical treatment with the scheme directory: the example IS the oneliner,
                 // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose

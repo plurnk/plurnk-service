@@ -60,6 +60,10 @@ test("flag gate active: mode=ask rejects side-effecting scheme with 403", async 
         const stmt = editStmt(urlPath("sideeffect-test", "x"), "body");
         const r = await engine.dispatch({ statement: stmt, sessionId, runId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 403);
+        // #367 — the steer NAMES ask mode and says DO NOT RETRY, so the model changes course
+        // instead of re-emitting into the StrikeRail's 508.
+        assert.match(r.error ?? "", /ask-mode/, "the 403 names the ask-mode restriction");
+        assert.match(r.error ?? "", /Do NOT retry|answer or advise/, "the steer directs a course change, not a repeat");
     } finally { await db.close(); }
 });
 

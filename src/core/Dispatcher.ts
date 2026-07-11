@@ -360,11 +360,19 @@ export default class Dispatcher {
         if (!flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
 
         const active = this.#schemes.resolveForLoop(flags);
+        // #367 — the steer NAMES the restriction and says DO NOT RETRY: the old vague "inactive under
+        // current loop flags" invited an identical re-emit each turn → the StrikeRail's 508. An
+        // unavailable op is not a failing one; the model must change course, not repeat.
+        const restriction = flags.mode === "ask"
+            ? "this is an ask-mode (read-only) loop — you cannot run commands or take host actions here"
+            : flags.noWeb && flags.noInteraction ? "web and interaction are disabled for this loop"
+            : flags.noWeb ? "web access is disabled for this loop"
+            : "interaction is disabled for this loop";
         const check = (target: PlurnkStatement["target"]): DispatchResult | null => {
             const scheme = schemeNameOf(target);
             if (scheme === null) return null;
             if (active.has(scheme)) return null;
-            return { status: 403, error: `scheme '${scheme}' is inactive under current loop flags` };
+            return { status: 403, error: `'${scheme}' is unavailable: ${restriction}. Do NOT retry it — it is unavailable, not failing; answer or advise the user directly (an act-mode loop is required to use it).` };
         };
 
         if (this.#isRunControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
