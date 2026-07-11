@@ -352,9 +352,12 @@ export default class Daemon {
         return envelope;
     }
 
-    setProjectRoot(sessionId: number, projectRoot: string | null) {
+    async setProjectRoot(sessionId: number, projectRoot: string | null): Promise<string | null> {
         projectRoot = ClientInput.assertProjectRoot("session.set_root", projectRoot);
-        return Envelope.updateSessionProjectRoot(this.#db, sessionId, projectRoot);
+        const updated = await Envelope.updateSessionProjectRoot(this.#db, sessionId, projectRoot);
+        // The root change re-resolved membership — warm the new members' derivations immediately.
+        if (updated !== null) void this.#engine.warmSessionDerivations(sessionId).catch(() => {});
+        return updated;
     }
 
     async renameSession(sessionId: number, name: string): Promise<{ id: number; name: string }> {
@@ -368,6 +371,16 @@ export default class Daemon {
         ClientInput.assertConstraint("session.constrain", effect, glob);
         await (this.#db.crud_insert_session_constraint as PrepMethod).run({ session_id: sessionId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, sessionId, undefined);
+        // Members may have just landed — warm their derivations NOW (fire-and-forget, off the hot
+        // path), exactly like createSession does (dogfood catch: '/repo' embeddings waited for a
+        // later turn's pump).
+        void this.#engine.warmSessionDerivations(sessionId).catch(() => {});
+        // §membership D4 — a rootless 'repo' constraint is LEGAL (it re-resolves when the workspace
+        // pointer arrives), but silently pending forever was the dogfood gap: say so on the result.
+        if (effect === "repo") {
+            const s = await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
+            if (s?.project_root == null) return { effect, glob, note: "recorded — resolves when a project root is set (session.set_root)" } as { effect: string; glob: string };
+        }
         return { effect, glob };
     }
 

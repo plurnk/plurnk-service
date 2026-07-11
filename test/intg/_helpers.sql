@@ -376,3 +376,9 @@ SELECT (SELECT timestamp FROM turns WHERE id = $turn_id) AS tts,
 -- status change → no trigger), so the fixture's +2s value survives deterministically.
 UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT timestamp FROM turns WHERE id = $turn_id), '+2 seconds')
 WHERE id = $loop_id;
+
+-- PREP: test_set_session_root
+UPDATE sessions SET project_root = $project_root WHERE id = $id;
+
+-- PREP: test_count_null_scheme_entries
+SELECT COUNT(*) n FROM entries WHERE session_id = $session_id AND scheme IS NULL;
