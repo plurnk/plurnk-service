@@ -26,7 +26,9 @@ const ANCHOR = /\{§([a-z0-9-]+)\}/g;
 const spec = await readFile(SPEC_URL, "utf-8");
 const anchors = new Set([...spec.matchAll(ANCHOR)].map((m) => m[1]));
 
-const srcFiles = (await readdir(SRC_URL)).filter((f) => f.endsWith(".ts"));
+// The checker's own comments legitimately discuss citation syntax — exclude it.
+const SELF = "spec-anchors.test.ts";
+const srcFiles = (await readdir(SRC_URL)).filter((f) => f.endsWith(".ts") && f !== SELF);
 const citations: Array<{ file: string; name: string }> = [];
 for (const file of srcFiles) {
     const text = await readFile(new URL(file, SRC_URL), "utf-8");
