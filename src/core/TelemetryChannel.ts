@@ -12,7 +12,7 @@ const ENGINE_ERRORS = Object.freeze({
     // premature-terminate is NOT a terse engine-error: it's a SEND op-result (409 + an actionable
     // outcome, §send-premature-terminate) — the SEND row records the [200] attempt faithfully and
     // auto-surfaces (status≥400) like any op failure, never an erasure to 102.
-    idle_turn: { status: 409, term: "Idle Turn" },
+    idle_turn: { status: 409, term: "Idle Turn — this turn delivered no new work; act on something pending, deliver a result, or conclude ([200]) / abandon ([499])" },
 } as const);
 export type EngineErrorKind = keyof typeof ENGINE_ERRORS;
 

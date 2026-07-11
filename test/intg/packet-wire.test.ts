@@ -25,7 +25,22 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"\/out\.txt","tokens":0\}/, "single meta line; path = log URI identity; target = action operand; tokens:0 on a no-body row");
+    assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "single meta line; path = log URI identity; target = action operand; tokens:0 on a no-body row");
+});
+
+test("COPY/MOVE into a file render their span diff like EDIT — the write is SEEN in the row (#370)", () => {
+    // #370 item 3 — a COPY/MOVE whose dest is a workspace file proposes via File.writeEntry, which
+    // now carries editedSpan like edit(); the wire renders it so the model sees what the write
+    // changed (the same 0-token bodyless gap §edit-result-render closed for EDIT).
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/5",
+        origin: "model",
+        op: "COPY",
+        status: 200,
+        target: { scheme: "known", pathname: "/draft" },
+        rx: { status: 200, span: "1:\tcopied content" },
+    }], tok);
+    assert.match(out, /<<:::known:\/\/\/draft\n1:\tcopied content\n:::known:\/\/\/draft/, "the COPY row carries its resulting span, EDIT-parity");
 });
 
 test("EDIT with an accept-path span (rx.body from a proposed file edit) renders the line-numbered diff", () => {
@@ -41,7 +56,7 @@ test("EDIT with an accept-path span (rx.body from a proposed file edit) renders 
         target: { scheme: null, pathname: "/src/app.js" },
         rx: { status: 200, body: "3:\tapp.listen(8080);\n4:\t// error handler configured" },
     }], tok);
-    assert.match(out, /<<:::\/src\/app\.js\n3:\tapp\.listen\(8080\);\n4:\t\/\/ error handler configured\n:::\/src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
+    assert.match(out, /<<:::src\/app\.js\n3:\tapp\.listen\(8080\);\n4:\t\/\/ error handler configured\n:::src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
 });
 
 test("log entry: a run:// spawn renders the worker NAME in the target — authority survives (§run-scheme)", () => {
@@ -81,7 +96,7 @@ test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markd
     };
     const out = PacketWire.renderLog(system.log, tok);
     // Line-navigable mimetype → `N:\t` prefix per line.
-    assert.match(out, /<<:::\/notes\.md\n1:\thello\n2:\tworld\n:::\/notes\.md/);
+    assert.match(out, /<<:::notes\.md\n1:\thello\n2:\tworld\n:::notes\.md/);
 });
 
 test("log render: READ@200 matcher result (startLine null) renders VERBATIM — no double line-numbering", () => {
@@ -96,7 +111,7 @@ test("log render: READ@200 matcher result (startLine null) renders VERBATIM — 
         target: { scheme: null, pathname: "/spec.md" },
         rx: { content: "143:\tgrinder\n617:\tgrinder", mimetype: "text/markdown", startLine: null },
     }], tok);
-    assert.match(out, /<<:::\/spec\.md\n143:\tgrinder\n617:\tgrinder\n:::\/spec\.md/);
+    assert.match(out, /<<:::spec\.md\n143:\tgrinder\n617:\tgrinder\n:::spec\.md/);
     assert.doesNotMatch(out, /1:\t143:\t/);
 });
 
@@ -115,8 +130,8 @@ test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with applicat
     };
     const out = PacketWire.renderLog(system.log, tok);
     // Tree-navigable mimetype → body rendered verbatim, no outer N:\t.
-    assert.match(out, /<<:::\/notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::\/notes\.md/);
-    assert.doesNotMatch(out, /<<:::\/notes\.md\n1:\t/);
+    assert.match(out, /<<:::notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::notes\.md/);
+    assert.doesNotMatch(out, /<<:::notes\.md\n1:\t/);
 });
 
 // EDIT log renders re-emit the model's statement as heredoc — same syntax
@@ -314,7 +329,7 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<:::\/page\.html\n<h1>Hi<\/h1>\n:::\/page\.html/);
+    assert.match(out, /<<:::page\.html\n<h1>Hi<\/h1>\n:::page\.html/);
     assert.doesNotMatch(out, /1:\t/);
 });
 

@@ -259,7 +259,10 @@ export default class PacketWire {
     // storage boundary; storage and wire output are uniform on this.
     static #renderModelUri(scheme: string | null | undefined, pathname: string | null | undefined): string {
         const path = pathname ?? "";
-        if (scheme === null || scheme === undefined) return path;
+        // #370 — a null scheme is a workspace file, whose member key is /rel but whose MODEL-FACING
+        // form is the bare relative path (the catalog lists data/users.json; FIND returns it; the
+        // model types it). Rendering /data/users.json minted a second spelling of the same file.
+        if (scheme === null || scheme === undefined) return path.replace(/^\//, "");
         return renderAddress(scheme, path);
     }
 
@@ -372,7 +375,7 @@ export default class PacketWire {
                 // a number numbers from it; absent → 1 (whole-content default).
                 const start = rx.startLine === null ? null : (typeof rx.startLine === "number" ? rx.startLine : 1);
                 body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
-            } else if (op === "EDIT" && rx !== null && typeof rx === "object" && (typeof (rx as { span?: unknown }).span === "string" || typeof (rx as { body?: unknown }).body === "string")) {
+            } else if ((op === "EDIT" || op === "COPY" || op === "MOVE") && rx !== null && typeof rx === "object" && (typeof (rx as { span?: unknown }).span === "string" || typeof (rx as { body?: unknown }).body === "string")) {
                 // EDIT (§edit-result-render): the resulting span as it looks now. editedSpan already
                 // line-numbered it with the changed region's REAL offsets (e.g. 50:\t…), so wrap
                 // verbatim — re-numbering here would double it (1:\t50:\t…) and lose the true line

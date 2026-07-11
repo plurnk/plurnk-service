@@ -32,5 +32,9 @@ export function renderAddress(scheme: string, pathname: string): string {
     if (scheme === "plurnk" && pathname.split("/").filter((s) => s.length > 0).length >= 2) {
         return `plurnk://${pathname.replace(/^\//, "")}`;
     }
+    // #370 — the run IS the authority (§run-scheme): a stored row whose authority was folded into
+    // the pathname (/name/...) must render run://name/..., never run:///name/... — one packet was
+    // minting BOTH forms and the model treated them as different addresses.
+    if (scheme === "run") return `run://${pathname.replace(/^\//, "")}`;
     return `${scheme}://${pathname}`;
 }
