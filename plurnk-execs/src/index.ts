@@ -16,6 +16,12 @@ export const discover = Discover.scan;
 // cascade is byte-identical at both tiers.
 export { default as Policy } from "./policy.ts";
 
+// The EXEC family's per-loop capability contribution (SPEC §3.4). Turns a zero
+// count of permitted runtimes into a single legible "No EXEC operations
+// permitted" line instead of silent absence, which the model reads as unknown
+// availability and fills by confabulating runtimes (execs#24).
+export { default as Advertise } from "./advertise.ts";
+
 // Runtime-tag → spawn-args helper (subprocess family; legacy scheme path,
 // SPEC §4). Same shape: behavior on the `Runtime` class, the documented
 // function/constant names re-exported over its statics.
