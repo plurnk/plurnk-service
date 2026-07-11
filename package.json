@@ -57,7 +57,7 @@
         "prepublishOnly": "npm run deps:audit"
     },
     "dependencies": {
-        "@plurnk/plurnk-agui": "^0.11.2",
+        "@plurnk/plurnk-agui": "^0.11.4",
         "@plurnk/plurnk-docs": "^0.1.10",
         "@plurnk/plurnk-execs": "^0.4.41",
         "@plurnk/plurnk-execs-all": "^0.1.31",
