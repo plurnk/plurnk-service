@@ -1,5 +1,5 @@
-// Browser — the headless-Chromium render foundation, ported from
-// rummy.web's WebFetcher (@possumtech/rummy.web, MIT, same author). A
+// Browser — the headless-Chromium render foundation (SPEC §render-lifecycle),
+// ported from rummy.web's WebFetcher (@possumtech/rummy.web, MIT, same author). A
 // STANDALONE foundation, not Http-private: the render scheme drives it now,
 // and a future plurnk browser-troubleshooting MCP sits on the same warm pool.
 //

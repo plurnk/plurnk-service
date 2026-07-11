@@ -1,6 +1,6 @@
 // http(s):// scheme handler — the first greenfield `@plurnk/plurnk-schemes-*`
 // sibling, authored entirely against the DB-free capability ctx (SchemeCtx).
-// It never imports plurnk-service and never touches a raw DB handle (SPEC §5);
+// It never imports plurnk-service and never touches a raw DB handle (schemes SPEC §forbidden);
 // the substrate is reached only through intent, via the injected caps.
 //
 // Surface — the HTTP method is the OP (grammar#46): READ→GET, SEND→POST,
@@ -20,7 +20,7 @@
 // The SEND `[code]` is loop disposition (102/200/…), never the HTTP status —
 // the real 2xx/4xx comes back in the response `header`/`body` channels.
 //
-// Network exception: SPEC §5 forbids opening connections "unless specifically
+// Network exception: the schemes SPEC §forbidden table bars connections "unless specifically
 // a network scheme." This IS that scheme — `fetch` is the whole point. No
 // runtime deps: `fetch` and `AbortController` are Node built-ins.
 
@@ -118,7 +118,7 @@ export default class Http implements SchemeHandler {
         return this.#fetchStream(statement.target, ctx, "DELETE", statement.body ?? undefined);
     }
 
-    // SEND dispatch — status-code-as-verb (SPEC §3.5).
+    // SEND dispatch — status-code-as-verb (SPEC §op-surface).
     //   200 → request with body (POST), stream response
     //   410 → delete the cached entry
     //   499 → cancel in-flight (handled by the subscription's force-cancel;
@@ -289,8 +289,8 @@ export default class Http implements SchemeHandler {
         return target.raw;
     }
 
-    // Known-hostile-host rewrite — the ONE bounded, first-party exception (SPEC
-    // §7, schemes-http#4). A GitHub blob page is a CSP-locked JS SPA that renders
+    // Known-hostile-host rewrite — the ONE bounded, first-party exception
+    // (SPEC §host-rewrite, schemes-http#4). A GitHub blob page is a CSP-locked JS SPA that renders
     // nothing useful, and code wants SOURCE (line-navigable) not markdown pulled
     // from a rendered code-viewer; raw.githubusercontent serves the exact bytes
     // on the byte path. Measured through the extractor: blob → SPA/JSON noise,
