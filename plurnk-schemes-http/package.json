@@ -57,10 +57,10 @@
         "playwright": "1.61.1"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-schemes": "0.33.17"
+        "@plurnk/plurnk-schemes": "0.33.18"
     },
     "devDependencies": {
-        "@plurnk/plurnk-schemes": "0.33.17",
+        "@plurnk/plurnk-schemes": "0.33.18",
         "@types/node": "26.1.1",
         "typescript": "7.0.2"
     }
