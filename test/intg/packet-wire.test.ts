@@ -28,6 +28,15 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
     assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "single meta line; path = log URI identity; target = action operand; tokens:0 on a no-body row");
 });
 
+test("a folded-authority web URL renders https://host/... — never https:///host (#370 class, run42 sweep)", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200,
+        target: { scheme: "https", pathname: "/en.wikipedia.org/wiki/Paris" },
+        rx: { status: 200 },
+    }], tok);
+    assert.match(out, /"target":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the authority form, one spelling");
+});
+
 test("COPY/MOVE into a file render their span diff like EDIT — the write is SEEN in the row (#370)", () => {
     // #370 item 3 — a COPY/MOVE whose dest is a workspace file proposes via File.writeEntry, which
     // now carries editedSpan like edit(); the wire renders it so the model sees what the write

@@ -34,7 +34,9 @@ export function renderAddress(scheme: string, pathname: string): string {
     }
     // #370 — the run IS the authority (§run-scheme): a stored row whose authority was folded into
     // the pathname (/name/...) must render run://name/..., never run:///name/... — one packet was
-    // minting BOTH forms and the model treated them as different addresses.
-    if (scheme === "run") return `run://${pathname.replace(/^\//, "")}`;
+    // minting BOTH forms and the model treated them as different addresses. Same for web URLs
+    // (run42 sweep: the entry-sink's materialized pages rendered https:///en.wikipedia.org/...).
+    // known/unknown/plurnk-single-segment keep :/// — empty authority IS their canonical form.
+    if (scheme === "run" || scheme === "http" || scheme === "https") return `${scheme}://${pathname.replace(/^\//, "")}`;
     return `${scheme}://${pathname}`;
 }
