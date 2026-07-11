@@ -356,11 +356,13 @@ export default class Module {
                 // run's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(convRun ?? await this.#seam.ensureModelRun(env.sessionId)) } };
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
-                // Late root arrival (svc#140): a rootless session gains its workspace;
-                // the service resolves pending repo constraints when it lands.
+                // Late root arrival (svc#140): a ROOTLESS session gains its workspace — the
+                // one legal transition (null → path completes a half-created world). An
+                // established root never moves (operator ruling: the root is the world's
+                // ground, fixed for the session's life); the daemon owns that refusal.
                 case "session.root": {
-                    if (typeof p.path !== "string" && p.path !== null) return { ok: false, error: "session.root requires path (or null to clear)" };
-                    return { ok: true, result: { projectRoot: await this.#seam.setProjectRoot(env.sessionId, p.path as string | null) } };
+                    if (typeof p.path !== "string" || p.path.length === 0) return { ok: false, error: "session.root requires path" };
+                    return { ok: true, result: { projectRoot: await this.#seam.setProjectRoot(env.sessionId, p.path) } };
                 }
                 case "session.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) return { ok: false, error: "session.rename requires name" };
