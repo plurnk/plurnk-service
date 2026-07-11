@@ -12,7 +12,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
-import { urlPath, editStmt, sendStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, sendStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
     discovery: { registry: emptyRegistry(), handlers: new Map() },
@@ -53,6 +53,29 @@ const setLoopFlags = async (db: Awaited<ReturnType<typeof openMigrated>>, loopId
     await (db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify(flags) });
 };
 
+test("[§mode-ask-read-only] ask mode refuses EVERY filesystem write — EDIT/COPY-dest/MOVE/KILL on the workspace (the ancient read-only contract, uncovered until now)", async () => {
+    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    try {
+        await setLoopFlags(db, loopId, { mode: "ask" });
+        let seq = 0;
+        const disp = (statement: Parameters<typeof engine.dispatch>[0]["statement"]) =>
+            engine.dispatch({ statement, sessionId, runId, loopId, turnId, sequence: ++seq, origin: "client" });
+        // A bare path is the `file` scheme (the on-disk workspace). EDIT writes it → refused.
+        const edit = await disp(editStmt(localPath("brief.md"), "hello"));
+        assert.equal(edit.status, 403, "EDIT to the filesystem is refused in ask mode");
+        assert.match(String(edit.error), /read-only|side-effecting/, "the refusal names the read-only contract");
+        // COPY into the workspace — the DEST is the write → refused.
+        const copy = await disp(copyStmt(urlPath("known", "note"), localPath("copied.md")));
+        assert.equal(copy.status, 403, "COPY writing the filesystem is refused");
+        // MOVE a workspace file out — the SOURCE delete side-effects → refused.
+        const move = await disp(moveStmt(localPath("brief.md"), urlPath("known", "moved")));
+        assert.equal(move.status, 403, "MOVE deleting a workspace file is refused");
+        // But a READ of the same workspace file is ALLOWED — ask is read-ONLY, not no-access.
+        const read = await disp(readStmt(localPath("brief.md")));
+        assert.notEqual(read.status, 403, "reads of the workspace stay open in ask mode");
+    } finally { await db.close(); }
+});
+
 test("flag gate active: mode=ask rejects side-effecting scheme with 403", async () => {
     const { db, sessionId, runId, loopId, turnId, engine } = await setup();
     try {
@@ -62,8 +85,8 @@ test("flag gate active: mode=ask rejects side-effecting scheme with 403", async 
         assert.equal(r.status, 403);
         // #367 — the steer NAMES ask mode and says DO NOT RETRY, so the model changes course
         // instead of re-emitting into the StrikeRail's 508.
-        assert.match(r.error ?? "", /ask-mode/, "the 403 names the ask-mode restriction");
-        assert.match(r.error ?? "", /Do NOT retry|answer or advise/, "the steer directs a course change, not a repeat");
+        assert.match(String(r.error), /ask-mode/, "the 403 names the ask-mode restriction");
+        assert.match(String(r.error), /Do NOT retry|answer or advise/, "the steer directs a course change, not a repeat");
     } finally { await db.close(); }
 });
 

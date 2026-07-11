@@ -359,6 +359,25 @@ export default class Dispatcher {
         // Fast path: default flags gate nothing. (yolo never gates.)
         if (!flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
 
+        // §mode-ask-read-only — the ancient contract: an ask-mode loop NEVER changes the world. The
+        // filesystem writes (EDIT/COPY-dest/MOVE/KILL touching the `file` scheme — each proposes disk
+        // egress, §membership) are refused HERE, regardless of the scheme's read-activity, because
+        // `file` stays active for READs. The EXEC host runtime is refused by its excludedInAsk scheme
+        // below. This lived only in SPEC (line 65) with no anchor → no guard → it silently regressed.
+        if (flags.mode === "ask") {
+            const isFile = (t: PlurnkStatement["target"]): boolean => schemeNameOf(t) === "file";
+            // Each branch narrows statement.op so statement.body is correctly typed (COPY dest is a
+            // string to parse; MOVE dest is already a path). EDIT/KILL write the target; COPY writes
+            // the dest; MOVE deletes the source AND writes the dest — any `file` touch is a write.
+            let writesFilesystem = false;
+            if (statement.op === "EDIT" || statement.op === "KILL") writesFilesystem = isFile(statement.target);
+            else if (statement.op === "COPY") writesFilesystem = isFile(statement.body === null ? null : parsePath(statement.body));
+            else if (statement.op === "MOVE") writesFilesystem = isFile(statement.target) || isFile(statement.body);
+            if (writesFilesystem) {
+                return { status: 403, error: `'${statement.op}' cannot change the filesystem in an ask-mode loop — ask is read-only (no side-effecting ops). Answer or advise the user directly; an act-mode loop is required to edit files.` };
+            }
+        }
+
         const active = this.#schemes.resolveForLoop(flags);
         // #367 — the steer NAMES the restriction and says DO NOT RETRY: the old vague "inactive under
         // current loop flags" invited an identical re-emit each turn → the StrikeRail's 508. An

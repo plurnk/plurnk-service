@@ -62,7 +62,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **strike** | A turn whose verdict counts toward `MAX_STRIKES`. Fires when `turnErrors > 0` or cycle detection trips. The streak counter resets on clean turn; reaches `MAX_STRIKES` → loop abandons at 500 (failed), or 508 (Loop Detected) when the crossing strike was cycle-driven. |
 | **cycle** | A repeated turn fingerprint across consecutive turns. Detected silently; model never sees the trigger. Strike accumulates internally. |
 | **sudden death** | The last `MAX_STRIKES` turns of a loop's `MAX_LOOP_TURNS` window emit soft 429 warnings so the model can wrap up cleanly. `soft=true`: no strike, no streak increment. |
-| **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only (no side-effecting ops); act = full surface. |
+| **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or an EXEC host runtime, §exec-excluded-in-ask); reads of the workspace stay open. `act` = full surface. The ancient contract: ask never changes the world. {§mode-ask-read-only} |
 | **flag** | Per-loop boolean shaping the active toolset: `yolo` (auto-accept proposals), `noWeb`, `noInteraction`, `noProposals`. |
 | **proposal** | A deferred side-effecting action awaiting client accept/reject (full lifecycle §proposal). State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). `yolo` short-circuits to immediate. |
 | **resolution** | Client's accept / reject / cancel of a proposal via the `loop.resolve` RPC (§methods). |
