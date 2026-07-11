@@ -36,6 +36,7 @@ const mockSeam = () => {
         listConstraints: async () => [{ effect: "pick", glob: "src/**" }],
         readEntry: async () => ({ status: 200, entry: { body: "x" } }),
         forkRun: async () => ({ runId: 11, runName: "fork-1", parentRunId: 10 }),
+        createConversationRun: async (a) => ({ runId: 77, runName: a.name ?? "model-fresh" }),
         listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
         look: async () => ({ status: 200, content: "looked" }),
     };
@@ -114,7 +115,7 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     } finally { await mod.close(); }
 });
 
-test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the session prop selects the world; the thread binds its model run", async () => {
+test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the session prop selects the world; the thread is a run over it (svc#366 landed — the interim bind-the-model-run behavior is retired)", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const ensured: number[] = [];
@@ -123,6 +124,7 @@ test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the session
     seam.attachSession = async (a) => { attaches.push(a.sessionId); return { sessionId: a.sessionId, sessionName: "workspace-a", projectRoot: "/w", runId: 100, runName: "client-1", modelRunId: 200, clientLoopId: null }; };
     seam.createSession = async (a) => { created.push(a); return { sessionId: 8, sessionName: a.name ?? "session-1", projectRoot: a.projectRoot ?? null, runId: 101, runName: "client-1", modelRunId: 201, clientLoopId: null }; };
     seam.ensureModelRun = async (sid) => { ensured.push(sid); return sid === 7 ? 200 : 201; };
+    seam.createConversationRun = async (a) => ({ runId: 300, runName: a.name ?? "x" });
     const drivenRuns: number[] = [];
     seam.runLoop = async (a) => { drivenRuns.push(a.runId); finish(a.sessionId); return { action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
@@ -131,8 +133,8 @@ test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the session
         // distinct threads naming the SAME workspace share the one session.
         await post(mod.address().port, { threadId: "chat-1", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { session: "workspace-a" } } });
         assert.deepEqual(attaches, [7], "the workspace 'workspace-a' was attached (not a session named 'chat-1')");
-        assert.deepEqual(ensured, [7], "the conversation is the session's MODEL run");
-        assert.deepEqual(drivenRuns, [200], "the loop drove in the model run, not the client run");
+        assert.deepEqual(ensured, [], "a DISTINCT thread never binds the model run (that's the default thread's door)");
+        assert.deepEqual(drivenRuns, [300], "the loop drove in the thread's own conversation run");
     } finally { await mod.close(); }
 });
 
@@ -212,5 +214,76 @@ test("loop.cancel is a REAL action kind — cancels the model run's drain (both 
         assert.equal(r.value.ok, true, r.value.error ?? "loop.cancel must be a known kind");
         assert.equal(r.value.result.cancelled, true);
         assert.deepEqual(cancelled, [20], "the MODEL run's drain was cancelled");
+    } finally { await mod.close(); }
+});
+
+// ── THREAD ↔ RUN (svc#366 landed): the threadId is the CONVERSATION ──────────
+// threadId == session name → the model run (the default conversation, unchanged).
+// A DISTINCT threadId names its own conversation run within the world: found by
+// name if it exists, minted via createConversationRun if it doesn't — the name is
+// the identity at BOTH levels. Forks (named runs) are addressable as threads.
+
+test("[§agui-thread-is-run] a distinct threadId MINTS a conversation run named for it, and the loop drives there", async () => {
+    const created: Array<{ sessionId: number; name?: string }> = [];
+    const driven: number[] = [];
+    const { seam, finish } = mockSeam();
+    seam.listSessions = async () => [{ id: 3, name: "workspace" }];
+    seam.attachSession = async () => ({ sessionId: 3, sessionName: "workspace", projectRoot: null, runId: 10, runName: "client-1", modelRunId: 20, clientLoopId: null });
+    seam.listRuns = async () => [{ id: 20, name: "model-1" }];
+    seam.createConversationRun = async (a) => { created.push(a); return { runId: 77, runName: a.name ?? "x" }; };
+    seam.runLoop = async (a) => { driven.push(a.runId); finish(a.sessionId); return { action: "enqueued_new_loop", loopId: 9 }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        await post(mod.address().port, { threadId: "chat-2", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { session: "workspace" } } });
+        assert.deepEqual(created, [{ sessionId: 3, name: "chat-2" }], "the conversation run is named for the thread, verbatim");
+        assert.deepEqual(driven, [77], "the loop drove in the NEW conversation run, not the model run");
+    } finally { await mod.close(); }
+});
+
+test("[§agui-thread-is-run] a threadId naming an EXISTING run (a fork, a prior conversation) binds it — no mint", async () => {
+    let created = 0;
+    const driven: number[] = [];
+    const { seam, finish } = mockSeam();
+    seam.listSessions = async () => [{ id: 3, name: "workspace" }];
+    seam.attachSession = async () => ({ sessionId: 3, sessionName: "workspace", projectRoot: null, runId: 10, runName: "client-1", modelRunId: 20, clientLoopId: null });
+    seam.listRuns = async () => [{ id: 20, name: "model-1" }, { id: 44, name: "spike" }];
+    seam.createConversationRun = async () => { created++; return { runId: 99, runName: "x" }; };
+    seam.runLoop = async (a) => { driven.push(a.runId); finish(a.sessionId); return { action: "enqueued_new_loop", loopId: 9 }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        await post(mod.address().port, { threadId: "spike", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { session: "workspace" } } });
+        assert.deepEqual(driven, [44], "the existing run 'spike' is the conversation");
+        assert.equal(created, 0, "no duplicate conversation minted");
+    } finally { await mod.close(); }
+});
+
+test("[§agui-thread-is-run] threadId == session name stays the MODEL run (the default conversation)", async () => {
+    let minted = 0;
+    const driven: number[] = [];
+    const { seam, finish } = mockSeam();
+    seam.listSessions = async () => [{ id: 3, name: "workspace" }];
+    seam.attachSession = async () => ({ sessionId: 3, sessionName: "workspace", projectRoot: null, runId: 10, runName: "client-1", modelRunId: 20, clientLoopId: null });
+    seam.ensureModelRun = async () => 20;
+    seam.createConversationRun = async () => { minted++; return { runId: 99, runName: "x" }; };
+    seam.runLoop = async (a) => { driven.push(a.runId); finish(a.sessionId); return { action: "enqueued_new_loop", loopId: 9 }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        await post(mod.address().port, { threadId: "workspace", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { session: "workspace" } } });
+        assert.deepEqual(driven, [20], "the default conversation is the model run");
+        assert.equal(minted, 0, "no fresh run for the default thread");
+    } finally { await mod.close(); }
+});
+
+test("[§agui-thread-is-run] loop.inject on a distinct thread folds into THAT conversation, never the model run", async () => {
+    const driven: number[] = [];
+    const { seam, finish } = mockSeam();
+    seam.listSessions = async () => [{ id: 3, name: "workspace" }];
+    seam.attachSession = async () => ({ sessionId: 3, sessionName: "workspace", projectRoot: null, runId: 10, runName: "client-1", modelRunId: 20, clientLoopId: null });
+    seam.listRuns = async () => [{ id: 44, name: "spike" }];
+    seam.runLoop = async (a) => { driven.push(a.runId); finish(a.sessionId); return { action: "injected_next_turn", loopId: 9, turnSeq: 2 }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        await post(mod.address().port, { threadId: "spike", runId: "r1", forwardedProps: { plurnk: { session: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
+        assert.deepEqual(driven, [44], "the steer reached the thread's own run");
     } finally { await mod.close(); }
 });

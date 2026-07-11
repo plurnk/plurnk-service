@@ -85,6 +85,10 @@ export interface DaemonSeam {
     // Entry shape/channel read + run branching.
     readEntry(args: { sessionId: number; target: string; channel?: string; offset?: number }): Promise<{ status: number; entry: unknown }>;
     forkRun(args: { sessionId: number; runId: number; name?: string }): Promise<{ runId: number; runName: string | null; parentRunId: number }>;
+    // The third door (svc#366): a named, empty-log, model-origin ROOT run — a fresh
+    // conversation over the same world. ensureModelRun = the stable default,
+    // forkRun = branch with history, createConversationRun = fresh thread.
+    createConversationRun(args: { sessionId: number; name?: string }): Promise<{ runId: number; runName: string }>;
 }
 
 // The envelope a session-lifecycle call returns (core's shape, verbatim).

@@ -17,12 +17,14 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
   (attach if it exists, create with exactly that name otherwise — no prefix, no forging). The
   session is REQUIRED: a run has no existence without a world, so its absence is a contract
   violation the module rejects (500) — never a workspace forged from the `threadId`. The
-  `threadId` is the conversation: today it binds the session's MODEL
-  run (`ensureModelRun` — origin identifies it, never a name parse), so extended context
-  persists across AG-UI runs because the run's log does. Distinct second conversations over one
-  world (a thread that is NOT the model run — a fork, a fresh conversation run) gate on
-  plurnk-service#366 (`createConversationRun`); until it lands, one thread per session binds
-  the model run.
+  `threadId` is the conversation — a RUN over that world, and the name is the identity at
+  BOTH levels: `threadId` == the session name binds the session's MODEL run (the default
+  conversation, `ensureModelRun` — origin identifies it, never a name parse); a DISTINCT
+  `threadId` names its own conversation run — found by name if it exists (forks and prior
+  conversations are addressable as threads), minted via `createConversationRun` (svc#366)
+  if it doesn't. World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
+  `run.fork`) operate on the THREAD's conversation, never blindly on the model run.
+  Extended context persists across AG-UI runs because the run's log does.
 - **Family-internal runtime deps only** {§agui-zero-dep} — `@plurnk/*` packages (the grammar,
   for edge parsing) are welcome, exact-pinned; third-party runtime deps (e.g. `@ag-ui/core`
   with its Zod) stay out. Event shapes remain hand-defined plain JSON.

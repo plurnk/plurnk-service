@@ -32,6 +32,7 @@ export default class Module {
     #portal: Portal;
     #http: HttpServer;
     #threads = new Map<string, ClientEnvelope>(); // threadId → envelope
+    #threadRuns = new Map<string, number>();      // threadId → conversation runId
 
     // The control plane vs the world. A RUN lives in a world (a conversation, or an action
     // that reads/writes a session's log); a control-plane action (list/create/attach/discover/
@@ -104,8 +105,9 @@ export default class Module {
     // name if it doesn't. No prefixes, no forged names, no dual lookup. The session is
     // REQUIRED: a run has no existence without a world, so its absence is a contract
     // violation the client must fix — never a workspace forged from the threadId.
-    // The threadId is the CONVERSATION over that world; today it binds the session's model
-    // run (ensureModelRun) — distinct second conversations gate on plurnk-service#366.
+    // The threadId is the CONVERSATION over that world — resolved to a run by
+    // #conversationRun (svc#366 landed: the three doors are ensureModelRun, forkRun,
+    // createConversationRun).
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.session;
         if (typeof workspace !== "string" || workspace.length === 0) throw new Error("forwardedProps.plurnk.session (a session name) is required");
@@ -130,6 +132,19 @@ export default class Module {
         return { env, reattached };
     }
 
+    // Resolve the thread's conversation run within its world. Cached per threadId;
+    // run names are immutable so the binding can't rot.
+    async #conversationRun(threadId: string, env: ClientEnvelope): Promise<number> {
+        const cached = this.#threadRuns.get(threadId);
+        if (cached !== undefined) return cached;
+        const runId = threadId === env.sessionName
+            ? await this.#seam.ensureModelRun(env.sessionId)
+            : (await this.#seam.listRuns(env.sessionId)).find((r) => r.name === threadId)?.id
+                ?? (await this.#seam.createConversationRun({ sessionId: env.sessionId, name: threadId })).runId;
+        this.#threadRuns.set(threadId, runId);
+        return runId;
+    }
+
     async #run(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const input = JSON.parse(await Module.#body(req)) as RunAgentInput;
         if (typeof input.threadId !== "string" || input.threadId.length === 0) throw new Error("RunAgentInput.threadId required");
@@ -143,10 +158,11 @@ export default class Module {
 
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
         const sessionId = env.sessionId;
-        // Run-split (service SPEC, machine-processes): loops drive in the session's MODEL run — the
-        // client run is connection scratch. ensureModelRun creates it on first use, so
-        // it also BINDS the render (no lazy first-row adoption needed).
-        const runId = await this.#seam.ensureModelRun(sessionId);
+        // THREAD ↔ RUN (svc#366): the threadId is the CONVERSATION — a run over the
+        // world. threadId == session name binds the model run (the default conversation);
+        // a distinct threadId names its own run: found by name, else minted via
+        // createConversationRun. The name is the identity at BOTH levels.
+        const runId = await this.#conversationRun(input.threadId, env);
 
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
@@ -196,7 +212,7 @@ export default class Module {
                 }
                 this.#portal.finishRun(sessionId, events);
             };
-            void this.#action(action, env)
+            void this.#action(action, env, runId)
                 // One queue barrier: a dispatch's channel notifies are enqueued but not yet
                 // delivered when its promise resolves — drain them so Portal's stream
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,
@@ -265,7 +281,7 @@ export default class Module {
     // below the guard operates within a bound session. An unknown kind is an honest error,
     // never a silent pass-through. loop.inject rides here too (§4): the seam's unified
     // runLoop folds a prompt into the active drain; the steered effect streams on the SSE.
-    async #action(a: ActionRequest, env: ClientEnvelope | null): Promise<ActionOutcome> {
+    async #action(a: ActionRequest, env: ClientEnvelope | null, convRun?: number): Promise<ActionOutcome> {
         const p = a.params;
         try {
             // The control plane — worldless verbs (no bound session; #WORLD_SCOPED gates this).
@@ -319,18 +335,18 @@ export default class Module {
                 case "session.runs": return { ok: true, result: { runs: await this.#seam.listRuns(typeof p.id === "number" ? p.id : env.sessionId) } };
                 case "log.read": {
                     // Default run: the conversation (model run); p.runId pins another.
-                    const readRun = typeof p.runId === "number" ? p.runId : await this.#seam.ensureModelRun(env.sessionId);
+                    const readRun = typeof p.runId === "number" ? p.runId : convRun ?? await this.#seam.ensureModelRun(env.sessionId);
                     const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: readRun, ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}), ...(typeof p.loopId === "number" ? { loopId: p.loopId } : {}), ...(typeof p.turnId === "number" ? { turnId: p.turnId } : {}), ...(typeof p.loopSeq === "number" ? { loopSeq: p.loopSeq } : {}), ...(typeof p.turnSeq === "number" ? { turnSeq: p.turnSeq } : {}), ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}) });
                     return { ok: true, result: { entries } };
                 }
                 case "loop.inject": {
                     if (typeof p.prompt !== "string" || p.prompt.length === 0) return { ok: false, error: "loop.inject requires prompt" };
-                    const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), prompt: p.prompt });
+                    const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: convRun ?? await this.#seam.ensureModelRun(env.sessionId), prompt: p.prompt });
                     return { ok: true, result: ack };
                 }
                 // The stop button (TUI /stop + Ctrl-C, nvim :PlurnkStop): abort the model
                 // run's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
-                case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(await this.#seam.ensureModelRun(env.sessionId)) } };
+                case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(convRun ?? await this.#seam.ensureModelRun(env.sessionId)) } };
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
                 case "session.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) return { ok: false, error: "session.rename requires name" };
@@ -384,7 +400,7 @@ export default class Module {
                     const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
                     return { ok: true, result: await this.#seam.look({ sessionId: env.sessionId, runId: env.runId, statement }) };
                 }
-                case "run.fork": return { ok: true, result: await this.#seam.forkRun({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
+                case "run.fork": return { ok: true, result: await this.#seam.forkRun({ sessionId: env.sessionId, runId: convRun ?? await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
                 default: return { ok: false, error: `unknown action '${a.kind}'` };
             }
         } catch (err) {
