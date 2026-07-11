@@ -5,7 +5,7 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, m
 import { insertSession, insertRun, insertLoop, insertTurn, openMigrated } from "./_helpers.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import type { CoreSeam } from "../../src/server/Daemon.ts";
-import Dsl from "../../src/server/dsl.ts";
+import Dsl from "./dsl.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 
 // A stand-in registration in the booth-window shape (execs-mcp installServer's hotload struct):
@@ -500,7 +500,7 @@ test("the client-interface seam — session lifecycle: create/attach/rename/set-
         assert.equal(await daemon.setProjectRoot(env.sessionId, "/tmp/seam-root"), "/tmp/seam-root");
         assert.equal((await daemon.renameSession(env.sessionId, "seam-life-2")).name, "seam-life-2");
         await daemon.createSession({ name: "seam-life-other" });
-        await assert.rejects(() => daemon.renameSession(env.sessionId, "seam-life-other"), /taken/, "renameSession refuses a taken name");
+        await assert.rejects(() => daemon.renameSession(env.sessionId, "seam-life-other"), /already exists/, "renameSession refuses a taken name");
 
         // constrain / unconstrain roundtrip on the overlay.
         await daemon.constrain(env.sessionId, "pick", "vendored/x");
@@ -633,7 +633,7 @@ test("the client-interface seam — the boot plug-point hands a registered modul
             const env = await seam.createSession({ name: "from-module-init" });
             createdInInit = env.sessionId;
         });
-        await daemon.start({ host: "127.0.0.1", port: 0 });
+        await daemon.start();
 
         assert.ok(handed !== null, "the module init ran at boot with the seam handle");
         assert.ok(createdInInit !== null && createdInInit > 0, "the init drove a LIVE seam — createSession worked during boot");

@@ -133,7 +133,7 @@ export const withDaemon = async <T>(
 ): Promise<T> => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
-    await daemon.start({ port: null }); // listenerless — the harness rides the seam, not a socket
+    await daemon.start(); // listenerless — the harness rides the seam, not a socket
     try { return await fn(db, daemon, { daemon }); }
     finally { await daemon.stop(); await db.close(); }
 };

@@ -8,7 +8,7 @@ import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 import type { PlurnkStatement, EditStatement } from "@plurnk/plurnk-grammar";
 import SessionSettings from "../core/session-settings.ts";
-import DispatchAsPlurnk from "./methods/_dispatchAsPlurnk.ts";
+import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
 
 export default class LoopDocs {
     static async materialize(engine: Engine, db: Db, sessionId: number): Promise<void> {

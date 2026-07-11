@@ -2,8 +2,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { WebSocket } from "ws";
 import type { Db } from "../../src/core/Db.ts";
+import SeamSocket from "./_seam.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
 
@@ -14,7 +14,7 @@ interface RpcResponse {
     error?: { code: number; message: string };
 }
 
-const rpcCall = (ws: WebSocket, id: number, method: string, params?: object): Promise<RpcResponse> =>
+const rpcCall = (ws: SeamSocket, id: number, method: string, params?: object): Promise<RpcResponse> =>
     new Promise((resolve, reject) => {
         const onMessage = (data: Buffer | string) => {
             const text = typeof data === "string" ? data : data.toString("utf8");
@@ -26,21 +26,16 @@ const rpcCall = (ws: WebSocket, id: number, method: string, params?: object): Pr
         ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
 
-const withDaemon = async <T>(fn: (db: Db, addr: { host: string; port: number }) => Promise<T>): Promise<T> => {
+// #364 — the harness rides the seam; the "addr" is the daemon itself.
+const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T>): Promise<T> => {
     const db = await openMigrated();
     const daemon = new Daemon({ db });
-    const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
-    if (addr === null) throw new Error("daemon.start with a port returned no address");
-    try { return await fn(db, addr); }
+    await daemon.start();
+    try { return await fn(db, { daemon }); }
     finally { await daemon.stop(); await db.close(); }
 };
 
-const connect = (addr: { host: string; port: number }): Promise<WebSocket> =>
-    new Promise((resolve, reject) => {
-        const ws = new WebSocket(`ws://${addr.host}:${addr.port}`);
-        ws.once("open", () => resolve(ws));
-        ws.once("error", reject);
-    });
+const connect = (addr: { daemon: Daemon }): Promise<SeamSocket> => Promise.resolve(new SeamSocket(addr.daemon));
 
 test("[§methods-entry-read] entry.read returns full entry shape (channels + tags + metadata)", async () => {
     await withDaemon(async (_db, addr) => {
@@ -264,14 +259,3 @@ test("log.read is session-scoped — doesn't see other sessions' logs", async ()
     });
 });
 
-test("discover catalog includes entry.read and log.read", async () => {
-    await withDaemon(async (_db, addr) => {
-        const ws = await connect(addr);
-        try {
-            const r = await rpcCall(ws, 1, "discover");
-            const cat = r.result as { methods: Record<string, unknown> };
-            assert.ok(cat.methods["entry.read"] !== undefined);
-            assert.ok(cat.methods["log.read"] !== undefined);
-        } finally { ws.close(); }
-    });
-});

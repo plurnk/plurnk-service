@@ -24,9 +24,11 @@ test("renderAddress keeps a single-segment plurnk singleton at empty-authority r
     assert.equal(renderAddress("plurnk", "/POLICY.md"), "plurnk:///POLICY.md");
 });
 
-test("renderAddress leaves non-plurnk schemes untouched (no namespace convention)", () => {
+test("renderAddress: known keeps empty-authority :///; url schemes take the authority form (#370)", () => {
     assert.equal(renderAddress("known", "/france/capital"), "known:///france/capital");
-    assert.equal(renderAddress("http", "/wiki/Paris"), "http:///wiki/Paris");
+    // A folded-authority web address renders the authority form — the first segment IS the host
+    // (the run42 sweep caught https:///en.wikipedia.org minted into packets).
+    assert.equal(renderAddress("http", "/en.wikipedia.org/wiki/Paris"), "http://en.wikipedia.org/wiki/Paris");
 });
 
 test("fold then render round-trips a model-emitted authority-form address", () => {

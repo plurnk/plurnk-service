@@ -10,7 +10,7 @@
 // in plurnk-grammar issue #7.
 
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
-import { LineMarkerOps } from "../content/index.ts";
+import { LineMarkerOps } from "../../src/content/index.ts";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-grammar";
 
 // A parse failure surfaced from raw DSL — an error item or an unterminated tail. `line`/`column`

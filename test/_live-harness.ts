@@ -48,7 +48,7 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
     const provider = await liveProvider();
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
-    await daemon.start({ port: null }); // listenerless — the harness rides the seam (#364)
+    await daemon.start(); // listenerless — the harness rides the seam (#364)
     const ws = await connect({ daemon });
     // SANDBOX: every live/demo session roots at a fresh empty dir, NEVER the host repo. With
     // PLURNK_SERVICE_GIT_ALLOWED=1 + PLURNK_SERVICE_GIT_AUTO=1 + PLURNK_SERVICE_FILES_ITEMS=-1 (the live/demo .env), an

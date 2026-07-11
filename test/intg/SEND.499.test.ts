@@ -136,20 +136,18 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
 });
 
 test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscription returns 404", async () => {
-    const { WebSocket } = await import("ws");
     const { default: Daemon } = await import("../../src/server/Daemon.ts");
 
     const db = await openMigrated();
     const daemon = new Daemon({ db });
-    const addr = await daemon.start({ host: "127.0.0.1", port: 0 });
-    if (addr === null) throw new Error("daemon.start with a port returned no address"); // port 0 = WS listener requested — null is a contract violation
-    const ws = new WebSocket(`ws://${addr.host}:${addr.port}`);
-    await new Promise<void>((resolve) => { ws.once("open", () => resolve()); });
+    await daemon.start(); // #364 — the harness rides the seam
+    const { default: SeamSocket } = await import("./_seam.ts");
+    const ws = new SeamSocket(daemon);
 
     const rpcCall = (id: number, method: string, params?: object): Promise<{ result?: { status: number }; error?: { code: number } }> =>
         new Promise((resolve) => {
-            const onMessage = (data: Buffer) => {
-                const msg = JSON.parse(data.toString());
+            const onMessage = (data: string) => {
+                const msg = JSON.parse(data);
                 if (msg.id === id) { ws.off("message", onMessage); resolve(msg); }
             };
             ws.on("message", onMessage);

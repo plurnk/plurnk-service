@@ -1,9 +1,7 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
-// the WebSocketServer, and the active client connections.
+// the daughter-module seam (#364: the daemon owns no transport).
 // SPEC §rpc.
 
-import { WebSocketServer } from "ws";
-import type { WebSocket } from "ws";
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import type { Db, PrepMethod } from "../core/Db.ts";
@@ -14,10 +12,13 @@ import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import MethodRegistry from "./MethodRegistry.ts";
-import type { DrainLoopResult, NotifyTarget, Provider } from "./MethodRegistry.ts";
+import type { Provider } from "@plurnk/plurnk-providers";
+// The event scope (#364 — relocated from the retired MethodRegistry): "all" = a global event
+// (session/created), {sessionId} = session-scoped. "this" retired with the per-connection leg.
+export type NotifyTarget = "all" | { sessionId: number };
+// One drained loop's terminal shape — the drain's return currency.
+export interface DrainLoopResult { loopId: number; finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costPico: number } }
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import ClientConnection from "./ClientConnection.ts";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
@@ -35,53 +36,6 @@ import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 import type { LoopFlags } from "../core/types.ts";
 
-import PingMethod from "./methods/ping.ts";
-import DiscoverMethod from "./methods/discover.ts";
-import SessionCreateMethod from "./methods/session_create.ts";
-import SessionListMethod from "./methods/session_list.ts";
-import SessionAttachMethod from "./methods/session_attach.ts";
-import SessionRunsMethod from "./methods/session_runs.ts";
-import SessionPromptsMethod from "./methods/session_prompts.ts";
-import SessionSetRootMethod from "./methods/session_set_root.ts";
-import SessionRenameMethod from "./methods/session_rename.ts";
-import SessionConstraintsMethod from "./methods/session_constraints.ts";
-import SessionMembersMethod from "./methods/session_members.ts";
-import OpEditMethod from "./methods/op_edit.ts";
-import OpReadMethod from "./methods/op_read.ts";
-import OpFindMethod from "./methods/op_find.ts";
-import OpOpenMethod from "./methods/op_open.ts";
-import OpFoldMethod from "./methods/op_fold.ts";
-import OpCopyMethod from "./methods/op_copy.ts";
-import OpMoveMethod from "./methods/op_move.ts";
-import OpSendMethod from "./methods/op_send.ts";
-import OpExecMethod from "./methods/op_exec.ts";
-import OpDispatchMethod from "./methods/op_dispatch.ts";
-import OpParseMethod from "./methods/op_parse.ts";
-import OpLookMethod from "./methods/op_look.ts";
-import LoopRunMethod from "./methods/loop_run.ts";
-import LoopCancelMethod from "./methods/loop_cancel.ts";
-import LoopInjectMethod from "./methods/loop_inject.ts";
-import RunForkMethod from "./methods/run_fork.ts";
-import EntryReadMethod from "./methods/entry_read.ts";
-import LogReadMethod from "./methods/log_read.ts";
-import ProposalListMethod from "./methods/proposal_list.ts";
-import ProvidersListMethod from "./methods/providers_list.ts";
-import LoopResolveMethod from "./methods/loop_resolve.ts";
-import McpInstallMethod from "./methods/mcp_install.ts";
-import AuthMethod from "./methods/auth.ts";
-
-export interface DaemonOptions {
-    host?: string;
-    // port: null boots the daemon WITHOUT the WS listener (#357 — production is single-listener:
-    // the AG-UI module binds the client surface via the seam). A number (0 = ephemeral) opens the
-    // WS RPC listener — the intg harness's private transport pending its seam migration.
-    port?: number | null;
-}
-
-export interface DaemonAddress {
-    host: string;
-    port: number;
-}
 
 // A stopped-world proposal a transport module renders as a TOOL_CALL (#355 seam read). The raw
 // `state='proposed'` row shape (§proposal-list); the module reshapes it at its edge.
@@ -119,12 +73,9 @@ export default class Daemon {
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
     #provider: Provider | null;
-    #registry: MethodRegistry;
     #nodeModulesPath: string;
     #discoveryCwd: string;
-    #wss: WebSocketServer | null = null;
-    #started = false; // start() runs once — with or without the WS listener (#357)
-    #connections = new Set<ClientConnection>();
+    #started = false; // start() runs once — boots discovery + daughter modules (#364: no listener, ever)
     // The emit half of the broadcast, exposed as an in-process event source (#355). A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never fans out
     // for it. The WS fan-out below is legacy scaffolding that retires at the AG-UI+ cutover.
@@ -209,13 +160,10 @@ export default class Daemon {
             cancelRun: (runId) => this.cancelDrain(runId, "killed via run:// KILL"),
             telemetryEventNotify: (sessionId, payload) => this.notifyTelemetryEvent(sessionId, payload),
         });
-        this.#registry = new MethodRegistry();
-        this.#registerBuiltins();
-        this.#registerNotifications();
         // Wire proposal-pending events to the loop/proposal WS notification.
         // Sessionid scopes the broadcast to clients on the same session.
         this.#engine.onProposalPending((event) => {
-            this.#broadcast({ sessionId: event.sessionId }, null, "loop/proposal", {
+            this.#broadcast({ sessionId: event.sessionId }, "loop/proposal", {
                 logEntryId: event.logEntryId,
                 loopId: event.loopId,
                 turnId: event.turnId,
@@ -239,7 +187,6 @@ export default class Daemon {
         NoProposals.attachNoProposals(this.#engine, this.#db);
     }
 
-    get registry(): MethodRegistry { return this.#registry; }
 
     // The client-interface seam (#355). A transport module subscribes to the daemon's in-process
     // event source: it receives every session-scoped engine event as `(sessionId, method, params)`
@@ -311,7 +258,7 @@ export default class Daemon {
         });
         for (const logEntryId of entryIds) {
             const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-            this.#broadcast({ sessionId }, null, "log/entry", { entry });
+            this.#broadcast({ sessionId }, "log/entry", { entry });
         }
         return result as { status: number; [key: string]: unknown };
     }
@@ -394,7 +341,7 @@ export default class Daemon {
         }
         if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.sessionId, undefined);
         void this.#engine.warmSessionDerivations(envelope.sessionId).catch(() => {});
-        this.#broadcast("all", null, "session/created", { id: envelope.sessionId, name: envelope.sessionName, projectRoot: envelope.projectRoot });
+        this.#broadcast("all", "session/created", { id: envelope.sessionId, name: envelope.sessionName, projectRoot: envelope.projectRoot });
         return envelope;
     }
 
@@ -411,8 +358,9 @@ export default class Daemon {
     }
 
     async renameSession(sessionId: number, name: string): Promise<{ id: number; name: string }> {
+        if (typeof name !== "string" || name.length === 0) throw new Error("session.rename: name must be a non-empty string"); // seam fail-hard (#364)
         const taken = await (this.#db.envelope_get_session_by_name as PrepMethod).get<{ id: number }>({ name });
-        if (taken !== undefined && taken.id !== sessionId) throw new Error(`session name "${name}" is already taken`);
+        if (taken !== undefined && taken.id !== sessionId) throw new Error(`a session named "${name}" already exists — pick another`);
         return { id: sessionId, name: await Envelope.updateSessionName(this.#db, sessionId, name) };
     }
 
@@ -523,7 +471,7 @@ export default class Daemon {
         this.#moduleInits.push(init);
     }
 
-    async start({ host = "127.0.0.1", port = 3046 }: DaemonOptions = {}): Promise<DaemonAddress | null> {
+    async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
         this.#started = true;
 
@@ -544,58 +492,14 @@ export default class Daemon {
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
 
-        // #357 — single-listener production: no WS port requested → boot the daughter modules
-        // (they open their own transports via the seam) and run listenerless.
-        if (port === null) {
-            for (const init of this.#moduleInits) await init(this);
-            return null;
-        }
-
-        return new Promise<DaemonAddress>((resolve, reject) => {
-            const wss = new WebSocketServer({ host, port });
-
-            wss.on("listening", async () => {
-                this.#wss = wss;
-                wss.on("connection", (ws: WebSocket) => this.#onConnection(ws));
-                const addr = wss.address();
-                if (addr === null || typeof addr === "string") {
-                    reject(new Error("WebSocketServer.address() returned unexpected value"));
-                    return;
-                }
-                // Hand each registered daughter module the seam handle now that the daemon is live
-                // (#355 hook D) — the module opens its own transport/listener here. An init failure fails boot.
-                try {
-                    for (const init of this.#moduleInits) await init(this);
-                } catch (err) {
-                    reject(err instanceof Error ? err : new Error(String(err)));
-                    return;
-                }
-                resolve({ host: addr.address, port: addr.port });
-            });
-
-            wss.on("error", (err) => {
-                if (this.#wss === null) reject(err);
-            });
-        });
+        // #364 — the daemon opens NO transport, ever: daughter modules open theirs via the seam.
+        for (const init of this.#moduleInits) await init(this);
     }
 
     async stop(): Promise<void> {
         if (!this.#started) return;
         this.#started = false;
 
-        for (const conn of this.#connections) conn.close();
-        this.#connections.clear();
-
-        // The WS listener is optional (#357 — listenerless production boot); the drain below is not.
-        if (this.#wss !== null) {
-            await new Promise<void>((resolve, reject) => {
-                this.#wss?.close((err) => {
-                    if (err !== undefined) reject(err);
-                    else resolve();
-                });
-            });
-            this.#wss = null;
-        }
 
         // Drain order: (1) abort in-flight loops via #activeDrains so
         // strike paths don't keep going, (2) await each drain's promise
@@ -626,111 +530,7 @@ export default class Daemon {
         if (exec?.idle !== undefined) await exec.idle();
     }
 
-    #registerBuiltins(): void {
-        PingMethod.register(this.#registry);
-        DiscoverMethod.register(this.#registry);
-        SessionCreateMethod.register(this.#registry);
-        SessionListMethod.register(this.#registry);
-        SessionAttachMethod.register(this.#registry);
-        SessionRunsMethod.register(this.#registry);
-        SessionPromptsMethod.register(this.#registry);
-        SessionSetRootMethod.register(this.#registry);
-        SessionRenameMethod.register(this.#registry);
-        SessionConstraintsMethod.register(this.#registry);
-        SessionMembersMethod.register(this.#registry);
-        OpEditMethod.register(this.#registry);
-        OpReadMethod.register(this.#registry);
-        OpFindMethod.register(this.#registry);
-        OpOpenMethod.register(this.#registry);
-        OpFoldMethod.register(this.#registry);
-        OpCopyMethod.register(this.#registry);
-        OpMoveMethod.register(this.#registry);
-        OpSendMethod.register(this.#registry);
-        OpExecMethod.register(this.#registry);
-        OpDispatchMethod.register(this.#registry);
-        OpParseMethod.register(this.#registry);
-        OpLookMethod.register(this.#registry);
-        LoopRunMethod.register(this.#registry);
-        LoopCancelMethod.register(this.#registry);
-        LoopInjectMethod.register(this.#registry);
-        RunForkMethod.register(this.#registry);
-        LoopResolveMethod.register(this.#registry);
-        EntryReadMethod.register(this.#registry);
-        LogReadMethod.register(this.#registry);
-        ProposalListMethod.register(this.#registry);
-        ProvidersListMethod.register(this.#registry);
-        McpInstallMethod.register(this.#registry);
-        AuthMethod.register(this.#registry);
-    }
 
-    #registerNotifications(): void {
-        // §notifications-log-entry-notify
-        this.#registry.registerNotification("log/entry", {
-            description: "A new log_entries row was written; scoped to the connection's attached session.",
-            params: { entry: "LogEntry — wire-shape log_entries row" },
-        });
-        this.#registry.registerNotification("loop/proposal", {
-            description: "A side-effecting action emitted a proposal (status=202, state='proposed'); dispatch is paused awaiting client resolution via loop.resolve. Scoped to the connection's attached session.",
-            params: {
-                logEntryId: "number — the log_entries.id awaiting resolution",
-                loopId: "number",
-                turnId: "number",
-                op: "string — the operation (EDIT, EXEC, etc.)",
-                target: "{scheme, pathname} — the resource being acted on",
-                body: "string — preview body (udiff for file edits, command summary for exec)",
-                attrs: "object — scheme-specific payload (patch, command args, etc.); opaque to engine",
-                flags: "{yolo, mode, noWeb, noInteraction, noProposals} — loop's persisted flags. flags.yolo=true means server-side YOLO is active and the engine will auto-accept in-process; clients can skip review UI for those entries.",
-            },
-        });
-        this.#registry.registerNotification("loop/terminated", {
-            description: "A loop has reached a terminal status; scoped to the connection's attached session.",
-            params: {
-                loopId: "number",
-                finalStatus: "number — terminal status code (200, 499, etc.)",
-                hitMaxTurns: "boolean",
-                usage: "{promptTokens, completionTokens, costPico, contextTokens, meta} — summed per-loop totals (#197); contextTokens is the last turn's prompt tokens (#263); meta is the latest turn's OPAQUE provider→client metadata blob (e.g. balancePico), passed through unenforced — the field contract is the provider↔client's, not the service's (#252)",
-            },
-        });
-        // §notifications-stream-event-on-channel-change
-        this.#registry.registerNotification("stream/event", {
-            description: "A channel's content grew or its state transitioned. Scoped to the entry's session. Metadata-only; clients fetch new content via entry.read or op.read.",
-            params: {
-                entryId: "number — the entry whose channel changed",
-                target: "string — the entry's URI (scheme://pathname); clients route on this without an entryId→URI lookup",
-                channel: "string — the channel name",
-                state: "string — current state (static, active, closed, errored)",
-                contentLength: "number — current length of the channel's content",
-                loop_seq: "number? — the entry's loop coordinate (#224); present for coordinate-bearing streams (exec), so clients read it instead of parsing the URI",
-                turn_seq: "number? — the entry's turn coordinate",
-                sequence: "number? — the entry's sequence coordinate",
-            },
-        });
-        // §notifications-telemetry-event §telemetry-telemetry-event-notify
-        this.#registry.registerNotification("telemetry/event", {
-            description: "A TelemetryEvent (per @plurnk/plurnk-grammar 0.17.0) was pushed to the loop's telemetry buffer. Same envelope the model sees on the next packet's telemetry.errors[], delivered live for client-side surfacing (debug panel, loop-degrading toasts, session timeline). Sources include `grammar` (parse errors), `engine:rail` (strike, cycle, sudden_death, no_ops, max_commands_exceeded), `scheme:<name>` (action failures, future), and `provider:<vendor>` (provider issues, future). Scoped to the loop's session.",
-            params: {
-                loopId: "number — the loop that produced the event",
-                event: "TelemetryEvent — { source, kind, message?, position?, ...kind-specific }",
-            },
-        });
-        // §notifications-stream-concluded
-        this.#registry.registerNotification("stream/concluded", {
-            description: "A streaming-scheme subscription closed (the underlying connection / subprocess finished, errored, or was cancelled). Scoped to the entry's session. wakeAction describes whether the daemon opened a fresh loop to surface the conclusion to the model.",
-            params: {
-                entryId: "number",
-                target: "string — the entry's URI (scheme://pathname)",
-                subscriptionId: "number",
-                scheme: "string — the scheme that owned the subscription (e.g. 'exec')",
-                closeStatus: "number — 200 (clean) / 500 (error) / 499 (aborted)",
-                summary: "string — one-liner the model gets as a wake prompt",
-                wakeAction: "string — 'no-op-active-loop' | 'opened-loop' | 'skipped-aborted' | 'skipped-no-provider'",
-                wakeLoopId: "number? — the loop that was opened (only when wakeAction='opened-loop')",
-                loop_seq: "number? — the entry's loop coordinate (#224); present for coordinate-bearing streams (exec), so clients read it instead of parsing the URI",
-                turn_seq: "number? — the entry's turn coordinate",
-                sequence: "number? — the entry's sequence coordinate",
-            },
-        });
-    }
 
     /**
      * Emit a stream/event notification scoped to the session containing the
@@ -738,7 +538,7 @@ export default class Daemon {
      * they update channel content or state. SPEC §notifications.
      */
     notifyStreamEvent(sessionId: number, event: { entryId: number; channel: string; state: string; contentLength: number }): void {
-        this.#broadcast({ sessionId }, null, "stream/event", event);
+        this.#broadcast({ sessionId }, "stream/event", event);
     }
 
     /**
@@ -749,7 +549,7 @@ export default class Daemon {
      * SPEC §telemetry.
      */
     notifyTelemetryEvent(sessionId: number, payload: { loopId: number; event: object }): void {
-        this.#broadcast({ sessionId }, null, "telemetry/event", payload);
+        this.#broadcast({ sessionId }, "telemetry/event", payload);
     }
 
     /**
@@ -927,7 +727,7 @@ export default class Daemon {
                     const onDispatch = (logEntryId: number): void => {
                         void (async () => {
                             const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                            this.#broadcast({ sessionId }, null, "log/entry", { entry });
+                            this.#broadcast({ sessionId }, "log/entry", { entry });
                         })();
                     };
                     const result = await this.#engine.runLoop({
@@ -980,7 +780,7 @@ export default class Daemon {
                     }
                     this.#owedWakes.delete(runId); // the loop concluded (non-202) — no park to honor a held wake at
                     const usage = await this.#engine.loopUsage(loopRow.id);
-                    this.#broadcast({ sessionId }, null, "loop/terminated", {
+                    this.#broadcast({ sessionId }, "loop/terminated", {
                         loopId: loopRow.id,
                         finalStatus: result.finalStatus,
                         hitMaxTurns: result.hitMaxTurns,
@@ -1014,7 +814,7 @@ export default class Daemon {
                         ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, contextSize: null, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
                     if (currentLoopId !== null) {
-                        this.#broadcast({ sessionId }, null, "loop/terminated", {
+                        this.#broadcast({ sessionId }, "loop/terminated", {
                             loopId: currentLoopId, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage,
                         });
                     }
@@ -1036,7 +836,7 @@ export default class Daemon {
                         const message = (err instanceof Error ? err.message : String(err)).slice(0, 500);
                         await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: currentLoopId, status: 500, message });
                         const usage = await this.#engine.loopUsage(currentLoopId);
-                        this.#broadcast({ sessionId }, null, "loop/terminated", {
+                        this.#broadcast({ sessionId }, "loop/terminated", {
                             loopId: currentLoopId, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage, message,
                         });
                     }
@@ -1205,7 +1005,7 @@ export default class Daemon {
     async #handleWakeRun(payload: WakeRunPayload): Promise<void> {
         // Aborted streams don't wake — the abort was deliberate.
         if (payload.closeStatus === 499) {
-            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+            this.#broadcast({ sessionId: payload.sessionId }, "stream/concluded", {
                 ...payload, wakeAction: "skipped-aborted",
             });
             return;
@@ -1220,14 +1020,14 @@ export default class Daemon {
         // unaffected.)
         const scope = this.#runAborts.get(payload.runId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(payload.runId)) {
-            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+            this.#broadcast({ sessionId: payload.sessionId }, "stream/concluded", {
                 ...payload, wakeAction: "skipped-cancelled",
             });
             return;
         }
 
         if (this.#provider === null) {
-            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+            this.#broadcast({ sessionId: payload.sessionId }, "stream/concluded", {
                 ...payload, wakeAction: "skipped-no-provider",
             });
             return;
@@ -1249,7 +1049,7 @@ export default class Daemon {
                     sessionId: payload.sessionId, runId: payload.runId, provider: this.#provider,
                     systemPrompt, maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
                 });
-                this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+                this.#broadcast({ sessionId: payload.sessionId }, "stream/concluded", {
                     ...payload, wakeAction: "resumed-loop", wakeLoopId: slept.id,
                 });
                 started?.drainPromise?.catch((err: unknown) => {
@@ -1263,7 +1063,7 @@ export default class Daemon {
             // to inject and NO task to overwrite. The obsolete "automated environment update"
             // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
             if (this.#activeDrains.has(payload.runId)) {
-                this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+                this.#broadcast({ sessionId: payload.sessionId }, "stream/concluded", {
                     ...payload, wakeAction: "no-op-active-loop",
                 });
                 return;
@@ -1271,7 +1071,7 @@ export default class Daemon {
 
             // No slept loop, no active drain — nothing to resume (e.g. a SEND[200]-done run whose
             // streams were swept). Surface the conclusion without opening a loop.
-            this.#broadcast({ sessionId: payload.sessionId }, null, "stream/concluded", {
+            this.#broadcast({ sessionId: payload.sessionId }, "stream/concluded", {
                 ...payload, wakeAction: "no-loop",
             });
         } catch (err) {
@@ -1345,55 +1145,18 @@ export default class Daemon {
         await this.#wakeParkedRun(sessionId, parent.parent_run_id, provider, systemPrompt);
     }
 
-    #onConnection(ws: WebSocket): void {
-        const conn = new ClientConnection({
-            ws,
-            registry: this.#registry,
-            db: this.#db,
-            engine: this.#engine,
-            provider: this.#provider,
-            daemon: this,
-            broadcast: (target, from, method, params) => this.#broadcast(target, from, method, params),
-        });
-        this.#connections.add(conn);
-        ws.on("close", () => {
-            conn.close();
-            this.#connections.delete(conn);
-        });
-    }
-
-
-    #broadcast(target: NotifyTarget, from: ClientConnection | null, method: string, params?: unknown): void {
-        if (target === "this") {
-            from?.sendNotification(method, params);
-            return;
-        }
+    #broadcast(target: NotifyTarget, method: string, params?: unknown): void {
         if (target === "all") {
             // A global engine event (e.g. session/created) — emitted to the seam with sessionId null (#355).
             for (const sub of this.#eventSubscribers) sub(null, method, params);
-            for (const conn of this.#connections) {
-                conn.sendNotification(method, params);
-            }
             return;
         }
         const sessionId = target.sessionId;
         // Publish the raw event to the in-process source first (#355) — transport modules subscribe
         // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
         for (const sub of this.#eventSubscribers) sub(sessionId, method, params);
-        // Stamp the scope onto the envelope (#191, §notifications-envelope-carries-sessionid). A notification is broadcast
-        // to exactly one session but carried nothing identifying it, so a
-        // multi-session client (one connection, many sessions) couldn't route it
-        // — "scoped by connection" only holds for one-connection-per-session.
-        // Additive: single-session clients ignore the field. runId, where it
-        // exists, is already in `params` at the call sites that have it.
-        const scoped = params !== null && typeof params === "object"
-            ? { ...params, sessionId }
-            : { sessionId };
-        for (const conn of this.#connections) {
-            if (conn.session?.sessionId === sessionId) {
-                conn.sendNotification(method, scoped);
-            }
-        }
+        // Scope-stamping onto the notification envelope (§notifications-envelope-carries-sessionid)
+        // is each subscriber's edge concern now — the seam hands (sessionId, method, params) raw.
     }
 }
 

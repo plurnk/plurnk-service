@@ -74,14 +74,12 @@
         "@plurnk/plurnk-schemes-all": "^0.2.58",
         "@plurnk/plurnk-schemes-http": "^0.19.14",
         "@possumtech/sqlrite": "5.2.0",
-        "diff": "^9.0.0",
-        "ws": "^8.20.1"
+        "diff": "^9.0.0"
     },
     "devDependencies": {
         "@plurnk/plurnk-mimetypes-embeddings": "^0.11.0",
         "@types/diff": "^7.0.2",
         "@types/node": "^26.1.1",
-        "@types/ws": "^8.18.1",
         "typescript": "^7.0.2"
     },
     "peerDependencies": {

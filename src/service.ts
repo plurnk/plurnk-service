@@ -197,7 +197,7 @@ export default class Service {
         // with PLURNK_PORT=0 the configured value is 0 and banner parsers get garbage.
         let agui: Awaited<ReturnType<typeof aguiInit>> | null = null;
         daemon.registerModule(async (seam) => { agui = await aguiInit(seam); });
-        await daemon.start({ host, port: null }); // listenerless boot — the agui module opens the one listener
+        await daemon.start(); // the daemon owns no transport (#364) — the agui module opens the one listener
         const aguiAddr = (agui as Awaited<ReturnType<typeof aguiInit>> | null)?.address() ?? { host, port };
         // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
         // self-report returns info with the unknowns explicitly null — say which case this is).

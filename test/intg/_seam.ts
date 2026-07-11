@@ -8,7 +8,7 @@
 // the lazily-resolved model run) and the protocol niceties tests rely on (JSON-RPC envelopes,
 // notification fan-in via subscribeToEvents filtered to the attached session).
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import Dsl from "../../src/server/dsl.ts";
+import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
 import type { ClientEnvelope } from "../../src/server/envelope.ts";
 
@@ -170,7 +170,7 @@ export default class SeamSocket {
                 const s = this.#attached();
                 const runId = (p.runId as number | undefined) ?? s.runId;
                 const entries = await daemon.readLog({ sessionId: s.sessionId, runId, ...(p as object) });
-                return { entries };
+                return { status: 200, entries };
             }
             case "entry.read": {
                 const s = this.#attached();

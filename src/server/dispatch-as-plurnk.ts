@@ -7,10 +7,10 @@
 // session-scoped entries through the shared filesystem (§machine-processes), never the log.
 
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import type { Db } from "../../core/Db.ts";
-import type Engine from "../../core/Engine.ts";
-import Envelope from "../envelope.ts";
-import ClientTurn from "../clientTurn.ts";
+import type { Db } from "../core/Db.ts";
+import type Engine from "../core/Engine.ts";
+import Envelope from "./envelope.ts";
+import ClientTurn from "./clientTurn.ts";
 
 export default class DispatchAsPlurnk {
     static async dispatch(engine: Engine, db: Db, sessionId: number, statements: PlurnkStatement[]): Promise<void> {

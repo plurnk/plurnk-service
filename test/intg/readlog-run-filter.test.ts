@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
-import Dsl from "../../src/server/dsl.ts";
+import Dsl from "./dsl.ts";
 
 test("seam readLog honors the runId filter — per-run isolation of the journal read (#376)", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
