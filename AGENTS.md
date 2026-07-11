@@ -67,6 +67,12 @@ _(Migrated from PROJECT.md, 2026-06-27 — the project reorg is reverted; the wo
 - ff4c766 #366 createConversationRun (client integrates threadId ↔ runName)
 - 042e24c #377 unpollable-window refusal ({§tokenomics-window-unpollable-deliberate}) (NOTE: render-facing — the 0.86.2 cut drill should eyeball a digest for the new one-form addresses + COPY spans, per packet-analysis-is-the-real-gate)
 
+**Fresh bench reports (run43, triaged 2026-07-11):**
+- [ ] **#380** — external 499 at 578s on a 202-waiting loop: probably #372/agui#3 downstream (in the SSE-death band); asked bench for the discriminator. Service question queued: should an external cancel record who/why in the terminal record?
+- [ ] **#381** — model output-blind for ~10 turns (EXEC streams invisible); worked fine in run42. REAL FORENSICS NEEDED: delivery fault vs discoverability vs model losing paths. Priority of the next forensic block.
+- [ ] **#382** — per-turn packet-frame re-derivation tax (model treats its session as a pasted transcript, third-persons its own past). Packet-framing design — OWNER territory (packet-refinement doctrine); high leverage for the gemma-floor goal. Discuss before building.
+- [ ] **#383** — {{placeholder}} EXECs pass to shell literally. Verdict: no template mechanism exists nor should (shell has $PWD/cwd); fix = loud dispatch-time rejection of {{...}} in EXEC bodies + a teaching clause. SMALL, shippable next block.
+
 **Follow-up forensics (next session):**
 - [ ] **topo two-stage pipeline stall** — 0.86.2 drill chunk-2 red at 811s (a STALL-to-timeout, not the usual ~150s contention fail). Corpse kept in test/intg/.tmp (session demo-topo/pipeline-*, ~07:4x window 2026-07-11). Digest before dismissing as the heavy-topo variance class.
 - [ ] **retrieval-steer rewording live-check** — 89ab959 changed the retrieval-only 409 text (owner wording); watch the memory story + self-audit in the next drill for the park-instead-of-answer shape.
