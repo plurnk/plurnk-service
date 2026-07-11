@@ -33,6 +33,16 @@ export default class Module {
     #http: HttpServer;
     #threads = new Map<string, ClientEnvelope>(); // threadId → envelope
 
+    // The control plane vs the world. A RUN lives in a world (a conversation, or an action
+    // that reads/writes a session's log); a control-plane action (list/create/attach/discover/
+    // auth) does NOT — so it must not bind or forge a session (operator ruling 2026-07-10:
+    // "every run/thread requires a world, not everything"). Only these kinds bind a session.
+    static #WORLD_SCOPED = Object.freeze(new Set([
+        "session.runs", "log.read", "loop.inject", "session.prompts", "session.rename",
+        "session.constrain", "session.unconstrain", "session.constraints", "entry.read",
+        "op.exec", "op.parse", "session.members", "op.look", "run.fork",
+    ]));
+
     constructor(seam: DaemonSeam, opts: ModuleOptions) {
         this.#seam = seam;
         this.#opts = opts;
@@ -124,6 +134,13 @@ export default class Module {
         const input = JSON.parse(await Module.#body(req)) as RunAgentInput;
         if (typeof input.threadId !== "string" || input.threadId.length === 0) throw new Error("RunAgentInput.threadId required");
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
+
+        // Control plane FIRST: a management action that doesn't live in a world (and an
+        // unknown kind, which is no run at all) answers without binding — or forging — a
+        // session. Only world-scoped actions and conversations reach #envelope below.
+        const early = parseAction(input.forwardedProps);
+        if (early !== null && !Module.#WORLD_SCOPED.has(early.kind)) return await this.#controlRun(early, input, res);
+
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
         const sessionId = env.sessionId;
         // Run-split (service SPEC, machine-processes): loops drive in the session's MODEL run — the
@@ -220,30 +237,43 @@ export default class Module {
         });
     }
 
-    // The action executor — the verb surface, scoped to the thread's own session.
-    // Every kind maps to a seam operation; an unknown kind is an honest error, never a
-    // silent pass-through (the seam is the whole surface — no RPC fallback beneath it).
-    // loop.inject rides here too (§4): the seam's unified runLoop folds a prompt into
-    // the active drain; the steered effect streams on the original run's open SSE.
-    async #action(a: ActionRequest, env: ClientEnvelope): Promise<ActionOutcome> {
+    // A control-plane run: no world bound. Open the SSE, run the worldless verb, answer on
+    // our own stream. No Portal thread, no model run — nothing to forge (operator ruling:
+    // session-plane actions must not spin an ephemeral session).
+    async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
+        const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
+        emit({ type: "RUN_STARTED", threadId: input.threadId, runId: input.runId });
+        const outcome = await this.#action(action, null).catch((err: unknown): ActionOutcome => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+        emit(actionResult(action.kind, outcome));
+        emit({ type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId });
+        res.end();
+    }
+
+    // The capability manifest a client probes (`discover`) to detect a daemon older than
+    // itself. The methods ARE the action surface; the notifications are the daemon-shape
+    // events the client un-projects. Built from the real surface — never a hand-kept list.
+    #capabilities(): { methods: Record<string, true>; notifications: Record<string, true> } {
+        const methods: Record<string, true> = {};
+        for (const k of ["ping", "discover", "providers.list", "session.list", "session.create", "session.attach", "auth.authorize", "auth.authorize.poll", ...Module.#WORLD_SCOPED]) methods[k] = true;
+        const notifications: Record<string, true> = {};
+        for (const n of ["log/entry", "loop/terminated", "loop/proposal", "telemetry/event", "stream/event", "stream/concluded"]) notifications[n] = true;
+        return { methods, notifications };
+    }
+
+    // The action executor — the verb surface. The control plane runs worldless; everything
+    // below the guard operates within a bound session. An unknown kind is an honest error,
+    // never a silent pass-through. loop.inject rides here too (§4): the seam's unified
+    // runLoop folds a prompt into the active drain; the steered effect streams on the SSE.
+    async #action(a: ActionRequest, env: ClientEnvelope | null): Promise<ActionOutcome> {
         const p = a.params;
         try {
+            // The control plane — worldless verbs (no bound session; #WORLD_SCOPED gates this).
             switch (a.kind) {
                 case "ping": return { ok: true, result: {} };
+                case "discover": return { ok: true, result: this.#capabilities() };
                 case "providers.list": return { ok: true, result: this.#seam.listProviders() };
                 case "session.list": return { ok: true, result: { sessions: await this.#seam.listSessions() } };
-                case "session.runs": return { ok: true, result: { runs: await this.#seam.listRuns(typeof p.id === "number" ? p.id : env.sessionId) } };
-                case "log.read": {
-                    // Default run: the conversation (model run); p.runId pins another.
-                    const readRun = typeof p.runId === "number" ? p.runId : await this.#seam.ensureModelRun(env.sessionId);
-                    const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: readRun, ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}), ...(typeof p.loopId === "number" ? { loopId: p.loopId } : {}), ...(typeof p.turnId === "number" ? { turnId: p.turnId } : {}), ...(typeof p.loopSeq === "number" ? { loopSeq: p.loopSeq } : {}), ...(typeof p.turnSeq === "number" ? { turnSeq: p.turnSeq } : {}), ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}) });
-                    return { ok: true, result: { entries } };
-                }
-                case "loop.inject": {
-                    if (typeof p.prompt !== "string" || p.prompt.length === 0) return { ok: false, error: "loop.inject requires prompt" };
-                    const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), prompt: p.prompt });
-                    return { ok: true, result: ack };
-                }
                 case "session.create": {
                     // The name IS the identity: an explicit name creates/attaches EXACTLY
                     // that session; no name = the daemon names it and the real name binds.
@@ -267,6 +297,34 @@ export default class Module {
                     const att = await this.#seam.attachSession({ sessionId: p.id, ...(typeof p.runId === "number" ? { runId: p.runId } : {}) });
                     this.#threads.set(att.sessionName, att);
                     return { ok: true, result: { id: att.sessionId, name: att.sessionName, runId: att.runId, modelRunId: att.modelRunId } };
+                }
+                case "auth.authorize": {
+                    // Stateless relay to the execs-mcp driver (settled: no auth seam — the
+                    // driver owns its mechanics; the bearer overlays its own config registry).
+                    if (typeof p.target !== "string" || p.target.length === 0) return { ok: false, error: "auth.authorize requires target" };
+                    return { ok: true, result: await mcpAuthorize(p.target) };
+                }
+                case "auth.authorize.poll": {
+                    if (typeof p.target !== "string" || p.target.length === 0) return { ok: false, error: "auth.authorize.poll requires target" };
+                    return { ok: true, result: await mcpPoll(p.target, { device: p.device as never }) };
+                }
+            }
+            // Below this line lives IN a world. An unknown kind is no run at all; a
+            // world-scoped kind with no bound session is a routing bug — both surface plainly.
+            if (!Module.#WORLD_SCOPED.has(a.kind)) return { ok: false, error: `unknown action '${a.kind}'` };
+            if (env === null) throw new Error(`action '${a.kind}' operates within a session, but none is bound`);
+            switch (a.kind) {
+                case "session.runs": return { ok: true, result: { runs: await this.#seam.listRuns(typeof p.id === "number" ? p.id : env.sessionId) } };
+                case "log.read": {
+                    // Default run: the conversation (model run); p.runId pins another.
+                    const readRun = typeof p.runId === "number" ? p.runId : await this.#seam.ensureModelRun(env.sessionId);
+                    const entries = await this.#seam.readLog({ sessionId: env.sessionId, runId: readRun, ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}), ...(typeof p.loopId === "number" ? { loopId: p.loopId } : {}), ...(typeof p.turnId === "number" ? { turnId: p.turnId } : {}), ...(typeof p.loopSeq === "number" ? { loopSeq: p.loopSeq } : {}), ...(typeof p.turnSeq === "number" ? { turnSeq: p.turnSeq } : {}), ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}) });
+                    return { ok: true, result: { entries } };
+                }
+                case "loop.inject": {
+                    if (typeof p.prompt !== "string" || p.prompt.length === 0) return { ok: false, error: "loop.inject requires prompt" };
+                    const ack = await this.#seam.runLoop({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), prompt: p.prompt });
+                    return { ok: true, result: ack };
                 }
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
                 case "session.rename": {
@@ -321,18 +379,8 @@ export default class Module {
                     const statement = { ...(item.statement as unknown as Record<string, unknown>), op: "READ" } as unknown as PlurnkStatement;
                     return { ok: true, result: await this.#seam.look({ sessionId: env.sessionId, runId: env.runId, statement }) };
                 }
-                case "auth.authorize": {
-                    // Stateless relay to the execs-mcp driver (settled: no auth seam — the
-                    // driver owns its mechanics; the bearer overlays its own config registry).
-                    if (typeof p.target !== "string" || p.target.length === 0) return { ok: false, error: "auth.authorize requires target" };
-                    return { ok: true, result: await mcpAuthorize(p.target) };
-                }
-                case "auth.authorize.poll": {
-                    if (typeof p.target !== "string" || p.target.length === 0) return { ok: false, error: "auth.authorize.poll requires target" };
-                    return { ok: true, result: await mcpPoll(p.target, { device: p.device as never }) };
-                }
                 case "run.fork": return { ok: true, result: await this.#seam.forkRun({ sessionId: env.sessionId, runId: await this.#seam.ensureModelRun(env.sessionId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
-                default: return { ok: false, error: `unknown action kind '${a.kind}' — the seam surface is the contract` };
+                default: return { ok: false, error: `unknown action '${a.kind}'` };
             }
         } catch (err) {
             return { ok: false, error: err instanceof Error ? err.message : String(err) };

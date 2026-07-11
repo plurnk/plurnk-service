@@ -67,7 +67,8 @@ test("[§agui-management-plane] an action run executes via the seam: result cust
         const bad = await post(mod.address().port, { threadId: "t1", runId: "r3", forwardedProps: { plurnk: { session: "t1", action: { kind: "nope.nothing" } } } });
         const err = bad.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; error: string } };
         assert.equal(err.value.ok, false);
-        assert.match(err.value.error, /unknown action kind/);
+        assert.match(err.value.error, /unknown action 'nope\.nothing'/);
+        assert.doesNotMatch(err.value.error, /seam surface/, "no internal jargon leaks to the client");
     } finally { await mod.close(); }
 });
 
@@ -98,11 +99,12 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         // 1) A session named like an existing world attaches to IT — the exact name.
-        const run = await post(mod.address().port, { threadId: "alpha", runId: "r1", forwardedProps: { plurnk: { session: "alpha", action: { kind: "ping" } } } });
+        // (A world-scoped action binds the session; a control-plane one would not.)
+        const run = await post(mod.address().port, { threadId: "alpha", runId: "r1", forwardedProps: { plurnk: { session: "alpha", action: { kind: "session.members" } } } });
         assert.equal(run[run.length - 1].type, "RUN_FINISHED");
         assert.deepEqual(attached, [4], "session 'alpha' attached the world 'alpha' — no agui- prefix lookup");
         // 2) A new session name creates a world with EXACTLY that name.
-        await post(mod.address().port, { threadId: "beta", runId: "r2", forwardedProps: { plurnk: { session: "beta", action: { kind: "ping" } } } });
+        await post(mod.address().port, { threadId: "beta", runId: "r2", forwardedProps: { plurnk: { session: "beta", action: { kind: "session.members" } } } });
         assert.deepEqual(created.map((c) => c.name), ["beta"], "created verbatim — never 'agui-beta', never a uuid");
         // 3) session.attach is a REAL action kind returning the envelope.
         const att = await post(mod.address().port, { threadId: "alpha", runId: "r3", forwardedProps: { plurnk: { session: "alpha", action: { kind: "session.attach", id: 4 } } } });
@@ -145,5 +147,37 @@ test("NO session prop is a HARD ERROR (500) — a run has no world to forge from
         assert.equal(res.status, 500, "the missing session surfaces as an honest 500, not a fabricated 200");
         assert.match((await res.json() as { error: string }).error, /forwardedProps\.plurnk\.session is required/);
         assert.equal(created, 0, "NO session was forged from the threadId");
+    } finally { await mod.close(); }
+});
+
+test("CONTROL PLANE: a worldless action needs NO session and FORGES none (operator ruling: not everything is a run)", async () => {
+    let created = 0, ensured = 0;
+    const { seam } = mockSeam();
+    seam.listSessions = async () => [{ id: 1, name: "a" }, { id: 2, name: "b" }];
+    seam.createSession = async (a) => { created++; return { sessionId: 9, sessionName: a.name ?? "x", projectRoot: null, runId: 1, runName: "c", modelRunId: 2, clientLoopId: null }; };
+    seam.ensureModelRun = async () => { ensured++; return 2; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        // session.list with NO session prop — control plane, so no world required, none forged.
+        const ev = await post(mod.address().port, { threadId: "probe", runId: "r1", forwardedProps: { plurnk: { action: { kind: "session.list" } } } });
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { sessions: unknown[] } } };
+        assert.equal(r.value.ok, true);
+        assert.equal(r.value.result.sessions.length, 2, "listed the real sessions");
+        assert.equal(ev[ev.length - 1].type, "RUN_FINISHED");
+        assert.equal(created, 0, "no ephemeral session was created");
+        assert.equal(ensured, 0, "no model run was spun for a control-plane action");
+    } finally { await mod.close(); }
+});
+
+test("discover: returns the real capability manifest (methods + notifications) — the stale-daemon probe", async () => {
+    const { seam } = mockSeam();
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const ev = await post(mod.address().port, { threadId: "probe", runId: "r1", forwardedProps: { plurnk: { action: { kind: "discover" } } } });
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { methods: Record<string, true>; notifications: Record<string, true> } } };
+        assert.equal(r.value.ok, true);
+        assert.equal(r.value.result.methods["op.exec"], true, "op.exec is in the surface");
+        assert.equal(r.value.result.methods["session.list"], true);
+        assert.equal(r.value.result.notifications["stream/concluded"], true, "the concluded notification the client depends on");
     } finally { await mod.close(); }
 });
