@@ -57,13 +57,13 @@
         "prepublishOnly": "npm run deps:audit"
     },
     "dependencies": {
-        "@plurnk/plurnk-agui": "^0.11.0",
+        "@plurnk/plurnk-agui": "^0.11.1",
         "@plurnk/plurnk-docs": "^0.1.10",
         "@plurnk/plurnk-execs": "^0.4.41",
         "@plurnk/plurnk-execs-all": "^0.1.31",
-        "@plurnk/plurnk-execs-common": "^0.2.23",
-        "@plurnk/plurnk-execs-mcp": "^0.7.2",
-        "@plurnk/plurnk-execs-search": "^0.3.6",
+        "@plurnk/plurnk-execs-common": "^0.2.24",
+        "@plurnk/plurnk-execs-mcp": "^0.7.4",
+        "@plurnk/plurnk-execs-search": "^0.3.8",
         "@plurnk/plurnk-grammar": "^0.76.7",
         "@plurnk/plurnk-mimetypes": "^0.19.1",
         "@plurnk/plurnk-mimetypes-all": "^0.5.17",
