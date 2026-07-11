@@ -283,7 +283,7 @@ export default class Slicer {
 
     // COPY-style raw line slice. Returns the selected lines verbatim (no line-
     // number prefix), trailing newline appended if any lines were selected.
-    // Used for COPY/MOVE `<L>` per SPEC.md §16.9 (source range, symmetric
+    // Used for COPY/MOVE `<L>` per the service SPEC (COPY/MOVE source-range, symmetric
     // with READ but without the READ-output prefix that's a render concern,
     // not a data concern).
     static linesRaw(content: string, marker: LineMarker): SliceResult {

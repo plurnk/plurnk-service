@@ -2,7 +2,7 @@
 
 Contract for `@plurnk/plurnk-schemes-*` sibling packages. Audience: implementer of a URI scheme handler. Consumer: [plurnk-service](https://github.com/plurnk/plurnk-service) (SPEC.md §3).
 
-## §1 Manifest
+## §1 Manifest {§manifest}
 
 ```json
 {
@@ -48,7 +48,7 @@ class Known {
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up (schemes#20/service#240). Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Resolution: `storedScheme === undefined ? name : storedScheme`. Absent → defaults to `name` (additive; existing manifests unchanged). Explicit `null` → persists BARE (e.g. File: bare paths, `entries.scheme` NULL, routing name `"file"`). |
 
-**Self-doc split (terse pushes, depth pulls).** `example` + `glyph` are the hot-path listing rendered every turn — keep them terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`plurnk://docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled.
+**Self-doc split (terse pushes, depth pulls).** {§manifest-self-doc} `example` + `glyph` are the hot-path listing rendered every turn — keep them terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`plurnk://docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled.
 
 **Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the contract and the consumer's `plurnk://docs/<name>.md` materialization are unchanged. A missing file fails-hard at import (no silent empty doc).
 
@@ -86,7 +86,7 @@ Two surfaces are NOT yet in `SchemeHandler`, pending their result types migratin
 
 - Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
 - Optional `PacketSectionTransformer` — a scheme MAY implement `transformSections(sections: PacketSection[]) → PacketSection[] | Promise<…>` to reshape the packet's section list (add/remove/reorder) before the engine measures it; called duck-typed in registration order. `PacketSection` = `{ name; slot: "system"|"user"; header: string|null; content; tokens }`. Contract declares the shape; service conforms (the in-process plugin-packet-control / fork-avoidance seam — schemes#24).
-- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath` | `RegexPath`).
+- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath` | `RegexPath`).
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - Executor-scheme (RFC schemes#20 — "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` → `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`); `Summarize.summarize(content, mimetype)` → `OrientIndex` is the structural-only EXEC-receipt index (no content — universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Result families: `SchemeResult` (`EntryResult` | `ProposalResult` | `PassthroughResult`), `SchemeResultBase`, `TelemetryEvent`. Keyed on scheme-shape, not op. `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`; builders `schemeError(scheme, kind, message?, position?)`, `logCoordinate(coordinate, op?)`.
@@ -98,7 +98,7 @@ Behavior ships as `export default class` (one class per file, static methods) �
 
 - `SchemeResolver.forLoop(handlers: ReadonlyMap<string, object>, flags: LoopFlags): Set<string>` — applies `manifest.flags` affinity to each handler and returns names of schemes active under the loop's flags.
 
-### Mimetype classification — `MimetypeClassifier`
+### Mimetype classification — `MimetypeClassifier` {§mimetype-classifier}
 
 - `MimetypeClassifier.isBinary(mimetype)` — enforces 415 boundary on binary entries. Delegates to `classifyMimetype` from @plurnk/plurnk-mimetypes (the framework owns the text/binary taxonomy — mimetypes#43; the former local allowlists were absorbed upstream verbatim and retired).
 - `MimetypeClassifier.isJson(mimetype)` — `application/json` plus `+json` variants. Used by `<L>` dispatch. Scheme semantics — stays local, not delegated.
@@ -125,7 +125,7 @@ Behavior ships as `export default class` (one class per file, static methods) �
 - `Results.error(scheme, kind, message?, position?)` — build a scheme-sourced `TelemetryEvent` (`source: "scheme:<name>"`).
 - `Results.logCoordinate(coordinate, op?)` — build a `LogCoordinate` position.
 
-### Matcher dispatch — `Matcher`
+### Matcher dispatch — `Matcher` {§matcher-dispatch}
 
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, baseLine?)` — body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath, all served by the framework). Maps framework errors:
   - `UnsupportedDialectError` → status 415
@@ -134,7 +134,7 @@ Behavior ships as `export default class` (one class per file, static methods) �
   - Empty match array → status 204
   - Matches → status 200, body rendered as lean `<source-line>:\t<value>` lines (one match per line, the `N:\t` convention READ emits). Value bare for a single-line string, JSON-encoded otherwise so the one-match-per-line invariant holds (preserves `<L><K>` pick-Kth composition). The resolved query path (`matching`) is dropped — the structured `{matched, matching}` wrapper was a model-legibility barrier (schemes#12).
 
-### §3.bis Capability ctx — the DB-free authoring surface
+### §3.bis Capability ctx — the DB-free authoring surface {§capability-ctx}
 
 The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be authored without importing `@plurnk/plurnk-service` or touching a raw DB handle (forbidden by §5). **Interfaces only**: this repo exports the shapes; plurnk-service injects a db-backed implementation behind them (the `scheme-types.ts` seam, widened). In-tree schemes keep using `db` directly during transition and cut over scheme-by-scheme. Design converged on [plurnk-service#180](https://github.com/plurnk/plurnk-service/issues/180).
 
@@ -165,7 +165,7 @@ DB-coupled helpers stay in plurnk-service for v0:
 
 These migrate when the v1 namespaced ctx API lands (entries / channels / visibility / tags / subscriptions / proposals / crossScheme / notify). v0 scope: types + pure helpers only.
 
-## §5 Forbidden (for third-party schemes)
+## §5 Forbidden (for third-party schemes) {§forbidden}
 
 | ❌ |
 |---|

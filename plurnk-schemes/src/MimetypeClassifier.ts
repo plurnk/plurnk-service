@@ -24,7 +24,7 @@ import { classifyMimetype } from "@plurnk/plurnk-mimetypes";
 export const TEXT_PRIMITIVE_MIMETYPE = "text/markdown";
 
 export default class MimetypeClassifier {
-    // 415 boundary on binary entries (SPEC.md §3).
+    // 415 boundary on binary entries (SPEC §mimetype-classifier).
     static isBinary(mimetype: string): boolean {
         return classifyMimetype(mimetype).binary;
     }
@@ -37,7 +37,7 @@ export default class MimetypeClassifier {
         return mimetype === "application/json" || mimetype.endsWith("+json");
     }
 
-    // Render-layer `N:\t` prefix decision (SPEC.md §3).
+    // Render-layer `N:\t` prefix decision (SPEC §mimetype-classifier).
     static isLineNavigable(mimetype: string): boolean {
         return classifyMimetype(mimetype).lineNavigable;
     }

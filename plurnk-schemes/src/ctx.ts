@@ -2,10 +2,10 @@
 // `@plurnk/plurnk-schemes-*` siblings (keystone PR-2; design converged on
 // plurnk-service#180). The full contract — the five live namespaces, why
 // `visibility` is absent, why `proposals` / `crossScheme` are NOT namespaces —
-// is SPEC.md §3.bis. This module is its typed mirror.
+// is SPEC §capability-ctx. This module is its typed mirror.
 //
 // WHY it exists: today a sibling receives plurnk-service's raw `Db` handle on
-// `ctx.db` and reaches straight through it — but SPEC §5 forbids a third-party
+// `ctx.db` and reaches straight through it — but SPEC §forbidden bars a third-party
 // scheme from importing `@plurnk/plurnk-service/*` or touching the database, so
 // `ctx.db` is an illegal contract and a real sibling is unbuildable. This module
 // exports INTERFACES only; plurnk-service injects a db-backed implementation
@@ -18,7 +18,7 @@ import type { WriterTier } from "./types.ts";
 import type { ProposalResult, SchemeResult } from "./Results.ts";
 
 // Channel streaming-lifecycle state (mirrors plurnk-service's ChannelState /
-// grammar ChannelContent.state). Metadata, not an engine gate (SPEC §5.6).
+// grammar ChannelContent.state). Metadata, not an engine gate (service SPEC: channel lifecycle state).
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
 // The full entry shape exchanged across CRUD (mirrors plurnk-service's
@@ -31,7 +31,7 @@ export interface EntryData {
 // ── entries ──────────────────────────────────────────────────────────────
 // CRUD over the scheme's OWN namespace only. The impl scopes every call to
 // the calling scheme; a sibling cannot read or write another scheme's
-// entries (SPEC §5). Wraps `_entry-crud.ts`.
+// entries (SPEC §forbidden). Wraps `_entry-crud.ts`.
 export interface EntryCaps {
     read(pathname: string): Promise<{ status: number; entry: EntryData | null }>;
     write(pathname: string, entry: EntryData): Promise<{ status: number; created: boolean; entryId: number | null }>;
@@ -40,7 +40,7 @@ export interface EntryCaps {
 
 // ── channels ─────────────────────────────────────────────────────────────
 // Per-channel content writes + state transitions. `append` and `replace` are
-// distinct because channels are append-only content stores (SPEC §5) but
+// distinct because channels are append-only content stores (service SPEC: channel semantics) but
 // EDIT replaces; the impl enforces which ops a channel permits. `setState`
 // drives the static/active/closed/errored lifecycle the model reads between
 // turns. Wraps `ChannelWrite`.
@@ -59,7 +59,7 @@ export interface ChannelCaps {
 
 // ── tags ─────────────────────────────────────────────────────────────────
 // Entry-tag add/remove/list. `add`/`remove` are additive/subtractive sets
-// (SPEC §6.1 tags-apply-additively). Wraps `entry_tags`.
+// (service SPEC: tags apply additively). Wraps `entry_tags`.
 export interface TagCaps {
     add(pathname: string, tags: ReadonlyArray<string>): Promise<{ status: number }>;
     remove(pathname: string, tags: ReadonlyArray<string>): Promise<{ status: number }>;
@@ -69,7 +69,7 @@ export interface TagCaps {
 // ── notify ───────────────────────────────────────────────────────────────
 // Out-of-band, between-turn signal to clients — today's `streamEventNotify`
 // hook. NOT model-facing: the model is turn-based and sees channel state at
-// the next boundary (SPEC §7.9). `streamEvent` is metadata-only (never
+// the next boundary (service SPEC: between-turn notify). `streamEvent` is metadata-only (never
 // content).
 //
 // There is no `wakeRun` here. The run-wake carries subscription-close
@@ -83,10 +83,10 @@ export interface NotifyCaps {
 }
 
 // ── subscriptions ────────────────────────────────────────────────────────
-// The streaming lifecycle (SPEC §7). The hard namespace; designed against
+// The streaming lifecycle (service SPEC: streaming). The hard namespace; designed against
 // Exec (the proven two-channel, cancel-tested case — if it serves exec it
 // serves http). The registered-vs-content split (registry exists only for
-// cancel routing, §7.1; channels carry lifecycle) is REAL and load-bearing
+// cancel routing — service SPEC; channels carry lifecycle) is REAL and load-bearing
 // in the impl, but HIDDEN here: a sibling sees one lifecycle, not two
 // substrates.
 export interface SubscriptionCaps {
@@ -130,7 +130,7 @@ export interface SubscriptionHandle {
 
 // ── crossScheme (DEFERRED) ───────────────────────────────────────────────
 // Intentionally empty. Cross-scheme COPY/MOVE is engine-orchestrated over
-// CRUD today (SPEC §3.4); whether a sibling needs a FROM/TO capability — and
+// CRUD today (service SPEC: cross-scheme COPY/MOVE); whether a sibling needs a FROM/TO capability — and
 // its shape — waits for the first real cross-scheme implementation to force
 // it. Present as a named placeholder so the slot exists without committing a
 // guessed interface.
@@ -140,7 +140,7 @@ export interface CrossSchemeCaps {
 
 // ── the context ──────────────────────────────────────────────────────────
 // Fresh per op-call. A sibling MUST NOT retain it past the handler return
-// (SPEC §5). Identity/lifecycle fields carry the engine's per-dispatch
+// (SPEC §forbidden). Identity/lifecycle fields carry the engine's per-dispatch
 // coordinates; capability namespaces replace raw `db`.
 export interface SchemeCtx {
     readonly sessionId: number;
