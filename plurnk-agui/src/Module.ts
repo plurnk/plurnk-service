@@ -89,7 +89,7 @@ export default class Module {
     }
 
     // THE PLURNK PARADIGM (operator ruling 2026-07-10): the name IS the identity,
-    // verbatim. The SESSION is the WORLD (SPEC §machine-processes) — selected by name via
+    // verbatim. The SESSION is the WORLD (service SPEC, machine-processes) — selected by name via
     // `forwardedProps.plurnk.session`; attach it if it exists, create it with EXACTLY that
     // name if it doesn't. No prefixes, no forged names, no dual lookup. A thread with no
     // explicit session names its own workspace after the threadId (backward-compatible).

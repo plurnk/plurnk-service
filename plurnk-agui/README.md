@@ -32,13 +32,17 @@ One endpoint: `POST /` with `RunAgentInput` (`threadId`, `runId`, `messages`,
   Pending proposals re-surface on (re)connect — a days-old question is discoverable.
 - **Reads ride STATE**: providers/aliases/budget/session arrive as `STATE_SNAPSHOT` on
   `RUN_STARTED` and `STATE_DELTA` on change — observed, not polled.
-- **Session options** ride the thread's first run: `forwardedProps.plurnk`
-  (`projectRoot`, `constraints`, `settings`); per-run knobs (`maxTurns`, `flags`,
-  `alias`/`model`) every run.
+- **The session is the WORLD**: `forwardedProps.plurnk.session` selects the workspace by
+  name, verbatim (attach-or-create); with no `session`, the thread names its own workspace
+  after the `threadId` (backward-compatible). Session options ride the workspace's first run:
+  `forwardedProps.plurnk` (`projectRoot`, `constraints`, `settings`); per-run knobs
+  (`maxTurns`, `flags`, `alias`/`model`) every run.
+- **The thread is the CONVERSATION**: a `threadId` binds a run over the selected world —
+  today the session's model run (`ensureModelRun`), so extended context persists across runs;
+  history replays as `MESSAGES_SNAPSHOT` on reattach. Distinct second conversations over one
+  world gate on plurnk-service#366. (Machine model: service SPEC §machine-processes.)
 - **Cancel**: dropping the SSE aborts a live loop (hangup is the abort); a
   proposal-terminated run leaves the paused loop for the resume.
-- An AG-UI `threadId` **is** a plurnk session — the exact name, verbatim — and extended context
-  persists across runs; history replays as `MESSAGES_SNAPSHOT` on reattach.
 - **Tier 2 metadata** (`CUSTOM plurnk.*`: row, stream, telemetry, terminated) carries
   what AG-UI has no term for — fold state, coordinates, tags, token truth. Generic
   frontends skip it; family clients render it richly. The full contract: `SPEC.md`
@@ -48,7 +52,7 @@ One endpoint: `POST /` with `RunAgentInput` (`threadId`, `runId`, `messages`,
 
 ```ts
 import { Module } from "@plurnk/plurnk-agui";
-daemon.registerModule(Module.init({ host: "127.0.0.1", port: 3044, sessionPrefix: "agui" }));
+daemon.registerModule(Module.init({ host: "127.0.0.1", port: 3044 }));
 // The daemon reads PLURNK_HOST/PLURNK_PORT: plurnk has ONE client surface, this listener.
 ```
 

@@ -10,10 +10,18 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
 - **The module is an in-process daughter of the daemon** {§agui-daemon-client} — activated
   at boot (`registerModule` → the core seam handle); it opens the AG-UI+ listener and owns
   the client interface. No WebSocket, no separate process.
-- **An AG-UI thread IS a plurnk session** {§agui-thread-is-session} — `threadId` maps to the
-  session `<PLURNK_AGUI_SESSION_PREFIX>-<threadId>`, created on the thread's first run with
-  `settings.questions` per `PLURNK_AGUI_QUESTIONS`, reattached on every run after. Plurnk's
-  extended context persists across AG-UI runs because the session does.
+- **A plurnk SESSION is the world; an AG-UI THREAD is a conversation over it** {§agui-thread-is-run}
+  — plurnk's machine model (service SPEC §machine-processes) splits the WORLD (a session: one
+  curated workspace) from the CONVERSATION (a run: a history over that world). AG-UI's session
+  concept is the workspace, selected by name, VERBATIM, via `forwardedProps.plurnk.session`
+  (attach if it exists, create with exactly that name otherwise — no prefix, no forging). A
+  thread with no explicit `session` names its own workspace after the `threadId`
+  (backward-compatible). The `threadId` is the conversation: today it binds the session's MODEL
+  run (`ensureModelRun` — origin identifies it, never a name parse), so extended context
+  persists across AG-UI runs because the run's log does. Distinct second conversations over one
+  world (a thread that is NOT the model run — a fork, a fresh conversation run) gate on
+  plurnk-service#366 (`createConversationRun`); until it lands, one thread per session binds
+  the model run.
 - **Family-internal runtime deps only** {§agui-zero-dep} — `@plurnk/*` packages (the grammar,
   for edge parsing) are welcome, exact-pinned; third-party runtime deps (e.g. `@ag-ui/core`
   with its Zod) stay out. Event shapes remain hand-defined plain JSON.

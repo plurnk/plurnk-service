@@ -112,7 +112,7 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     } finally { await mod.close(); }
 });
 
-test("SESSION=WORKSPACE, THREAD=CONVERSATION (SPEC §machine-processes): the session prop selects the world; the thread binds its model run", async () => {
+test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the session prop selects the world; the thread binds its model run", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const ensured: number[] = [];
