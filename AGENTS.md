@@ -38,6 +38,23 @@ _(Migrated from PROJECT.md, 2026-06-27 — the project reorg is reverted; the wo
 
 # Scratch
 
+## Catch-up plan (2026-07-11, owner-ordered: forensics → issues → checklist; 0.86.2 PUBLISHED, next cut 0.87.0)
+
+**Phase 1 — forensic sweep of the 0.86.2 drill run: DONE (digest-level, 52 corpses; requiems skipped — digests flagged everything):**
+- [x] run42-service-drill collected + digested (30 clean, 4 deliberate-overflow fixtures, outlier rooted)
+- [x] 811s pipeline stall ROOT-CAUSED, engine exonerated: children parked-before-working → ∅-collapse concluded them with the park text AS deliverable → parent re-spawned ×9. Filed: #379 (deliverable design question, owner's call) + grammar#65 (the (run://name) placeholder bait — a run literally named 'name').
+- [x] search corpse validated the composed one-load flow → #340 CLOSED; caught + FIXED https:///host render (5f5af96)
+- [ ] 89ab959 steer-rewording live-check → next drill
+
+**Phase 2 — exec-family reconciliation: DONE (all four commented with verdicts; #340 closed):** execs#22 (published, bench closes), execs-mcp#3 (relay live; seam home rides #364-p2), execs-mcp#2 (service no-op confirmed, theirs), execs#18 (lane complete + live-validated; service residue = #333 only).
+
+**Phase 3 — checklist remainder, dependency order:**
+- [ ] **#364 phase 2** — now the big rock; its three dispositions RESOLVED by audit: mcp_install (thin relay → trivial seam/module home), auth relay (stateless passthrough → same), RPC-deadline (dies with the registry; §operator-config-rpc-timeout re-homes or retires with owner). Then: migrate 3 raw-WS test files, delete MethodRegistry/methods/ClientConnection/ws dep, move dsl.ts → test/intg/.
+- [ ] SPEC anchor sweep — PARKED for owner scoping (serious housekeeping)
+- [ ] Prepub: full drill (incl. steer-rewording live-check) → cut 0.87.0
+
+**Blocked on other agents (none block service work):** agui#3 (SSE timeout → closes #372), providers#43 (their envelope validation), grammar EDIT-scope doc residue.
+
 ## Current checklist (2026-07-11 — post-churn; audit firsthand before treating any [ ] as open)
 
 **Un-cut work on main** (published = 0.86.1; digits-are-free: next cut is 0.86.2):
