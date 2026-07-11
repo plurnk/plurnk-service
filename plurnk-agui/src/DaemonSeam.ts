@@ -89,9 +89,6 @@ export interface DaemonSeam {
     // conversation over the same world. ensureModelRun = the stable default,
     // forkRun = branch with history, createConversationRun = fresh thread.
     createConversationRun(args: { sessionId: number; name?: string }): Promise<{ runId: number; runName: string }>;
-    // Late root arrival (svc#140 half): a rootless session gains its workspace; pending
-    // repo constraints resolve when it lands.
-    setProjectRoot(sessionId: number, projectRoot: string | null): Promise<string | null>;
 }
 
 // The envelope a session-lifecycle call returns (core's shape, verbatim).

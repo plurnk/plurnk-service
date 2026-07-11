@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-agui",
-    "version": "0.11.3",
+    "version": "0.11.4",
     "description": "The plurnk daemon's transport daughter — owns the client interface, serving AG-UI+ (the Agent-User Interaction Protocol + plurnk metadata extensions) as the sole client interaction surface. In-process module activated at the daemon's boot plug-point; any AG-UI frontend is a plurnk client.",
     "type": "module",
     "license": "MIT",

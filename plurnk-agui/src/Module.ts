@@ -40,7 +40,7 @@ export default class Module {
     // auth) does NOT — so it must not bind or forge a session (operator ruling 2026-07-10:
     // "every run/thread requires a world, not everything"). Only these kinds bind a session.
     static #WORLD_SCOPED = Object.freeze(new Set([
-        "session.runs", "log.read", "loop.inject", "loop.cancel", "session.prompts", "session.rename", "session.root",
+        "session.runs", "log.read", "loop.inject", "loop.cancel", "session.prompts", "session.rename",
         "session.constrain", "session.unconstrain", "session.constraints", "entry.read",
         "op.exec", "op.parse", "session.members", "op.look", "run.fork",
     ]));
@@ -356,14 +356,6 @@ export default class Module {
                 // run's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(convRun ?? await this.#seam.ensureModelRun(env.sessionId)) } };
                 case "session.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.sessionId, typeof p.limit === "number" ? p.limit : undefined) } };
-                // Late root arrival (svc#140): a ROOTLESS session gains its workspace — the
-                // one legal transition (null → path completes a half-created world). An
-                // established root never moves (operator ruling: the root is the world's
-                // ground, fixed for the session's life); the daemon owns that refusal.
-                case "session.root": {
-                    if (typeof p.path !== "string" || p.path.length === 0) return { ok: false, error: "session.root requires path" };
-                    return { ok: true, result: { projectRoot: await this.#seam.setProjectRoot(env.sessionId, p.path) } };
-                }
                 case "session.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) return { ok: false, error: "session.rename requires name" };
                     return { ok: true, result: await this.#seam.renameSession(env.sessionId, p.name) };
