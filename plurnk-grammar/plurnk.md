@@ -21,21 +21,21 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|W
 
 A `?` marks an optional field, as in the Syntax line; unmarked fields are required.
 
-| OP   | `[signal]`     | `(path)`     | `<scope>`          | :body:             | OP   |
-|------|----------------|--------------|--------------------|--------------------|------|
-| PLAN | -              | -            | -                  | :plan, free text:  | PLAN |
-| FIND | [tags]?        | (path)       | <result,result>?   | :pattern:?         | FIND |
-| READ | [tags]?        | (path)       | <line,line>?       | :pattern:?         | READ |
-| EDIT | [tags]?        | (path)       | <line,line>?       | :literal text:?    | EDIT |
-| COPY | [tags]?        | (path)       | <line,line>?       | :destination path: | COPY |
-| MOVE | [tags]?        | (path)       | <line,line>?       | :destination path: | MOVE |
-| OPEN | [tags]?        | (log path)   | <result,result>?   | :pattern:?         | OPEN |
-| FOLD | [tags]?        | (log path)   | <result,result>?   | :pattern:?         | FOLD |
-| EXEC | [executor]?    | (path)?      | <timeout, poll>?   | :code:?            | EXEC |
-| WORK | -              | (run://name) | -                  | :task:             | WORK |
-| FORK | -              | (run://name) | -                  | :hint:?            | FORK |
-| KILL | [signal]?      | (path)       | -                  | ::                 | KILL |
-| SEND | [submit code]? | (recipient)? | <timeout, poll>?   | :message:          | SEND |
+| OP   | `[signal]`     | `(path)`        | `<scope>`          | :body:             | OP   |
+|------|----------------|-----------------|--------------------|--------------------|------|
+| PLAN | -              | -               | -                  | :plan, free text:  | PLAN |
+| FIND | [tags]?        | (path)          | <result,result>?   | :pattern:?         | FIND |
+| READ | [tags]?        | (path)          | <line,line>?       | :pattern:?         | READ |
+| EDIT | [tags]?        | (path)          | <line,line>?       | :literal text:?    | EDIT |
+| COPY | [tags]?        | (path)          | <line,line>?       | :destination path: | COPY |
+| MOVE | [tags]?        | (path)          | <line,line>?       | :destination path: | MOVE |
+| OPEN | [tags]?        | (log path)      | <result,result>?   | :pattern:?         | OPEN |
+| FOLD | [tags]?        | (log path)      | <result,result>?   | :pattern:?         | FOLD |
+| EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :code:?            | EXEC |
+| WORK | -              | (run://checker) | -                  | :task:             | WORK |
+| FORK | -              | (run://recheck) | -                  | :hint:?            | FORK |
+| KILL | [signal]?      | (path)          | -                  | ::                 | KILL |
+| SEND | [submit code]? | (recipient)?    | <timeout, poll>?   | :message:          | SEND |
 
 <<PLAN:concise plan goes here:PLAN is required at the beginning of a turn.
 <<FIND(path)::FIND returns a JSON array of matches: each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
@@ -79,7 +79,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 ### `(path)`
 
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
-* `run://name` is the run entity (WORK to spawn a fresh worker, READ to collect its result, FORK to branch the current run, KILL to stop); `run://name/path` is an entry in its workspace.
+* A `run://` path names a run (WORK to spawn a fresh worker, READ to collect its result, FORK to branch the current run, KILL to stop); a path beneath it, like `run://checker/notes.md`, is an entry in its workspace.
 * Log item paths are nested (`log:///1/2/3` is loop/turn/item) and accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
