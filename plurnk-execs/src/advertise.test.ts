@@ -16,7 +16,7 @@ const registry = (...tags: string[]): ExecRegistry => new Map(tags.map((t) => [t
 test("§3.4 contribute: zero permitted runtimes yields the single teaching notice, no runtime lines", () => {
     const { permitted, notice } = Advertise.contribute(registry("sh", "jq", "search"), () => false);
     assert.deepEqual(permitted, []);
-    assert.equal(notice, "No EXEC runtimes are active");
+    assert.equal(notice, "No EXEC operations permitted");
     assert.equal(notice, Advertise.NO_EXECS_NOTICE, "the notice is the framework's single source of truth");
 });
 
