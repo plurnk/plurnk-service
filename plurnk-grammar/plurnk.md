@@ -11,7 +11,7 @@ Plurnk Service Features:
 
 ## Plurnk Service Grammar
 
-YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|KILL|SEND).
+YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|WORK|FORK|KILL|SEND).
 
 ### Syntax
 
@@ -32,6 +32,8 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 | OPEN | [tags]?        | (log path)   | <result,result>?   | :pattern:?         | OPEN |
 | FOLD | [tags]?        | (log path)   | <result,result>?   | :pattern:?         | FOLD |
 | EXEC | [executor]?    | (path)?      | <timeout, poll>?   | :code:?            | EXEC |
+| WORK | -              | (run://name) | -                  | :task:             | WORK |
+| FORK | -              | (run://name) | -                  | :hint:?            | FORK |
 | KILL | [signal]?      | (path)       | -                  | ::                 | KILL |
 | SEND | [submit code]? | (recipient)? | <timeout, poll>?   | :message:          | SEND |
 
@@ -40,6 +42,7 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 <<READ(path)::READ returns lines of matching content. Every line is prefixed with the line number and a hard tab, `N:	`.
 <<EDIT(path):literal text:EDIT is only for creating or modifying files and entries. Do not attempt to edit log items.
 <<EDIT(path):literal text:EDIT replaces the selected line(s) `<line,line>` with literal body content, never with patterns.
+<<EDIT(path):literal text:EDIT without `<scope>` replaces the entire entry, or creates it if absent.
 <<OPEN(log path)::OPEN expands (`+`) the log item body to view it (costs tokens). Not all log items have a body (`*`).
 <<FOLD(log path)::FOLD hides (`-`) the log item body (saves tokens). FOLDed item tokens="" shows token cost if OPENed.
 <<EXEC::EXEC produces output stream channels on the next turn that you can then FIND, READ, or KILL.
