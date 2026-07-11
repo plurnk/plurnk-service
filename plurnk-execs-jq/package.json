@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-jq",
-    "version": "0.1.23",
+    "version": "0.1.24",
     "description": "jq runtime executor for plurnk-service's exec scheme — shells the system jq binary to filter/transform JSON for EXEC[jq].",
     "keywords": [
         "plurnk",
@@ -60,9 +60,9 @@
     "devDependencies": {
         "@types/node": "^26.0.0",
         "typescript": "^7.0.2",
-        "@plurnk/plurnk-execs": "0.4.40"
+        "@plurnk/plurnk-execs": "0.4.41"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "0.4.40"
+        "@plurnk/plurnk-execs": "0.4.41"
     }
 }
