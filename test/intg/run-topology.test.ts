@@ -221,9 +221,10 @@ test("[§run-lifecycle-wake-requeue-not-terminal] a wake re-queue (100) mid-drai
     });
 });
 
-test("[§fold-open-meta-operations] a successful FOLD leaves no log row — the render is the receipt; a failed one keeps its row", async () => {
-    // Curation receipts that rent log space made curation self-defeating (fold a row, pay a
-    // permanent FOLD row) — and the grinder's mechanical folds were already rowless. One rule.
+test("[§fold-open-meta-operations] OPEN/FOLD are recorded in the DB, suppressed from the render; a failed one still surfaces (#382)", async () => {
+    // #382 (owner) — the render suppresses a SUCCESSFUL OPEN/FOLD (zero packet cost) but the row
+    // is RECORDED: a curation act with no forensic trace is how run43's task-frame fold stayed
+    // invisible. A FAILED FOLD still renders — errors are signals.
     const mock = new Mock({ contextSize: 16384, responses: [
         makeMockResponse("<<EDIT(known://note):some content worth folding:EDIT\n<<SEND[102]:wrote:SEND", 10),
         // The phantom FOLD fails (400) — §send-200-failed-ops refuses the same-turn [200], so the
@@ -239,10 +240,10 @@ test("[§fold-open-meta-operations] a successful FOLD leaves no log row — the 
             assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
             const rows = await (db.test_ops_by_loop as PrepMethod).all<{ op: string; status_rx: number }>({});
             const folds = rows.filter((r) => r.op === "FOLD");
-            // The successful FOLD (real coordinate) left NO row; the failed one (phantom
-            // coordinate) kept its ordinary op row with its status — errors are signals.
-            assert.equal(folds.length, 1, `exactly one FOLD row — the failure; got ${JSON.stringify(folds)}`);
-            assert.ok(folds[0].status_rx >= 400, "the surviving row is the failed FOLD's, carrying its status");
+            // BOTH FOLDs are now recorded in the DB — the success (real coordinate) and the failure
+            // (phantom). The success is render-suppressed; the failure renders + carries its status.
+            assert.equal(folds.length, 2, `both FOLDs recorded in the DB; got ${JSON.stringify(folds)}`);
+            assert.ok(folds.some((f) => f.status_rx < 400) && folds.some((f) => f.status_rx >= 400), "one success + one failure recorded");
         } finally { ws.close(); }
     });
 });

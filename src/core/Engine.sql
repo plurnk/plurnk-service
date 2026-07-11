@@ -365,9 +365,12 @@ ORDER BY t.sequence, le.sequence;
 -- landing when there is no room: one set-op folds the still-open rows of the newest turn
 -- boundary — the immediately-prior turn's emissions and the current turn's pre-model rows
 -- (foists, wake surfaces). Turn 1 is the same rule (no prior turn; its foists are the newest).
--- Folded, never deleted; op='error' rows are EXEMPT (§grinder-errors-exempt).
+-- Folded, never deleted; op='error' rows are EXEMPT (§grinder-errors-exempt), and so is the
+-- user PROMPT (#382 — the task frame the engine foisted is not the model's curatable memory;
+-- the engine never reclaims the definition of the task it set).
 UPDATE log_entries SET expanded = 0
 WHERE loop_id = $loop_id AND expanded = 1 AND op != 'error'
+  AND NOT (COALESCE(scheme, '') = 'plurnk' AND COALESCE(pathname, '') LIKE '/prompt/%')  -- NULL-safe: a model row's scheme is NULL
   AND (turn_id = $turn_id
        OR turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id));
 
@@ -402,9 +405,14 @@ FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one run's log — §actor-boundary-isolation §machine-processes-run-is-its-log
--- the AND NOT clause keeps proposed (202) rows hidden until resolved — §proposal-proposed-hidden
+-- the AND NOT clauses keep proposed (202) rows hidden until resolved (§proposal-proposed-hidden),
+-- and SUCCESSFUL OPEN/FOLD render-directive rows out of the packet (#382 — recorded in the DB for
+-- forensics, suppressed from materialization so a curation receipt rents zero packet space; the
+-- successful fold that hid the task frame in run43 left NO trace, the database dig. A FAILED
+-- OPEN/FOLD still renders — errors are signals, §telemetry-uniform-error-channel).
 WHERE le.run_id = $run_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
+  AND NOT (le.op IN ('OPEN', 'FOLD') AND le.status_rx < 400)
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_insert_log_entry

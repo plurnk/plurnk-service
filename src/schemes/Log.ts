@@ -230,8 +230,25 @@ export default class Log {
         const r = await this.#resolveIds(pathname, statement.lineMarker, ctx);
         if (r.status === 204) return { status: 204, matched: 0 };
         if (r.status !== 200) return { status: r.status, ...(r.error !== undefined ? { error: r.error } : {}) };
-        for (const id of r.ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
-        return { status: 200, matched: r.ids.length };
+        let ids = r.ids;
+        // §prompt-fold-illegal (#382, owner) — the user prompt is the task frame, not curatable
+        // memory: a FOLD that would HIDE it is refused (run43: a weak model folded its own task in
+        // a housekeeping turn and lost the plot). KILL still DELETES it deliberately — curation
+        // preserved, accident prevented. A glob sweep silently spares the prompt and folds the
+        // rest; an explicit fold whose whole target IS the prompt gets the steer.
+        if (expanded === 0) {
+            const promptIds = new Set<number>();
+            for (const id of r.ids) {
+                const row = await (ctx.db.log_row_target as PrepMethod).get<{ scheme: string | null; pathname: string | null }>({ id });
+                if (row?.scheme === "plurnk" && (row.pathname ?? "").startsWith("/prompt/")) promptIds.add(id);
+            }
+            if (promptIds.size > 0) {
+                ids = r.ids.filter((id) => !promptIds.has(id));
+                if (ids.length === 0) return { status: 403, error: "Illegal attempt to FOLD a user prompt. Use KILL if you want it removed." };
+            }
+        }
+        for (const id of ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
+        return { status: 200, matched: ids.length };
     }
 
     // KILL erases log items (plurnk.md:36, :98) — the model's DB-storage curation lever and

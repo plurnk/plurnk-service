@@ -52,3 +52,8 @@ JOIN loops l ON l.id = t.loop_id
 WHERE l.run_id = $run_id
   AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
 ORDER BY l.sequence, t.sequence, le.sequence;
+
+-- PREP: log_row_target
+-- #382 §prompt-fold-illegal — a log row's acted-on target (scheme+pathname), to spot the user
+-- prompt frame rows (scheme='plurnk', pathname '/prompt/%') a FOLD must never hide.
+SELECT scheme, pathname FROM log_entries WHERE id = $id;

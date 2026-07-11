@@ -348,3 +348,12 @@ SELECT id, name, origin, parent_run_id FROM runs WHERE session_id = $session_id 
 
 -- PREP: test_first_turn_for_loop
 SELECT packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
+
+-- PREP: test_prompt_expanded
+SELECT expanded FROM log_entries WHERE scheme='plurnk' AND pathname LIKE '/prompt/%' AND op='READ' LIMIT 1;
+
+-- PREP: test_turn_id_by_seq
+SELECT id FROM turns WHERE loop_id = $loop_id AND sequence = $sequence;
+
+-- PREP: test_count_op
+SELECT COUNT(*) n FROM log_entries WHERE op = $op;

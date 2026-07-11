@@ -163,15 +163,10 @@ export default class Dispatcher {
                 };
             }
         }
-        // §fold-open-meta-operations — OPEN/FOLD are render directives, not actions: they change
-        // how the world DISPLAYS, never what it is. A successful one leaves NO log row — the next
-        // packet's render IS the receipt (the row shows collapsed/expanded), and a curation
-        // receipt that itself rents log space made curation self-defeating in the small (the
-        // grinder's own mechanical folds were already rowless — one rule for both curators).
-        // Failures keep the ordinary op row with their status: errors are signals.
-        if ((statement.op === "OPEN" || statement.op === "FOLD") && result.status < 400) {
-            return { ...result, rowsWritten: 0 };
-        }
+        // §fold-open-meta-operations — OPEN/FOLD are render directives, not actions. They ARE
+        // recorded (#382 — a curation act with no forensic trace is how run43's task-frame fold
+        // stayed invisible), but engine_render_log suppresses them from the packet, so the receipt
+        // rents zero model-facing space — the original clutter concern, resolved by hide-not-drop.
         // §join-blocking-collect (#354) — Run.read on a still-running child returns an awaitRun signal;
         // arm the join so THIS turn's bare SEND[102] parks (the blocking collect) instead of spinning.
         if (typeof (result as { awaitRun?: unknown }).awaitRun === "string") this.#joinTargets.add(loopId);

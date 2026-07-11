@@ -78,9 +78,10 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
         const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ run_id: runId });
         assert.ok(before.some((r) => r.turn_seq === 1 && r.expanded === 1), "turn 1 left an open (expanded=1) log entry");
         await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ run_id: runId });
-        const t1 = after.filter((r) => r.turn_seq === 1);
-        assert.ok(t1.length > 0 && t1.every((r) => r.expanded === 0), "prior turn's logs folded — still listed, collapsed to coordinate (expanded=0), not deleted");
+        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; pathname: string | null }>({ run_id: runId });
+        // #382 — the prompt frame is grinder-exempt; the grinder folds the prior turn's WORK, not the task.
+        const t1 = after.filter((r) => r.turn_seq === 1 && !(r.pathname ?? "").startsWith("/prompt/"));
+        assert.ok(t1.length > 0 && t1.every((r) => r.expanded === 0), "prior turn's WORK folded (the exempt prompt stays open) — collapsed to coordinate, not deleted");
     } finally { await db.close(); }
 });
 

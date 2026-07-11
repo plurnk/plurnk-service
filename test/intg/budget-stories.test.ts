@@ -78,8 +78,10 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
     assert.ok(m, `budget headline present; got: ${budget}`);
     return { ceiling: Number(m![1]), usage: Number(m![2]), percent: m![3] === "<1" ? 0.5 : Number(m![3]), free: Number(m![4]) };
 };
-const logRows = async (db: Db, runId: number): Promise<Array<{ turn_seq: number; expanded: number; tokens: number; op: string }>> =>
-    (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; tokens: number; op: string }>({ run_id: runId });
+const logRows = async (db: Db, runId: number): Promise<Array<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>> =>
+    (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>({ run_id: runId });
+// #382 — the user prompt (plurnk://prompt/…) is grinder-EXEMPT frame; the grinder folds work, never the task.
+const isPrompt = (r: { pathname: string | null }): boolean => (r.pathname ?? "").startsWith("/prompt/");
 
 // Two reference measurements on throwaway runs (deterministic FAT body), so the
 // fold-to-fit ceilings track the real assembly and never magic numbers:
@@ -136,8 +138,8 @@ test("budget: overflow is judged on the current assembled packet, not a prior-tu
         // wall is the fat prior-turn log, which the grinder must measure NOW and fold.
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
         await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const t1Log = (await logRows(db, runId)).filter((r) => r.turn_seq === 1);
-        assert.ok(t1Log.length > 0 && t1Log.every((r) => r.expanded === 0), "the fat prior-turn log was folded — overflow judged on the current packet");
+        const t1Log = (await logRows(db, runId)).filter((r) => r.turn_seq === 1 && !isPrompt(r));
+        assert.ok(t1Log.length > 0 && t1Log.every((r) => r.expanded === 0), "the fat prior-turn log (excl. the exempt prompt) was folded — overflow judged on the current packet");
     } finally { await db.close(); }
 });
 
@@ -228,7 +230,7 @@ test("budget: folding changes the render, not the stored token cost of the entry
         const tight = engineAt(db, Math.floor((floor + expanded) / 2));
         await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const t1After = (await logRows(db, runId)).filter((r) => r.turn_seq === 1);
-        assert.ok(t1After.every((r) => r.expanded === 0), "turn 1 folded");
+        assert.ok(t1After.filter((r) => !isPrompt(r)).every((r) => r.expanded === 0), "turn 1's work folded (the exempt prompt stays open)");
         assert.equal(t1After.reduce((s, r) => s + r.tokens, 0), before, "stored tokens unchanged across the fold — only the render collapsed");
     } finally { await db.close(); }
 });
@@ -249,8 +251,8 @@ test("budget: the grinder folds the immediately-prior turn each time, never olde
         await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         // op='error' rows (the grinder's own overflow row) are exempt from folding (§grinder-errors-exempt),
         // so the "all folded" invariant is over the non-error rows.
-        const folded = (rows: Array<{ turn_seq: number; expanded: number; op: string }>, t: number): boolean =>
-            rows.filter((r) => r.turn_seq === t && r.op !== "error").every((r) => r.expanded === 0);
+        const folded = (rows: Array<{ turn_seq: number; expanded: number; op: string; pathname: string | null }>, t: number): boolean =>
+            rows.filter((r) => r.turn_seq === t && r.op !== "error" && !isPrompt(r)).every((r) => r.expanded === 0);
         assert.ok(folded(await logRows(db, runId), 1), "turn 2 folded turn 1");
         await tight.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 3 });
         const afterT3 = await logRows(db, runId);
