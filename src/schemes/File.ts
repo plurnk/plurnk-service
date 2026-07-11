@@ -23,7 +23,7 @@ type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string;
 type ApplyResult = { status: number; outcome?: string; body?: string };
 
 // Workspace root for file ops is sourced from `sessions.project_root`,
-// supplied by the client at session.create or session.set_root (issue
+// supplied by the client at session.create (headless is forever; issue
 // #150 wired the RPC; F.1 added the column). Server doesn't guess —
 // the client owns workspace identity. If a session is headless
 // (project_root=null), file ops fail at 400; the client either supplies
@@ -156,7 +156,7 @@ export default class File {
     // §membership-edit-membership-gate — membership/containment/read-only/binary gate before any disk write
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
         const root = await loadSessionRoot(ctx.db, ctx.sessionId);
-        if (root === null) return { ok: false, status: 400, error: "session has no project_root; client must call session.create({projectRoot}) or session.set_root({projectRoot}) before file ops" };
+        if (root === null) return { ok: false, status: 400, error: "session has no project_root (headless is forever) — file ops need a session created with projectRoot" };
         // An absolute disk path the model echoed → its relative key, so EDIT hits the member
         // instead of proposing a wrong CREATE nested under root (the fileExists=false path).
         pathname = toWorkspaceRelative(pathname, root);

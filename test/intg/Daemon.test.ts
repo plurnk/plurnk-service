@@ -496,8 +496,8 @@ test("the client-interface seam — session lifecycle: create/attach/rename/set-
         await assert.rejects(() => daemon.attachSession({ sessionId: env.sessionId, runName: "plurnk" }), /reserved/, "attachSession refuses a reserved run name");
         assert.equal((await daemon.attachSession({ sessionId: env.sessionId })).sessionId, env.sessionId, "attachSession returns an envelope on the same session");
 
-        // set-root + rename — mutations return the applied value; a name collision is refused.
-        assert.equal(await daemon.setProjectRoot(env.sessionId, "/tmp/seam-root"), "/tmp/seam-root");
+        // rename — mutations return the applied value; a name collision is refused. (No root
+        // mutation on the seam: the workspace pointer is set at session.create or never.)
         assert.equal((await daemon.renameSession(env.sessionId, "seam-life-2")).name, "seam-life-2");
         await daemon.createSession({ name: "seam-life-other" });
         await assert.rejects(() => daemon.renameSession(env.sessionId, "seam-life-other"), /already exists/, "renameSession refuses a taken name");

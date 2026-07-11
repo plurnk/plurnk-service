@@ -19,12 +19,11 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";
 import GitMembership from "../../src/core/git-membership.ts";
-import Envelope from "../../src/server/envelope.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, insertSession, insertRun, insertLoop, insertTurn,
-    seedEnvelope, DEFAULT_MIMETYPES, logEntries,
+    seedEnvelope, DEFAULT_MIMETYPES, logEntries, rootSession,
 } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
@@ -85,12 +84,11 @@ const withGitWorkspace = async (
         ], { cwd: root });
 
         const sessionId = await insertSession(db, `git-ws-${crypto.randomUUID()}`);
-        // Set the workspace pointer through the production session-root setter
-        // (the session.set_root backend) so git-ls-files membership (SPEC §membership
-        // D4) is established at workspace setup — exactly what a real client's
-        // session.create({projectRoot}) / set_root does. This is the workspace
-        // identity assignment (D1); a raw UPDATE here would skip it.
-        await Envelope.updateSessionProjectRoot(db, sessionId, root);
+        // Root the session via the fixture helper — a direct pointer write plus the
+        // same creation-time membership resolve session.create({projectRoot})
+        // performs (headless is forever: production sets the pointer only at
+        // create; a raw UPDATE alone would skip the resolve).
+        await rootSession(db, sessionId, root);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -380,7 +378,7 @@ const seedForest = async (db: Db, repos: Array<{ dir: string; file: string }>): 
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: r });
     }
     const sessionId = await insertSession(db, `forest-${crypto.randomUUID()}`);
-    await Envelope.updateSessionProjectRoot(db, sessionId, parent);
+    await rootSession(db, sessionId, parent);
     const runId = await insertRun(db, sessionId);
     const loopId = await insertLoop(db, runId, 1);
     const turnId = await insertTurn(db, loopId, 1, 102);

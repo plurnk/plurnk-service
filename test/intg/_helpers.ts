@@ -7,6 +7,7 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
+import GitMembership from "../../src/core/git-membership.ts";
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
@@ -132,6 +133,14 @@ export const logEntries = (packet: unknown): Array<Record<string, unknown>> =>
     packetSection(packet, "log").split("\n")
         .filter((l) => /^[*+-] \{/.test(l))
         .map((l) => JSON.parse(l.slice(2)) as Record<string, unknown>);
+
+// Fixture root-assignment (headless-is-forever: production sets projectRoot ONLY at
+// session.create; tests that build sessions piecemeal root them here — a direct UPDATE plus the
+// same creation-time membership resolve createClientEnvelope performs).
+export const rootSession = async (db: Db, sessionId: number, root: string): Promise<void> => {
+    await (db.test_set_session_root as PrepMethod).run({ id: sessionId, project_root: root });
+    await GitMembership.resolveGitMembership(db, sessionId, undefined);
+};
 
 export const insertTurn = async (db: Db, loopId: number, sequence: number, status: number = 200): Promise<number> => {
     const row = await (db.test_insert_turn as PrepMethod).get<{ id: number }>({

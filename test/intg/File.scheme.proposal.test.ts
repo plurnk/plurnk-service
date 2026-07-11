@@ -253,10 +253,9 @@ test("file.read: still works alongside the new edit path", async () => {
 });
 
 test("file.edit: headless session (no project_root) → 400", async () => {
-    // Reproduce the live-blocker bug we just fixed: session with no
-    // project_root set returns 400 with a clear error pointing at the
-    // session.set_root RPC. Previously this would have been the env-var
-    // case.
+    // A session with no project_root returns 400 with a clear error naming
+    // the contract: file ops need a session created with projectRoot
+    // (headless is forever).
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `headless-${crypto.randomUUID()}`);

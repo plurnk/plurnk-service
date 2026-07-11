@@ -352,14 +352,6 @@ export default class Daemon {
         return envelope;
     }
 
-    async setProjectRoot(sessionId: number, projectRoot: string | null): Promise<string | null> {
-        projectRoot = ClientInput.assertProjectRoot("session.set_root", projectRoot);
-        const updated = await Envelope.updateSessionProjectRoot(this.#db, sessionId, projectRoot);
-        // The root change re-resolved membership — warm the new members' derivations immediately.
-        if (updated !== null) void this.#engine.warmSessionDerivations(sessionId).catch(() => {});
-        return updated;
-    }
-
     async renameSession(sessionId: number, name: string): Promise<{ id: number; name: string }> {
         if (typeof name !== "string" || name.length === 0) throw new Error("session.rename: name must be a non-empty string"); // seam fail-hard (#364)
         const taken = await (this.#db.envelope_get_session_by_name as PrepMethod).get<{ id: number }>({ name });
@@ -369,18 +361,19 @@ export default class Daemon {
 
     async constrain(sessionId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
         ClientInput.assertConstraint("session.constrain", effect, glob);
+        // Headless is FOREVER (owner ruling, 2026-07-11, matching the client SPEC): a session is
+        // born with its workspace pointer or never has one — so a 'repo' constraint on a headless
+        // session can never resolve. Refuse legibly instead of recording a forever-pending lie.
+        if (effect === "repo") {
+            const s = await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
+            if (s?.project_root == null) throw new Error("session.constrain: this session is headless — and headless is forever (a workspace pointer is set at session.create or never). A 'repo' overlay needs a session created with projectRoot.");
+        }
         await (this.#db.crud_insert_session_constraint as PrepMethod).run({ session_id: sessionId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, sessionId, undefined);
         // Members may have just landed — warm their derivations NOW (fire-and-forget, off the hot
         // path), exactly like createSession does (dogfood catch: '/repo' embeddings waited for a
         // later turn's pump).
         void this.#engine.warmSessionDerivations(sessionId).catch(() => {});
-        // §membership D4 — a rootless 'repo' constraint is LEGAL (it re-resolves when the workspace
-        // pointer arrives), but silently pending forever was the dogfood gap: say so on the result.
-        if (effect === "repo") {
-            const s = await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
-            if (s?.project_root == null) return { effect, glob, note: "recorded — resolves when a project root is set (session.set_root)" } as { effect: string; glob: string };
-        }
         return { effect, glob };
     }
 
@@ -1183,7 +1176,7 @@ export type CoreSeam = Pick<Daemon,
     | "runLoop" | "cancelDrain" | "dispatchAsClient" | "ensureModelRun"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listSessions" | "listRuns" | "listPrompts" | "listMembers" | "listConstraints"
-    | "createSession" | "attachSession" | "createConversationRun" | "setProjectRoot" | "renameSession" | "constrain" | "unconstrain"
+    | "createSession" | "attachSession" | "createConversationRun" | "renameSession" | "constrain" | "unconstrain"
     | "forkRun"
     | "hotloadRuntime"
 >;

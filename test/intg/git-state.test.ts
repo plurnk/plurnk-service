@@ -10,8 +10,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GitState from "../../src/core/git-state.ts";
-import Envelope from "../../src/server/envelope.ts";
-import { openMigrated, insertSession } from "./_helpers.ts";
+import { openMigrated, insertSession, rootSession } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -30,7 +29,7 @@ test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWE
         await writeFile(join(root, "tracked.md"), "# tracked\n\nedit\n");  // 1 unstaged
 
         const sessionId = await insertSession(db, `gitstate-${crypto.randomUUID()}`);
-        await Envelope.updateSessionProjectRoot(db, sessionId, root);
+        await rootSession(db, sessionId, root);
 
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
         const status = await GitState.status(db, sessionId, undefined);

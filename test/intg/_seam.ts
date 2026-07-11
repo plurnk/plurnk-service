@@ -183,12 +183,6 @@ export default class SeamSocket {
                 if (runId === null || runId === undefined) throw new Error("run.fork: no model run to fork — loop.run first");
                 return daemon.forkRun({ sessionId: s.sessionId, runId, name: p.name as string | undefined });
             }
-            case "session.set_root": {
-                if (this.#session === null) throw new Error("session.set_root requires an attached session");
-                const s = this.#session;
-                s.projectRoot = await daemon.setProjectRoot(s.sessionId, (p.projectRoot as string | null | undefined) ?? null);
-                return { id: s.sessionId, projectRoot: s.projectRoot };
-            }
             case "session.rename": {
                 const s = this.#attached();
                 return daemon.renameSession(s.sessionId, p.name as string);

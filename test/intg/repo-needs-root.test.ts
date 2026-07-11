@@ -1,8 +1,7 @@
-// The owner's dogfood catch (2026-07-11): '/repo *' on a rootless session pends silently forever
-// — the model saw an empty FIND(**) and nothing ever said why. Per §membership D4 the ordering is
-// LEGAL (a rootless repo constraint re-resolves when the workspace pointer arrives), so the fix is
-// a legible NOTE on the constrain result, never a refusal. And when members DO land, their
-// derivations warm immediately (like createSession) — not at some later turn's pump.
+// Headless is forever (§membership): a session is born with its workspace pointer or never has
+// one, so a 'repo' constraint on a rootless session can never resolve — it is refused legibly,
+// never recorded as a silent forever-pend. On a rooted session, members land immediately and
+// their derivations warm at constrain time (like createSession), not at some later turn's pump.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -11,15 +10,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
 
-test("a 'repo' constraint on a ROOTLESS session is LEGAL and says it's pending — never a silent forever-pend (§membership D4)", async () => {
+test("a 'repo' constraint on a HEADLESS session is refused — headless is forever, it could never resolve (§membership)", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "session.create", { name: "rootless-repo" });
             const sessionId = (created.result as { id: number }).id;
-            const r = await daemon.constrain(sessionId, "repo", "*") as { effect: string; glob: string; note?: string };
-            assert.equal(r.effect, "repo", "the constraint is recorded — D4 re-resolves it when a root arrives");
-            assert.match(String(r.note), /resolves when a project root is set/, "the result SAYS it's pending, naming the remedy");
+            await assert.rejects(
+                () => daemon.constrain(sessionId, "repo", "*"),
+                /headless is forever.*projectRoot/s,
+                "the refusal names the contract (pointer at create or never) and the remedy",
+            );
+            const constraints = await daemon.listConstraints(sessionId);
+            assert.equal(constraints.length, 0, "nothing was recorded — no forever-pending row");
         } finally { ws.close(); }
     });
 });

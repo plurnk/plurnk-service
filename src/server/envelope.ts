@@ -195,17 +195,6 @@ export default class Envelope {
         return await (db.envelope_list_sessions as PrepMethod).all<SessionRow>();
     }
 
-    // Updates sessions.project_root for an existing session and returns the new
-    // value. Throws if the session does not exist. Used by session.set_root (F.1).
-    static async updateSessionProjectRoot(db: Db, sessionId: number, projectRoot: string | null): Promise<string | null> {
-        const row = await (db.envelope_update_session_project_root as PrepMethod).get<{ id: number; name: string; project_root: string | null }>({ id: sessionId, project_root: projectRoot });
-        if (row === undefined) throw new Error(`session ${sessionId} not found`);
-        // SPEC §membership D4 — (re)establish git-ls-files membership when the workspace
-        // pointer changes. No-op on null (headless) or non-git roots.
-        await GitMembership.resolveGitMembership(db, sessionId, undefined);
-        return row.project_root;
-    }
-
     // session.rename — the session name is a mutable handle (vs a run's immutable
     // name, §machine-processes). Mutates sessions.name only; the UNIQUE constraint is
     // the real guard against collision (the handler pre-checks for a clean error).

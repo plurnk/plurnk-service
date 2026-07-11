@@ -11,11 +11,10 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, rootSession } from "./_helpers.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Envelope from "../../src/server/envelope.ts";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
@@ -73,7 +72,7 @@ test("sqlite EXEC in a workspace session: a project_root cwd no longer 500s the 
     const root = await mkdtemp(join(tmpdir(), "plurnk-sqlite-ws-"));
     const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
     try {
-        await Envelope.updateSessionProjectRoot(db, sessionId, root);  // cwd now defaults to this dir
+        await rootSession(db, sessionId, root);  // cwd now defaults to this dir
         const result = await engine.dispatch({
             statement: execStmt("sqlite", null, "SELECT 'Paris' AS capital;"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",

@@ -8,11 +8,6 @@ RETURNING id, name, project_root;
 -- PREP: envelope_get_session
 SELECT id, name, project_root FROM sessions WHERE id = $id;
 
--- PREP: envelope_update_session_project_root
--- Used by session.set_root (F.1). Returns the updated row so the caller can
--- refresh its ClientEnvelope copy without a second query.
-UPDATE sessions SET project_root = $project_root WHERE id = $id
-RETURNING id, name, project_root;
 
 -- PREP: envelope_get_session_by_name
 -- session.rename collision check — sessions.name is UNIQUE.

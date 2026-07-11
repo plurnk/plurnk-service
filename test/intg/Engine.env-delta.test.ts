@@ -14,12 +14,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Envelope from "../../src/server/envelope.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, rootSession } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -130,7 +129,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root });
 
         const sessionId = await insertSession(db, `envfs-${crypto.randomUUID()}`);
-        await Envelope.updateSessionProjectRoot(db, sessionId, root);
+        await rootSession(db, sessionId, root);
         const runA = await insertRun(db, sessionId);
         const loopA = await insertLoop(db, runA, 1, "go");
         const eng = makeEngine(db);
