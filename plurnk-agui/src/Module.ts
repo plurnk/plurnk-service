@@ -89,12 +89,17 @@ export default class Module {
     }
 
     // THE PLURNK PARADIGM (operator ruling 2026-07-10): the name IS the identity,
-    // verbatim. A threadId is a session name — attach it if it exists, create it with
-    // EXACTLY that name if it doesn't. No prefixes, no forged names, no dual lookup.
+    // verbatim. The SESSION is the WORLD (SPEC §machine-processes) — selected by name via
+    // `forwardedProps.plurnk.session`; attach it if it exists, create it with EXACTLY that
+    // name if it doesn't. No prefixes, no forged names, no dual lookup. A thread with no
+    // explicit session names its own workspace after the threadId (backward-compatible).
+    // The threadId is the CONVERSATION over that world; today it binds the session's model
+    // run (ensureModelRun) — distinct second conversations gate on plurnk-service#366.
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
+        const workspace = typeof forwarded?.session === "string" && forwarded.session.length > 0 ? forwarded.session : threadId;
         const cached = this.#threads.get(threadId);
         if (cached !== undefined) return { env: cached, reattached: true };
-        const known = (await this.#seam.listSessions()).find((s) => s.name === threadId);
+        const known = (await this.#seam.listSessions()).find((s) => s.name === workspace);
         let env: ClientEnvelope;
         let reattached = false;
         if (known !== undefined) {
@@ -103,7 +108,7 @@ export default class Module {
         } else {
             const opts = forwarded ?? {};
             env = await this.#seam.createSession({
-                name: threadId,
+                name: workspace,
                 ...(typeof opts.projectRoot === "string" ? { projectRoot: opts.projectRoot } : {}),
                 ...(Array.isArray(opts.constraints) ? { constraints: opts.constraints as Array<{ effect: string; glob: string }> } : {}),
                 ...(typeof opts.settings === "object" && opts.settings !== null ? { settings: JSON.stringify(opts.settings) } : {}),
