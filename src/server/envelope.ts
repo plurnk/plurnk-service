@@ -142,6 +142,15 @@ export default class Envelope {
     // The model's conversation lives in its OWN run, distinct from the connection's
     // (client) run, so the packet — rendered from the model's run — never carries
     // the client's op.*. Created on the first loop.run; reused for the connection.
+    // #366 — a FRESH conversation over the same world (§machine-processes: two runs are two
+    // conversations about one curated workspace): a named, empty-log, model-origin ROOT run.
+    // Distinct from ensureModelRun (the stable default conversation) and forkRun (copies history).
+    static async createModelRun(db: Db, sessionId: number, name?: string): Promise<{ id: number; name: string }> {
+        const run = await (db.envelope_insert_run as PrepMethod).get<{ id: number; name: string }>({ session_id: sessionId, name: name ?? Envelope.#tsName("model"), origin: "model" });
+        if (run === undefined) throw new Error("createModelRun: run insert returned no row");
+        return run;
+    }
+
     static async ensureModelRun(db: Db, sessionId: number): Promise<number> {
         // #371 — ensure means FIND-FIRST (the WS connection's per-session cache used to hide the
         // insert-only bug; the seam has no connection state, so idempotence lives HERE): reuse the

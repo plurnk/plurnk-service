@@ -457,6 +457,24 @@ export default class Daemon {
     // The fork hook (#355) — branch a run's log into a new run in the same session (#228), sharing the
     // session's world (entries + overlay), copying nothing of it. The module resolves the default (the
     // session's model run) from its own connection state and passes the concrete runId; the seam owns the
+    // #366 — a fresh conversation run: AG-UI threads map to RUNS (§machine-processes — the session
+    // is the workspace, the run is the conversation). ensureModelRun is the stable DEFAULT door,
+    // forkRun the branching door (copies history); this is the fresh door — a named, empty-log,
+    // model-origin root that runLoop accepts. New chat = new conversation, same workspace.
+    async createConversationRun(args: { sessionId: number; name?: string }): Promise<{ runId: number; runName: string }> {
+        const { sessionId, name } = args;
+        if (name !== undefined && (typeof name !== "string" || name.length === 0)) throw new Error("run.create: name must be a non-empty string");
+        const session = await (this.#db.envelope_get_session as PrepMethod).get<{ id: number }>({ id: sessionId });
+        if (session === undefined) throw new Error(`run.create: session ${sessionId} not found`);
+        if (name !== undefined) {
+            if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) throw new Error(`run.create: name "${name}" is reserved for a non-client actor`);
+            const taken = await (this.#db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name });
+            if (taken !== undefined) throw new Error(`run.create: a run named "${name}" already exists — run names are immutable, pick another`);
+        }
+        const run = await Envelope.createModelRun(this.#db, sessionId, name);
+        return { runId: run.id, runName: run.name };
+    }
+
     // ownership check and the run-name namespace + uniqueness invariants (names are immutable — no rename).
     async forkRun(args: { sessionId: number; runId: number; name?: string }): Promise<{ runId: number; runName: string | null; parentRunId: number }> {
         if (args.name !== undefined && (typeof args.name !== "string" || args.name.length === 0)) throw new Error("run.fork: name must be a non-empty string"); // seam fail-hard (#364)
@@ -1389,7 +1407,7 @@ export type CoreSeam = Pick<Daemon,
     | "runLoop" | "cancelDrain" | "dispatchAsClient" | "ensureModelRun"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listSessions" | "listRuns" | "listPrompts" | "listMembers" | "listConstraints"
-    | "createSession" | "attachSession" | "setProjectRoot" | "renameSession" | "constrain" | "unconstrain"
+    | "createSession" | "attachSession" | "createConversationRun" | "setProjectRoot" | "renameSession" | "constrain" | "unconstrain"
     | "forkRun"
     | "hotloadRuntime"
 >;
