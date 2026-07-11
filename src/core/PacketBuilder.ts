@@ -427,10 +427,22 @@ export default class PacketBuilder {
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
-            for (const tag of executors.availableRuntimes()) {
+            const runtimes = executors.availableRuntimes();
+            // execs#24 (operator design, via the client) + the #367 filter CORRECTED: the per-tag
+            // runtime schemes are READ faces (reading sh:// history is legitimate in ask mode), so
+            // keying the sheet on activeSchemes.has(tag) filtered NOTHING — the untested corner of
+            // be8a77c. The sheet's lines are EXEC-usage examples, so the key is the 'exec' scheme
+            // (the op face, excludedInAsk). When it's inactive, say so POSITIVELY: plurnk.md still
+            // teaches EXEC as language, and silent absence measurably invites confabulated runtimes
+            // (the client's 5-probe: 500×3). Core speaks the line — only core knows the gate closed.
+            const execActive = activeSchemes === undefined || activeSchemes.has("exec");
+            if (runtimes.length > 0 && !execActive) {
+                tools.push(teachingLine("EXEC operations are disabled for this loop — do not run commands; answer or advise directly"));
+                return tools;
+            }
+            for (const tag of runtimes) {
                 if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
                 if (!sessionEnabled(tag)) continue; // #328 — session-disabled tags aren't advertised
-                if (activeSchemes !== undefined && !activeSchemes.has(tag)) continue; // #367 — mode-excluded tags aren't taught (tag == runtime scheme)
                 const entry = executors.entry(tag);
                 // #240 — identical treatment with the scheme directory: the example IS the oneliner,
                 // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose

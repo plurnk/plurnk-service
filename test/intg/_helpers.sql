@@ -345,3 +345,6 @@ SELECT rx, status_rx FROM log_entries WHERE run_id = $run_id AND op = 'SEND';
 
 -- PREP: test_runs_by_session
 SELECT id, name, origin, parent_run_id FROM runs WHERE session_id = $session_id ORDER BY id;
+
+-- PREP: test_first_turn_for_loop
+SELECT packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
