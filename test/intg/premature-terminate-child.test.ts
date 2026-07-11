@@ -217,7 +217,7 @@ test("[§send-premature-terminate] a retrievals-ONLY refusal states the continua
         const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ run_id: runId });
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
-        assert.match(refused!.rx, /Termination attempted despite this turn's retrieval operations\. Results retrieved\./, "the owner's wording, verbatim");
+        assert.match(refused!.rx, /Termination attempted despite this turn's retrieval operations\. Retrieval operations performed\./, "the retrieval-only steer names the operations, never a completion signal (the 'Results retrieved.' form read as 'done' — a model parked instead of answering)");
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }
 });
@@ -308,7 +308,7 @@ test("[§log-row-self-explains] a FAILED op row carries its failure message on i
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const metaLine = log.split("\n").find((l) => l.includes('"op":"SEND"') && l.includes('"status":409'));
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
-        assert.match(metaLine!, /"error":"Termination attempted despite this turn's retrieval operations\. Results retrieved\."/, "the steer rides the META LINE — visible in every packet, never folded away");
+        assert.match(metaLine!, /"error":"Termination attempted despite this turn's retrieval operations\. Retrieval operations performed\."/, "the steer rides the META LINE — visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.
         const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");
