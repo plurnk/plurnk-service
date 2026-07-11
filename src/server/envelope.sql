@@ -73,3 +73,9 @@ UPDATE loops SET status = $status WHERE id = $loop_id AND status = 102;
 SELECT id, name, project_root, created_at, cost_pico
 FROM sessions
 ORDER BY created_at DESC;
+
+-- PREP: envelope_get_model_run
+-- #371 — the session's canonical model CONVERSATION run: the earliest model-origin ROOT run
+-- (parent_run_id NULL excludes forks and spawned workers, which inherit origin='model').
+-- ensureModelRun finds this first; only a session with none mints one.
+SELECT id FROM runs WHERE session_id = $session_id AND origin = 'model' AND parent_run_id IS NULL ORDER BY id LIMIT 1;

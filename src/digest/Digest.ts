@@ -383,9 +383,16 @@ export default class Digest {
                 { role: "user", content: REQUIEM_PROMPT },
             ];
             // Generous budget: a thinking model spends the reasoning channel BEFORE emitting content;
-            // 4096 total left content empty (finish=length) on ~40% of a real sweep. Headroom for both.
-            const resp = await provider.generate({ messages, runId: String(run.id), maxTokens: 16384, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
-            out.push(`## Run #${run.id} — ${run.name}`, "", `_(${resp.assistant.finishReason ?? "?"}, ${resp.assistant.usage.completion} tok)_`, "", resp.assistant.content.trim() || "(no testimony)", "");
+            // 4096 total left content empty (finish=length) on ~40% of a real sweep, and 16384 still
+            // starved a heavy thinker (#373). One escalation retry doubles the room; a run whose
+            // testimony is STILL empty records the reasoning spend honestly instead of a bare shrug.
+            let resp = await provider.generate({ messages, runId: String(run.id), maxTokens: 16384, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
+            if (resp.assistant.content.trim() === "" && resp.assistant.finishReason === "length") {
+                resp = await provider.generate({ messages, runId: String(run.id), maxTokens: 32768, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
+            }
+            const testimony = resp.assistant.content.trim()
+                || `(no testimony — ${resp.assistant.usage.completion} tokens consumed entirely by reasoning, even after the 32768-token retry)`;
+            out.push(`## Run #${run.id} — ${run.name}`, "", `_(${resp.assistant.finishReason ?? "?"}, ${resp.assistant.usage.completion} tok)_`, "", testimony, "");
         }
 
         const path = join(digestDir, "requiem.md");
