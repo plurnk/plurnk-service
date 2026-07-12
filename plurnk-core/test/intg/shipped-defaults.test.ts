@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import Paths from "../../src/Paths.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -62,7 +62,7 @@ test("[§operator-config-shipped-defaults] under the shipped policy wiring, the 
     // PLURNK_PERSONALITY.md to ~/.plurnk/AGENTS.md); no PLURNK_SERVICE_MD_* docs.
     const prevPolicy = process.env.PLURNK_SERVICE_POLICY;
     const prevMd = process.env.PLURNK_SERVICE_MD_POLICY;
-    process.env.PLURNK_SERVICE_POLICY = fileURLToPath(import.meta.resolve("@plurnk/plurnk-docs/PLURNK_PERSONALITY.md"));
+    process.env.PLURNK_SERVICE_POLICY = Paths.personality;
     delete process.env.PLURNK_SERVICE_MD_POLICY;
     const db = await openMigrated();
     try {
