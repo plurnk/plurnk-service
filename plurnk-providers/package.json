@@ -51,6 +51,7 @@
         "@plurnk/gbnf": "1.0.0",
         "@plurnk/plurnk-aliases": "1.0.0",
         "@plurnk/plurnk-models": "1.0.0",
-        "@plurnk/plurnk-providers-ollama": "1.0.0"
+        "@plurnk/plurnk-providers-ollama": "1.0.0",
+        "@plurnk/plurnk-plugins": "1.0.0"
     }
 }

@@ -12,6 +12,7 @@ import Daemon from "./server/Daemon.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
+import Plugins from "@plurnk/plurnk-plugins";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 
@@ -61,7 +62,7 @@ export default class Service {
         // Seed the default operating policy → ~/.plurnk/AGENTS.md, foisted as ## Plurnk Service Policy
         // (readSystemPolicy). A new install opens with a sane disposition, not a blank policy; the user
         // owns + edits it after — a deleted policy stays deleted, like the .env floor.
-        const shippedPolicy = Paths.personality; // @plurnk/plurnk-docs owns the default policy
+        const shippedPolicy = Paths.personality; // the docs corpus ships the default policy
         if (existsSync(shippedPolicy)) copyFileSync(shippedPolicy, resolve(Service.#homeDir, "AGENTS.md"));
         process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
     }
@@ -86,20 +87,10 @@ export default class Service {
         return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
     }
 
-    // The node_modules holding the service's plugin deps (exec/scheme/mimetype): walk up
-    // from this file's REAL location to the nearest node_modules with an @plurnk scope.
-    // Registry installs (global or project) hit the install root's node_modules; workspace
-    // checkouts escape node_modules entirely (symlink realpaths) and land on the monorepo
-    // root's. Falls back to CWD.
+    // The node_modules holding the service's plugin deps (exec/scheme/mimetype), resolved
+    // from this file's REAL location by the shared membership walk. Falls back to CWD.
     static #pluginsNodeModules(): string {
-        let dir = dirname(fileURLToPath(import.meta.url));
-        while (true) {
-            const nm = resolve(dir, "node_modules");
-            if (existsSync(resolve(nm, "@plurnk"))) return nm;
-            const parent = dirname(dir);
-            if (parent === dir) return resolve(process.cwd(), "node_modules");
-            dir = parent;
-        }
+        return Plugins.nearestNodeModules(Service.#codeDir) ?? resolve(process.cwd(), "node_modules");
     }
 
     static #die(code: number, message: string): never {

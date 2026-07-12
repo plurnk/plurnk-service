@@ -20,7 +20,7 @@ import { resolve } from "node:path";
 import Paths from "../Paths.ts";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
 
-// The in-tree CORE-scheme depth (run/known/unknown/log) lives in @plurnk/plurnk-docs
+// The in-tree CORE-scheme depth (run/known/unknown/log) lives in the docs corpus (docs/)
 // (Paths.schemeDocs), NOT inline — the docs agent owns the prose; loaded once at module eval.
 // teach()/docs() prefer this over a manifest's inline `documentation` (the path that stays for
 // stubs + daughter schemes). Absent dir → empty map.

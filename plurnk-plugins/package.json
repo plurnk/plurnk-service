@@ -1,0 +1,31 @@
+{
+    "name": "@plurnk/plurnk-plugins",
+    "version": "1.0.0",
+    "description": "The plurnk ecosystem's plugin-membership primitives: the ONE trust rule (PLURNK_PLUGINS_TRUSTED_ONLY), the scope-agnostic symlink-aware package enumeration, and deployment-root resolution — shared by the daemon's floor/loader and all four family-head discoveries.",
+    "license": "MIT",
+    "type": "module",
+    "engines": {
+        "node": ">=26"
+    },
+    "files": [
+        ".env.defaults",
+        "dist/**/*",
+        "README.md"
+    ],
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "plurnk-dev": "./src/index.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepack": "npm run build"
+    }
+}

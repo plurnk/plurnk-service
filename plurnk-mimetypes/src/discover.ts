@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import Plugins from "@plurnk/plurnk-plugins";
 import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
     Discovery,
@@ -36,7 +36,8 @@ import type {
 // silently shadow a floor handler by claiming its name.
 export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
-    const isTrusted = trustPredicate(options.env ?? process.env);
+    const env = options.env ?? process.env;
+    const isTrusted = (name: string): boolean => Plugins.isTrusted(name, env);
 
     const byExtension = new Map<string, string>();
     const byFilename = new Map<string, string>();
@@ -114,58 +115,14 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
 //                        comma-separated allowlist of additionally-trusted
 //                        package names. (Setting it to "1", which names no
 //                        real package, is "on with zero third-party".)
-function trustPredicate(env: Record<string, string | undefined>): (packageName: string) => boolean {
-    const raw = env.PLURNK_PLUGINS_TRUSTED_ONLY;
-    const value = raw?.trim() ?? "";
-    if (value === "" || value === "0") return () => true;
-    const allow = new Set(value.split(",").map((s) => s.trim()).filter((s) => s.length > 0));
-    return (packageName) => packageName.startsWith("@plurnk/") || allow.has(packageName);
-}
 
 async function defaultPackageDirs(cwd: string): Promise<string[]> {
-    // nearest ancestor node_modules holding the ecosystem (witness: @plurnk) —
-    // workspace cwds carry sparse per-package node_modules; the deployment root wins
-    const nodeModules = (() => {
-        let dir = path.resolve(cwd);
-        while (true) {
-            const candidate = path.join(dir, "node_modules");
-            if (existsSync(path.join(candidate, "@plurnk"))) return candidate;
-            const parent = path.dirname(dir);
-            if (parent === dir) return path.join(path.resolve(cwd), "node_modules");
-            dir = parent;
-        }
-    })();
-    let top: { name: string; isDirectory(): boolean; isSymbolicLink(): boolean }[];
-    try {
-        top = await fs.readdir(nodeModules, { withFileTypes: true });
-    } catch {
-        return [];
-    }
-
-    const thirdParty: string[] = [];
-    const plurnk: string[] = [];
-    for (const entry of top) {
-        // symlinks included: workspace checkouts link every sibling into node_modules;
-        // a dirent-only isDirectory() reads them as non-dirs
-        if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name.startsWith(".")) continue;
-        if (entry.name.startsWith("@")) {
-            const scopeDir = path.join(nodeModules, entry.name);
-            let scoped: { name: string; isDirectory(): boolean; isSymbolicLink(): boolean }[];
-            try {
-                scoped = await fs.readdir(scopeDir, { withFileTypes: true });
-            } catch {
-                continue;
-            }
-            const target = entry.name === "@plurnk" ? plurnk : thirdParty;
-            for (const s of scoped) {
-                if (s.isDirectory() || s.isSymbolicLink()) target.push(path.join(scopeDir, s.name));
-            }
-        } else {
-            thirdParty.push(path.join(nodeModules, entry.name));
-        }
-    }
-    thirdParty.sort();
-    plurnk.sort();
+    const nm = Plugins.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+    const candidates = await Plugins.packageDirs(nm);
+    // ORDERING POLICY (ours, not the primitives'): @plurnk packages LAST so first-party
+    // handlers win last-loaded collisions — see the conflict note on discover().
+    const thirdParty = candidates.filter((c) => !c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
+    const plurnk = candidates.filter((c) => c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
     return [...thirdParty, ...plurnk];
 }
 

@@ -458,7 +458,7 @@ export default class PacketBuilder {
     // catalogue's doc-links READ and the manifest carries each doc's token cost.
     async docEntries(sessionId: number): Promise<Array<{ name: string; content: string }>> {
         const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
-        // §send-300-choices — the conditional teaching: questions.md (from @plurnk/plurnk-docs)
+        // §send-300-choices — the conditional teaching: questions.md (from the docs corpus)
         // materializes ONLY for enabled sessions — the same conditional-doc mechanism as the EXEC
         // plugin docs below. An un-enabled session is never taught the op it can't use.
         if (await SessionSettings.questionsEnabled(this.#db, sessionId)) {

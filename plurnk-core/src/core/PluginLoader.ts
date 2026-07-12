@@ -6,9 +6,9 @@
 // register with the matching registry by kind. Alphabetical load order;
 // collisions on (kind, name) fail-hard at registration time.
 
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import EnvDefaults from "./env-defaults.ts";
+import Plugins from "@plurnk/plurnk-plugins";
 
 export type PluginKind = "provider" | "scheme" | "mimetype";
 
@@ -29,38 +29,11 @@ export default class PluginLoader {
     }
 
     static async discoverPlugins(nodeModulesDir: string): Promise<DiscoveredPlugin[]> {
-        let entries: Array<{ name: string; isDirectory: () => boolean; isSymbolicLink: () => boolean }>;
-        try {
-            entries = await readdir(nodeModulesDir, { withFileTypes: true });
-        } catch {
-            return [];
-        }
-
-        // symlinks included: workspace checkouts link every sibling into node_modules
-        const candidates: Array<{ path: string; name: string }> = [];
-        for (const entry of entries) {
-            if (!(entry.isDirectory() || entry.isSymbolicLink())) continue;
-            if (entry.name === ".bin" || entry.name === ".cache") continue;
-            if (entry.name.startsWith("@")) {
-                const scopeDir = resolve(nodeModulesDir, entry.name);
-                let scoped: typeof entries;
-                try {
-                    scoped = await readdir(scopeDir, { withFileTypes: true });
-                } catch {
-                    continue;
-                }
-                for (const s of scoped) {
-                    if (!(s.isDirectory() || s.isSymbolicLink())) continue;
-                    candidates.push({ path: resolve(scopeDir, s.name), name: `${entry.name}/${s.name}` });
-                }
-            } else {
-                candidates.push({ path: resolve(nodeModulesDir, entry.name), name: entry.name });
-            }
-        }
+        const candidates = await Plugins.packageDirs(nodeModulesDir);
 
         const discovered: DiscoveredPlugin[] = [];
-        for (const { path: packagePath, name } of candidates) {
-            if (!EnvDefaults.isTrusted(name)) continue;
+        for (const { dir: packagePath, name } of candidates) {
+            if (!Plugins.isTrusted(name)) continue;
             let pkg: { name?: string; plurnk?: unknown };
             try {
                 const content = await readFile(resolve(packagePath, "package.json"), "utf8");

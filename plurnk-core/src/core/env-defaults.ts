@@ -1,6 +1,7 @@
 import { parseEnv } from "node:util";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import Plugins from "@plurnk/plurnk-plugins";
 
 // The .env.defaults standard (§operator-config-env-defaults, owner design): every package in the
 // daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root
@@ -25,14 +26,6 @@ export type EnvDefaultsFile = {
 };
 
 export default class EnvDefaults {
-    // THE ecosystem trust rule (SPEC §operator-config-env-defaults) — shared by the env
-    // floor and plugin discovery; a second definition of membership trust is a bug.
-    static isTrusted(packageName: string): boolean {
-        const gate = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        if (gate === undefined || gate === "" || gate === "0") return true;
-        if (packageName.startsWith("@plurnk/")) return true;
-        return gate.split(",").map((s) => s.trim()).includes(packageName);
-    }
 
     static async #readDefaults(dir: string, owner: string): Promise<EnvDefaultsFile | null> {
         let text: string;
@@ -47,31 +40,13 @@ export default class EnvDefaults {
         return { owner, text, parsed };
     }
 
-    // Enumerate installed package dirs — scoped + unscoped — under nodeModules (the same walk
-    // shape as plurnk-execs discover()); keep ecosystem members that ship a .env.defaults.
+    // Enumerate installed package dirs via the shared membership primitives
+    // (@plurnk/plurnk-plugins); keep ecosystem members that ship a .env.defaults.
     static async #memberFiles(nodeModules: string): Promise<EnvDefaultsFile[]> {
-        let entries;
-        try { entries = await readdir(nodeModules, { withFileTypes: true }); }
-        catch { return []; }
-        const dirs: Array<{ dir: string; name: string }> = [];
-        for (const entry of entries) {
-            // symlinks included: workspace checkouts link every sibling package into
-            // node_modules; a dirent-only isDirectory() reads them as non-dirs
-            if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name === ".bin" || entry.name === ".cache") continue;
-            if (entry.name.startsWith("@")) {
-                const scopeDir = join(nodeModules, entry.name);
-                try {
-                    for (const s of await readdir(scopeDir, { withFileTypes: true })) {
-                        if (s.isDirectory() || s.isSymbolicLink()) dirs.push({ dir: join(scopeDir, s.name), name: `${entry.name}/${s.name}` });
-                    }
-                } catch { /* unreadable scope dir — skip */ }
-            } else {
-                dirs.push({ dir: join(nodeModules, entry.name), name: entry.name });
-            }
-        }
+        const dirs = await Plugins.packageDirs(nodeModules);
         const files: EnvDefaultsFile[] = [];
         for (const { dir, name } of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {
-            if (!EnvDefaults.isTrusted(name)) continue;
+            if (!Plugins.isTrusted(name)) continue;
             if (!name.startsWith("@plurnk/")) {
                 let pkg: { plurnk?: unknown };
                 try { pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8")) as { plurnk?: unknown }; }

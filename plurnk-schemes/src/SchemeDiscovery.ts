@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import Plugins from "@plurnk/plurnk-plugins";
 
 // Scope-agnostic discovery of installed scheme-handler packages — the schemes
 // family's parallel to plurnk-execs' discover() / plurnk-mimetypes' discover()
@@ -59,7 +59,7 @@ export default class SchemeDiscovery {
             if (info === null) continue;
             // Host plugin-trust gate: an untrusted third-party package is
             // discovered but not surfaced for registration — recorded, never crashed on.
-            if (!SchemeDiscovery.#isTrusted(info.packageName)) { skipped.add(info.packageName); continue; }
+            if (!Plugins.isTrusted(info.packageName)) { skipped.add(info.packageName); continue; }
             const existing = byName.get(info.name);
             // Two EXTERNAL packages claiming one scheme prefix is an unresolvable
             // ambiguity — fail-hard, mirroring execs' runtime-collision rule.
@@ -82,12 +82,6 @@ export default class SchemeDiscovery {
     //   unset / "" / "0" → OFF: every installed package trusted (no regression).
     //   any value        → ON:  `@plurnk/*` always trusted, plus a comma-separated
     //                           allowlist of additionally-trusted package names.
-    static #isTrusted(packageName: string): boolean {
-        const gate = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        if (gate === undefined || gate === "" || gate === "0") return true;
-        if (packageName.startsWith("@plurnk/")) return true;
-        return gate.split(",").map((s) => s.trim()).includes(packageName);
-    }
 
     // Enumerate every installed package directory — scoped (`@scope/name`) and
     // unscoped (`name`) — under `<cwd>/node_modules`. Unreadable dirs are the
@@ -95,37 +89,8 @@ export default class SchemeDiscovery {
     // a masked contract violation (cf. the matcher's sanctioned node_modules tolerance).
     static async #defaultPackageDirs(cwd: string, signal?: AbortSignal): Promise<string[]> {
         signal?.throwIfAborted();
-        // nearest ancestor node_modules holding the ecosystem (witness: @plurnk) —
-    // workspace cwds carry sparse per-package node_modules; the deployment root wins
-    const nm = (() => {
-        let dir = path.resolve(cwd);
-        while (true) {
-            const candidate = path.join(dir, "node_modules");
-            if (existsSync(path.join(candidate, "@plurnk"))) return candidate;
-            const parent = path.dirname(dir);
-            if (parent === dir) return path.join(path.resolve(cwd), "node_modules");
-            dir = parent;
-        }
-    })();
-        let entries: Array<{ name: string; isDirectory(): boolean; isSymbolicLink(): boolean }>;
-        // fs.readdir takes no AbortSignal — cancellation is checked at the loop
-        // boundaries instead (signal-on-fs is reserved for readFile, below).
-        try { entries = await fs.readdir(nm, { withFileTypes: true }); } catch { return []; }
-        const dirs: string[] = [];
-        for (const entry of entries) {
-            if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name === ".bin" || entry.name === ".cache") continue;
-            if (entry.name.startsWith("@")) {
-                signal?.throwIfAborted();
-                const scopeDir = path.join(nm, entry.name);
-                try {
-                    const scoped = await fs.readdir(scopeDir, { withFileTypes: true });
-                    for (const s of scoped) if (s.isDirectory() || s.isSymbolicLink()) dirs.push(path.join(scopeDir, s.name));
-                } catch { /* unreadable scope dir — skip */ }
-            } else {
-                dirs.push(path.join(nm, entry.name));
-            }
-        }
-        return dirs;
+        const nm = Plugins.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+        return (await Plugins.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
     // An aborted readFile surfaces, never masked as an unreadable dir —

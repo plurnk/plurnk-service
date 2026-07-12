@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import Plugins from "@plurnk/plurnk-plugins";
 
 // Scope-agnostic discovery of installed provider packages (SPEC §5, #12/#14).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
@@ -42,15 +42,6 @@ export type Discovery = {
     attributions: Map<string, string | string[]>;
 };
 
-// OFF (unset/empty/"0") → every installed provider is trusted (no regression).
-// ON (any value) → `@plurnk/*` always trusted, plus a comma-separated allowlist
-// of additionally-trusted package names ("1" = on with zero third-party).
-const isTrusted = (packageName: string, env: NodeJS.ProcessEnv): boolean => {
-    const gate = env.PLURNK_PLUGINS_TRUSTED_ONLY;
-    if (gate === undefined || gate === "" || gate === "0") return true;
-    if (packageName.startsWith("@plurnk/")) return true;
-    return gate.split(",").map((s) => s.trim()).includes(packageName);
-};
 
 export const discover = async (options: DiscoverOptions = {}): Promise<Discovery> => {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
@@ -62,7 +53,7 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
     for (const dir of dirs) {
         const info = await readProviderInfo(dir);
         if (info === null) continue;
-        if (!isTrusted(info.packageName, env)) {
+        if (!Plugins.isTrusted(info.packageName, env)) {
             skipped.set(info.name, info.packageName); // declined — not a collision candidate
             continue;
         }
@@ -82,38 +73,8 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
 // Enumerate every installed package directory — scoped and unscoped — under
 // `<cwd>/node_modules`. Unreadable node_modules (e.g. nothing installed) → [].
 const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
-    // nearest ancestor node_modules holding the ecosystem (witness: @plurnk) —
-    // workspace cwds carry sparse per-package node_modules; the deployment root wins
-    const nm = (() => {
-        let dir = path.resolve(cwd);
-        while (true) {
-            const candidate = path.join(dir, "node_modules");
-            if (existsSync(path.join(candidate, "@plurnk"))) return candidate;
-            const parent = path.dirname(dir);
-            if (parent === dir) return path.join(path.resolve(cwd), "node_modules");
-            dir = parent;
-        }
-    })();
-    let entries: Array<{ name: string; isDirectory(): boolean; isSymbolicLink(): boolean }>;
-    try {
-        entries = await fs.readdir(nm, { withFileTypes: true });
-    } catch {
-        return [];
-    }
-    const dirs: string[] = [];
-    for (const entry of entries) {
-        if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name === ".bin" || entry.name === ".cache") continue;
-        if (entry.name.startsWith("@")) {
-            const scopeDir = path.join(nm, entry.name);
-            try {
-                const scoped = await fs.readdir(scopeDir, { withFileTypes: true });
-                for (const s of scoped) if (s.isDirectory() || s.isSymbolicLink()) dirs.push(path.join(scopeDir, s.name));
-            } catch { /* unreadable scope dir — skip */ }
-        } else {
-            dirs.push(path.join(nm, entry.name));
-        }
-    }
-    return dirs;
+    const nm = Plugins.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+    return (await Plugins.packageDirs(nm)).map((c) => c.dir).toSorted();
 };
 
 // One { name, packageName, attribution? } for a provider package, or null for

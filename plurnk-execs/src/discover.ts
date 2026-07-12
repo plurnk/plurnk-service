@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import Plugins from "@plurnk/plurnk-plugins";
 import Policy from "./policy.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
 
@@ -69,7 +69,7 @@ export default class Discover {
             // imported: an untrusted third-party package is discovered but not
             // registered, and its code is never executed. Recorded for the
             // consumer's telemetry note, never crashed on.
-            if (!Discover.#isTrusted(manifest.packageName)) {
+            if (!Plugins.isTrusted(manifest.packageName)) {
                 skipped.add(manifest.packageName);
                 continue;
             }
@@ -99,21 +99,6 @@ export default class Discover {
         return { registry, skipped: [...skipped].sort(), disabled: [...disabled].sort() };
     }
 
-    // Host plugin-trust gate, read from PLURNK_PLUGINS_TRUSTED_ONLY — the SAME
-    // env var plurnk-service decides once and every scope-agnostic discovery
-    // surface enforces (plurnk-service#229). Mirrors plurnk-service's
-    // PluginTrust.isTrusted (we can't import across the package boundary, so the
-    // ~5-line policy is duplicated, not shared):
-    //   unset / "" / "0" → OFF: every installed package trusted (no regression).
-    //   any value        → ON:  `@plurnk/*` always trusted, plus a comma-separated
-    //                           allowlist of additionally-trusted package names;
-    //                           "1" (naming no real package) = on, zero third-party.
-    static #isTrusted(packageName: string): boolean {
-        const gate = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
-        if (gate === undefined || gate === "" || gate === "0") return true;
-        if (packageName.startsWith("@plurnk/")) return true;
-        return gate.split(",").map((s) => s.trim()).includes(packageName);
-    }
 
     // Enumerate every installed package directory — scoped (`@scope/name`) and
     // unscoped (`name`) — under `<cwd>/node_modules`. The scan is scope-agnostic
@@ -121,38 +106,8 @@ export default class Discover {
     // and have it discovered with no involvement from us; `#readExecInfos` keeps
     // only the packages that declare `plurnk.kind === "exec"`.
     static async #defaultPackageDirs(cwd: string): Promise<string[]> {
-        // nearest ancestor node_modules holding the ecosystem (witness: @plurnk) —
-    // workspace cwds carry sparse per-package node_modules; the deployment root wins
-    const nm = (() => {
-        let dir = path.resolve(cwd);
-        while (true) {
-            const candidate = path.join(dir, "node_modules");
-            if (existsSync(path.join(candidate, "@plurnk"))) return candidate;
-            const parent = path.dirname(dir);
-            if (parent === dir) return path.join(path.resolve(cwd), "node_modules");
-            dir = parent;
-        }
-    })();
-        let entries: { name: string; isDirectory(): boolean; isSymbolicLink(): boolean }[];
-        try {
-            entries = await fs.readdir(nm, { withFileTypes: true });
-        } catch {
-            return [];
-        }
-        const dirs: string[] = [];
-        for (const entry of entries) {
-            if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name === ".bin" || entry.name === ".cache") continue;
-            if (entry.name.startsWith("@")) {
-                const scopeDir = path.join(nm, entry.name);
-                try {
-                    const scoped = await fs.readdir(scopeDir, { withFileTypes: true });
-                    for (const s of scoped) if (s.isDirectory() || s.isSymbolicLink()) dirs.push(path.join(scopeDir, s.name));
-                } catch { /* unreadable scope dir — skip */ }
-            } else {
-                dirs.push(path.join(nm, entry.name));
-            }
-        }
-        return dirs;
+        const nm = Plugins.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+        return (await Plugins.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
     // Read a package's `package.json` and return its manifest iff it declares

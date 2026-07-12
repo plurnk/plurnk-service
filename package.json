@@ -9,10 +9,10 @@
         "node": ">=26"
     },
     "workspaces": [
+        "plurnk-plugins",
         "plurnk-aliases",
         "gbnf",
         "plurnk-models",
-        "plurnk-docs",
         "plurnk-grammar",
         "plurnk-mimetypes-application-json",
         "plurnk-mimetypes-application-xml",

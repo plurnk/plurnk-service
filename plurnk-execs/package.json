@@ -54,6 +54,7 @@
         "@plurnk/plurnk-execs-mcp": "1.0.0",
         "@plurnk/plurnk-execs-git": "1.0.0",
         "@plurnk/plurnk-execs-jq": "1.0.0",
-        "@plurnk/plurnk-execs-sqlite": "1.0.0"
+        "@plurnk/plurnk-execs-sqlite": "1.0.0",
+        "@plurnk/plurnk-plugins": "1.0.0"
     }
 }
