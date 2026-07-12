@@ -25,7 +25,9 @@ export type EnvDefaultsFile = {
 };
 
 export default class EnvDefaults {
-    static #isTrusted(packageName: string): boolean {
+    // THE ecosystem trust rule (SPEC §operator-config-env-defaults) — shared by the env
+    // floor and plugin discovery; a second definition of membership trust is a bug.
+    static isTrusted(packageName: string): boolean {
         const gate = process.env.PLURNK_PLUGINS_TRUSTED_ONLY;
         if (gate === undefined || gate === "" || gate === "0") return true;
         if (packageName.startsWith("@plurnk/")) return true;
@@ -53,12 +55,14 @@ export default class EnvDefaults {
         catch { return []; }
         const dirs: Array<{ dir: string; name: string }> = [];
         for (const entry of entries) {
-            if (!entry.isDirectory() || entry.name === ".bin" || entry.name === ".cache") continue;
+            // symlinks included: workspace checkouts link every sibling package into
+            // node_modules; a dirent-only isDirectory() reads them as non-dirs
+            if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name === ".bin" || entry.name === ".cache") continue;
             if (entry.name.startsWith("@")) {
                 const scopeDir = join(nodeModules, entry.name);
                 try {
                     for (const s of await readdir(scopeDir, { withFileTypes: true })) {
-                        if (s.isDirectory()) dirs.push({ dir: join(scopeDir, s.name), name: `${entry.name}/${s.name}` });
+                        if (s.isDirectory() || s.isSymbolicLink()) dirs.push({ dir: join(scopeDir, s.name), name: `${entry.name}/${s.name}` });
                     }
                 } catch { /* unreadable scope dir — skip */ }
             } else {
@@ -67,7 +71,7 @@ export default class EnvDefaults {
         }
         const files: EnvDefaultsFile[] = [];
         for (const { dir, name } of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {
-            if (!EnvDefaults.#isTrusted(name)) continue;
+            if (!EnvDefaults.isTrusted(name)) continue;
             if (!name.startsWith("@plurnk/")) {
                 let pkg: { plurnk?: unknown };
                 try { pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8")) as { plurnk?: unknown }; }

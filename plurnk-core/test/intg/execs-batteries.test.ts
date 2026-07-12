@@ -1,4 +1,4 @@
-// Batteries-included executor coverage — every EXEC[tag] the default install (@plurnk/plurnk-execs-all
+// Batteries-included executor coverage — every EXEC[tag] the default install (the @plurnk/plurnk-execs bundle
 // + -mcp) ships, driven end-to-end through the REAL Exec scheme (dispatch → run/accept → spawn → read
 // the captured output channel), not sh alone. Historically only EXEC[sh] (and one EXEC[node]) were
 // exercised; the rest of the bundle (jq, sqlite, wat/wasm, awk, bc, perl, python, …) went untested.

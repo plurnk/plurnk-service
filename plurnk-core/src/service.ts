@@ -6,7 +6,6 @@ import { existsSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
-import { createRequire } from "node:module";
 import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
 import Daemon from "./server/Daemon.ts";
@@ -87,14 +86,19 @@ export default class Service {
         return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
     }
 
-    // The node_modules holding the service's plugin deps (exec/scheme/mimetype), resolved
-    // package-relative so a global install finds them regardless of run-CWD. Falls back to CWD.
+    // The node_modules holding the service's plugin deps (exec/scheme/mimetype): walk up
+    // from this file's REAL location to the nearest node_modules with an @plurnk scope.
+    // Registry installs (global or project) hit the install root's node_modules; workspace
+    // checkouts escape node_modules entirely (symlink realpaths) and land on the monorepo
+    // root's. Falls back to CWD.
     static #pluginsNodeModules(): string {
-        try {
-            const execs = createRequire(import.meta.url).resolve("@plurnk/plurnk-execs/package.json");
-            return resolve(dirname(execs), "..", "..");
-        } catch {
-            return resolve(process.cwd(), "node_modules");
+        let dir = dirname(fileURLToPath(import.meta.url));
+        while (true) {
+            const nm = resolve(dir, "node_modules");
+            if (existsSync(resolve(nm, "@plurnk"))) return nm;
+            const parent = dirname(dir);
+            if (parent === dir) return resolve(process.cwd(), "node_modules");
+            dir = parent;
         }
     }
 

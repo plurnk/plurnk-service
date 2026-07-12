@@ -7,7 +7,7 @@ import { routeAdvisories, rootsFor } from "../../scripts/deps-audit.ts";
 // @plurnk/* root detection without minting a vulnerable dependency.
 
 test("[#267] routeAdvisories routes a transitive advisory to its owning @plurnk/* package", () => {
-    // uuid (the GHSA source) → @cucumber/messages → @cucumber/gherkin → text-gherkin → @plurnk/plurnk-mimetypes-all (direct).
+    // uuid (the GHSA source) → @cucumber/messages → @cucumber/gherkin → text-gherkin → @plurnk/plurnk-mimetypes (direct). Fixture predates the -all removal; the chain is synthetic.
     const audit = {
         vulnerabilities: {
             uuid: {
@@ -17,18 +17,18 @@ test("[#267] routeAdvisories routes a transitive advisory to its owning @plurnk/
             },
             "@cucumber/messages": { severity: "moderate", via: ["uuid"], effects: ["@cucumber/gherkin"] },
             "@cucumber/gherkin": { severity: "moderate", via: ["@cucumber/messages"], effects: ["text-gherkin"] },
-            "text-gherkin": { severity: "moderate", via: ["@cucumber/gherkin"], effects: ["@plurnk/plurnk-mimetypes-all"] },
-            "@plurnk/plurnk-mimetypes-all": { severity: "moderate", via: ["text-gherkin"], effects: [] },
+            "text-gherkin": { severity: "moderate", via: ["@cucumber/gherkin"], effects: ["@plurnk/plurnk-mimetypes"] },
+            "@plurnk/plurnk-mimetypes": { severity: "moderate", via: ["text-gherkin"], effects: [] },
         },
         metadata: { vulnerabilities: { info: 0, low: 0, moderate: 1, high: 0, critical: 0, total: 1 } },
     };
-    const deps = new Set(["@plurnk/plurnk-mimetypes-all", "ws", "diff"]);
+    const deps = new Set(["@plurnk/plurnk-mimetypes", "ws", "diff"]);
 
     const routed = routeAdvisories(audit, deps);
     assert.equal(routed.length, 1, "one entry per advisory SOURCE, not one per pass-through node in the chain");
     assert.equal(routed[0].package, "uuid");
     assert.equal(routed[0].ghsa, "https://github.com/advisories/GHSA-w5hq-g745-h8pq");
-    assert.deepEqual(routed[0].plurnkRoots, ["@plurnk/plurnk-mimetypes-all"], "routed to its owning @plurnk package for upstream filing");
+    assert.deepEqual(routed[0].plurnkRoots, ["@plurnk/plurnk-mimetypes"], "routed to its owning @plurnk package for upstream filing");
 });
 
 test("[#267] an advisory rooted in a first-party direct dep is NOT routed upstream", () => {
