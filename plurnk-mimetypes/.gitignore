@@ -1,0 +1,19 @@
+node_modules/
+*.tgz
+*.log
+
+# Local working memory — family-wide convention is to keep this out of git.
+# Scoped to repo root so templates/handler/AGENTS.md (the scaffolded handlers'
+# template) isn't accidentally ignored.
+/AGENTS.md
+
+# antlrmap — precompiled ANTLR4 output (build artifact, not source)
+languages/*/generated/
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
+# antlr-ng build artifacts
+stdin.c
+stdin.c.p
