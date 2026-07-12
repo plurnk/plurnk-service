@@ -11,7 +11,7 @@ const scaffold = async (): Promise<{ root: string; nm: string }> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envd-"));
     const nm = join(root, "node_modules");
     await mkdir(nm, { recursive: true });
-    await writeFile(join(root, ".env.defaults"), "# the host's knob\nPLURNK_SERVICE_TEST_KNOB=42\n");
+    await writeFile(join(root, ".env.defaults"), "# the host's knob\nPLURNK_ENVD_TEST_KNOB=42\n");
     return { root, nm };
 };
 
@@ -38,10 +38,10 @@ test("[§operator-config-env-defaults] collect: the host's file + @plurnk/* + pl
 test("[§operator-config-env-defaults] the ONE law: a key claimed by two packages crashes naming both", async () => {
     const { root, nm } = await scaffold();
     try {
-        await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_SERVICE_TEST_KNOB=13\n" });
+        await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "PLURNK_ENVD_TEST_KNOB=13\n" });
         const files = await EnvDefaults.collect(root, nm);
         assert.throws(() => EnvDefaults.merge(files),
-            /PLURNK_SERVICE_TEST_KNOB is claimed by both @plurnk\/plurnk-service and @plurnk\/plurnk-fake/,
+            /PLURNK_ENVD_TEST_KNOB is claimed by both @plurnk\/plurnk-service and @plurnk\/plurnk-fake/,
             "the collision names both claimants — the handoff signal");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
