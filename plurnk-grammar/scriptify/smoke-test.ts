@@ -9,6 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const run = promisify(execFile);
+// npm exports its config as npm_config_* into lifecycle children — when this smoke runs
+// inside `npm publish --workspaces` (prepublishOnly), the inner npm would inherit
+// --workspaces/omit and misread the temp consumer. The consumer gets a CLEAN npm env.
+const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("npm_")));
 const grammarDir = process.cwd();
 const tempDir = await mkdtemp(join(tmpdir(), "plurnk-smoke-"));
 let tarballPath: string | undefined;
@@ -20,7 +24,7 @@ const cleanup = async (): Promise<void> => {
 
 try {
     process.stdout.write(`[smoke] packing tarball in ${grammarDir}...\n`);
-    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent"], { cwd: grammarDir });
+    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent"], { cwd: grammarDir, env: cleanEnv });
     const tarballName = JSON.parse(packOut)[0].filename;
     tarballPath = join(grammarDir, tarballName);
     process.stdout.write(`[smoke] tarball: ${tarballName}\n`);
@@ -34,7 +38,7 @@ try {
     }, null, 2) + "\n");
 
     process.stdout.write(`[smoke] installing tarball...\n`);
-    await run("npm", ["install", "--no-package-lock", "--no-audit", "--no-fund", "--silent", tarballPath], { cwd: tempDir });
+    await run("npm", ["install", "--no-package-lock", "--no-audit", "--no-fund", "--silent", tarballPath], { cwd: tempDir, env: cleanEnv });
 
     // Stale-artifact guard: the shipped dist/schema must mirror source schema/
     // exactly — a deleted schema surviving in dist (issue #27) fails here.
