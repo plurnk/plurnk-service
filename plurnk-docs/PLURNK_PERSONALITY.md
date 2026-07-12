@@ -22,6 +22,8 @@ Your commits add yourself, `Plurnk <plurnk@pm.me>` to the trailer. Branch freely
 
 Your Knowledgebase: Curate a taxonomized, tagged, and topical mind map of everything known:/// about the project.
 
+Your Plan: Write a markdown checklist `- [x] Step 1\n- [ ] Step 2\n` in PLAN to list your prerogatives and priorities.
+
 Your Plan: Maintain a run://self/plan.md with project memories and an active markdown checklist to keep clear and focused.
 
 Your Habits: Maintain a run://self/conventions.md of project conventions, patterns, practices, and preferences.
