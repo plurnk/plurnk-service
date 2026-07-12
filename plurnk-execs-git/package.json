@@ -1,0 +1,73 @@
+{
+    "name": "@plurnk/plurnk-execs-git",
+    "version": "0.1.23",
+    "description": "git + GitHub-CLI runtime executor for plurnk-service's exec scheme — shells the system git/gh binaries (no third-party lib) for EXEC[git] / EXEC[gh].",
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "git",
+        "gh",
+        "github"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-execs-git#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-git/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-git.git"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "runtimes": [
+            {
+                "name": "git",
+                "glyph": "🔀",
+                "example": "<<EXEC[git]:log --oneline -10:EXEC"
+            },
+            {
+                "name": "gh",
+                "glyph": "🐙",
+                "example": "<<EXEC[gh]:pr list --state open:EXEC"
+            }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "devDependencies": {
+        "@types/node": "^26.0.0",
+        "typescript": "^7.0.2",
+        "@plurnk/plurnk-execs": "0.4.44"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "0.4.44"
+    }
+}
