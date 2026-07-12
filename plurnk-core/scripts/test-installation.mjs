@@ -1,5 +1,5 @@
 // Off-hot-path e2e: install the built package into a clean sandbox as a consumer would, then
-// prove it works out of the box — the embedder ships (default-on OOTB, via mimetypes-all) with no
+// prove it works out of the box — the embedder ships (default-on OOTB, a bundle member since the -all removal) with no
 // native install scripts, the bin boots the DB from the installed dist, the daemon listens, and a
 // fresh install has NO active model (the #307 no-phone-home posture): the pointer surfaces instead.
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
@@ -41,7 +41,7 @@ installSandbox();
 ok(existsSync(bin), "plurnk-service bin linked in the sandbox");
 
 const mods = resolve(sandbox, "node_modules");
-ok(existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "embedder ships OOTB (default-on, via mimetypes-all)");
+ok(existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "embedder ships OOTB (default-on bundle member)");
 ok(!existsSync(resolve(mods, "onnxruntime-node")) && !existsSync(resolve(mods, "sharp")), "native onnxruntime/sharp NOT pulled (script-free, portable)");
 
 const help = runBin(["--help"], { PLURNK_DB_PATH: resolve(sandbox, "x.db"), PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" });
