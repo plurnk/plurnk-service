@@ -56,5 +56,8 @@
     "devDependencies": {
         "@types/node": "^26.1.1",
         "typescript": "^7.0.2"
+    },
+    "overrides": {
+        "tree-sitter": "^0.25.0"
     }
 }

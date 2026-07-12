@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
     Discovery,
@@ -122,8 +123,19 @@ function trustPredicate(env: Record<string, string | undefined>): (packageName: 
 }
 
 async function defaultPackageDirs(cwd: string): Promise<string[]> {
-    const nodeModules = path.join(cwd, "node_modules");
-    let top: { name: string; isDirectory(): boolean }[];
+    // nearest ancestor node_modules holding the ecosystem (witness: @plurnk) —
+    // workspace cwds carry sparse per-package node_modules; the deployment root wins
+    const nodeModules = (() => {
+        let dir = path.resolve(cwd);
+        while (true) {
+            const candidate = path.join(dir, "node_modules");
+            if (existsSync(path.join(candidate, "@plurnk"))) return candidate;
+            const parent = path.dirname(dir);
+            if (parent === dir) return path.join(path.resolve(cwd), "node_modules");
+            dir = parent;
+        }
+    })();
+    let top: { name: string; isDirectory(): boolean; isSymbolicLink(): boolean }[];
     try {
         top = await fs.readdir(nodeModules, { withFileTypes: true });
     } catch {
@@ -133,10 +145,12 @@ async function defaultPackageDirs(cwd: string): Promise<string[]> {
     const thirdParty: string[] = [];
     const plurnk: string[] = [];
     for (const entry of top) {
-        if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+        // symlinks included: workspace checkouts link every sibling into node_modules;
+        // a dirent-only isDirectory() reads them as non-dirs
+        if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name.startsWith(".")) continue;
         if (entry.name.startsWith("@")) {
             const scopeDir = path.join(nodeModules, entry.name);
-            let scoped: { name: string; isDirectory(): boolean }[];
+            let scoped: { name: string; isDirectory(): boolean; isSymbolicLink(): boolean }[];
             try {
                 scoped = await fs.readdir(scopeDir, { withFileTypes: true });
             } catch {
@@ -144,7 +158,7 @@ async function defaultPackageDirs(cwd: string): Promise<string[]> {
             }
             const target = entry.name === "@plurnk" ? plurnk : thirdParty;
             for (const s of scoped) {
-                if (s.isDirectory()) target.push(path.join(scopeDir, s.name));
+                if (s.isDirectory() || s.isSymbolicLink()) target.push(path.join(scopeDir, s.name));
             }
         } else {
             thirdParty.push(path.join(nodeModules, entry.name));

@@ -85,10 +85,13 @@ export default class EnvDefaults {
     }
 
     // The host's own file first, then every installed member's, name-sorted (deterministic).
+    // The host is excluded from the member scan — a workspace checkout symlinks the daemon
+    // into node_modules as its own member, and self-vs-self is not a collision.
     static async collect(serviceRoot: string, nodeModules: string): Promise<EnvDefaultsFile[]> {
         const own = await EnvDefaults.#readDefaults(serviceRoot, "@plurnk/plurnk-service");
         if (own === null) throw new Error("@plurnk/plurnk-service: .env.defaults missing from the package root — the shipped floor is not optional");
-        return [own, ...await EnvDefaults.#memberFiles(nodeModules)];
+        const members = await EnvDefaults.#memberFiles(nodeModules);
+        return [own, ...members.filter((m) => m.owner !== own.owner)];
     }
 
     // The ONE law: global key uniqueness. A collision names both claimants — it is also the

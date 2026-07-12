@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { existsSync } from "node:fs";
 
 // Scope-agnostic discovery of installed provider packages (SPEC §5, #12/#14).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
@@ -81,8 +82,19 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
 // Enumerate every installed package directory — scoped and unscoped — under
 // `<cwd>/node_modules`. Unreadable node_modules (e.g. nothing installed) → [].
 const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
-    const nm = path.join(cwd, "node_modules");
-    let entries: Array<{ name: string; isDirectory(): boolean }>;
+    // nearest ancestor node_modules holding the ecosystem (witness: @plurnk) —
+    // workspace cwds carry sparse per-package node_modules; the deployment root wins
+    const nm = (() => {
+        let dir = path.resolve(cwd);
+        while (true) {
+            const candidate = path.join(dir, "node_modules");
+            if (existsSync(path.join(candidate, "@plurnk"))) return candidate;
+            const parent = path.dirname(dir);
+            if (parent === dir) return path.join(path.resolve(cwd), "node_modules");
+            dir = parent;
+        }
+    })();
+    let entries: Array<{ name: string; isDirectory(): boolean; isSymbolicLink(): boolean }>;
     try {
         entries = await fs.readdir(nm, { withFileTypes: true });
     } catch {
@@ -90,12 +102,12 @@ const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
     }
     const dirs: string[] = [];
     for (const entry of entries) {
-        if (!entry.isDirectory() || entry.name === ".bin" || entry.name === ".cache") continue;
+        if (!(entry.isDirectory() || entry.isSymbolicLink()) || entry.name === ".bin" || entry.name === ".cache") continue;
         if (entry.name.startsWith("@")) {
             const scopeDir = path.join(nm, entry.name);
             try {
                 const scoped = await fs.readdir(scopeDir, { withFileTypes: true });
-                for (const s of scoped) if (s.isDirectory()) dirs.push(path.join(scopeDir, s.name));
+                for (const s of scoped) if (s.isDirectory() || s.isSymbolicLink()) dirs.push(path.join(scopeDir, s.name));
             } catch { /* unreadable scope dir — skip */ }
         } else {
             dirs.push(path.join(nm, entry.name));
