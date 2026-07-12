@@ -5,7 +5,7 @@
 //
 //   N1. pattern semantics: globs, exact basenames, first-match reason.
 //   N2. NO code fallback: knob unset → nothing suppressed, even package-lock.
-//   N3. the shipped .env.example default catches the service#337 offenders and
+//   N3. the shipped .env.defaults default catches the service#337 offenders and
 //       spares legitimate long content (novel, JSONL, wide CSV).
 //   N4. surfaced on process(): present iff matched, absent otherwise.
 
@@ -17,7 +17,7 @@ import BaseHandler from "../BaseHandler.ts";
 import { matchNoEmbed } from "../noEmbed.ts";
 import type { Discovery, HandlerInfo, Registry } from "../types.ts";
 
-const DEFAULT_LIST = readFileSync(new URL("../../.env.example", import.meta.url), "utf-8")
+const DEFAULT_LIST = readFileSync(new URL("../../.env.defaults", import.meta.url), "utf-8")
     .split("\n").find((l) => l.startsWith("PLURNK_MIMETYPES_NO_EMBED="))!
     .slice("PLURNK_MIMETYPES_NO_EMBED=".length);
 

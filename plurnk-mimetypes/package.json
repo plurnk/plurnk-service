@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "0.19.1",
+    "version": "0.19.2",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
     "keywords": [
         "plurnk",
@@ -45,7 +45,8 @@
         "dist/**/*",
         "bin/*.js",
         "README.md",
-        "SPEC.md"
+        "SPEC.md",
+        ".env.defaults"
     ],
     "scripts": {
         "build:dist": "tsc -p tsconfig.build.json",

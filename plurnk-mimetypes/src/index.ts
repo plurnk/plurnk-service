@@ -77,6 +77,10 @@ export type { MimeClassification } from "./classify.ts";
 // PLURNK_MIMETYPES_NO_EMBED matcher, also surfaced as ProcessResult.noEmbed.
 export { matchNoEmbed } from "./noEmbed.ts";
 
+// Embedder seam types (SPEC §17, #50/#51) — the contract front door; consumers
+// import EmbedderInfo instead of projecting it off the method signature.
+export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
+
 // Tokenizer seam (SPEC §19, #44) — exact LLM token counting via the opt-in
 // @plurnk/plurnk-mimetypes-tokenizers artifact package.
 export type { TokenizerResolution } from "./Tokenizers.ts";
