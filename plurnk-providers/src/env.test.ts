@@ -112,3 +112,15 @@ test("#36 capture knobs are per-alias scopable: enable on a scraping alias, serv
     assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "fireslow"), "x"), { logprobs: 3, rawBody: true });
     assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "grokfast"), "x"), { logprobs: null, rawBody: false });
 });
+
+// Reader-declares (#44 ecosystem standard): every knob the code reads appears in
+// the shipped .env.defaults — set (the floor) or commented (documented optional).
+// The file IS the operator documentation; this keeps it from drifting off the code.
+test("#44: every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { PROVIDERS_KNOBS } = await import("./env.ts");
+    const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
+    const missing = PROVIDERS_KNOBS.filter((k) => !defaults.includes(k));
+    assert.deepEqual([...missing], [], "knobs read by code but undeclared in .env.defaults");
+    assert.ok(defaults.includes("PLURNK_PROVIDERS_GBNF="), "GBNF (service-read, providers-namespace) must be declared with its default");
+});

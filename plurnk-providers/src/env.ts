@@ -73,7 +73,7 @@ export const thinkingFromEnv = (env: NodeJS.ProcessEnv, label: string): Thinking
 // exact-prefix-first, so aliases containing underscores stay unambiguous. Vendor
 // facts (API keys, canonical endpoints) remain vendor-named; the per-alias
 // endpoint override stays PLURNK_BASEURL_<alias> (its existing precedent).
-const PROVIDERS_KNOBS = Object.freeze([
+export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_THINKING_CAPACITY",
     "PLURNK_PROVIDERS_THINKING",
     "PLURNK_PROVIDERS_CONTEXT_SIZE",
