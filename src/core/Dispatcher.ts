@@ -893,7 +893,11 @@ export default class Dispatcher {
                     // attrs.retrievalOnly — the strike decoupler (owner ruling): atomic-turn-
                     // pretrained models pair fetch-and-answer by habit; the refusal teaches,
                     // the strike executed. Engine reads this to skip the strike.
-                    return { status: 409, error: "Termination attempted despite this turn's retrieval operations. Retrieval operations performed.", attrs: { retrievalOnly: true } };
+                    // #384 (owner wording) — the steer speaks PACKET-TIME, not dispatch-time: the
+                    // model reads this 409 in the same packet where the retrieval results already
+                    // sit, so it names their presence and the move (review, react) — never a
+                    // future tense ("next turn" read as wait-more: a model parked on it).
+                    return { status: 409, error: "Termination attempted despite this turn's retrieval operations. Their results are now in the log for review and reaction.", attrs: { retrievalOnly: true } };
                 }
                 return { status: 409, error: `Attempted [200] termination with pending work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
             }
