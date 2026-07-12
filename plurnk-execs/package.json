@@ -35,7 +35,8 @@
     "files": [
         "dist/**/*",
         "README.md",
-        "SPEC.md"
+        "SPEC.md",
+        ".env.defaults"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
