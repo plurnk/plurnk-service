@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS loops (
     -- reason — set by the terminating PREP (engine_loop_set_status).
     terminated_at    TEXT,
     terminal_message TEXT,
+    -- Who ended the loop when it wasn't the model's own deliberate terminal: 'collapse' (the
+    -- ∅-wait conclude, #379) or 'cancel' (an external loop.cancel, #380). NULL = the model's own
+    -- SEND / the engine's budget-strike terminals, whose status already carries the story. The
+    -- COLLECT and the termination delta render it as a marker ALONGSIDE terminal_message — the
+    -- model's words are never rewritten; the engine's act is named.
+    terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by IN ('collapse', 'cancel')),
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 ) STRICT;
 

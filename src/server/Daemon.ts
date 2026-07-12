@@ -821,8 +821,15 @@ export default class Daemon {
                         ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, contextSize: null, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
                     if (currentLoopId !== null) {
+                        // #380 (owner ruling) — the cancel is allowed but provenanced: the ROW goes
+                        // terminal 499 (a dead loop must never read as live 102, #311) carrying
+                        // terminated_by='cancel' + the abort reason as the abandonment message, and
+                        // the broadcast carries the same message. The abort reason is the client's
+                        // loop.cancel reason (cancelDrain threads it through scope.abort).
+                        const message = String(controller.signal.reason ?? "user_cancelled").slice(0, 500);
+                        await (this.#db.engine_loop_cancel_external as PrepMethod).run({ loop_id: currentLoopId, message });
                         this.#broadcast({ sessionId }, "loop/terminated", {
-                            loopId: currentLoopId, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage,
+                            loopId: currentLoopId, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage, message,
                         });
                     }
                     if (!firstSettled) {
@@ -953,7 +960,8 @@ export default class Daemon {
      * signal). Returns cancelled iff there was work. Queued loops stay enqueued.
      */
     cancelDrain(runId: number, reason: string = "user_cancelled"): boolean {
-        const hadWork = this.#activeDrains.has(runId) || this.#runHasActiveStreams(runId);
+        const hadDrain = this.#activeDrains.has(runId);
+        const hadWork = hadDrain || this.#runHasActiveStreams(runId);
         // A cancel is deliberate — kill any pending hibernation poll-wake so it can't resurrect the run.
         const pollTimer = this.#pollTimers.get(runId);
         if (pollTimer !== undefined) { clearTimeout(pollTimer); this.#pollTimers.delete(runId); }
@@ -961,6 +969,28 @@ export default class Daemon {
         // signal is the optimization path — the fast, listener-driven reap.
         const scope = this.#runAborts.get(runId);
         if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
+        // #380, the PARKED case — a 202-blocked loop has no drain to observe the abort (the
+        // drain tears down on 202), so before this a cancelled park stayed 202 forever with no
+        // terminal and no broadcast. Terminalize the run's live loops (102/202; queued 100 stays
+        // enqueued) with provenance and broadcast each. With a live drain its abort catch does
+        // this instead — skipping here keeps the broadcast single.
+        if (!hadDrain) {
+            void (async () => {
+                const message = reason.slice(0, 500);
+                const dead = await (this.#db.engine_run_cancel_live_loops as PrepMethod).all<{ id: number }>({ run_id: runId, message });
+                if (dead.length === 0) return;
+                const srow = await (this.#db.drain_get_run_session as PrepMethod).get<{ session_id: number }>({ run_id: runId });
+                if (srow === undefined) return;
+                for (const { id } of dead) {
+                    const usage = await this.#engine.loopUsage(id);
+                    this.#broadcast({ sessionId: srow.session_id }, "loop/terminated", {
+                        loopId: id, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage, message,
+                    });
+                }
+            })().catch((err: unknown) => {
+                console.error(`cancelDrain(${runId}) live-loop terminalize failed:`, err);
+            });
+        }
         // Total reap by the REGISTRY (§run-lifecycle-total-reap): the durable source
         // of truth. Every open subscription the run holds, aborted via its owning
         // scheme — independent of the signal-listener timing, so an exec mid-spawn

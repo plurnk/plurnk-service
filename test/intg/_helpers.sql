@@ -382,3 +382,6 @@ UPDATE sessions SET project_root = $project_root WHERE id = $id;
 
 -- PREP: test_count_null_scheme_entries
 SELECT COUNT(*) n FROM entries WHERE session_id = $session_id AND scheme IS NULL;
+
+-- PREP: test_list_loops_all
+SELECT id, run_id, status, terminated_at, terminal_message, terminated_by FROM loops ORDER BY id;

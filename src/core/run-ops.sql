@@ -18,7 +18,8 @@ SELECT name FROM runs WHERE id = $run_id;
 -- deliverable a sister COLLECTS by READing run://<name> (§run-scheme-collect, the pull side of
 -- the same deliverable the push delta carries). Terminal status → the message is the result (200)
 -- or the abandonment reason; non-terminal → the worker hasn't delivered yet (READ steers to 202).
-SELECT r.id AS run_id, l.status, l.terminal_message
+-- terminated_by names a collapse/cancel so the COLLECT renders its marker (#379).
+SELECT r.id AS run_id, l.status, l.terminal_message, l.terminated_by
 FROM runs r
 JOIN loops l ON l.run_id = r.id
 WHERE r.session_id = $session_id AND r.name = $name

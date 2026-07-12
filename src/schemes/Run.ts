@@ -8,6 +8,17 @@ import type { FindResult } from "./_entry-find.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 
+// #379 (owner ruling) — a loop the ENGINE concluded (∅-collapse) or the CLIENT killed (cancel)
+// must not present its last words as a deliverable: run42's workers parked on nothing, the
+// collapse concluded them, and the parent COLLECTed 'Standing by for user input' as a status-200
+// stage result — nine blind re-spawns. The marker names the act as STATE; the model's words
+// follow unrewritten. NULL terminated_by = the model's own terminal — the message IS the result.
+export const markTerminal = (terminatedBy: string | null, message: string | null): string | null => {
+    if (terminatedBy === "collapse") return `[ concluded on ∅-collapse — waited on nothing; no result was produced ]${message === null ? "" : ` ${message}`}`;
+    if (terminatedBy === "cancel") return `[ cancelled from outside the run ]${message === null ? "" : ` ${message}`}`;
+    return message;
+};
+
 // run:// — the run scheme: inter-run CONTROL (irc=SEND; WORK=spawn, FORK=fork is Dispatcher.#handleRunControl)
 // AND run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: run://<name>/<path> is
 // entry <path> owned by run <name>; `run://self` is the current run, empty authority is invalid.
@@ -101,13 +112,13 @@ export default class Run {
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
         if (entryPath === "") {
             const owner = authority === "self" ? await Run.#selfName(ctx) : authority;
-            const row = await (ctx.db.run_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null }>({ session_id: ctx.sessionId, name: owner });
+            const row = await (ctx.db.run_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ session_id: ctx.sessionId, name: owner });
             if (row === undefined) return { status: 404, content: `run://${owner} not found in this session`, mimetype: "text/markdown", channel: null };
             // §join-blocking-collect (#354) — a still-running worker is a BLOCKING JOIN: the READ
             // arms the join (awaitRun), and the turn's bare SEND[102] parks until the worker delivers.
             // The model doesn't drive the park — the engine does (a blocking read() hiding the scheduler).
             if (!Run.#TERMINAL_LOOP.has(row.status)) return { status: 425, content: `[ worker '${owner}' is still running — parking this turn until it delivers its result ]`, mimetype: "text/markdown", channel: null, awaitRun: owner };
-            return { status: 200, content: row.terminal_message ?? `[ worker '${owner}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
+            return { status: 200, content: markTerminal(row.terminated_by, row.terminal_message) ?? `[ worker '${owner}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
         }
         // Path-present: cross-run scratch READ — resolve self, fold the owner into the storage path.
         const owner = authority === "self" ? await Run.#selfName(ctx) : authority;

@@ -838,7 +838,11 @@ export default class Dispatcher {
             const undelivered = await (this.#db.engine_run_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ run_id: runId, turn_id: turnId });
             if (undelivered !== undefined) return { status: 102 };
             // ∅ — a wait on zero obligations is already satisfied; conclude like 200 (incl. <-1>+∅).
+            // #379 (owner ruling): the ENGINE concluded this loop, not the model — mark it as state
+            // so the COLLECT/delta render the act instead of presenting the park text as a result.
+            // The model's words (terminal_message) are never rewritten.
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: loopId, message: raw === "" ? null : raw });
+            await (this.#db.engine_loop_mark_terminated_by as PrepMethod).run({ terminated_by: "collapse", loop_id: loopId });
             return { status: 200 };
         }
 

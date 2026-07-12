@@ -535,6 +535,33 @@ test("[§wait-obligation-matrix] SEND[202]: a live obligation BLOCKS, no obligat
     } finally { await db.close(); }
 });
 
+test("[§wait-collapse-marked] a ∅-collapsed park is state-marked; the COLLECT renders the act + the unrewritten park text (#379)", async () => {
+    // run42: a worker parked on nothing, the collapse concluded it, and the parent COLLECTed
+    // 'Standing by for user input' as a status-200 stage result — nine blind re-spawns.
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `collapse-mark-${crypto.randomUUID()}`);
+        const worker = await insertRun(db, sessionId, null, "req-test");
+        const wLoop = await insertLoop(db, worker, 1, "test the module");
+        const wTurn = await insertTurn(db, wLoop, 1, 200);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const parked = await engine.dispatch({ statement: sendStmt(202, null, "Standing by for user input"), sessionId, runId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
+        assert.equal(parked.status, 200, "∅ — the wait on nothing concluded");
+
+        // The act is STATE on the terminal record; the model's words are untouched.
+        const row = await (db.run_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ session_id: sessionId, name: "req-test" });
+        assert.equal(row?.terminated_by, "collapse", "the engine's conclude is recorded as terminated_by='collapse'");
+        assert.equal(row?.terminal_message, "Standing by for user input", "terminal_message keeps the model's own words — never rewritten");
+
+        // The parent's COLLECT sees both truth layers: the named act, then the park text.
+        const reader = await insertRun(db, sessionId);
+        const collected = await new Run().read(readStmt(runPath("req-test")), makeSchemeCtx({ db, sessionId, runId: reader }));
+        assert.equal(collected.status, 200);
+        assert.match(String(collected.content), /^\[ concluded on ∅-collapse — waited on nothing; no result was produced \] Standing by for user input$/,
+            "the deliverable names the engine's act and carries the park text — never the park text alone as a result");
+    } finally { await db.close(); }
+});
+
 test("[§run-lifecycle-idle-is-concluded] an idle run's wait concludes (200) — it does not park into a held-open 202", async () => {
     const db = await openMigrated();
     try {

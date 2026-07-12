@@ -11,6 +11,7 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
+import { markTerminal } from "../schemes/Run.ts";
 import TokenGauge from "./TokenGauge.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState from "./git-state.ts";
@@ -1312,13 +1313,13 @@ export default class Engine {
         // same way an entry-change does, carrying its deliverable (the SEND body) or the
         // abandonment reason. Folded, attributed to the terminated run.
         const terms = await (this.#db.engine_pull_loop_terminations as PrepMethod).all<{
-            run_id: number; run_name: string; status: number; prompt: string; terminal_message: string | null;
+            run_id: number; run_name: string; status: number; prompt: string; terminal_message: string | null; terminated_by: string | null;
         }>({ session_id: sessionId, run_id: runId, since });
         for (const t of terms) {
             await (this.#db.engine_insert_loop_termination_delta as PrepMethod).run({
                 run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                 source: String(t.run_id), pathname: `/${t.run_name}`,
-                rx: t.terminal_message ?? `loop "${t.prompt}" ended (${t.status})`,
+                rx: markTerminal(t.terminated_by, t.terminal_message) ?? `loop "${t.prompt}" ended (${t.status})`,
                 status: t.status,
             });
             written++;
