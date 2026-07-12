@@ -1,0 +1,84 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/MatcherBody.json",
+    "title": "MatcherBody",
+    "description": "Parsed body of a FIND/READ/OPEN/FOLD statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `#` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern/flags split out of the `#pattern#flags` literal; the compiled `RegExp` object on the in-memory AST is a runtime ergonomic only and is not part of the persisted/wire contract.",
+    "oneOf": [
+        { "$ref": "#/$defs/XPathBody" },
+        { "$ref": "#/$defs/RegexBody" },
+        { "$ref": "#/$defs/JsonPathBody" },
+        { "$ref": "#/$defs/SemanticBody" },
+        { "$ref": "#/$defs/GraphBody" },
+        { "$ref": "#/$defs/GlobBody" }
+    ],
+    "$defs": {
+        "XPathBody": {
+            "title": "XPathBody",
+            "description": "XPath 1.0 expression. Validated at parse time via the xpath library.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "xpath" },
+                "raw": { "type": "string", "minLength": 2 }
+            }
+        },
+        "RegexBody": {
+            "title": "RegexBody",
+            "description": "JavaScript regex literal `#pattern#flags`. The `#` delimiter is collision-free against path `/` and regex's own `|` alternation. Pattern and flags are split out for direct use. `raw` preserves the literal form for round-tripping.",
+            "type": "object",
+            "required": ["dialect", "raw", "pattern", "flags"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "regex" },
+                "raw": { "type": "string", "minLength": 2 },
+                "pattern": { "type": "string" },
+                "flags": { "type": "string" }
+            }
+        },
+        "JsonPathBody": {
+            "title": "JsonPathBody",
+            "description": "JSONPath expression. Validated at parse time via jsonpath-plus.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "jsonpath" },
+                "raw": { "type": "string", "minLength": 1 }
+            }
+        },
+        "SemanticBody": {
+            "title": "SemanticBody",
+            "description": "Semantic similarity query. Body is `~phrase` — natural language after the tilde, no parse step. Resolution happens service-side via the deep-embed channel; top-K narrowing via `<Result>` on the host statement.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "semantic" },
+                "raw": { "type": "string", "minLength": 1 }
+            }
+        },
+        "GraphBody": {
+            "title": "GraphBody",
+            "description": "Code-graph reference query. Body is `@symbol` (neighborhood — both inbound and outbound edges), `@<symbol` (inbound — who references this), or `@>symbol` (outbound — what this references). Resolution happens service-side via a deep-graph channel; no parse step in grammar.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "graph" },
+                "raw": { "type": "string", "minLength": 1 }
+            }
+        },
+        "GlobBody": {
+            "title": "GlobBody",
+            "description": "Pattern with no dialect prefix; treated as a glob/literal match.",
+            "type": "object",
+            "required": ["dialect", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "dialect": { "const": "glob" },
+                "raw": { "type": "string" }
+            }
+        }
+    }
+}

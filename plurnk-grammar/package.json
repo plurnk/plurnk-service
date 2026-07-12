@@ -1,0 +1,62 @@
+{
+  "name": "@plurnk/plurnk-grammar",
+  "version": "0.76.10",
+  "description": "ANTLR4 grammar for the Plurnk LLM agent protocol",
+  "type": "module",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json",
+    "./plurnk.gbnf": "./dist/plurnk.gbnf"
+  },
+  "bin": {
+    "plurnk": "./bin/plurnk-grammar.js"
+  },
+  "files": [
+    "bin/plurnk-grammar.js",
+    "dist/**/*",
+    "plurnk.md"
+  ],
+  "scripts": {
+    "build:grammar": "antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false plurnkLexer.g4 plurnkParser.g4 && node scriptify/fix-generated-imports.ts",
+    "build:types": "node scriptify/generate-types.ts",
+    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build:gbnf": "node scriptify/generate-gbnf.ts",
+    "build": "npm run build:grammar && npm run build:types && npm run build:dist && npm run build:gbnf",
+    "antlr:tokens": "testrig src/generated/plurnk document --tokens",
+    "antlr:trace": "testrig src/generated/plurnk document --trace",
+    "antlr:parse": "testrig src/generated/plurnk document --tree",
+    "test:lint": "tsc --noEmit",
+    "test:unit": "node --test test/unit/*.test.ts",
+    "test:intg": "node --test test/integration/*.test.ts",
+    "test:demo": "node --test test/demo/*.test.ts",
+    "test:smoke": "node scriptify/smoke-test.ts",
+    "test:llama": "node --test test/llama/*.test.ts",
+    "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo",
+    "test": "npm run test:all",
+    "deps:fresh": "npm outdated",
+    "prepare": "git config core.hooksPath .githooks && npm run build",
+    "prepublishOnly": "npm run deps:fresh && npm audit && npm run build && npm run test:all && npm run test:smoke"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "antlr4ng": "^3.0.0",
+    "jsonpath-plus": "^10.4.0",
+    "xpath": "^0.0.34"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "antlr-ng": "^1.0.10",
+    "json-schema-to-typescript": "^15.0.4",
+    "typescript": "^7.0.2"
+  }
+}

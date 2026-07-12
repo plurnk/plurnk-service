@@ -1,0 +1,75 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ParsedPath.json",
+    "title": "ParsedPath",
+    "description": "A parsed path slot from a plurnk statement. Discriminated on `kind`: a bare local path (no scheme), a fully decomposed URL, or a path-name regex (`#pattern#flags`) that matches entries by path rather than addressing one.",
+    "oneOf": [
+        { "$ref": "#/$defs/LocalPath" },
+        { "$ref": "#/$defs/UrlPath" },
+        { "$ref": "#/$defs/RegexPath" }
+    ],
+    "$defs": {
+        "LocalPath": {
+            "title": "LocalPath",
+            "description": "A bare local path with no `scheme://` prefix. The raw string is stored verbatim; resolution is the runtime's job.",
+            "type": "object",
+            "required": ["kind", "raw"],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "const": "local" },
+                "raw": { "type": "string" }
+            }
+        },
+        "UrlPath": {
+            "title": "UrlPath",
+            "description": "A path with a `scheme://` prefix, fully decomposed via WHATWG URL.",
+            "type": "object",
+            "required": [
+                "kind", "raw", "scheme",
+                "username", "password",
+                "hostname", "port",
+                "pathname", "params", "fragment"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "const": "url" },
+                "raw": { "type": "string" },
+                "scheme": { "type": "string", "minLength": 1 },
+                "username": { "type": ["string", "null"] },
+                "password": { "type": ["string", "null"] },
+                "hostname": { "type": ["string", "null"] },
+                "port": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                    "maximum": 65535
+                },
+                "pathname": { "type": "string" },
+                "params": { "$ref": "https://schemas.plurnk.dev/v0/Params.json" },
+                "fragment": { "type": ["string", "null"] },
+                "headers": {
+                    "description": "Request-metadata blocks split off the target — trailing `{key: value}` groups (e.g. `(https://api{Authorization: Bearer x})`). Ordered key/value pairs so order and duplicate names survive; opaque to the grammar's addressing, interpreted by the scheme handler (auth, content-type, method affordance). Absent when the target carries no `{...}` block. See #46.",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "minItems": 2,
+                        "maxItems": 2
+                    }
+                }
+            }
+        },
+        "RegexPath": {
+            "title": "RegexPath",
+            "description": "A path-name regex `#pattern#flags` in the target slot — matches entries whose path matches the pattern, rather than addressing a single path. The leading `#` is the dispatch key (collision-free: `#channel` is a postfix, never a leading form). Pattern and flags are split out for direct use; `raw` preserves the literal.",
+            "type": "object",
+            "required": ["kind", "raw", "pattern", "flags"],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "const": "regex" },
+                "raw": { "type": "string", "minLength": 2 },
+                "pattern": { "type": "string" },
+                "flags": { "type": "string" }
+            }
+        }
+    }
+}

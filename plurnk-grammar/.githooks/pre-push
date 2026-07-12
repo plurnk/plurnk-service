@@ -1,0 +1,5 @@
+#!/bin/sh
+# Local gate (see ../AGENTS.md: "Local gates, never GitHub CI"). A red suite
+# blocks the push before the remote ever sees it. Activated on `npm install`
+# via the package's `prepare` script (git config core.hooksPath .githooks).
+exec npm test

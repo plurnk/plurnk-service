@@ -1,0 +1,13 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/SendBody.json",
+    "title": "SendBody",
+    "description": "Parsed body of a SEND statement. `raw` is the literal body text; `json` is the best-effort `JSON.parse(raw)` result, or null when the body isn't valid JSON.",
+    "type": "object",
+    "required": ["raw", "json"],
+    "additionalProperties": false,
+    "properties": {
+        "raw": { "type": "string" },
+        "json": true
+    }
+}

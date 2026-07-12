@@ -1,0 +1,68 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ClientStatement.json",
+    "title": "ClientStatement",
+    "description": "The client-tier AST: every protocol PlurnkStatement plus the two client-only utility ops, LOOK and BUFF. Produced ONLY by PlurnkParser.parseClient; the model/protocol/script entry points (parse, parseStatements, parseLog) neither emit nor accept the client ops. LOOK and BUFF are read-shaped — identical signature to ReadStatement (tag signal, target, lineMarker, matcher body): LOOK is READ minus the log side effect, BUFF pulls an editable entry into a buffer for editing (the write-back is a later plain EDIT, not part of BUFF). The protocol PlurnkStatement set stays closed; client ops live here so they never leak into the model-facing contract type.",
+    "oneOf": [
+        { "$ref": "https://schemas.plurnk.dev/v0/PlurnkStatement.json" },
+        { "$ref": "#/$defs/LookStatement" },
+        { "$ref": "#/$defs/BuffStatement" }
+    ],
+    "$defs": {
+        "TagSignal": {
+            "oneOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+            ]
+        },
+        "PathOrNull": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/ParsedPath.json" },
+                { "type": "null" }
+            ]
+        },
+        "LineMarkerOrNull": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/LineMarker.json" },
+                { "type": "null" }
+            ]
+        },
+        "MatcherBodyOrNull": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/MatcherBody.json" },
+                { "type": "null" }
+            ]
+        },
+        "PositionRef": {
+            "$ref": "https://schemas.plurnk.dev/v0/Position.json"
+        },
+        "LookStatement": {
+            "type": "object",
+            "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
+            "additionalProperties": false,
+            "properties": {
+                "op": { "const": "LOOK" },
+                "suffix": { "type": "string" },
+                "signal": { "$ref": "#/$defs/TagSignal" },
+                "target": { "$ref": "#/$defs/PathOrNull" },
+                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
+                "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
+                "position": { "$ref": "#/$defs/PositionRef" }
+            }
+        },
+        "BuffStatement": {
+            "type": "object",
+            "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
+            "additionalProperties": false,
+            "properties": {
+                "op": { "const": "BUFF" },
+                "suffix": { "type": "string" },
+                "signal": { "$ref": "#/$defs/TagSignal" },
+                "target": { "$ref": "#/$defs/PathOrNull" },
+                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
+                "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
+                "position": { "$ref": "#/$defs/PositionRef" }
+            }
+        }
+    }
+}
