@@ -1,0 +1,92 @@
+{
+    "o200k": {
+        "repo": "Xenova/gpt-4o",
+        "pin": "7956d98f2a83b2751a98ea7136fdf7fe6cf54e69",
+        "files": {
+            "tokenizer.json": "43a3ad4618a6a938f8c2614154ea10c31ad53a62d5683ae0b0e6133575cef07e",
+            "tokenizer_config.json": "71424d4750066a6f9bcfea0699576c4284327ff25d388d42419506bcfb5535ab"
+        },
+        "tokenizerId": "43a3ad4618a6a938"
+    },
+    "cl100k": {
+        "repo": "Xenova/gpt-4",
+        "pin": "1d9f1f1b1fae88c0e4df1dab0a397f8de6229075",
+        "files": {
+            "tokenizer.json": "239eb2359f79c38497476671aaa835e01fb43d42743c612a8514a0dfa2ac93a2",
+            "tokenizer_config.json": "185a09e9fcc9892ff26caf97e586f16a80a49cf9ec849d10d008890332881428"
+        },
+        "tokenizerId": "239eb2359f79c384"
+    },
+    "llama3": {
+        "repo": "NousResearch/Meta-Llama-3.1-8B",
+        "pin": "1f47e50cdbe801ad8a5174156ec3a0655108fb9f",
+        "files": {
+            "tokenizer.json": "76e48799b099d43365bd24ccd8ecc5aedac831718da780552f03b0a6eb4412aa",
+            "tokenizer_config.json": "8004530facf809ac432114de2a4dcc65fcb632da5ec16d666091aeb6a2ee444a"
+        },
+        "tokenizerId": "76e48799b099d433"
+    },
+    "llama2": {
+        "repo": "NousResearch/Llama-2-7b-hf",
+        "pin": "8efe6c9b93655b934e27bd9981e3ec13e55aee9d",
+        "files": {
+            "tokenizer.json": "f7b50bcf6d6672eade5e43514d48e9c1e4e63a56aef7b14acdaca94ce93436f7",
+            "tokenizer_config.json": "37951d5a1e0c6a77f88c61f79972f17e889b62258aadff4c61eacd3fb567fe72"
+        },
+        "tokenizerId": "f7b50bcf6d6672ea"
+    },
+    "gemma": {
+        "repo": "unsloth/gemma-2-9b",
+        "pin": "9145841c83add11c48155cd7bb87d8656703f997",
+        "files": {
+            "tokenizer.json": "5f7eee611703c5ce5d1eee32d9cdcfe465647b8aff0c1dfb3bed7ad7dbb05060",
+            "tokenizer_config.json": "aaf0596bc34f94a1d76724744c1f0bc047778941856ff2ad552d2e6f2ea2f50e"
+        },
+        "tokenizerId": "5f7eee611703c5ce"
+    },
+    "deepseek": {
+        "repo": "deepseek-ai/DeepSeek-V3",
+        "pin": "e815299b0bcbac849fa540c768ef21845365c9eb",
+        "files": {
+            "tokenizer.json": "621ac2e32d0dba658404412318818aaa8ce8cda492e59830109d8da6b517fb41",
+            "tokenizer_config.json": "637bcd1a08cf7c772ce6a383196b22930921c79c3c73223c5afc0c7f41545546"
+        },
+        "tokenizerId": "621ac2e32d0dba65"
+    },
+    "qwen": {
+        "repo": "Qwen/Qwen2.5-7B-Instruct",
+        "pin": "a09a35458c702b33eeacc393d103063234e8bc28",
+        "files": {
+            "tokenizer.json": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+            "tokenizer_config.json": "5b5d4f65d0acd3b2d56a35b56d374a36cbc1c8fa5cf3b3febbbfabf22f359583"
+        },
+        "tokenizerId": "c0382117ea329cdf"
+    },
+    "mistral": {
+        "repo": "unsloth/mistral-7b-instruct-v0.3",
+        "pin": "60b99dcbc7f853b7cd18472a607e8d045b96f03e",
+        "files": {
+            "tokenizer.json": "60b945759e27a63c3c5c0ca675881f5a73b4aa38b5d1d6818570308d4f1a3c59",
+            "tokenizer_config.json": "b0c776216a54c6d031866d1dff0b31715bd73f5ba87f8a30eb35e8c603dff95d"
+        },
+        "tokenizerId": "60b945759e27a63c"
+    },
+    "bert": {
+        "repo": "google-bert/bert-base-uncased",
+        "pin": "86b5e0934494bd15c9632b12f734a8a67f723594",
+        "files": {
+            "tokenizer.json": "ce64fce797c24f68df90b40a3f74f579b336a493db14bd583fd520ea0d8c9a98",
+            "tokenizer_config.json": "a025160ef0431f1a392f6f050c1310f4c5d9fb6f275932dbccba73c4d214bf10"
+        },
+        "tokenizerId": "ce64fce797c24f68"
+    },
+    "t5": {
+        "repo": "google-t5/t5-small",
+        "pin": "df1b051c49625cf57a3d0d8d3863ed4d13564fe4",
+        "files": {
+            "tokenizer.json": "d2acde0d8d71dd30a711834b07781b9c89feaac33fd332f60507699282740066",
+            "tokenizer_config.json": "d1e7146101aa96282057f374aa9c3b260fba2109e5990edb1775d6efc70ffa3c"
+        },
+        "tokenizerId": "d2acde0d8d71dd30"
+    }
+}
