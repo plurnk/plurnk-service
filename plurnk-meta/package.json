@@ -34,5 +34,8 @@
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
         "prepack": "npm run build"
+    },
+    "publishConfig": {
+        "access": "public"
     }
 }
