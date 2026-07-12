@@ -63,6 +63,33 @@ test("[§grinder-errors-exempt] the grinder never folds the prompt frame — eve
     } finally { await db.close(); }
 });
 
+test("[§prompt-run-qualified] sister runs' turn-1 prompts land at DISTINCT addresses — no clobber (#382 fault-1)", async () => {
+    // run43: exactly two writes hit /prompt/1/1 — the model run's task foist and a WORK-spawned
+    // worker's — and the worker's DESTROYED the parent's task. Run-qualified paths keep one
+    // filesystem with collision-free coordinates (/proc/<pid>-style).
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `frame-sisters-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const mkProvider = () => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] });
+        const parentRun = await insertRun(db, sessionId);
+        const parentLoop = await insertLoop(db, parentRun, 1, "the parent task");
+        await engine.runTurn({ provider: mkProvider(), sessionId, runId: parentRun, loopId: parentLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the parent task" }] });
+        const workerRun = await insertRun(db, sessionId);
+        const workerLoop = await insertLoop(db, workerRun, 1, "the worker task");
+        await engine.runTurn({ provider: mkProvider(), sessionId, runId: workerRun, loopId: workerLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the worker task" }] });
+
+        const bodyAt = async (runId: number) => (await (db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${runId}/1/%` }));
+        const parentRows = await bodyAt(parentRun);
+        const workerRows = await bodyAt(workerRun);
+        assert.equal(parentRows.length, 1, "the parent's prompt entry exists at its run-qualified address");
+        assert.equal(workerRows.length, 1, "the worker's prompt entry exists at ITS run-qualified address");
+        assert.equal(parentRows[0].content, "the parent task", "the worker's turn-1 foist did not clobber the parent's task");
+        assert.equal(workerRows[0].content, "the worker task");
+        assert.notEqual(parentRows[0].pathname, workerRows[0].pathname, "two runs, two addresses — one filesystem, collision-free coordinates");
+    } finally { await db.close(); }
+});
+
 test("OPEN/FOLD are recorded in the DB but suppressed from the packet render (#382)", async () => {
     const db = await openMigrated();
     try {

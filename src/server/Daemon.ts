@@ -28,6 +28,7 @@ import ClientTurn from "./clientTurn.ts";
 import LoopDocs from "./loopDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
+import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import type { Executor, RegistryEntry } from "../core/ExecutorRegistry.ts";
 import type { RuntimeDecl, RuntimeAvailability } from "@plurnk/plurnk-execs";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
@@ -560,7 +561,7 @@ export default class Daemon {
 
     /**
      * Inject a prompt into a run. Two paths:
-     *   - Active drain: writes a plurnk:///prompt/<loop>/<next-turn> entry
+     *   - Active drain: writes a plurnk://prompt/<run>/<loop>/<next-turn> entry
      *     via Engine.inject. Current loop sees the new prompt at its next
      *     turn. Returns immediately with {action: "injected_next_turn"}.
      *   - No active drain: enqueues a fresh loop with the prompt at
@@ -917,7 +918,7 @@ export default class Daemon {
     // prompt is never silently dropped. Inherits the ended loop's flags.
     async #reconcileOrphanedWake(runId: number, endedLoopId: number): Promise<void> {
         const endedSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
-        const prefix = `/prompt/${endedSeq}/`;
+        const prefix = promptLoopPrefix(runId, endedSeq);
         const orphan = await (this.#db.drain_orphaned_prompt_for_loop as PrepMethod).get<{
             body: string; flags: string | null;
         }>({ loop_id: endedLoopId, pattern: `${prefix}%`, prefix_len: prefix.length });

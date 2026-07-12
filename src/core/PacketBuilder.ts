@@ -4,7 +4,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
 import type { GitStatus } from "./git-state.ts";
-import { renderAddress } from "./plurnk-uri.ts";
+import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import SessionSettings from "./session-settings.ts";
@@ -228,12 +228,12 @@ export default class PacketBuilder {
         // the scheme set at packet-time (grammar#239 item 7) via SchemeRegistry.teach().
         const system_definition = byRole("system");
         // the prompt section sources from the loop's most recent prompt entry first
-        // (plurnk:///prompt/<loop_id>/<N> for the highest N written to date).
+        // (plurnk://prompt/<run>/<loop>/<N> for the highest N written to date).
         // This is what inject + the turn-1 foist write into. Falls back to
         // the runLoop caller's messages.user for tests that bypass the
         // foist mechanism entirely.
         const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
-        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${loopSeqRow?.sequence ?? loopId}/%` }))
+        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `${promptLoopPrefix(runId, loopSeqRow?.sequence ?? loopId)}%` }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
         // §prompt-auto-read (owner): the section is a PATHS list (the errors shape — no bodies);
         // each prompt's content reaches the model through its foisted auto-READ in the log, and

@@ -47,7 +47,7 @@ SELECT open_paths FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_get_loop_prompt
 -- Loop's prompt + sequence — runTurn reads it on turn 1 to foist a
--- system-origin EDIT against plurnk:///prompt/<loop_id>/1 (§packet), at the
+-- system-origin EDIT against plurnk://prompt/<run>/<loop>/1 (§packet), at the
 -- turn's first action sequence. Prompts are first-class log entries
 -- (no synthetic / shim layer).
 SELECT prompt, sequence FROM loops WHERE id = $loop_id;
@@ -494,7 +494,7 @@ WHERE e.session_id = $session_id AND ec.name = 'body' AND ec.content_hash IS NOT
 
 
 -- PREP: engine_loop_sequence
--- The loop's PER-RUN sequence — the model-facing coordinate (prompt/<loop-seq>/<turn-seq>,
+-- The loop's PER-RUN sequence — the model-facing coordinate (prompt/<run>/<loop-seq>/<turn-seq>,
 -- matching the log's loop-relative numbering). The raw db id leaked into prompt paths and the
 -- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
 SELECT sequence FROM loops WHERE id = $loop_id;

@@ -202,7 +202,7 @@ test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prom
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
                 { idx: 1, op: "model" }, // the turn-0 exemplar, mirrored OPEN at sequence 1 (§model-entry)
-                { idx: 2, op: "EDIT" },  // the prompt (plurnk:///prompt/<loop_id>)
+                { idx: 2, op: "EDIT" },  // the prompt (plurnk://prompt/<run>/<loop>/1)
                 { idx: 3, op: "READ" },  // §prompt-auto-read — the prompt's body arrives as a READ
                 { idx: 4, op: "EDIT" },
                 { idx: 5, op: "EDIT" },
@@ -747,7 +747,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
 
 test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
     // Turn-as-container: turn 1 opens with the prompt written as a real
-    // system-origin EDIT against plurnk:///prompt/<loop_id> at
+    // system-origin EDIT against plurnk://prompt/<run>/<loop>/1 at
     // sequence=1 (1-based). When #buildLog snapshots the log for
     // THIS turn's packet, the prompt is already there. The 2 model ops
     // dispatch AFTER the packet builds, so they don't appear in this
@@ -762,14 +762,14 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // The prompt foist is the loop's opening EDIT (plurnk-origin) against
-        // plurnk:///prompt/<loop_id>. Found by its stable identity (origin + target),
+        // plurnk://prompt/<run>/<loop>/1. Found by its stable identity (origin + target),
         // robust to the turn-0 `model` exemplar at 1/1/1 (§model-entry) and any
         // manifest-preview READ that shift its coordinate.
-        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && e.target === `plurnk://prompt/${loopId}/1`);
+        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && e.target === `plurnk://prompt/${runId}/1/1`);
         assert.ok(prompt, "prompt entry logged (plurnk-origin EDIT against plurnk:///prompt)");
         assert.equal(prompt.op, "EDIT");
         assert.equal(prompt.origin, "plurnk");
-        assert.equal(prompt.target, `plurnk://prompt/${loopId}/1`);
+        assert.equal(prompt.target, `plurnk://prompt/${runId}/1/1`);
     } finally { await db.close(); }
 });
 

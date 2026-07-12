@@ -1,5 +1,5 @@
 // plurnk:/// is the internal-events scheme. Currently used for prompts at
-// plurnk:///prompt/<loop_id>; future internal model-interactions land here.
+// plurnk://prompt/<run>/<loop>/<N>; future internal model-interactions land here.
 // Manifest-level writableBy is open; the edit handler rejects model writes
 // to plurnk:///prompt/* (engine + client own those paths).
 
@@ -26,7 +26,7 @@ test("plurnk:/// scheme manifest: engine-authored, model-READ-ONLY, body channel
     assert.ok(Plurnk.manifest.writableBy.includes("plurnk"));
 });
 
-test("system EDIT plurnk:///prompt/<loop_id> creates the entry", async () => {
+test("system EDIT plurnk://prompt/<run>/<loop>/<N> creates the entry", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const p = new Plurnk();
@@ -40,7 +40,7 @@ test("system EDIT plurnk:///prompt/<loop_id> creates the entry", async () => {
     } finally { await db.close(); }
 });
 
-test("READ plurnk:///prompt/<loop_id> returns the prompt body", async () => {
+test("READ plurnk://prompt/<run>/<loop>/<N> returns the prompt body", async () => {
     const { db, sessionId, runId } = await setup();
     try {
         const p = new Plurnk();

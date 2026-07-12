@@ -34,7 +34,7 @@ LIMIT 1;
 
 -- PREP: drain_next_turn_seq_for_loop
 -- Next turn sequence for the given loop. Used by Engine.inject to compute
--- the path of the prompt entry it should write (plurnk:///prompt/<loop>/<N>).
+-- the path of the prompt entry it should write (plurnk://prompt/<run>/<loop>/<N>).
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: drain_get_run_session
@@ -44,12 +44,12 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 SELECT session_id FROM runs WHERE id = $run_id;
 
 -- PREP: drain_get_latest_prompt_body_for_loop
--- Sources packet.user.prompt at packet-build time. plurnk:///prompt/<loop>/<N>
+-- Sources packet.user.prompt at packet-build time. plurnk://prompt/<run>/<loop>/<N>
 -- entries accumulate per turn; the latest one (highest entries.id) is the
 -- "current" prompt the model sees in user.prompt. Falls back to NULL when
 -- no prompt entry exists for the loop (caller substitutes runLoop's
 -- messages parameter for backward compat with tests that bypass inject).
--- Pattern is built JS-side as `/prompt/<loop_id>/%` (canonical leading-slash storage form,
+-- Pattern is built JS-side via promptLoopPrefix (run-qualified `/prompt/<run>/<loop>/%`,
 -- matching the foist's #pathnameOf and the inject) — SqlRite's parameter
 -- binding doesn't reliably coerce integers for `LIKE` with `||`.
 SELECT c.content, e.pathname
@@ -64,8 +64,8 @@ LIMIT 1;
 -- PREP: drain_get_all_prompt_bodies_for_loop
 -- Sources the Active User Prompts section (§prompt-fold): EVERY prompt entry the
 -- current loop holds, OLDEST first — typically one, but an active loop admits injected
--- prompts (multiple plurnk:///prompt/<loop>/<N>), all shown in order. Same pattern as
--- the latest-only sibling (`/prompt/<loop_id>/%`, built JS-side); the section renders
+-- prompts (multiple plurnk://prompt/<run>/<loop>/<N>), all shown in order. Same pattern as
+-- the latest-only sibling (promptLoopPrefix pattern, built JS-side); the section renders
 -- each body as a bare heredoc.
 SELECT c.content, e.pathname
 FROM entries e
@@ -78,11 +78,11 @@ ORDER BY e.id ASC;
 -- PREP: drain_orphaned_prompt_for_loop
 -- A loop can terminate before consuming a next-turn prompt injected into it
 -- (a wake-on-completion, or a loop.run-while-active that landed on a turn the
--- loop never reached). Engine.inject writes prompt/<loop>/<N> at MAX(turn)+1;
+-- loop never reached). Engine.inject writes prompt/<run>/<loop>/<N> at MAX(turn)+1;
 -- if the loop ended at turn K, an injected prompt at turn > K never ran.
 -- Returns the latest such orphan's body + the ended loop's flags so
 -- the drain can promote it to a fresh loop — no wake silently lost.
--- $pattern = `prompt/<loop_id>/%`, $prefix_len = length of `prompt/<loop_id>/`
+-- $pattern = promptLoopPrefix + '%', $prefix_len = length of that prefix
 -- built JS-side (per the SqlRite LIKE-binding note above).
 SELECT c.content AS body, l.flags AS flags
 FROM entries e

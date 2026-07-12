@@ -9,7 +9,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { SendResult } from "./_entry-send.ts";
 import type { FindResult } from "./_entry-find.ts";
 
-// Engine-authored reference scheme — the prompt (`plurnk:///prompt/<loop_id>`), the scheme
+// Engine-authored reference scheme — the prompt (`plurnk://prompt/<run>/<loop>/<N>`), the scheme
 // docs (`plurnk:///docs/*`), the catalog. All of it the engine writes FOR the model to READ;
 // none of it is the model's to write. writableBy excludes "model", so the manifest gate
 // (§scheme-surface-writableby-403) rejects every model-origin write uniformly — no path special-
@@ -26,7 +26,7 @@ export default class Plurnk {
         volatile: false,
         modelVisible: true,
         example: "<<FIND(plurnk:///**)::FIND",
-        documentation: "Engine-authored reference surfaced to you — your active prompt at `plurnk://prompt/<loop>`, the scheme docs at `plurnk://docs/*`. READ-ONLY: READ these, never EDIT them (use `known://` for your own scratch).",
+        documentation: "Engine-authored reference surfaced to you — your active prompt at `plurnk://prompt/<run>/<loop>/<N>` (READ the address the User Prompts section lists), the scheme docs at `plurnk://docs/*`. READ-ONLY: READ these, never EDIT them (use `known://` for your own scratch).",
     };
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {

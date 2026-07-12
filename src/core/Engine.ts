@@ -20,6 +20,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
+import { promptPathname } from "./plurnk-uri.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -45,6 +46,19 @@ export type { ProposalDecision, ProposalResolution, ProposalPendingEvent } from 
 
 const DEFAULT_MAX_STRIKES = 3;
 const DEFAULT_MAX_COMMANDS = 99;
+
+// The foisted prompt EDIT/READ target — run-qualified storage (§prompt-auto-read, #382 fault-1)
+// rendered in the plurnk:// authority form (hostname carries the namespace, plurnk-uri folds it
+// back into the storage key on dispatch).
+const promptTarget = (runId: number, loopSeq: number, turnSeq: number): UrlPath => {
+    const storage = promptPathname(runId, loopSeq, turnSeq);
+    return {
+        kind: "url", raw: `plurnk://${storage.slice(1)}`,
+        scheme: "plurnk", username: null, password: null,
+        hostname: "prompt", port: null,
+        pathname: storage.slice("/prompt".length), params: {}, fragment: null,
+    };
+};
 
 const readMaxStrikes = (): number => {
     const raw = process.env.PLURNK_SERVICE_MAX_STRIKES;
@@ -559,7 +573,7 @@ export default class Engine {
         const turnId = openRow.id;
 
         // Pre-model writes. Each turn opens with a system-origin EDIT
-        // against `plurnk:///prompt/<loop_id>/<seq>` IF there's a prompt
+        // against `plurnk://prompt/<run>/<loop>/<seq>` IF there's a prompt
         // for THIS turn the model hasn't seen yet:
         //   - Turn 1: loop.prompt is the initial user prompt.
         //   - Turn N>1: only if Engine.inject (or wake-on-completion via
@@ -605,12 +619,7 @@ export default class Engine {
             const promptRow = loopRow; // #269 — already read above (per-loop; fires every loop's turn 1)
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptLoopSeq = promptRow.sequence; // the loop's PER-RUN sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
-                const promptPath: UrlPath = {
-                    kind: "url", raw: `plurnk://prompt/${promptLoopSeq}/${seq}`,
-                    scheme: "plurnk", username: null, password: null,
-                    hostname: "prompt", port: null,
-                    pathname: `/${promptLoopSeq}/${seq}`, params: {}, fragment: null,
-                };
+                const promptPath = promptTarget(runId, promptLoopSeq, seq);
                 const promptStmt: EditStatement = {
                     op: "EDIT", suffix: "", signal: null,
                     target: promptPath, lineMarker: null,
@@ -651,16 +660,11 @@ export default class Engine {
         if (seq > 1) {
             const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
             const loopSeq = loopSeqRow?.sequence ?? loopId;
-            const injected = await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${loopSeq}/${seq}` });
+            const injected = await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: promptPathname(runId, loopSeq, seq) });
             const injectedRow = injected.find((r) => typeof r.content === "string" && r.content.length > 0);
             if (injectedRow !== undefined) {
                 const lineCount = injectedRow.content.split("\n").length;
-                const injTarget: UrlPath = {
-                    kind: "url", raw: `plurnk://prompt/${loopSeq}/${seq}`,
-                    scheme: "plurnk", username: null, password: null,
-                    hostname: "prompt", port: null,
-                    pathname: `/${loopSeq}/${seq}`, params: {}, fragment: null,
-                };
+                const injTarget = promptTarget(runId, loopSeq, seq);
                 const injRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, target: injTarget,
                     lineMarker: { marks: lineCount >= 12 ? [1, 12] : [1, -1] },
@@ -1491,7 +1495,7 @@ export default class Engine {
     }
 
     // Inject a prompt into the run's currently-executing loop. Writes a
-    // plurnk:///prompt/<loop_id>/<next-turn> entry whose body becomes the
+    // plurnk://prompt/<run>/<loop>/<next-turn> entry whose body becomes the
     // prompt section at the next turn boundary. Last-wins: if two
     // injects target the same next-turn slot, the second overwrites the
     // first.
@@ -1512,7 +1516,7 @@ export default class Engine {
         const turnSeq = turnRow?.next ?? 1;
         const sessionRow = await (this.#db.drain_get_run_session as PrepMethod).get<{ session_id: number }>({ run_id: runId });
         if (sessionRow === undefined) throw new Error(`Engine.inject: run ${runId} not found`);
-        const pathname = `/prompt/${loopRow.sequence}/${turnSeq}`; // canonical storage form (leading slash), loop-SEQ coordinates matching the turn-1 foist
+        const pathname = promptPathname(runId, loopRow.sequence, turnSeq); // canonical storage form, run-qualified loop-SEQ coordinates matching the turn-1 foist
         const ctx: PlurnkSchemeContext = {
             db: this.#db, sessionId: sessionRow.session_id, runId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId

@@ -1,5 +1,5 @@
 // The plurnk:// addressing convention. A namespace lives in the URL authority slot
-// (plurnk://docs/x.md, plurnk://prompt/<loop>), but the canonical STORAGE key is the full
+// (plurnk://docs/x.md, plurnk://prompt/<run>/<loop>/<N>), but the canonical STORAGE key is the full
 // path with the namespace folded in (/docs/x.md) — entries are keyed by (scope, scheme,
 // pathname) with no authority column, so the authority MUST fold into the path.
 //
@@ -26,6 +26,19 @@ export function schemeNameOf(path: ParsedPath | null): string | null {
 
 export function foldAuthorityIntoPath(hostname: string | null, pathname: string): string {
     return hostname ? `/${hostname}${pathname}` : pathname;
+}
+
+// §prompt-auto-read — the prompt address is RUN-QUALIFIED (#382 fault-1): entries are
+// session-scoped while loop sequences are per-run, so every run's first loop is sequence 1 and
+// a WORK-spawned sister's turn-1 foist would clobber its parent's /prompt/1/1. The run id in
+// the path is /proc/<pid>-style process qualification — one filesystem, collision-free
+// coordinates. Every prompt writer and query builds through these two.
+export function promptPathname(runId: number, loopSeq: number, turnSeq: number): string {
+    return `/prompt/${runId}/${loopSeq}/${turnSeq}`;
+}
+
+export function promptLoopPrefix(runId: number, loopSeq: number): string {
+    return `/prompt/${runId}/${loopSeq}/`;
 }
 
 export function renderAddress(scheme: string, pathname: string): string {

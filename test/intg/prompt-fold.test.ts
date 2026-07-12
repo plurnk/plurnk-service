@@ -1,4 +1,4 @@
-// User Note 6 / §prompt-fold — the foisted prompt EDIT (plurnk:///prompt/<loop>/<seq>)
+// User Note 6 / §prompt-fold — the foisted prompt EDIT (plurnk://prompt/<run>/<loop>/<seq>)
 // duplicates packet.user.prompt, so its LOG ROW is folded by default (expanded=0):
 // kept for forensics, collapsed in the model's log, re-OPENable. A normal model op in
 // the SAME turn stays open — that control distinguishes this targeted fold from the

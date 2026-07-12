@@ -1036,7 +1036,7 @@ export default class Dispatcher {
         const scheme = path.scheme === "file" ? null : path.scheme;
         // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
         // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
-        // the entry (/prompt/<loop>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
+        // the entry (/prompt/<run>/<loop>/<N>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
         // namespace: keep it in hostname. run:// is the one registered EXCEPTION — its authority IS the
         // run selector (§run-scheme), and run://self must stay distinct from run://name, so Run.ts
         // folds the owner into the storage path itself, never here.

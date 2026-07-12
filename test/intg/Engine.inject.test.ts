@@ -1,6 +1,6 @@
 // Engine.inject — direct surface tests. Deterministic state setup; no
 // daemon, no Mock provider timing races. Verifies the rummy-parallel
-// inject mechanics: writes plurnk://prompt/<loop>/<next-turn>, last-wins
+// inject mechanics: writes plurnk://prompt/<run>/<loop>/<next-turn>, last-wins
 // per turn slot, returns null when no loop is currently active.
 
 import test from "node:test";
@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
 
-test("engine.inject: writes prompt entry at plurnk://prompt/<loop>/<next-turn>", async () => {
+test("engine.inject: writes prompt entry at plurnk://prompt/<run>/<loop>/<next-turn>", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -29,9 +29,9 @@ test("engine.inject: writes prompt entry at plurnk://prompt/<loop>/<next-turn>",
 
         // Verify the entry was actually written with the right body.
         const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "plurnk", pathname: `/prompt/${loopId}/2`,
+            session_id: sessionId, scheme: "plurnk", pathname: `/prompt/${runId}/1/2`,
         });
-        assert.ok(entry, "prompt entry exists at plurnk://prompt/<loop>/2");
+        assert.ok(entry, "prompt entry exists at plurnk://prompt/<run>/<loop>/2");
         const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({
             entry_id: entry.id, name: "body",
         });
@@ -54,7 +54,7 @@ test("engine.inject: last-wins — two injects targeting the same slot collapse"
         assert.equal(r2?.turnSeq, 2, "both target slot 2 (no turn 2 opened yet)");
 
         const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "plurnk", pathname: `/prompt/${loopId}/2`,
+            session_id: sessionId, scheme: "plurnk", pathname: `/prompt/${runId}/1/2`,
         });
         const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({
             entry_id: entry!.id, name: "body",
@@ -97,7 +97,7 @@ test("engine.inject: per-turn foist reads latest prompt body into packet.user.pr
 
         // Read the latest prompt body (what #buildRequestPacket would see).
         const row = await (db.drain_get_latest_prompt_body_for_loop as PrepMethod).get<{ content: string }>({
-            pattern: `/prompt/${loopId}/%`,
+            pattern: `/prompt/${runId}/1/%`,
         });
         assert.equal(row?.content, "the new prompt the model should see");
     } finally { await db.close(); }
