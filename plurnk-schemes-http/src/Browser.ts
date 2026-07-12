@@ -81,14 +81,15 @@ const MOBILE_CONTEXT: PwContextOptions = Object.freeze({
 const mobileEmulation = (): PwContextOptions | undefined =>
     process.env.PLURNK_SCHEMES_HTTP_MOBILE === "0" ? undefined : MOBILE_CONTEXT;
 
-// Required numeric knob — `.env.example` is the canonical list (metaproject
-// env rule: every magic number lives there; no in-code default hides one). An
+// Required numeric knob — `.env.defaults` is the canonical list (schemes#31:
+// the file IS the docs and the daemon floor-sets it at boot; no in-code
+// default hides a magic number). An
 // unset or non-numeric value fails hard at first use, naming the var. All
 // three numerics are render-path-only, so a byte-fetch-only deployment never
 // pays them — but a rendering one must configure them.
 const requireNumEnv = (key: string): number => {
     const raw = process.env[key];
-    if (raw === undefined) throw new Error(`Browser: required env ${key} is unset — see .env.example`);
+    if (raw === undefined) throw new Error(`Browser: required env ${key} is unset — see .env.defaults`);
     const n = Number(raw);
     if (Number.isNaN(n)) throw new Error(`Browser: ${key}=${raw} is not a number`);
     return n;
