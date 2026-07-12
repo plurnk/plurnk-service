@@ -1,2 +1,17 @@
 #!/bin/sh
+# The gate: branch policy, then the full drill. Never GitHub CI (AGENTS §one-gate).
+# Branches are main or type/kebab-slug; tags pass.
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+    case "$remote_ref" in
+        refs/heads/main|refs/tags/*) : ;;
+        refs/heads/*)
+            branch="${remote_ref#refs/heads/}"
+            if ! printf '%s' "$branch" | grep -qE '^(feat|fix|docs|refactor|perf|test|build|chore)/[a-z0-9._-]+$'; then
+                echo "pre-push: branch '$branch' violates policy — main or type/kebab-slug" >&2
+                exit 1
+            fi
+            ;;
+    esac
+done
+
 exec npm test

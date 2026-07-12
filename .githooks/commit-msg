@@ -1,4 +1,36 @@
 #!/bin/sh
+# Doctrine gate (AGENTS §commits): a commit is ONE conventional-commit subject line,
+# ≤100 chars, no body, no Co-Authored-By/Claude-Session trailers. Merges exempt.
+msg_file="$1"
+subject=$(sed -n '1p' "$msg_file")
+
+case "$subject" in
+    Merge\ *|Revert\ *) : ;; # git-generated shapes pass
+    *)
+        if ! printf '%s' "$subject" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|chore|ci|revert)(\([a-z0-9-]+\))?!?: .+'; then
+            echo "commit-msg: subject must be conventional — type(scope): summary" >&2
+            echo "  got: $subject" >&2
+            exit 1
+        fi
+        ;;
+esac
+
+if [ "$(printf '%s' "$subject" | wc -c)" -gt 100 ]; then
+    echo "commit-msg: subject exceeds 100 characters" >&2
+    exit 1
+fi
+
+# subject-only: no non-comment content past line 1
+if sed '1d' "$msg_file" | grep -vE '^\s*$' | grep -qvE '^#'; then
+    echo "commit-msg: one-liner doctrine — no body; rationale belongs in SPEC.md or an issue" >&2
+    exit 1
+fi
+
+if grep -qiE '^(Co-Authored-By|Claude-Session):' "$msg_file"; then
+    echo "commit-msg: no Co-Authored-By / Claude-Session trailers (AGENTS §commits)" >&2
+    exit 1
+fi
+
 # chain the operator's global template hook (commitlint) if one exists
 if [ -x "$HOME/.git/templates/hooks/commit-msg" ]; then
     exec "$HOME/.git/templates/hooks/commit-msg" "$@"
