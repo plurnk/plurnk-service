@@ -78,6 +78,23 @@
 10. **@plurnk/plurnk-plugins extracted** (owner ruling mid-GO): the metaproject-level membership primitives — THE trust rule (knob moved here, reader-declares), scope-agnostic symlink-aware `packageDirs`, `nearestNodeModules` — now ONE implementation consumed by core (PluginLoader, env-defaults floor, service, test floor) and all four family heads. Four duplicated trust predicates and five duplicated walks deleted. ("membership" as a name was rejected — it already means the session-constraint overlay; semantic separation.)
 11. **Commitlint lives in the operator's global hook template** — root `.githooks/commit-msg` chains it so the hooksPath flip doesn't disable it.
 
+## 4c. EXECUTED 2026-07-12 — owner publish protocol (the only remaining human steps)
+
+Everything through step 7 + GitHub decommission + FS cleanup + the fresh-clone drill is DONE and green
+(five full-drill passes, naive-install e2e from packed tarballs, 33 clean publish dry-runs). The freeze
+lifts with your OTP session:
+
+- **A. Platform wave (from monorepo root):** `npm run release:order` prints the 33 publishes bottom-up;
+  run each (`npm publish -w <name> --otp=…`). Heavy prepublishOnly chains (grammar) take minutes each.
+- **B. Deprecations:** `npm deprecate @plurnk/<name>@"*" "<msg>"` for the four `-all`s ("retired — the
+  bundle is @plurnk/plurnk-service's own dependencies") and `@plurnk/plurnk-docs` ("dissolved into
+  @plurnk/plurnk-service — docs/ ships in the daemon").
+- **C. Leaf wave:** `scripts/release-leaves.sh` — per outside leaf: fresh resolve against the live
+  platform, full suite, publish (patch bumps already committed). Stops on first red.
+- **D. Post-publish:** registry-based `test:installation` sanity if desired; `plurnk-bench` run (it pins
+  1.0.0 exact); model-tier smoke (`test:live` — foreground, attended); `plurnk-endpoint` 1.x adoption
+  pass as a separate follow-on (MIGRATION §8).
+
 ## 5. Verified environment facts (2026-07-11)
 
 - npm 11.16 / node 26.3.1. npm has **NO `workspace:` protocol** (EUNSUPPORTEDPROTOCOL) — internal specs must be real versions matching local, or npm silently fetches from registry instead of linking. Lockstep + stamp script guarantees linking.
