@@ -1,0 +1,66 @@
+{
+    "name": "@plurnk/plurnk-agui",
+    "version": "0.11.7",
+    "description": "The plurnk daemon's transport daughter — owns the client interface, serving AG-UI+ (the Agent-User Interaction Protocol + plurnk metadata extensions) as the sole client interaction surface. In-process module activated at the daemon's boot plug-point; any AG-UI frontend is a plurnk client.",
+    "type": "module",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-agui.git"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        ".env.defaults",
+        "README.md",
+        "SPEC.md"
+    ],
+    "engines": {
+        "node": ">=26"
+    },
+    "scripts": {
+        "test": "npm run test:lint && npm run test:unit && npm run test:intg",
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --env-file-if-exists=.env.defaults --test src/*.test.ts",
+        "test:intg": "node --env-file-if-exists=.env.defaults --test test/intg/*.test.ts",
+        "deps:fresh": "npm outdated",
+        "prepare": "git config core.hooksPath .githooks || true; npm run build",
+        "prepublishOnly": "npm test",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist"
+    },
+    "devDependencies": {
+        "@ag-ui/client": "0.0.57",
+        "@types/node": "^26.1.1",
+        "@types/ws": "8.18.1",
+        "typescript": "^7.0.2",
+        "ws": "8.21.0"
+    },
+    "keywords": [
+        "plurnk",
+        "ag-ui",
+        "agui",
+        "agent",
+        "transport",
+        "sse",
+        "human-in-the-loop"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-agui#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-agui/issues"
+    },
+    "author": "@wikitopian",
+    "publishConfig": {
+        "access": "public"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-execs-mcp": "0.7.5",
+        "@plurnk/plurnk-grammar": "0.76.10"
+    }
+}
