@@ -1,0 +1,90 @@
+// Ollama provider — a thin fromEnv over the shared OpenAICompatProvider.
+// Ollama's only bespoke surface is the /api/show probe (context window +
+// model family) and the local-only no-auth posture; everything else (the
+// generate spine, usage mapping, reasoning translation) is the framework's.
+
+import {
+    OpenAICompatProvider,
+    parseRequiredInt,
+    thinkingFromEnv,
+    dataCaptureFromEnv,
+    parseRequiredFloat,
+    providerSource,
+    requireEnv,
+    type Provider,
+    type ProviderOptions,
+} from "@plurnk/plurnk-providers";
+
+// Tokenizer dispatch. Ollama exposes the model family via /api/show
+// `details.family`. Llama-family tokenization is accurate enough for these
+// (Llama 1/2/3 share the BPE family with mistral/mixtral); everything else
+// (qwen, gemma, phi, deepseek, etc.) falls through to the chars/4 heuristic.
+const LLAMA_TOKENIZER_FAMILIES = new Set([
+    "llama", "llama2", "llama3",
+    "mistral", "mixtral",
+]);
+
+export default class Ollama {
+    static async fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): Promise<Provider> {
+        // Per-alias override (PLURNK_BASEURL_<alias>) wins — it's how two aliases
+        // reach two different ollama boxes; else OLLAMA_BASE_URL, else the official
+        // OLLAMA_HOST, which may be a bare host:port with no scheme (normalized
+        // below). The chosen base drives BOTH the /api/show probe and the chat URL.
+        const rawBase = requireEnv(options?.baseUrl || env.OLLAMA_BASE_URL || env.OLLAMA_HOST, "OLLAMA_BASE_URL or OLLAMA_HOST (or a PLURNK_BASEURL_<alias> override)", "ollama");
+        const fetchTimeoutMs = parseRequiredInt(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", "ollama");
+        const withScheme = /^https?:\/\//.test(rawBase) ? rawBase : `http://${rawBase}`;
+        const normalizedBase = withScheme.replace(/\/$/, "");
+
+        const { contextSize, family } = await fetchModelInfo({ base: normalizedBase, model, fetchTimeoutMs });
+
+        // Local — no auth header; local models are free so costFor defaults to 0.
+        return new OpenAICompatProvider({
+            model,
+            url: `${normalizedBase}/v1/chat/completions`,
+            fetchTimeoutMs,
+            contextSize,
+            temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", "ollama", 0),
+            repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", "ollama", 0),
+            retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", "ollama"),
+            thinking: thinkingFromEnv(env, "ollama"),
+            retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", "ollama"),
+            // Opt-in data capture (#36), off by default, per-alias-scopable.
+            ...dataCaptureFromEnv(env, "ollama"),
+            reasoningStyle: "think",
+            source: providerSource("ollama"),
+        });
+    }
+}
+
+// Ollama's /api/show returns model_info (per-family-prefixed metadata) and
+// details (family/quantization/etc.). Two pieces of data we need:
+//   - context_length: scan model_info for any "*.context_length" key
+//   - family:          details.family (e.g. "llama", "qwen35", "gemma")
+type ShowDetails = { family?: string };
+type ShowResponse = { model_info?: Record<string, unknown>; details?: ShowDetails };
+
+const fetchModelInfo = async ({
+    base, model, fetchTimeoutMs,
+}: { base: string; model: string; fetchTimeoutMs: number }): Promise<{ contextSize: number; family: string | null }> => {
+    const res = await fetch(`${base}/api/show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+        signal: AbortSignal.timeout(fetchTimeoutMs),
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Ollama /api/show returned ${res.status}: ${body}`);
+    }
+    const data = (await res.json()) as ShowResponse;
+    const info = data.model_info ?? {};
+    let contextSize = 0;
+    for (const [key, value] of Object.entries(info)) {
+        if (key.endsWith(".context_length") && typeof value === "number" && value > 0) {
+            contextSize = value;
+            break;
+        }
+    }
+    if (contextSize === 0) throw new Error(`Ollama /api/show has no *.context_length key for "${model}"`);
+    return { contextSize, family: data.details?.family ?? null };
+};
