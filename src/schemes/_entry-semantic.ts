@@ -109,7 +109,7 @@ export default class EntrySemantic {
         return { chunks, model: chunks.length > 0 ? info.model : undefined, capped };
     }
 
-    // Chunk budget in tokens — `.env.example` is the law, no code fallback. EMPTY =
+    // Chunk budget in tokens — `.env.defaults` is the law, no code fallback. EMPTY =
     // the embedder's reported window (scalable — NO model-specific number baked in);
     // a positive value caps BELOW the window (e.g. to sweep granularity).
     static #chunkBudget(maxTokens: number): number {

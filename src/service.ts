@@ -2,7 +2,7 @@
 
 import Paths from "./Paths.ts";
 import { parseArgs } from "node:util";
-import { existsSync, mkdirSync, copyFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -11,6 +11,7 @@ import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
 import Daemon from "./server/Daemon.ts";
 import EnvFlags from "./core/EnvFlags.ts";
+import EnvDefaults from "./core/env-defaults.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
@@ -19,7 +20,7 @@ import { Module as AguiModule } from "@plurnk/plurnk-agui";
 // Not the user-facing client — that is the separate `plurnk` project.
 export default class Service {
     // This file's own directory holds the runtime code + its .sql (src/ in dev, dist/ in a
-    // published install); its parent is the package root (migrations/, requirements.md, .env.example).
+    // published install); its parent is the package root (migrations/, requirements.md, .env.defaults).
     static #codeDir = dirname(fileURLToPath(import.meta.url));
     static #projectRoot = resolve(Service.#codeDir, "..");
     static #ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
@@ -29,17 +30,16 @@ export default class Service {
     // install has a stable home for config + the DB. Idempotent (only acts when absent).
     static #ensureHome(): void {
         // Seed ONCE, on first run (the home is absent). After that the user owns ~/.plurnk —
-        // edits and deletions stick, no silent re-seed. `~/.plurnk/.env.example` is the cascade
-        // FLOOR (the visible legend); the node_modules copy is the seed + CLI-flag source only.
-        // Wiping the whole dir is a deliberate reset. A deleted floor stays deleted; a missing
-        // required knob then surfaces as a clear `missing PLURNK_X` error, not a crash.
+        // edits and deletions stick, no silent re-seed. The assembled floor is in-memory
+        // (§operator-config-env-defaults); `~/.plurnk/.env.defaults` is its rendered catalog,
+        // machine-owned and regenerated each boot. Wiping the whole dir is a deliberate reset.
         if (existsSync(Service.#homeDir)) return;
         mkdirSync(Service.#homeDir, { recursive: true });
         // The first-run model selection lives HERE, as commented peers — an honest surfaced
         // choice (no active default ships; #307). One uncomment per option; agents read this
         // file as naturally as humans do.
         writeFileSync(resolve(Service.#homeDir, ".env"), [
-            "# plurnk config — overrides the shipped defaults (~/.plurnk/.env.example is the legend).",
+            "# plurnk config — overrides the shipped defaults (~/.plurnk/.env.defaults is the assembled legend).",
             "#",
             "# Pick a model — uncomment ONE block:",
             "#",
@@ -67,18 +67,19 @@ export default class Service {
         process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
     }
 
-    // Package-owned reference files (the legend + the config guide) are REFRESHED from the
-    // installed package on every boot — they carry the installed version's knobs and prose, so
-    // a seed-once snapshot would silently drift from the floor the daemon runs (the pre-fix bug).
-    // Safe to clobber because they are package-owned, NOT user config: ~/.plurnk/.env (the user's,
-    // seeded once above) is never touched here. The .env.example legend carries a loud overwrite
-    // warning at its head so nobody edits the wrong file.
+    // Package-owned reference files are REFRESHED from the installed package on every boot —
+    // they carry the installed version's prose, so a seed-once snapshot would silently drift.
+    // Safe to clobber because they are package-owned, NOT user config: ~/.plurnk/.env (the
+    // user's, seeded once above) is never touched here. The knob legend is the assembled
+    // ~/.plurnk/.env.defaults, written by main() after assembly; .env.example is that legend's
+    // retired name — a machine-owned stale copy is removed so it can't mislead readers.
     static #syncReferenceFiles(): void {
         if (!existsSync(Service.#homeDir)) return;
-        for (const name of [".env.example", "INSTALL.md"]) {
+        for (const name of ["INSTALL.md"]) {
             const src = resolve(Service.#projectRoot, name);
             if (existsSync(src)) copyFileSync(src, resolve(Service.#homeDir, name));
         }
+        rmSync(resolve(Service.#homeDir, ".env.example"), { force: true });
     }
 
     static #expandHome(p: string): string {
@@ -124,7 +125,7 @@ export default class Service {
 
     static #requireEnv(name: string): string {
         const value = process.env[name];
-        if (value === undefined || value.length === 0) Service.#die(78, `missing required env ${name} (declare it in .env.example)`);
+        if (value === undefined || value.length === 0) Service.#die(78, `missing required env ${name} (declare it in .env.defaults)`);
         return value;
     }
 
@@ -230,7 +231,8 @@ export default class Service {
         if (!process.argv.includes("--help") && !process.argv.includes("-h")) { Service.#ensureHome(); Service.#syncReferenceFiles(); }
         // Env cascade — first write wins (loadEnvFile is set-if-unset), so load highest first.
         // Precedence high→low: CLI --flags > shell env > --env-file/--config > ./.env >
-        // ~/.plurnk/.env > ~/.plurnk/.env.example (the legend) > package .env.example (the floor).
+        // ~/.plurnk/.env > the assembled .env.defaults floor (§operator-config-env-defaults:
+        // this package's file + every installed member's, uniqueness-checked).
         for (const { path: envFile, required } of Service.#envFileArgs()) Service.#loadEnv(envFile, required);
 
         const configFlagIndex = process.argv.findIndex((a) => a === "--config" || a.startsWith("--config="));
@@ -244,13 +246,15 @@ export default class Service {
         if (configFile !== null) Service.#loadEnv(configFile, true);
         Service.#loadEnv(".env", false);
         Service.#loadEnv(resolve(Service.#homeDir, ".env"), false);
-        Service.#loadEnv(resolve(Service.#homeDir, ".env.example"), false);   // the visible legend (seed-once, user-ownable)
-        // The PACKAGE template is the TRUE floor, under the home legend: shipped defaults must
-        // evolve with the installed version — a seed-once home floor left every upgrade's new
-        // knobs (including fail-hard REQUIRED vars) unreachable on existing installs.
-        Service.#loadEnv(resolve(Service.#projectRoot, ".env.example"), false);
+        // The assembled floor sits under everything the operator set: this package's
+        // .env.defaults + every installed member's, one owner per key (collision = boot crash),
+        // applied set-if-unset. The catalog renders to ~/.plurnk/.env.defaults — the operator's
+        // legend, machine-owned, never read back as config.
+        const defaultsFiles = await EnvDefaults.collect(Service.#projectRoot, Service.#pluginsNodeModules());
+        EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
+        if (existsSync(Service.#homeDir)) writeFileSync(resolve(Service.#homeDir, ".env.defaults"), EnvDefaults.renderCatalog(defaultsFiles));
 
-        const flagDescriptors = await EnvFlags.parseEnvExample(resolve(Service.#projectRoot, ".env.example"));
+        const flagDescriptors = await EnvFlags.parseEnvDefaults(resolve(Service.#projectRoot, ".env.defaults"));
         const flagOptions: Record<string, { type: "string" }> = {};
         for (const f of flagDescriptors) {
             flagOptions[f.flagName.replace(/^--/, "")] = { type: "string" };

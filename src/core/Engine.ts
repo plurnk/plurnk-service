@@ -282,7 +282,7 @@ export default class Engine {
     }
 
     // Grammar-constrained sampling (#189): when PLURNK_PROVIDERS_GBNF is enabled
-    // (the only knob — default-on in .env.example), hand the provider the plurnk
+    // (the only knob — default-on in .env.defaults), hand the provider the plurnk
     // GBNF (the full shipped multi-op root, read once + cached). The provider
     // attaches it iff the backend supports it and silently drops it otherwise —
     // capability is providers' concern, not ours. Pure plumbing grammar→provider.

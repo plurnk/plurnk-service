@@ -1,6 +1,6 @@
-// Auto-derives admin-CLI flags from .env.example. Per the "speak in DSL,
-// not plumbing" / single-source-of-truth ethos: .env.example is the
-// canonical config doc; the CLI's --flag surface mirrors it.
+// Auto-derives admin-CLI flags from the service's .env.defaults. Per the "speak in DSL,
+// not plumbing" / single-source-of-truth ethos: .env.defaults is the
+// canonical config doc (§operator-config-env-defaults); the CLI's --flag surface mirrors it.
 //
 // Rules:
 //   - Each PLURNK_* env var becomes a --kebab-cased flag (prefix stripped).
@@ -37,7 +37,7 @@ export default class EnvFlags {
         return s;
     }
 
-    static parseEnvExampleContent(content: string): FlagDescriptor[] {
+    static parseEnvDefaultsContent(content: string): FlagDescriptor[] {
         const lines = content.split("\n");
         const flags: FlagDescriptor[] = [];
         let buffer: string[] = [];
@@ -67,9 +67,9 @@ export default class EnvFlags {
         return flags;
     }
 
-    static async parseEnvExample(path: string): Promise<FlagDescriptor[]> {
+    static async parseEnvDefaults(path: string): Promise<FlagDescriptor[]> {
         const content = await readFile(path, "utf8");
-        return EnvFlags.parseEnvExampleContent(content);
+        return EnvFlags.parseEnvDefaultsContent(content);
     }
 
     // One-line-per-flag terse format. Descriptions, when present, share the

@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import EnvFlags from "../../src/core/EnvFlags.ts";
 
-test("parseEnvExampleContent: simple var with single-line description", () => {
+test("parseEnvDefaultsContent: simple var with single-line description", () => {
     const content = `# SQLite file path.
 PLURNK_SERVICE_DB_PATH=./plurnk.db`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].flagName, "--service-db-path");
     assert.equal(flags[0].envName, "PLURNK_SERVICE_DB_PATH");
@@ -13,82 +13,82 @@ PLURNK_SERVICE_DB_PATH=./plurnk.db`;
     assert.equal(flags[0].description, "SQLite file path.");
 });
 
-test("parseEnvExampleContent: multi-line description joins with spaces", () => {
+test("parseEnvDefaultsContent: multi-line description joins with spaces", () => {
     const content = `# A description that spans several comment lines
 # and should fold into a single string,
 # joined with single spaces.
 PLURNK_SOME_KNOB=256`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].flagName, "--some-knob");
     assert.match(flags[0].description ?? "", /^A description that spans several comment lines and should/);
     assert.match(flags[0].description ?? "", /joined with single spaces/);
 });
 
-test("parseEnvExampleContent: section delimiter resets description buffer", () => {
+test("parseEnvDefaultsContent: section delimiter resets description buffer", () => {
     const content = `# --- Storage ---
 PLURNK_SERVICE_DB_PATH=./plurnk.db`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].description, null, "section delimiter does NOT become description");
 });
 
-test("parseEnvExampleContent: blank line between comment and var resets buffer", () => {
+test("parseEnvDefaultsContent: blank line between comment and var resets buffer", () => {
     const content = `# This comment is for nothing in particular.
 
 PLURNK_SERVICE_DB_PATH=./plurnk.db`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].description, null);
 });
 
-test("parseEnvExampleContent: section delimiter then comment then var — only the comment is description", () => {
+test("parseEnvDefaultsContent: section delimiter then comment then var — only the comment is description", () => {
     const content = `# --- Storage ---
 # SQLite file path.
 PLURNK_SERVICE_DB_PATH=./plurnk.db`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags[0].description, "SQLite file path.");
 });
 
-test("parseEnvExampleContent: var without comment has null description", () => {
+test("parseEnvDefaultsContent: var without comment has null description", () => {
     const content = `PLURNK_MAGIC_NUMBER=42`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].description, null);
 });
 
-test("parseEnvExampleContent: empty-comment-line resets buffer", () => {
+test("parseEnvDefaultsContent: empty-comment-line resets buffer", () => {
     const content = `# desc 1
 #
 # desc 2
 PLURNK_X=foo`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags[0].description, "desc 2");
 });
 
-test("parseEnvExampleContent: strips quotes from default values", () => {
+test("parseEnvDefaultsContent: strips quotes from default values", () => {
     const content = `# desc
 PLURNK_QUOTED="hello world"`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags[0].defaultValue, "hello world");
 });
 
-test("parseEnvExampleContent: ignores non-PLURNK_ variables", () => {
+test("parseEnvDefaultsContent: ignores non-PLURNK_ variables", () => {
     const content = `# desc
 OPENAI_API_KEY=foo
 # desc
 PLURNK_X=bar`;
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags.length, 1);
     assert.equal(flags[0].envName, "PLURNK_X");
 });
 
-test("parseEnvExampleContent: kebab-cases the flag name from snake_case env", () => {
-    const flags = EnvFlags.parseEnvExampleContent("# desc\nPLURNK_SOME_LONG_NAME=value");
+test("parseEnvDefaultsContent: kebab-cases the flag name from snake_case env", () => {
+    const flags = EnvFlags.parseEnvDefaultsContent("# desc\nPLURNK_SOME_LONG_NAME=value");
     assert.equal(flags[0].flagName, "--some-long-name");
 });
 
-test("parseEnvExampleContent: parses the actual plurnk-service .env.example shape", () => {
+test("parseEnvDefaultsContent: parses the actual plurnk-service .env.defaults shape", () => {
     const content = `# plurnk-service environment cascade.
 #
 # Override order.
@@ -101,7 +101,7 @@ PLURNK_SERVICE_DB_PATH=./plurnk_dev.db
 # When 1, enables debug.
 PLURNK_SERVICE_DEBUG=0`;
 
-    const flags = EnvFlags.parseEnvExampleContent(content);
+    const flags = EnvFlags.parseEnvDefaultsContent(content);
     assert.equal(flags.length, 2);
 
     const byEnv = Object.fromEntries(flags.map((f) => [f.envName, f]));

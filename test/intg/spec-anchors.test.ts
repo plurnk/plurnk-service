@@ -56,10 +56,19 @@ const collectTestAnchorsFromDir = async (dir: string): Promise<Set<string>> => {
     return all;
 };
 
+// Both tiers cite: intg under test/, unit alongside its file under src/ (the testing policy).
+const collectAllTestAnchors = async (): Promise<Set<string>> => {
+    const all = new Set<string>();
+    for (const dir of ["test", "src"]) {
+        for (const a of await collectTestAnchorsFromDir(resolve(REPO_ROOT, dir))) all.add(a);
+    }
+    return all;
+};
+
 test("spec anchors: no orphan test references (test cites anchor not in SPEC.md)", async () => {
     const spec = await readFile(resolve(REPO_ROOT, "SPEC.md"), "utf8");
     const specAnchors = extractSpecAnchors(spec);
-    const testAnchors = await collectTestAnchorsFromDir(resolve(REPO_ROOT, "test"));
+    const testAnchors = await collectAllTestAnchors();
 
     const orphans = [...testAnchors].filter((a) => !specAnchors.has(a)).toSorted();
     if (orphans.length > 0) {
@@ -71,7 +80,7 @@ test("spec anchors: no orphan test references (test cites anchor not in SPEC.md)
 test("spec anchors: every SPEC promise is cited by a test (coverage enforced)", async () => {
     const spec = await readFile(resolve(REPO_ROOT, "SPEC.md"), "utf8");
     const specAnchors = extractSpecAnchors(spec);
-    const testAnchors = await collectTestAnchorsFromDir(resolve(REPO_ROOT, "test"));
+    const testAnchors = await collectAllTestAnchors();
 
     const gaps = [...specAnchors].filter((a) => !testAnchors.has(a)).toSorted();
     const covered = specAnchors.size - gaps.length;

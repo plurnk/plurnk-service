@@ -1,5 +1,5 @@
 // §operator-config-flag-parity — every PLURNK_SERVICE_* flag the code reads has a matching
-// .env.example line and vice versa. A half-landed rename (code moved, template didn't, or a
+// .env.defaults line and vice versa. A half-landed rename (code moved, template didn't, or a
 // script-glob missed a file) fails HERE instead of silently at a user's boot — the exact class
 // that let PLURNK_GBNF_DEBUG and the package.json prefixes drift during the family-prefix sweep.
 
@@ -16,8 +16,8 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const DYNAMIC_READS = new Set(["PLURNK_SERVICE_CTX", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_ASSISTANT", "PLURNK_SERVICE_SAFETY"]);
 const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_MD_", "PLURNK_SERVICE_SQLITE_"]; // MD_<alias> + sqlite knobs iterated by prefix
 
-test("[§operator-config-flag-parity] every PLURNK_SERVICE_* the code reads is in .env.example, and vice versa", () => {
-    const template = readFileSync(`${root}/.env.example`, "utf8");
+test("[§operator-config-flag-parity] every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa", () => {
+    const template = readFileSync(`${root}/.env.defaults`, "utf8");
     // Declared: active `PLURNK_SERVICE_X=` and commented `# PLURNK_SERVICE_X=` lines.
     const declared = new Set(
         [...template.matchAll(/^#?\s*(PLURNK_SERVICE_[A-Z0-9_]+)=/gm)].map((m) => m[1]),
@@ -34,9 +34,9 @@ test("[§operator-config-flag-parity] every PLURNK_SERVICE_* the code reads is i
 
     // Every declared flag is read somewhere (literal, dynamic, or under a prefix-iterated family).
     const declaredNotRead = [...declared].filter((f) => !read.has(f) && !DYNAMIC_READS.has(f) && !underDynamicPrefix(f));
-    assert.deepEqual(declaredNotRead, [], `declared in .env.example but never read by src (dead flags?): ${declaredNotRead.join(", ")}`);
+    assert.deepEqual(declaredNotRead, [], `declared in .env.defaults but never read by src (dead flags?): ${declaredNotRead.join(", ")}`);
 
     // Every literal read has a declared line (a code reader with no template entry = no CLI flag, no floor).
     const readNotDeclared = [...read].filter((f) => !declared.has(f) && !DYNAMIC_READS.has(f) && !underDynamicPrefix(f));
-    assert.deepEqual(readNotDeclared, [], `read by src but missing from .env.example (no floor, no --flag): ${readNotDeclared.join(", ")}`);
+    assert.deepEqual(readNotDeclared, [], `read by src but missing from .env.defaults (no floor, no --flag): ${readNotDeclared.join(", ")}`);
 });

@@ -3,7 +3,7 @@
 // It gets the *project's* environment (its `.env`, the standard shell vars like PATH
 // and HOME) so the model's commands run as the project expects — but never plurnk's
 // own secrets: the `PLURNK_*` config (all of plurnk's knobs are prefixed; see
-// .env.example) and the provider API keys plurnk-providers reads. The provider key-vars
+// .env.defaults) and the provider API keys plurnk-providers reads. The provider key-vars
 // are sourced from STANDARD_PROVIDERS so the denylist tracks the provider set rather
 // than a hand-maintained list that drifts as providers are added.
 //

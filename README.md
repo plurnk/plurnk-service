@@ -30,7 +30,7 @@ npm install -g @plurnk/plurnk-service
 plurnk-service start      # daemon (`migrate` initializes the DB)
 ```
 
-Config + state live in `~/.plurnk/` (created on first run): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Provider-agnostic — point `PLURNK_MODEL` at any vendor. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, the prefix taxonomy, the coupling matrix, and profiles for common deployments; `.env.example` is the terse machine floor it breaks down. Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
+Config + state live in `~/.plurnk/` (created on first run): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Provider-agnostic — point `PLURNK_MODEL` at any vendor. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, the prefix taxonomy, the coupling matrix, and profiles for common deployments; `.env.defaults` is the terse machine floor it breaks down (per-package, assembled at boot). Also exports `{ Engine, Daemon, SchemeRegistry }` for in-process embedding.
 
 ## Contract & siblings
 

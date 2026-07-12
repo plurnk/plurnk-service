@@ -22,7 +22,7 @@
         "plurnk-service": "dist/service.js"
     },
     "files": [
-        ".env.example",
+        ".env.defaults",
         "dist/**/*",
         "migrations/**/*.sql",
         "README.md",
@@ -35,10 +35,10 @@
     "scripts": {
         "start": "node src/service.ts",
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --import=./test/setup.ts --env-file-if-exists=.env.example --test --test-timeout=30000 src/**/*.test.ts",
-        "test:intg": "PLURNK_SERVICE_FILES_ITEMS=0 node --import=./test/setup.ts --env-file-if-exists=.env.example --test --test-concurrency=1 --test-timeout=30000 test/intg/*.test.ts",
-        "test:live": "PLURNK_SERVICE_EMBED_DISABLE=0 PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/live/*.test.ts",
-        "test:demo": "PLURNK_SERVICE_EMBED_DISABLE=0 PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/demo/*.test.ts",
+        "test:unit": "node --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-timeout=30000 src/**/*.test.ts",
+        "test:intg": "PLURNK_SERVICE_FILES_ITEMS=0 node --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-concurrency=1 --test-timeout=30000 test/intg/*.test.ts",
+        "test:live": "PLURNK_SERVICE_EMBED_DISABLE=0 PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md node --env-file-if-exists=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/live/*.test.ts",
+        "test:demo": "PLURNK_SERVICE_EMBED_DISABLE=0 PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md node --env-file-if-exists=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/demo/*.test.ts",
         "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo",
         "test:digest": "node bin/digest.ts",
         "test:clean-tmp": "rm -rf test/intg/.tmp",

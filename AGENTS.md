@@ -110,7 +110,7 @@ the live TODO + open epics, the owner's note inbox, and the toolchain/working-hy
 - **Test runner:** `node --test` with `--experimental-test-coverage`. Native only.
 - **Coverage target:** 50% lines / 50% branches / 50% functions per CLAUDE.md global. Floor, not ceiling.
 - **SQLite:** `@possumtech/sqlrite` (user's anti-ORM wrapper around `node:sqlite`). All SQL lives in `.sql` files; not a single SQL string exists in `.ts`/`.js`. Schema in `-- INIT: <name>` blocks (run idempotently at open); prepared statements in `-- PREP: <name>` blocks (compiled at boot, exposed as `db.<name>.{run,get,all}({...})`); raw EXEC in `-- EXEC: <name>` blocks. Multi-dir overlay is deterministically basename-sorted.
-- **Env management:** the `--env-file-if-exists` cascade — `.env.example` < `.env` < `.env.<profile>` < shell (SPEC §operator-config). No boot-time validators or fallback constants: a read failure means fix `.env.example`, not the read site. Feature-flag bools are `=== "1"` exactly, never `=== "true"`.
+- **Env management:** the assembled `.env.defaults` floor < `~/.plurnk/.env` < `./.env` < shell (SPEC §operator-config-env-defaults: every package ships its own `.env.defaults`; one owner per key, collision = boot crash). No boot-time validators or fallback constants: a read failure means fix `.env.defaults`, not the read site. Feature-flag bools are `=== "1"` exactly, never `=== "true"`.
 - **CLI parsing:** `parseArgs` from `node:util`.
 - **HTTP:** built-in `fetch`. No axios, no node-fetch.
 - **No external mocking lib.** `node:test` mocks for the few places mocks are tolerated (unit only; integration uses mock provider).
@@ -207,8 +207,8 @@ The diagnosis is always "what is the packet missing?" — the digest *shows* it.
 4. Anything matching the escalation fence goes to § Parked for Depth with full written context — never attempted.
 
 ### R6 — New operator knob
-1. It lives in `.env.example` with a decision-table comment (what it classifies, the shipped default, what changing it means). No code fallback hides a default; feature-flag bools compare `=== "1"`.
-2. `PLURNK_SERVICE_*` knobs must satisfy the flag-parity test (declared in `.env.example` ⇔ read in src).
+1. It lives in `.env.defaults` with a decision-table comment (what it classifies, the shipped default, what changing it means). No code fallback hides a default; feature-flag bools compare `=== "1"`.
+2. `PLURNK_SERVICE_*` knobs must satisfy the flag-parity test (declared in `.env.defaults` ⇔ read in src).
 3. Ceilings compose tighten-only (env AND session); defaults compose REPLACE; per-session client knobs ride `session.create settings` with validation in `session_create.ts#parseSettings`.
 
 ### R7 — New SPEC anchor + guard test
@@ -478,7 +478,7 @@ A broad survey (open issues + this doc's User Notes + the budget chapter) cluste
 - Chunker = lossless, structure-preferring, budget-driven tiler. Pure fn, own class/file `_entry-chunk.ts`. All numbers are params (no constants).
 - Counting = per-line `countTokens`, summed (cross-line BPE merges only shrink the real count → the sum is a safe upper bound → lossless). Source = the embedder's real tokenizer, surfaced via the daughter capability. ABSENT → chunking is OFF (fallback below), never a lossy char-proxy (it would make every entry tiny-chunked — a regression).
 - **Activation = gated on the embedder exposing `countTokens` + `maxTokens`** (the daughter issue is the activation key). Absent → ONE whole-entry chunk = today's behavior, ZERO regression. Present → lossless tiling. Schema is UNIFORM (always chunk rows; the fallback is a single chunk spanning line 1..totalLines), so storage/rank never branch. The service side lands regression-free and dormant-until-capable.
-- Budget `B` = `PLURNK_SEMANTIC_CHUNK_TOKENS` — a concrete portable-aligned default in `.env.example` (the law-file carries the number, not code; override to sweep or for a bigger model). Clamp to `min(B, maxTokens)` once the daughter reports a window. Overlap = `PLURNK_SEMANTIC_CHUNK_OVERLAP` (`.env.example` default, no code fallback).
+- Budget `B` = `PLURNK_SEMANTIC_CHUNK_TOKENS` — a concrete portable-aligned default in `.env.defaults` (the law-file carries the number, not code; override to sweep or for a bigger model). Clamp to `min(B, maxTokens)` once the daughter reports a window. Overlap = `PLURNK_SEMANTIC_CHUNK_OVERLAP` (`.env.defaults` default, no code fallback).
 - Storage = `entry_embeddings` reshaped one-to-many: `(entry_id, chunk_seq, line_start, line_end, vector, embedding_model)`, composite PK.
 - Rank = cosine per chunk, `GROUP BY entry MAX(cosine)`, `WHERE embedding_model = $current` (dim-safety across model swaps).
 - Return = pathnames (max-pooled). **LOCKED as a deliberate Project Findings shim** — parity with today's contract. Chunk extents (`line_start`/`line_end`) ARE stored; only the rank `SELECT` returns bare paths. Project Findings (below) MUST enroll this dialect; the upgrade is a return-layer change, not a re-derivation.
@@ -598,7 +598,7 @@ mimetypes is the tree-sitter consumer model (per-language grammars framework-int
 
 Spec-anchor guard scans `test/` only — new conformance anchors must live in `test/intg/` to be enforced; `src/**/*.test.ts` anchors (matcher §matcher-result) are documentation, not enforced.
 
-- **Run intg via `npm run test:intg`, never bare `node --test test/intg/*`.** The runner sets `PLURNK_MANIFEST_ITEMS=0` *and* the `--env-file-if-exists` cascade (`.env.example` < `.env` < `.env.test`); bare `node --test` misses both → false failures: the turn-0 manifest READ adds a phantom log row (off-by-one entry counts), and fail-hard knobs like `PLURNK_SEMANTIC_CHUNK_OVERLAP` throw on `undefined`. Targeted file: replicate the full prefix `PLURNK_MANIFEST_ITEMS=0 node --env-file-if-exists=.env.example --env-file-if-exists=.env --env-file-if-exists=.env.test --test <file>`. (Tripped twice in the 0.42 status-code work.)
+- **Run intg via `npm run test:intg`, never bare `node --test test/intg/*`.** The runner sets `PLURNK_MANIFEST_ITEMS=0` *and* the `--env-file-if-exists` cascade (`.env.defaults` < `.env` < `.env.test`); bare `node --test` misses both → false failures: the turn-0 manifest READ adds a phantom log row (off-by-one entry counts), and fail-hard knobs like `PLURNK_SEMANTIC_CHUNK_OVERLAP` throw on `undefined`. Targeted file: replicate the full prefix `PLURNK_MANIFEST_ITEMS=0 node --env-file-if-exists=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.test --test <file>`. (Tripped twice in the 0.42 status-code work.)
 - **`~query` runs in intg against the real embedder.** `DEFAULT_MIMETYPES` is production-identical (`new Mimetypes()`, embeddings daughter included) — every intg manifest build exercises the real tile+embed path, no fast-tier carve-out [[no special tracks]]. (Declining it for speed once hid the chunk-mimetype crash from coverage; reversed.) `test/intg/semantic.test.ts` adds end-to-end `~query` ranking. The switch is the daughter's presence in the injected `Mimetypes`, never an env flag.
 - [ ] **plurnk client owes** (both service-ready, client implements): `--run=<name>` (filed plurnk#6; `session.attach({runName})` wired) + the `noProposals` no-review-channel UX (filed plurnk#24; server auto-reject in `noProposals.ts`).
 - [ ] Documented CI cadence for live/demo.

@@ -1,6 +1,6 @@
 # Configuring plurnk-service
 
-Agent guide. Read this, then generate a `~/.plurnk/.env` fit to the user's box and intent. `.env.example` is the terse machine floor — the authoritative flag list and defaults; this is its reasoning layer. Every claimed coupling below is enforced by a `test/intg` check, so it is current with the installed version.
+Agent guide. Read this, then generate a `~/.plurnk/.env` fit to the user's box and intent. `.env.defaults` is the terse machine floor — the authoritative flag list and defaults (the ASSEMBLED catalog of every installed package's file lands at `~/.plurnk/.env.defaults`); this is its reasoning layer. Every claimed coupling below is enforced by a `test/intg` check, so it is current with the installed version.
 
 ## Install
 
@@ -9,7 +9,7 @@ npm install -g @plurnk/plurnk-service
 plurnk-service start          # `migrate` first if the DB is uninitialized
 ```
 
-First run creates `~/.plurnk/`: `.env` (yours, seeded once with a model picker — **edit this**), `AGENTS.md` (the operating policy, yours), `.env.example` + `INSTALL.md` (package-owned references, **refreshed every boot** — never edit them). No model ships active; a fresh daemon runs until `PLURNK_MODEL` is set.
+First run creates `~/.plurnk/`: `.env` (yours, seeded once with a model picker — **edit this**), `AGENTS.md` (the operating policy, yours), `.env.defaults` + `INSTALL.md` (package-owned references, **refreshed every boot** — never edit them). No model ships active; a fresh daemon runs until `PLURNK_MODEL` is set.
 
 Optional vector search: `npm i @plurnk/plurnk-mimetypes-embeddings` (heavy native deps). Absent → `~query` degrades to FTS keyword ranking.
 
@@ -17,15 +17,15 @@ Optional vector search: `npm i @plurnk/plurnk-mimetypes-embeddings` (heavy nativ
 
 Lowest precedence first; the last writer wins:
 
-1. **package `.env.example`** — the true floor, evolves with the installed version.
-2. **`~/.plurnk/.env.example`** — the readable legend, refreshed from the package each boot (a reference, not a place to edit).
+1. **the assembled `.env.defaults` floor** — every installed package's shipped file, one owner per key (a collision crashes boot naming both), evolves with the installed versions.
+2. **`~/.plurnk/.env.defaults`** — the readable assembled legend, regenerated each boot (a reference, not a place to edit).
 3. **`~/.plurnk/.env`** — the user's home config, seeded once, theirs to keep. **Write generated config here.**
 4. **`./.env`** — per-project, current working directory.
 5. **`--env-file=<path>` / `--config=<path>`** — explicit layers.
 6. **shell environment** — beats every file.
 7. **`--<flag>` CLI args** — top layer, overrides all.
 
-CLI flags are the **1:1 mirror** of the env vars: strip `PLURNK_`, lowercase, `_`→`-`. `PLURNK_SERVICE_MAX_TURNS` ↔ `--service-max-turns`; `PLURNK_MODEL` ↔ `--model`. The flag surface and `--help` are generated from `.env.example`, so a var and its flag never diverge. Feature-flag bools are `=== "1"` exactly (never `"true"`); `~/` expands to home.
+CLI flags are the **1:1 mirror** of the env vars: strip `PLURNK_`, lowercase, `_`→`-`. `PLURNK_SERVICE_MAX_TURNS` ↔ `--service-max-turns`; `PLURNK_MODEL` ↔ `--model`. The flag surface and `--help` are generated from the service's `.env.defaults`, so a var and its flag never diverge. Feature-flag bools are `=== "1"` exactly (never `"true"`); `~/` expands to home.
 
 ## The prefix law (who owns a flag)
 
@@ -49,7 +49,7 @@ These are relationships *between* flags. Set them as a unit.
 - **plurnk.ai endpoint.** `PLURNK_MODEL_plurnk="plurnk/plurnk"`, `PLURNK_API_KEY=…`, `PLURNK_MODEL=plurnk`.
 - **Headless / CI / constrained container.** A CPU-only box should NOT disable semantic search — it should point derivation at a real embedder: `PLURNK_MIMETYPES_EMBED_BASE_URL` (any OpenAI-compatible `/v1/embeddings` — a host GPU turns a CPU-hours corpus grind into seconds). Weak hardware is the target workload, not a reason to shed capability; `PLURNK_SERVICE_EMBED_DISABLE=1` exists for test lanes that deterministically assert non-semantic behavior, nothing else. Consider `PLURNK_SERVICE_MAX_TURNS=<n>` as a cost cap, `PLURNK_SERVICE_GIT_ALLOWED=0` to lock out git in a sandbox.
 
-## Flag sections (breakdown of `.env.example`)
+## Flag sections (breakdown of the service's `.env.defaults`)
 
 Each mirrors a `# --- section ---` in the floor; consult the floor for exact defaults.
 

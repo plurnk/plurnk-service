@@ -1,4 +1,4 @@
-// #339 — the shipped NO_EMBED decision table (.env.example — the knob IS the classification,
+// #339 — the shipped NO_EMBED decision table (.env.defaults — the knob IS the classification,
 // mimetypes#47) covers GENERATED DIRECTORIES, not just lockfiles/minified: bench's run20 corpus
 // was 98% committed VuePress dist bundles, hash-named (12.5188bbc0.js) so *.min.* never matched.
 // FTS-only is the honest treatment — still searchable by keyword, zero vector waste.

@@ -48,7 +48,7 @@ export default class VersionInfo {
         void VersionInfo.#refresh(timeout).finally(() => { VersionInfo.#inflight = false; });
     }
 
-    // No code fallback hides a magic number — the law-file (.env.example) carries it.
+    // No code fallback hides a magic number — the law-file (.env.defaults) carries it.
     static #envMs(name: string, min: number): number {
         const raw = process.env[name];
         const n = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);

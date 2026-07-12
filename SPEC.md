@@ -819,9 +819,11 @@ Plugin discovery (§plugin-discovery) registers whatever's in `node_modules/@plu
 
 ## §operator-config Operator Configuration
 
-Env-var cascade: `.env.example` < `.env` < `.env.<config>` (via `--config=`) < shell < CLI flags. `src/service.ts` auto-loads `.env.example`; zero-setup boot.
+Env-var cascade: the assembled `.env.defaults` floor < `~/.plurnk/.env` < `./.env` < `--env-file`/`--config` < shell < CLI flags. Zero-setup boot.
 
-Model selection: separate alias cascade in `ProviderRegistry` (§provider-instantiation). `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares; `PLURNK_MODEL=<alias>` selects. Aliases live in `.env`, not `.env.example` (operator-specific).
+**Every package owns its knobs — `.env.defaults` is the standard** (owner design). Each package in the daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root declaring ITS OWN knobs (prefix = its name); the file IS the documentation, traveling in the tarball and changing in the same commit as the code that reads the knob. At boot the daemon assembles every installed member's file into ONE floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, gated by `PLURNK_PLUGINS_TRUSTED_ONLY` with discover()'s exact semantics), applies it set-if-unset under everything the operator set, and renders the assembled catalog to `~/.plurnk/.env.defaults` — machine-owned, regenerated each boot, never read back as config (the operator's hands go in `~/.plurnk/.env`). **One physical law, everything else convention: a key claimed by two packages CRASHES boot naming both.** With the reader-declares discipline (every knob a package reads appears in its own file) squatting is structurally impossible, and knob-reading code carries no inline fallback — the floor guarantees the value exists, so an unset knob is a crash, not a silent default. Sections for sibling packages ride in the service's file until each ships its own — the collision crash is the handoff signal. This is the drop-in-directory pattern (`sysctl.d`, `profile.d`): vendor defaults per package, admin overrides separate, assembled by the system. {§operator-config-env-defaults}
+
+Model selection: separate alias cascade in `ProviderRegistry` (§provider-instantiation). `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares; `PLURNK_MODEL=<alias>` selects. Aliases live in `.env`, not `.env.defaults` (operator-specific).
 
 | Var                                  | Default            | Status     | Purpose                                                       |
 |--------------------------------------|--------------------|------------|---------------------------------------------------------------|
@@ -842,13 +844,13 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 | `PLURNK_SERVICE_DEBUG`                       | `0`                | reserved   | Schema-validation toggle. Not yet enforced.                   |
 | `PLURNK_SERVICE_LOG_LEVEL`                   | `info`             | reserved   | Stdout banner verbosity. Not yet enforced.                    |
 
-**enforced** = engine reads and acts on the value. **reserved** = shipped in `.env.example` (forward-spec) but no-op until wired.
+**enforced** = engine reads and acts on the value. **reserved** = shipped in `.env.defaults` (forward-spec) but no-op until wired.
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
 - **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-session constraint, not a per-call RPC arg. `PLURNK_SERVICE_GIT_ALLOWED` (`=0` flatly denies git service-wide, §membership), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, `PLURNK_PROVIDERS_FETCH_TIMEOUT` (module overrides allowed only *below* it), and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
 - **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `loop.run({alias})` overrides it), `PLURNK_SERVICE_REQUIREMENTS` (the per-call requirements default), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
-**The shipped `.env.example` is itself under test** (no active `PLURNK_SERVICE_MD_*` doc alias — the policy is a SECTION, a doc default double-injects it; no active `PLURNK_MODEL`; a per-alias `PLURNK_PROVIDERS_GBNF` (bare OFF, the three GBNF-capable aliases opting in); the policy renders in exactly one packet section): every other tier runs the test cascade, so shipped-default regressions are invisible to it by construction. {§operator-config-shipped-defaults} Its companion **flag-parity** check binds code and template both ways: every `PLURNK_SERVICE_*` the service reads has a `.env.example` line (a floor, a `--flag`, a legend entry) and every declared `PLURNK_SERVICE_*` is read — so a half-landed rename (a missed file, a script-glob gap) fails a test instead of a user's boot, and a dead knob can't ship. {§operator-config-flag-parity}
+**The shipped `.env.defaults` is itself under test** (no active `PLURNK_SERVICE_MD_*` doc alias — the policy is a SECTION, a doc default double-injects it; no active `PLURNK_MODEL`; a per-alias `PLURNK_PROVIDERS_GBNF` (bare OFF, the three GBNF-capable aliases opting in); the policy renders in exactly one packet section): every other tier runs the test cascade, so shipped-default regressions are invisible to it by construction. {§operator-config-shipped-defaults} Its companion **flag-parity** check binds code and template both ways: every `PLURNK_SERVICE_*` the service reads has a `.env.defaults` line (a floor, a `--flag`, a legend entry) and every declared `PLURNK_SERVICE_*` is read — so a half-landed rename (a missed file, a script-glob gap) fails a test instead of a user's boot, and a dead knob can't ship. {§operator-config-flag-parity}
 
 Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it. {§operator-config-max-turns-ceiling}
 
@@ -864,9 +866,9 @@ Enforcement is per-use-site — no central most-restrictive pass; each ceiling i
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
 
-External plugins declare their own env vars in their own `.env.example`; service merges at boot via the cascade.
+External plugins declare their own env vars in their own `.env.defaults`, assembled at boot (§operator-config-env-defaults).
 
-**Admin CLI flag derivation.** `src/service.ts` auto-derives flags from `.env.example`: every `PLURNK_*` becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). Comment immediately above (no blank line) becomes `-h` description. Non-`PLURNK_*` vars in `.env.example` are bugs — vendor config belongs in the vendor's package namespace.
+**Admin CLI flag derivation.** `src/service.ts` auto-derives flags from the service's `.env.defaults`: every `PLURNK_*` becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). Comment immediately above (no blank line) becomes `-h` description. Non-`PLURNK_*` vars in the file are bugs — vendor config belongs in the vendor's package namespace.
 
 ---
 

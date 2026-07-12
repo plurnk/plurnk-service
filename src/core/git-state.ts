@@ -23,7 +23,7 @@ export default class GitState {
     static #execFileP = promisify(execFile);
 
     static enabled(): boolean {
-        // Feature-flag convention: `=== "1"` exactly. `.env.example` seeds it to 1
+        // Feature-flag convention: `=== "1"` exactly. `.env.defaults` seeds it to 1
         // (default-on); a higher cascade level (shell/params) sets 0 to disable.
         return process.env.PLURNK_SERVICE_GIT_ALLOWED === "1";
     }

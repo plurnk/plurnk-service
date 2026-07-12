@@ -1,4 +1,4 @@
-// §operator-config-shipped-defaults — the shipped .env.example is ITSELF under test. Every other
+// §operator-config-shipped-defaults — the shipped .env.defaults is ITSELF under test. Every other
 // tier runs the TEST cascade (.env.test deliberately blanks the policy surfaces, pins its own
 // knobs), which means shipped-default regressions are structurally invisible to it: the POLICY.md
 // double-injection (a stale PLURNK_SERVICE_MD_POLICY default alongside the policy section) and the
@@ -19,7 +19,7 @@ import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES, 
 import { sendStmt } from "./_dsl.ts";
 
 const shippedEnv = async (): Promise<Map<string, string>> => {
-    const raw = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
+    const raw = await readFile(new URL("../../.env.defaults", import.meta.url), "utf8");
     const env = new Map<string, string>();
     for (const line of raw.split("\n")) {
         const m = /^([A-Z_][A-Za-z0-9_]*)=(.*)$/.exec(line);  // alias suffixes are lowercase (PLURNK_PROVIDERS_GBNF_<alias>)
@@ -30,7 +30,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
 
 test("[§operator-config-shipped-defaults] the template ships no double policy, no active model, a resolving GBNF", async () => {
     const env = await shippedEnv();
-    const rawExample = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
+    const rawExample = await readFile(new URL("../../.env.defaults", import.meta.url), "utf8");
     // The operating policy is a packet SECTION (readSystemPolicy) — a PLURNK_SERVICE_MD_* default pointing
     // at the same file injects it twice (once as ## Plurnk Service Policy, once as a foisted
     // plurnk:///<ALIAS>.md READ). The template must ship NO active doc aliases.
