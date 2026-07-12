@@ -1,0 +1,105 @@
+{
+    "name": "@plurnk/plurnk-execs-search",
+    "version": "0.3.9",
+    "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches search/news/images/… runtime tags to a SearXNG instance.",
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "search",
+        "searxng",
+        "web"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-execs-search#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-search/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-search.git"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "runtimes": [
+            {
+                "name": "search",
+                "glyph": "🔎",
+                "example": "<<EXEC[search]:france population:EXEC"
+            },
+            {
+                "name": "images",
+                "glyph": "🖼"
+            },
+            {
+                "name": "videos",
+                "glyph": "🎬"
+            },
+            {
+                "name": "news",
+                "glyph": "📰"
+            },
+            {
+                "name": "map",
+                "glyph": "🗺"
+            },
+            {
+                "name": "music",
+                "glyph": "🎵"
+            },
+            {
+                "name": "it",
+                "glyph": "💻"
+            },
+            {
+                "name": "science",
+                "glyph": "🔬"
+            },
+            {
+                "name": "social",
+                "glyph": "💬"
+            },
+            {
+                "name": "downloadable",
+                "glyph": "📥"
+            }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md",
+        ".env.defaults"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "devDependencies": {
+        "@types/node": "^26.0.0",
+        "typescript": "^7.0.2",
+        "@plurnk/plurnk-execs": "0.4.44"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "0.4.44"
+    }
+}
