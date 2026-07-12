@@ -47,7 +47,7 @@
         "prepare": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-schemes": "0.33.19"
+        "@plurnk/plurnk-schemes": "0.33.21"
     },
     "devDependencies": {
         "@types/node": "^26.0.1",
