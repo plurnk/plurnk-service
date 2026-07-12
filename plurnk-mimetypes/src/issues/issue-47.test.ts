@@ -91,6 +91,17 @@ describe("Issue #47 — N3: the shipped default list", () => {
             assert.equal(matchNoEmbed("/api/Cargo.lock"), "Cargo.lock");
         });
     });
+    it("carries the #339-ruled drawers (#53): the run20-class specimens", async () => {
+        await withKnob(DEFAULT_LIST, () => {
+            assert.equal(matchNoEmbed("/coverage/lcov-report/index.html"), "*/coverage/*", "leading / satisfies the */ form (empty prefix)");
+            assert.equal(matchNoEmbed("coverage/lcov-report/index.html"), "coverage/*", "relative root form");
+            assert.equal(matchNoEmbed("/repo/coverage/lcov-report/index.html"), "*/coverage/*");
+            assert.equal(matchNoEmbed("/repo/vendor/lib/min.js"), "*/vendor/*");
+            assert.equal(matchNoEmbed("/docs/.vuepress/cache/x.js"), "*/.vuepress/*");
+            assert.equal(matchNoEmbed("/app/.nuxt/dist-thing.js"), "*/.nuxt/*");
+            assert.equal(matchNoEmbed("/src/vendors-list.md"), undefined, "vendor inside a name is not the drawer");
+        });
+    });
     it("spares legitimate long content — the novel, JSONL, wide CSV", async () => {
         await withKnob(DEFAULT_LIST, () => {
             assert.equal(matchNoEmbed("/books/novel.md"), undefined);
