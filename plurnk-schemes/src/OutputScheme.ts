@@ -1,0 +1,43 @@
+// Derive an output-scheme manifest from an executor's per-tag runtime
+// declaration — the executor-is-a-scheme RFC (schemes#20 / service#240). An
+// executor authors NO SchemeManifest: its `plurnk.runtimes[]` entry already
+// carries name / glyph / example / output-channels, and everything else is the
+// shared read-only-output default. So `EXEC[sh]` gets `sh://` for free, and a
+// multi-tag executor (search/news/images) derives a distinct manifest per tag.
+
+import type { SchemeManifest } from "./types.ts";
+
+// The slice of an executor's runtime declaration the scheme face needs. Mirrors
+// plurnk-execs' `plurnk.runtimes[]` entry (name/glyph/example) plus the output
+// channel shape the executor writes.
+export interface RuntimeDecl {
+    readonly name: string;                       // the tag → the scheme's URI prefix
+    readonly glyph?: string;
+    readonly example?: string;
+    readonly channels: Record<string, string>;   // output channel → seed mimetype
+    readonly defaultChannel: string;
+}
+
+export default class OutputScheme {
+    // The read-only-output default. An executor-scheme is a read-VIEW over
+    // produced output: model never writes it (`writableBy: ["plugin"]`), it
+    // re-runs to new output (`volatile`), it lives folded off the ranked surface
+    // (`foldedByDefault`), and its body is `data`, not control/logging. The
+    // per-call output mimetype overrides the channel seed at stream time
+    // (`notifyChunk` mimetype) — the declared channels here are placeholders.
+    static manifestFromRuntime(decl: RuntimeDecl): SchemeManifest {
+        return {
+            name: decl.name,
+            channels: decl.channels,
+            defaultChannel: decl.defaultChannel,
+            category: "data",
+            scope: "session",
+            writableBy: ["plugin"],
+            volatile: true,
+            modelVisible: true,
+            foldedByDefault: true,
+            glyph: decl.glyph,
+            example: decl.example,
+        };
+    }
+}
