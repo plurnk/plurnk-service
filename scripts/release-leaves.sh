@@ -9,11 +9,17 @@ META="$(cd "$(dirname "$0")/../.." && pwd)"
 for dir in "$META"/plurnk-mimetypes-* "$META"/plurnk-providers-* "$META"/plurnk-execs-wasm; do
   [ -f "$dir/package.json" ] || continue
   name=$(node -p "require('$dir/package.json').name")
-  echo "== $name"
+  version=$(node -p "require('$dir/package.json').version")
+  echo "== $name@$version"
+  if [ "$(npm view "$name@$version" version 2>/dev/null)" = "$version" ]; then
+    echo "   already live — skip"
+    continue
+  fi
   ( cd "$dir"
     rm -rf node_modules package-lock.json
     npm install --no-audit --no-fund
-    npm test
+    # gate where a suite exists; a leaf without one has nothing to run
+    npm run test --if-present
     npm publish )
 done
 echo "DONE — all leaves adopted and published"
