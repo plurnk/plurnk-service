@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-tokenizers",
-    "version": "0.1.1",
+    "version": "1.0.0",
     "description": "Bundled LLM tokenizer vocabularies (tokenizer.json set) for @plurnk/plurnk-mimetypes' tokenizer seam — exact token counting for window math.",
     "keywords": [
         "plurnk",
@@ -37,15 +37,14 @@
         "README.md"
     ],
     "scripts": {
-        "test": "node --test index.test.js",
-        "fetch:tokenizers": "node scripts/fetch-tokenizers.mjs",
-        "verify:tokenizers": "node scripts/verify-tokenizers.mjs",
+        "test": "node --conditions=plurnk-dev --test index.test.js",
+        "fetch:tokenizers": "node --conditions=plurnk-dev scripts/fetch-tokenizers.mjs",
+        "verify:tokenizers": "node --conditions=plurnk-dev scripts/verify-tokenizers.mjs",
         "deps:fresh": "npm outdated",
-        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm run verify:tokenizers && npm test",
-        "prepare": "(git config core.hooksPath .githooks || true)"
+        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm run verify:tokenizers && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": ">=0.17.0"
+        "@plurnk/plurnk-mimetypes": "1.0.0"
     },
     "dependencies": {
         "@huggingface/tokenizers": "^0.1.3"

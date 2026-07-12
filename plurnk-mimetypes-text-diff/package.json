@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-diff",
-    "version": "0.1.7",
+    "version": "1.0.0",
     "description": "text/x-diff (unified/combined diff) mimetype handler for plurnk-service. Hand-rolled line-budget scanner; no parser dependency.",
     "type": "module",
     "license": "MIT",
@@ -26,6 +26,7 @@
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
+            "plurnk-dev": "./src/index.ts",
             "default": "./dist/index.js"
         },
         "./package.json": "./package.json"
@@ -36,20 +37,15 @@
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --test src/**/*.test.ts",
+        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
         "test": "npm run test:lint && npm run test:unit",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
-        "prepare": "npm run build && (git config core.hooksPath .githooks || true)",
         "deps:fresh": "npm outdated",
-        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test"
-    },
-    "devDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.19.0",
-        "@types/node": "^26.0.0",
-        "typescript": "^7.0.2"
+        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test",
+        "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^0.16.0 || ^0.17.0 || ^0.18.0 || ^0.19.0"
+        "@plurnk/plurnk-mimetypes": "1.0.0"
     }
 }

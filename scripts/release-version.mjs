@@ -22,7 +22,7 @@ for (const dir of root.workspaces) {
 
 for (const [file, pkg] of manifests) {
     pkg.version = version;
-    for (const field of ["dependencies", "peerDependencies"]) {
+    for (const field of ["dependencies", "peerDependencies", "devDependencies"]) {
         for (const name of Object.keys(pkg[field] ?? {})) {
             if (members.has(name)) pkg[field][name] = version;
         }

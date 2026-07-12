@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-service",
-    "version": "0.89.0",
+    "version": "1.0.0",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-grammar contract.",
     "type": "module",
     "license": "MIT",
@@ -10,10 +10,12 @@
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
+            "plurnk-dev": "./src/index.ts",
             "default": "./dist/index.js"
         },
         "./digest": {
             "types": "./dist/digest/Digest.d.ts",
+            "plurnk-dev": "./src/digest/Digest.ts",
             "default": "./dist/digest/Digest.js"
         },
         "./package.json": "./package.json"
@@ -33,57 +35,48 @@
         "access": "public"
     },
     "scripts": {
-        "start": "node src/service.ts",
+        "start": "node --conditions=plurnk-dev src/service.ts",
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-timeout=30000 src/**/*.test.ts",
-        "test:intg": "PLURNK_SERVICE_FILES_ITEMS=0 node --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-concurrency=1 --test-timeout=30000 test/intg/*.test.ts",
-        "test:live": "PLURNK_SERVICE_EMBED_DISABLE=0 PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md node --import=./test/floor.ts --env-file-if-exists=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/live/*.test.ts",
-        "test:demo": "PLURNK_SERVICE_EMBED_DISABLE=0 PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md node --import=./test/floor.ts --env-file-if-exists=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/demo/*.test.ts",
+        "test:unit": "node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-timeout=30000 src/**/*.test.ts",
+        "test:intg": "PLURNK_SERVICE_FILES_ITEMS=0 node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-concurrency=1 --test-timeout=30000 test/intg/*.test.ts",
+        "test:live": "PLURNK_SERVICE_EMBED_DISABLE=0 PLURNK_SERVICE_POLICY=../plurnk-docs/PLURNK_PERSONALITY.md node --conditions=plurnk-dev --import=./test/floor.ts --env-file-if-exists=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/live/*.test.ts",
+        "test:demo": "PLURNK_SERVICE_EMBED_DISABLE=0 PLURNK_SERVICE_POLICY=../plurnk-docs/PLURNK_PERSONALITY.md node --conditions=plurnk-dev --import=./test/floor.ts --env-file-if-exists=.env.defaults --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/demo/*.test.ts",
         "test:all": "npm run test:lint && npm run test:unit && npm run test:intg && npm run test:demo",
-        "test:digest": "node bin/digest.ts",
+        "test:digest": "node --conditions=plurnk-dev bin/digest.ts",
         "test:clean-tmp": "rm -rf test/intg/.tmp",
-        "dev:digest": "node bin/digest.ts",
+        "dev:digest": "node --conditions=plurnk-dev bin/digest.ts",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
-        "build:sql": "node scripts/copy-sql.mjs",
+        "build:sql": "node --conditions=plurnk-dev scripts/copy-sql.mjs",
         "build": "npm run build:clean && npm run build:dist && npm run build:sql",
         "build:global:install": "npm run build && npm install -g .",
         "build:global:uninstall": "npm uninstall -g @plurnk/plurnk-service",
-        "build:local:install": "node scripts/install-sandbox.mjs install",
-        "build:local:uninstall": "node scripts/install-sandbox.mjs uninstall",
-        "test:installation": "node scripts/test-installation.mjs",
-        "deps:audit": "node scripts/deps-audit.ts",
-        "prepare": "npm run build",
-        "prepublishOnly": "npm run deps:audit"
+        "build:local:install": "node --conditions=plurnk-dev scripts/install-sandbox.mjs install",
+        "build:local:uninstall": "node --conditions=plurnk-dev scripts/install-sandbox.mjs uninstall",
+        "test:installation": "node --conditions=plurnk-dev scripts/test-installation.mjs",
+        "deps:audit": "node --conditions=plurnk-dev scripts/deps-audit.ts",
+        "prepublishOnly": "npm run deps:audit",
+        "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-agui": "^0.11.7",
-        "@plurnk/plurnk-docs": "^0.1.12",
-        "@plurnk/plurnk-execs": "^0.4.44",
-        "@plurnk/plurnk-execs-all": "^0.1.32",
-        "@plurnk/plurnk-execs-common": "^0.2.25",
-        "@plurnk/plurnk-execs-mcp": "^0.7.5",
-        "@plurnk/plurnk-execs-search": "^0.3.9",
-        "@plurnk/plurnk-grammar": "^0.76.10",
-        "@plurnk/plurnk-mimetypes": "^0.19.3",
-        "@plurnk/plurnk-mimetypes-all": "^0.5.18",
-        "@plurnk/plurnk-mimetypes-text-html": "^0.6.9",
-        "@plurnk/plurnk-providers": "^0.40.0",
-        "@plurnk/plurnk-providers-all": "^0.14.3",
-        "@plurnk/plurnk-schemes": "^0.33.23",
-        "@plurnk/plurnk-schemes-all": "^0.2.65",
-        "@plurnk/plurnk-schemes-http": "^0.20.2",
+        "@plurnk/plurnk-agui": "1.0.0",
+        "@plurnk/plurnk-docs": "1.0.0",
+        "@plurnk/plurnk-execs": "1.0.0",
+        "@plurnk/plurnk-execs-common": "1.0.0",
+        "@plurnk/plurnk-execs-mcp": "1.0.0",
+        "@plurnk/plurnk-execs-search": "1.0.0",
+        "@plurnk/plurnk-grammar": "1.0.0",
+        "@plurnk/plurnk-mimetypes": "1.0.0",
+        "@plurnk/plurnk-mimetypes-text-html": "1.0.0",
+        "@plurnk/plurnk-providers": "1.0.0",
+        "@plurnk/plurnk-schemes": "1.0.0",
+        "@plurnk/plurnk-schemes-http": "1.0.0",
         "@possumtech/sqlrite": "5.2.0",
-        "diff": "^9.0.0"
+        "diff": "^9.0.0",
+        "@plurnk/plurnk-mimetypes-embeddings": "1.0.0"
     },
     "devDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "^0.11.1",
-        "@types/diff": "^7.0.2",
-        "@types/node": "^26.1.1",
-        "typescript": "^7.0.2"
-    },
-    "peerDependencies": {
-        "@plurnk/plurnk-mimetypes-embeddings": "^0.11.0"
+        "@types/diff": "^7.0.2"
     },
     "peerDependenciesMeta": {
         "@plurnk/plurnk-mimetypes-embeddings": {

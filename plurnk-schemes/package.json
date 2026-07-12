@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schemes",
-    "version": "0.33.23",
+    "version": "1.0.0",
     "description": "Framework + contract for the @plurnk/plurnk-schemes-* URI handler family.",
     "keywords": [
         "plurnk",
@@ -27,6 +27,7 @@
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
+            "plurnk-dev": "./src/index.ts",
             "default": "./dist/index.js"
         },
         "./package.json": "./package.json"
@@ -38,20 +39,14 @@
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --test src/**/*.test.ts",
+        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
         "test": "npm run test:lint && npm run test:unit",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
-        "prepare": "npm run build"
+        "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-grammar": "0.76.10",
-        "@plurnk/plurnk-mimetypes": "0.19.3"
-    },
-    "devDependencies": {
-        "@plurnk/plurnk-grammar": "0.76.10",
-        "@plurnk/plurnk-mimetypes": "0.19.3",
-        "@types/node": "26.1.1",
-        "typescript": "7.0.2"
+        "@plurnk/plurnk-grammar": "1.0.0",
+        "@plurnk/plurnk-mimetypes": "1.0.0"
     }
 }

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-models",
-    "version": "0.2.0",
+    "version": "1.0.0",
     "description": "Build-time-vendored snapshot of model metadata (context window + pricing) from models.dev — a FALLBACK for when no live provider data is available.",
     "keywords": [
         "plurnk",
@@ -19,7 +19,7 @@
         "url": "git+https://github.com/plurnk/plurnk-models.git"
     },
     "engines": {
-        "node": ">=25"
+        "node": ">=26"
     },
     "license": "MIT",
     "author": "@wikitopian",
@@ -30,6 +30,7 @@
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
+            "plurnk-dev": "./src/index.ts",
             "default": "./dist/index.js"
         },
         "./package.json": "./package.json"
@@ -39,16 +40,12 @@
         "README.md"
     ],
     "scripts": {
-        "generate": "node src/generate.mjs",
+        "generate": "node --conditions=plurnk-dev src/generate.mjs",
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --test src/**/*.test.ts",
+        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
         "test": "npm run test:lint && npm run test:unit",
-        "build:dist": "tsc -p tsconfig.build.json && node -e \"require('node:fs').copyFileSync('src/catalog.json','dist/catalog.json')\"",
+        "build:dist": "tsc -p tsconfig.build.json && node --conditions=plurnk-dev -e \"require('node:fs').copyFileSync('src/catalog.json','dist/catalog.json')\"",
         "build": "npm run build:dist",
-        "prepare": "npm run build"
-    },
-    "devDependencies": {
-        "@types/node": "^25.9.1",
-        "typescript": "^6.0.3"
+        "prepack": "npm run build"
     }
 }

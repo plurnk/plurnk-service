@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "0.19.3",
+    "version": "1.0.0",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
     "keywords": [
         "plurnk",
@@ -29,10 +29,12 @@
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
+            "plurnk-dev": "./src/index.ts",
             "default": "./dist/index.js"
         },
         "./conformance": {
             "types": "./dist/conformance.d.ts",
+            "plurnk-dev": "./src/conformance.ts",
             "default": "./dist/conformance.js"
         },
         "./package.json": "./package.json"
@@ -51,19 +53,19 @@
     "scripts": {
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
-        "prepare": "npm run build && (git config core.hooksPath .githooks || true)",
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --test src/*.test.ts src/treesitter/*.test.ts src/issues/*.test.ts",
-        "test:intg": "node --test test/integration/**/*.test.ts",
+        "test:unit": "node --conditions=plurnk-dev --test src/*.test.ts src/treesitter/*.test.ts src/issues/*.test.ts",
+        "test:intg": "node --conditions=plurnk-dev --test test/integration/**/*.test.ts",
         "test": "npm run test:lint && npm run spec:check && npm run test:unit && npm run test:intg && npm run test:conf",
-        "test:conf": "node --test test/conformance/*.test.ts",
-        "grammars:check": "node scripts/update-grammars.mjs --check",
-        "grammars:update": "node scripts/update-grammars.mjs",
-        "grammars:publish": "node scripts/publish-grammars.mjs",
-        "deps:check": "node scripts/deps-check.mjs",
+        "test:conf": "node --conditions=plurnk-dev --test test/conformance/*.test.ts",
+        "grammars:check": "node --conditions=plurnk-dev scripts/update-grammars.mjs --check",
+        "grammars:update": "node --conditions=plurnk-dev scripts/update-grammars.mjs",
+        "grammars:publish": "node --conditions=plurnk-dev scripts/publish-grammars.mjs",
+        "deps:check": "node --conditions=plurnk-dev scripts/deps-check.mjs",
         "deps:fresh": "npm outdated",
         "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test",
-        "spec:check": "node scripts/spec-check.mjs"
+        "spec:check": "node --conditions=plurnk-dev scripts/spec-check.mjs",
+        "prepack": "npm run build"
     },
     "peerDependencies": {
         "antlr-ng": "^1.0.10"
@@ -74,7 +76,7 @@
         }
     },
     "devDependencies": {
-        "@plurnk/plurnk-grammar": "0.76.10",
+        "@plurnk/plurnk-grammar": "1.0.0",
         "@plurnk/plurnk-mimetypes-grammar-css": "^0.1.0",
         "@plurnk/plurnk-mimetypes-grammar-dart": "^0.1.0",
         "@tree-sitter-grammars/tree-sitter-kotlin": "^1.1.0",
@@ -82,7 +84,6 @@
         "@tree-sitter-grammars/tree-sitter-toml": "^0.7.0",
         "@tree-sitter-grammars/tree-sitter-yaml": "^0.7.1",
         "@tree-sitter-grammars/tree-sitter-zig": "^1.1.2",
-        "@types/node": "^26.0.0",
         "antlr4ng": "^3.0.16",
         "tree-sitter-bash": "^0.25.1",
         "tree-sitter-c": "^0.24.1",
@@ -104,22 +105,29 @@
         "tree-sitter-rust": "^0.24.0",
         "tree-sitter-scala": "^0.24.0",
         "tree-sitter-typescript": "^0.23.2",
-        "typescript": "^7.0.2",
         "web-tree-sitter": "^0.26.9"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes-application-json": "0.5.8",
-        "@plurnk/plurnk-mimetypes-application-xml": "0.1.8",
-        "@plurnk/plurnk-mimetypes-text-csv": "0.4.8",
-        "@plurnk/plurnk-mimetypes-text-html": "0.6.9",
-        "@plurnk/plurnk-mimetypes-text-markdown": "0.6.7",
-        "@plurnk/plurnk-mimetypes-text-plain": "0.7.6",
+        "@plurnk/plurnk-mimetypes-application-json": "1.0.0",
+        "@plurnk/plurnk-mimetypes-application-xml": "1.0.0",
+        "@plurnk/plurnk-mimetypes-text-csv": "1.0.0",
+        "@plurnk/plurnk-mimetypes-text-html": "1.0.0",
+        "@plurnk/plurnk-mimetypes-text-markdown": "1.0.0",
+        "@plurnk/plurnk-mimetypes-text-plain": "1.0.0",
         "@xmldom/xmldom": "^0.9.10",
         "antlr4ng": "^3.0.16",
         "jsonpath-plus": "^10.4.0",
         "smol-toml": "^1.6.1",
         "web-tree-sitter": "^0.26.9",
         "xpath": "^0.0.34",
-        "yaml": "^2.9.0"
+        "yaml": "^2.9.0",
+        "@plurnk/plurnk-mimetypes-application-pdf": "1.0.0",
+        "@plurnk/plurnk-mimetypes-application-jsonl": "1.0.0",
+        "@plurnk/plurnk-mimetypes-application-ipynb": "1.0.0",
+        "@plurnk/plurnk-mimetypes-text-diff": "1.0.0",
+        "@plurnk/plurnk-mimetypes-text-ini": "1.0.0",
+        "@plurnk/plurnk-mimetypes-text-dotenv": "1.0.0",
+        "@plurnk/plurnk-mimetypes-embeddings": "1.0.0",
+        "@plurnk/plurnk-mimetypes-tokenizers": "1.0.0"
     }
 }
