@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-agui",
-    "version": "0.11.5",
+    "version": "0.11.6",
     "description": "The plurnk daemon's transport daughter — owns the client interface, serving AG-UI+ (the Agent-User Interaction Protocol + plurnk metadata extensions) as the sole client interaction surface. In-process module activated at the daemon's boot plug-point; any AG-UI frontend is a plurnk client.",
     "type": "module",
     "license": "MIT",
@@ -17,7 +17,7 @@
     },
     "files": [
         "dist/**/*",
-        ".env.example",
+        ".env.defaults",
         "README.md",
         "SPEC.md"
     ],
@@ -27,8 +27,8 @@
     "scripts": {
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --env-file-if-exists=.env.example --test src/*.test.ts",
-        "test:intg": "node --env-file-if-exists=.env.example --test test/intg/*.test.ts",
+        "test:unit": "node --env-file-if-exists=.env.defaults --test src/*.test.ts",
+        "test:intg": "node --env-file-if-exists=.env.defaults --test test/intg/*.test.ts",
         "deps:fresh": "npm outdated",
         "prepare": "git config core.hooksPath .githooks || true; npm run build",
         "prepublishOnly": "npm test",
