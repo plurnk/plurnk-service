@@ -1,0 +1,5 @@
+#!/bin/sh
+# Local pre-push gate (house preference: npm scripts > git hooks > github).
+# Blocks the push if the test suite fails, so nothing red reaches the remote.
+# Emergency bypass: git push --no-verify.
+exec npm test
