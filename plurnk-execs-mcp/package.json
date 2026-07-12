@@ -30,7 +30,7 @@
     "plurnk": {
         "kind": "exec",
         "attribution": "mcp",
-        "runtimesModule": "./dist/runtimes.js"
+        "runtimesModule": "./runtimes"
     },
     "exports": {
         ".": {
@@ -38,7 +38,12 @@
             "plurnk-dev": "./src/index.ts",
             "default": "./dist/index.js"
         },
-        "./package.json": "./package.json"
+        "./package.json": "./package.json",
+        "./runtimes": {
+            "types": "./dist/runtimes.d.ts",
+            "plurnk-dev": "./src/runtimes.ts",
+            "default": "./dist/runtimes.js"
+        }
     },
     "files": [
         "dist/**/*",

@@ -15,6 +15,10 @@ import { dirname, join, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
+// Only the resolution mode crosses into spawned daemons — NEVER the test harness's own
+// --import/--env-file flags, which would re-run the mock fixture inside the child and
+// silently repoint its DB/model at the fixture's.
+const CONDITION_ARGS = process.execArgv.filter((a) => a.startsWith("--conditions"));
 
 interface BootedDaemon {
     child: ChildProcess;
@@ -36,7 +40,7 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
         };
         delete env.PLURNK_MODEL;
 
-        const child = spawn(process.execPath, [BIN_PATH], { env, stdio: ["ignore", "pipe", "pipe"] });
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, stdio: ["ignore", "pipe", "pipe"] });
         let stdoutBuf = "";
         let stderrBuf = "";
         let settled = false;
@@ -114,7 +118,7 @@ test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits clea
 
 test("bin: --help prints usage without booting daemon", async () => {
     const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
-        const child = spawn(process.execPath, [BIN_PATH, "--help"], {
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "--help"], {
             env: { ...process.env, HOME: "/tmp/plurnk-help-home", PLURNK_SERVICE_DB_PATH: "/tmp/plurnk-help-test.db", PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" },
             stdio: ["ignore", "pipe", "pipe"],
         });
@@ -139,8 +143,12 @@ test("bin: a failed DB open names the path and any stale sidecars — never a ba
         const dbPath = join(dir, "plurnk.db");
         await mkdir(`${dbPath}-wal`);
         const result = await new Promise<{ code: number | null; stderr: string }>((resolvePromise, rejectPromise) => {
-            const child = spawn(process.execPath, [BIN_PATH, "start"], {
-                env: { ...process.env, HOME: dir, PLURNK_SERVICE_DB_PATH: dbPath, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", PLURNK_WS_PORT: "0" },
+            // same isolation as bootDaemon: the fixture's mock model must not reach the child,
+            // or its provider probe stalls the boot before the DB open this test asserts on
+            const env: NodeJS.ProcessEnv = { ...process.env, HOME: dir, PLURNK_SERVICE_DB_PATH: dbPath, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", PLURNK_WS_PORT: "0" };
+            delete env.PLURNK_MODEL;
+            const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
+                env,
                 stdio: ["ignore", "ignore", "pipe"],
             });
             let stderr = "";

@@ -65,6 +65,17 @@
 
 **Point of no return = step 8 publishes.** Everything before is a git branch/worktree state, fully discardable.
 
+## 4b. Execution notes (2026-07-12 — what the cutover actually surfaced)
+
+1. **Stale root `node_modules`** (untracked, survived the git mv) poisoned the first install — removed.
+2. **Native tree-sitter is a phantom peer**: grammars' peerOptional ranges conflict (go ^0.25 vs haskell ^0.21, no aligned versions exist) and its gyp build fails on Node 26; the binding is imported NOWHERE (web-tree-sitter is the runtime). Resolution = root `overrides` (`tree-sitter: ^0.25.0`) + `.npmrc` `omit=peer` — matching the pre-monorepo lockfiles, which never materialized it either.
+3. **Grammar codegen returns as `prepare`** (antlr + types + gbnf, no tsc) — generated sources are gitignored and must exist for everything importing grammar src.
+4. **Symlink blindness was in SIX places**, not one: PluginLoader, env-defaults floor, and all four family-head scanners (`dirent.isDirectory()` misses workspace symlinks). All now accept symlinks.
+5. **All four family heads' `defaultPackageDirs` walked `<cwd>/node_modules`** — sparse in workspaces; all four (plus `service.ts` and `test/floor.ts`) now walk up to the nearest node_modules containing `@plurnk`.
+6. **The floor self-collided**: the workspace symlinks the daemon into node_modules as its own member → double-loaded defaults → ONE-LAW crash. `collect()` now excludes the host from the member scan.
+7. **`plurnk.runtimesModule` was the one loader bypassing package exports** (manifest file path `./dist/runtimes.js` via pathToFileURL). Now an export SUBPATH (`"./runtimes"`) imported by specifier, so the `plurnk-dev` condition governs it like everything else. execs-mcp converted; execs-wasm needs the same in its own repo during the wave; execs SPEC §runtimesModule updated.
+8. **Commitlint lives in the operator's global hook template** — root `.githooks/commit-msg` chains it so the hooksPath flip doesn't disable it.
+
 ## 5. Verified environment facts (2026-07-11)
 
 - npm 11.16 / node 26.3.1. npm has **NO `workspace:` protocol** (EUNSUPPORTEDPROTOCOL) — internal specs must be real versions matching local, or npm silently fetches from registry instead of linking. Lockstep + stamp script guarantees linking.

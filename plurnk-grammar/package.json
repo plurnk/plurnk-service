@@ -17,7 +17,11 @@
             "default": "./dist/src/index.js"
         },
         "./package.json": "./package.json",
-        "./plurnk.gbnf": "./dist/plurnk.gbnf"
+        "./plurnk.gbnf": "./dist/plurnk.gbnf",
+        "./schema/*.json": {
+            "plurnk-dev": "./schema/*.json",
+            "default": "./dist/schema/*.json"
+        }
     },
     "bin": {
         "plurnk-grammar": "./bin/plurnk-grammar.js"

@@ -144,12 +144,12 @@ Each entry's optional **`documentation`** is full markdown — the flags, modes,
 
 ### §3.1 Dynamic runtimes (per-deployment tags)
 
-A package whose tags are not known at publish time — the MCP bridge is the motivating case, where each tag is a per-deployment MCP **server** an operator configures in the environment (plurnk-execs#10) — declares **`plurnk.runtimesModule`** (a path, relative to the package dir) **instead of** a static `plurnk.runtimes[]`:
+A package whose tags are not known at publish time — the MCP bridge is the motivating case, where each tag is a per-deployment MCP **server** an operator configures in the environment (plurnk-execs#10) — declares **`plurnk.runtimesModule`** (an export subpath, resolved through the package's export map) **instead of** a static `plurnk.runtimes[]`:
 
 ```json
 {
     "name": "@plurnk/plurnk-execs-mcp",
-    "plurnk": { "kind": "exec", "runtimesModule": "./dist/runtimes.js" }
+    "plurnk": { "kind": "exec", "runtimesModule": "./runtimes" }
 }
 ```
 

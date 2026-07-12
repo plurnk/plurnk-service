@@ -6,7 +6,9 @@ import { dirname, join, resolve } from "node:path";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 
-const SCHEMA_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "node_modules", "@plurnk", "plurnk-grammar", "dist", "schema");
+// the schema DIR is derived from one exported schema (directory enumeration cannot go
+// through the export map; the anchor file can — and conditions pick src vs dist)
+const SCHEMA_DIR = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/schema/ChannelContent.json")));
 
 type FieldStorage =
     | { kind: "direct"; column: string }

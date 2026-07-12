@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 import Policy from "./policy.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
 
@@ -215,26 +214,30 @@ export default class Discover {
     }
 
     // Resolve a package's runtime decls. Static `plurnk.runtimes[]` is the common
-    // case; `plurnk.runtimesModule` (a relative path) is the dynamic hook for
-    // per-deployment tags. Static wins if both are declared. Returns [] when
-    // neither is present.
+    // case; `plurnk.runtimesModule` (an export subpath, e.g. "./runtimes") is the
+    // dynamic hook for per-deployment tags. Static wins if both are declared.
+    // Returns [] when neither is present.
     static async #runtimeDecls(dir: string, packageName: string, plurnk: Record<string, unknown>): Promise<unknown[]> {
         if (Array.isArray(plurnk.runtimes)) return plurnk.runtimes;
         const mod = plurnk.runtimesModule;
-        if (typeof mod === "string" && mod !== "") return Discover.#loadDynamicRuntimes(dir, packageName, mod);
+        if (typeof mod === "string" && mod !== "") return Discover.#loadDynamicRuntimes(packageName, mod);
         return [];
     }
 
-    // Import a trusted package's runtimes hook and call it. Fail-hard on every
-    // failure — an unloadable module, a missing/non-function export, or a
-    // non-array return is a contract violation by a trusted package (its own
-    // packaging or config), surfaced with the cause, never swallowed. The trust
-    // gate in scan() guarantees this only runs for trusted packages.
-    static async #loadDynamicRuntimes(dir: string, packageName: string, rel: string): Promise<RuntimeDecl[]> {
-        const href = pathToFileURL(path.join(dir, rel)).href;
+    // Import a trusted package's runtimes hook via its export map and call it.
+    // The manifest names an export SUBPATH ("./runtimes"), never a file path —
+    // resolution through exports keeps dev (src via conditions) and published
+    // (dist) layouts on one mechanism. Fail-hard on every failure — an
+    // unloadable module, a missing/non-function export, or a non-array return
+    // is a contract violation by a trusted package (its own packaging or
+    // config), surfaced with the cause, never swallowed. The trust gate in
+    // scan() guarantees this only runs for trusted packages.
+    static async #loadDynamicRuntimes(packageName: string, rel: string): Promise<RuntimeDecl[]> {
+        if (!rel.startsWith("./")) throw new Error(`exec runtimes hook invalid: ${packageName} -> ${rel} must be an export subpath like "./runtimes"`);
+        const specifier = `${packageName}${rel.slice(1)}`;
         let mod: Record<string, unknown>;
         try {
-            mod = await import(href);
+            mod = await import(specifier);
         } catch (cause) {
             throw new Error(`exec runtimes hook unloadable: ${packageName} -> ${rel}`, { cause });
         }

@@ -1,5 +1,5 @@
 // Focused validator for the TelemetryEvent envelope published at
-// node_modules/@plurnk/plurnk-grammar/dist/schema/TelemetryEvent.json.
+// @plurnk/plurnk-grammar's exported schema (resolved through the export map, so the
 // Hand-rolled rather than importing a full JSON Schema engine because
 // the envelope is small + bounded; pulling in ajv for this would be
 // over-tooling. Any time the published schema changes shape, this
@@ -9,8 +9,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const SCHEMA_PATH = resolve(here, "../../node_modules/@plurnk/plurnk-grammar/dist/schema/TelemetryEvent.json");
+const SCHEMA_PATH = fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/schema/TelemetryEvent.json"));
 
 interface Schema {
     required?: string[];
