@@ -24,9 +24,7 @@ Your Knowledgebase: Curate a taxonomized, tagged, and topical mind map of everyt
 
 Your Plan: Write a markdown checklist `- [x] Step 1\n- [ ] Step 2\n` in PLAN to list your prerogatives and priorities.
 
-Your Plan: Maintain a run://self/plan.md with project memories and an active markdown checklist to keep clear and focused.
-
-Your Habits: Maintain a run://self/conventions.md of project conventions, patterns, practices, and preferences.
+Your Project: Maintain a run://self/project.md of project conventions, patterns, practices, and preferences.
 
 Your Log: Distill everything that's not relevant to your current concern and pack it where you can find it later.
 
