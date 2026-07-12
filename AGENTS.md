@@ -1,0 +1,79 @@
+### PLURNK — the platform monorepo
+
+PLURNK stands for Preposterously Lean Universal Resource NetworK.
+
+Plurnk is an ambitious operating system, programming language, daemon, and collection of clients for agentic development. By defining an innovative HEREDOC syntax, extended context, pattern engine, and ecosystem integration design, Plurnk delivers a greater degree of composition than previously possible in AI tooling.
+
+This repo is the **platform monorepo**: the daemon (`plurnk-core/`, published as `@plurnk/plurnk-service`), the contract (`plurnk-grammar/`), and every bundled family member — one npm-workspaces checkout, one lockfile, one gate. **This file is the canonical family doctrine** (the metaproject copy at `~/repo/plurnk/AGENTS.md` is a pointer). Package docs live in each workspace's own `AGENTS.md`/`SPEC.md`.
+
+#### Topology
+
+- **Monorepo = default bundle.** Every workspace here ships in the daemon's default install; the bundle IS `plurnk-core`'s dependency list (`test/intg/execs-batteries.test.ts` is its executable census). The boundary criterion is the expertise cut: a package lives OUTSIDE iff a third party could know better what to do with it (vendor providers, language grammars); weight tiebreaks within owner-domain and never pushes a load-bearing capability out.
+- **Outside the repo:** the client (`plurnk` repo, `@plurnk/plurnk` — a thin wire consumer), `plurnk.nvim`, `plurnk-bench` (public reproduction contract; installs from the registry like an outsider), and every optional plugin leaf (cloud providers, language mimetypes, execs-wasm …) as independent repos.
+- **npm surface is unchanged by the monorepo:** every workspace publishes individually under its historical name. There is no monorepo package; the root manifest is private.
+
+#### Workspace mechanics
+
+- **No builds in the inner loop.** Dev and tests run TS sources directly (Node type stripping; erasable syntax only — no enums/namespaces/param-properties). Cross-package imports resolve source-first via the `plurnk-dev` exports condition: every runtime invocation carries `--conditions=plurnk-dev` (baked into package scripts) and every tsconfig carries `customConditions: ["plurnk-dev"]`. `tsc` → `dist/` happens ONLY at publish (`prepack`); grammar additionally codegens (antlr/types/gbnf) via `prepare` on install.
+- **Optional peers stay phantom** (root `.npmrc` `omit=peer` + the `tree-sitter` override): the native tree-sitter binding is never imported — web-tree-sitter is the runtime — and its conflicting peerOptional ranges + gyp build are noise. See MIGRATION.md.
+- **Discovery is layout-independent.** All discovery surfaces (PluginLoader, env-defaults floor, and the four family-head scanners) accept symlinked packages and resolve their root by walking up to the nearest `node_modules` containing `@plurnk` — correct in registry installs AND this checkout. The floor excludes the daemon itself from the member scan (a workspace symlinks it as its own member).
+- **One gate, local, never GitHub CI.** Root `.githooks/pre-push` runs `npm test` = lint + unit + intg across all workspaces (`prepare` wires `core.hooksPath`; `commit-msg` chains the operator's global hook). No GitHub Actions anywhere, ever.
+- **Versioning is lockstep with teeth.** All workspaces share one version (1.0.0 era). `npm run release:version <v>` stamps every workspace and re-pins every internal dep/peer/devDep exact; `npm run release:order` prints the bottom-up OTP publish list (owner publishes). Published internal pins are EXACT; dev never thinks about them (workspace links). A breaking change to any plugin-facing surface = platform MAJOR — a rare, announced ecosystem event.
+- **Outside leaves peer `^1` on their family head** — one range, valid until a deliberate major. Each family head's SPEC declares its semver-protected surface (registration API, `plurnk` manifest shape, teach format). Leaves version independently and republish only when they change.
+- **No aggregator packages.** The four `@plurnk/<family>-all` metapackages are deprecated; the bundle is defined in exactly one place (core's deps). Optional capability = `npm install` the leaf into the deployment; scope-agnostic discovery (any scope, `plurnk.kind` manifest, `PLURNK_PLUGINS_TRUSTED_ONLY`-gated) lights it up with zero engine change.
+
+#### Plurnk Conventions
+
+These are the ground rules every agent working in this family shares.
+
+- **TS is the host language, not the philosophy.** JSON Schema (from `@plurnk/plurnk-grammar`) is the contract. TS types are for ergonomics. No Zod, no Effect, no ts-pattern, no type-level metaprogramming. Plain TS used as if it were JS with type hints — and erasable-only, since the runtime strips types.
+- **Every package owns its knobs — `.env.defaults` is the standard (owner design, core SPEC §operator-config-env-defaults).** Each package — internal or third-party — ships a `.env.defaults` at its package root declaring ITS OWN knobs (prefix = its name); the file IS the documentation, traveling in the tarball and changing in the same commit as the code that reads the knob. The daemon assembles every installed member's file into ONE floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, `PLURNK_PLUGINS_TRUSTED_ONLY`-gated), applied set-if-unset under the operator's env; the assembled catalog renders to `~/.plurnk/.env.defaults` (machine-owned, regenerated each boot, never read back — the operator's hands go in `~/.plurnk/.env`). **ONE LAW: a key claimed by two packages crashes boot naming both.** **Reader declares:** every knob your code reads appears in your own file — the floor guarantees it set, so knob-reading code carries NO inline fallback; an unset knob is a crash, not a silent default.
+- **Every magic number lives in `.env.defaults` — ALL of them, always; no code fallback hides one.**
+- **`.env.defaults` is canonical config, NEVER a debug knob.**
+- **Trust the contract. Surface the root cause.** When a contract is violated, the program crashes loudly. Do not recover, do not retry, do not log-and-continue. The fix goes at the contract definition, not at the call site.
+- **No shims, fallbacks, or transient placeholders (owner).** A broken thing stays broken — tests RED — until the real fix lands. Never paper over an ecosystem lag or contract gap with an adapter/shim to force green; the failing test IS the honest signal. **Fail-forward**: flip your floor to the *new* contract and leave the chain RED until the upstream fix ships. (The pair to **fail-fast**: fail-fast crashes on a violated contract *now*; fail-forward refuses to soften a not-yet-met *coming* contract.)
+- **Schemas are the source of truth — and the grammar owns the protocol.** `plurnk-grammar/` ships JSON Schemas (draft 2020-12) for the DSL/protocol — statements, paths, scheme/provider registration, telemetry events, channel content; every consumer generates its TS types from them, and a drifting protocol shape is a bug. Grammar owns the protocol; each consumer owns its own non-protocol shapes (persistence, render, internal state) — never grammar.
+- **Semantic separation over "everything is X."** When concepts differ semantically, give them distinct shapes; never collapse them into one overgeneralized type for apparent economy. Plugin ≠ provider ≠ core; a log row ≠ a stream item ≠ an index entry. Conflation is the disease this ecosystem rewrites away from, and distinct schemas are the cure.
+- **The contract is the grammar's; engage seriously when it needs to evolve.** When a real implementation need surfaces: surface the gap concretely to the owner with the consumer's perspective; the change lands *without* breaking invariants you can't see from your side. Don't unilaterally redesign, don't quietly work around, don't paper over inside the runtime. In-repo the negotiation is a shared-tree conversation now, but the discipline is unchanged: grammar changes are argued, never slipped in.
+- **Docs are agent-facing; a line earns its place by answering a credible integration concern.** Every ecosystem README is strictly third-party-integration-facing: terse, LLM-friendly surface — never human prose. Only the client and `plurnk-bench` READMEs are human-calibrated. "vendor-agnostic, MIT" STAYS (answers vendor lock-in); "welcome to my project / default-provider plug" is debt. Surface the integration + capability surface DENSELY; strip concern-less marketing on sight.
+- **Commits are one-liners, authored AS Claude.** A commit is a conventional-commit subject (≤100 chars) and nothing more — no body, no `Co-Authored-By`/`Claude-Session` trailer. Git author = `Claude <noreply@anthropic.com>`. Anything past the one-liner belongs in SPEC.md or a gh issue.
+- **The ecosystem is a family, not peers — mom / grandma / big sister / daughters.** The META agent is the MOM: the center and authority — strategy, doctrine (this file is her surface), and coordination; she owns no package tree. The core agent is the BIG SISTER: the senior daughter and owner of the daemon (`plurnk-core/`); most work still lives at her surface, but her authority is the daemon, not the family. `plurnk-grammar/` is GRANDMA: the settled root contract. The family heads + members (providers, schemes, mimetypes, execs and their workspaces; the outside leaves) are DAUGHTERS. **Seven agents remain** — grammar, client, core, and the four family heads; the meta agent is the eighth mind. Lanes are now directory-scoped: never `Edit`/`Write`/commit inside another agent's lane — instruct via gh issue on THIS repo (label by lane) or, for outside-leaf repos, on their repo. **Routing (owner ruling 2026-07-12): the big sister instructs daughters DIRECTLY for her own consumption needs** (consumer-to-supplier stays unblocked); mom handles doctrine, strategy, and cross-family conflict.
+- **Daughters own their internal *how*; the consumer owns the *what*.** Instruct the deliverable and the contract surface consumed. **Division of labor:** the owner handles only planning + OTP-gated `npm publish`; everything else is agent work.
+- **Never blame the model.** If the model loops, doesn't terminate, improvises, or ignores prior state — that is data about the packet, not a verdict on the model. The diagnosis is always: **what is the packet missing?** Local quantized gemma is the explicit affordability baseline — if it can't drive the loop, the architecture is wrong, not gemma.
+- **Reference + feedback beats broadcast.** Steer the model through in-context references, error entries, and live packet state, not prompt sermons. The fix is in the packet, not the prose.
+- **Anchor terminology to the model's vocabulary; deviate only with credible cause.** The DSL's `path` is what the model is taught. Internal aliases (`target`, `uri`) create chronic translation tax; a divergent name is "wrong name choice," not "we'll remember the mapping."
+- **Teaching docs are neutral syntax references, not essays.** Completeness + neutrality over cleverness; perfecting model-facing tooling docs is a bikeshedding tarpit. Topology stays mechanism-not-policy.
+- **Read the wire body, not the config.** When a model shows a documented pathology, read the actual outgoing request before classifying.
+- **Delegate upstream; don't iterate locally.** A gap in upstream-owned substance is an issue for the owning lane, then adopt.
+- **Pull, don't copy.** Adopted content (sysprompt via `PATHS.instructionsSystem`, grammar schemas) resolves from its source package at runtime.
+- **Bin forward.** Reusable tooling ships as a package `bin`, resolved forward from the owning package — one implementation at the source; a fix ripples without N edits.
+
+**The bet:** composability via the URI-oriented DSL — every web API has a URI, so every API is latent tooling the model composes at runtime over one address space. The model is the universal semantic adapter; schemes pre-digest an API down to where the gemma floor can compose — the affordability bridge, load-bearing for the URI vision.
+
+**The goal:** daily-driver migration — plurnk replacing the working agent interface for real consulting work. Gated on **tokenomics · scheme/http · exec/search · client/nvim**; validated by dogfooding; walk-away on an architectural failure dogfooding surfaces.
+
+**The rosetta-stone gradient (owner).** The grammar's terse examples are a rosetta stone, not a tutorial: one terse surface that different-capacity models decode to different depths. **Gemma is the PRIMARY target and the slog; Gemini/Opus are the victory lap.** When gemma doesn't reach for a capability, the first suspect is OUR packet/teaching, not gemma's ceiling.
+
+#### Documented Practices (distilled from operations — applies to every agent)
+
+**Release gates — no publish handoff without all four.** (1) The full deterministic drill (lint + unit + intg — the WHOLE tier, never a filtered slice). (2) `npm ls --all` shows zero invalid/missing peers (platform optionals excepted). (3) The naive-install e2e (`npm run test:installation` in `plurnk-core/`): a fresh tarball in a clean sandbox must boot. (4) A clean `npm publish --dry-run` per workspace. The working tree being green and the consumer install being green are DIFFERENT claims — verify both.
+
+**Forensics — digest first, never retry-to-green.** A failing model-tier run is a specimen: capture its db to `~/repo/plurnk/benchmarks/run<N>/`, digest it, and read the actual turns/packets before forming any theory. Issues cite specimens, not impressions. Three questions of every failure: what did the model actually emit, what did the packet actually show it, what did the engine actually do — in that order.
+
+**Intermittent = stop everything.** A test that fails sometimes is a race or real stochastic behavior, never a "flake" to re-run past. Corollary: fast failures (<1s) in model tiers are harness bugs.
+
+**Prove through the real path.** A handler existing is not a feature working. Claims of "done" ride an end-to-end demonstration through real dispatch/RPC, cited by a test or a specimen.
+
+**Doctrine conflicts get SURFACED, never self-resolved.** When an instruction, an issue, or your own reasoning appears to contradict a standing ruling, STOP and name the conflict to the owner before touching code. "This is obviously cleaner" is a tripwire, not a green light.
+
+**Never shrink the ambition.** Expensive capability is never fixed by caps, disables, or engine-side janitoring — weak hardware is the TARGET. Test-lane isolation switches (e.g. EMBED_DISABLE) are never operator or benchmark guidance.
+
+**The knob is the decision table.** Operator-facing classification lives as a documented, editable list in `.env.defaults` — never as heuristics or hardcoded sets in code.
+
+**Execute vs evaluate — know which mode the request is.** An explicit instruction is executed as given; a request that imposes a HOW when the approach is yours gets critically evaluated. When unsure, ask.
+
+**The simple-story rule.** Every subsystem must be tellable in one sentence held IDENTICALLY by four minds: the owner's, the agent's, the code, and the spec. Rules-within-rules is a paradigm smell — refactor the story, not the patch.
+
+**The escalation fence (weaker-model operations).** Paradigm changes, SPEC-semantics changes, schema migrations, cross-lane contract design, and standing-ruling reversals PARK for depth in the repo worksheet; routine lanes execute by recipe.
+
+**Model-tier runs are foreground, attended, and honest.** Never background a live/demo sweep; tee output to a file; verify the box is exclusively yours; report the tier's real totals.
