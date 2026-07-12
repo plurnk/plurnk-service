@@ -71,7 +71,10 @@ function remoteMaxTokens() {
     return n;
 }
 const REMOTE = resolveRemote();
-if (!REMOTE && process.env.PLURNK_MIMETYPES_EMBED_MAX_TOKENS !== undefined) {
+// Set-to-EMPTY equals unset (the .env.defaults assembled floor sets every key,
+// empty when no default — mimetypes#52); only a non-empty value in local mode
+// is the contradiction that crashes.
+if (!REMOTE && (process.env.PLURNK_MIMETYPES_EMBED_MAX_TOKENS ?? "").trim() !== "") {
     throw new RangeError(
         "PLURNK_MIMETYPES_EMBED_MAX_TOKENS is remote-only: the bundled model's window is a "
         + "model fact (512), not operator config. Unset it, or set PLURNK_MIMETYPES_EMBED_BASE_URL.",
