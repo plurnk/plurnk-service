@@ -1,0 +1,60 @@
+{
+    "name": "@plurnk/monorepo",
+    "private": true,
+    "version": "1.0.0",
+    "description": "The plurnk platform monorepo — daemon core, contract, and bundled families. Root is orchestration only; every workspace publishes individually.",
+    "license": "MIT",
+    "type": "module",
+    "engines": {
+        "node": ">=26"
+    },
+    "workspaces": [
+        "plurnk-aliases",
+        "gbnf",
+        "plurnk-models",
+        "plurnk-docs",
+        "plurnk-grammar",
+        "plurnk-mimetypes-application-json",
+        "plurnk-mimetypes-application-xml",
+        "plurnk-mimetypes-application-jsonl",
+        "plurnk-mimetypes-application-ipynb",
+        "plurnk-mimetypes-application-pdf",
+        "plurnk-mimetypes-text-csv",
+        "plurnk-mimetypes-text-html",
+        "plurnk-mimetypes-text-markdown",
+        "plurnk-mimetypes-text-plain",
+        "plurnk-mimetypes-text-diff",
+        "plurnk-mimetypes-text-ini",
+        "plurnk-mimetypes-text-dotenv",
+        "plurnk-mimetypes-embeddings",
+        "plurnk-mimetypes-tokenizers",
+        "plurnk-mimetypes",
+        "plurnk-schemes",
+        "plurnk-schemes-http",
+        "plurnk-execs",
+        "plurnk-execs-common",
+        "plurnk-execs-search",
+        "plurnk-execs-mcp",
+        "plurnk-execs-git",
+        "plurnk-execs-jq",
+        "plurnk-execs-sqlite",
+        "plurnk-providers-ollama",
+        "plurnk-providers",
+        "plurnk-agui",
+        "plurnk-core"
+    ],
+    "scripts": {
+        "prepare": "git config core.hooksPath .githooks",
+        "test:lint": "npm run test:lint --workspaces --if-present",
+        "test:unit": "npm run test:unit --workspaces --if-present",
+        "test:intg": "npm run test:intg --workspaces --if-present",
+        "test": "npm run test:lint && npm run test:unit && npm run test:intg",
+        "build": "npm run build --workspaces --if-present",
+        "release:version": "node scripts/release-version.mjs",
+        "release:order": "node scripts/release-order.mjs"
+    },
+    "devDependencies": {
+        "@types/node": "^26.1.1",
+        "typescript": "^7.0.2"
+    }
+}
