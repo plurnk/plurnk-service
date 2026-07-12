@@ -8,7 +8,7 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import Plugins from "@plurnk/plurnk-plugins";
+import Meta from "@plurnk/plurnk-meta";
 
 export type PluginKind = "provider" | "scheme" | "mimetype";
 
@@ -29,11 +29,11 @@ export default class PluginLoader {
     }
 
     static async discoverPlugins(nodeModulesDir: string): Promise<DiscoveredPlugin[]> {
-        const candidates = await Plugins.packageDirs(nodeModulesDir);
+        const candidates = await Meta.packageDirs(nodeModulesDir);
 
         const discovered: DiscoveredPlugin[] = [];
         for (const { dir: packagePath, name } of candidates) {
-            if (!Plugins.isTrusted(name)) continue;
+            if (!Meta.isTrusted(name)) continue;
             let pkg: { name?: string; plurnk?: unknown };
             try {
                 const content = await readFile(resolve(packagePath, "package.json"), "utf8");

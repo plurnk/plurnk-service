@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import Plugins from "@plurnk/plurnk-plugins";
+import Meta from "@plurnk/plurnk-meta";
 import Policy from "./policy.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
 
@@ -69,7 +69,7 @@ export default class Discover {
             // imported: an untrusted third-party package is discovered but not
             // registered, and its code is never executed. Recorded for the
             // consumer's telemetry note, never crashed on.
-            if (!Plugins.isTrusted(manifest.packageName)) {
+            if (!Meta.isTrusted(manifest.packageName)) {
                 skipped.add(manifest.packageName);
                 continue;
             }
@@ -106,8 +106,8 @@ export default class Discover {
     // and have it discovered with no involvement from us; `#readExecInfos` keeps
     // only the packages that declare `plurnk.kind === "exec"`.
     static async #defaultPackageDirs(cwd: string): Promise<string[]> {
-        const nm = Plugins.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
-        return (await Plugins.packageDirs(nm)).map((c) => c.dir).toSorted();
+        const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+        return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
     // Read a package's `package.json` and return its manifest iff it declares

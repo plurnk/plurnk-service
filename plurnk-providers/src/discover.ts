@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import Plugins from "@plurnk/plurnk-plugins";
+import Meta from "@plurnk/plurnk-meta";
 
 // Scope-agnostic discovery of installed provider packages (SPEC §5, #12/#14).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
@@ -53,7 +53,7 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
     for (const dir of dirs) {
         const info = await readProviderInfo(dir);
         if (info === null) continue;
-        if (!Plugins.isTrusted(info.packageName, env)) {
+        if (!Meta.isTrusted(info.packageName, env)) {
             skipped.set(info.name, info.packageName); // declined — not a collision candidate
             continue;
         }
@@ -73,8 +73,8 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
 // Enumerate every installed package directory — scoped and unscoped — under
 // `<cwd>/node_modules`. Unreadable node_modules (e.g. nothing installed) → [].
 const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
-    const nm = Plugins.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
-    return (await Plugins.packageDirs(nm)).map((c) => c.dir).toSorted();
+    const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+    return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
 };
 
 // One { name, packageName, attribution? } for a provider package, or null for

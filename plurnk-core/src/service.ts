@@ -12,7 +12,7 @@ import Daemon from "./server/Daemon.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
-import Plugins from "@plurnk/plurnk-plugins";
+import Meta from "@plurnk/plurnk-meta";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 
@@ -90,7 +90,7 @@ export default class Service {
     // The node_modules holding the service's plugin deps (exec/scheme/mimetype), resolved
     // from this file's REAL location by the shared membership walk. Falls back to CWD.
     static #pluginsNodeModules(): string {
-        return Plugins.nearestNodeModules(Service.#codeDir) ?? resolve(process.cwd(), "node_modules");
+        return Meta.nearestNodeModules(Service.#codeDir) ?? resolve(process.cwd(), "node_modules");
     }
 
     static #die(code: number, message: string): never {

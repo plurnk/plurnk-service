@@ -1,7 +1,7 @@
 import { parseEnv } from "node:util";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import Plugins from "@plurnk/plurnk-plugins";
+import Meta from "@plurnk/plurnk-meta";
 
 // The .env.defaults standard (§operator-config-env-defaults, owner design): every package in the
 // daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root
@@ -41,12 +41,12 @@ export default class EnvDefaults {
     }
 
     // Enumerate installed package dirs via the shared membership primitives
-    // (@plurnk/plurnk-plugins); keep ecosystem members that ship a .env.defaults.
+    // (@plurnk/plurnk-meta); keep ecosystem members that ship a .env.defaults.
     static async #memberFiles(nodeModules: string): Promise<EnvDefaultsFile[]> {
-        const dirs = await Plugins.packageDirs(nodeModules);
+        const dirs = await Meta.packageDirs(nodeModules);
         const files: EnvDefaultsFile[] = [];
         for (const { dir, name } of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {
-            if (!Plugins.isTrusted(name)) continue;
+            if (!Meta.isTrusted(name)) continue;
             if (!name.startsWith("@plurnk/")) {
                 let pkg: { plurnk?: unknown };
                 try { pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8")) as { plurnk?: unknown }; }

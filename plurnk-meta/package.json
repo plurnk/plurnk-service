@@ -1,7 +1,7 @@
 {
-    "name": "@plurnk/plurnk-plugins",
+    "name": "@plurnk/plurnk-meta",
     "version": "1.0.0",
-    "description": "The plurnk ecosystem's plugin-membership primitives: the ONE trust rule (PLURNK_PLUGINS_TRUSTED_ONLY), the scope-agnostic symlink-aware package enumeration, and deployment-root resolution — shared by the daemon's floor/loader and all four family-head discoveries.",
+    "description": "The plurnk metaproject layer, published: plugin-membership primitives (the ONE trust rule, scope-agnostic symlink-aware enumeration, deployment-root resolution), the family teaching corpus (personality, requirements, scheme docs), and the home for family tooling.",
     "license": "MIT",
     "type": "module",
     "engines": {
@@ -10,7 +10,11 @@
     "files": [
         ".env.defaults",
         "dist/**/*",
-        "README.md"
+        "README.md",
+        "CORPUS.md",
+        "PLURNK_PERSONALITY.md",
+        "requirements.md",
+        "docs/**/*"
     ],
     "exports": {
         ".": {
@@ -18,7 +22,10 @@
             "plurnk-dev": "./src/index.ts",
             "default": "./dist/index.js"
         },
-        "./package.json": "./package.json"
+        "./package.json": "./package.json",
+        "./PLURNK_PERSONALITY.md": "./PLURNK_PERSONALITY.md",
+        "./requirements.md": "./requirements.md",
+        "./docs/*.md": "./docs/*.md"
     },
     "scripts": {
         "test:lint": "tsc --noEmit",

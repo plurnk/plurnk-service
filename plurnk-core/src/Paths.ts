@@ -15,10 +15,10 @@ import { homedir } from "node:os";
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     static #GRAMMAR_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/package.json")));
-    // The teaching corpus (scheme docs, personality, requirements) is core-native — docs/ at
-    // the package root, shipped in the tarball. Dissolved out of @plurnk/plurnk-docs at the
-    // monorepo cut: first-party content that always ships with the daemon needs no pull seam.
-    static #DOCS_ROOT = resolve(Paths.#PACKAGE_ROOT, "docs");
+    // The teaching corpus (scheme docs, personality, requirements) lives in @plurnk/plurnk-meta —
+    // the metaproject layer OWNS the family prose (owner ruling, monorepo cut); the daemon
+    // consumes it via the same single-source pull shape as GRAMMAR_ROOT.
+    static #DOCS_ROOT = dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-meta/package.json")));
 
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
     static instructionsSystem = resolve(Paths.#GRAMMAR_ROOT, "plurnk.md");

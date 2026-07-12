@@ -1,5 +1,5 @@
-// Plugin-membership primitives for the plurnk ecosystem — the metaproject-level
-// mechanics every discovery surface shares (AGENTS §topology, core SPEC
+// The metaproject layer's membership slice — the mechanics every discovery
+// surface shares (AGENTS §topology, core SPEC
 // §plugin-discovery / §operator-config-env-defaults):
 //   - isTrusted:          THE trust rule. One implementation; a second definition
 //                         of membership trust anywhere in the family is a bug.
@@ -23,7 +23,7 @@ export interface PackageCandidate {
     name: string;
 }
 
-export default class Plugins {
+export default class Meta {
     // unset / "" / "0" → gate OFF: everything installed is trusted.
     // any other value  → gate ON: @plurnk/* always trusted, plus a comma-separated
     //                    allowlist; "1" (naming no real package) = on, zero third-party.

@@ -4,10 +4,10 @@
 // cascade (.env / .env.test) and the shell always win; only genuinely-unset knobs (siblings'
 // defaults, e.g. PLURNK_PROVIDERS_*) take floor values.
 import EnvDefaults from "../src/core/env-defaults.ts";
-import Plugins from "@plurnk/plurnk-plugins";
+import Meta from "@plurnk/plurnk-meta";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const nodeModules = Plugins.nearestNodeModules(root) ?? resolve(root, "node_modules");
+const nodeModules = Meta.nearestNodeModules(root) ?? resolve(root, "node_modules");
 EnvDefaults.apply(EnvDefaults.merge(await EnvDefaults.collect(root, nodeModules)));

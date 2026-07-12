@@ -9,7 +9,7 @@
         "node": ">=26"
     },
     "workspaces": [
-        "plurnk-plugins",
+        "plurnk-meta",
         "plurnk-aliases",
         "gbnf",
         "plurnk-models",

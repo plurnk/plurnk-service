@@ -3,21 +3,21 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Plugins from "./index.ts";
+import Meta from "./index.ts";
 
 test("isTrusted: gate off (unset / empty / '0') trusts everything", () => {
     for (const v of [undefined, "", "0"]) {
-        assert.equal(Plugins.isTrusted("@acme/rogue", { PLURNK_PLUGINS_TRUSTED_ONLY: v }), true, `gate ${JSON.stringify(v)}`);
+        assert.equal(Meta.isTrusted("@acme/rogue", { PLURNK_PLUGINS_TRUSTED_ONLY: v }), true, `gate ${JSON.stringify(v)}`);
     }
 });
 
 test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else refused", () => {
     const env = { PLURNK_PLUGINS_TRUSTED_ONLY: "acme-plugin, @firewolf/firepad" };
-    assert.equal(Plugins.isTrusted("@plurnk/plurnk-execs-mcp", env), true);
-    assert.equal(Plugins.isTrusted("acme-plugin", env), true);
-    assert.equal(Plugins.isTrusted("@firewolf/firepad", env), true);
-    assert.equal(Plugins.isTrusted("evil-plugin", env), false);
-    assert.equal(Plugins.isTrusted("evil-plugin", { PLURNK_PLUGINS_TRUSTED_ONLY: "1" }), false, "'1' = on, zero third-party");
+    assert.equal(Meta.isTrusted("@plurnk/plurnk-execs-mcp", env), true);
+    assert.equal(Meta.isTrusted("acme-plugin", env), true);
+    assert.equal(Meta.isTrusted("@firewolf/firepad", env), true);
+    assert.equal(Meta.isTrusted("evil-plugin", env), false);
+    assert.equal(Meta.isTrusted("evil-plugin", { PLURNK_PLUGINS_TRUSTED_ONLY: "1" }), false, "'1' = on, zero third-party");
 });
 
 test("packageDirs: enumerates scoped + unscoped, follows symlinks, skips .bin/.cache/dotfiles", async () => {
@@ -31,7 +31,7 @@ test("packageDirs: enumerates scoped + unscoped, follows symlinks, skips .bin/.c
         await mkdir(real);
         await writeFile(join(real, "package.json"), "{}");
         await symlink(real, join(nm, "@plurnk", "plurnk-linked"));
-        const names = (await Plugins.packageDirs(nm)).map((c) => c.name).toSorted();
+        const names = (await Meta.packageDirs(nm)).map((c) => c.name).toSorted();
         assert.deepEqual(names, ["@plurnk/plurnk-fake", "@plurnk/plurnk-linked", "acme-plugin"], "symlinked workspace member enumerated; .bin skipped");
     } finally {
         await rm(root, { recursive: true, force: true });
@@ -39,7 +39,7 @@ test("packageDirs: enumerates scoped + unscoped, follows symlinks, skips .bin/.c
 });
 
 test("packageDirs: missing node_modules yields []", async () => {
-    assert.deepEqual(await Plugins.packageDirs("/no/such/dir/node_modules"), []);
+    assert.deepEqual(await Meta.packageDirs("/no/such/dir/node_modules"), []);
 });
 
 test("nearestNodeModules: finds the ancestor holding @plurnk; null when absent", async () => {
@@ -50,8 +50,8 @@ test("nearestNodeModules: finds the ancestor holding @plurnk; null when absent",
         await mkdir(deep, { recursive: true });
         // a sparse per-package node_modules (bins only) must NOT win the walk
         await mkdir(join(root, "packages", "member", "node_modules", ".bin"), { recursive: true });
-        assert.equal(Plugins.nearestNodeModules(deep), join(root, "node_modules"));
-        assert.equal(Plugins.nearestNodeModules(tmpdir()), null, "no ecosystem anywhere up the tree");
+        assert.equal(Meta.nearestNodeModules(deep), join(root, "node_modules"));
+        assert.equal(Meta.nearestNodeModules(tmpdir()), null, "no ecosystem anywhere up the tree");
     } finally {
         await rm(root, { recursive: true, force: true });
     }
