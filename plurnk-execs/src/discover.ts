@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import Policy from "./policy.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
 
@@ -220,7 +222,7 @@ export default class Discover {
     static async #runtimeDecls(dir: string, packageName: string, plurnk: Record<string, unknown>): Promise<unknown[]> {
         if (Array.isArray(plurnk.runtimes)) return plurnk.runtimes;
         const mod = plurnk.runtimesModule;
-        if (typeof mod === "string" && mod !== "") return Discover.#loadDynamicRuntimes(packageName, mod);
+        if (typeof mod === "string" && mod !== "") return Discover.#loadDynamicRuntimes(dir, packageName, mod);
         return [];
     }
 
@@ -232,12 +234,21 @@ export default class Discover {
     // is a contract violation by a trusted package (its own packaging or
     // config), surfaced with the cause, never swallowed. The trust gate in
     // scan() guarantees this only runs for trusted packages.
-    static async #loadDynamicRuntimes(packageName: string, rel: string): Promise<RuntimeDecl[]> {
+    static async #loadDynamicRuntimes(dir: string, packageName: string, rel: string): Promise<RuntimeDecl[]> {
         if (!rel.startsWith("./")) throw new Error(`exec runtimes hook invalid: ${packageName} -> ${rel} must be an export subpath like "./runtimes"`);
-        const specifier = `${packageName}${rel.slice(1)}`;
+        // Self-reference resolution: the subpath resolves through the package's OWN export
+        // map anchored at its root — conditions apply (plurnk-dev → src in a workspace
+        // checkout; dist when published), and a package needn't be installed to resolve.
+        let href: string;
+        try {
+            const selfRequire = createRequire(path.join(dir, "package.json"));
+            href = pathToFileURL(selfRequire.resolve(`${packageName}${rel.slice(1)}`)).href;
+        } catch (cause) {
+            throw new Error(`exec runtimes hook unloadable: ${packageName} -> ${rel}`, { cause });
+        }
         let mod: Record<string, unknown>;
         try {
-            mod = await import(specifier);
+            mod = await import(href);
         } catch (cause) {
             throw new Error(`exec runtimes hook unloadable: ${packageName} -> ${rel}`, { cause });
         }

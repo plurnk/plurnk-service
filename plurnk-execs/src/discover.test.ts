@@ -84,7 +84,8 @@ test("§3.2 discover: surfaces raw plurnk.attribution (string | string[]) on eac
 const makeDynamicPkg = async (name: string, hookSrc: string, rel = "runtimes.mjs"): Promise<string> => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
-        name, plurnk: { kind: "exec", runtimesModule: `./${rel}` },
+        name, plurnk: { kind: "exec", runtimesModule: "./runtimes" },
+        exports: { "./runtimes": `./${rel}` },
     }), "utf-8");
     await fs.writeFile(path.join(dir, rel), hookSrc, "utf-8");
     return dir;
