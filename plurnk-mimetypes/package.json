@@ -129,6 +129,6 @@
         "@plurnk/plurnk-mimetypes-text-dotenv": "1.0.0",
         "@plurnk/plurnk-mimetypes-embeddings": "1.0.0",
         "@plurnk/plurnk-mimetypes-tokenizers": "1.0.0",
-        "@plurnk/plurnk-plugins": "1.0.0"
+        "@plurnk/plurnk-meta": "1.0.0"
     }
 }

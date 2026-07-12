@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import Plugins from "@plurnk/plurnk-plugins";
+import Meta from "@plurnk/plurnk-meta";
 import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
     Discovery,
@@ -37,7 +37,7 @@ import type {
 export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
     const env = options.env ?? process.env;
-    const isTrusted = (name: string): boolean => Plugins.isTrusted(name, env);
+    const isTrusted = (name: string): boolean => Meta.isTrusted(name, env);
 
     const byExtension = new Map<string, string>();
     const byFilename = new Map<string, string>();
@@ -117,8 +117,8 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
 //                        real package, is "on with zero third-party".)
 
 async function defaultPackageDirs(cwd: string): Promise<string[]> {
-    const nm = Plugins.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
-    const candidates = await Plugins.packageDirs(nm);
+    const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+    const candidates = await Meta.packageDirs(nm);
     // ORDERING POLICY (ours, not the primitives'): @plurnk packages LAST so first-party
     // handlers win last-loaded collisions — see the conflict note on discover().
     const thirdParty = candidates.filter((c) => !c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
