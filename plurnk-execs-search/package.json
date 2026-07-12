@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-search",
-    "version": "0.3.8",
+    "version": "0.3.9",
     "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches search/news/images/… runtime tags to a SearXNG instance.",
     "keywords": [
         "plurnk",
@@ -83,7 +83,8 @@
     },
     "files": [
         "dist/**/*",
-        "README.md"
+        "README.md",
+        ".env.defaults"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
