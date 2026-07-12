@@ -50,6 +50,6 @@
         "@plurnk/plurnk-mimetypes": "1.0.0"
     },
     "dependencies": {
-        "@plurnk/plurnk-plugins": "1.0.0"
+        "@plurnk/plurnk-meta": "1.0.0"
     }
 }

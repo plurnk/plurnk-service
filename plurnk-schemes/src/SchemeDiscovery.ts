@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import Plugins from "@plurnk/plurnk-plugins";
+import Meta from "@plurnk/plurnk-meta";
 
 // Scope-agnostic discovery of installed scheme-handler packages — the schemes
 // family's parallel to plurnk-execs' discover() / plurnk-mimetypes' discover()
@@ -59,7 +59,7 @@ export default class SchemeDiscovery {
             if (info === null) continue;
             // Host plugin-trust gate: an untrusted third-party package is
             // discovered but not surfaced for registration — recorded, never crashed on.
-            if (!Plugins.isTrusted(info.packageName)) { skipped.add(info.packageName); continue; }
+            if (!Meta.isTrusted(info.packageName)) { skipped.add(info.packageName); continue; }
             const existing = byName.get(info.name);
             // Two EXTERNAL packages claiming one scheme prefix is an unresolvable
             // ambiguity — fail-hard, mirroring execs' runtime-collision rule.
@@ -89,8 +89,8 @@ export default class SchemeDiscovery {
     // a masked contract violation (cf. the matcher's sanctioned node_modules tolerance).
     static async #defaultPackageDirs(cwd: string, signal?: AbortSignal): Promise<string[]> {
         signal?.throwIfAborted();
-        const nm = Plugins.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
-        return (await Plugins.packageDirs(nm)).map((c) => c.dir).toSorted();
+        const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
+        return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
     // An aborted readFile surfaces, never masked as an unreadable dir —
