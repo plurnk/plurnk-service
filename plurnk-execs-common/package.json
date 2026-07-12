@@ -1,0 +1,131 @@
+{
+    "name": "@plurnk/plurnk-execs-common",
+    "version": "0.2.25",
+    "description": "Universal subprocess executor for plurnk-service's exec scheme — one package exposing the shell + node + python floor plus whichever host interpreters (perl, ruby, php, lua, awk, bc, …) are present.",
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "subprocess",
+        "repl",
+        "shell",
+        "node",
+        "python"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-execs-common#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-common/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-common.git"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "runtimes": [
+            {
+                "name": "sh",
+                "glyph": "🐚",
+                "example": "<<EXEC:uname -sr:EXEC\n<<EXEC<-1,300>:npm run test:EXEC"
+            },
+            {
+                "name": "bash",
+                "glyph": "🐚"
+            },
+            {
+                "name": "node",
+                "glyph": "⬢",
+                "example": "<<EXEC[node]:console.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)):EXEC"
+            },
+            {
+                "name": "python",
+                "glyph": "🐍",
+                "example": "<<EXEC[python]:print(sum(range(101))):EXEC"
+            },
+            {
+                "name": "perl",
+                "glyph": "🐪",
+                "example": "<<EXEC[perl]:print join(',', 1..5):EXEC"
+            },
+            {
+                "name": "ruby",
+                "glyph": "💎",
+                "example": "<<EXEC[ruby]:puts (1..5).sum:EXEC"
+            },
+            {
+                "name": "php",
+                "glyph": "🐘",
+                "example": "<<EXEC[php]:echo array_sum([1,2,3]);:EXEC"
+            },
+            {
+                "name": "lua",
+                "glyph": "🌙",
+                "example": "<<EXEC[lua]:print(('hi'):upper()):EXEC"
+            },
+            {
+                "name": "deno",
+                "glyph": "🦕",
+                "example": "<<EXEC[deno]:console.log(Deno.version.deno):EXEC"
+            },
+            {
+                "name": "bun",
+                "glyph": "🥟",
+                "example": "<<EXEC[bun]:console.log(Bun.version):EXEC"
+            },
+            {
+                "name": "tcl",
+                "glyph": "🪶",
+                "example": "<<EXEC[tcl]:puts [expr {2**10}]:EXEC"
+            },
+            {
+                "name": "bc",
+                "glyph": "🧮",
+                "example": "<<EXEC[bc]:scale=4; 22/7:EXEC"
+            },
+            {
+                "name": "awk",
+                "glyph": "🪄",
+                "example": "<<EXEC[awk]:BEGIN { print 6 * 7 }:EXEC"
+            }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md",
+        ".env.example",
+        "docs/**/*"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "devDependencies": {
+        "@types/node": "^26.0.0",
+        "typescript": "^7.0.2",
+        "@plurnk/plurnk-execs": "0.4.44"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "0.4.44"
+    }
+}
