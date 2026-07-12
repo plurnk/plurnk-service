@@ -137,6 +137,20 @@ test("mobile emulation: PLURNK_SCHEMES_HTTP_MOBILE=0 renders desktop (no emulati
     }
 });
 
+test("mobile emulation: unset MOBILE crashes naming the var (floor-set knob, no silent default)", async () => {
+    const prev = process.env.PLURNK_SCHEMES_HTTP_MOBILE;
+    delete process.env.PLURNK_SCHEMES_HTTP_MOBILE;
+    try {
+        const { engine } = makeEngine();
+        const browser = new Browser(() => Promise.resolve(engine));
+        await assert.rejects(browser.render("https://example.com/", { runId: 1 }), /PLURNK_SCHEMES_HTTP_MOBILE is unset/);
+        await browser.close();
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MOBILE;
+        else process.env.PLURNK_SCHEMES_HTTP_MOBILE = prev;
+    }
+});
+
 test("per-run context: reused across renders, dropped by closeContext", async () => {
     const { engine, calls } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));

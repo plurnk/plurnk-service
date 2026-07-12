@@ -78,8 +78,13 @@ const MOBILE_CONTEXT: PwContextOptions = Object.freeze({
     isMobile: true,
     hasTouch: true,
 });
-const mobileEmulation = (): PwContextOptions | undefined =>
-    process.env.PLURNK_SCHEMES_HTTP_MOBILE === "0" ? undefined : MOBILE_CONTEXT;
+// Floor-set knob (schemes#31): the assembled .env.defaults floor guarantees it,
+// so an unset value is a config crash, not a silent default. "0" = desktop.
+const mobileEmulation = (): PwContextOptions | undefined => {
+    const raw = process.env.PLURNK_SCHEMES_HTTP_MOBILE;
+    if (raw === undefined) throw new Error("Browser: required env PLURNK_SCHEMES_HTTP_MOBILE is unset — see .env.defaults");
+    return raw === "0" ? undefined : MOBILE_CONTEXT;
+};
 
 // Required numeric knob — `.env.defaults` is the canonical list (schemes#31:
 // the file IS the docs and the daemon floor-sets it at boot; no in-code
