@@ -1,0 +1,59 @@
+{
+    "name": "@plurnk/plurnk-mimetypes-text-plain",
+    "version": "0.7.6",
+    "description": "text/plain (head-oriented prose) and text/stream (tail-oriented live data) mimetype handler for plurnk-service.",
+    "type": "module",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "plurnk": {
+        "kind": "mimetype",
+        "handlers": [
+            {
+                "name": "text/plain",
+                "glyph": "📄",
+                "extensions": [
+                    ".txt"
+                ]
+            },
+            {
+                "name": "text/stream",
+                "glyph": "📡",
+                "extensions": []
+            }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build && (git config core.hooksPath .githooks || true)",
+        "deps:fresh": "npm outdated",
+        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test"
+    },
+    "devDependencies": {
+        "@types/node": "^26.0.0",
+        "typescript": "^7.0.2",
+        "@plurnk/plurnk-mimetypes": "^0.19.0"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-mimetypes": ">=0.16.0"
+    }
+}
