@@ -74,7 +74,7 @@
         }
     },
     "devDependencies": {
-        "@plurnk/plurnk-grammar": "0.76.6",
+        "@plurnk/plurnk-grammar": "0.76.10",
         "@plurnk/plurnk-mimetypes-grammar-css": "^0.1.0",
         "@plurnk/plurnk-mimetypes-grammar-dart": "^0.1.0",
         "@tree-sitter-grammars/tree-sitter-kotlin": "^1.1.0",
