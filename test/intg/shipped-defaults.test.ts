@@ -28,9 +28,8 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
     return env;
 };
 
-test("[§operator-config-shipped-defaults] the template ships no double policy, no active model, a resolving GBNF", async () => {
+test("[§operator-config-shipped-defaults] the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
     const env = await shippedEnv();
-    const rawExample = await readFile(new URL("../../.env.defaults", import.meta.url), "utf8");
     // The operating policy is a packet SECTION (readSystemPolicy) — a PLURNK_SERVICE_MD_* default pointing
     // at the same file injects it twice (once as ## Plurnk Service Policy, once as a foisted
     // plurnk:///<ALIAS>.md READ). The template must ship NO active doc aliases.
@@ -38,14 +37,14 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     assert.deepEqual(mdKeys, [], `no active PLURNK_SERVICE_MD_* doc default ships; got ${mdKeys.join(", ")}`);
     // No active model — the local/cloud/plurnk.ai selection is the user's (#307).
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
-    // Native thinking ships ON and BOUNDED (providers 0.31 activation/capacity split). Off
-    // reroutes a think-trained model's thought into the grammar free zone; adaptive is unbounded.
-    // The F7 coupling (CAPACITY == the serving box's --reasoning-budget) is a LOCAL/llama-server
-    // concern — cloud backends ignore per-request reasoning budgets (#352). So the shipped CAPACITY
-    // couples to the LOCAL reasoning envelope (the local example's 4096), NOT the bare
-    // cloud-generous reserve; both ship as positive ints.
-    assert.equal(env.get("PLURNK_PROVIDERS_THINKING"), "on", "thinking ships on");
-    assert.equal(env.get("PLURNK_PROVIDERS_THINKING_CAPACITY"), "4096", "thinking capacity ships coupled to the LOCAL llama-server reasoning envelope (4096)");
+    // §operator-config-env-defaults — a knob has exactly one owner, and this file declares ONLY
+    // the service's: PLURNK_SERVICE_* plus the daemon's own unprefixed surface (HOST/PORT, the
+    // QUESTIONS ceiling, the PLUGINS trust gate). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
+    // MIMETYPES/AGUI/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray
+    // here is a boot-crash collision waiting on the next sibling pub.
+    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_HOST$|PLURNK_PORT$|PLURNK_QUESTIONS$|PLURNK_PLUGINS_)/;
+    const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
+    assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
     // §tokenomics-window-partition (#352) — the BARE partition ships cloud-generous (a large
     // decode envelope the backend self-clamps); the four knobs ship as positive ints, and the
     // local measured envelope rides the commented per-alias template.
@@ -56,13 +55,6 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     // is the 64Ki-prompt gemma envelope). Prompt budget stays well above the decode envelope.
     const promptBudget = part[0] - part[1] - part[2] - part[3];
     assert.ok(promptBudget > part[1] + part[2], `the bare prompt budget (${promptBudget}) exceeds the decode envelope — a healthy cloud partition`);
-    // Ships PER ALIAS (#353): the bare default is OFF (a cloud model that ignores the grammar earns
-    // a divergence event every turn for nothing); a GBNF-capable alias opts in via a
-    // PLURNK_PROVIDERS_GBNF_<alias> suffix in the OPERATOR'S OWN .env — the template carries the
-    // MECHANISM, never a real alias name (alias names are personal config, not shipped defaults).
-    assert.equal(env.get("PLURNK_PROVIDERS_GBNF"), "", "the bare default ships OFF");
-    assert.ok(!/^PLURNK_PROVIDERS_GBNF_[a-z].*=(?!$)/m.test(rawExample), "no ACTIVE per-alias GBNF opt-in ships in the template — that belongs in the operator's .env");
-    assert.match(rawExample, /# PLURNK_PROVIDERS_GBNF_myalias=plurnk\.gbnf/, "the opt-in mechanism is documented with a placeholder alias");
 });
 
 test("[§operator-config-shipped-defaults] under the shipped policy wiring, the personality renders in the packet exactly once", async () => {

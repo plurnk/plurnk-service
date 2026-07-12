@@ -35,3 +35,7 @@ const fixture = {
 } as const;
 
 for (const [key, value] of Object.entries(fixture)) process.env[key] = value;
+
+// The assembled floor rides after the fixture (set-if-unset — the fixture wins; siblings'
+// defaults fill the rest). Live/demo load ./floor.ts directly, without this Mock fixture.
+await import("./floor.ts");
