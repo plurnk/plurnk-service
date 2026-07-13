@@ -751,3 +751,36 @@ test("#36 caller sampling cannot forge logprobs (reserved keys): the env flag is
     assert.equal("top_logprobs" in body, false);
     mock.restoreAll();
 });
+
+// — turn coordinate headers (#404, per #391): same gate as every first-party signal —
+
+test("#404: sessionId/loop/turn ride as Plurnk-Session-Id/Loop/Turn under the first-party gate", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [], sessionId: "s-9", loop: 3, turn: 41 });
+    const h = (calls[0].init.headers ?? {}) as Record<string, string>;
+    assert.equal(h["Plurnk-Session-Id"], "s-9");
+    assert.equal(h["Plurnk-Loop"], "3");
+    assert.equal(h["Plurnk-Turn"], "41");
+});
+
+test("#404: third-party providers structurally DROP the coordinate (gate off by default)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [], sessionId: "s-9", loop: 3, turn: 41 });
+    const h = (calls[0].init.headers ?? {}) as Record<string, string>;
+    assert.equal("Plurnk-Session-Id" in h, false);
+    assert.equal("Plurnk-Loop" in h, false);
+    assert.equal("Plurnk-Turn" in h, false);
+});
+
+test("#404: coordinates are 1-based — 0/absent/empty emit no header (no strikes-style zero exception)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ runId: "r", messages: [], sessionId: "", loop: 0, turn: 0 });
+    const h = (calls[0].init.headers ?? {}) as Record<string, string>;
+    assert.equal("Plurnk-Session-Id" in h, false);
+    assert.equal("Plurnk-Loop" in h, false);
+    assert.equal("Plurnk-Turn" in h, false);
+    assert.equal(typeof h["Plurnk-Strikes"], "undefined"); // and absent strikes stays absent
+});
