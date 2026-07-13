@@ -13,7 +13,8 @@
         ],
         "customConditions": [
             "plurnk-dev"
-        ]
+        ],
+        "incremental": true
     },
     "include": [
         "src/**/*.ts",
