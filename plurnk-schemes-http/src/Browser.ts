@@ -92,7 +92,7 @@ const mobileEmulation = (): PwContextOptions | undefined => {
 // unset or non-numeric value fails hard at first use, naming the var. All
 // three numerics are render-path-only, so a byte-fetch-only deployment never
 // pays them — but a rendering one must configure them.
-const requireNumEnv = (key: string): number => {
+export const requireNumEnv = (key: string): number => {
     const raw = process.env[key];
     if (raw === undefined) throw new Error(`Browser: required env ${key} is unset — see .env.defaults`);
     const n = Number(raw);

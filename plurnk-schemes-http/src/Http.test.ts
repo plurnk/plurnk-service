@@ -448,6 +448,104 @@ test("READ revalidation: no prior entry → no conditional headers, full fetch",
     assert.equal(hadConditional, false);
 });
 
+// ── per-URL TTL at the freshness predicate (#405, service#333) ─────────────
+const stampedHeader = (ageMs: number, extra = "") =>
+    `HTTP 200 OK${extra}\nx-plurnk-fetched-at: ${new Date(Date.now() - ageMs).toISOString()}`;
+const withTtl = async (ttl: string | undefined, fn: () => Promise<void>) => {
+    const prev = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+    if (ttl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+    else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = ttl;
+    try { await fn(); } finally {
+        if (prev === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+        else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = prev;
+    }
+};
+
+test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/html", stampedHeader(1000)));
+    let fetched = false;
+    await withTtl("60000", async () => {
+        await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
+            const r = await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+            assert.equal(r.status, 102);
+        });
+    });
+    assert.equal(fetched, false); // no network at all — the pre-fetch phase served
+    const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
+    assert.equal(body, "cached page");
+    assert.match(inspect().closed?.outcome ?? "", /ttl-fresh/);
+});
+
+test("TTL: stale stamp falls through to the conditional GET (revalidates)", async () => {
+    const { ctx } = makeCtx(priorEntry("old", "text/plain", stampedHeader(120_000, "\netag: \"v1\"")));
+    let seenINM = "";
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        seenINM = new Headers(init?.headers).get("if-none-match") ?? "";
+        return new Response("fresh", { status: 200, headers: { "content-type": "text/plain" } });
+    };
+    await withTtl("60000", async () => {
+        await withFetch(probe as typeof fetch, async () => {
+            await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+        });
+    });
+    assert.equal(seenINM, "\"v1\""); // past the window → the 304 phase owns freshness
+});
+
+test("TTL: stampless prior entry (execs-materialized) never TTL-serves — revalidates", async () => {
+    const { ctx } = makeCtx(priorEntry("materialized", "text/html", "HTTP 200 OK\netag: \"m1\""));
+    let fetched = false;
+    const probe = async () => { fetched = true; return new Response("x", { status: 200 }); };
+    await withTtl("60000", async () => {
+        await withFetch(probe as typeof fetch, async () => {
+            await new Http().read(readStmt(urlTarget("https://example.com/m", "/m")), ctx);
+        });
+    });
+    assert.equal(fetched, true);
+});
+
+test("TTL: 0 disables the window — fresh stamp still revalidates (no-regression default)", async () => {
+    const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000, "\netag: \"v1\"")));
+    let fetched = false;
+    const probe = async () => { fetched = true; return new Response(null, { status: 304 }); };
+    await withTtl("0", async () => {
+        await withFetch(probe as typeof fetch, async () => {
+            await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+        });
+    });
+    assert.equal(fetched, true);
+});
+
+test("TTL: unset crashes naming the var (floor-set knob, no silent default)", async () => {
+    const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000)));
+    await withTtl(undefined, async () => {
+        await assert.rejects(
+            new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx),
+            /PLURNK_SCHEMES_HTTP_TTL_MS is unset/,
+        );
+    });
+});
+
+test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refreshes it", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
+        await new Http().read(readStmt(urlTarget("https://example.com/s", "/s")), ctx);
+    });
+    const header = inspect().chunks.find((c) => c.channel === "header")?.chunk ?? "";
+    assert.match(header, /^x-plurnk-fetched-at: \d{4}-/m); // stamped at materialization
+
+    const old = stampedHeader(500_000, "\netag: \"v1\"");
+    const { ctx: ctx2, inspect: inspect2 } = makeCtx(priorEntry("cached", "text/plain", old));
+    await withTtl("0", async () => {
+        await withFetch((async () => new Response(null, { status: 304 })) as unknown as typeof fetch, async () => {
+            await new Http().read(readStmt(urlTarget("https://example.com/s", "/s")), ctx2);
+        });
+    });
+    const served = inspect2().chunks.find((c) => c.channel === "header")?.chunk ?? "";
+    const oldMs = Date.parse(/x-plurnk-fetched-at: (.+)$/m.exec(old)![1]);
+    const newMs = Date.parse(/x-plurnk-fetched-at: (.+)$/m.exec(served)![1]);
+    assert.ok(newMs > oldMs, "origin vouched (304) → stamp refreshed");
+});
+
 // ── cancellation ──────────────────────────────────────────────────────────
 test("force-cancel via the SubscriptionHandle aborts the fetch → 499", async () => {
     const { ctx, inspect, forceCancel } = makeCtx();
