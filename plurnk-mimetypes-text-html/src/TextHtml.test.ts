@@ -237,11 +237,18 @@ describe("TextHtml — xpath query", () => {
 });
 
 describe("TextHtml — regex/jsonpath inheritance", () => {
-    it("inherits regex query against the raw HTML source", async () => {
-        const html = "<html><body><!-- TODO: cleanup --></body></html>";
-        const out = await h.query(html, "regex", "TODO: (\\w+)");
+    it("inherits regex query, scanning the markdown projection", async () => {
+        // Regex inheritance works via TextHtml AND scans the readable markdown,
+        // not raw HTML: a dense article projects and a regex over its prose
+        // matches. A comment-only/app-shell page projects to empty — regex finds
+        // nothing, honestly (#412: raw markup never reaches the matcher).
+        const article = "<!DOCTYPE html><html><body><article><h1>FindableArticleHeading</h1>"
+            + `<p>${"Readable article prose with enough density for extraction. ".repeat(15)}</p>`
+            + "</article></body></html>";
+        const out = await h.query(article, "regex", "FindableArticleHeading");
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].matched, ["cleanup"]);
+        const shell = await h.query("<html><body><!-- TODO: cleanup --></body></html>", "regex", "cleanup");
+        assert.equal(shell.length, 0, "comment-only body projects to empty; nothing to match");
     });
 
     it("jsonpath queries the deep-json DOM tree (issue #10): filter elements by type", async () => {
