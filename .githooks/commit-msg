@@ -16,7 +16,7 @@ case "$subject" in
 esac
 
 if [ "$(printf '%s' "$subject" | wc -m)" -gt 80 ]; then
-    echo "commit-msg: subject exceeds 80 characters — cite an issue (#N), a git-bug (4-char hash), or a SPEC tag instead" >&2
+    echo "commit-msg: subject exceeds 80 characters — cite an issue (#N), a commit hash, or a SPEC tag instead" >&2
     exit 1
 fi
 
