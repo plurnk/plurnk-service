@@ -8,10 +8,17 @@
 // --requiem also writes requiem.md: the model's exit interview (each run's final packet + last
 // emission, then asked to itemize the system's faults, unconstrained). Needs an active provider.
 import Digest from "../src/digest/Digest.ts";
+import EnvDefaults from "../src/core/env-defaults.ts";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
 if (import.meta.main) {
     void (async () => {
         try {
+            // The assembled .env.defaults floor (§operator-config-env-defaults) — the requiem
+            // interview instantiates the active provider, whose knob defaults live in ITS file.
+            const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+            EnvDefaults.apply(EnvDefaults.merge(await EnvDefaults.collect(root, resolve(root, "..", "node_modules"))));
             const requiem = process.argv.includes("--requiem");
             // positional args (DB path, then optional output dir) — flags filtered out so a
             // multi-DB triage still writes side-by-side reports instead of clobbering test/digest/.
