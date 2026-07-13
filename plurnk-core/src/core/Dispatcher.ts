@@ -17,6 +17,7 @@ import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
+import EntryCrud from "../schemes/_entry-crud.ts";
 import SessionSettings from "./session-settings.ts";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
@@ -79,11 +80,12 @@ export default class Dispatcher {
     // §send-premature-terminate/[102]<T> — the engine-owned park-deadline registry (loopId → seconds;
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
+    readonly #searchGate: import("./search-gate.ts").default | undefined;
     // §join-blocking-collect (#354) — loops with a READ(run://running-child) armed this turn; a bare
     // SEND[102] parks on it (blocking join). Engine-owned, twin of #parkDeadlines.
     #joinTargets: Set<number>;
 
-    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeRunNotify, injectRun, cancelRun, parkDeadlines, joinTargets }: {
+    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeRunNotify, injectRun, cancelRun, searchGate, parkDeadlines, joinTargets }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -97,6 +99,7 @@ export default class Dispatcher {
         injectRun?: InjectRunNotify;
         cancelRun?: CancelRunNotify;
         parkDeadlines?: Map<number, number>;
+        searchGate?: import("./search-gate.ts").default;
         joinTargets?: Set<number>;
     }) {
         this.#db = db;
@@ -112,6 +115,7 @@ export default class Dispatcher {
         this.#injectRun = injectRun;
         this.#cancelRun = cancelRun;
         this.#parkDeadlines = parkDeadlines ?? new Map();
+        this.#searchGate = searchGate;
         this.#joinTargets = joinTargets ?? new Set();
     }
 
@@ -152,7 +156,7 @@ export default class Dispatcher {
                     // Per plurnk.md the op routes unconditionally to the
                     // exec scheme; the scheme handler reads runtime
                     // (signal), cwd (target), and command (body).
-                    result = await this.#run("exec", statement, schemeCtx);
+                    result = await this.#gatedExec(statement, schemeCtx, loopId, turnId);
                 } else {
                     result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // §op-methods-op-dispatch
                 }
@@ -171,6 +175,14 @@ export default class Dispatcher {
         // arm the join so THIS turn's bare SEND[102] parks (the blocking collect) instead of spinning.
         if (typeof (result as { awaitRun?: unknown }).awaitRun === "string") this.#joinTargets.add(loopId);
         const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
+        // §search-gate — register successful searches AFTER #writeLog stamps the runtime
+        // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
+        if (statement.op === "EXEC" && result.status < 400) {
+            const rt = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
+            const cmd = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
+            const attrPath = (result.attrs as { pathname?: string } | undefined)?.pathname;
+            if (typeof attrPath === "string") this.#searchGate?.registerPending(loopId, turnId, rt, cmd, attrPath);
+        }
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve; §proposal-202-pauses). When a
         // side-effecting op returns status 202 (a broadcast SEND[202] park is model
@@ -329,6 +341,28 @@ export default class Dispatcher {
 
         const target = schemeNameOf(statement.target);
         return this.#denyIfDisallowed(target, origin);
+    }
+
+    // §search-gate (#406, owner ruling) — search runtimes only; everything else dispatches
+    // untouched. A DUPLICATE (same runtime+command this loop) STRIKES AND SERVES: 409 (the
+    // strike rail counts the turn failure; the failed-ops gate holds the terminal a turn)
+    // carrying the prior survivor digest re-read live — the model sees its results again, the
+    // engine never re-fetches, no provenance prose. The per-turn CAP is flood control: 429.
+    async #gatedExec(statement: PlurnkStatement, ctx: PlurnkSchemeContext, loopId: number, turnId: number): Promise<DispatchResult> {
+        const runtime = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
+        const command = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
+        const verdict = this.#searchGate?.check(loopId, turnId, runtime, command) ?? { verdict: "pass" as const };
+        if (verdict.verdict === "capped") {
+            return { status: 429, error: `Per-turn search limit reached (${verdict.cap}) — act on the results you already hold; further searches continue next turn.` };
+        }
+        if (verdict.verdict === "duplicate") {
+            const prior = await EntryCrud.readEntry(verdict.priorPathname, ctx, runtime);
+            const raw = prior.entry?.channels["#results"]?.content ?? "";
+            let results: unknown = raw;
+            try { results = JSON.parse(raw); } catch { /* non-JSON results serve verbatim */ }
+            return { status: 409, results };
+        }
+        return this.#run("exec", statement, ctx);
     }
 
     #denyIfDisallowed(schemeName: string | null, origin: WriterTier): DispatchResult | null {

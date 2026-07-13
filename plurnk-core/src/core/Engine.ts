@@ -23,6 +23,7 @@ import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunN
 import { editedSpan } from "../content/index.ts";
 import { promptPathname } from "./plurnk-uri.ts";
 import SearchPrefetch from "./search-prefetch.ts";
+import SearchGate from "./search-gate.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -170,6 +171,7 @@ export default class Engine {
     #hardOverflowRecovery = new Set<number>();
     #packets: PacketBuilder;
     readonly searchPrefetch: SearchPrefetch;
+    readonly searchGate = new SearchGate();
     #proposals: ProposalLifecycle;
     #dispatcher: Dispatcher;
 
@@ -254,7 +256,7 @@ export default class Engine {
             streamEventNotify, wakeRunNotify,
             tokenize: this.#tokenize, mimetypes: this.#mimetypes, executors, loopSignal,
         });
-        this.#dispatcher = new Dispatcher({
+        this.#dispatcher = new Dispatcher({ searchGate: this.searchGate,
             db, schemes, mimetypes: this.#mimetypes,
             tokenize: this.#tokenize,
             telemetry: this.#telemetry, proposals: this.#proposals,
@@ -419,6 +421,7 @@ export default class Engine {
             }
             this.#loopAborts.delete(loopId);
             this.#strikes.delete(loopId);
+            this.searchGate.cleanup(loopId);
             this.#hardOverflowRecovery.delete(loopId);
             this.#telemetry.delete(loopId);
             this.#tokenRatios.delete(loopId);
