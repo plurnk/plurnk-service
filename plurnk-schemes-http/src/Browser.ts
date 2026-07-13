@@ -71,8 +71,13 @@ export interface RenderResult {
 // of sites that serve degraded/blocked mobile content). NOTE: Wikipedia gates
 // mobile on the domain, not the UA, so this is a no-op there — by design; its
 // desktop page already extracts clean.
+// The ONE browser identity both acquisition paths present (render context AND
+// the byte-path fetch) — ordinary Chrome traffic, never an automated-client or
+// plurnk fingerprint. Model-supplied {User-Agent: …} target blocks override it.
+export const BROWSER_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+
 const MOBILE_CONTEXT: PwContextOptions = Object.freeze({
-    userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    userAgent: BROWSER_UA,
     viewport: { width: 393, height: 851 },
     deviceScaleFactor: 2.75,
     isMobile: true,
