@@ -313,7 +313,9 @@ test("READ: target {…} headers are threaded into the fetch", async () => {
     await withFetch(probe as typeof fetch, async () => {
         await new Http().read(readStmt(target), ctx);
     });
-    assert.deepEqual(seenHeaders, [["Authorization", "Bearer T"], ["Accept", "application/json"]]);
+    // Default browser identity rides first when the model supplied no UA block.
+    assert.deepEqual(seenHeaders, [["User-Agent", (seenHeaders as [string, string][])[0][1]], ["Authorization", "Bearer T"], ["Accept", "application/json"]]);
+    assert.match((seenHeaders as [string, string][])[0][1], /Mozilla.*Chrome/);
 });
 
 test("READ: headers reach the browser render on an HTML GET (authed page renders authed)", async () => {
@@ -544,6 +546,34 @@ test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refresh
     const oldMs = Date.parse(/x-plurnk-fetched-at: (.+)$/m.exec(old)![1]);
     const newMs = Date.parse(/x-plurnk-fetched-at: (.+)$/m.exec(served)![1]);
     assert.ok(newMs > oldMs, "origin vouched (304) → stamp refreshed");
+});
+
+// ── wire identity ───────────────────────────────────────────────────────────
+test("byte path sends the browser UA, not Node's automated-client default", async () => {
+    const { ctx } = makeCtx();
+    let ua = "";
+    const probe = async (_u: string | URL | Request, init?: RequestInit) => {
+        ua = new Headers(init?.headers).get("user-agent") ?? "";
+        return new Response("x", { status: 200, headers: { "content-type": "text/plain" } });
+    };
+    await withFetch(probe as typeof fetch, async () => {
+        await new Http().read(readStmt(urlTarget("https://api.example.com/d.json", "/d.json")), ctx);
+    });
+    assert.match(ua, /Mozilla.*Chrome/);
+});
+
+test("a model-supplied User-Agent target block overrides the default identity", async () => {
+    const { ctx } = makeCtx();
+    let ua = "";
+    const probe = async (_u: string | URL | Request, init?: RequestInit) => {
+        ua = new Headers(init?.headers).get("user-agent") ?? "";
+        return new Response("x", { status: 200 });
+    };
+    const target = urlTarget("https://api.example.com/x", "/x", [["User-Agent", "curl/8"]]);
+    await withFetch(probe as typeof fetch, async () => {
+        await new Http().read(readStmt(target), ctx);
+    });
+    assert.equal(ua, "curl/8");
 });
 
 // ── cancellation ──────────────────────────────────────────────────────────

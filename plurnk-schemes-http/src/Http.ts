@@ -39,7 +39,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
-import Browser, { requireNumEnv, type RenderResult } from "./Browser.ts";
+import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
@@ -218,7 +218,12 @@ export default class Http implements SchemeHandler {
             const response = await fetch(url, {
                 method,
                 body,
-                headers: [...headers, ...conditional],
+                // One browser identity on the wire (never Node's default "node"
+                // UA — a loud automated-client fingerprint). The model's own
+                // {User-Agent: …} block wins when present.
+                headers: headers.some(([k]) => k.toLowerCase() === "user-agent")
+                    ? [...headers, ...conditional]
+                    : [["User-Agent", BROWSER_UA] as [string, string], ...headers, ...conditional],
                 signal: local.signal,
                 redirect: "follow",
             });
