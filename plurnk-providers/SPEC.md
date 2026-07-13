@@ -76,7 +76,10 @@ interface Provider {
     // (0 = clean, distinct from absent = unreported; contract plurnk-service#313).
     // Forwarded as `Plurnk-Strikes` ONLY under the firstPartyMetadata gate,
     // dropped everywhere else. Headers only — never placed in the packet.
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
+    // `sessionId`/`loop`/`turn` (#404): the turn coordinate, stamped as
+    // `Plurnk-Session-Id`/`Plurnk-Loop`/`Plurnk-Turn` under the SAME gate.
+    // 1-based; absent/0 emits no header. Headers only, never the packet.
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sessionId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
 }
 
 interface ProviderResponse {

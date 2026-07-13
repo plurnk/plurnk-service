@@ -336,7 +336,7 @@ export default class OpenAICompatProvider implements Provider {
     // absent (consumer didn't report); contract per plurnk-service#313. Strikes
     // ride HTTP headers only — the packet never carries them (the model must
     // never see strike state; engine accounting is not a metric to game).
-    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, runId: string): Record<string, string> {
+    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, runId: string, sessionId: string | undefined, loop: number | undefined, turn: number | undefined): Record<string, string> {
         if (!this.#firstPartyMetadata) return {};
         const h: Record<string, string> = {};
         if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
@@ -346,6 +346,13 @@ export default class OpenAICompatProvider implements Provider {
         // forwarded so the endpoint can key per-run affinity/telemetry — same
         // gate as every first-party signal.
         h["Plurnk-Run-Id"] = runId;
+        // Turn coordinate (#404, extends #26 per #391): session/loop/turn, the
+        // daemon-side sequence the endpoint can never scrape from the wire.
+        // Coordinates are 1-based — 0 is not a real value, so no strikes-style
+        // zero exception; absent/empty/0 emits no header.
+        if (sessionId !== undefined && sessionId.length > 0) h["Plurnk-Session-Id"] = sessionId;
+        if (loop !== undefined && Number.isInteger(loop) && loop >= 1) h["Plurnk-Loop"] = String(loop);
+        if (turn !== undefined && Number.isInteger(turn) && turn >= 1) h["Plurnk-Turn"] = String(turn);
         return h;
     }
 
@@ -434,7 +441,7 @@ export default class OpenAICompatProvider implements Provider {
         return out;
     }
 
-    async generate({ messages, runId, signal, grammar, maxTokens, attributions, client, strikes, sampling }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
+    async generate({ messages, runId, signal, grammar, maxTokens, attributions, client, strikes, sessionId, loop, turn, sampling }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sessionId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
         // Boundary validation (SPEC §2): the run identity is required.
         if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
@@ -482,7 +489,7 @@ export default class OpenAICompatProvider implements Provider {
         const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
 
         // Per-request headers = static auth/routing + any first-party telemetry.
-        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, runId);
+        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, runId, sessionId, loop, turn);
         const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
         let raw;
         for (let attempt = 0; ; attempt++) {

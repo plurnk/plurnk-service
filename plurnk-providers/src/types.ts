@@ -126,7 +126,14 @@ export interface Provider {
     // same firstPartyMetadata gate as attributions/client; dropped everywhere
     // else. Headers only — the packet NEVER carries strike state (the model must
     // not see engine accounting; it would become a metric to game).
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
+    //
+    // `sessionId`/`loop`/`turn` (#404, per #391) are the turn COORDINATE — the
+    // daemon-side sequence of the turn being generated, which the endpoint can
+    // never scrape from the wire. Forwarded as `Plurnk-Session-Id`/`Plurnk-Loop`/
+    // `Plurnk-Turn` ONLY under the same firstPartyMetadata gate; dropped
+    // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
+    // strikes-style zero exception). Headers only, never the packet.
+    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sessionId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
     // null = provider can't determine the model's context window. Consumer
     // treats null as "no budget info" — Percent column omitted rather than
     // guessed. Providers that always know contextSize never return null.
