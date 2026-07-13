@@ -92,7 +92,7 @@ Optionality:
 
 Hard constraints:
 
-- Close-tag `:OPsuffix` must character-match the open tag's `OPsuffix`.
+- Close-tag `:OPsuffix` must character-match the open tag's `OPsuffix`. {§close-tag-match}
 - Header elements appear in the order shown above (signal, then path, then `<L>`, then `:`).
 
 All other restrictions are runtime concerns, not grammar concerns.
@@ -216,7 +216,7 @@ JS facilities where applicable. **The leading prefix CLAIMS its
 dialect** (#59): a claimed body that fails its dialect's parse is a
 positioned `"visitor"` error, never a silent glob fallback — the
 fallback converted a model's syntax fumble into a lying no-matches
-result. Glob is the no-prefix dialect only.
+result. Glob is the no-prefix dialect only. {§matcher-prefix-claims}
 
 | Leading prefix | Dialect   | Canonical form            | Validation         |
 |----------------|-----------|---------------------------|--------------------|
@@ -281,7 +281,7 @@ errored matcher's message as the teaching failure.
 *target* (path-name regex, §5) that fails to parse falls back to a
 local path rather than erroring — a file may legitimately be named
 `#…`, so the fallback has a real referent there; a matcher pattern has
-none.
+none. {§target-regex-local-fallback}
 
 **GBNF note — pattern bodies are single-line at the rail.** The shipped
 `dist/plurnk.gbnf` forbids literal newlines inside FIND/READ/OPEN/FOLD
@@ -291,7 +291,7 @@ mismatched-close-tag trap (`<<FIND(…):…:READ` leaving the sampler stuck
 in an unclosable body) to a single line. Content bodies
 (EDIT/COPY/MOVE/EXEC/SEND/PLAN/WORK/FORK) remain multiline. The ANTLR
 parser accepts multiline pattern bodies (forgiving ingester;
-`L(GBNF) ⊆ L(ANTLR)`).
+`L(GBNF) ⊆ L(ANTLR)`). {§pattern-body-single-line}
 
 **Deferred validation:**
 
@@ -347,7 +347,7 @@ digits (plus an optional `.`-fraction) maximally; a `-` or `,`(` `?)
 then separates the next. So `<-1-5>` parses as `[-1, 5]` — the first
 `-` is the sign of -1, the second `-` is the separator. This falls out
 of standard ANTLR longest-match. The dash separator is parse-side only;
-the GBNF dictates the comma form.
+the GBNF dictates the comma form. {§scope-marker-forms}
 
 **Runtime concerns** (not enforced by the parser):
 
@@ -366,7 +366,7 @@ the GBNF dictates the comma form.
 deterministic order so that `<N-M>` pagination is reproducible. The
 choice of ordering is a runtime guarantee, not a parser concern.
 
-## 8. Suffix Discipline
+## 8. Suffix Discipline {§suffix-discipline}
 
 The `:body:` fencing handles the vast majority of grammatical-enclosure
 concerns: body content is fully opaque to OP keywords and modifier-like
@@ -418,7 +418,7 @@ transfers directly:
 - `4xx` Client Error — model-side failure (malformed plurnk, missing path, contract violation); `499` is the model's give-up.
 - `5xx` Server Error — runtime or infrastructure failure. Never model-emitted as a terminal: "failed" is an engine verdict.
 
-### The terminal contract (waitpid)
+### The terminal contract (waitpid) {§waitpid-dispositions}
 
 The model signals one intention per turn — **continue (102)**, **done
 (200)**, **wait (202)**, or **give up (499)**, plus the operator-facing
@@ -433,15 +433,15 @@ structural:
   (the mid-termination rule), and the GBNF reserves the five from
   mid-position SENDs (`status-mid` is their complement over `DDD`).
   This keeps the grammar's last-SEND model and the dispatcher's
-  first-disposition model coincident.
+  first-disposition model coincident. {§send-mid-reservation}
 - A **mid** SEND (before the terminal) is comms: statusless, or any
   non-disposition code, targeted or pathless, empty body allowed.
 - The **terminal** SEND requires a non-empty body — a turn must not
-  end empty-handed.
+  end empty-handed. {§terminal-body-nonempty}
 - The **park** rides `[202]` only: `<T>` (wait up to T seconds),
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
   (indefinite; the join's own liveness bounds it). See §7 for the
-  GBNF-strict / ANTLR-tolerant split.
+  GBNF-strict / ANTLR-tolerant split. {§park-202-only}
 
 SEND with no `(path)` broadcasts to the default control channel — the
 turn's disposition. SEND with `(path)` directs the message at a
@@ -538,7 +538,7 @@ The entry points are `PlurnkParser.parse` (a model turn), `PlurnkParser.parseSta
 // Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced entirely by the
 // grammar: free text before PLAN, a required PLAN, nothing but whitespace between/after
 // ops, and a required terminal SEND. A packet without a PLAN and a terminal SEND is
-// invalid. A Plurnk packet IS a turn; there is no permissive fallback.
+// invalid. A Plurnk packet IS a turn; there is no permissive fallback. {§turn-shape}
 PlurnkParser.parse(input: string): ParseResult
 
 // Parse a bare sequence of statements — teaching-example collections, single ops,
@@ -550,7 +550,7 @@ PlurnkParser.parseStatements(input: string): ParseResult
 // utility ops, LOOK (READ minus the log side effect) and BUFF (pull an editable entry into a
 // buffer; the write-back is a later plain EDIT). The topmost subset, one above the model/script
 // tiers; never used for model output. The other entry points reject LOOK/BUFF, so a client op
-// only parses here. Returns ParseResult<ClientStatement>.
+// only parses here. Returns ParseResult<ClientStatement>. {§tier-entrypoints}
 PlurnkParser.parseClient(input: string): ParseResult<ClientStatement>
 
 // Parse a multi-turn LOG — each turn REQUIRES the `<<TURN: … :TURN` wrapping around
@@ -747,7 +747,7 @@ runtime constructs this; the parser provides the fields):
 ```
 
 **Message style rules** (enforced by `PlurnkErrorStrategy` and the
-lexer message translator):
+lexer message translator): {§error-shape}
 
 - **Protocol vocabulary only.** Messages refer to plurnk concepts (open
   tag, close tag, signal, path, line marker, body, statement header,

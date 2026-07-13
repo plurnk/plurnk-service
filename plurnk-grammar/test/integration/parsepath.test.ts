@@ -122,6 +122,7 @@ test("parsePath: multi-value params parse to array", () => {
 // Path-name regex (`#pattern#flags`): a leading `#` dispatches a regex over path
 // names, distinct from addressing a single path. `#` is collision-free — schemes
 // never lead with it and `#channel` is a postfix.
+// {§target-regex-local-fallback}
 test("parsePath: leading `#…#flags` returns kind=regex with split pattern/flags", () => {
     const p = AstBuilder.parsePath("#draft.*#i");
     if (p?.kind !== "regex") { assert.fail("expected regex"); return; }

@@ -58,6 +58,7 @@ test("client: suffix nesting works on LOOK like any read op", () => {
 // Territorial integrity — client ops fail hard outside the client tier
 // -------------------------------------------------------------------------
 
+// {§tier-entrypoints}
 test("client: parseStatements (protocol) rejects LOOK", () => {
     const stmts = PlurnkParser.parseStatements("<<LOOK(p)::LOOK").items.filter((i) => i.kind === "statement");
     assert.equal(stmts.length, 0);

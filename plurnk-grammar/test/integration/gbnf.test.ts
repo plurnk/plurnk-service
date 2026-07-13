@@ -329,6 +329,7 @@ test("PlurnkParser.parse: a mid-turn termination is ILLEGAL — a disposition-co
 // SEND disposition codes (terminal vs mid)
 // -------------------------------------------------------------------------
 
+// {§waitpid-dispositions}
 test("GBNF: 202 is BACK (waitpid contract) — the obligation-checked wait terminal; mid is unsampleable", () => {
     // A turn ends on SEND[202]: the wait disposition (engine verifies against live obligations).
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]:awaiting the fork's report:SEND"), true);
@@ -338,6 +339,7 @@ test("GBNF: 202 is BACK (waitpid contract) — the obligation-checked wait termi
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]<60>:holding for the stream:SEND"), false);
 });
 
+// {§park-202-only}
 test("GBNF: the terminal [202] park <T>/<T,P>/<-1> — bounded, polled, indefinite, targeted; no park elsewhere", () => {
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<30>:polling:SEND"), true);          // bounded wait
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<-1>:standing by:SEND"), true);      // indefinite (join-bounded)
@@ -400,6 +402,7 @@ test("GBNF: op-count bound — K=14 mid-steps derive, 15 do not; exhaustion forc
     assert.equal(derives("root-turn", turn([...Array(13).fill(midSend), edit], "<<SEND[200]:done:SEND")), true);
 });
 
+// {§pattern-body-single-line}
 test("GBNF: pattern bodies (FIND/READ/OPEN/FOLD) forbid a literal newline — in-body quicksand fix (packet002)", () => {
     // packet002 forensic: `<<FIND(SPEC.md):#grinder#:READ` (FIND closed with the wrong tag) left
     // the model stuck in the FIND body — every subsequent newline was legal body content, so the
@@ -447,6 +450,7 @@ test("GBNF: a turn may contain multiple SENDs — but only the terminal carries 
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(known://a.md):x:EDIT"), false);
 });
 
+// {§send-mid-reservation}
 test("GBNF: terminal disposition codes are UNSAMPLEABLE mid — a coded SEND IS the terminal", () => {
     // The bug this closes: a mid SEND[200] after a READ demoted a premature terminate to a legal
     // comms SEND, which the dispatcher (first disposition-coded SEND wins) acted on — bypassing
@@ -539,6 +543,7 @@ test("GBNF: the READ→200 rail is DELETED (#54) — premature-conclude is the E
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND(run://peer):ping:SEND\n<<SEND[200]:done:SEND"), true);
 });
 
+// {§terminal-body-nonempty}
 test("GBNF: terminal SEND body is required non-empty — a turn must not end empty-handed", () => {
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:Paris:SEND"), true);
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]::SEND"), false);          // empty terminal

@@ -52,6 +52,7 @@ test("body containing internal colons (predicate falsifies)", () => {
     assert.equal(statementsOf("<<EDIT(p):key:value:more:stuff:EDIT").length, 1);
 });
 
+// {§suffix-discipline} {§close-tag-match}
 test("ex 31 — nested EDIT via suffix discipline", () => {
     const input = "<<EDITouter(known://demo):quoted: <<EDIT(known://inner):hello world:EDIT:EDITouter";
     assert.equal(statementsOf(input).length, 1);
@@ -151,11 +152,13 @@ const errMsgs = (input: string) =>
         .filter((i) => i.kind === "error")
         .map((i) => (i.kind === "error" ? i.error : null));
 
+// {§error-shape}
 test("value-add: expected-token list is deduped (no `<<OPsuffix` repeated 10x)", () => {
     const msg = errMsgs("<<PLAN:t:PLAN <<READ(x)::READ")[0]!.message;
     assert.equal((msg.match(/<<OPsuffix/g) ?? []).length <= 1, true, msg);
 });
 
+// {§turn-shape}
 test("value-add: PLAN-less turn gets the begin-with-PLAN imperative", () => {
     const errs = errMsgs("<<SEND[200]:done:SEND");
     assert.equal(errs.length, 1);
@@ -201,6 +204,7 @@ test("value-add: warning carries severity through to the TelemetryEvent level", 
     assert.equal(warn.error.toTelemetryEvent().level, "warn");
 });
 
+// {§send-mid-reservation}
 test("value-add: mid-turn termination (op after a disposition SEND) is lifted to the rule", () => {
     const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(known:///a):v:EDIT");
     // Shape-only wording: no code enumeration in error messages (the menu is canon's job) -
@@ -215,6 +219,7 @@ test("value-add: two disposition SENDs get the termination rule (the second cann
     assert.ok(errs.some((e) => /a disposition SEND ends the turn/.test(e!.message)));
 });
 
+// {§waitpid-dispositions} {§park-202-only}
 test("202 is BACK (waitpid contract): the wait disposition — terminal, mid-reserved, ANTLR-tolerant on a [102] park", () => {
     // Terminal position: a turn ends on SEND[202] cleanly (the obligation-check is the engine's).
     const ok = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[202]:awaiting worker:SEND");
@@ -445,6 +450,7 @@ test("valid regex body accepted", () => {
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
+// {§matcher-prefix-claims}
 test("#59: a `#`-leading body that never closes the fence is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<FIND(log://x):#unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
@@ -553,6 +559,7 @@ test("non-matcher OP body never triggers regex validation", () => {
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
+// {§scope-marker-forms}
 test("AST: line marker single position", () => {
     const result = PlurnkParser.parseStatements("<<EDIT(p)<5>:line:EDIT");
     const item = result.items[0];
@@ -1403,6 +1410,7 @@ test("#42: single-colon body-less closes at EOF and at a glued <<", () => {
     assert.equal(ssCount("<<READ(a):READ<<FIND(b):FIND"), 2); // glued, next << boundary
 });
 
+// {§close-tag-match}
 test("#42: canonical ::OP empty body still works", () => {
     assert.equal(ssCount("<<READ(a)::READ\n<<READ(b)::READ"), 2);
 });
