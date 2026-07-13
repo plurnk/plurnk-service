@@ -893,11 +893,13 @@ export default class Dispatcher {
                     // attrs.retrievalOnly — the strike decoupler (owner ruling): atomic-turn-
                     // pretrained models pair fetch-and-answer by habit; the refusal teaches,
                     // the strike executed. Engine reads this to skip the strike.
-                    // #384 (owner wording) — the steer speaks PACKET-TIME, not dispatch-time: the
-                    // model reads this 409 in the same packet where the retrieval results already
-                    // sit, so it names their presence and the move (review, react) — never a
-                    // future tense ("next turn" read as wait-more: a model parked on it).
-                    return { status: 409, error: "Termination attempted despite this turn's retrieval operations. Their results are now in the log for review and reaction.", attrs: { retrievalOnly: true } };
+                    // #384 (owner wording, run48 requiem) — three lessons in one steer: it narrates
+                    // "last turn" as HISTORY (the model reads log rows in the third person and never
+                    // took "you"-steers as self-addressed), states the mechanism as law (retrievals
+                    // FORCE an additional turn — not blame, physics), and prescribes the concluding
+                    // emission's legal SHAPE (PLAN + SEND[200] only — no room for the justify-READ
+                    // that re-armed this gate four times while she held the correct answer).
+                    return { status: 409, error: "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn to receive results for review and reaction. To conclude, only use PLAN and SEND[200] operations.", attrs: { retrievalOnly: true } };
                 }
                 return { status: 409, error: `Attempted [200] termination with pending work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
             }
