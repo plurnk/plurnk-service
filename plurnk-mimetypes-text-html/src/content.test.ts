@@ -96,14 +96,16 @@ describe("TextHtml — toText routes through the same projection", () => {
         assert.equal(toText(ARTICLE), h.content(ARTICLE));
     });
 
-    it("toText() falls back to raw HTML when there is no readable markdown", () => {
-        // A comment-only body has no readable content (content() → undefined),
-        // so toText must degrade to the raw HTML rather than empty string —
-        // keeping regex/glob body matchers functional.
+    it("toText() projects to empty string when there is no readable content", () => {
+        // A comment-only body has no readable text (content() → undefined). toText
+        // projects to EMPTY — regex/glob match nothing, honestly — NOT the raw
+        // HTML: that raw fall-through fed 2MB pages to the embedder and wedged the
+        // daemon (#412). Readable text projects (see the <form>/<div> cases); pure
+        // markup/comment noise projects to empty. Never the raw markup.
         const html = "<html><body><!-- TODO: cleanup --></body></html>";
         const toText = (h as unknown as { toText(c: string): string }).toText.bind(h);
         assert.equal(h.content(html), undefined);
-        assert.equal(toText(html), html);
+        assert.equal(toText(html), "");
     });
 });
 

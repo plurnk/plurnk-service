@@ -113,14 +113,15 @@ export default class TextHtml extends BaseHandler {
     // Route the regex/glob query surface (and, transitively, the framework's
     // content()??toText() embed-source) through the SAME markdown projection,
     // so body matchers scan the readable text, not raw `<div class>` markup.
-    // xpath is unaffected — query() overrides it to hit the real DOM. When the
-    // page has no readable content, fall back to the raw body so regex/glob
-    // still have something to match rather than throwing.
+    // xpath is unaffected — query() overrides it to hit the real DOM. A page
+    // with no readable content projects to EMPTY text (regex/glob match nothing,
+    // honestly) — never the raw body: that raw fall-through is what fed 2MB of
+    // DOM to the embedder and wedged the daemon (#412). Empty when empty.
     protected override toText(content: HandlerContent): string {
         const html = typeof content === "string"
             ? content
             : new TextDecoder("utf-8").decode(content);
-        return htmlToMarkdown(html) ?? html;
+        return htmlToMarkdown(html) ?? "";
     }
 
     // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we
