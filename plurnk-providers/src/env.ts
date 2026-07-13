@@ -40,30 +40,39 @@ export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { log
     rawBody: env.PLURNK_PROVIDERS_RAWBODY !== undefined && env.PLURNK_PROVIDERS_RAWBODY !== "" && env.PLURNK_PROVIDERS_RAWBODY !== "0",
 });
 
-// The side-channel reasoning knobs (SPEC §4, #32/#33) — ACTIVATION and CAPACITY
+// The side-channel reasoning knobs (SPEC §4, #32/#33) — ACTIVATION and BUDGET
 // are separate vars, so a numeric budget can never silently flip wire flags:
-//   PLURNK_PROVIDERS_THINKING           off | adaptive | on   (REQUIRED, fail-hard)
-//   PLURNK_PROVIDERS_THINKING_CAPACITY  positive int, REQUIRED iff THINKING=on —
+//   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
+//   PLURNK_PROVIDERS_REASONING_BUDGET  positive int, REQUIRED iff REASONING=on —
 //     the magnitude for tier/budget mapping. On llama.cpp the ENFORCEMENT is the
 //     box's --reasoning-budget launch flag (per-request numerics are ignored):
-//     env capacity and launch flag are the same number, changed together.
+//     env budget and launch flag are the same number, changed together.
 // The provider maps intent to the backend's mechanism; the consumer states
 // intent, never mechanism. (In-DSL PLAN reasoning is a grammar concern.)
-export type ThinkingMode = "off" | "adaptive" | "on";
-export type Thinking = { mode: ThinkingMode; capacity: number | null };
+export type ReasoningMode = "off" | "adaptive" | "on";
+export type Reasoning = { mode: ReasoningMode; budget: number | null };
 
-export const thinkingFromEnv = (env: NodeJS.ProcessEnv, label: string): Thinking => {
-    const name = "PLURNK_PROVIDERS_THINKING";
+export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoning => {
+    // Old-name shed (#399, industry-standard ruling): the family word is
+    // REASONING — the wire standard we actually speak. A still-set old name
+    // fails hard with the pointer, never silently coexists with the new floor.
+    if (env.PLURNK_PROVIDERS_THINKING !== undefined && env.PLURNK_PROVIDERS_THINKING.length > 0) {
+        throw new Error(`${label} provider: PLURNK_PROVIDERS_THINKING was renamed to PLURNK_PROVIDERS_REASONING (#399); update the env`);
+    }
+    if (env.PLURNK_PROVIDERS_THINKING_CAPACITY !== undefined && env.PLURNK_PROVIDERS_THINKING_CAPACITY.length > 0) {
+        throw new Error(`${label} provider: PLURNK_PROVIDERS_THINKING_CAPACITY was renamed to PLURNK_PROVIDERS_REASONING_BUDGET (#399); update the env`);
+    }
+    const name = "PLURNK_PROVIDERS_REASONING";
     const raw = env[name];
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (off | adaptive | on)`);
     if (raw !== "off" && raw !== "adaptive" && raw !== "on") throw new Error(`${label} provider: ${name} must be one of "off", "adaptive", "on" (got "${raw}")`);
-    if (raw !== "on") return { mode: raw, capacity: null };
-    const capName = "PLURNK_PROVIDERS_THINKING_CAPACITY";
+    if (raw !== "on") return { mode: raw, budget: null };
+    const capName = "PLURNK_PROVIDERS_REASONING_BUDGET";
     const capRaw = env[capName];
     if (capRaw === undefined || capRaw.length === 0) throw new Error(`${label} provider: ${capName} must be set when ${name}=on`);
     const n = Number(capRaw);
     if (!Number.isInteger(n) || n <= 0) throw new Error(`${label} provider: ${capName} must be a positive integer (got "${capRaw}")`);
-    return { mode: "on", capacity: n };
+    return { mode: "on", budget: n };
 };
 
 // ── Per-alias knob scoping (per-alias scoping doctrine, user 2026-07-03): PLURNK_PROVIDERS_<KNOB>[_<alias>] ──
@@ -74,8 +83,8 @@ export const thinkingFromEnv = (env: NodeJS.ProcessEnv, label: string): Thinking
 // facts (API keys, canonical endpoints) remain vendor-named; the per-alias
 // endpoint override stays PLURNK_BASEURL_<alias> (its existing precedent).
 export const PROVIDERS_KNOBS = Object.freeze([
-    "PLURNK_PROVIDERS_THINKING_CAPACITY",
-    "PLURNK_PROVIDERS_THINKING",
+    "PLURNK_PROVIDERS_REASONING_BUDGET",
+    "PLURNK_PROVIDERS_REASONING",
     "PLURNK_PROVIDERS_CONTEXT_SIZE",
     "PLURNK_PROVIDERS_RETRY_ATTEMPTS",
     "PLURNK_PROVIDERS_FETCH_TIMEOUT",
@@ -108,8 +117,8 @@ export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: re
         for (const [key, value] of Object.entries(env)) {
             if (value === undefined || value.length === 0) continue;
             if (!key.startsWith(knob + "_")) continue;
-            // A bare knob can prefix another bare knob (_THINKING prefixes
-            // _THINKING_CAPACITY, _CTX prefixes a hypothetical _CTX_SIZE): a key
+            // A bare knob can prefix another bare knob (_REASONING prefixes
+            // _REASONING_BUDGET, _CTX prefixes a hypothetical _CTX_SIZE): a key
             // that IS a known knob is never a suffixed override, whatever the
             // alias is named.
             if (knobs.includes(key)) continue;

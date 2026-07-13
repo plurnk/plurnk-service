@@ -9,15 +9,15 @@
 // Pure-config providers come from ./standardProviders.ts with no sibling at all.
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
-import type { Thinking } from "./env.ts";
+import type { Reasoning } from "./env.ts";
 import { chatCompletionStream, chatCompletion, OpenAiHttpError, type StreamResponse } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 import { emitWarningOnce } from "./warnings.ts";
 
-// How the thinking intent (PLURNK_PROVIDERS_THINKING: off | adaptive | on, plus
-// THINKING_CAPACITY iff on — #32/#33) translates to each backend's wire mechanism
+// How the thinking intent (PLURNK_PROVIDERS_REASONING: off | adaptive | on, plus
+// REASONING_BUDGET iff on — #32/#33) translates to each backend's wire mechanism
 // (SPEC §4); the per-style mapping lives in #reasoningBody. Non-obvious ones:
 // "template" ALWAYS emits enable_thinking — the explicit false is llama-server's
 // only working off-switch (§13); "anthropic" uses the `thinking` object and IGNORES
@@ -68,11 +68,11 @@ export type OpenAICompatConfig = {
     // boot-refuse an envelope-less local alias. Default unset (no claim).
     requiresMaxTokens?: boolean;
     // The side-channel thinking intent — REQUIRED, no in-code default
-    // (PLURNK_PROVIDERS_THINKING + _CAPACITY, read via thinkingFromEnv):
-    // { mode: off|adaptive|on, capacity: iff on }. The provider maps it to the
-    // backend's mechanism via reasoningStyle; capacity is only ever a magnitude,
+    // (PLURNK_PROVIDERS_REASONING + _BUDGET, read via reasoningFromEnv):
+    // { mode: off|adaptive|on, budget: iff on }. The provider maps it to the
+    // backend's mechanism via reasoningStyle; budget is only ever a magnitude,
     // never a hidden activation flag (#33).
-    thinking: Thinking;
+    reasoning: Reasoning;
     // Decode tuning — REQUIRED, no in-code defaults (canonical measured values,
     // 0.2 / 1.15, live in .env.example; alias-scopable). `temperature` is the
     // DEFAULT for EVERY request, spread UNDER caller sampling (#30/endpoint#7).
@@ -153,7 +153,7 @@ export default class OpenAICompatProvider implements Provider {
     #fetchTimeoutMs: number;
     #headers: Record<string, string>;
     #contextSize: number | null;
-    #thinking: Thinking;
+    #reasoning: Reasoning;
     #temperature: number;
     #repeatPenalty: number;
     #retryDelayMs: number;
@@ -186,7 +186,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#headers = config.headers ?? {};
         this.#contextSize = config.contextSize ?? null;
-        this.#thinking = config.thinking;
+        this.#reasoning = config.reasoning;
         // Loud guard: an out-of-date consumer (stale daughter dist) omitting the
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
@@ -245,7 +245,7 @@ export default class OpenAICompatProvider implements Provider {
     countTokens(text: string): number { return this.#countTokens(text); }
     costFor(usage: ProviderUsage): number { return this.#costFor(usage); }
 
-    // Maps the thinking INTENT (off | adaptive | on+capacity, #33) to the
+    // Maps the thinking INTENT (off | adaptive | on+budget, #33) to the
     // backend's wire mechanism — including under a transported grammar. The #32
     // clamp (force reasoning_effort "none" under response_format) is LIFTED:
     // canary-verified live that fireworks masks ONLY the content channel — the
@@ -255,19 +255,19 @@ export default class OpenAICompatProvider implements Provider {
     // cap the matrix ACCEPTs across efforts (reasoning-rails matrix, TUNING-EPIC
     // F9). Clamping was the root of the plan-less regression (service#331).
     #reasoningBody(): Record<string, unknown> {
-        const { mode, capacity } = this.#thinking;
+        const { mode, budget } = this.#reasoning;
         const on = mode !== "off";
         switch (this.#reasoningStyle) {
             // Native-channel styles. "template" ALWAYS emits — the explicit
             // enable_thinking:false is the only working off-switch on llama-server
-            // (§13). Activation only; capacity is enforced by the box's
+            // (§13). Activation only; budget is enforced by the box's
             // --reasoning-budget launch flag (per-request numerics ignored, F7).
             case "template": return { chat_template_kwargs: { enable_thinking: on } };
             case "think": return on ? { think: true } : {};
             case "include_reasoning": return on ? { include_reasoning: true } : {};
-            // effort tiers from the capacity; off/adaptive omit the field (the
+            // effort tiers from the budget; off/adaptive omit the field (the
             // API's default depth is its adaptive).
-            case "effort": return mode === "on" ? { reasoning_effort: effortFromBudget(capacity!) } : {};
+            case "effort": return mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : {};
             // Fireworks enum (low|medium|high|xhigh|max|none|adaptive): off and
             // adaptive are sent EXPLICITLY — omission leaves a reason-by-default
             // model (DeepSeek V4: default 'high') reasoning inside a constrained
@@ -275,12 +275,12 @@ export default class OpenAICompatProvider implements Provider {
             // low/medium silently promote to high.
             case "effort_explicit": return mode === "off"
                 ? { reasoning_effort: "none" }
-                : mode === "on" ? { reasoning_effort: effortFromBudget(capacity!) } : { reasoning_effort: "adaptive" };
+                : mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : { reasoning_effort: "adaptive" };
             // Anthropic compat: explicit thinking object. off → disabled; on →
             // enabled with budget_tokens; adaptive → omit (the API default).
             case "anthropic": return mode === "off"
                 ? { thinking: { type: "disabled" } }
-                : mode === "on" ? { thinking: { type: "enabled", budget_tokens: capacity } } : {};
+                : mode === "on" ? { thinking: { type: "enabled", budget_tokens: budget } } : {};
             case "none": return {};
         }
     }

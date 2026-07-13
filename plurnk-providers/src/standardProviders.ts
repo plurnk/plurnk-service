@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, thinkingFromEnv, dataCaptureFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, reasoningFromEnv, dataCaptureFromEnv } from "./env.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
@@ -455,7 +455,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             tokenizeUrl = url.replace(/\/v1\/chat\/completions$/, "/tokenize");
             // llama-server ignores `think` — its working reasoning toggle is the
             // jinja chat_template_kwargs.enable_thinking, including the explicit
-            // FALSE at THINKING=off that grammar-constrained loops require (§13).
+            // FALSE at REASONING=off that grammar-constrained loops require (§13).
             if (reasoningStyle === "think") reasoningStyle = "template";
             // #43: llama-server honors n_predict to the CONTEXT WALL (providers#10)
             // — no self-clamp. Surface the fact so a consumer can boot-refuse a
@@ -508,7 +508,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         headers,
         contextSize,
         fetchTimeoutMs,
-        thinking: thinkingFromEnv(env, name),
+        reasoning: reasoningFromEnv(env, name),
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", name, 0),
         repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
         retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", name),

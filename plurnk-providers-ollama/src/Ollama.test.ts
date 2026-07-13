@@ -7,7 +7,7 @@ import Ollama from "./Ollama.ts";
 const baseEnv = Object.freeze({
     OLLAMA_BASE_URL: "http://x",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
-    PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_RETRY_DELAY: "1", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1",
+    PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_RETRY_DELAY: "1", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
 });
 
@@ -29,7 +29,7 @@ test("fromEnv: throws when neither OLLAMA_BASE_URL nor OLLAMA_HOST is set", asyn
 });
 
 test("fromEnv: accepts the official OLLAMA_HOST, normalizing a bare host:port to http://", async () => {
-    const rest = { PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_RETRY_DELAY: "1", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0" };
+    const rest = { PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_RETRY_DELAY: "1", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0" };
     const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
     await Ollama.fromEnv({ ...rest, OLLAMA_HOST: "127.0.0.1:11434" }, "qwenzel:latest");
     assert.ok(calls.some((u) => u.startsWith("http://127.0.0.1:11434/")), `normalized OLLAMA_HOST used: ${calls[0]}`);
@@ -49,7 +49,7 @@ test("fromEnv: a per-alias baseUrl override normalizes a bare host:port like OLL
 
 test("fromEnv: throws when PLURNK_PROVIDERS_FETCH_TIMEOUT is unset", async () => {
     await assert.rejects(
-        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_THINKING: "off" }, "m"),
+        () => Ollama.fromEnv({ OLLAMA_BASE_URL: "http://x", PLURNK_PROVIDERS_REASONING: "off" }, "m"),
         /PLURNK_PROVIDERS_FETCH_TIMEOUT must be set/,
     );
 });
@@ -61,9 +61,9 @@ test("fromEnv: throws when PLURNK_PROVIDERS_FETCH_TIMEOUT is non-numeric", async
     );
 });
 
-test("fromEnv: throws when PLURNK_PROVIDERS_THINKING is not a valid mode", async () => {
+test("fromEnv: throws when PLURNK_PROVIDERS_REASONING is not a valid mode", async () => {
     mockShow({ model_info: { "qwen35.context_length": 262144 } });
-    await assert.rejects(() => Ollama.fromEnv({ ...baseEnv, PLURNK_PROVIDERS_THINKING: "8192" }, "m"), /PLURNK_PROVIDERS_THINKING must be one of/);
+    await assert.rejects(() => Ollama.fromEnv({ ...baseEnv, PLURNK_PROVIDERS_REASONING: "8192" }, "m"), /PLURNK_PROVIDERS_REASONING must be one of/);
 });
 
 // — /api/show probe —

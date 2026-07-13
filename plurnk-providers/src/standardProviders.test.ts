@@ -6,7 +6,7 @@ import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from 
 // defaults for the providers exercised outside the coverage loop. `openai` is
 // deliberately omitted so its missing-base fail-hard test still fires.
 const baseEnv = Object.freeze({
-    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_THINKING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_RETRY_DELAY: "1", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_RETRY_DELAY: "1", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     GROQ_BASE_URL: "https://api.groq.com/openai/v1",
     DEEPINFRA_BASE_URL: "https://api.deepinfra.com/v1/openai",
     FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
@@ -351,7 +351,7 @@ test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", asyn
     assert.equal("grammar" in JSON.parse(bodies[0]), false);
 });
 
-test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirrors PLURNK_PROVIDERS_THINKING", async () => {
+test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirrors PLURNK_PROVIDERS_REASONING", async () => {
     const mk = (reasoning: string) => {
         const bodies: string[] = [];
         mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
@@ -361,7 +361,7 @@ test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirror
             const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
             return new Response(body, { status: 200 });
         });
-        return { bodies, env: { ...baseEnv, PLURNK_PROVIDERS_THINKING: reasoning, OPENAI_BASE_URL: "http://local" } };
+        return { bodies, env: { ...baseEnv, PLURNK_PROVIDERS_REASONING: reasoning, OPENAI_BASE_URL: "http://local" } };
     };
     const off = mk("off");
     const pOff = await standardProviderFromEnv("openai", off.env, "m");
@@ -603,7 +603,7 @@ test("anthropic: standard entry sends bearer auth + the thinking param to the co
         if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 }); }
         return new Response("{}", { status: 200 });
     });
-    const env = { ...baseEnv, ANTHROPIC_API_KEY: "sk-ant-xyz", PLURNK_PROVIDERS_THINKING: "on", PLURNK_PROVIDERS_THINKING_CAPACITY: "3000" };
+    const env = { ...baseEnv, ANTHROPIC_API_KEY: "sk-ant-xyz", PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "3000" };
     const p = await standardProviderFromEnv("anthropic", env, "claude-opus-4-8");
     assert.ok(p !== null);
     await p.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
