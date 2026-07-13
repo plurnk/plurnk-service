@@ -4,6 +4,7 @@
 // that let PLURNK_GBNF_DEBUG and the package.json prefixes drift during the family-prefix sweep.
 
 import test from "node:test";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -24,7 +25,7 @@ test("[§operator-config-flag-parity] every PLURNK_SERVICE_* the code reads is i
     );
 
     // Read: literal PLURNK_SERVICE_* tokens across the service source (not tests).
-    const srcFiles = execSync("git ls-files | grep -E '^src/.*\\.(ts|sql)$'", { cwd: root, encoding: "utf8" }).trim().split("\n");
+    const srcFiles = execSync("git ls-files | grep -E '^src/.*\\.(ts|sql)$'", { cwd: root, encoding: "utf8", env: hermeticGitEnv() }).trim().split("\n");
     const read = new Set<string>();
     for (const f of srcFiles) {
         for (const m of readFileSync(`${root}/${f}`, "utf8").matchAll(/\bPLURNK_SERVICE_[A-Z0-9_]+\b/g)) read.add(m[0]);

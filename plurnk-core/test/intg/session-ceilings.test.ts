@@ -6,6 +6,7 @@
 // NOTE: these set process-global env vars; node --test isolates each file's process.
 
 import test from "node:test";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -93,12 +94,12 @@ test("[§operator-config-session-git] session settings.git:false denies git memb
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-deny-"));
     const db = await openMigrated();
     try {
-        await execFileP("git", ["init", "-q"], { cwd: root });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root });
-        await execFileP("git", ["config", "user.name", "t"], { cwd: root });
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "tracked.md"), "# tracked by git\n");
-        await execFileP("git", ["add", "tracked.md"], { cwd: root });
-        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root });
+        await execFileP("git", ["add", "tracked.md"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
         // A session that opts OUT of git — membership resolves with git:false in effect.
         const denied = await Envelope.createClientEnvelope(db, { name: `git-deny-${crypto.randomUUID()}`, projectRoot: root, settings: JSON.stringify({ git: false }) });
