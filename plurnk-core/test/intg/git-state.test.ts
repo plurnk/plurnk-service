@@ -3,6 +3,7 @@
 // PLURNK_SERVICE_GIT_ALLOWED (the hard service ceiling) + a git worktree.
 
 import test from "node:test";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -19,12 +20,12 @@ test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWE
     const db = await openMigrated();
     const orig = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     try {
-        await execFileP("git", ["init", "-q"], { cwd: root });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root });
-        await execFileP("git", ["config", "user.name", "t"], { cwd: root });
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "tracked.md"), "# tracked\n");
-        await execFileP("git", ["add", "tracked.md"], { cwd: root });
-        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root });
+        await execFileP("git", ["add", "tracked.md"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "untracked.txt"), "loose\n");          // 1 untracked
         await writeFile(join(root, "tracked.md"), "# tracked\n\nedit\n");  // 1 unstaged
 

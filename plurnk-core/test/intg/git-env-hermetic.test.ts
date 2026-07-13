@@ -1,0 +1,82 @@
+// [§membership-git-hermetic] — #401: a process launched from a git hook inherits GIT_DIR
+// (ABSOLUTE in a worktree checkout), which retargets every child git at the enclosing repo
+// regardless of cwd. The providers lane's pre-push drill stacked 16 fixture 'seed' commits onto
+// her lane branch and deleted tracked files. This pin runs the two spawn classes — a fixture
+// sandbox and production membership — under a hostile absolute GIT_DIR aimed at a victim
+// worktree, and proves the victim untouched.
+import test from "node:test";
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import GitMembership from "../../src/core/git-membership.ts";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
+import { openMigrated, insertSession, rootSession, insertRun, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+
+const execFileP = promisify(execFile);
+const git = (args: string[], cwd: string) => execFileP("git", args, { cwd, env: hermeticGitEnv() });
+const seed = (cwd: string) => execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd, env: hermeticGitEnv() });
+
+test("[§membership-git-hermetic] fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched (#401)", async () => {
+    const base = await mkdtemp(join(tmpdir(), "plurnk-hermetic-"));
+    const victim = join(base, "victim");
+    const priorGitDir = process.env.GIT_DIR;
+    const db = await openMigrated();
+    try {
+        // The victim: a primary repo + a linked worktree — the shape whose hook env poisons.
+        await git(["init", "-q", victim], base);
+        await git(["config", "user.email", "v@v"], victim);
+        await git(["config", "user.name", "v"], victim);
+        await writeFile(join(victim, "victim-file.md"), "precious\n");
+        await git(["add", "victim-file.md"], victim);
+        await seed(victim);
+        await git(["worktree", "add", "-q", join(base, "lane"), "-b", "lane"], victim);
+        const victimHead = (await git(["rev-parse", "HEAD"], join(base, "lane"))).stdout.trim();
+
+        // The hostile env: exactly what git exports to a pre-push hook in a worktree.
+        process.env.GIT_DIR = join(victim, ".git", "worktrees", "lane");
+
+        // Fixture class: a sandbox init + seed commit must land in the SANDBOX.
+        const sandbox = await mkdtemp(join(tmpdir(), "plurnk-hermetic-sb-"));
+        await git(["init", "-q"], sandbox);
+        await git(["config", "user.email", "t@t.t"], sandbox);
+        await git(["config", "user.name", "t"], sandbox);
+        await writeFile(join(sandbox, "tracked.md"), "# sandbox truth\n");
+        await git(["add", "tracked.md"], sandbox);
+        await seed(sandbox);
+        const sandboxLog = (await git(["log", "--oneline"], sandbox)).stdout;
+        assert.match(sandboxLog, /seed/, "the sandbox owns its seed commit");
+
+        // Production class: membership resolution against the sandbox must read the SANDBOX.
+        const sessionId = await insertSession(db, `hermetic-${crypto.randomUUID()}`);
+        await rootSession(db, sessionId, sandbox);
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const ctx: PlurnkSchemeContext = {
+            db, sessionId, runId, loopId, turnId,
+            writer: "plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
+            tokenize: (t: string) => Math.ceil(t.length / 4),
+        };
+        await GitMembership.indexGitMembership(ctx);
+        const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname: "/tracked.md" });
+        assert.ok(member, "membership read the sandbox's ls-files, not the victim's");
+        const leak = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname: "/victim-file.md" });
+        assert.equal(leak, undefined, "no victim file leaked into membership");
+
+        // The victim is pristine: same HEAD, clean tree, no seed stacked on the lane branch.
+        const laneHead = (await git(["rev-parse", "HEAD"], join(base, "lane"))).stdout.trim();
+        assert.equal(laneHead, victimHead, "no commit landed on the victim's lane branch");
+        const status = (await git(["status", "--short"], join(base, "lane"))).stdout.trim();
+        assert.equal(status, "", "the victim's working tree is untouched — no deleted tracked files");
+    } finally {
+        if (priorGitDir === undefined) delete process.env.GIT_DIR;
+        else process.env.GIT_DIR = priorGitDir;
+        await db.close();
+        await rm(base, { recursive: true, force: true });
+    }
+});

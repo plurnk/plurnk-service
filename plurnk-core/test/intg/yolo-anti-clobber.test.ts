@@ -8,6 +8,7 @@
 // written — so the on-disk file keeps V2. (A clobber would write V3 to disk on accept.)
 
 import test from "node:test";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -22,12 +23,12 @@ const execFileP = promisify(execFile);
 test("[§dual-yolo-stale-clobber-reject] YOLO rejects an EDIT to a file that diverged on disk this turn — no silent clobber", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-clobber-"));
     try {
-        await execFileP("git", ["init", "-q"], { cwd: root });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root });
-        await execFileP("git", ["config", "user.name", "t"], { cwd: root });
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "doc.md"), "V1 original\n");
-        await execFileP("git", ["add", "doc.md"], { cwd: root });
-        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root });
+        await execFileP("git", ["add", "doc.md"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
         const mock = new Mock({ contextSize: 8192, responses: [
             makeMockResponse("<<SEND[200]:ok:SEND", 50),                                                  // loop 1: materialize doc.md=V1, terminate

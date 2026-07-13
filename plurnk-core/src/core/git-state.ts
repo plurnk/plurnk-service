@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import type { Db, PrepMethod } from "./Db.ts";
 import SessionSettings from "./session-settings.ts";
@@ -36,7 +37,7 @@ export default class GitState {
         if (root === null) return null;
         let stdout: string;
         try {
-            ({ stdout } = await GitState.#execFileP("git", ["status", "--porcelain", "--branch"], { cwd: root, signal, maxBuffer: 16 * 1024 * 1024 }));
+            ({ stdout } = await GitState.#execFileP("git", ["status", "--porcelain", "--branch"], { cwd: root, signal, maxBuffer: 16 * 1024 * 1024, env: hermeticGitEnv() }));
         } catch {
             return null;  // not a git worktree, or git absent — fail closed, no telemetry
         }

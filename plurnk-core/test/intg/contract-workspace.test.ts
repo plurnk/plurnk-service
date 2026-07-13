@@ -7,6 +7,7 @@
 //   and the git flags are the deferral ledger at the foot of this section.
 
 import test from "node:test";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -69,19 +70,19 @@ const withGitWorkspace = async (
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-"));
     const db = await openMigrated();
     try {
-        await execFileP("git", ["init", "-q"], { cwd: root });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root });
-        await execFileP("git", ["config", "user.name", "t"], { cwd: root });
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         const trackedPath = "tracked.md";
         await writeFile(join(root, trackedPath), "# Tracked by git\n\nThis file is a git member.\n");
-        await execFileP("git", ["add", trackedPath], { cwd: root });
+        await execFileP("git", ["add", trackedPath], { cwd: root, env: hermeticGitEnv() });
         // --no-verify + isolated config: the test repo must not inherit the
         // outer project's commit-msg hooks (commitlint) or signing config —
         // this commit is fixture setup, not a project commit.
         await execFileP("git", [
             "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
             "commit", "--no-verify", "-q", "-m", "seed",
-        ], { cwd: root });
+        ], { cwd: root, env: hermeticGitEnv() });
 
         const sessionId = await insertSession(db, `git-ws-${crypto.randomUUID()}`);
         // Root the session via the fixture helper — a direct pointer write plus the
@@ -248,8 +249,8 @@ test("[§membership-resolved-effects] resolveMembershipEffects tags each file me
         // Two more tracked files so we can view one and hide one.
         await writeFile(join(root, "readme.md"), "# readme\n");
         await writeFile(join(root, "secret.md"), "secret\n");
-        await execFileP("git", ["add", "readme.md", "secret.md"], { cwd: root });
-        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "more"], { cwd: root });
+        await execFileP("git", ["add", "readme.md", "secret.md"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "more"], { cwd: root, env: hermeticGitEnv() });
         // view readme.md (read-only member); hide secret.md (excluded from membership).
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "view", glob: "readme.md" });
         await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "hide", glob: "secret.md" });
@@ -370,12 +371,12 @@ const seedForest = async (db: Db, repos: Array<{ dir: string; file: string }>): 
     for (const { dir, file } of repos) {
         const r = join(parent, dir);
         await mkdir(r, { recursive: true });
-        await execFileP("git", ["init", "-q"], { cwd: r });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: r });
-        await execFileP("git", ["config", "user.name", "t"], { cwd: r });
+        await execFileP("git", ["init", "-q"], { cwd: r, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: r, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.name", "t"], { cwd: r, env: hermeticGitEnv() });
         await writeFile(join(r, file), "# member\n");
-        await execFileP("git", ["add", file], { cwd: r });
-        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: r });
+        await execFileP("git", ["add", file], { cwd: r, env: hermeticGitEnv() });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: r, env: hermeticGitEnv() });
     }
     const sessionId = await insertSession(db, `forest-${crypto.randomUUID()}`);
     await rootSession(db, sessionId, parent);
@@ -426,12 +427,12 @@ test("a `repo` declared OUTSIDE the project root manifests at a relative (..) ad
         const { parent, ctx } = await seedForest(db, []); // a bare non-git project home
         try {
             // A git repo entirely outside the project home (a sibling temp dir).
-            await execFileP("git", ["init", "-q"], { cwd: external });
-            await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: external });
-            await execFileP("git", ["config", "user.name", "t"], { cwd: external });
+            await execFileP("git", ["init", "-q"], { cwd: external, env: hermeticGitEnv() });
+            await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: external, env: hermeticGitEnv() });
+            await execFileP("git", ["config", "user.name", "t"], { cwd: external, env: hermeticGitEnv() });
             await writeFile(join(external, "ext.md"), "# external repo, outside the home\n");
-            await execFileP("git", ["add", "ext.md"], { cwd: external });
-            await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: external });
+            await execFileP("git", ["add", "ext.md"], { cwd: external, env: hermeticGitEnv() });
+            await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: external, env: hermeticGitEnv() });
 
             await (db.crud_insert_session_constraint as PrepMethod).run({ session_id: ctx.sessionId, effect: "repo", glob: external });
             await GitMembership.indexGitMembership(ctx); // registers AND materializes (an absolute key would never materialize)
@@ -505,7 +506,7 @@ test("[§membership-binary-sniff] NUL-headed content is a binary marker regardle
     await withGitWorkspace(async (root, ctx, db) => {
         const evil = "blob.md"; // the most trusted-looking extension
         await writeFile(join(root, evil), Buffer.concat([Buffer.from("MZ"), Buffer.alloc(64, 0), Buffer.from("binary tail")]));
-        await execFileP("git", ["add", evil], { cwd: root });
+        await execFileP("git", ["add", evil], { cwd: root, env: hermeticGitEnv() });
         await GitMembership.indexGitMembership(ctx);
         const row = await (db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({
             session_id: ctx.sessionId, scheme: null, pathname: `/${evil}`, channel: "body",

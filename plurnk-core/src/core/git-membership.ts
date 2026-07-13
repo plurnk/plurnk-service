@@ -24,6 +24,7 @@
 // File scheme's tests and the demo fixture use) and respects AbortSignal.
 
 import { execFile } from "node:child_process";
+import { hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
 import { resolve, relative, join, matchesGlob } from "node:path";
@@ -62,7 +63,7 @@ export default class GitMembership {
         // --stage exposes the mode so submodule gitlinks (mode 160000 — a commit
         // pointer, a directory on disk, not a file) are filtered: a submodule is a
         // separate declared repo, never a member of its superproject.
-        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024 });
+        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024, env: hermeticGitEnv() });
         const files: string[] = [];
         for (const entry of stdout.split("\0")) {
             if (entry.length === 0) continue;
@@ -80,7 +81,7 @@ export default class GitMembership {
     // (--exclude-standard). NUL-delimited so paths with spaces/newlines survive; untracked
     // rows carry no mode, so (unlike --stage) there's no gitlink to filter.
     static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
-        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024 });
+        const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024, env: hermeticGitEnv() });
         return stdout.split("\0").filter((e) => e.length > 0);
     }
 
@@ -89,7 +90,7 @@ export default class GitMembership {
     // plain repos, linked worktrees (`.git` is a gitdir: file), and submodules alike.
     static async #repoToplevel(dir: string, signal: AbortSignal | undefined): Promise<string | null> {
         try {
-            const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal });
+            const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv() });
             return stdout.trim();
         } catch {
             return null;  // not a git tree (or the dir is gone) — contributes nothing

@@ -3,6 +3,7 @@
 // never recorded as a silent forever-pend. On a rooted session, members land immediately and
 // their derivations warm at constrain time (like createSession), not at some later turn's pump.
 import test from "node:test";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -30,11 +31,11 @@ test("a 'repo' constraint on a HEADLESS session is refused — headless is forev
 test("a 'repo' constraint on a ROOTED session lands members and returns them via FIND-visible catalog", async () => {
     // a real tiny git repo so ls-files has truth to report
     const root = mkdtempSync(join(tmpdir(), "plurnk-root-"));
-    execSync("git init -q && git config user.email t@t && git config user.name t", { cwd: root });
+    execSync("git init -q && git config user.email t@t && git config user.name t", { cwd: root, env: hermeticGitEnv() });
     writeFileSync(join(root, "hello.md"), "# hi\n");
     // The suite's fixture-repo convention (contract-workspace.test.ts): hermetic by declaration —
     // no inherited operator hooks (commitlint template) or signing; fixture setup, not a project commit.
-    execSync("git add hello.md && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit --no-verify -qm seed", { cwd: root });
+    execSync("git add hello.md && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit --no-verify -qm seed", { cwd: root, env: hermeticGitEnv() });
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

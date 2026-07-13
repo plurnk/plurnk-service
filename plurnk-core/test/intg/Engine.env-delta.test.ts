@@ -5,6 +5,7 @@
 // filesystem-as-the-plurnk-run fs-sync fictions (source=file) for ambient disk drift.
 
 import test from "node:test";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { execFile } from "node:child_process";
@@ -121,12 +122,12 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-"));
     const db = await openMigrated();
     try {
-        await execFileP("git", ["init", "-q"], { cwd: root });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root });
-        await execFileP("git", ["config", "user.name", "t"], { cwd: root });
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "notes.md"), "line1\nline2\n");
-        await execFileP("git", ["add", "notes.md"], { cwd: root });
-        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root });
+        await execFileP("git", ["add", "notes.md"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
         const sessionId = await insertSession(db, `envfs-${crypto.randomUUID()}`);
         await rootSession(db, sessionId, root);
