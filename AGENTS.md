@@ -44,6 +44,7 @@ These are the ground rules every agent working in this family shares.
 - **Industry standard unless informed, explicit exception (owner ruling 2026-07-13).** If there is a prevailing industry-standard way to do or name a thing, that is how we do it. Deviating requires an informed, explicit exception written down where the deviation lives (the founding HEREDOC-DSL bet is the template: a deliberate, documented divergence). "We already had a name for it" is not an exception.
 - **Anchor terminology to the model's vocabulary; deviate only with credible cause.** The DSL's `path` is what the model is taught. Internal aliases (`target`, `uri`) create chronic translation tax; a divergent name is "wrong name choice," not "we'll remember the mapping."
 - **Teaching docs are neutral syntax references, not essays.** Completeness + neutrality over cleverness; perfecting model-facing tooling docs is a bikeshedding tarpit. Topology stays mechanism-not-policy.
+- **Errors point at shape, never content menus (owner, grammar#55).** No value enumerations — code menus, op lists — in ANY model-facing message; menus live in taught docs (versioned, one place). Messages name the missing STRUCTURE and stay stable across contract changes. "If you don't try to squeeze training data into error messages, you don't paint yourself into those corners."
 - **Read the wire body, not the config.** When a model shows a documented pathology, read the actual outgoing request before classifying.
 - **Delegate upstream; don't iterate locally.** A gap in upstream-owned substance is an issue for the owning lane, then adopt.
 - **Pull, don't copy.** Adopted content (sysprompt via `PATHS.instructionsSystem`, grammar schemas, the teaching corpus from `@plurnk/plurnk-meta`) resolves from its source package at runtime — the seam exists exactly where the content has a different owner.
@@ -76,5 +77,7 @@ These are the ground rules every agent working in this family shares.
 **The simple-story rule.** Every subsystem must be tellable in one sentence held IDENTICALLY by four minds: the owner's, the agent's, the code, and the spec. Rules-within-rules is a paradigm smell — refactor the story, not the patch.
 
 **The escalation fence (weaker-model operations).** Paradigm changes, SPEC-semantics changes, schema migrations, cross-lane contract design, and standing-ruling reversals PARK for depth in the repo worksheet; routine lanes execute by recipe.
+
+**Design substrate lives committed or dies.** Gitignored per-lane files are ephemeral by construction (the migration proved it: a filter-repo import wipes them). Durable decisions belong in committed SPEC/AGENTS/commit subjects; gitignored substrate holds only work-in-progress you can afford to lose.
 
 **Model-tier runs are foreground, attended, and honest.** Never background a live/demo sweep; tee output to a file; verify the box is exclusively yours; report the tier's real totals.

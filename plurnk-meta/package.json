@@ -14,7 +14,8 @@
         "CORPUS.md",
         "PLURNK_PERSONALITY.md",
         "requirements.md",
-        "docs/**/*"
+        "docs/**/*",
+        "DIVERGENCES.md"
     ],
     "exports": {
         ".": {
