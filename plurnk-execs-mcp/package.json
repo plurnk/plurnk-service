@@ -34,14 +34,14 @@
     },
     "exports": {
         ".": {
-            "types": "./dist/index.d.ts",
             "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
         "./package.json": "./package.json",
         "./runtimes": {
-            "types": "./dist/runtimes.d.ts",
             "plurnk-dev": "./src/runtimes.ts",
+            "types": "./dist/runtimes.d.ts",
             "default": "./dist/runtimes.js"
         }
     },
