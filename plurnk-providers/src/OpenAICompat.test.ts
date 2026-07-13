@@ -137,12 +137,17 @@ test("reasoningStyle 'effort' sends a reasoning_effort tier from the budget", as
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
 });
 
-test("reasoningStyle 'effort_explicit': off SENDS none, adaptive SENDS adaptive, on sends the tier (#30/#33)", async () => {
-    for (const [reasoning, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, "adaptive"], [{ mode: "on", budget: 5000 }, "high"]] as Array<[{ mode: "off" | "adaptive" | "on"; budget: number | null }, string]>) {
+test("reasoningStyle 'effort_explicit': off SENDS none, adaptive OMITS (#403 — literal is MiniMax-only), on sends the tier", async () => {
+    // expected === null → the field must be ABSENT from the wire body. Fireworks
+    // 400s reasoning_effort='adaptive' for non-MiniMax models (wire-verified,
+    // #403): adaptive = the backend's own default posture = omission.
+    for (const [reasoning, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, null], [{ mode: "on", budget: 5000 }, "high"]] as Array<[{ mode: "off" | "adaptive" | "on"; budget: number | null }, string | null]>) {
         const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning, retryAttempts: 0, reasoningStyle: "effort_explicit" });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({ runId: "r", messages: [] });
-        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `mode ${reasoning.mode}`);
+        const body = JSON.parse(calls[0].init.body as string);
+        if (expected === null) assert.equal("reasoning_effort" in body, false, `mode ${reasoning.mode}: field must be omitted`);
+        else assert.equal(body.reasoning_effort, expected, `mode ${reasoning.mode}`);
         mock.restoreAll();
     }
 });
