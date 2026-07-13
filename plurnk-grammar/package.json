@@ -12,8 +12,8 @@
     },
     "exports": {
         ".": {
-            "types": "./dist/src/index.d.ts",
             "plurnk-dev": "./src/index.ts",
+            "types": "./dist/src/index.d.ts",
             "default": "./dist/src/index.js"
         },
         "./package.json": "./package.json",

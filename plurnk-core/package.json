@@ -9,13 +9,13 @@
     },
     "exports": {
         ".": {
-            "types": "./dist/index.d.ts",
             "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
         "./digest": {
-            "types": "./dist/digest/Digest.d.ts",
             "plurnk-dev": "./src/digest/Digest.ts",
+            "types": "./dist/digest/Digest.d.ts",
             "default": "./dist/digest/Digest.js"
         },
         "./package.json": "./package.json"

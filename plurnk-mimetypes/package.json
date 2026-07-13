@@ -28,13 +28,13 @@
     },
     "exports": {
         ".": {
-            "types": "./dist/index.d.ts",
             "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
         "./conformance": {
-            "types": "./dist/conformance.d.ts",
             "plurnk-dev": "./src/conformance.ts",
+            "types": "./dist/conformance.d.ts",
             "default": "./dist/conformance.js"
         },
         "./package.json": "./package.json"
