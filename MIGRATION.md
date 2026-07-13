@@ -18,7 +18,7 @@
 ## 2. Package disposition table (complete — every directory)
 
 ### IN — monorepo workspace + default bundle (settled)
-`plurnk-service`→`plurnk-core/` · `plurnk-grammar` · `plurnk-schemes` · `plurnk-schemes-http` · `plurnk-execs` · `plurnk-execs-common` · `plurnk-execs-search` · `plurnk-execs-mcp` · `plurnk-execs-git` · `plurnk-execs-jq` · `plurnk-execs-sqlite` · `plurnk-mimetypes` · `plurnk-mimetypes-application-json` · `plurnk-mimetypes-application-xml` · `plurnk-mimetypes-application-pdf` (owner-promoted) · `plurnk-mimetypes-text-csv` · `plurnk-mimetypes-text-html` · `plurnk-mimetypes-text-markdown` (owner-confirmed) · `plurnk-mimetypes-text-plain` · `plurnk-mimetypes-embeddings` (owner-confirmed; peer→regular dep at migration) · `plurnk-providers` · `plurnk-providers-ollama` (local floor = owner-domain) · `plurnk-agui` (owner-listed; resolved §6.2) · `plurnk-models` · `plurnk-aliases` · `plurnk-meta` (extracted 2026-07-12, §4b.9–10) · `gbnf` — **27 packages** (docs dissolved, §4b.9)
+`plurnk-service`→`plurnk-core/` · `plurnk-grammar` · `plurnk-schemes` · `plurnk-schemes-http` · `plurnk-execs` · `plurnk-execs-common` · `plurnk-execs-search` · `plurnk-execs-mcp` · `plurnk-execs-git` · `plurnk-execs-jq` · `plurnk-execs-sqlite` · `plurnk-mimetypes` · `plurnk-mimetypes-application-json` · `plurnk-mimetypes-application-xml` · `plurnk-mimetypes-application-pdf` (owner-promoted) · `plurnk-mimetypes-text-csv` · `plurnk-mimetypes-text-html` · `plurnk-mimetypes-text-markdown` (owner-confirmed) · `plurnk-mimetypes-text-plain` · `plurnk-mimetypes-embeddings` (owner-confirmed; peer→regular dep at migration) · `plurnk-providers` · `plurnk-providers-ollama` (local floor = owner-domain) · `plurnk-agui` (owner-listed; resolved §6.2) · `plurnk-models` · `plurnk-aliases` · `plurnk-meta` (extracted 2026-07-12, §4b.9–10) · `plurnk-execs-wasm` (owner correction 2026-07-13: the batteries census always counted wat as default-install core; the weight exclusion was the meta agent's under-evidenced call, reversed) · `gbnf` — **28 packages** (docs dissolved, §4b.9)
 
 ### PROPOSED IN — universal formats, need owner rubber-stamp at GO
 `plurnk-mimetypes-application-jsonl` · `plurnk-mimetypes-application-ipynb` · `plurnk-mimetypes-text-diff` · `plurnk-mimetypes-text-ini` · `plurnk-mimetypes-text-dotenv` · `plurnk-mimetypes-tokenizers` (pairs with embeddings) — **6**
@@ -28,7 +28,6 @@
 
 ### OUT — independent repos, unchanged (settled as classes)
 - Cloud vendor providers: `plurnk-providers-cloudflare` · `-google` · `-openrouter` · `-xai` (own relay/fireworks would also ride this surface — owner-explicit)
-- `plurnk-execs-wasm` (wabt; speculative capability)
 - `plurnk-mimetypes-application-gguf` (owner-explicit) · `plurnk-mimetypes-application-safetensors` (PROPOSED out, symmetry with gguf)
 - All 28 `plurnk-mimetypes-grammar-*` (bash c cpp css dart elixir fsharp fsharp-signature go haskell java javascript julia kotlin lua make ocaml odin php python ruby rust scala toml tsx typescript yaml zig)
 - Community-owned text mimetypes (24): clojure cmake common-lisp csharp datalog dockerfile erlang gherkin graphql mariadb nix perl plsql postgresql prolog protobuf r redis sparql sqlite swift terraform tsql vim

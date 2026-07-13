@@ -133,9 +133,7 @@ test("execs batteries: coverage census — every self-contained default-install 
     console.log(`  resource-gated, present (covered elsewhere / needs resources): ${gatedPresent.join(", ") || "(none)"}`);
     console.log(`  unavailable in this env: ${unavailable.join(", ") || "(none)"}`);
     assert.deepEqual(uncovered, [], `every AVAILABLE self-contained batteries tag must be covered — uncovered: ${uncovered.join(", ")}`);
-    // wat rides @plurnk/plurnk-execs-wasm — an OPTIONAL add-on since the monorepo bundle cut
-    // (MIGRATION.md §2); when installed it re-enters the census via SELF_CONTAINED automatically.
-    assert.ok(available.has("jq") && available.has("sqlite"), "the core batteries executors (jq, sqlite) are discovered and available");
+    assert.ok(available.has("jq") && available.has("sqlite") && available.has("wat"), "the core batteries executors (jq, sqlite, wat) are discovered and available");
 
     // Channel mimetype shape: a results-returning runtime declares the HONEST JSON family on its channel
     // so consumers route jsonpath/render correctly — sqlite/wat emit a single document (application/json),
@@ -146,7 +144,7 @@ test("execs batteries: coverage census — every self-contained default-install 
         return e === undefined ? undefined : e.executor.channels[e.executor.defaultChannel]?.mimetype;
     };
     assert.equal(declMime("sqlite"), "application/json", "EXEC[sqlite] results channel is application/json (single document)");
-    if (available.has("wat")) assert.equal(declMime("wat"), "application/json", "EXEC[wat] results channel is application/json (single document)");
+    assert.equal(declMime("wat"), "application/json", "EXEC[wat] results channel is application/json (single document)");
     assert.equal(declMime("jq"), "application/jsonl", "EXEC[jq] results channel is application/jsonl (newline-delimited stream)");
     for (const t of ["node", "awk", "bash"]) assert.equal(declMime(t), "text/stream", `EXEC[${t}] stdout channel is text/stream`);
 });

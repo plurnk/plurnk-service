@@ -38,6 +38,7 @@
         "plurnk-execs-git",
         "plurnk-execs-jq",
         "plurnk-execs-sqlite",
+        "plurnk-execs-wasm",
         "plurnk-providers-ollama",
         "plurnk-providers",
         "plurnk-agui",
