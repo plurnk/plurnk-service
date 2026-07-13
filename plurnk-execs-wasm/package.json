@@ -1,0 +1,77 @@
+{
+    "name": "@plurnk/plurnk-execs-wasm",
+    "version": "1.0.0",
+    "description": "WebAssembly runtime executor for plurnk-service's exec scheme — in-process sandboxed execution of WAT (text) and wasm (binary) modules.",
+    "keywords": [
+        "plurnk",
+        "exec",
+        "runtime",
+        "executor",
+        "webassembly",
+        "wasm",
+        "wat",
+        "sandbox"
+    ],
+    "homepage": "https://github.com/plurnk/plurnk-execs-wasm#readme",
+    "bugs": {
+        "url": "https://github.com/plurnk/plurnk-execs-wasm/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-execs-wasm.git"
+    },
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "plurnk": {
+        "kind": "exec",
+        "runtimes": [
+            {
+                "name": "wat",
+                "glyph": "🧩",
+                "example": "<<EXEC[wat]:(module (func (export \"main\") (result i32) i32.const 42)):EXEC"
+            },
+            {
+                "name": "wasm",
+                "glyph": "🧩",
+                "example": "<<EXEC[wasm](module.wasm):main:EXEC"
+            }
+        ]
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --test \"src/**/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepare": "npm run build"
+    },
+    "dependencies": {
+        "wabt": "^1.0.39"
+    },
+    "devDependencies": {
+        "@types/node": "^26.0.0",
+        "typescript": "^7.0.2",
+        "@plurnk/plurnk-execs": "^1"
+    },
+    "peerDependencies": {
+        "@plurnk/plurnk-execs": "^1"
+    }
+}
