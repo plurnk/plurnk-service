@@ -21,8 +21,8 @@ import { emitWarningOnce } from "./warnings.ts";
 // (SPEC §4); the per-style mapping lives in #reasoningBody. Non-obvious ones:
 // "template" ALWAYS emits enable_thinking — the explicit false is llama-server's
 // only working off-switch (§13); "anthropic" uses the `thinking` object and IGNORES
-// reasoning_effort; "effort_explicit" (fireworks) sends the EXPLICIT "none"/"adaptive"
-// enum values instead of omitting — reason-by-DEFAULT models (DeepSeek V4 defaults
+// reasoning_effort; "effort_explicit" (fireworks) sends the EXPLICIT "none" for OFF
+// instead of omitting — reason-by-DEFAULT models (DeepSeek V4 defaults
 // 'high') keep reasoning when the field is omitted, fatal under an active grammar
 // (#30). Intent maps IDENTICALLY with or without a transported grammar — fireworks
 // masks only the content channel, so reasoning and rails coexist in one call
@@ -268,14 +268,16 @@ export default class OpenAICompatProvider implements Provider {
             // effort tiers from the budget; off/adaptive omit the field (the
             // API's default depth is its adaptive).
             case "effort": return mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : {};
-            // Fireworks enum (low|medium|high|xhigh|max|none|adaptive): off and
-            // adaptive are sent EXPLICITLY — omission leaves a reason-by-default
-            // model (DeepSeek V4: default 'high') reasoning inside a constrained
-            // decode until max_tokens (#30). V4 gotchas: integer efforts 400;
-            // low/medium silently promote to high.
+            // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
+            // reason-by-default model (DeepSeek V4: default 'high') reasoning (#30).
+            // ADAPTIVE omits the field: the backend's own default posture IS the
+            // adaptive semantics, and the literal "adaptive" is MiniMax-M3-only —
+            // fireworks 400s it for every other model (wire-verified, #403; the
+            // 1.0.2 adaptive default refused to boot on it). V4 gotcha: integer
+            // efforts 400.
             case "effort_explicit": return mode === "off"
                 ? { reasoning_effort: "none" }
-                : mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : { reasoning_effort: "adaptive" };
+                : mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : {};
             // Anthropic compat: explicit thinking object. off → disabled; on →
             // enabled with budget_tokens; adaptive → omit (the API default).
             case "anthropic": return mode === "off"
