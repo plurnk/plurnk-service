@@ -1040,6 +1040,9 @@ export default class Daemon {
      * Rummy parallel: plugins/stream/stream.js stream/completed wake:true.
      */
     async #handleWakeRun(payload: WakeRunPayload): Promise<void> {
+        // §search-gate — settle the dedup registration: promote on a 200 conclusion, drop on
+        // failure (a dead search must never serve as a duplicate). No-op for non-search streams.
+        this.#engine.searchGate.settle(payload.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), payload.closeStatus);
         // §search-prefetch — page conclusions from the pass's own fan-out are sync-write
         // internals, never wake edges; swallow them (still broadcast for client telemetry).
         if (this.#engine.searchPrefetch.ownsConclusion(payload)) {
