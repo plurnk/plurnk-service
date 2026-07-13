@@ -6,7 +6,7 @@
 set -euo pipefail
 META="$(cd "$(dirname "$0")/../.." && pwd)"
 
-for dir in "$META"/plurnk-mimetypes-* "$META"/plurnk-providers-* "$META"/plurnk-execs-wasm; do
+for dir in "$META"/plurnk-mimetypes-* "$META"/plurnk-providers-* "$META"/plurnk-execs-* "$META"/plurnk-schemes-*; do
   [ -f "$dir/package.json" ] || continue
   name=$(node -p "require('$dir/package.json').name")
   version=$(node -p "require('$dir/package.json').version")
