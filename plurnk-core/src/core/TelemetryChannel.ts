@@ -12,7 +12,10 @@ const ENGINE_ERRORS = Object.freeze({
     // premature-terminate is NOT a terse engine-error: it's a SEND op-result (409 + an actionable
     // outcome, §send-premature-terminate) — the SEND row records the [200] attempt faithfully and
     // auto-surfaces (status≥400) like any op failure, never an erasure to 102.
-    idle_turn: { status: 409, term: "Idle Turn — this turn delivered no new work; act on something pending, deliver a result, or conclude ([200]) / abandon ([499])" },
+    // #394 (owner wording) — states the LAW of legal turn shapes, deliberately nothing more:
+    // teaching decomposition/drafting of big jobs is a grammar-level concern, never an error
+    // message's (owner: "isn't going to fit in an error message").
+    idle_turn: { status: 409, term: "Illegal idle turn - Turns must either perform operations with submit code 102, conclude with submit code 200, or wait with submit code 202." },
 } as const);
 export type EngineErrorKind = keyof typeof ENGINE_ERRORS;
 
