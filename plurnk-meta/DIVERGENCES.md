@@ -1,0 +1,21 @@
+# Divergence table (#400)
+
+Doctrine (owner, 2026-07-13): industry standard unless informed, explicit exception. This table is the enforcement instrument — every deviation from prevailing agent-ecosystem practice is either a WRITTEN exception or a convergence item. Rulings marked PROPOSED await owner sign-off; rulings citing a date are already owner-ruled.
+
+| # | Practice | Industry standard (2026) | Plurnk position | Ruling |
+|---|---|---|---|---|
+| 1 | Tool interface | MCP is the de facto standard (AAIF/Linux Foundation-governed, OpenAI+Google adopted; JSON-RPC tools/resources/prompts) with JSON function-calling beneath it | HEREDOC DSL over a URI address space, GBNF-enforced | **EXCEPTION — the founding bet** (AGENTS "the bet"): grammar-constrained composition lets a floor-grade local model drive reliably where free-form JSON emission cannot; every web API is latent tooling via URIs. The exception is hedged, not isolationist: plurnk CONSUMES MCP servers (execs-mcp; hotload #389) and SERVES agents via AG-UI. Walk-away trigger per doctrine: dogfooding surfacing an architectural failure. |
+| 2 | Tool discovery | MCP server registries | Scope-agnostic npm-package scan (`plurnk.kind` manifest, trust-gated) | **EXCEPTION, same bet** — discovery-by-installation matches the npm substrate the platform ships on; MCP servers arrive through the bridge (#389). PROPOSED. |
+| 3 | Reasoning vocabulary | "reasoning" (OpenAI, DeepSeek, llama.cpp, OpenRouter-normalized) | REASONING family-wide | **CONVERGED 2026-07-13** (#399; adaptive default per owner ruling). |
+| 4 | Wire protocol | OpenAI-compat chat completions | OpenAI-compat provider base | **CONVERGED by construction.** |
+| 5 | Config | Layered dotenv + example files | `.env.defaults` assembled floor: reader-declares, ONE-LAW key ownership, set-if-unset under operator env | **EXCEPTION (owner design, core SPEC §operator-config-env-defaults)** — standard dotenv layering PLUS a uniqueness law and self-documenting floor; strictly more disciplined than the standard, same operator surface. |
+| 6 | CI | Hosted CI (GitHub Actions) | Committed local git hooks; the 82s drill is the whole gate | **EXCEPTION (owner doctrine, AGENTS §one-gate)** — supply-chain posture: no write-token attack surface, the gate that cannot be forgotten, failures caught before the remote sees them. |
+| 7 | Monorepo dev loop | Build-based (project references, turbo/nx caches) | No-build source resolution via the `plurnk-dev` exports condition | **EXCEPTION** — Turborepo-documented minority pattern ("internal packages"); buys a zero-build inner loop on Node 26 type stripping. Known sharp edge (types-condition ordering) found and fixed 2026-07-13. Revisit if Node lifts the node_modules stripping restriction (tracked: staged for Jan 2027 landscape). PROPOSED. |
+| 8 | Internal versioning | Independent semver + ranges | Lockstep exact pins inside the monorepo | **EXCEPTION** — exact-pinned publish surface with zero pin maintenance (release script); consumers see ordinary semver. Outside leaves peer `^1` = CONVERGED with standard range practice. PROPOSED. |
+| 9 | Package naming | `@scope/name` | `@plurnk/plurnk-name` | **EXCEPTION (owner ruling 2026-07-11)** — shipped surface frozen; renames rejected as churn without user-facing gain. |
+| 10 | Commit convention | Conventional Commits | Conventional subjects ≤80, subject-only, no trailers, hook-enforced | **CONVERGED-plus** — standard grammar, stricter brevity; context rides references (#N / hash / SPEC tag), owner-ruled 2026-07-12. |
+| 11 | Test tooling | Vitest/Jest common; node:test rising | node:test + node:assert exclusively | **EXCEPTION (owner mandate, global)** — zero-dep native runner; the direction the ecosystem itself is moving. |
+| 12 | Publish auth | Trusted publishing (OIDC/CI) or staged publishing | Bypass-2FA granular token (window), local publishes | **CONVERGENCE SCHEDULED** — bypass tokens lose publishing Jan 2027; adopt staged publishing (agents stage, owner 2FA-approves) before then. Tracked in meta memory. |
+| 13 | Reasoning default | Reasoning-capable models default reasoning-on | `REASONING=adaptive` shipped floor | **CONVERGED 2026-07-13** (owner ruling). |
+
+Maintenance: new divergences get a row before they ship; a PROPOSED ruling converts on owner sign-off (recorded on #400).
