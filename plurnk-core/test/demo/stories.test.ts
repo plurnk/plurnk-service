@@ -33,6 +33,7 @@ interface StoryOpts {
     label: string;
     prompt: string;
     maxTurns?: number;
+    flags?: Record<string, unknown>;
 }
 
 interface StoryResult {
@@ -55,7 +56,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     try {
         loop = await liveLoop(
             s, 2,
-            { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
+            { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}), ...(opts.flags !== undefined ? { flags: opts.flags } : {}) },
             { timeoutMs: TIMEOUT - 30_000 }, // undercut the test timeout: the inner throw must land while cleanup is still reachable
         );
     } catch (err) {
@@ -350,5 +351,23 @@ test("story: compute a value too big for arithmetic shortcuts", { timeout: TIMEO
         assert.equal(story.finalStatus, 200);
         assert.match(story.lastContent, wanted,
             `computed 25! exactly; got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
+});
+
+test("story: ask mode answers directly — no EXEC reach, no 403 spiral (#367/#386)", { timeout: TIMEOUT }, async () => {
+    // The #367 probe shape: ask mode gates EXEC out and the capability sheet renders the
+    // 'EXEC operations disabled' line (#386) — silence invited confabulated commands, a 403
+    // cycle, and a 508 strike-out. A question that TEMPTS a shell answer must conclude 200
+    // with prose, never touch the rail.
+    const story = await runStory({
+        label: "ask-steer",
+        prompt: "How many files are in this project, roughly? A ballpark from what you can see is fine.",
+        maxTurns: 6,
+        flags: { mode: "ask" },
+    });
+    try {
+        if (story.finalStatus !== 200) await story.dump();
+        assert.equal(story.finalStatus, 200, "ask mode concluded (no 403-cycle 508, no max_turns)");
+        assert.ok(story.lastContent.length > 0, "a direct prose answer landed");
     } finally { await story.cleanup(); }
 });

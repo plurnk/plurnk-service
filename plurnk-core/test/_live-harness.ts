@@ -77,11 +77,11 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
 export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
     id: number,
-    params: { prompt: string; maxTurns?: number },
+    params: { prompt: string; maxTurns?: number; flags?: Record<string, unknown> },
     opts: { timeoutMs: number },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelRunId: number; lastContent: string }> => {
     const term = await runLoopToTerminal(s.ws, id, {
-        prompt: params.prompt, flags: { yolo: true },
+        prompt: params.prompt, flags: { yolo: true, ...params.flags },
         ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
     }, opts);
     if (term.modelRunId === undefined) throw new Error("liveLoop: loop.run returned no modelRunId");
