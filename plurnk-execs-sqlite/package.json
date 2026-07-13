@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-sqlite",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "SQLite runtime executor for plurnk-service's exec scheme — runs the sqlite runtime tag in-process via node:sqlite, results as application/json.",
     "keywords": [
         "plurnk",
@@ -59,6 +59,6 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.0.2"
+        "@plurnk/plurnk-execs": "1.0.3"
     }
 }

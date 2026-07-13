@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "Framework + detection service for the @plurnk/plurnk-mimetypes-* handler family.",
     "keywords": [
         "plurnk",
@@ -76,7 +76,7 @@
         }
     },
     "devDependencies": {
-        "@plurnk/plurnk-grammar": "1.0.2",
+        "@plurnk/plurnk-grammar": "1.0.3",
         "@plurnk/plurnk-mimetypes-grammar-css": "^1",
         "@plurnk/plurnk-mimetypes-grammar-dart": "^1",
         "@tree-sitter-grammars/tree-sitter-kotlin": "^1.1.0",
@@ -108,12 +108,12 @@
         "web-tree-sitter": "^0.26.9"
     },
     "dependencies": {
-        "@plurnk/plurnk-mimetypes-application-json": "1.0.2",
-        "@plurnk/plurnk-mimetypes-application-xml": "1.0.2",
-        "@plurnk/plurnk-mimetypes-text-csv": "1.0.2",
-        "@plurnk/plurnk-mimetypes-text-html": "1.0.2",
-        "@plurnk/plurnk-mimetypes-text-markdown": "1.0.2",
-        "@plurnk/plurnk-mimetypes-text-plain": "1.0.2",
+        "@plurnk/plurnk-mimetypes-application-json": "1.0.3",
+        "@plurnk/plurnk-mimetypes-application-xml": "1.0.3",
+        "@plurnk/plurnk-mimetypes-text-csv": "1.0.3",
+        "@plurnk/plurnk-mimetypes-text-html": "1.0.3",
+        "@plurnk/plurnk-mimetypes-text-markdown": "1.0.3",
+        "@plurnk/plurnk-mimetypes-text-plain": "1.0.3",
         "@xmldom/xmldom": "^0.9.10",
         "antlr4ng": "^3.0.16",
         "jsonpath-plus": "^10.4.0",
@@ -121,14 +121,14 @@
         "web-tree-sitter": "^0.26.9",
         "xpath": "^0.0.34",
         "yaml": "^2.9.0",
-        "@plurnk/plurnk-mimetypes-application-pdf": "1.0.2",
-        "@plurnk/plurnk-mimetypes-application-jsonl": "1.0.2",
-        "@plurnk/plurnk-mimetypes-application-ipynb": "1.0.2",
-        "@plurnk/plurnk-mimetypes-text-diff": "1.0.2",
-        "@plurnk/plurnk-mimetypes-text-ini": "1.0.2",
-        "@plurnk/plurnk-mimetypes-text-dotenv": "1.0.2",
-        "@plurnk/plurnk-mimetypes-embeddings": "1.0.2",
-        "@plurnk/plurnk-mimetypes-tokenizers": "1.0.2",
-        "@plurnk/plurnk-meta": "1.0.2"
+        "@plurnk/plurnk-mimetypes-application-pdf": "1.0.3",
+        "@plurnk/plurnk-mimetypes-application-jsonl": "1.0.3",
+        "@plurnk/plurnk-mimetypes-application-ipynb": "1.0.3",
+        "@plurnk/plurnk-mimetypes-text-diff": "1.0.3",
+        "@plurnk/plurnk-mimetypes-text-ini": "1.0.3",
+        "@plurnk/plurnk-mimetypes-text-dotenv": "1.0.3",
+        "@plurnk/plurnk-mimetypes-embeddings": "1.0.3",
+        "@plurnk/plurnk-mimetypes-tokenizers": "1.0.3",
+        "@plurnk/plurnk-meta": "1.0.3"
     }
 }
