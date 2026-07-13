@@ -43,6 +43,7 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 <<EDIT(path):literal text:EDIT is only for creating or modifying files and entries. Do not attempt to edit log items.
 <<EDIT(path):literal text:EDIT replaces the selected line(s) `<line,line>` with literal body content, never with patterns.
 <<EDIT(path):literal text:EDIT without `<scope>` replaces the entire entry, or creates it if absent.
+<<EDIT1(known:///demo):quoted: <<EDIT(known:///inner):hello:EDIT:EDIT1 add a single-digit (or label) suffix when nesting OPs.
 <<OPEN(log path)::OPEN expands (`+`) the log item body to view it (costs tokens). Not all log items have a body (`*`).
 <<FOLD(log path)::FOLD hides (`-`) the log item body (saves tokens). FOLDed item tokens="" shows token cost if OPENed.
 <<EXEC::EXEC produces output stream channels on the next turn that you can then FIND, READ, or KILL.
@@ -50,14 +51,6 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 <<SEND[102]:doing:SEND to submit OPs, emit streams, or launch worker runs.
 <<SEND[202]:standing by:SEND waits on your live workers, streams, and results; their arrival wakes it.
 <<SEND[200]:done:SEND to terminate a completed run only if all OPs, streams, and runs have already returned.
-
-### Suffix
-
-When representing OPs within OP bodies, append a matching single digit suffix or label to the outer OPs.
-
-<<EDIT1(known:///demo):
-quoted: <<EDIT(known:///inner):hello:EDIT
-:EDIT1
 
 ### Pattern Filtering (FIND, READ, OPEN, FOLD)
 
@@ -115,7 +108,7 @@ On structured files, entries, and items, `<scope>` addresses result index, not l
 <<READ(known:///**)<0.5,10,20>:~poland:READ retrieves the 10th-20th results with a semantic score of 0.5 or greater.
 A leading decimal is a `~`-similarity threshold (results scoring at least that value); following integers are positions, threshold first then range.
 
-### :body:
+### `:body:`
 
 Empty (no body) OPs contain two colons: <<READ(AGENTS.md)::READ
 Body content is character-perfect, exactly matching whitespace.
@@ -134,15 +127,16 @@ The worker's answer arrives in the log and wakes the run:
 <<PLAN:Deliver the collected answer.:PLAN
 <<SEND[200]:The capital of France is Paris.:SEND
 
-To COLLECT a worker's result on demand: <<READ(run://capital-checker)::READ
 To FORK the current run: <<FORK(run://recheck):Re-derive the capital from a primary source:FORK
-To SEND a run a message: <<SEND(run://recheck):Also, what's the capital of Germany?:SEND
+To SEND a run a new message: <<SEND(run://recheck):Also, what's the capital of Germany?:SEND
 To KILL another run: <<KILL(run://recheck)::KILL
 
 ## Imperatives
 
 YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
 YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
+YOU SHOULD delegate multiple non-trivial independent tasks into child WORKer runs.
+YOU SHOULD decompose non-trivial tasks into checklisted steps, saving progress in the knowledgebase across multiple turns.
 
 YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
 YOU MUST avoid and recover from Budget Overflow errors by FOLDing or KILLing big or irrelevant log items to save tokens.
