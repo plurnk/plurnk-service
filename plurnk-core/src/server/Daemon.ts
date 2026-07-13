@@ -1040,6 +1040,18 @@ export default class Daemon {
      * Rummy parallel: plugins/stream/stream.js stream/completed wake:true.
      */
     async #handleWakeRun(payload: WakeRunPayload): Promise<void> {
+        // §search-prefetch — page conclusions from the pass's own fan-out are sync-write
+        // internals, never wake edges; swallow them (still broadcast for client telemetry).
+        if (this.#engine.searchPrefetch.ownsConclusion(payload)) {
+            this.#broadcast({ sessionId: payload.sessionId }, "stream/concluded", { ...payload, wakeAction: "prefetch-page" });
+            return;
+        }
+        // §search-prefetch — a search runtime concluded: materialize the candidates and rewrite
+        // #results as the survivor render BEFORE the wake proceeds, so the fold-back the model
+        // reads is post-prefetch truth (the Engine hold loop holds while the pass runs).
+        if (this.#engine.searchPrefetch.isSearchConclusion(payload)) {
+            await this.#engine.searchPrefetch.onSearchConcluded(payload, (s, r) => this.#engine.prefetchCtx(s, r));
+        }
         // Aborted streams don't wake — the abort was deliberate.
         if (payload.closeStatus === 499) {
             this.#broadcast({ sessionId: payload.sessionId }, "stream/concluded", {

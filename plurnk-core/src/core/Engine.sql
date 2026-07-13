@@ -536,3 +536,9 @@ WHERE r.parent_run_id = $run_id
   AND l.terminated_at IS NOT NULL
   AND l.terminated_at > (SELECT timestamp FROM turns WHERE id = $turn_id)
 LIMIT 1;
+
+-- PREP: search_stamp_entry_attributes
+-- §search-prefetch — chooser context (title/snippet/publishedDate) stamped onto a survivor
+-- entry's attributes at materialization; json_patch merges, never clobbers other keys.
+UPDATE entries SET attributes = json_patch(attributes, $patch)
+WHERE session_id = $session_id AND scheme = $scheme AND pathname = $pathname AND scope = 'session';
