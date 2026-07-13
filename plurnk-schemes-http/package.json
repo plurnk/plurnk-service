@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schemes-http",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "http(s):// URI scheme handler for the plurnk agent runtime — fetch + streaming response body.",
     "keywords": [
         "plurnk",
@@ -58,6 +58,6 @@
         "playwright": "1.61.1"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-schemes": "1.0.0"
+        "@plurnk/plurnk-schemes": "1.0.1"
     }
 }

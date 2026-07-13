@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor family.",
     "keywords": [
         "plurnk",
@@ -48,14 +48,14 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-schemes": "1.0.0",
-        "@plurnk/plurnk-execs-common": "1.0.0",
-        "@plurnk/plurnk-execs-search": "1.0.0",
-        "@plurnk/plurnk-execs-mcp": "1.0.0",
-        "@plurnk/plurnk-execs-git": "1.0.0",
-        "@plurnk/plurnk-execs-jq": "1.0.0",
-        "@plurnk/plurnk-execs-sqlite": "1.0.0",
-        "@plurnk/plurnk-meta": "1.0.0",
-        "@plurnk/plurnk-execs-wasm": "1.0.0"
+        "@plurnk/plurnk-schemes": "1.0.1",
+        "@plurnk/plurnk-execs-common": "1.0.1",
+        "@plurnk/plurnk-execs-search": "1.0.1",
+        "@plurnk/plurnk-execs-mcp": "1.0.1",
+        "@plurnk/plurnk-execs-git": "1.0.1",
+        "@plurnk/plurnk-execs-jq": "1.0.1",
+        "@plurnk/plurnk-execs-sqlite": "1.0.1",
+        "@plurnk/plurnk-meta": "1.0.1",
+        "@plurnk/plurnk-execs-wasm": "1.0.1"
     }
 }
