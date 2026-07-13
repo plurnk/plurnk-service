@@ -8,7 +8,9 @@ status `102` now, the body/header channels fill, you READ the entry next turn.
 Re-reading a URL **revalidates** it: the prior fetch's validators (`ETag`/
 `Last-Modified`) go out on the next READ, and if the page is unchanged the
 stored copy is served without re-rendering — always fresh, but cheap when
-nothing changed. You just READ again; there's no cache flag to manage.
+nothing changed. Within the operator's freshness window a re-read serves the
+stored copy directly, skipping even that check. You just READ again; there's
+no cache flag to manage.
 
 The HTTP method is the **op**:
 

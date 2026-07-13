@@ -39,11 +39,15 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
-import Browser, { type RenderResult } from "./Browser.ts";
+import Browser, { requireNumEnv, type RenderResult } from "./Browser.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
 const HEADER = "header";
+// Materialization stamp line in the HEADER channel — the ONE timestamp the
+// freshness predicate reads (SPEC §revalidation). Namespaced so it can never
+// collide with a real response header.
+const FETCHED_AT = "x-plurnk-fetched-at";
 
 // Deep doc lives in `docs/http.md` (the constellation's docs/<name>.md
 // convention) and is loaded into the manifest at module init — the contract
@@ -162,9 +166,10 @@ export default class Http implements SchemeHandler {
         // Conditional revalidation (GET only, service#341): recover the prior
         // fetch's validators + body from THIS scheme's own stored entry (entries
         // cap, own namespace — sanctioned). If the origin answers 304, we re-serve
-        // the cached body and skip the expensive render. Always-revalidate is the
-        // meaning of `volatile`; there is no local TTL (that arrives later as the
-        // SAME freshness predicate at #storedCopyServable — service#333). Captured
+        // the cached body and skip the expensive render. Freshness is decided ONLY
+        // by #storedCopyServable (SPEC §revalidation): within the operator TTL
+        // window the stored copy serves with zero round-trips; past it, the
+        // conditional GET revalidates (service#333/#405 landed the TTL). Captured
         // BEFORE the seed write below overwrites the entry.
         let cached: { header: string; body: { content: string; mimetype: string } } | undefined;
         const conditional: Array<[string, string]> = [];
@@ -176,6 +181,20 @@ export default class Http implements SchemeHandler {
                 cached = { header: ph, body: { content: pb.content, mimetype: pb.mimetype } };
                 conditional.push(...Http.#validators(ph));
             }
+        }
+
+        // TTL fast path (the pre-fetch phase of the ONE predicate): a stored copy
+        // still inside the freshness window serves with NO round-trip at all —
+        // identical for a model READ and lane-1 prefetch (#405). Stamp unchanged:
+        // the clock only resets when the ORIGIN vouches (fetch or 304), never by
+        // serving from cache.
+        if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), null)) {
+            await ctx.entries.write(pathname, Http.#seedEntry());
+            await ctx.subscriptions.open(pathname, { cancel: () => {} });
+            await ctx.subscriptions.notifyChunk(HEADER, cached.header, "text/plain");
+            await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
+            await ctx.subscriptions.close("done", `ttl-fresh; ${cached.body.content.length} chars from cache`);
+            return { shape: "passthrough", status: 102 };
         }
 
         // Local AbortController for force-cancel from outside (SEND[499]).
@@ -210,8 +229,8 @@ export default class Http implements SchemeHandler {
             // (service#341). `revalidated 304` rides the close summary for the log
             // meta line + digest. notifyChunk appends onto the freshly-seeded empty
             // channels, restoring the cached header + body.
-            if (cached !== undefined && Http.#storedCopyServable(response)) {
-                await ctx.subscriptions.notifyChunk(HEADER, cached.header, "text/plain");
+            if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), response)) {
+                await ctx.subscriptions.notifyChunk(HEADER, Http.#stamp(cached.header), "text/plain");
                 await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
                 await ctx.subscriptions.close("done", `revalidated 304; ${cached.body.content.length} chars from cache`);
                 return { shape: "passthrough", status: 102 };
@@ -279,6 +298,7 @@ export default class Http implements SchemeHandler {
     static async #writeHeader(ctx: SchemeCtx, status: number, statusText: string, headers: ReadonlyArray<readonly [string, string]>): Promise<void> {
         const lines = [`HTTP ${status} ${statusText}`];
         for (const [k, v] of headers) lines.push(`${k}: ${v}`);
+        lines.push(`${FETCHED_AT}: ${new Date().toISOString()}`);
         await ctx.subscriptions.notifyChunk(HEADER, lines.join("\n"), "text/plain");
     }
 
@@ -309,8 +329,33 @@ export default class Http implements SchemeHandler {
     // is servable without a re-fetch/re-render. service#333's per-URL TTL lands
     // HERE as the SAME predicate (a pre-fetch branch) — one stamp, one rule,
     // identical at every entry point. Never add a second freshness check elsewhere.
-    static #storedCopyServable(response: Response): boolean {
+    // Pre-fetch phase (response === null): fresh iff the stamp is inside the
+    // operator TTL window; PLURNK_SCHEMES_HTTP_TTL_MS=0 disables the window so
+    // every read revalidates (the pre-TTL behavior). Post-fetch phase: a 304 is
+    // the origin vouching for the stored copy.
+    static #storedCopyServable(fetchedAtMs: number | undefined, response: Response | null): boolean {
+        if (response === null) {
+            const ttl = requireNumEnv("PLURNK_SCHEMES_HTTP_TTL_MS");
+            return ttl > 0 && fetchedAtMs !== undefined && Date.now() - fetchedAtMs < ttl;
+        }
         return response.status === 304;
+    }
+
+    // Parse the materialization stamp out of a stored HEADER channel; undefined
+    // when absent (pre-TTL entries, execs-materialized pages) — those simply
+    // never TTL-serve and revalidate instead.
+    static #fetchedAt(priorHeader: string): number | undefined {
+        const m = new RegExp(`^${FETCHED_AT}:[ \\t]*(.+)$`, "im").exec(priorHeader);
+        if (m === null) return undefined;
+        const ms = Date.parse(m[1].trim());
+        return Number.isNaN(ms) ? undefined : ms;
+    }
+
+    // Re-stamp a stored HEADER to now — used when the ORIGIN vouches (304).
+    static #stamp(header: string): string {
+        const line = `${FETCHED_AT}: ${new Date().toISOString()}`;
+        const re = new RegExp(`^${FETCHED_AT}:.*$`, "im");
+        return re.test(header) ? header.replace(re, line) : `${header}\n${line}`;
     }
 
     // Conditional-request headers from the prior fetch's stored response headers
