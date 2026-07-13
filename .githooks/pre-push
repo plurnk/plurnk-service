@@ -1,7 +1,13 @@
 #!/bin/sh
 # The gate: branch policy, then the full drill. Never GitHub CI (AGENTS §one-gate).
-# Branches are main or type/kebab-slug; tags pass.
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+# Branches are main or type/kebab-slug; tags pass. Deletions are exempt from both
+# the name policy and the drill — a deletion pushes no code to gate and removes a
+# ref rather than naming one (so a mis-named branch can always be deleted).
+zero=0000000000000000000000000000000000000000
+any_update=0
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue
+    any_update=1
     case "$remote_ref" in
         refs/heads/main|refs/tags/*) : ;;
         refs/heads/*)
@@ -13,5 +19,6 @@ while read -r _local_ref _local_sha remote_ref _remote_sha; do
             ;;
     esac
 done
+[ "$any_update" = 0 ] && exit 0
 
 exec npm test
