@@ -16,6 +16,7 @@ Doctrine (owner, 2026-07-13): industry standard unless informed, explicit except
 | 10 | Commit convention | Conventional Commits | Conventional subjects ≤80, subject-only, no trailers, hook-enforced | **CONVERGED-plus** — standard grammar, stricter brevity; context rides references (#N / hash / SPEC tag), owner-ruled 2026-07-12. |
 | 11 | Test tooling | Vitest/Jest common; node:test rising | node:test + node:assert exclusively | **EXCEPTION (owner mandate, global)** — zero-dep native runner; the direction the ecosystem itself is moving. |
 | 12 | Publish auth | Trusted publishing (OIDC/CI) or staged publishing | Bypass-2FA granular token (window), local publishes | **CONVERGENCE SCHEDULED** — bypass tokens lose publishing Jan 2027; adopt staged publishing (agents stage, owner 2FA-approves) before then. Tracked in meta memory. |
-| 13 | Reasoning default | Reasoning-capable models default reasoning-on | `REASONING=adaptive` shipped floor | **CONVERGED 2026-07-13** (owner ruling). |
+| 13 | API stability posture | Pre-external-adopter ecosystems churn routinely; stability is DECLARED when outsiders arrive, not performed before | Lockstep 1.0.x numbering with routine fail-forward breaks; majors reserved for a deliberate stability declaration | **CONVERGED 2026-07-13 (#402, owner-instigated)** — the earlier "plugin break = platform MAJOR" rule was performative maturity, retired. |
+| 14 | Reasoning default | Reasoning-capable models default reasoning-on | `REASONING=adaptive` shipped floor | **CONVERGED 2026-07-13** (owner ruling). |
 
 Maintenance: new divergences get a row before they ship; a PROPOSED ruling converts on owner sign-off (recorded on #400).
