@@ -85,6 +85,16 @@ export const openMigrated = async (): Promise<Db> => {
     return db;
 };
 
+// Quiesce a test's background execs before closing the db: idle() drains every spawn's tail
+// INCLUDING its entry()/narration writes (Exec awaits entryChain in its finally), so no detached
+// stream write is left in flight to race the db.close — the #432 teardown race. Any test that
+// dispatches an EXEC that streams must await this before closing the db. For fast-finishing spawns
+// (the common stub); a test holding a long/unbounded child aborts it (KILL/cancel) first.
+export const quiesceExecs = async (schemes: { get(name: string): unknown }): Promise<void> => {
+    const exec = schemes.get("exec") as { idle?: () => Promise<void> } | undefined;
+    if (exec?.idle !== undefined) await exec.idle();
+};
+
 export const insertSession = async (db: Db, name: string): Promise<number> => {
     const row = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name });
     if (row === undefined) throw new Error("insertSession: insert returned no row");

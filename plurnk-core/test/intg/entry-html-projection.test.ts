@@ -13,7 +13,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
 
@@ -69,7 +69,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         const loopId = await insertLoop(db, runId, 1, "fetch test");
         const turnId = await insertTurn(db, loopId, 1, 102);
         await engine.dispatch({ statement: { op: "EXEC", suffix: "", signal: "fetchstub", target: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } } as ExecStatement, sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
-        await new Promise((r) => setTimeout(r, 1500));
+        await quiesceExecs(schemes); // drains the fetch spawn's tail + entry() write — no race with db.close (#432)
 
         const entry = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/news.example/a" });
         assert.ok(entry !== undefined, "the fetched page materialized");
@@ -80,5 +80,5 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         assert.ok(!byName.get("body")!.content.includes("<script>"), "the markup does not");
         assert.match(byName.get("html")?.content ?? "", /<script>ads\(\)/, "the raw page is archived under #html for xpath");
         assert.ok(byName.get("body")!.tokens < byName.get("html")!.tokens, "the price is the projection's, not the scaffolding's");
-    } finally { await db.close(); }
+    } finally { await quiesceExecs(schemes); await db.close(); }
 });

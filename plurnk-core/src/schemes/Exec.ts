@@ -492,6 +492,11 @@ export default class Exec {
             stdoutLength = stdoutMeta?.contentLength ?? 0;
             stderrLength = stderrMeta?.contentLength ?? 0;
         } finally {
+            // §exec-entry-sink — drain the entry()/narration writes so the tail (hence idle()) is a
+            // COMPLETE quiescence barrier: a consumer woken below, or a teardown awaiting idle(), must
+            // not race an in-flight entry() write into a closing db (#432 teardown race). Each op is
+            // enqueued as `.then(op, op)`, so entryChain never rejects — awaiting it in finally is safe.
+            await entryChain;
             if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
             // #201 — a materialized data-source temp file outlives the spawn it fed;
             // unlink it once the run settles (open-unlink is safe on Linux).
