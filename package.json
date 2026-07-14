@@ -51,7 +51,8 @@
         "test:intg": "npm run test:intg --workspaces --if-present",
         "test": "node scripts/drill.mjs",
         "build": "npm run build --workspaces --if-present",
-        "release:version": "node scripts/release-version.mjs",
+        "deps:check": "node scripts/deps-preflight.mjs",
+        "release:version": "node scripts/deps-preflight.mjs && node scripts/release-version.mjs",
         "release:order": "node scripts/release-order.mjs"
     },
     "devDependencies": {
