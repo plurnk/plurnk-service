@@ -388,3 +388,10 @@ SELECT id, run_id, status, terminated_at, terminal_message, terminated_by FROM l
 
 -- PREP: test_get_entry_attributes
 SELECT attributes FROM entries WHERE session_id = $session_id AND scheme = $scheme AND pathname = $pathname AND scope = 'session';
+
+-- PREP: test_embeddings_for_entry
+SELECT vector FROM entry_embeddings WHERE entry_id = $entry_id ORDER BY chunk_seq;
+
+-- PREP: test_seed_channel_hashed
+INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, content_hash, state)
+VALUES ($entry_id, $name, $content, $mimetype, 0, $content_hash, $state);

@@ -93,3 +93,17 @@ WHERE f.content MATCH $fts_query
   AND e.scheme IS $scheme
 ORDER BY bm25(entry_fts)
 LIMIT $cap;
+
+-- PREP: embedding_by_content_hash
+-- §semantic-embed-dedup (#416) — the chunk rows of ONE OTHER entry whose body content_hash
+-- matches, already embedded under the active model. Identical content → identical embeddings, so
+-- a duplicate (the metaproject's 15× tokenizer.json) copies instead of re-embedding. Picks the
+-- newest such source entry; returns its chunks in seq order.
+SELECT em.chunk_seq, em.line_start, em.line_end, em.vector
+FROM entry_embeddings em
+WHERE em.embedding_model = $embedding_model AND em.entry_id = (
+    SELECT ec.entry_id FROM entry_channels ec
+    JOIN entry_embeddings e2 ON e2.entry_id = ec.entry_id AND e2.embedding_model = $embedding_model
+    WHERE ec.name = 'body' AND ec.content_hash = $content_hash AND ec.entry_id != $entry_id
+    ORDER BY ec.entry_id DESC LIMIT 1)
+ORDER BY em.chunk_seq ASC;
