@@ -328,6 +328,21 @@ export default class OpenAICompatProvider implements Provider {
         }
     }
 
+    // Anti-degeneration DEFAULT on EVERY request (#426), keyed to the backend's wire
+    // convention - NOT grammar-bound. GBNF is a local rail (off for cloud), so a cloud
+    // alias runs the sampler bare: firefast (deepseek/fireworks) ran 4/86 bench turns
+    // straight to the token cap on pure looped repetition (run52). Ships next to
+    // temperature so caller `sampling` can tune it; the grammar path re-asserts it as a
+    // managed FLOOR in #grammarBody. Only backend-verified keys go out - a `none`-style
+    // backend stays bare (cloud APIs 400 on unknowns) until its key is verified per-backend.
+    #repetitionPenaltyBody(): Record<string, unknown> {
+        switch (this.#grammarStyle) {
+            case "llamacpp": return { repeat_penalty: this.#repeatPenalty };
+            case "response_format": return { repetition_penalty: this.#repeatPenalty };
+            case "none": return {};
+        }
+    }
+
     // First-party telemetry headers (SPEC §5): forwarded ONLY when the spec
     // opted in (the plurnk endpoint). The gate is here, not at the call site, so
     // attributions/client/strikes can never reach a third-party backend even if
@@ -463,6 +478,7 @@ export default class OpenAICompatProvider implements Provider {
         // < the managed fields, which always win.
         const body: Record<string, unknown> = {
             temperature: this.#temperature,
+            ...this.#repetitionPenaltyBody(),
             ...this.#samplingBody(sampling),
             model: this.#model,
             messages,

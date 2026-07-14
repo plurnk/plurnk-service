@@ -197,6 +197,28 @@ test("llamacpp grammar path: temperature default + the managed repeat-penalty fl
     assert.equal(body.repeat_penalty, 1.15);
 });
 
+test("#426: the repeat penalty rides EVERY request rail-off, keyed per backend (cloud degeneration guard)", async () => {
+    // response_format cloud (fireworks) with NO grammar - the firefast case that went out bare
+    const fw = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "response_format" });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await fw.generate({ runId: "r", messages: [] });
+    assert.equal(JSON.parse(calls[0].init.body as string).repetition_penalty, 1.15);
+    mock.restoreAll();
+    // llama.cpp with NO grammar carries its key too (unconstrained local is guarded now)
+    const llama = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await llama.generate({ runId: "r", messages: [] });
+    assert.equal(JSON.parse(calls[0].init.body as string).repeat_penalty, 1.15);
+    mock.restoreAll();
+    // a `none`-style backend stays BARE - no unknown penalty key (would 400 on strict cloud)
+    const bare = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await bare.generate({ runId: "r", messages: [] });
+    const bareBody = JSON.parse(calls[0].init.body as string);
+    assert.equal("repetition_penalty" in bareBody, false);
+    assert.equal("repeat_penalty" in bareBody, false);
+});
+
 test("sampling passthrough forwards caller params; managed + reserved keys win", async () => {
     const p = new OpenAICompatProvider({ model: "managed-model", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -379,7 +401,7 @@ test("gbnfDebug: the grammar is NOT transported; conforming free output passes t
     const res = await p.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("grammar" in body, false);            // grammar never sent — model ran unconstrained
-    assert.equal("repeat_penalty" in body, false);
+    assert.equal(body.repeat_penalty, 1.15);           // #426: penalty rides even rail-off - unconstrained decode needs it MORE
     assert.equal(res.assistant.content, "ok");         // free output happens to conform → returned
     assert.equal("telemetry" in res, false);           // conforming → no event
 });
@@ -468,13 +490,13 @@ test("firstPartyMetadata on but empty values: no header emitted", async () => {
     assert.equal(headerVal(calls[0].init, "Plurnk-Client"), undefined);
 });
 
-test("grammar transport: capable backend with no grammar passed sends neither field", async () => {
+test("grammar transport: no grammar passed sends no grammar field, but the penalty rides (#426)", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ runId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("grammar" in body, false);
-    assert.equal("repeat_penalty" in body, false);
+    assert.equal(body.repeat_penalty, 1.15);           // #426: penalty is no longer grammar-gated - it rides rail-off
 });
 
 test("maxTokens transports as max_tokens; absent → no wire field (server default)", async () => {
