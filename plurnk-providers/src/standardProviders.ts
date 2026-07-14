@@ -31,9 +31,9 @@ type StandardProviderSpec = {
     // headers built from env; an empty object means no auth headers are sent.
     // When set, it REPLACES the apiKeyVar bearer logic.
     headersFromEnv?: (env: NodeJS.ProcessEnv) => Record<string, string>;
-    // Base URL env var(s) — REQUIRED, no in-code default (the endpoint is
-    // operator config, declared uncommented in .env.example; a baked constant
-    // would hide config from that file). A list accepts conventional aliases
+    // Base URL env var(s): no in-code default; the canonical endpoint ships as a
+    // floored default in .env.defaults (overridable in the operator's env or
+    // per-alias), never a baked constant. A list accepts conventional aliases
     // (openai's BASE_URL / API_BASE). Either this or baseUrlFromEnv must resolve.
     baseUrlVar?: string | readonly string[];
     // Derive the base from env when no override var is set — for endpoints whose
@@ -144,7 +144,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         reasoningStyle: "none", tokenizerEnvVar: "DEEPINFRA_TOKENIZER",
     },
     // — Chinese cloud hosts (all OpenAI-compat, plain bearer, doc-verified 2026). —
-    // The .env.example base is the INTERNATIONAL endpoint; mainland operators
+    // The .env.defaults base is the INTERNATIONAL endpoint; mainland operators
     // point the override var at the `.cn` twin noted per entry. Reasoning is left
     // "none" for the whole cohort: each host's thinking toggle is either
     // model-selected or a non-standard param that rides in `extra_body` (the
@@ -321,7 +321,7 @@ type EndpointProbe = { nCtx: number | null; llamaServer: boolean; servedModel: s
 
 // One probe failure must never decide capability (#34). Attempts/delay are
 // operator knobs (PLURNK_PROVIDERS_PROBE_ATTEMPTS / _PROBE_DELAY, canonical
-// 3 / 250ms in .env.example) — the full-sweep rule: no magic numbers in code.
+// 3 / 250ms in .env.defaults) — the full-sweep rule: no magic numbers in code.
 
 const probeModels = async (chatUrl: string, headers: Record<string, string>, model: string, fetchTimeoutMs: number): Promise<EndpointProbe> => {
     const modelsUrl = chatUrl.replace(/\/chat\/completions$/, "/models");
