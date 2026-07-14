@@ -2,6 +2,6 @@ node_modules/
 dist/
 .env
 .env.*
-!.env.example
+!.env.defaults
 AGENTS.md
 *.tsbuildinfo
