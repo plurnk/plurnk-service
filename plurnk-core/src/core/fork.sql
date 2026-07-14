@@ -43,17 +43,26 @@ VALUES ($loop_id, $sequence, $timestamp, $status, $usage_prompt, $usage_completi
 RETURNING id;
 
 -- PREP: fork_get_log_entries
--- Everything but the row id and run_id (run_id is the branch's; loop_id/turn_id are
--- remapped by the caller). origin/source (attribution) and expanded (fold-state) ride along. §machine-processes-fork-copies-the-log
-SELECT loop_id, turn_id, sequence, at, origin, source, op, suffix, signal,
+-- run_id is the branch's; loop_id/turn_id are remapped by the caller. The source `id` rides along so
+-- the caller can carry §log-region-tagging tags across (old id → new id). origin/source (attribution)
+-- and expanded (fold-state) ride along too. §machine-processes-fork-copies-the-log
+SELECT id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal,
        scheme, username, password, hostname, port, pathname, params, fragment,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
        state, outcome, attrs, expanded
 FROM log_entries WHERE run_id = $run_id ORDER BY id;
 
 -- PREP: fork_insert_log_entry
+-- RETURNING the new id so the caller can copy the row's region tags onto it (§log-region-tagging).
 INSERT INTO log_entries (run_id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal, scheme, username, password, hostname, port, pathname, params, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, state, outcome, attrs, expanded)
-VALUES ($run_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $params, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded);
+VALUES ($run_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $params, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded)
+RETURNING id;
+
+-- PREP: fork_copy_log_tags
+-- §log-region-tagging + §machine-processes-fork-copies-the-log — a forked log row keeps its region
+-- tags along with its fold-state, so a branch inherits the parent's named working-sets.
+INSERT INTO log_tags (log_entry_id, tag)
+SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 
 -- §run-scheme — a fork inherits the parent's run-scope SCRATCH (its private workspace), distinct
 -- from the shared session world above: "fork = everything-in-common-but-name, then diverges". The

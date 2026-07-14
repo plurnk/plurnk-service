@@ -130,6 +130,15 @@ FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
 FROM log_entries WHERE run_id = $run_id ORDER BY id;
 
+-- PREP: test_log_tags_by_run
+-- §log-region-tagging — a run's log tags with the coordinate they sit on (fork-copy assertions).
+SELECT (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate, lt.tag
+FROM log_tags lt
+JOIN log_entries le ON le.id = lt.log_entry_id
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.run_id = $run_id ORDER BY coordinate, lt.tag;
+
 -- PREP: test_log_entries_by_loop
 -- The model loop's own entries — robust to which run holds the loop (the model
 -- runs in its OWN run now, §connection-lifecycle), so a test queries by the loopId it holds.
