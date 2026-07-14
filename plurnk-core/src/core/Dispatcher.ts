@@ -38,9 +38,6 @@ export type DispatchContext = {
     sequence: number;
     origin: WriterTier;
     onDispatch?: (logEntryId: number) => void;
-    // #312 — the turn's token gauge (identity + async exact counter), threaded from runTurn so
-    // catalog reads key on the ACTIVE tokenizer. Absent on client/plurnk dispatches (legacy stamp).
-    gauge?: { tokenizerId: string; exact: boolean; count: (text: string) => Promise<number> };
     // §send-200-failed-ops — this emission's parse-error count, threaded from runTurn (parse errors
     // mint AFTER dispatch, so the terminal gate can't see them as rows). Absent off-run.
     turnParseErrors?: number;
@@ -120,8 +117,8 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, gauge, turnParseErrors } = context;
-        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin, gauge });
+        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, turnParseErrors } = context;
+        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin });
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
@@ -269,8 +266,8 @@ export default class Dispatcher {
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
     }
 
-    #buildSchemeCtx(ids: { sessionId: number; runId: number; loopId: number; turnId: number; origin: WriterTier; gauge?: PlurnkSchemeContext["gauge"] }): PlurnkSchemeContext {
-        const { sessionId, runId, loopId, turnId, origin, gauge } = ids;
+    #buildSchemeCtx(ids: { sessionId: number; runId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
+        const { sessionId, runId, loopId, turnId, origin } = ids;
         return {
             db: this.#db,
             sessionId, runId, loopId, turnId,
@@ -281,7 +278,6 @@ export default class Dispatcher {
             injectRun: this.#injectRun,
             mimetypes: this.#mimetypes,
             tokenize: this.#tokenize,
-            gauge,
             pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
             executors: this.#executors(),
         };

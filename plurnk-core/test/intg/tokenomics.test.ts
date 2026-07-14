@@ -36,7 +36,7 @@ const setup = async () => {
     return { db, engine, sessionId, runId, loopId, turnId };
 };
 
-test("[§tokenomics-tokens-stored-at-write] EDIT stores entry_channels.tokens from the active tokenizer", async () => {
+test("[§tokenomics-tokens-stored-at-write] EDIT stores entry_channels.tokens from the model-agnostic ruler", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         const content = "alpha beta gamma delta";
@@ -47,8 +47,8 @@ test("[§tokenomics-tokens-stored-at-write] EDIT stores entry_channels.tokens fr
         assert.equal(result.status, 201);
         assert.ok(result.entryId !== null);
         const ch = await (db.tok_channel_tokens as PrepMethod).get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
-        // Bare Engine uses the divisor tripwire: ceil(len/4).
-        assert.equal(ch?.tokens, Math.ceil(content.length / 4));
+        // The write-time stamp is the model-agnostic ruler (§tokenomics-agnostic-ruler): ceil(len/2).
+        assert.equal(ch?.tokens, Math.ceil(content.length / 2));
         assert.ok((ch?.tokens ?? 0) > 0, "tokens populated at write, not the old hardcoded 0");
     } finally { await db.close(); }
 });
@@ -68,7 +68,7 @@ test("[§tokenomics-tokens-stored-at-write] dispatched op stores log_entries.tok
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-tokens-stored-at-write] entry_channels.tokens uses the injected provider tokenizer, not the divisor fallback", async () => {
+test("[§tokenomics-tokens-stored-at-write] entry_channels.tokens honors an injected ruler override (test seam)", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `tok-prov-${crypto.randomUUID()}`);
@@ -82,7 +82,7 @@ test("[§tokenomics-tokens-stored-at-write] entry_channels.tokens uses the injec
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         }) as { status: number; entryId: number | null };
         const ch = await (db.tok_channel_tokens as PrepMethod).get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
-        assert.equal(ch?.tokens, 100, "tokens come from the injected provider tokenizer, not the chars/4 fallback");
+        assert.equal(ch?.tokens, 100, "the write stamp honors the injected tokenize (test seam); production injects the chars/2 ruler");
     } finally { await db.close(); }
 });
 
@@ -230,4 +230,12 @@ test("[§tokenomics-pressure-gates-on-occupancy] a high-headroom window renders 
         assert.doesNotMatch(budget, /Turns:/, "no per-turn table at low occupancy");
         assert.doesNotMatch(budget, /Log entries:/, "no log-weight line at low occupancy — numbers only");
     } finally { await db.close(); }
+});
+
+test("[§tokenomics-content-hash-identity] content_hash is a stable per-content identity — identical content, identical hash; no per-model keying", async () => {
+    const { contentHash } = await import("../../src/core/content-hash.ts");
+    const h = contentHash("same bytes");
+    assert.equal(h, contentHash("same bytes"), "deterministic: identical content → identical hash");
+    assert.notEqual(h, contentHash("other bytes"), "distinct content → distinct hash");
+    assert.match(h, /^[0-9a-f]{64}$/, "a sha256 hex identity");
 });

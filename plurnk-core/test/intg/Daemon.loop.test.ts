@@ -204,7 +204,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
             assert.equal(captured[0].finalStatus, 500, "a genuine loop error terminates at 500 (failed) — distinct from an abort's 499");
             assert.deepEqual(captured[0].turnIds, [], "turnIds is always present — [] at the error boundary, never absent (#266)");
             assert.equal(captured[0].hitMaxTurns, false);
-            // #311 [§tokenomics-ceiling-calibrates-to-usage] — the failure is first-class on BOTH
+            // #311 (§tokenomics-agnostic-ruler) — the failure is first-class on BOTH
             // surfaces: the broadcast carries the cause and the loop row is terminal 500, never a
             // contentless corpse over a still-live 102 row.
             const msg = (captured[0] as { message?: string }).message;

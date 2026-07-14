@@ -29,6 +29,7 @@ import LoopDocs from "./loopDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
+import { rulerCount } from "../core/token-ruler.ts";
 import type { Executor, RegistryEntry } from "../core/ExecutorRegistry.ts";
 import type { RuntimeDecl, RuntimeAvailability } from "@plurnk/plurnk-execs";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
@@ -139,11 +140,11 @@ export default class Daemon {
         });
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
-            // Same provider-backed source as the Mimetypes tokenize lambda
-            // above; sync here because countTokens is sync (§provider-surface) and the
-            // write helpers store the count inline. Divisor tripwire only
-            // until a provider is resolved.
-            tokenize: (text) => this.#provider?.countTokens(text) ?? Math.ceil(text.length / 4),
+            // §tokenomics-agnostic-ruler — the ONE model-facing token ruler (chars/2), NOT the
+            // boot provider: token accounting is session-wide across many concurrent models, so
+            // the write-time + catalog counts must be model-independent. Exact per-model counting
+            // lives only at the packet-materialization fit-gate.
+            tokenize: rulerCount,
             streamEventNotify: (sessionId, event) => this.notifyStreamEvent(sessionId, event),
             wakeRunNotify: (payload) => { void this.#handleWakeRun(payload); },
             // run:// loop-start primitive — spawn/fork/irc deliver through

@@ -174,8 +174,8 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     content  TEXT    NOT NULL             CHECK (length(content) <= 104857600),
     mimetype TEXT    NOT NULL             CHECK (length(mimetype) > 0),
     tokens   INTEGER NOT NULL DEFAULT 0   CHECK (tokens >= 0),
-    -- #312 — sha256 of content, stamped at static writes (streamed appends leave it NULL and
-    -- readers fall back to the write-time `tokens`). The join key into token_counts.
+    -- content identity: sha256 of content, stamped at static writes (streamed appends leave it
+    -- NULL). The per-tokenizer token cache it once keyed was retired — §tokenomics-agnostic-ruler.
     content_hash TEXT,
     state    TEXT    NOT NULL DEFAULT 'static' CHECK (state IN ('static', 'active', 'closed', 'errored')),
     PRIMARY KEY (entry_id, name),
@@ -245,19 +245,6 @@ CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (session_id, entry_
 -- precise rank, so no ANN/extension is needed. Populated at the gated manifest-add
 -- hook alongside symbol_defs/refs: re-indexed only when body content changes.
 CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
-
--- INIT: token_counts (#312 — derived token counts keyed on (content_hash, tokenizer_id), the
--- deep_hash discipline applied to the token gauge: content change → new hash → recount that
--- entry; the run's MODEL change recounts iff the tokenizer identity changed (deepseek pro↔flash
--- share a vocab → zero recounts; gemma↔deepseek → all). tokenizer_id is the tokenizer.json sha
--- from the mimetypes seam (mimetypes#44), NEVER the model id. Rows are written only by the
--- ASYNC paths (the pump warm + build-time stragglers) using the seam's exact counter.
-CREATE TABLE IF NOT EXISTS token_counts (
-    content_hash TEXT    NOT NULL,
-    tokenizer_id TEXT    NOT NULL,
-    tokens       INTEGER NOT NULL CHECK (tokens >= 0),
-    PRIMARY KEY (content_hash, tokenizer_id)
-) STRICT, WITHOUT ROWID;
 
 -- INIT: entry_embeddings (~semantic vector half — plurnk-service#186; Project
 -- Semantics chunking). One Float32 vector per CHUNK: an entry tiles into N chunks,
