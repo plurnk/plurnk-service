@@ -28,7 +28,7 @@ interface ActionTarget { scheme?: string | null; hostname?: string | null; port?
 interface StatementTx {
     body?: string | { raw?: unknown } | null;
 }
-interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown; itemsTokenTotal?: unknown }
+interface RxView { content?: unknown; mimetype?: unknown; startLine?: unknown; matches?: unknown; itemsTokenTotal?: unknown; overflow?: unknown }
 interface LogEntryView {
     coordinate?: unknown;
     op?: unknown;
@@ -341,7 +341,9 @@ export default class PacketWire {
                 if (tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
                 }
-                if (rx !== null && typeof rx === "object" && typeof rx.matches === "number") {
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.overflow === "number") {
+                    items = rx.overflow; // §find-count-not-contents — the full match count, though the rows weren't enumerated
+                } else if (rx !== null && typeof rx === "object" && typeof rx.matches === "number") {
                     items = rx.matches;
                 } else if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                     const parsed = PacketWire.#safeParse(rx.content);
