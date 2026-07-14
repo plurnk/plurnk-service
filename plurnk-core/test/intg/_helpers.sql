@@ -395,3 +395,6 @@ SELECT vector FROM entry_embeddings WHERE entry_id = $entry_id ORDER BY chunk_se
 -- PREP: test_seed_channel_hashed
 INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, content_hash, state)
 VALUES ($entry_id, $name, $content, $mimetype, 0, $content_hash, $state);
+
+-- PREP: test_count_stamped_deep_hash
+SELECT COUNT(*) AS n FROM entries WHERE session_id = $session_id AND deep_hash IS NOT NULL;

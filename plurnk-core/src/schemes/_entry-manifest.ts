@@ -14,6 +14,7 @@
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
+import { contentHash } from "../core/content-hash.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
@@ -235,14 +236,46 @@ export default class EntryManifest {
         const total = pending.length;
         const step = total > 1 ? Math.max(1, Math.floor(total / 10)) : 0; // ~10 milestones, or silent for 0-1
         let completed = 0;
-        for (const { r, hash } of pending) {
-            await EntryManifest.deriveOne(ctx, r, hash, embedActive);
+        const tick = (): void => {
             completed++;
             if (step > 0 && (completed === total || completed % step === 0)) {
                 ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `deriving entries ${completed}/${total}`, completed, total, level: "info" });
             }
-        }
+        };
 
+        // §derivation-dedup-parallel (#416) — unify the two ingest wins. FIRST-of-content embeds,
+        // the REST reuse (§semantic-embed-dedup): grouping pending by content_hash means each
+        // unique content embeds exactly once, and a naive concurrent loop can't run identical
+        // siblings simultaneously (which would defeat the dedup — they're adjacent after the
+        // smallest-first sort). SECOND, the unique reps run with bounded concurrency so their
+        // (mostly 1-chunk) embedBatch calls OVERLAP and saturate the embedder's worker pool
+        // (mimetypes#420: the pool is data-parallel; sequential per-entry await was starving it).
+        const groups = new Map<string, Array<{ r: ManifestRow; hash: string }>>();
+        for (const p of pending) {
+            const key = embedActive ? contentHash(p.r.content) : String(p.r.entry_id); // no dedup when embeddings are off
+            const g = groups.get(key);
+            if (g === undefined) groups.set(key, [p]); else g.push(p);
+        }
+        const reps = [...groups.values()].map((g) => g[0]);
+        const dups = [...groups.values()].flatMap((g) => g.slice(1));
+
+        const concurrency = Math.max(1, Number.parseInt(process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY ?? "1", 10));
+        const runPool = async (work: Array<{ r: ManifestRow; hash: string }>): Promise<void> => {
+            let next = 0;
+            const worker = async (): Promise<void> => {
+                while (next < work.length) {
+                    if (ctx.signal?.aborted === true) return;
+                    const { r, hash } = work[next++];
+                    await EntryManifest.deriveOne(ctx, r, hash, embedActive);
+                    tick();
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(concurrency, work.length || 1) }, () => worker()));
+        };
+        // Reps first (the embeds, parallel), then dups (cheap content_hash-reuse copies — the rep
+        // has committed, so tryReuseEmbeddings is a guaranteed hit).
+        await runPool(reps);
+        await runPool(dups);
     }
 
 }
