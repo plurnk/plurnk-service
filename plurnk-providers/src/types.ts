@@ -134,11 +134,15 @@ export interface Provider {
     // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
     // strikes-style zero exception). Headers only, never the packet.
     generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sessionId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
-    // null = provider can't determine the model's context window. Consumer
-    // treats null as "no budget info" — Percent column omitted rather than
-    // guessed. Providers that always know contextSize never return null.
-    // NOTE: under llama-server --parallel N, the window is PER SLOT (the
-    // server splits --ctx-size across slots and reports the divided value).
+    // The model's context window in tokens. The provider RESOLVES it (operator pin
+    // -> live probe -> @plurnk/plurnk-models catalog). A CLOUD provider (no probe)
+    // FAILS AT CONSTRUCTION when it can't (#419/#417: never budget against a wrong
+    // number). A PROBING provider (openai/llama-server) instead DEGRADES to null on a
+    // probe miss - a blip must not crash it (#34) - and surfaces it once
+    // (PLURNK_CONTEXT_UNKNOWN). So null still means "window unknown -> no cap"; the
+    // consumer must NOT improvise a stand-in from it (#421). NOTE: under llama-server
+    // --parallel N, the window is PER SLOT (the server splits --ctx-size across slots
+    // and reports the divided value).
     readonly contextSize: number | null;
     readonly model: string;
     // OPTIONAL (#37): the backend's SELF-REPORTED served model id, from a

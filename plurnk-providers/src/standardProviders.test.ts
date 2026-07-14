@@ -181,8 +181,8 @@ test("openai: a slot-probe network error (fetch rejects on /props) degrades slot
 
 test("cloud standard providers do not probe (no n_ctx fetch)", async () => {
     const calls = mockEndpoint({ nctx: 99999 });
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, "m");
-    assert.equal(p!.contextSize, null);           // groq has no probeNctx
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    assert.equal(p!.contextSize, 8192);           // from the pin, NOT the mocked probe (groq has no probeNctx)
     assert.equal(calls.some((u) => u.endsWith("/models")), false); // never queried /models
 });
 
@@ -300,9 +300,9 @@ test("openai: a garbage PLURNK_PROVIDERS_LLAMA_SERVER value fails hard", async (
 
 test("constrainsOutput: fireworks (static response_format) reports true; groq reports false", async () => {
     mockEndpoint();
-    const fw = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "k" }, "m");
+    const fw = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
     assert.equal(fw!.constrainsOutput, true);
-    const gq = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, "m");
+    const gq = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
     assert.equal(gq!.constrainsOutput, false);
 });
 
@@ -439,14 +439,14 @@ test("openai flexBaseStrip: base with trailing /v1 yields a single /v1/chat/comp
 
 test("a provider appends chatPath to its base URL", async () => {
     const calls = mockEndpoint();
-    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_API_KEY: "k" }, "m");
+    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://api.deepinfra.com/v1/openai/chat/completions");
 });
 
 test("baseUrlVar supplies the base URL (no in-code default)", async () => {
     const calls = mockEndpoint();
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", GROQ_BASE_URL: "http://proxy/openai/v1" }, "m");
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", GROQ_BASE_URL: "http://proxy/openai/v1", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "http://proxy/openai/v1/chat/completions");
 });
@@ -463,7 +463,9 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
         v === undefined ? undefined : typeof v === "string" ? v : v[0];
     const envFor = (name: string): NodeJS.ProcessEnv => {
         const spec = STANDARD_PROVIDERS[name];
-        const e: NodeJS.ProcessEnv = { ...baseEnv };
+        // Pin the window: this sweep asserts the chat URL, not budgeting, and the
+        // cloud specs fail-hard on an uncataloged model absent a pin (#419).
+        const e: NodeJS.ProcessEnv = { ...baseEnv, PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" };
         // Specs whose auth rides headersFromEnv (e.g. plurnk) have no apiKeyVar.
         const keyVar = first(spec.apiKeyVar);
         if (keyVar !== undefined) e[keyVar] = "k";
@@ -488,7 +490,7 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
 
 test("deepinfra: resolves auth via the DEEPINFRA_TOKEN alias (not only DEEPINFRA_API_KEY)", async () => {
     const seen = plurnkMock();
-    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_TOKEN: "di-tok" }, "m");
+    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_TOKEN: "di-tok", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatHeaders(seen).Authorization, "Bearer di-tok");
     mock.restoreAll();
@@ -511,7 +513,7 @@ test("openai: base URL via the legacy OPENAI_API_BASE alias", async () => {
 
 test("bedrock: derives the base from AWS_REGION (.../openai/v1), no BEDROCK_BASE_URL needed", async () => {
     const calls = mockEndpoint();
-    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2" }, "m");
+    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1/chat/completions");
     mock.restoreAll();
@@ -519,7 +521,7 @@ test("bedrock: derives the base from AWS_REGION (.../openai/v1), no BEDROCK_BASE
 
 test("bedrock: AWS_DEFAULT_REGION is accepted when AWS_REGION is unset", async () => {
     const calls = mockEndpoint();
-    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_DEFAULT_REGION: "eu-west-1" }, "m");
+    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_DEFAULT_REGION: "eu-west-1", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions");
     mock.restoreAll();
@@ -527,7 +529,7 @@ test("bedrock: AWS_DEFAULT_REGION is accepted when AWS_REGION is unset", async (
 
 test("bedrock: an explicit BEDROCK_BASE_URL overrides region derivation", async () => {
     const calls = mockEndpoint();
-    const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", BEDROCK_BASE_URL: "https://gw.internal/openai/v1" };
+    const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", BEDROCK_BASE_URL: "https://gw.internal/openai/v1", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" };
     const p = await standardProviderFromEnv("bedrock", env, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://gw.internal/openai/v1/chat/completions");
@@ -549,9 +551,12 @@ test("bedrock: contextSize resolves from the catalog via the inference-profile's
     assert.equal(p!.costFor({ prompt: 1_000_000, completion: 1_000_000, reasoning: 0, cached: 0, total: 2_000_000 }), 0);
 });
 
-test("bedrock: a publisher the catalog lacks (meta) → contextSize null; PLURNK_PROVIDERS_CONTEXT_SIZE still wins", async () => {
+test("bedrock: a publisher the catalog lacks (meta) fails hard (cloud, no probe); PLURNK_PROVIDERS_CONTEXT_SIZE still wins", async () => {
     const base = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-east-1" };
-    assert.equal((await standardProviderFromEnv("bedrock", base, "us.meta.llama-3-70b"))!.contextSize, null);
+    await assert.rejects(
+        standardProviderFromEnv("bedrock", base, "us.meta.llama-3-70b"),
+        /context window unresolved/, // #419: cloud provider, uncataloged publisher, unpinned
+    );
     const pinned = await standardProviderFromEnv("bedrock", { ...base, PLURNK_PROVIDERS_CONTEXT_SIZE: "128000" }, "us.meta.llama-3-70b");
     assert.equal(pinned!.contextSize, 128000);
 });
@@ -759,7 +764,7 @@ test("plurnk: normalizes the endpoint's balance_pico into meta.balancePico (#23)
 test("a third-party (non-plurnk) provider never NORMALIZES balancePico — only plurnk holds that contract", async () => {
     mock.method(globalThis, "fetch", async () =>
         new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}],"balance_pico":880000000}\n\ndata: [DONE]')); c.close(); } }), { status: 200 }));
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, "m");
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
     const res = await p!.generate({ runId: "r", messages: [] });
     assert.equal("balancePico" in (res.meta ?? {}), false); // groq has no balanceMetaKey — no normalization
     assert.equal(res.meta?.balance_pico, 880000000);          // but the raw field still passes through (every-provider meta)
