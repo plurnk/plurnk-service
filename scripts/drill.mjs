@@ -1,6 +1,10 @@
-// The gate drill, parallelized (AGENTS one-gate). Same tiers, same coverage, same
-// fail-hard — lint and unit fan out across workspaces (they are independent), intg
-// follows once both are green. Every red's full output is printed; any red fails.
+// The gate drill, parallelized (AGENTS one-gate). lint + unit fan out across ALL
+// workspaces every run — fast, deterministic, cross-workspace safety. intg — slow,
+// stateful, the flaky tier — scopes to the CHANGED workspaces when the pre-push
+// hook hands a base (PLURNK_GATE_BASE); a root-level change or no base runs full.
+// So a lane's push gates on its OWN tree (worktree isolation, real at the push
+// boundary), while a release (stamps every workspace) and any manual `npm test`
+// run the full intg. Committing to main is scoped; shipping runs everything.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -12,6 +16,39 @@ for (const dir of root.workspaces) {
     const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));
     workspaces.push({ dir, name: pkg.name, scripts: Object.keys(pkg.scripts ?? {}) });
 }
+
+// Map a changed-file list to the set of workspace dirs to run intg for. A file
+// under a workspace scopes to it; a file outside every workspace (root config,
+// scripts/, .githooks/) can affect anything → null = run FULL intg.
+export const scopeIntg = (files, dirs) => {
+    const set = new Set(dirs);
+    const changed = new Set();
+    for (const file of files) {
+        const top = file.split("/")[0];
+        if (!set.has(top)) return null; // root-level change → full intg
+        changed.add(top);
+    }
+    return changed;
+};
+
+const gitDiff = (base) => new Promise((resolve) => {
+    const child = spawn("git", ["diff", "--name-only", `${base}..HEAD`]);
+    let out = "";
+    child.stdout.on("data", (c) => { out += c; });
+    child.once("close", (code) => resolve(code === 0 ? out.split("\n").filter(Boolean) : null));
+    child.once("error", () => resolve(null));
+});
+
+// The workspace subset for the intg phase. null → full (no base, a diff failure,
+// or a root-level change); otherwise only the changed workspaces.
+const intgTargets = async () => {
+    const base = process.env.PLURNK_GATE_BASE;
+    if (!base) return null;
+    const files = await gitDiff(base);
+    if (files === null) return null;
+    const changed = scopeIntg(files, workspaces.map((w) => w.dir));
+    return changed === null ? null : workspaces.filter((w) => changed.has(w.dir));
+};
 
 const run = (dir, script) => new Promise((resolve) => {
     const child = spawn("npm", ["run", script, "--silent"], { cwd: dir, env: process.env });
@@ -31,9 +68,9 @@ const pool = async (jobs) => {
     return results;
 };
 
-const phase = async (title, script) => {
+const phase = async (title, script, subset) => {
     const started = Date.now();
-    const jobs = workspaces
+    const jobs = subset
         .filter((w) => w.scripts.includes(script))
         .map((w) => () => run(w.dir, script));
     const results = await pool(jobs);
@@ -46,8 +83,15 @@ const phase = async (title, script) => {
     return reds.length === 0;
 };
 
-const t0 = Date.now();
-if (!(await phase("lint", "test:lint"))) process.exit(1);
-if (!(await phase("unit", "test:unit"))) process.exit(1);
-if (!(await phase("intg", "test:intg"))) process.exit(1);
-console.log(`drill green in ${Math.round((Date.now() - t0) / 1000)}s`);
+if (import.meta.main) {
+    const t0 = Date.now();
+    if (!(await phase("lint", "test:lint", workspaces))) process.exit(1);
+    if (!(await phase("unit", "test:unit", workspaces))) process.exit(1);
+
+    const targets = await intgTargets();
+    if (targets === null) console.log(`intg: full (${process.env.PLURNK_GATE_BASE ? "root-level change" : "no base"})`);
+    else console.log(`intg: scoped to ${targets.length} changed workspace(s)${targets.length ? `: ${targets.map((w) => w.dir).join(", ")}` : ""}`);
+
+    if (!(await phase("intg", "test:intg", targets ?? workspaces))) process.exit(1);
+    console.log(`drill green in ${Math.round((Date.now() - t0) / 1000)}s`);
+}
