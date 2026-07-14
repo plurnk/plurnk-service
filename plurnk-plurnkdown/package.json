@@ -1,0 +1,46 @@
+{
+    "name": "@plurnk/plurnk-plurnkdown",
+    "version": "1.0.5",
+    "description": "Plurnkdown — a flavor of Markdown (Mermaid + Gherkin + style enforcement) for plurnk-service. Mandatory core format; scaffold, implementation pending.",
+    "keywords": [
+        "plurnk",
+        "markdown",
+        "plurnkdown",
+        "mermaid",
+        "gherkin"
+    ],
+    "engines": {
+        "node": ">=26"
+    },
+    "license": "MIT",
+    "author": "@wikitopian",
+    "type": "module",
+    "publishConfig": {
+        "access": "public"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/plurnk/plurnk-service.git",
+        "directory": "plurnk-plurnkdown"
+    },
+    "exports": {
+        ".": {
+            "plurnk-dev": "./src/index.ts",
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/**/*",
+        "README.md"
+    ],
+    "scripts": {
+        "test:lint": "tsc --noEmit",
+        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
+        "test": "npm run test:lint && npm run test:unit",
+        "build:dist": "tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "prepack": "npm run build"
+    }
+}
