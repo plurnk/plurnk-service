@@ -56,15 +56,16 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 
 Plurnk Service treemaps every file, entry, and item, allowing every pattern filter on everything.
 
-| prefix | dialect  | form                        |
-|--------|----------|-----------------------------|
-| `#`    | regex    | #pattern#[igmsu]*           |
-| `//`   | xpath    | //selector                  |
-| `$`    | jsonpath | $.field                     |
-| `~`    | semantic | ~phrase                     |
-| `@`    | graph    | @<symbol, @>symbol, @symbol |
-| none   | glob     | pattern                     |
+| prefix | dialect  | form                        | engine           |
+|--------|----------|-----------------------------|------------------|
+| `#`    | regex    | #pattern#[igmsu]*           | ECMAScript       |
+| `//`   | xpath    | //selector                  | XPath 1.0        |
+| `$`    | jsonpath | $.field                     | jsonpath-plus    |
+| `~`    | semantic | ~phrase                     | keyword + cosine |
+| `@`    | graph    | @<symbol, @>symbol, @symbol | symbol index     |
+| none   | glob     | pattern                     | shell glob       |
 
+* The leading symbol commits its dialect; a mistyped matcher is flagged, not silently downgraded to a glob.
 * Mapping is universal (you can do jsonpath against XML files and xpath on json files, etc...).
 * Matching returns whole lines, never extracted values: `Alice` returns `42:	I bought Alice some flowers`, not `1:	Alice`.
 * Escape a literal `#` inside regex patterns with `\#`.
@@ -157,10 +158,10 @@ YOU MUST submit the OPs by SENDing either a brief response or a Github-flavored 
 * <<FIND(known:///**)<5>:~french revolutionary history:FIND
 * <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
 * <<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
-* <<FIND(known:///**):revolution:FIND
+* <<FIND[history](known:///**):revolution:FIND
 * <<FIND(known:///**):$[?(@.role=="admin")]:FIND
-* <<FIND(#(draft|final)/.*#i)::FIND
 * <<FIND(#src/.*\.test\.ts#)::FIND
+* <<FIND(src/**):@createCoder:FIND
 * <<FIND(src/**):@<createCoder:FIND
 * <<FIND(**/notes.md)::FIND
 * <<READ(lang/??.json):$.greeting:READ
