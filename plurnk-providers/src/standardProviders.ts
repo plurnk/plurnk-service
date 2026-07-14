@@ -483,13 +483,21 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // rate, #22); everyone else keys the catalog directly on (name, wireModel).
     const fallback = spec.catalogContextLookup === undefined ? lookup(name, wireModel) : undefined;
     contextSize ??= (spec.catalogContextLookup !== undefined ? spec.catalogContextLookup(wireModel) : fallback?.contextWindow) ?? null;
-    // Underivable window (env, probe, catalog ALL missed) resolves to null — a
-    // legitimate "unknown" (§11), but never a SILENT one: budget-partitioning
-    // consumers fall back to bare numbers tuned for some other model (the #352
-    // failure mode). Surface it once with the remediation.
+    // Unresolved window (env, probe, catalog ALL missed) - two paths (#419 hybrid).
+    // A CLOUD provider (no probe) has no other window source, so an uncataloged,
+    // unpinned model is a config error we FAIL-HARD on (the #417 kimi case) rather
+    // than budget against a wrong number. A PROBING provider (openai/llama-server)
+    // DEGRADES to null instead: a probe blip or a box that doesn't report n_ctx must
+    // not crash construction (#34 robustness); the consumer treats null as "no cap",
+    // never a wrong CTX stand-in. Either way the unknown is SURFACED, never silent.
     if (contextSize === null) {
+        if (spec.probeNctx !== true) {
+            throw new Error(
+                `${name} provider: context window unresolved for "${wireModel}" - a cloud provider with no probe, absent from the @plurnk/plurnk-models catalog and unpinned. Pin PLURNK_PROVIDERS_CONTEXT_SIZE (alias-scopable as _<alias>) or add the model to the catalog (#419)`,
+            );
+        }
         emitWarningOnce(
-            `${name} provider: context window underivable for "${wireModel}" (no env, endpoint probe, or catalog entry) — contextSize=null; set PLURNK_PROVIDERS_CONTEXT_SIZE (alias-scopable as _<alias>) so window budgets are deliberate`,
+            `${name} provider: context window underivable for "${wireModel}" (probe returned no n_ctx, catalog miss) - contextSize=null; set PLURNK_PROVIDERS_CONTEXT_SIZE (alias-scopable as _<alias>) so window budgets are deliberate`,
             "PLURNK_CONTEXT_UNKNOWN",
         );
     }

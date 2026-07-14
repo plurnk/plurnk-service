@@ -41,7 +41,7 @@ export type OpenAICompatConfig = {
     url: string;                              // fully-resolved chat-completions URL
     fetchTimeoutMs: number;
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
-    contextSize?: number | null;              // default null
+    contextSize?: number | null;              // default null; caller resolves-or-fails (#419), narrows to required with the interface
     reasoningStyle?: ReasoningStyle;          // default "none"
     countTokens?: (text: string) => number;   // default chars/2 upper-bound heuristic
     costFor?: (usage: ProviderUsage) => number; // default () => 0
