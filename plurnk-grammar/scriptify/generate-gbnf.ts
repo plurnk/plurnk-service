@@ -307,21 +307,27 @@ export const buildModel = (): GModel => {
     // Inter-op separator is up to 7 whitespace chars (`WS{0,7}`): glued or split, but
     // bounded, so a degenerate decoder can't stall in an unbounded whitespace run.
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
-    // preplan: the free reasoning prefix — any text completing no `<<OP` opener, so the
-    // first `<<PLAN` is the unambiguous anchor and the preamble re-lexes as pure TEXT.
-    preplanRules(model);
-    // Optional in-band reasoning enclosure before the anchor. When a model's reasoning is
-    // NOT channel-split (above the grammar) and lands in the constrained text stream, it
+    // The turn opens on the harmony reasoning channel (optional) or dives straight into the
+    // `<<PLAN` anchor - NO free-text preamble (#430). The channel enclosure body is
     // arrives wrapped: DeepSeek `<think>…</think>`, gemma `<|channel>…<channel|>`. The
     // enclosure body is a complement over the CLOSER, so a `<<PLAN` drafted while reasoning
     // is protected content (not the anchor) and the closer is always reachable — otherwise
     // a drafted opener anchors mid-thought and the unclosed enclosure becomes a dead packet.
-    // Optional: a channel-split (or non-reasoning) model skips straight to preplan.
-    forbidLiteral(model, "rz-think", "</think>");
+    //
+    // THE ONLY reasoning shape is the harmony channel (#430, owner ruling 2026-07-16): the
+    // grammar is tuned for the one path that actually honors it — local llama.cpp + gemma
+    // over the raw (un-split) stream, `reasoning_format: none`. Cloud backends are unreliable
+    // about GBNF, so agnostic tolerance bought nothing; strict-to-the-enforcer buys everything.
+    // The opener is the EXACT `<|channel>thought\n`, the closer `<channel|>`, and `<channel|>`
+    // is byte-adjacent to `<<PLAN` (raw specimen). The channel is OPTIONAL and its body ADMITS
+    // EMPTY (the complement-over-closer keeps its epsilon): gemma always opens the channel but
+    // often reasons zero on trivial turns, and forcing a non-empty thought only breeds filler
+    // (smoke: the model echoed "thought\n" to satisfy a non-empty floor). So: channel-or-dive-
+    // straight-into-PLAN, nothing else - the wild-west `preplan` and the `<think>` alternative
+    // are BOTH deleted. A byte-literal CAN require the special channel token under llama.cpp
+    // (smoke-confirmed); deviate from channel-or-PLAN and the turn fails hard, by design.
     forbidLiteral(model, "rz-chan", "<channel|>");
-    model.set("think-block", [[lit("<think>"), ref("rz-think-b0"), lit("</think>")]]);
-    model.set("channel-block", [[lit("<|channel>"), ref("rz-chan-b0"), lit("<channel|>")]]);
-    model.set("reasoning", [[ref("think-block")], [ref("channel-block")]]);
+    model.set("channel", [[lit("<|channel>thought\n"), ref("rz-chan-b0"), lit("<channel|>")]]);
     // Turn fork — two structural rails on the batch, both content-agnostic:
     //
     // OP-COUNT BOUND (K mid-steps, then the ONLY legal continuation is a terminal SEND).
@@ -348,7 +354,7 @@ export const buildModel = (): GModel => {
     }
     // Step budget exhausted: terminal SEND is the only continuation.
     model.set(`tail-${K_MID_STEPS}`, [[ref("send-final-any"), ref("sep")]]);
-    model.set("root-turn", [[opt(ref("reasoning")), ref("preplan"), ref("plan"), ref("sep"), ref("tail-0")]]);
+    model.set("root-turn", [[opt(ref("channel")), ref("plan"), ref("sep"), ref("tail-0")]]);
     trieRules(model, "op-statement", opEntries);
     trieRules(model, "send-mid-any", sendMidEntries);
     trieRules(model, "send-final-any", sendFinalEntries);

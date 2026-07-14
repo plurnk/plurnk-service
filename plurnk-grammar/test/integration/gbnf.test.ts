@@ -218,28 +218,25 @@ test("GBNF: PLAN-anchored root — PLAN mandatory & first, SEND-closed", () => {
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\nstray prose\n<<SEND[200]:x:SEND"), false);
 });
 
-test("GBNF: free reasoning preamble before PLAN — any format, but op-free", () => {
-    // the preamble is free text up to the first <<PLAN — any reasoning format works
-    assert.equal(derives("root-turn", "<think>reasoning</think>\n<<PLAN:intent:PLAN\n<<SEND[200]:done:SEND"), true);
-    assert.equal(derives("root-turn", "<|channel>thought blah<channel|>\n<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), true);
-    // absent preamble — straight to PLAN
+test("GBNF: the ONLY preamble is the harmony channel — strict, zero-gap, no free text (#430)", () => {
+    const CH = "<|channel>thought\n";
+    // channel with reasoning, then ZERO-GAP into PLAN
+    assert.equal(derives("root-turn", CH + "Analyze the task.<channel|><<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), true);
+    // EMPTY thought — the channel opens and closes blank (no non-empty floor, so no filler)
+    assert.equal(derives("root-turn", CH + "<channel|><<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), true);
+    // no channel at all — dive straight into PLAN
     assert.equal(derives("root-turn", "<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), true);
-    // the preamble is OP-FREE: a rehearsed `<<OP` opener in it is not derivable (it would
-    // break L(GBNF) ⊆ L(ANTLR), where the turn preamble re-lexes as pure TEXT)
-    assert.equal(derives("root-turn", "draft <<EDIT musings\n<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), false);
+    // the wild-west is gone: a free-text preamble before PLAN rejects
+    assert.equal(derives("root-turn", "let me think\n<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), false);
+    // <think> is no longer a reasoning form — the channel is the ONLY one
+    assert.equal(derives("root-turn", "<think>reasoning</think><<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), false);
+    // zero-gap adjacency: ANY byte between <channel|> and <<PLAN rejects
+    assert.equal(derives("root-turn", CH + "r<channel|>\n<<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), false);
+    assert.equal(derives("root-turn", CH + "r<channel|> <<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), false);
+    // the opener is the EXACT `<|channel>thought\n` — a space where the newline belongs rejects
+    assert.equal(derives("root-turn", "<|channel>thought blah<channel|><<PLAN:intent:PLAN\n<<SEND[200]:x:SEND"), false);
     // no <<PLAN anywhere → not a turn
-    assert.equal(derives("root-turn", "just reasoning, never plans\n<<SEND[200]:x:SEND"), false);
-});
-
-test("GBNF: preplan is op-free free text and may not end on a lone `<`", () => {
-    // free text with partial (incomplete) openers is fine
-    assert.equal(derives("preplan", "anything goes <<SEN <<PLA not-quite"), true);
-    // a complete `<<OP` opener is not — the preamble must stay opener-free
-    assert.equal(derives("preplan", "before <<EDIT after"), false);
-    assert.equal(derives("preplan", "before <<PLAN after"), false);
-    // may not END on a lone `<` (odd run) — it would merge with the following `<<PLAN`
-    assert.equal(derives("preplan", "trailing <"), false);
-    assert.equal(derives("preplan", "trailing <<"), true);
+    assert.equal(derives("root-turn", CH + "reasoning<channel|>"), false);
 });
 
 test("PlurnkParser.parse discards the pre-<<PLAN preamble (turn sandwich)", () => {
@@ -259,23 +256,20 @@ test("PlurnkParser.parse discards the pre-<<PLAN preamble (turn sandwich)", () =
 // GBNF generates the optional enclosure; ANTLR absorbs it as preamble TEXT. Both must agree
 // (subset invariant) AND parse must anchor on the REAL `<<PLAN` after the enclosure. The
 // random fuzz never emits a literal `<<PLAN` inside a reasoning body, so guard it explicitly.
-test("reasoning enclosure protects a drafted <<PLAN; parse anchors on the real one", () => {
-    const cases: Array<[string, string]> = [
-        ["think", "<think>my plan: <<PLAN:do x:PLAN then verify</think>\n<<PLAN:real intent:PLAN\n<<SEND[200]:done:SEND"],
-        ["channel", "<|channel>thought, will <<PLAN:draft:PLAN<channel|>\n<<PLAN:real intent:PLAN\n<<SEND[200]:done:SEND"],
-    ];
-    for (const [label, turn] of cases) {
-        assert.equal(derives("root-turn", turn), true, `GBNF should derive the ${label} enclosure turn`);
-        const r = PlurnkParser.parse(turn);
-        const stmts = r.items.filter((i) => i.kind === "statement");
-        assert.equal(r.items.filter((i) => i.kind === "error").length, 0, `${label}: ${JSON.stringify(r.items)}`);
-        const first = stmts[0]?.kind === "statement" ? stmts[0].statement : undefined;
-        // PLAN's body is a plain string (reasoning text), not a {raw} object like SEND/EDIT.
-        assert.ok(
-            first?.op === "PLAN" && first.body === "real intent",
-            `${label}: must anchor on the real PLAN, not the drafted one (got ${JSON.stringify(first?.body)})`,
-        );
-    }
+test("channel enclosure protects a drafted <<PLAN; parse anchors on the real one (#430)", () => {
+    // A <<PLAN drafted WHILE reasoning (inside the channel body, a complement over the closer)
+    // is protected content, not the anchor. GBNF derives it; parse anchors on the REAL PLAN
+    // after <channel|>. PLAN's body is a plain string (reasoning text), not a {raw} object.
+    const turn = "<|channel>thought\nmy plan: <<PLAN:draft:PLAN then verify<channel|><<PLAN:real intent:PLAN\n<<SEND[200]:done:SEND";
+    assert.equal(derives("root-turn", turn), true, "GBNF should derive the channel-enclosure turn");
+    const r = PlurnkParser.parse(turn);
+    assert.equal(r.items.filter((i) => i.kind === "error").length, 0, JSON.stringify(r.items));
+    const stmts = r.items.filter((i) => i.kind === "statement");
+    const first = stmts[0]?.kind === "statement" ? stmts[0].statement : undefined;
+    assert.ok(
+        first?.op === "PLAN" && first.body === "real intent",
+        `must anchor on the real PLAN, not the drafted one (got ${JSON.stringify(first?.body)})`,
+    );
 });
 
 test("PlurnkParser.parse requires both PLAN and a terminal SEND; prose tolerated as comments", () => {
@@ -622,8 +616,10 @@ test("GBNF: inter-op separator is WS{0,7} — none, mixed, up to 7; 8+ rejected"
     assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ" + " ".repeat(7) + "<<SEND[102]:done:SEND"), true);
     // 8 whitespace chars — over the cap, rejected (no unbounded stall)
     assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ" + " ".repeat(8) + "<<SEND[102]:done:SEND"), false);
-    // leading + trailing whitespace (within cap) — op-free turn, 200 ok
-    assert.equal(derives("root-turn", "  \n<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n  "), true);
+    // strict start (#430): no leading whitespace before the channel/PLAN — dive right in
+    assert.equal(derives("root-turn", "  \n<<PLAN:p:PLAN\n<<SEND[200]:done:SEND"), false);
+    // trailing whitespace after the terminal (within cap) is fine
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n  "), true);
     // still no non-whitespace text between ops
     assert.equal(derives("root-turn", lead + "<<READ(known:///x)::READ prose <<SEND[102]:done:SEND"), false);
 });
