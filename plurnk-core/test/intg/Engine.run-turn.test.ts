@@ -326,6 +326,44 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
     }
 });
 
+// Default (`-1`) = no cap: every generated op dispatches. Dropping already-generated
+// work is not the runaway guard (that lives at the sampler); a legitimate high-op turn
+// must land in full with no max_commands_exceeded signal.
+test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op ceiling off — all ops dispatch", async () => {
+    const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
+    process.env.PLURNK_SERVICE_MAX_COMMANDS = "-1";
+    try {
+        const { db, engine, sessionId, runId, loopId } = await setup();
+        try {
+            const provider = new Mock({
+                contextSize: 100000,
+                responses: [
+                    response([
+                        editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
+                        editStmt("/d", "4"), editStmt("/e", "5"),
+                    ]),
+                    response([editStmt("/z", "z"), sendStmt(200, "ok")]),
+                ],
+            });
+            const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            assert.equal(t1.statuses.length, 5, "all 5 ops dispatched — no cap");
+            const known = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
+                session_id: sessionId, scheme: "known",
+            });
+            assert.equal(known?.n, 5, "5 known:/// entries; nothing dropped");
+
+            // Next packet carries NO max_commands_exceeded — the ceiling never engaged.
+            const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+            const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: Array<{ status?: number }> };
+            assert.equal(packet.telemetryErrors.filter((e) => e.status === 429).length, 0, "no Max Commands Exceeded when off");
+        } finally { await db.close(); }
+    } finally {
+        if (original === undefined) delete process.env.PLURNK_SERVICE_MAX_COMMANDS;
+        else process.env.PLURNK_SERVICE_MAX_COMMANDS = original;
+    }
+});
+
 // Rail #40: sudden-death soft warning fires in the last maxStrikes-sized
 // window before maxTurns. Soft: no strike, no loop-status change.
 
