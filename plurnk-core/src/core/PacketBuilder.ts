@@ -5,6 +5,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
 import type { GitStatus } from "./git-state.ts";
 import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
+import { rulerCount } from "./token-ruler.ts";
 import { teachingLine, docsExcludeSet } from "./teaching.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import SessionSettings from "./session-settings.ts";
@@ -164,7 +165,7 @@ export default class PacketBuilder {
         return reasoning + assistant;
     }
 
-    // §tokenomics-window-partition ÷ §tokenomics-ceiling-calibrates-to-usage — the prompt ceiling
+    // §tokenomics-window-partition — the prompt ceiling
     // is DERIVED, never set: effectiveWindow = min(CTX, provider window; CTX alone when the
     // provider reports none) minus the reserves, divided by the loop's observed real/measured
     // token ratio (usage.prompt is ground truth; a heuristic ruler shipped a 65k-real packet into
@@ -181,12 +182,12 @@ export default class PacketBuilder {
         return Math.max(0, effectiveWindow - reasoning - assistant - safety);
     }
 
-    // tokenRatio is real/measured, calibrated by Engine per loop (§tokenomics-ceiling-calibrates-to-usage).
-    // BELOW 1 is legitimate: a certified upper-bound ruler (no exact tokenizer)
-    // overmeasures, and the ceiling expands to observed truth — Engine applies the floor for
-    // exact rulers; this method trusts its input (run24: the floor-at-1 halved gbuild's window).
-    ceilingFor(provider: Provider, tokenRatio = 1): number {
-        if (tokenRatio <= 0) throw new Error(`ceilingFor: tokenRatio must be > 0, got ${tokenRatio}`);
+    // §tokenomics-agnostic-ruler — the ceiling is the real window partition (window − reserves),
+    // NO calibration ratio: the model-facing measure is the chars/2 ruler (an over-count for
+    // typical text), so comparing ruler-weight to the real-token ceiling is itself the conservative
+    // bias — the model curates against less room than it has and never overflows for typical
+    // content; the exact provider count guards the pathological tail at the materialization gate.
+    ceilingFor(provider: Provider): number {
         const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
         const effectiveWindow = provider.contextSize === null ? ctx : Math.min(ctx, provider.contextSize);
         const promptBudget = effectiveWindow - reasoning - assistant - safety;
@@ -194,7 +195,7 @@ export default class PacketBuilder {
             const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
             throw new Error(`window partition contradiction for alias '${alias}': effective window ${effectiveWindow} <= reserves ${reasoning}+${assistant}+${safety}. A local (llama-server) alias needs its OWN measured envelope — set PLURNK_SERVICE_{CTX,REASONING,ASSISTANT,SAFETY}_${alias || "<alias>"} (the bare defaults are cloud-generous; #352).`);
         }
-        return Math.floor(promptBudget / tokenRatio);
+        return promptBudget;
     }
 
     // Assemble the request half of the spec'd packet (Packet.json system
@@ -202,10 +203,8 @@ export default class PacketBuilder {
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async buildRequestPacket({
-        initialMessages, requirements, sessionId, runId, loopId, currentTurnSeq, provider, gitStatus, tokenRatio = 1, telemetryErrors: presetTelemetry,
+        initialMessages, requirements, sessionId, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
     }: {
-        // The loop's observed real/measured token ratio (§tokenomics-ceiling-calibrates-to-usage).
-        tokenRatio?: number;
         initialMessages: ChatMessage[];
         // Optional requirements override. Empty in practice — callers don't thread it;
         // the engine sources Paths.defaultRequirements itself (a non-empty value wins).
@@ -254,7 +253,7 @@ export default class PacketBuilder {
         // lead with PLAN), so the service injects no separate plan directive either.
         const log = await this.#buildLog(runId);
         const telemetryErrors = presetTelemetry ?? await this.buildTelemetryErrors(loopId, currentTurnSeq);
-        const countTokens = (t: string): number => provider.countTokens(t); // §provider-surface-counttokens
+        const countTokens = rulerCount; // §tokenomics-agnostic-ruler — the ONE model-facing ruler (chars/2), not the provider
         // #367 — the capability sheet must reflect the LOOP MODE, not just session-enablement: an
         // ask-mode loop advertises only what its dispatch gate (resolveForLoop) will accept, so the
         // model is never taught a tag it'll then be 403'd on (the taught→emitted→rejected→508 spiral).
@@ -267,7 +266,7 @@ export default class PacketBuilder {
         // a serialized approximation. ceiling is the provider's window ×
         // PLURNK_BUDGET_CEILING (null when no window is reported → headline
         // omitted, section lines still shown). §tokenomics-render-weight-budget
-        const ceiling = this.ceilingFor(provider, tokenRatio);
+        const ceiling = this.ceilingFor(provider);
         const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
         // The default packet: an ordered list of addressable sections (§packet-assembly).
         // `slot` is a TRUST boundary (and the prompt-cache boundary): system holds only
@@ -487,13 +486,12 @@ export default class PacketBuilder {
     // strike, rebuild, re-measure. Folds (never deletes). The strike it raises and
     // the hard-stop it can signal are returned to runLoop, which owns abandonment.
     // §grinder-overflow-only — fires only on actual overflow, never speculatively
-    async enforceBudget({ packet, provider, runId, loopId, turnId, mintSequence, tokenRatio = 1, rebuild }: {
+    async enforceBudget({ packet, provider, runId, loopId, turnId, mintSequence, rebuild }: {
         packet: RequestPacket; provider: Provider;
         runId: number; loopId: number; turnId: number; mintSequence: number;
-        tokenRatio?: number;
         rebuild: () => Promise<RequestPacket>;
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
-        const ceiling = this.ceilingFor(provider, tokenRatio);
+        const ceiling = this.ceilingFor(provider);
         const measure = (p: RequestPacket): number => p.tokens;
         if (measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 
@@ -515,10 +513,19 @@ export default class PacketBuilder {
         return { packet: current, fit: measure(current) <= ceiling, struck: true };
     }
 
+    // §tokenomics-agnostic-ruler — the EXACT materialization measure: the provider's own token
+    // count of the assembled packet, the ONE place per-model exactness is used (once per turn, at
+    // the fit-gate). The model-facing render-weight (packet.tokens) stays the ruler; this is the
+    // physics check that the real bytes fit the real window.
+    exactPacketTokens(packet: RequestPacket, provider: Provider): number {
+        return provider.countTokens(PacketWire.renderSlot(packet.sections, "system"))
+            + provider.countTokens(PacketWire.renderSlot(packet.sections, "user"));
+    }
+
     // Complete the packet by adding the model's response. After this the
     // packet matches Packet.json fully and is ready for storage.
     completePacket(requestPacket: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown, provider: Provider): object {
-        const assistantTokens = provider.countTokens(assistant.content);
+        const assistantTokens = rulerCount(assistant.content); // §tokenomics-agnostic-ruler — render-weight in ruler units (usage_* keep the provider's real count)
         return {
             tokens: requestPacket.tokens + assistantTokens,
             sections: requestPacket.sections,

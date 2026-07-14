@@ -12,7 +12,6 @@ import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import { markTerminal } from "../schemes/Run.ts";
-import TokenGauge from "./TokenGauge.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState from "./git-state.ts";
 import SessionSettings from "./session-settings.ts";
@@ -22,6 +21,7 @@ import type { RegistryEntry } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
 import { promptPathname } from "./plurnk-uri.ts";
+import { rulerCount } from "./token-ruler.ts";
 import SearchPrefetch from "./search-prefetch.ts";
 import SearchGate from "./search-gate.ts";
 import { readFile } from "node:fs/promises";
@@ -181,11 +181,6 @@ export default class Engine {
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
     #loopAborts = new Map<number, AbortController>();
-    // §tokenomics-ceiling-calibrates-to-usage (#311) — the loop's observed real/measured token
-    // ratio (provider usage.prompt ÷ our measured packet tokens), monotone max so the ceiling
-    // only tightens. A chars/4 heuristic ruler undercounts escaped-JSON logs ~1.5×; calibrating
-    // against the provider's own count makes a real context overflow unreachable past turn 1.
-    #tokenRatios = new Map<number, number>();
     // §send-premature-terminate — loops owed one idle-grace turn after a retrieval-only 409
     // (the steer's own advice is to wait; in-memory, fail-open on restart).
     #retrievalRefusalGrace = new Set<number>();
@@ -241,7 +236,7 @@ export default class Engine {
         // Tripwire default matches the Mimetypes boot affordance (SPEC §mimetype-surface):
         // the divisor stands in only until the provider-backed tokenizer is
         // wired by the Daemon. Real counts come from provider.countTokens.
-        this.#tokenize = tokenize ?? ((text) => Math.ceil(text.length / 4));
+        this.#tokenize = tokenize ?? rulerCount;
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopAborts.get(loopId)?.signal;
@@ -424,7 +419,6 @@ export default class Engine {
             this.searchGate.cleanup(loopId);
             this.#hardOverflowRecovery.delete(loopId);
             this.#telemetry.delete(loopId);
-            this.#tokenRatios.delete(loopId);
         };
 
         while (true) {
@@ -696,7 +690,6 @@ export default class Engine {
         // (mimetypes seam; provider upper bound surfaced as tokenizer_unavailable when inexact).
         // Threaded per turn — never engine state — so concurrent loops on different providers
         // each read their own honest numbers.
-        const gauge = await TokenGauge.resolve(this.#mimetypes, provider, (event: TelemetryEvent) => this.#telemetry.push(sessionId, loopId, event));
         const systemCtx: PlurnkSchemeContext = {
             db: this.#db, sessionId, runId, loopId, turnId,
             writer: "plurnk",
@@ -704,7 +697,6 @@ export default class Engine {
             streamEventNotify: this.#streamEventNotify,
             wakeRunNotify: this.#wakeRunNotify,
             tokenize: this.#tokenize,
-            gauge,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
             pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
@@ -851,14 +843,13 @@ export default class Engine {
         // Build the spec'd packet (Packet.json) request half. The log build
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
-        const tokenRatio = this.#tokenRatios.get(loopId) ?? 1;
         let requestPacket = await this.#packets.buildRequestPacket({
             initialMessages: messages, requirements, sessionId, runId, loopId,
-            currentTurnSeq: seq, provider, gitStatus, tokenRatio,
+            currentTurnSeq: seq, provider, gitStatus,
         });
         // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
-            packet: requestPacket, provider, runId, loopId, turnId, tokenRatio,
+            packet: requestPacket, provider, runId, loopId, turnId,
             // The overflow error row is minted at the turn's running sequence (nextActionIndex), pre-generate;
             // runTurn advances the counter past it below so the post-generate dispatch rows never collide.
             mintSequence: nextActionIndex,
@@ -867,7 +858,7 @@ export default class Engine {
             // ephemeral buffer is empty pre-generate (events drain on the next turn's build).
             rebuild: () => this.#packets.buildRequestPacket({
                 initialMessages: messages, requirements, sessionId, runId, loopId,
-                currentTurnSeq: seq, provider, gitStatus, tokenRatio,
+                currentTurnSeq: seq, provider, gitStatus,
             }),
         });
         if (enforced.struck) nextActionIndex += 1; // the budget-overflow error row consumed a sequence
@@ -885,7 +876,7 @@ export default class Engine {
             // doesn't negotiate. The pointer stays at 100% of budget — a margin would mask it.
             const physicallySendable = provider.contextSize === null
                 ? true
-                : requestPacket.tokens * Math.max(tokenRatio, 1) <= provider.contextSize - this.#packets.decodeBudget(provider);
+                : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextSize - this.#packets.decodeBudget(provider);
             if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
                 this.#hardOverflowRecovery.add(loopId);
                 await (this.#db.engine_insert_log_entry as PrepMethod).get({
@@ -903,7 +894,7 @@ export default class Engine {
                 nextActionIndex += 1;
                 requestPacket = await this.#packets.buildRequestPacket({
                     initialMessages: messages, requirements, sessionId, runId, loopId,
-                    currentTurnSeq: seq, provider, gitStatus, tokenRatio,
+                    currentTurnSeq: seq, provider, gitStatus,
                 });
             } else {
             // Hard 413: physically unsendable, or the model already declined its recovery turn.
@@ -973,17 +964,6 @@ export default class Engine {
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
         const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
-        // §tokenomics-ceiling-calibrates-to-usage — learn the loop's real/measured ratio from the
-        // provider's OWN prompt count (ground truth for the whole wire request, template overhead
-        // included). Monotone max within the loop. An EXACT ruler floors at 1 (never expands);
-        // a certified upper-bound ruler calibrates to observed truth in BOTH directions — the
-        // worst-observed packing wins, and expansion toward ground truth cannot overshoot the
-        // window (owner-ruled; run24: the unconditional floor halved gbuild's effective budget).
-        if (callMetadata.usage.prompt > 0 && requestPacket.tokens > 0) {
-            const observed = callMetadata.usage.prompt / requestPacket.tokens;
-            const prior = this.#tokenRatios.get(loopId) ?? (gauge.exact ? 1 : observed);
-            if (observed >= prior) this.#tokenRatios.set(loopId, observed);
-        }
         // Surface parse errors to the model's NEXT packet so it can self-
         // correct. Without this, malformed emissions (e.g. a READ matcher
         // body starting with `//` being interpreted as xpath) silently
@@ -1126,7 +1106,7 @@ export default class Engine {
             const result = await this.dispatch({
                 statement, sessionId, runId, loopId, turnId,
                 sequence: rowSeq,
-                origin, onDispatch, gauge,
+                origin, onDispatch,
                 // §send-200-failed-ops — parse errors mint as rows AFTER this loop; the terminal
                 // gate needs them NOW, so the count rides the dispatch context.
                 turnParseErrors: parseErrors?.length ?? 0,

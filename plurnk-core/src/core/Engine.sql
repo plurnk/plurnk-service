@@ -126,11 +126,10 @@ ORDER BY et.entry_id, et.tag;
 -- §run-scheme — the building run's OWN run-scope entries (catalogRowsFor source for a run-scope
 -- FIND/foist). Byte-for-byte engine_list_session_entries but scope='run' + an owner-prefix glob
 -- (`/<owner>/*`) so it yields exactly one run's scratch — its perspective, not a sibling's. Additive.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, COALESCE(tc.tokens, ec.tokens) AS tokens, e.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
     CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-LEFT JOIN token_counts tc ON tc.content_hash = ec.content_hash AND tc.tokenizer_id = $tokenizer_id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
 WHERE e.scope = 'run' AND e.session_id = $session_id AND e.pathname GLOB $owner_prefix
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
@@ -214,11 +213,10 @@ WHERE id = $id;
 -- `seconds` is the live age of an active stream: now − the open subscription's
 -- opened_at (closed_at IS NULL). NULL for static entries. unixepoch parses the
 -- stored '...%fZ' timestamp directly; re-evaluated every render like tokens.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, COALESCE(tc.tokens, ec.tokens) AS tokens, e.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
     CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-LEFT JOIN token_counts tc ON tc.content_hash = ec.content_hash AND tc.tokenizer_id = $tokenizer_id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
 -- entries are session-scoped, shared across runs — §machine-processes-one-filesystem
 WHERE e.scope = 'session' AND e.session_id = $session_id
@@ -499,23 +497,6 @@ WHERE turn_id = $turn_id AND origin = 'model' AND status_rx >= 400 AND op != 'er
 -- truth the return value carries: the loop never went terminal, so the turn didn't either.
 UPDATE turns SET status = $status WHERE id = $id;
 
--- PREP: token_count_get
--- #312 — the keyed token-derivation lookup: one content blob, one tokenizer identity, one count.
-SELECT tokens FROM token_counts WHERE content_hash = $content_hash AND tokenizer_id = $tokenizer_id;
-
--- PREP: token_count_upsert
-INSERT INTO token_counts (content_hash, tokenizer_id, tokens) VALUES ($content_hash, $tokenizer_id, $tokens)
-ON CONFLICT (content_hash, tokenizer_id) DO UPDATE SET tokens = excluded.tokens;
-
--- PREP: token_stale_channels
--- #312 — the pump's recount worklist: body channels whose (content_hash, active tokenizer) pair
--- has no derivation row yet. A model swap to a NEW tokenizer identity makes every row miss (the
--- bulk recount); a swap between vocab-sharing models misses nothing.
-SELECT ec.entry_id, ec.content, ec.content_hash
-FROM entry_channels ec
-JOIN entries e ON e.id = ec.entry_id
-WHERE e.session_id = $session_id AND ec.name = 'body' AND ec.content_hash IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM token_counts tc WHERE tc.content_hash = ec.content_hash AND tc.tokenizer_id = $tokenizer_id);
 
 
 -- PREP: engine_loop_sequence
