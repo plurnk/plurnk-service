@@ -43,6 +43,7 @@ export interface FindResult {
     itemsTokenTotal: number;  // content weight of the matched set, summed per UNIQUE entry
     pathnames: string[];      // unique matched pathnames, in result order — the set a multi-file READ fans out over
     matches: Match[];         // per-match (pathname, span), in result order — READ honors these (#286)
+    overflow?: number;        // §find-count-not-contents — over-budget: N matched but were NOT enumerated (content is a narrow-steer)
 }
 
 export default class EntryFind {
@@ -223,6 +224,18 @@ export default class EntryFind {
                 seenPath.add(m.pathname);
                 itemsTokenTotal += Object.values(row.channels).reduce((s, c) => s + c.tokens, 0);
             }
+        }
+        // §find-count-not-contents (#418) — a repo-scale FIND(**) over a 19k-entry workspace can't
+        // enumerate: materializing every match overflows the window (a clean grind should not be a
+        // crash-and-recover). Over the render budget, the result is a COUNT + narrow steer instead
+        // of the rows — the model sees "N match, too broad, narrow it" and adapts. INDEPENDENT of
+        // the window size: even a 256k window shouldn't render a whole repo's catalog into a turn.
+        // The meta line's count + itemsTokenTotal still self-describe the hit set. Budget is a knob
+        // (reader-declared); 0/unset = no gate (small workspaces enumerate as before).
+        const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
+        if (budget > 0 && results.length > budget) {
+            const steer = `${results.length} entries match — too many to list (budget ${budget}). Narrow the query: a tighter glob (a subdir/suffix), a matcher body, or a #tag.`;
+            return { status: 200, content: steer, mimetype: "text/markdown", results, itemsTokenTotal, pathnames: [...seenPath], matches, overflow: results.length };
         }
         // Compact JSON — the model parses it natively; the `null, 2` pretty-print was ~36%
         // whitespace of the catalog body, tokens the wire doesn't need.
