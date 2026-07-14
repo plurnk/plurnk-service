@@ -73,8 +73,8 @@ export type OpenAICompatConfig = {
     // backend's mechanism via reasoningStyle; budget is only ever a magnitude,
     // never a hidden activation flag (#33).
     reasoning: Reasoning;
-    // Decode tuning — REQUIRED, no in-code defaults (canonical measured values,
-    // 0.2 / 1.15, live in .env.example; alias-scopable). `temperature` is the
+    // Decode tuning: no in-code defaults; the canonical measured values (0.2 /
+    // 1.15) ship as the floor in .env.defaults (alias-scopable). `temperature` is the
     // DEFAULT for EVERY request, spread UNDER caller sampling (#30/endpoint#7).
     // `repeatPenalty` is the FLOOR the provider manages wherever a grammar rides
     // (greedy-under-mask loops without it, #9) — the VALUE is operator config;
