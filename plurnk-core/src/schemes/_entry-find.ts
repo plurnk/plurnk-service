@@ -234,7 +234,7 @@ export default class EntryFind {
         // (reader-declared); 0/unset = no gate (small workspaces enumerate as before).
         const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
         if (budget > 0 && results.length > budget) {
-            const steer = `${results.length} entries match — too many to list (budget ${budget}). Narrow the query: a tighter glob (a subdir/suffix), a matcher body, or a #tag.`;
+            const steer = `${results.length} entries match, exceeding the render budget (${budget}) — not enumerated.`;
             return { status: 200, content: steer, mimetype: "text/markdown", results, itemsTokenTotal, pathnames: [...seenPath], matches, overflow: results.length };
         }
         // Compact JSON — the model parses it natively; the `null, 2` pretty-print was ~36%

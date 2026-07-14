@@ -349,7 +349,7 @@ export default class Dispatcher {
         const command = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
         const verdict = this.#searchGate?.check(loopId, turnId, runtime, command) ?? { verdict: "pass" as const };
         if (verdict.verdict === "capped") {
-            return { status: 429, error: `Per-turn search limit reached (${verdict.cap}) — act on the results you already hold; further searches continue next turn.` };
+            return { status: 429, error: `Per-turn search limit reached (${verdict.cap}).` };
         }
         if (verdict.verdict === "duplicate") {
             const prior = await EntryCrud.readEntry(verdict.priorPathname, ctx, runtime);
