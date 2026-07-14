@@ -48,7 +48,6 @@ import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 export type { ProposalDecision, ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
 
 const DEFAULT_MAX_STRIKES = 3;
-const DEFAULT_MAX_COMMANDS = 99;
 
 // The foisted prompt EDIT/READ target — run-qualified storage (§prompt-auto-read, #382 fault-1)
 // rendered in the plurnk:// authority form (hostname carries the namespace, plurnk-uri folds it
@@ -71,11 +70,15 @@ const readMaxStrikes = (): number => {
     return n;
 };
 
+// Per-emission op ceiling — OFF by default. `-1` (or unset/non-positive) = no cap: every
+// generated op dispatches. Runaway degeneration is a sampler concern (repetition penalty),
+// not grounds to drop already-generated work. A positive value is an operator ceiling a
+// session's maxCommands may tighten (min wins), never widen (#232).
 const readMaxCommands = (): number => {
     const raw = process.env.PLURNK_SERVICE_MAX_COMMANDS;
-    if (raw === undefined || raw.length === 0) return DEFAULT_MAX_COMMANDS;
+    if (raw === undefined || raw.length === 0) return Number.POSITIVE_INFINITY;
     const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 1) return DEFAULT_MAX_COMMANDS;
+    if (!Number.isFinite(n) || n < 1) return Number.POSITIVE_INFINITY;
     return n;
 };
 
@@ -1076,13 +1079,11 @@ export default class Engine {
         // Dispatch model ops starting at nextActionIndex (continues the
         // turn's running counter after any pre-model writes).
         //
-        // Max-commands cap: a single emission with more than `maxCommands`
-        // ops is the runaway-loop fingerprint observed in pathological cases
-        // (html-attrs demo: 635 ops in one turn). Cap dispatches at the
-        // configured limit; overflow ops are dropped without per-op log
-        // entries (avoids bloating forensics with hundreds of identical refusals)
-        // and the model gets a single telemetry signal next packet so it knows
-        // its emission was truncated.
+        // Max-commands ceiling: OFF by default (unlimited) — every generated op dispatches.
+        // A degenerate op-loop is a sampler failure guarded at generation, not by dropping
+        // already-generated work post-hoc. The ceiling is an OPT-IN operator/client bound:
+        // when set, overflow ops drop without per-op log entries (no forensics flood) and the
+        // model gets one telemetry signal next packet.
         // #232 — a session's maxCommands is a tighten-only ceiling: min() the env ceiling.
         const maxCommands = Math.min(readMaxCommands(), (await SessionSettings.read(this.#db, sessionId)).maxCommands ?? Number.POSITIVE_INFINITY);
         // PLAN (reasoning) and a terminal SEND (signal ≥ 200, the conclusion) are not
