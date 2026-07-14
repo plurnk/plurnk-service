@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime, target: null,
@@ -50,28 +50,21 @@ const wire = async () => {
     const runId = await insertRun(db, sessionId);
     const loopId = await insertLoop(db, runId, 1, "sink test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, sessionId, runId, loopId, turnId };
+    return { db, engine, schemes, sessionId, runId, loopId, turnId };
 };
 
 test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIONS tags) and the plurnk run narrates it", async () => {
-    const { db, engine, sessionId, runId, loopId, turnId } = await wire();
+    const { db, engine, schemes, sessionId, runId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
             statement: execStmt("stubsearch", "turkeys"),
             sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(result.status < 400, `the stub spawn resolved; got ${result.status}`);
-        // The spawn streams — run() completes in the background. Await the SECOND narration row
-        // (the last substrate write) before asserting anything.
-        const plurnkRunEarly = async () => (await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" }));
-        for (let i = 0; i < 100; i++) {
-            const r = await plurnkRunEarly();
-            if (r !== undefined) {
-                const n = await (db.test_log_entries_by_run_op as PrepMethod).all<{ pathname: string }>({ run_id: r.id, op: "EDIT" });
-                if (n.filter((x) => x.pathname === "/example.org/turkeys").length >= 2) break;
-            }
-            await new Promise((res) => setTimeout(res, 50));
-        }
+        // The spawn streams — run() completes in the background. idle() is the complete barrier:
+        // it drains the tail INCLUDING the entry()/narration writes, so both narration rows are
+        // committed and no write is left in flight to race the db.close below.
+        await quiesceExecs(schemes);
         // The entry exists, with the SECOND write's content and BOTH tags (union, not replace).
         const entry = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number; scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.ok(entry !== undefined, "the https entry materialized (authority folded into the pathname)");
@@ -119,5 +112,5 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         assert.ok(openLine.includes("1:\twild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
         const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ run_id: plurnkRun.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
-    } finally { await db.close(); }
+    } finally { await quiesceExecs(schemes); await db.close(); }
 });
