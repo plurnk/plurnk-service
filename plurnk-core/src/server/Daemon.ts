@@ -32,6 +32,8 @@ import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import type { Executor, RegistryEntry } from "../core/ExecutorRegistry.ts";
 import type { RuntimeDecl, RuntimeAvailability } from "@plurnk/plurnk-execs";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import ProviderInstantiate from "../core/ProviderInstantiate.ts";
+import { resolveLoopAlias } from "./loop-model.ts";
 import Yolo from "./yolo.ts";
 import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
@@ -215,9 +217,14 @@ export default class Daemon {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; alias?: string; model?: string }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         ClientInput.validateLoopFlags("loop.run", args.flags); // seam fail-hard (#364) — a truthy string must never flip YOLO
-        if (this.#provider === null) throw new Error("runLoop: no provider configured");
+        // #414 — per-loop model selection: a client sends its alias/model on every loop, so a
+        // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>, #90) wins
+        // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
+        // between two models is cheap, and an unresolvable alias/model fails loud here.
+        const provider = await this.#resolveLoopProvider(args.alias, args.model);
+        if (provider === null) throw new Error("runLoop: no provider configured");
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // §machine-processes — the model NEVER runs in a client-origin run (its packets would carry
         // client op.* rows). The module resolves the model run via ensureModelRun and passes it (or a
@@ -233,8 +240,17 @@ export default class Daemon {
         const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
         const requested = args.maxTurns ?? ceiling;
         const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
-        const { action, loopId, turnSeq } = await this.inject({ ...args, ...(maxTurns >= 0 ? { maxTurns } : {}), provider: this.#provider, systemPrompt });
+        const { action, loopId, turnSeq } = await this.inject({ ...args, ...(maxTurns >= 0 ? { maxTurns } : {}), provider, systemPrompt });
         return { action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
+    }
+
+    // #414 — resolve a per-loop model override to a Provider (cached instances). `model`
+    // (<provider>/<model>, client-resolved #90) wins over a named `alias`; absent both, the
+    // boot default. A named alias missing from the env cascade, or a malformed model spec, throws
+    // legibly rather than silently running the wrong model.
+    async #resolveLoopProvider(alias: string | undefined, model: string | undefined): Promise<Provider | null> {
+        const spec = resolveLoopAlias(alias, model, parseAliasesFromEnv());
+        return spec === null ? this.#provider : ProviderInstantiate.instantiateProvider(spec);
     }
 
     // §machine-processes — the session's model run (created on first use), distinct from the client
