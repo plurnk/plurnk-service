@@ -29,8 +29,8 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 | EDIT | [tags]?        | (path)          | <line,line>?       | :literal text:?    | EDIT |
 | COPY | [tags]?        | (path)          | <line,line>?       | :destination path: | COPY |
 | MOVE | [tags]?        | (path)          | <line,line>?       | :destination path: | MOVE |
-| OPEN | [tags]?        | (log path)      | <result,result>?   | :pattern:?         | OPEN |
-| FOLD | [tags]?        | (log path)      | <result,result>?   | :pattern:?         | FOLD |
+| OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern:?         | OPEN |
+| FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern:?         | FOLD |
 | EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :code:?            | EXEC |
 | WORK | -              | (run://checker) | -                  | :task:             | WORK |
 | FORK | -              | (run://recheck) | -                  | :hint:?            | FORK |
