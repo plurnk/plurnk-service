@@ -210,13 +210,20 @@ test("#426: the repeat penalty rides EVERY request rail-off, keyed per backend (
     await llama.generate({ runId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).repeat_penalty, 1.15);
     mock.restoreAll();
-    // a `none`-style backend stays BARE - no unknown penalty key (would 400 on strict cloud)
+    // a `none`-style cloud backend WITH a frequency penalty gets frequency_penalty (OpenAI-standard, #426)
+    const cloud = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await cloud.generate({ runId: "r", messages: [] });
+    const cloudBody = JSON.parse(calls[0].init.body as string);
+    assert.equal(cloudBody.frequency_penalty, 0.4);            // the OpenAI-standard additive, not the multiplier
+    assert.equal("repetition_penalty" in cloudBody, false);
+    assert.equal("repeat_penalty" in cloudBody, false);
+    mock.restoreAll();
+    // frequencyPenalty unset (default 0) opts out cleanly - sends nothing (an out-of-date daughter runs unguarded, never breaks)
     const bare = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await bare.generate({ runId: "r", messages: [] });
-    const bareBody = JSON.parse(calls[0].init.body as string);
-    assert.equal("repetition_penalty" in bareBody, false);
-    assert.equal("repeat_penalty" in bareBody, false);
+    assert.equal("frequency_penalty" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("sampling passthrough forwards caller params; managed + reserved keys win", async () => {

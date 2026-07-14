@@ -82,6 +82,11 @@ export type OpenAICompatConfig = {
     // backoff base (attempt N waits retryDelayMs * 2^(N-1); Retry-After wins).
     temperature: number;
     repeatPenalty: number;
+    // #426: anti-degeneration guard on the CLOUD path (grammarStyle "none"), where the
+    // repeat_penalty multiplier isn't available - the OpenAI-standard frequency_penalty.
+    // Optional (default 0 = off) so an out-of-date daughter that omits it just runs unguarded
+    // rather than failing construction; the standard factory always supplies it.
+    frequencyPenalty?: number;
     retryDelayMs: number;
     // Transient-failure retry budget — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
@@ -156,6 +161,7 @@ export default class OpenAICompatProvider implements Provider {
     #reasoning: Reasoning;
     #temperature: number;
     #repeatPenalty: number;
+    #frequencyPenalty: number;
     #retryDelayMs: number;
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
@@ -195,6 +201,7 @@ export default class OpenAICompatProvider implements Provider {
         }
         this.#temperature = config.temperature;
         this.#repeatPenalty = config.repeatPenalty;
+        this.#frequencyPenalty = typeof config.frequencyPenalty === "number" ? config.frequencyPenalty : 0;
         this.#retryDelayMs = config.retryDelayMs;
         this.#retryAttempts = config.retryAttempts;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
@@ -333,13 +340,15 @@ export default class OpenAICompatProvider implements Provider {
     // alias runs the sampler bare: firefast (deepseek/fireworks) ran 4/86 bench turns
     // straight to the token cap on pure looped repetition (run52). Ships next to
     // temperature so caller `sampling` can tune it; the grammar path re-asserts it as a
-    // managed FLOOR in #grammarBody. Only backend-verified keys go out - a `none`-style
-    // backend stays bare (cloud APIs 400 on unknowns) until its key is verified per-backend.
+    // managed FLOOR in #grammarBody. Per backend: llama.cpp/response_format take the
+    // repeat_penalty MULTIPLIER; the plain cloud path ("none") can't, so it gets
+    // frequency_penalty - OpenAI-standard, accepted by every OpenAI-compat backend (verified
+    // live: together/deepinfra/fireworks; it is OpenAI's own param, so real OpenAI takes it too).
     #repetitionPenaltyBody(): Record<string, unknown> {
         switch (this.#grammarStyle) {
             case "llamacpp": return { repeat_penalty: this.#repeatPenalty };
             case "response_format": return { repetition_penalty: this.#repeatPenalty };
-            case "none": return {};
+            case "none": return this.#frequencyPenalty > 0 ? { frequency_penalty: this.#frequencyPenalty } : {};
         }
     }
 
