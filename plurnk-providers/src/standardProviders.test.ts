@@ -546,7 +546,9 @@ test("bedrock: neither BEDROCK_BASE_URL nor a region fails hard, naming the regi
 test("bedrock: contextSize resolves from the catalog via the inference-profile's publisher (#22)", async () => {
     const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2" };
     const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-5");
-    assert.equal(p!.contextSize, 200000); // from the anthropic catalog, no PLURNK_PROVIDERS_CONTEXT_SIZE set
+    // Resolves a REAL window from the anthropic catalog via publisher-stripping (#22). Assert the
+    // MECHANISM (non-null, positive), never the literal - a catalog refresh must not break the build.
+    assert.ok(p!.contextSize !== null && p!.contextSize > 0, `expected a catalog-resolved window, got ${p!.contextSize}`);
     // cost is NOT taken from the native anthropic rate (bedrock marks up) — stays 0
     assert.equal(p!.costFor({ prompt: 1_000_000, completion: 1_000_000, reasoning: 0, cached: 0, total: 2_000_000 }), 0);
 });
@@ -641,7 +643,7 @@ test("bedrock: an explicit base is used verbatim and sends the Bedrock API key a
         calls.push({ url: String(url), auth: String((init?.headers as Record<string, string>)?.Authorization ?? "") });
         return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
     });
-    const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key" };
+    const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" };
     const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-6");
     await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
     assert.equal(calls[0].url, "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1/chat/completions");
