@@ -29,11 +29,11 @@ const result = await provider.generate({
 
 ## env
 
-No fallback defaults — required vars throw at `fromEnv` if missing or unparseable. Defaults belong in `plurnk-service`'s `.env.example` cascade, not in library code.
+Defaults ship in this package's `.env.defaults` floor (assembled into the daemon floor set-if-unset, providers#44), not baked in library code; `fromEnv` still throws on a required var that resolves empty or unparseable.
 
 | Variable | Required | Notes |
 |---|---|---|
-| `OLLAMA_BASE_URL` | yes | Ollama server URL (e.g. `http://localhost:11434`). The official `OLLAMA_HOST` (a bare `host:port`) is also accepted; `OLLAMA_BASE_URL` wins |
+| `OLLAMA_BASE_URL` | no (floored `http://localhost:11434`) | Ollama server URL; override for a LAN box, or per-alias via `PLURNK_BASEURL_<alias>`. The official `OLLAMA_HOST` (bare `host:port`) is also read, but the floored `OLLAMA_BASE_URL` shadows it |
 | `PLURNK_PROVIDERS_REASONING_BUDGET` | yes | Universal reasoning budget (SPEC §4); `0` disables, `> 0` toggles `think: true` on the request body |
 | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | yes | Universal fetch timeout in ms (SPEC §4) |
 | `PLURNK_PROVIDERS_RETRY_ATTEMPTS` | yes | Transient-failure retry budget (SPEC §4): `0` disables; `N` retries on 429/5xx/timeout/network with exponential backoff, honoring `Retry-After`. |
