@@ -6,6 +6,7 @@
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { contentHash } from "../core/content-hash.ts";
 
 // mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it
 // from the contract method itself so this stays the REAL type, never a local fiction.
@@ -47,6 +48,23 @@ export default class EntrySemantic {
                 vector: c.vector, embedding_model: model,
             });
         }
+    }
+
+    // §semantic-embed-dedup (#416) — before the expensive embed, reuse an existing embedding for
+    // IDENTICAL body content (any other entry, same active model): the metaproject's 15×
+    // tokenizer.json embeds ONCE, the rest copy. Returns the model on a hit, undefined on a miss
+    // (caller embeds). content_hash is the stamped body identity (content-hash.ts).
+    static async tryReuseEmbeddings(db: Db, entryId: number, bodyContent: string, mimetypes: Mimetypes): Promise<string | undefined> {
+        const info = await EntrySemantic.#embedderInfo(mimetypes);
+        if (info === null || info.model === undefined) return undefined;
+        const hash = contentHash(bodyContent);
+        const rows = await (db.embedding_by_content_hash as PrepMethod).all<{ chunk_seq: number; line_start: number; line_end: number; vector: Uint8Array }>({ content_hash: hash, embedding_model: info.model, entry_id: entryId });
+        if (rows.length === 0) return undefined;
+        await (db.embedding_delete as PrepMethod).run({ entry_id: entryId });
+        for (const c of rows) {
+            await (db.embedding_set as PrepMethod).run({ entry_id: entryId, chunk_seq: c.chunk_seq, line_start: c.line_start, line_end: c.line_end, vector: c.vector, embedding_model: info.model });
+        }
+        return info.model;
     }
 
     // Project Semantics — derive an entry's chunk embeddings. Probes the embedder

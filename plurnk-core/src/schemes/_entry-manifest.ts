@@ -153,6 +153,14 @@ export default class EntryManifest {
                 await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 return;
             }
+            // §semantic-embed-dedup (#416) — identical body content already embedded elsewhere
+            // (the metaproject's 15× tokenizer.json) copies instead of re-embedding. On a hit the
+            // deep_hash stamps (a full derivation) and the expensive embed is skipped entirely.
+            const reusedModel = await EntrySemantic.tryReuseEmbeddings(db, r.entry_id, r.content, mimetypes);
+            if (reusedModel !== undefined) {
+                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+                return;
+            }
             const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal, maxChunks);
             await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
             // §semantic-entry-chunk-cap — a CAPPED (inline, latency-staged) pass does NOT stamp:
