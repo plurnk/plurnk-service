@@ -51,7 +51,7 @@ export interface DaemonSeam {
     ensureModelRun(sessionId: number): Promise<number>;
     // Loop-control — drive/steer a loop on the MODEL run (runLoop refuses a client-origin
     // run loudly). Returns immediately; the outcome arrives on the event source.
-    runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[] }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
+    runLoop(args: { sessionId: number; runId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[]; alias?: string; model?: string }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
     // Loop-control — cancel a run's active drain. Returns whether a drain was cancelled.
     cancelDrain(runId: number, reason?: string): boolean;
     // The op keystone — execute one parsed op as a client-origin turn; the emitted

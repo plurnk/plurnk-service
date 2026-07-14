@@ -250,6 +250,11 @@ export default class Module {
             sessionId, runId, prompt: lastUser.content,
             ...(typeof forwarded?.maxTurns === "number" ? { maxTurns: forwarded.maxTurns } : this.#opts.maxTurns !== undefined ? { maxTurns: this.#opts.maxTurns } : {}),
             ...(typeof forwarded?.flags === "object" && forwarded.flags !== null ? { flags: forwarded.flags as { yolo?: boolean } } : {}),
+            // #414 — per-loop model selection: the client sends alias+model on every loop
+            // (model = client-resolved <provider>/<model>, #90); forward both, the daemon's
+            // runLoop applies precedence (model wins) and resolves the provider per loop.
+            ...(typeof forwarded?.alias === "string" && forwarded.alias.length > 0 ? { alias: forwarded.alias } : {}),
+            ...(typeof forwarded?.model === "string" && forwarded.model.length > 0 ? { model: forwarded.model } : {}),
         });
         // A dropped SSE on a LIVE run cancels the loop (hangup is the abort). A run we
         // finished ourselves — terminal event or proposal-terminate — leaves the engine

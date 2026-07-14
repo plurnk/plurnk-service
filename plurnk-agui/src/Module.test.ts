@@ -10,6 +10,7 @@ import type { AguiEvent } from "./types.ts";
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
+    const loopRuns: Array<{ alias?: string; model?: string; prompt: string }> = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: DaemonSeam = {
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
@@ -19,7 +20,7 @@ const mockSeam = () => {
             // The engine's continued loop terminating — closes the resume stream.
             setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, contextSize: 1000, meta: {} } })));
         },
-        runLoop: async () => ({ action: "injected_next_turn", loopId: 9, turnSeq: 2 }),
+        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}) }); return { action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
         dispatchAsClient: async () => ({ status: 200 }),
         readLog: async () => [{ id: 1, op: "SEND", origin: "model" }],
@@ -41,7 +42,7 @@ const mockSeam = () => {
         look: async () => ({ status: 200, content: "looked" }),
     };
     const finish = (sessionId: number | null) => setImmediate(() => handlers.forEach((h) => h(sessionId, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, contextSize: 1000, meta: {} } })));
-    return { seam, resolves, finish };
+    return { seam, resolves, loopRuns, finish };
 };
 
 const post = async (port: number, body: object): Promise<AguiEvent[]> => {
@@ -305,3 +306,21 @@ test("[§agui-run-endpoint] SSE heartbeat: a silent run stays alive — comment 
     } finally { await mod.close(); }
 });
 
+
+test("a message run forwards forwardedProps.plurnk alias+model into runLoop (#414 per-loop model selection)", async () => {
+    const { seam, loopRuns, finish } = mockSeam();
+    // The run self-completes: the runLoop override closes the stream for its session (the working
+    // message-drive pattern above), so the POST resolves.
+    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}) }); finish(a.sessionId); return { action: "enqueued_new_loop" as const, loopId: 9 }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        await post(mod.address().port, {
+            threadId: "t-model", runId: "r1",
+            forwardedProps: { plurnk: { session: "t-model", alias: "fireslow", model: "fireworks/deepseek-v4" } },
+            messages: [{ role: "user", content: "hello" }],
+        });
+        assert.equal(loopRuns.length, 1, "the message drove one runLoop");
+        assert.equal(loopRuns[0].alias, "fireslow", "the alias forwarded off forwardedProps.plurnk");
+        assert.equal(loopRuns[0].model, "fireworks/deepseek-v4", "the client-resolved model forwarded too (daemon applies precedence)");
+    } finally { await mod.close(); }
+});
