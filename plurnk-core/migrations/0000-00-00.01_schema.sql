@@ -341,6 +341,18 @@ CREATE        INDEX IF NOT EXISTS log_entries_run_id           ON log_entries (r
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
 
+-- §log-region-tagging — named log-region curation. FOLD is the log's write-op (EDIT can't
+-- reach engine-written rows): FOLD[tag] stamps a tag on a region; OPEN[tag]/FIND[tag] filter
+-- by it. Mirrors entry_tags (apply additive / filter ALL-tags AND); CASCADE with the row on KILL.
+CREATE TABLE IF NOT EXISTS log_tags (
+    log_entry_id INTEGER NOT NULL,
+    tag          TEXT    NOT NULL CHECK (length(tag) > 0),
+    PRIMARY KEY (log_entry_id, tag),
+    FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS log_tags_tag ON log_tags (tag);
+
 -- Column-scoped immutability: the original action's identity and target
 -- never change; the proposal lifecycle is allowed to mutate state,
 -- outcome, status_rx, rx, expanded.

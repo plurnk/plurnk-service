@@ -57,3 +57,44 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- #382 §prompt-fold-illegal — a log row's acted-on target (scheme+pathname), to spot the user
 -- prompt frame rows (scheme='plurnk', pathname '/prompt/%') a FOLD must never hide.
 SELECT scheme, pathname FROM log_entries WHERE id = $id;
+
+-- PREP: log_write_tag
+-- §log-region-tagging — FOLD is the log's write-op (EDIT can't reach engine-written rows). FOLD[tag]
+-- stamps a tag on the folded rows, additively (§edit-tags-additive) — re-tagging is a no-op.
+INSERT OR IGNORE INTO log_tags (log_entry_id, tag) VALUES ($log_entry_id, $tag);
+
+-- PREP: log_match_coordinates_tagged
+-- §log-region-tagging — OPEN[tag]'s resolution: log_match_coordinates PLUS an ALL-tags AND filter
+-- (§find-tag-filter-and-semantics), so OPEN[tag] recalls only rows carrying EVERY listed tag. A
+-- targetless OPEN[tag] rides glob '*' (the whole run).
+SELECT le.id
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.run_id = $run_id
+  AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
+  AND le.id IN (
+      SELECT log_entry_id FROM log_tags
+      WHERE tag IN (SELECT value FROM json_each($tags))
+      GROUP BY log_entry_id
+      HAVING COUNT(DISTINCT tag) = json_array_length($tags)
+  )
+ORDER BY l.sequence, t.sequence, le.sequence;
+
+-- PREP: log_find_candidates_tagged
+-- §log-region-tagging — FIND[tag](log): log_find_candidates PLUS the same ALL-tags AND filter.
+SELECT
+    (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
+    le.op, le.rx, le.mimetype_rx, le.tokens
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.run_id = $run_id
+  AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
+  AND le.id IN (
+      SELECT log_entry_id FROM log_tags
+      WHERE tag IN (SELECT value FROM json_each($tags))
+      GROUP BY log_entry_id
+      HAVING COUNT(DISTINCT tag) = json_array_length($tags)
+  )
+ORDER BY l.sequence, t.sequence, le.sequence;

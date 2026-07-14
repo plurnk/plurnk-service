@@ -65,9 +65,13 @@ export default class Fork {
 
         // entries → new entries: run/loop/turn ids remapped; fold-state and
         // attribution and content all preserved.
-        const entries = await (db.fork_get_log_entries as PrepMethod).all<{ loop_id: number; turn_id: number; [k: string]: unknown }>({ run_id: parentRunId });
+        const entries = await (db.fork_get_log_entries as PrepMethod).all<{ id: number; loop_id: number; turn_id: number; [k: string]: unknown }>({ run_id: parentRunId });
         for (const e of entries) {
-            await (db.fork_insert_log_entry as PrepMethod).run({ ...e, run_id: branchRunId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
+            const { id: oldLogId, ...row } = e;
+            const ne = await (db.fork_insert_log_entry as PrepMethod).get<{ id: number }>({ ...row, run_id: branchRunId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
+            if (ne === undefined) throw new Error("fork: log entry copy returned no row");
+            // §log-region-tagging — carry the row's region tags onto the copy (no-op when untagged).
+            await (db.fork_copy_log_tags as PrepMethod).run({ old_log_id: oldLogId, new_log_id: ne.id });
         }
 
         // §run-scheme — inherit the parent's run-scope SCRATCH, owner remapped (parent → branch) in

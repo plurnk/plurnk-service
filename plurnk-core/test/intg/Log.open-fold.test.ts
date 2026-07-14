@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import Log from "../../src/schemes/Log.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, openStmt, foldStmt } from "./_dsl.ts";
+import { urlPath, openStmt, foldStmt, findStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
@@ -238,6 +238,56 @@ test("[§log-coordinate-hierarchy] a PARTIAL coordinate is a prefix, slash OPTIO
         );
         assert.equal(loop.status, 200, "log:///1 folds loop 1's rows");
         assert.ok((loop.matched ?? 0) >= 1, "the loop prefix matched");
+    } finally { await db.close(); }
+});
+
+test("[§log-region-tagging] FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — named working-set curation", async () => {
+    const { db, sessionId, runId, loopId, turnId } = await setup(); // seeds 1/1/1 EDIT
+    try {
+        const seedRead = async (sequence: number): Promise<void> => {
+            await (db.engine_insert_log_entry as PrepMethod).get({
+                run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
+                origin: "model", source: null, op: "READ", suffix: "", signal: null,
+                scheme: "known", username: null, password: null, hostname: null, port: null,
+                pathname: "/doc", params: null, fragment: null, lineMarker: null,
+                tx: "<<READ(known:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
+                rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
+                status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+            });
+        };
+        await seedRead(2);
+        await seedRead(3);
+        const mk = () => makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" });
+        const log = new Log();
+        const expandedAt = async (seq: number): Promise<number> =>
+            (await (db.test_get_log_expanded as PrepMethod).get<{ expanded: number }>({ run_id: runId, loop_seq: 1, turn_seq: 1, sequence: seq }))?.expanded ?? -1;
+
+        // WRITE: FOLD[projectB](log:///1/1/2) folds row 2 AND stamps the tag (FOLD is the log's write-op).
+        const fold = await log.fold({ ...foldStmt(urlPath("log", "/1/1/2")), signal: ["projectB"] }, mk());
+        assert.equal(fold.status, 200);
+        assert.equal(fold.matched, 1);
+        assert.equal(await expandedAt(2), 0, "row 2 folded");
+
+        // READ/filter: FIND[projectB] over the whole run returns ONLY the tagged row (folded or not).
+        const found = await log.find(findStmt(urlPath("log", "/"), null, ["projectB"]), mk());
+        assert.equal(found.status, 200);
+        assert.equal(found.results.length, 1, "only the tagged row matches");
+        assert.match(found.results[0].path, /1\/1\/2/, "and it is row 2");
+
+        // RECALL: a TARGETLESS OPEN[projectB] reopens the whole named working-set.
+        const open = await log.open({ ...openStmt(null), signal: ["projectB"] }, mk());
+        assert.equal(open.status, 200);
+        assert.equal(open.matched, 1);
+        assert.equal(await expandedAt(2), 1, "row 2 recalled by name");
+
+        // An unknown tag is a no-op success (204), never an error.
+        assert.equal((await log.open({ ...openStmt(null), signal: ["ghost"] }, mk())).status, 204, "recalling an unused name steers nothing");
+        assert.equal((await log.find(findStmt(urlPath("log", "/"), null, ["ghost"]), mk())).status, 204);
+
+        // Additive apply + ALL-tags AND: stamp a second tag on row 2, then FIND[both] matches, FIND[one-missing] doesn't.
+        await log.fold({ ...foldStmt(urlPath("log", "/1/1/2")), signal: ["hot"] }, mk());
+        assert.equal((await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "hot"]), mk())).results.length, 1, "row 2 carries BOTH tags (additive) — ALL-tags AND matches");
+        assert.equal((await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "cold"]), mk())).status, 204, "missing one ANDed tag → no match");
     } finally { await db.close(); }
 });
 

@@ -94,7 +94,8 @@ export default class Log {
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<SchemeReadResult> {
         const { db, runId } = ctx;
         if (statement.target === null) return { status: 400, content: null, mimetype: null };
-        // log:/// entries have no tag concept (engine-written events).
+        // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job (§log-region-tagging),
+        // not a filter on a single-row read.
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
             return { status: 404, content: null, mimetype: null };
         }
@@ -135,14 +136,18 @@ export default class Log {
         const { db, runId, mimetypes } = ctx;
         const empty = (status: number): FindResult => ({ status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] });
         if (statement.target === null) return empty(400);
-        // log rows have no tag concept (engine-written events) — a tag filter matches nothing.
-        if (Array.isArray(statement.signal) && statement.signal.length > 0) return empty(204);
         if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph")) return empty(501);
 
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
         if (glob === null) return empty(400);
-        const rows = await (db.log_find_candidates as PrepMethod).all<{ coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number }>({ run_id: runId, glob });
+        // §log-region-tagging — a tag signal AND-filters the candidates (§find-tag-filter-and-semantics):
+        // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
+        const tags = Array.isArray(statement.signal) ? statement.signal : [];
+        type Candidate = { coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number };
+        const rows = tags.length > 0
+            ? await (db.log_find_candidates_tagged as PrepMethod).all<Candidate>({ run_id: runId, glob, tags: JSON.stringify(tags) })
+            : await (db.log_find_candidates as PrepMethod).all<Candidate>({ run_id: runId, glob });
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({ key: r.coordinate, ...rxProjection(r.rx) }));
 
@@ -224,7 +229,40 @@ export default class Log {
         return { status: 200, ids: selected.map((s) => s.id) };
     }
 
+    // §log-region-tagging — resolve OPEN[tag] to ids: candidates are the target's glob scope (the
+    // whole run when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
+    // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
+    // #resolveIds — recalling a name that tags nothing steers nothing.
+    async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
+        const { db, runId } = ctx;
+        const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
+        const glob = coordinateGlob(pathname);
+        if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
+        const matched = await (db.log_match_coordinates_tagged as PrepMethod).all<{ id: number }>({ run_id: runId, glob, tags: JSON.stringify(tags) });
+        if (matched.length === 0) return { status: 204, ids: [] };
+        let selected = matched;
+        if (statement.lineMarker !== null) {
+            const page = paginate(matched, LineMarkerOps.firstLast(statement.lineMarker));
+            if (page.status !== 200) return { status: page.status, ids: [] };
+            selected = page.items ?? [];
+        }
+        if (selected.length === 0) return { status: 404, ids: [] };
+        return { status: 200, ids: selected.map((s) => s.id) };
+    }
+
     async #setExpanded(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, expanded: 0 | 1): Promise<OpenFoldResult> {
+        const signal = Array.isArray(statement.signal) ? statement.signal : [];
+        // §log-region-tagging — OPEN[tag] is the READ side: recall rows by tag, target optional (a bare
+        // OPEN[tag] recalls the whole tagged working-set). FOLD never resolves by tag — it is the WRITE
+        // side (it stamps the tag below), always scoped to the target region it folds.
+        if (expanded === 1 && signal.length > 0) {
+            const rt = await this.#resolveByTags(statement, signal, ctx);
+            if (rt.status === 204) return { status: 204, matched: 0 };
+            if (rt.status !== 200) return { status: rt.status, ...(rt.error !== undefined ? { error: rt.error } : {}) };
+            for (const id of rt.ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded: 1 });
+            return { status: 200, matched: rt.ids.length };
+        }
+
         if (statement.target === null) return { status: 400 };
         const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const r = await this.#resolveIds(pathname, statement.lineMarker, ctx);
@@ -248,6 +286,12 @@ export default class Log {
             }
         }
         for (const id of ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
+        // §log-region-tagging — FOLD[tag] is the log's write-op: stamp the tags on the folded rows,
+        // additively (§edit-tags-additive). Only the rows actually folded are tagged (a prompt spared
+        // above is neither folded nor tagged). OPEN with a signal never reaches here.
+        if (expanded === 0 && signal.length > 0) {
+            for (const id of ids) for (const tag of signal) await (ctx.db.log_write_tag as PrepMethod).run({ log_entry_id: id, tag });
+        }
         return { status: 200, matched: ids.length };
     }
 

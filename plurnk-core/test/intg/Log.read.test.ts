@@ -152,7 +152,7 @@ test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () =>
     } finally { db.close(); }
 });
 
-test("Log.read: non-empty tag filter → 404 (log has no tag concept)", async () => {
+test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/FIND[tag]'s job, §log-region-tagging)", async () => {
     const { db, engine, sessionId, runId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/z", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });

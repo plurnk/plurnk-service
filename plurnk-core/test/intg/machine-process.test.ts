@@ -79,6 +79,26 @@ test("[§machine-processes-fork-copies-the-log] a fork copies the parent's log (
     } finally { db.close(); }
 });
 
+test("[§log-region-tagging] a fork carries a log row's region tags along with its fold-state", async () => {
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const runId = await insertRun(db, sessionId);
+        const loopId = await insertLoop(db, runId, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/a.md"), "first"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        // Tag the parent's row (the write FOLD[tag] performs), directly — to isolate the fork-copy.
+        const ids = await (db.test_log_entries_by_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+        await (db.log_write_tag as PrepMethod).run({ log_entry_id: ids[0].id, tag: "projectB" });
+
+        const branchRunId = await Fork.fork(db, runId);
+
+        const branchTags = await (db.test_log_tags_by_run as PrepMethod).all<{ coordinate: string; tag: string }>({ run_id: branchRunId });
+        assert.deepEqual(branchTags.map((r) => r.tag), ["projectB"], "the branch inherited the parent's region tag — a named working-set survives the fork");
+    } finally { db.close(); }
+});
+
 test("[§machine-processes-fork-shares-the-world] a fork shares the session's filesystem and overlay, live and uncopied", async () => {
     const db = await openMigrated();
     try {
