@@ -24,11 +24,11 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 | OP   | `[signal]`     | `(path)`        | `<scope>`          | :body:             | OP   |
 |------|----------------|-----------------|--------------------|--------------------|------|
 | PLAN | -              | -               | -                  | :plan, free text:  | PLAN |
-| FIND | [tags]?        | (path)          | <result,result>?   | :pattern:?         | FIND |
-| READ | [tags]?        | (path)          | <line,line>?       | :pattern:?         | READ |
-| EDIT | [tags]?        | (path)          | <line,line>?       | :literal text:?    | EDIT |
-| COPY | [tags]?        | (path)          | <line,line>?       | :destination path: | COPY |
-| MOVE | [tags]?        | (path)          | <line,line>?       | :destination path: | MOVE |
+| FIND | [filter tags]? | (path)          | <result,result>?   | :pattern:?         | FIND |
+| READ | [filter tags]? | (path)          | <line,line>?       | :pattern:?         | READ |
+| EDIT | [apply tags]?  | (path)          | <line,line>?       | :literal text:?    | EDIT |
+| COPY | [apply tags]?  | (path)          | <line,line>?       | :destination path: | COPY |
+| MOVE | [apply tags]?  | (path)          | <line,line>?       | :destination path: | MOVE |
 | OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern:?         | OPEN |
 | FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern:?         | FOLD |
 | EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :code:?            | EXEC |
