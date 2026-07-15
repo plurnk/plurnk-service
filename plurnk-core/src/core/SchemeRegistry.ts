@@ -18,7 +18,7 @@ import type { Executor } from "./ExecutorRegistry.ts";
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import Paths from "../Paths.ts";
-import { teachingLine, docsExcludeSet } from "./teaching.ts";
+import { docsExcludeSet } from "./teaching.ts";
 
 // The in-tree CORE-scheme depth (run/known/unknown/log) lives in the docs corpus (docs/)
 // (Paths.schemeDocs), NOT inline — the docs agent owns the prose; loaded once at module eval.
@@ -130,9 +130,10 @@ export default class SchemeRegistry {
             const manifest = (handler.constructor as { manifest?: { example?: string; documentation?: string } }).manifest;
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
-            lines.push(teachingLine(example)); // doc links removed (#270) — docs are FIND(plurnk://docs/**)-discovered
+            lines.push(example); // bare op — the Schemes catalog is fenced, not bulleted (#436); doc links removed (#270)
         }
-        return lines.join("\n");
+        // §PACKET Schemes — a fenced `plurnk` catalog, validatable by the same op-fence as the doc (not a bullet list).
+        return lines.length > 0 ? `\`\`\`plurnk\n${lines.join("\n")}\n\`\`\`` : "";
     }
 
     // #note12 — schemes that ship a `documentation` string, for materialization at
