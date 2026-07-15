@@ -97,8 +97,8 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 
 This field can contain one or more numeric entries limiting the scope of the operation to specific lines, results, thresholds, or timeouts.
 
-<<READ(file.md)<N>::READ views line N
-<<FIND(src/**)<N,M>::FIND retrieves results N through M, inclusive
+<<READ(file.md)<5>::READ views line 5
+<<FIND(src/**)<10,20>::FIND retrieves results 10 through 20, inclusive
 <<EDIT(file.md)<-1>:literal text appended to the file:EDIT appends new line
 
 Sentinels: <0> before position 1 (prepend), `<-1>` after the last position (append).
