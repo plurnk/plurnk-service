@@ -15,6 +15,8 @@ import { PlurnkParser } from "../../src/index.ts";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 
+// Examples now live in ```plurnk fenced blocks (plurnkdown house-style), not bare
+// `* ` bullets. Extract the fence bodies from the `## Examples` section and join them.
 const exampleBlock = (() => {
     const headingMatch = /^## Examples\s*$/m.exec(plurnkMd);
     assert.ok(headingMatch, "plurnk.md is missing its `## Examples` section");
@@ -22,7 +24,10 @@ const exampleBlock = (() => {
     const rest = plurnkMd.substring(startIdx);
     const nextHeadingMatch = /^## /m.exec(rest);
     const endIdx = nextHeadingMatch ? nextHeadingMatch.index : rest.length;
-    return rest.substring(0, endIdx).trim().replace(/^[ \t]*\* /gm, "");
+    const section = rest.substring(0, endIdx);
+    const fences = [...section.matchAll(/^```plurnk\n([\s\S]*?)^```/gm)].map((m) => m[1]);
+    assert.ok(fences.length > 0, "`## Examples` section has no ```plurnk fenced block");
+    return fences.join("\n").trim();
 })();
 
 test("plurnk.md examples block parses with no errors and no unparsed tail", () => {
@@ -96,4 +101,27 @@ test("every heredoc in plurnk.md parses to one clean statement", () => {
         }
     }
     assert.equal(failures.length, 0, `plurnk.md heredocs that do not cleanly parse:\n${failures.join("\n")}`);
+});
+
+// The plurnkdown house-style contract: every ```plurnk fenced block in the document must
+// parse clean as a statement sequence (the linter's op-fence rule, enforced here against
+// the canonical grammar). Unlike the heredoc test - which parses each op in isolation -
+// this parses each block whole, so it also catches bad separators or non-op text leaking
+// into a fence. A ```plurnk block that does not parse cannot ship as canon.
+const PLURNK_FENCE = /^```plurnk\n([\s\S]*?)^```/gm;
+test("every ```plurnk fenced block in plurnk.md parses clean", () => {
+    const fences = [...plurnkMd.matchAll(PLURNK_FENCE)].map((m) => m[1]);
+    assert.ok(fences.length >= 5, `expected several plurnk fences, found ${fences.length}`);
+
+    const failures: string[] = [];
+    fences.forEach((body, i) => {
+        const result = PlurnkParser.parseStatements(body);
+        const errors = result.items.filter((x) => x.kind === "error");
+        if (errors.length > 0 || result.unparsedTail) {
+            const detail = errors.map((e) => (e.kind === "error" ? e.error.message : "")).join(" | ")
+                || `unparsedTail=${Boolean(result.unparsedTail)}`;
+            failures.push(`fence ${i + 1}: ${detail}`);
+        }
+    });
+    assert.equal(failures.length, 0, `plurnk fenced blocks that do not parse:\n${failures.join("\n")}`);
 });
