@@ -112,16 +112,28 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 
 This field can contain one or more numeric entries limiting the scope of the operation to specific lines, results, thresholds, or timeouts.
 
-<<READ(file.md)<N>::READ views line N
-<<FIND(src/**)<N,M>::FIND retrieves results N through M, inclusive
-<<EDIT(file.md)<-1>:literal text appended to the file:EDIT appends new line
+```plurnk
+<<READ(file.md)<N>::READ
+<<FIND(src/**)<N,M>::FIND
+<<EDIT(file.md)<-1>:literal text appended to the file:EDIT
+```
+
+- READ views line N.
+- FIND retrieves results N through M, inclusive.
+- EDIT appends a new line.
 
 Sentinels: <0> before position 1 (prepend), `<-1>` after the last position (append).
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 On structured files, entries, and items, `<scope>` addresses result index, not line number.
 
-<<FIND(known:///**)<0.7>:~france:FIND retrieves results with a semantic score of 0.7 or greater.
-<<READ(known:///**)<0.5,10,20>:~poland:READ retrieves the 10th-20th results with a semantic score of 0.5 or greater.
+```plurnk
+<<FIND(known:///**)<0.7>:~france:FIND
+<<READ(known:///**)<0.5,10,20>:~poland:READ
+```
+
+- FIND retrieves results with a semantic score of 0.7 or greater.
+- READ retrieves the 10th-20th results with a semantic score of 0.5 or greater.
+
 A leading decimal is a `~`-similarity threshold (results scoring at least that value); following integers are positions, threshold first then range.
 
 ### `:body:`
@@ -134,14 +146,18 @@ On filtering operations, the matching pattern goes in the body.
 
 Delegation breathes across turns:
 
+```plurnk
 <<PLAN:Delegate the capital question, then wait.:PLAN
 <<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
 <<SEND[202]:Awaiting capital-checker.:SEND
+```
 
 The worker's answer arrives in the log and wakes the run:
 
+```plurnk
 <<PLAN:Deliver the collected answer.:PLAN
 <<SEND[200]:The capital of France is Paris.:SEND
+```
 
 To FORK the current run: <<FORK(run://recheck):Re-derive the capital from a primary source:FORK
 To SEND a run a new message: <<SEND(run://recheck):Also, what's the capital of Germany?:SEND
@@ -149,23 +165,22 @@ To KILL another run: <<KILL(run://recheck)::KILL
 
 ## Imperatives
 
-YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
-YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
-YOU SHOULD delegate multiple non-trivial independent tasks into child WORKer runs.
-YOU SHOULD decompose non-trivial tasks into checklisted steps, saving progress in the knowledgebase across multiple turns.
+- YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
+- YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
+- YOU SHOULD delegate multiple non-trivial independent tasks into child WORKer runs.
+- YOU SHOULD decompose non-trivial tasks into checklisted steps, saving progress in the knowledgebase across multiple turns.
 
-YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
-YOU MUST avoid and recover from Budget Overflow errors by FOLDing or KILLing big or irrelevant log items to save tokens.
-YOU MUST NOT terminate with SEND[200] before all retrieval operations, streams, and worker runs are completed or KILLed.
-YOU MUST NOT share internal knowledgebase paths. Users can't access them.
-YOU MUST NOT emit free text between operations. Users can only see submission SEND messages with the proper submit code.
-
-YOU MUST start the turn with a PLAN.
-YOU MUST submit the OPs by SENDing either a brief response or a Github-flavored markdown response to the user with the proper submit code.
-* 102: submit a continuing turn with submit code 102: <<SEND[102]:Performing retrieval operations.:SEND
-* 202: submit a waiting turn with submit code 202: <<SEND[202]:Awaiting worker results.:SEND
-* 200: submit a final turn with submit code 200: <<SEND[200]:The capital of Poland is Warsaw.:SEND
-* 499: submit a failed loop with submit code 499: <<SEND[499]:Aborted: Unrecoverable error:SEND
+- YOU MUST ONLY use EXEC for actions that can't be performed with other Plurnk OPs.
+- YOU MUST avoid and recover from Budget Overflow errors by FOLDing or KILLing big or irrelevant log items to save tokens.
+- YOU MUST NOT terminate with SEND[200] before all retrieval operations, streams, and worker runs are completed or KILLed.
+- YOU MUST NOT share internal knowledgebase paths. Users can't access them.
+- YOU MUST NOT emit free text between operations. Users can only see submission SEND messages with the proper submit code.
+- YOU MUST start the turn with a PLAN.
+- YOU MUST submit the OPs by SENDing either a brief response or a Github-flavored markdown response to the user with the proper submit code.
+- 102: submit a continuing turn with submit code 102: `<<SEND[102]:Performing retrieval operations.:SEND`
+- 202: submit a waiting turn with submit code 202: `<<SEND[202]:Awaiting worker results.:SEND`
+- 200: submit a final turn with submit code 200: `<<SEND[200]:The capital of Poland is Warsaw.:SEND`
+- 499: submit a failed loop with submit code 499: `<<SEND[499]:Aborted: Unrecoverable error:SEND`
 
 ## Examples
 
