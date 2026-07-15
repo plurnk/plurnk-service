@@ -8,6 +8,9 @@ import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
 
+// These pin the TABULAR budget baseline; #440's default is the mermaid form (covered by [§budget-mermaid]).
+process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
+
 test("[§tokenomics-window-partition] the prompt ceiling derives from min(CTX, window) minus reserves — reserves over the window fail hard", async () => {
     // The partition arithmetic, end to end through a real packet build: CTX 10000, reserves
     // 1000+2000+500 → promptBudget 6500 against a wide window; a 5000 window → min caps →

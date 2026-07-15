@@ -384,11 +384,11 @@ export default class PacketBuilder {
         // #421 — no ceiling (unbounded window): omit the headline entirely; the section lines below
         // stay so the model keeps its FOLD-target surface, just with no percent it can't compute.
         if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
-        // #440 {§budget-mermaid} — the visual layer, toggled for measurement. When on with a ceiling to
-        // scale against, the three budget-scaled diagrams REPLACE the tables: they carry the same
-        // per-turn/per-item/gauge numbers (weighability holds), self-scale to pressure (calm→urgent), and
-        // so are never <50%-truncated. Off (default) keeps the tables — the measured baseline.
-        if (process.env.PLURNK_SERVICE_BUDGET_MERMAID === "on" && ceiling !== null && log.entries > 0) {
+        // #440 {§budget-mermaid} — the enriched visual Budget (default on). With a ceiling to scale
+        // against, the three budget-scaled diagrams REPLACE the tables: same per-turn/per-item/gauge
+        // numbers (weighability holds), self-scaled to pressure (calm→urgent), so never <50%-truncated.
+        // Set PLURNK_SERVICE_BUDGET_MERMAID=off to A/B against the tabular baseline (#440's before/after).
+        if (process.env.PLURNK_SERVICE_BUDGET_MERMAID !== "off" && ceiling !== null && log.entries > 0) {
             if (lines.length > 0) lines.push("");
             lines.push(PacketBuilder.#renderBudgetMermaid(log, ceiling));
             return lines.join("\n");

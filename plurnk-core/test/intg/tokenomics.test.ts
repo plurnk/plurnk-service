@@ -8,6 +8,9 @@ import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, DEFAULT
 import { Mock } from "@plurnk/plurnk-providers";
 import { urlPath as anyUrl, editStmt as anyEdit, sendStmt } from "./_dsl.ts";
 
+// The budget assertions here pin the TABULAR baseline; #440's default is the mermaid form ([§budget-mermaid]).
+process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
+
 // Tokenomics Phase 1: real token counts are stored at write time (SPEC §tokenomics).
 // entry_channels.tokens comes from the entry write helpers via ctx.tokenize;
 // log_entries.tokens from Engine.#writeLog over tx+rx. Both route through the
