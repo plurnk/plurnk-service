@@ -373,7 +373,8 @@ test("[§budget-mermaid] toggle on: three budget-scaled mermaid diagrams, placeh
     }
 });
 
-test("[§budget-mermaid] toggle OFF (default): the tabular readout is unchanged — the measured baseline", async () => {
+test("[§budget-mermaid] set off: the tabular readout renders — the A/B baseline (#440 before/after)", async () => {
+    process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
     const db = await openMigrated();
     try {
         const { sessionId, runId, loopId } = await envelope(db);
@@ -382,6 +383,9 @@ test("[§budget-mermaid] toggle OFF (default): the tabular readout is unchanged 
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.doesNotMatch(budget, /```mermaid/, "off by default — no diagrams, the tabular baseline");
-    } finally { await db.close(); }
+        assert.doesNotMatch(budget, /```mermaid/, "off → no diagrams, the tabular baseline for the A/B");
+    } finally {
+        delete process.env.PLURNK_SERVICE_BUDGET_MERMAID;
+        await db.close();
+    }
 });
