@@ -136,20 +136,20 @@ export default class PacketBuilder {
         return false;
     }
 
+    // #421 — §tokenomics-window-unpollable-deliberate: an unpollable window (provider.contextSize null
+    // after env/probe/catalog all miss) with NO per-alias knob is genuinely-unknown — nobody chose an
+    // envelope. The budget/ceiling short-circuit that window to NO-CAP (#isUnboundedWindow) rather than
+    // substitute a stand-in the operator never chose; the bare partition still feeds decodeBudget's
+    // generation reserves, which the backend clamps. A per-alias CTX knob makes the window DELIBERATE
+    // and it flows bounded, normally.
+    #isUnboundedWindow(provider: Provider): boolean {
+        if (provider.contextSize !== null) return false;
+        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        return !PacketBuilder.#hasAliasKnob(alias);
+    }
+
     #partitionFor(provider: Provider): { ctx: number; reasoning: number; assistant: number; safety: number } {
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
-        // #377 — §tokenomics-window-unpollable-deliberate: "CTX stands in for unknown physics" is
-        // only honest when the CTX is the operator's DELIBERATE policy for THIS alias. An unpollable
-        // window (provider.contextSize null — the provider's machine signal after env/probe/catalog
-        // all miss) riding BARE partition numbers is nobody's policy: numbers tuned for some other
-        // model silently applied, surfacing later as truncation/overflow telemetry (#352's failure
-        // mode recurring for every unpollable model). Fail loud at first use, naming both remedies.
-        if (provider.contextSize === null && !PacketBuilder.#hasAliasKnob(alias)) {
-            // BEFORE the cache lookup — the constructor pre-primes the boot alias's partition, and a
-            // cache hit must never bypass this refusal (the check keys on the PROVIDER's null window,
-            // which the cached partition knows nothing about).
-            throw new Error(`window unpollable for alias '${alias || "<active>"}' and its partition rides bare numbers — nobody chose this envelope for this model. Either set PLURNK_PROVIDERS_CONTEXT_SIZE_${alias || "<alias>"} (so the window is known) or set the per-alias partition (PLURNK_SERVICE_{CTX,REASONING,ASSISTANT,SAFETY}_${alias || "<alias>"}) so the numbers are deliberate.`);
-        }
         const hit = this.#partitions.get(alias);
         if (hit !== undefined) return hit;
         const part = this.#resolvePartition(alias);
@@ -176,7 +176,8 @@ export default class PacketBuilder {
     // packet actually lives under (effective window minus the partition reserves), in REAL token
     // space (usage.prompt, the numerator, is real; the calibration ratio maps measured→real and
     // has no business here). The raw n_ctx overstates usable room by the reserve total.
-    promptBudgetFor(provider: Provider): number {
+    promptBudgetFor(provider: Provider): number | null {
+        if (this.#isUnboundedWindow(provider)) return null; // #421 — no cap: an unknown window has no denominator
         const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
         const effectiveWindow = provider.contextSize === null ? ctx : Math.min(ctx, provider.contextSize);
         return Math.max(0, effectiveWindow - reasoning - assistant - safety);
@@ -187,7 +188,8 @@ export default class PacketBuilder {
     // typical text), so comparing ruler-weight to the real-token ceiling is itself the conservative
     // bias — the model curates against less room than it has and never overflows for typical
     // content; the exact provider count guards the pathological tail at the materialization gate.
-    ceilingFor(provider: Provider): number {
+    ceilingFor(provider: Provider): number | null {
+        if (this.#isUnboundedWindow(provider)) return null; // #421 — no cap: the gauge headline is omitted
         const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
         const effectiveWindow = provider.contextSize === null ? ctx : Math.min(ctx, provider.contextSize);
         const promptBudget = effectiveWindow - reasoning - assistant - safety;
@@ -324,7 +326,9 @@ export default class PacketBuilder {
         let total = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
         {
             const budgetSec = sections.find((s) => s.name === "budget"); // a plugin may have removed it
-            if (budgetSec) {
+            // A null ceiling (#421 — unbounded window) has no headline to calibrate: no truncation, no
+            // percent/free substitution. #renderBudget already omitted the headline, so nothing to do.
+            if (budgetSec && ceiling !== null) {
                 // Curation pressure gates on OCCUPANCY (§tokenomics-pressure-gates-on-occupancy, #308):
                 // the Turns/Heaviest tables are a standing FOLD-target list, and a high-headroom model
                 // reads them as a todo — burning turns on token hygiene at 3% of a 64k window. Under
@@ -365,10 +369,12 @@ export default class PacketBuilder {
             byTurn: Array<{ turn: string; tokens: number }>;
             largest: Array<{ path: string; tokens: number }>;
         },
-        ceiling: number,
+        ceiling: number | null,
     ): string {
         const lines: string[] = [];
-        lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
+        // #421 — no ceiling (unbounded window): omit the headline entirely; the section lines below
+        // stay so the model keeps its FOLD-target surface, just with no percent it can't compute.
+        if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
         if (log.entries > 0) {
             if (lines.length > 0) lines.push("");
             lines.push(`Log entries: ${log.entries} entries, ${log.tokens} tokens`);
@@ -493,7 +499,9 @@ export default class PacketBuilder {
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
         const ceiling = this.ceilingFor(provider);
         const measure = (p: RequestPacket): number => p.tokens;
-        if (measure(packet) <= ceiling) return { packet, fit: true, struck: false };
+        // #421 — a null ceiling is an unbounded window: always fit, never fold or strike (the backend
+        // clamps; this mirrors Engine's physicallySendable, which treats a null contextSize as sendable).
+        if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 
         // ONE rule, every turn — turn 1 and turn 101 alike (§grinder-layer1-rollback): fold the
         // NEWEST turn boundary's still-open rows (the prior turn's emissions + this turn's
