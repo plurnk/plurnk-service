@@ -455,14 +455,15 @@ export default class PacketWire {
                 if (navigable > 0) meta.lines = navigable;
             }
 
-            // §jsonplurnk — the fold-state field replaces the old -/+/* glyph: `none` (no body,
-            // nothing to OPEN), `folded` (body exists, hidden — OPEN to expand), `open` (body shown).
-            // The one deviation from valid JSON: an OPEN row appends its heredoc body as a raw `body`
-            // value (unescaped, delimited by its <<:::tag … :::tag fence). §jsonplurnk
-            const fold = body.length === 0 ? "none" : e.folded === true ? "folded" : "open";
-            meta.fold = fold;
+            // §jsonplurnk — the `display` field (grammar-ratified name #437) replaces the old -/+/*
+            // glyph: `none` (no body, nothing to OPEN), `folded` (body exists, hidden — OPEN to expand),
+            // `open` (body shown). `display:none` mirrors CSS the model knows; `folded`/`open` echo the
+            // FOLD/OPEN ops. The one deviation from valid JSON: an OPEN row appends its heredoc body as a
+            // raw `body` value (unescaped, delimited by its <<:::tag … :::tag fence). §jsonplurnk
+            const display = body.length === 0 ? "none" : e.folded === true ? "folded" : "open";
+            meta.display = display;
             const obj = PacketWire.#canonicalJson(meta);
-            return fold === "open" ? obj.replace(/\}$/, `,"body":\n${body}\n}`) : obj;
+            return display === "open" ? obj.replace(/\}$/, `,"body":\n${body}\n}`) : obj;
         }).join(",\n");
     }
 
