@@ -23,7 +23,7 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|W
 
 A `?` marks an optional field, as in the Syntax line; unmarked fields are required.
 
-| OP   | `[signal]`     | `(path)`        | `<scope>`          | :body:             | OP   |
+| OP   | `[signal]`     | `(path)`        | `<scope>`          | `:body:`           | OP   |
 |------|----------------|-----------------|--------------------|--------------------|------|
 | PLAN | -              | -               | -                  | :plan, free text:  | PLAN |
 | FIND | [filter tags]? | (path)          | <result,result>?   | :pattern:?         | FIND |
@@ -113,13 +113,13 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 This field can contain one or more numeric entries limiting the scope of the operation to specific lines, results, thresholds, or timeouts.
 
 ```plurnk
-<<READ(file.md)<N>::READ
-<<FIND(src/**)<N,M>::FIND
+<<READ(file.md)<5>::READ
+<<FIND(src/**)<10,20>::FIND
 <<EDIT(file.md)<-1>:literal text appended to the file:EDIT
 ```
 
-- READ views line N.
-- FIND retrieves results N through M, inclusive.
+- READ views line 5.
+- FIND retrieves results 10 through 20, inclusive.
 - EDIT appends a new line.
 
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
