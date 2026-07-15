@@ -25,7 +25,7 @@ Engine, language, and time-range selection ride the query string via SearXNG's n
 
 ## Configuration (environment)
 
-Every tunable is an **optional env override** — no code default hides a magic number (suggested values live in the consuming service's `.env.example`).
+Every tunable is an **optional env override** — no code default hides a magic number (suggested values ship in this package's `.env.defaults`).
 
 | Var | Required | Behavior if unset |
 |---|---|---|
@@ -35,16 +35,17 @@ Every tunable is an **optional env override** — no code default hides a magic 
 | `PLURNK_EXECS_SEARCH_TIMEOUT` | no | the consumer's signal is the deadline (SPEC §2.5); this is an extra ceiling (ms) |
 | `PLURNK_EXECS_SEARCH_SAFESEARCH` | no | instance default — `0` / `1` / `2` |
 | `PLURNK_EXECS_SEARCH_SNIPPET` | no | snippet unbounded (else max chars per result snippet) |
-| `PLURNK_EXECS_SEARCH_RAW` | no | digest mode; truthy → verbatim SearXNG payload, page pass skipped (debug) |
-| `PLURNK_EXECS_SEARCH_PAGE_TIMEOUT` | no | exec signal is the deadline (else an extra per-page ceiling, ms) |
-| `PLURNK_EXECS_SEARCH_REDIRECTS` | no | 3xx pruned (else max hops per page, each hop re-guarded) |
+| `PLURNK_EXECS_SEARCH_RAW` | no | digest mode; truthy → verbatim SearXNG payload, prefetch skipped (debug) |
 
-## The one-load flow (plurnk-execs#18)
+The page-fetch knobs (per-page timeout, redirect hops) moved to the consumer with the fetch — the executor no longer fetches result pages (SPEC §2.6, ruling #5); schemes-http owns the prefetch and its `PLURNK_SCHEMES_HTTP_*` knobs.
 
-Every candidate page is fetched **exactly once** (parallel, deduped by url):
+## The dead-row prefetch (plurnk-execs#18, SPEC §2.6)
 
-- **Pruned, silently:** guard-refused targets (private/loopback/metadata/localhost — search results are attacker-influencable URLs, so every target and every redirect hop passes a public-address check), unreachable hosts, non-2xx, non-textual mimetypes, empty bodies. *Listed = loaded.*
-- **Materialized:** each survivor becomes an `https://` entry via the consumer's `ExecArgs.entry()` sink, tagged with the slugified query (`pie_recipes`) — the consumer's ambience announces it as a folded row carrying path + tokens. Without the sink (older consumers) the flow degrades gracefully: prune + digest, no materialization.
+The executor emits the digest but **never fetches** (ruling #5). It hands each unique candidate url to the consumer's `ExecArgs.entry()` sink as a **prefetch request** — `entry(url, null, { tags: [slug] })`, content consumer-sourced — and the consumer (schemes-http) fetches, renders, and materializes the `https://` entry behind its own SSRF/redirect guards (schemes-http's guarded fetch, #456):
+
+- **Survivor:** `entry()` resolves — the row rides the digest; its body lives in the materialized entry (a folded row carrying path + tokens).
+- **Pruned:** `entry()` rejects (unreachable / guard-refused / empty) — the row is dropped. *Listed = fetchable.* Zero dead rows by construction.
+- **No sink:** older consumers degrade gracefully — every candidate rides the digest, unpruned.
 
 ## Output
 

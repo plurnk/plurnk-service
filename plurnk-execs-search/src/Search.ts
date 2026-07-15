@@ -1,6 +1,5 @@
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
-import Pages from "./Pages.ts";
 
 // Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
 // claims (package.json `plurnk.runtimes[]`) maps 1:1 onto SearXNG's category
@@ -22,6 +21,10 @@ const CATEGORY: Readonly<Record<string, string>> = Object.freeze({
 });
 
 const preview = (q: string): string => (q.length > 60 ? `${q.slice(0, 60)}…` : q);
+
+// Deterministic query slug — the tag tying a search's prefetched entries
+// together. Full slugified query, no locally-invented length cap.
+const slugify = (query: string): string => query.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 
 // The configured SearXNG base URL, or null if unusable — trimmed and validated,
 // NOT merely truthy: a blank/whitespace/malformed value (an env floor easily
@@ -55,18 +58,18 @@ interface SearxngResult {
 //   PLURNK_EXECS_SEARCH_SAFESEARCH    (optional)  0|1|2
 //   PLURNK_EXECS_SEARCH_SNIPPET       (optional)  max chars per result snippet; unbounded if unset
 //   PLURNK_EXECS_SEARCH_RAW           (optional)  truthy → emit the verbatim SearXNG payload (debug;
-//                                                 skips the page pass entirely)
-//   PLURNK_EXECS_SEARCH_PAGE_TIMEOUT  (optional)  ms per candidate page (Pages.ts)
-//   PLURNK_EXECS_SEARCH_REDIRECTS     (optional)  redirect hops per page, re-guarded (Pages.ts)
-// No code defaults hide a magic number — suggested values live in the consuming
-// service's .env.example.
+//                                                 skips the prefetch pass entirely)
+// No code default hides a magic number; suggested values ship in this package's
+// .env.defaults. The page-fetch knobs (timeout, redirects) moved to the consumer
+// with the fetch — the executor no longer fetches (SPEC §2.6, ruling #5).
 //
-// The one-load flow (plurnk-execs#18): every candidate page is fetched exactly
-// once; 404/timeout/empty/guard-refused candidates are pruned; survivors are
-// materialized as slug-tagged https:// entries via the consumer's entry() sink
-// (folded ambient rows announce them with tokens); the digest lists survivors
-// ONLY — zero dead rows by construction. The digest rides OPEN as chooser
-// context; page bodies live in the entries, never the packet.
+// The dead-row prefetch (plurnk-execs#18, SPEC §2.6): the executor emits the
+// digest but NEVER fetches — it hands each candidate url to the consumer's
+// entry() as a prefetch request (content consumer-sourced). The consumer
+// fetches/renders/materializes the https:// entry; its reject IS the liveness
+// verdict, and the executor prunes that digest row. Survivors ONLY — zero dead
+// rows. The digest rides OPEN as chooser context; page bodies live in the
+// entries (schemes-http owns the fetch/render — its guarded Browser fetch), never the packet.
 export default class Search extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
@@ -159,24 +162,34 @@ export default class Search extends BaseExecutor {
         const data = await response.json() as { results?: SearxngResult[] };
         const capped = (data.results ?? []).slice(0, limitRaw ? Number(limitRaw) : undefined);
 
-        // Debug escape hatch: the verbatim SearXNG payload, no page pass.
+        // Debug escape hatch: the verbatim SearXNG payload, no prefetch pass.
         if (process.env.PLURNK_EXECS_SEARCH_RAW) {
             write("results", JSON.stringify(capped));
             setState("results", "closed");
             return { status: 200 };
         }
 
-        // One-load page pass (#18): fetch every candidate once (parallel,
-        // deduped by url), prune the dead, materialize survivors as slug-tagged
-        // entries. The digest below lists survivors only — zero dead rows.
-        const slug = Pages.slugify(query);
+        // Dead-row prefetch (#18, SPEC §2.6, ruling #5): hand each candidate url
+        // to the consumer's entry() as a prefetch request (content null ⇒
+        // consumer-sourced) and prune on the reject verdict. The executor never
+        // fetches. Deduped by url; without the sink no verdict exists, so every
+        // candidate rides (graceful degradation). Survivors only — zero dead rows.
+        const slug = slugify(query);
         const unique = [...new Map(capped.filter((r) => r.url).map((r) => [r.url!, r])).values()];
-        const outcomes = await Promise.all(unique.map((r) => Pages.load(r.url!, { signal, entry, slug })));
+        const verdicts = await Promise.all(unique.map(async (r) => {
+            if (!entry) return true;
+            try {
+                await entry(r.url!, null, { tags: [slug] });
+                return true;
+            } catch {
+                return false; // reject = dead row, pruned
+            }
+        }));
         if (signal.aborted) {
             setState("results", "errored");
             return { status: 499 };
         }
-        const survivors = unique.filter((_, i) => outcomes[i]);
+        const survivors = unique.filter((_, i) => verdicts[i]);
 
         // Emit a model-consumable digest, not the raw upstream payload (#17): a
         // raw SearXNG result is ~10–20× its information content, and a wake that

@@ -2,39 +2,29 @@ import test, { beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import Search from "./Search.ts";
-import Pages from "./Pages.ts";
 import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
 
 const origFetch = globalThis.fetch;
 const origUrl = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
 
 // Replace global fetch with a stub. The stub is typed loosely (it only needs to
-// satisfy the subset of Response that Search/Pages read) and cast at the
-// boundary. Page urls in tests are PUBLIC IP LITERALS (8.8.8.x) so the
-// private-address guard never touches real DNS — tests stay hermetic.
+// satisfy the subset of Response that Search reads) and cast at the boundary.
+// The executor fetches ONLY the SearXNG endpoint — never candidate page urls —
+// so the stub only ever serves the single `/search` response.
 const setFetch = (impl: (url: string | URL, init?: RequestInit) => Promise<unknown>): void => {
     globalThis.fetch = impl as unknown as typeof fetch;
 };
 
-// A minimal page Response: status, content-type/location headers, text body.
-const page = (body: string, opts: { status?: number; type?: string; location?: string } = {}) => ({
-    ok: (opts.status ?? 200) >= 200 && (opts.status ?? 200) < 300,
-    status: opts.status ?? 200,
-    headers: { get: (k: string) => (k.toLowerCase() === "content-type" ? opts.type ?? "text/html" : k.toLowerCase() === "location" ? opts.location ?? null : null) },
-    text: async () => body,
-});
-
-// Route the stub: the SearXNG endpoint answers with `results`; everything else
-// is looked up in `pages` (a missing page throws like a dead host).
-const routes = (results: unknown[], pages: Record<string, ReturnType<typeof page>>) => {
+// Route the stub: the SearXNG endpoint answers with `results`. It is the ONLY
+// url the executor is permitted to fetch — any other url is a contract breach
+// (candidate pages are the consumer's job now, ruling #5), so we throw on it.
+const routes = (results: unknown[]) => {
     const fetched: string[] = [];
     setFetch(async (u) => {
         const url = String(u);
         fetched.push(url);
         if (url.includes("searxng.test")) return { ok: true, status: 200, json: async () => ({ results }) };
-        const p = pages[url];
-        if (!p) throw new Error(`unreachable ${url}`);
-        return p;
+        throw new Error(`executor fetched a non-SearXNG url: ${url}`);
     });
     return fetched;
 };
@@ -123,11 +113,11 @@ test("run: a whitespace / malformed URL fails clean (500), never constructs a ba
     assert.equal(fetched, false, "a bad base never reaches fetch (and never `new URL`s to throw)");
 });
 
-test("search: queries SearXNG, loads pages, digests survivors, closes channel, status 200", async () => {
-    const fetched = routes(
-        [{ title: "a", url: "https://8.8.8.8/a" }, { title: "b", url: "https://8.8.8.9/b" }],
-        { "https://8.8.8.8/a": page("<html>A</html>"), "https://8.8.8.9/b": page("<html>B</html>") },
-    );
+test("search: queries SearXNG, digests candidates, closes channel, status 200", async () => {
+    const fetched = routes([
+        { title: "a", url: "https://8.8.8.8/a" },
+        { title: "b", url: "https://8.8.8.9/b" },
+    ]);
     const { result, writes, states, events } = await invoke("search", "pie recipes");
 
     assert.deepEqual(result, { status: 200 });
@@ -143,161 +133,138 @@ test("search: queries SearXNG, loads pages, digests survivors, closes channel, s
     ]);
     assert.deepEqual(states, [{ channel: "results", state: "closed" }]);
     assert.equal(events.length, 0);
+    assert.deepEqual(fetched, [fetched[0]], "only the SearXNG /search url is ever fetched");
 });
 
 test("digest: emits only {title,url,snippet}, dropping SearXNG noise (#17)", async () => {
-    routes(
-        [{
-            title: "Paris", url: "https://8.8.8.8/paris", content: "The capital of France.",
-            template: "default.html", engine: "google", engines: ["google", "bing"], score: 3.2,
-            parsed_url: ["https", "ex.com", "/", ""], positions: [1, 2], category: "general",
-        }],
-        { "https://8.8.8.8/paris": page("<html>Paris</html>") },
-    );
+    routes([{
+        title: "Paris", url: "https://8.8.8.8/paris", content: "The capital of France.",
+        template: "default.html", engine: "google", engines: ["google", "bing"], score: 3.2,
+        parsed_url: ["https", "ex.com", "/", ""], positions: [1, 2], category: "general",
+    }]);
     const { writes } = await invoke("search", "capital of France");
     assert.deepEqual(JSON.parse(writes[0].chunk), [
         { title: "Paris", url: "https://8.8.8.8/paris", snippet: "The capital of France." },
     ], "template/engine/score/parsed_url/positions all dropped — a ~10-20x shrink");
 });
 
-test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and skips the page pass (#17)", async () => {
+test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and skips the prefetch pass (#17)", async () => {
     const raw = { title: "t", url: "https://8.8.8.8/t", content: "abcdefghij", engine: "x" };
-    let fetched = routes([raw], { "https://8.8.8.8/t": page("body") });
 
     process.env.PLURNK_EXECS_SEARCH_SNIPPET = "4";
+    routes([raw]);
     let cap = await invoke("search", "q");
     assert.equal(JSON.parse(cap.writes[0].chunk)[0].snippet, "abcd", "snippet bounded to 4 chars");
     delete process.env.PLURNK_EXECS_SEARCH_SNIPPET;
 
     process.env.PLURNK_EXECS_SEARCH_RAW = "1";
-    fetched = routes([raw], {});
-    cap = await invoke("search", "q");
+    const calls: string[] = [];
+    routes([raw]);
+    cap = await invoke("search", "q", { entry: async (path) => { calls.push(path); } });
     assert.deepEqual(JSON.parse(cap.writes[0].chunk), [raw], "RAW → verbatim upstream, engine field intact");
-    assert.equal(fetched.length, 1, "RAW skips the page pass — only the SearXNG fetch");
+    assert.equal(calls.length, 0, "RAW skips the prefetch pass — entry() never called");
     delete process.env.PLURNK_EXECS_SEARCH_RAW;
 });
 
-// --- the one-load page pass (#18) ----------------------------------------
+// --- the dead-row prefetch pass (#18, SPEC §2.6, ruling #5) ---------------
 
-test("entry(): survivors materialize as slug-tagged entries — url, body, tags, mimetype", async () => {
-    routes(
-        [{ title: "a", url: "https://8.8.8.8/a" }],
-        { "https://8.8.8.8/a": page("<html>A</html>", { type: "text/html; charset=utf-8" }) },
-    );
-    const calls: { path: string; content: string; opts: { tags: string[]; mimetype: string } }[] = [];
+test("entry(): the executor hands each unique candidate url to the sink as a prefetch request (url, null, [slug])", async () => {
+    routes([{ title: "a", url: "https://8.8.8.8/a" }]);
+    const calls: { path: string; content: string | null; opts: { tags: string[]; mimetype?: string } }[] = [];
     await invoke("search", "Pie Recipes!", { entry: async (path, content, opts) => { calls.push({ path, content, opts }); } });
 
-    assert.deepEqual(calls, [{
-        path: "https://8.8.8.8/a",
-        content: "<html>A</html>",
-        opts: { tags: ["pie_recipes"], mimetype: "text/html" },
-    }], "the slugified query rides as the tag; mimetype is the bare content-type");
+    assert.equal(calls.length, 1, "one prefetch request per unique candidate");
+    assert.equal(calls[0].path, "https://8.8.8.8/a", "the candidate url is the prefetch path");
+    assert.equal(calls[0].content, null, "content is null — the consumer sources it (fetch/render/materialize)");
+    assert.deepEqual(calls[0].opts.tags, ["pie_recipes"], "the slugified query rides as the sole tag");
+    assert.equal(calls[0].opts.mimetype, undefined, "no mimetype supplied — the consumer determines it");
 });
 
-test("prune: 404, empty body, non-textual mimetype, and unreachable pages never reach the digest or entry()", async () => {
-    routes(
-        [
-            { title: "ok", url: "https://8.8.8.8/ok" },
-            { title: "dead", url: "https://8.8.8.8/404" },
-            { title: "blank", url: "https://8.8.8.8/blank" },
-            { title: "binary", url: "https://8.8.8.8/pdf" },
-            { title: "gone", url: "https://8.8.8.8/unreachable" },
-        ],
-        {
-            "https://8.8.8.8/ok": page("alive"),
-            "https://8.8.8.8/404": page("nope", { status: 404 }),
-            "https://8.8.8.8/blank": page("   "),
-            "https://8.8.8.8/pdf": page("%PDF-", { type: "application/pdf" }),
-            // /unreachable absent → routes() throws (dead host)
-        },
-    );
-    const materialized: string[] = [];
-    const { writes } = await invoke("search", "q", { entry: async (path) => { materialized.push(path); } });
-
-    assert.deepEqual(JSON.parse(writes[0].chunk).map((r: { title: string }) => r.title), ["ok"], "survivors only — zero dead rows");
-    assert.deepEqual(materialized, ["https://8.8.8.8/ok"]);
-});
-
-test("prune: a rejected entry() means not-materialized — the row is pruned too", async () => {
-    routes(
-        [{ title: "a", url: "https://8.8.8.8/a" }, { title: "b", url: "https://8.8.8.9/b" }],
-        { "https://8.8.8.8/a": page("A"), "https://8.8.8.9/b": page("B") },
-    );
+test("prune: a rejected entry() prunes that row; resolving candidates survive", async () => {
+    routes([
+        { title: "a", url: "https://8.8.8.8/a" },
+        { title: "b", url: "https://8.8.8.9/b" },
+    ]);
     const { writes } = await invoke("search", "q", {
-        entry: async (path) => { if (path.includes("8.8.8.9")) throw new Error("storage refused"); },
+        entry: async (path) => { if (path.includes("8.8.8.9")) throw new Error("consumer fetch refused — dead row"); },
     });
-    assert.deepEqual(JSON.parse(writes[0].chunk).map((r: { title: string }) => r.title), ["a"]);
-});
-
-test("guard: private/loopback/metadata/localhost targets are pruned without ever being fetched (service#340)", async () => {
-    const fetched = routes(
-        [
-            { title: "meta", url: "https://169.254.169.254/latest" },
-            { title: "loop", url: "http://127.0.0.1/x" },
-            { title: "rfc1918", url: "http://10.0.0.5/x" },
-            { title: "name", url: "http://localhost/x" },
-            { title: "ok", url: "https://8.8.8.8/ok" },
-        ],
-        { "https://8.8.8.8/ok": page("alive") },
+    assert.deepEqual(
+        JSON.parse(writes[0].chunk).map((r: { title: string }) => r.title),
+        ["a"],
+        "the rejected candidate is pruned; the resolved one survives",
     );
-    const { writes } = await invoke("search", "q");
-
-    assert.deepEqual(JSON.parse(writes[0].chunk).map((r: { title: string }) => r.title), ["ok"]);
-    assert.deepEqual(fetched.filter((u) => !u.includes("searxng.test")), ["https://8.8.8.8/ok"], "guarded targets never hit fetch");
 });
 
-test("redirects: pruned by default; REDIRECTS=1 follows one re-guarded hop; a hop into private space is pruned", async () => {
-    const pages = {
-        "https://8.8.8.8/r": page("", { status: 301, location: "https://8.8.4.4/final" }),
-        "https://8.8.4.4/final": page("landed"),
-        "https://8.8.8.9/evil": page("", { status: 302, location: "http://169.254.169.254/latest" }),
+test("prune: every rejecting entry() empties the digest — survivors only, zero dead rows", async () => {
+    routes([
+        { title: "x", url: "https://8.8.8.8/x" },
+        { title: "y", url: "https://8.8.8.9/y" },
+    ]);
+    const requested: string[] = [];
+    const { writes } = await invoke("search", "q", {
+        entry: async (path) => { requested.push(path); throw new Error("all dead"); },
+    });
+    assert.deepEqual(JSON.parse(writes[0].chunk), [], "all candidates pruned when every prefetch rejects");
+    assert.deepEqual(requested.sort(), ["https://8.8.8.8/x", "https://8.8.8.9/y"], "each candidate was still handed to the sink");
+});
+
+test("dedupe: two candidates with the same url request the prefetch once and list once", async () => {
+    routes([
+        { title: "a", url: "https://8.8.8.8/a" },
+        { title: "a-again", url: "https://8.8.8.8/a" },
+    ]);
+    const requested: string[] = [];
+    const { writes } = await invoke("search", "q", { entry: async (path) => { requested.push(path); } });
+    assert.equal(JSON.parse(writes[0].chunk).length, 1, "the duplicate url lists once");
+    assert.deepEqual(requested, ["https://8.8.8.8/a"], "the duplicate url is handed to entry() exactly once");
+});
+
+test("degrade: without an entry sink every candidate rides the digest and entry is never called", async () => {
+    routes([
+        { title: "a", url: "https://8.8.8.8/a" },
+        { title: "b", url: "https://8.8.8.9/b" },
+    ]);
+    const { writes } = await invoke("search", "q");
+    assert.deepEqual(
+        JSON.parse(writes[0].chunk).map((r: { title: string }) => r.title),
+        ["a", "b"],
+        "no sink ⇒ no verdict ⇒ every candidate survives (graceful degradation)",
+    );
+});
+
+test("the executor NEVER fetches a candidate page url — only the SearXNG /search url", async () => {
+    const fetched = routes([
+        { title: "a", url: "https://8.8.8.8/a" },
+        { title: "b", url: "https://8.8.8.9/b" },
+    ]);
+    await invoke("search", "q", { entry: async () => {} });
+    assert.equal(fetched.length, 1, "exactly one fetch — the SearXNG endpoint");
+    assert.equal(new URL(fetched[0]).pathname, "/search");
+    assert.equal(fetched.filter((u) => !u.includes("searxng.test")).length, 0, "no candidate url is ever fetched");
+});
+
+test("slugify: lowercase, non-alphanumerics collapse to single underscores, trimmed", async () => {
+    const tag = async (query: string): Promise<string> => {
+        routes([{ title: "t", url: "https://8.8.8.8/t" }]);
+        let seen: string[] = [];
+        await invoke("search", query, { entry: async (_p, _c, opts) => { seen = opts.tags; } });
+        return seen[0];
     };
-    routes([{ title: "r", url: "https://8.8.8.8/r" }], pages);
-    let cap = await invoke("search", "q");
-    assert.deepEqual(JSON.parse(cap.writes[0].chunk), [], "3xx pruned when REDIRECTS unset — no invented hop count");
-
-    process.env.PLURNK_EXECS_SEARCH_REDIRECTS = "1";
-    routes([{ title: "r", url: "https://8.8.8.8/r" }, { title: "evil", url: "https://8.8.8.9/evil" }], pages);
-    cap = await invoke("search", "q");
-    delete process.env.PLURNK_EXECS_SEARCH_REDIRECTS;
-    assert.deepEqual(JSON.parse(cap.writes[0].chunk).map((r: { title: string }) => r.title), ["r"], "public hop followed, private hop pruned");
+    assert.equal(await tag("Who was the 15th President?"), "who_was_the_15th_president");
+    assert.equal(await tag("  turkeys  "), "turkeys");
+    assert.equal(await tag("c++ vs. rust!"), "c_vs_rust");
 });
 
-test("dedupe: two candidates with the same url load once and list once", async () => {
-    const fetched = routes(
-        [{ title: "a", url: "https://8.8.8.8/a" }, { title: "a-again", url: "https://8.8.8.8/a" }],
-        { "https://8.8.8.8/a": page("A") },
-    );
-    const { writes } = await invoke("search", "q");
-    assert.equal(JSON.parse(writes[0].chunk).length, 1);
-    assert.equal(fetched.filter((u) => u === "https://8.8.8.8/a").length, 1);
-});
-
-test("degrade: without an entry sink the flow still loads, prunes, and digests (consumer back-compat)", async () => {
-    routes(
-        [{ title: "a", url: "https://8.8.8.8/a" }, { title: "dead", url: "https://8.8.8.8/404" }],
-        { "https://8.8.8.8/a": page("A"), "https://8.8.8.8/404": page("x", { status: 404 }) },
-    );
-    const { writes } = await invoke("search", "q");
-    assert.deepEqual(JSON.parse(writes[0].chunk).map((r: { title: string }) => r.title), ["a"]);
-});
-
-test("slugify: lowercase, non-alphanumerics collapse to single underscores, trimmed", () => {
-    assert.equal(Pages.slugify("Who was the 15th President?"), "who_was_the_15th_president");
-    assert.equal(Pages.slugify("  turkeys  "), "turkeys");
-    assert.equal(Pages.slugify("c++ vs. rust!"), "c_vs_rust");
-});
-
-test("limit caps the candidates BEFORE the page pass — only capped pages are fetched", async () => {
+test("limit caps the candidates — only capped rows ride the digest and get a prefetch request", async () => {
     const results = Array.from({ length: 20 }, (_, i) => ({ title: `t${i}`, url: `https://8.8.8.8/p${i}` }));
-    const pages = Object.fromEntries(results.map((r) => [r.url, page("body")]));
-    const fetched = routes(results, pages);
+    routes(results);
     process.env.PLURNK_EXECS_SEARCH_LIMIT = "3";
-    const { writes } = await invoke("search", "q");
+    const requested: string[] = [];
+    const { writes } = await invoke("search", "q", { entry: async (path) => { requested.push(path); } });
     delete process.env.PLURNK_EXECS_SEARCH_LIMIT;
 
-    assert.equal(JSON.parse(writes[0].chunk).length, 3);
-    assert.equal(fetched.filter((u) => !u.includes("searxng.test")).length, 3, "17 uncapped candidates never fetched");
+    assert.equal(JSON.parse(writes[0].chunk).length, 3, "digest capped to LIMIT");
+    assert.equal(requested.length, 3, "17 uncapped candidates never get a prefetch request");
 });
 
 test("tag → categories mapping (news, social→'social media', downloadable→files, images)", async () => {
@@ -339,6 +306,17 @@ test("fetch failure → searxng_unreachable surfacing the cause code", async () 
     assert.equal(result.status, 500);
     assert.equal(events[0].kind, "searxng_unreachable");
     assert.match(String(events[0].message), /ENOTFOUND/);
+});
+
+test("timeout → searxng_timeout, errored channel, status 500", async () => {
+    setFetch(async () => { throw Object.assign(new Error("timed out"), { name: "TimeoutError" }); });
+    process.env.PLURNK_EXECS_SEARCH_TIMEOUT = "5";
+    const { result, states, events } = await invoke("search", "q");
+    delete process.env.PLURNK_EXECS_SEARCH_TIMEOUT;
+
+    assert.equal(result.status, 500);
+    assert.equal(events[0].kind, "searxng_timeout");
+    assert.equal(states.at(-1)?.state, "errored");
 });
 
 test("missing SEARXNG url → searxng_not_configured, status 500, no fetch", async () => {

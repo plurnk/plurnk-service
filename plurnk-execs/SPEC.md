@@ -39,7 +39,7 @@ interface ExecArgs {
     write: (channel: string, chunk: string, mimetype?: string) => void;  // write a chunk; optional mimetype stamps the channel's real per-call output type
     setState: (channel: string, state: ChannelState) => void;            // drive a declared channel's lifecycle
     emit: (event: TelemetryEvent) => void;                               // emit telemetry/error (§2.2)
-    entry?: (path: string, content: string, opts: { tags: string[]; mimetype: string }) => Promise<void>;  // request substrate materialization — optional sink (§2.6)
+    entry?: (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<void>;  // request materialization/prefetch — content null ⇒ consumer-sourced (§2.6)
 }
 
 interface ExecResult {
