@@ -385,12 +385,15 @@ export default class PacketBuilder {
         // stay so the model keeps its FOLD-target surface, just with no percent it can't compute.
         if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
         // #440 {§budget-mermaid} — the enriched visual Budget (default on). With a ceiling to scale
-        // against, the two budget-scaled diagrams REPLACE the tables: same per-turn/gauge numbers
-        // (weighability holds), self-scaled to pressure (calm→urgent), so never <50%-truncated.
+        // against, the treemap REPLACES the Turns table (per-turn composition) + a pie gauge; the
+        // heaviest-items list stays a table (#450). Self-scaled to pressure (calm→urgent), never <50%-truncated.
         // Set PLURNK_SERVICE_BUDGET_MERMAID=off to A/B against the tabular baseline (#440's before/after).
         if (process.env.PLURNK_SERVICE_BUDGET_MERMAID !== "off" && ceiling !== null && log.entries > 0) {
             if (lines.length > 0) lines.push("");
             lines.push(PacketBuilder.#renderBudgetMermaid(log, ceiling));
+            // #450 — the heaviest items stay a plain ranked list (a ranking isn't a composition, no
+            // treemap; two mermaid diagrams are enough visual examples) — the same table as the tabular budget.
+            lines.push(...PacketBuilder.#heaviestItemsLines(log.largest));
             return lines.join("\n");
         }
         if (log.entries > 0) {
@@ -402,16 +405,19 @@ export default class PacketBuilder {
                 lines.push("", "Turns:", "| turn | tokens |", "|---|--:|");
                 for (const t of log.byTurn) lines.push(`| ${t.turn} | ${t.tokens} |`);
             }
-            // The heaviest individual log items — the FOLD targets behind the weight
-            // (§tokenomics {§tokenomics-largest-entries}). "items", not "entries": the readout
-            // lists log:/// rows (log items), distinct from catalog entries (plurnk.md: "EDIT
-            // is only for entries. Do not attempt to edit log items.").
-            if (log.largest.length > 0) {
-                lines.push("", "Heaviest items (FOLD targets — folding reclaims their tokens):", "| item | tokens |", "|---|--:|");
-                for (const e of log.largest) lines.push(`| ${e.path} | ${e.tokens} |`);
-            }
+            lines.push(...PacketBuilder.#heaviestItemsLines(log.largest));
         }
         return lines.join("\n");
+    }
+
+    // The heaviest individual log items — the FOLD targets behind the weight, a ranked LIST in both the
+    // mermaid and tabular budgets (#450: a ranking isn't a composition, so it's never a chart). "items",
+    // not "entries": log:/// rows, distinct from catalog entries (plurnk.md: "EDIT is only for entries").
+    // {§tokenomics-largest-entries}
+    static #heaviestItemsLines(largest: Array<{ path: string; tokens: number }>): string[] {
+        if (largest.length === 0) return [];
+        return ["", "Heaviest items (FOLD targets — folding reclaims their tokens):", "| item | tokens |", "|---|--:|",
+            ...largest.map((e) => `| ${e.path} | ${e.tokens} |`)];
     }
 
     // #440 {§budget-mermaid} — the Budget as two budget-scaled mermaid diagrams (validated to render on

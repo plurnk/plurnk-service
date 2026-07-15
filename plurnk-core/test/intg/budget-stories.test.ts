@@ -367,6 +367,9 @@ test("[§budget-mermaid] toggle on: two budget-scaled mermaid diagrams, placehol
         assert.match(budget, /pie showData[\s\S]*?"used" : \d+[\s\S]*?"free" : \d+/, "used-vs-free gauge");
         // No placeholder survived — every total-dependent value resolved post-assembly.
         assert.doesNotMatch(budget, /\{\{/, "no {{…}} placeholder left in any diagram");
+        // #450 — the heaviest-items list stays a plain ranked table alongside the mermaid, not a chart.
+        assert.match(budget, /Heaviest items \(FOLD targets/, "the heaviest-items list stays a table in the mermaid budget");
+        assert.match(budget, /\| log:\/\/\/.+ \| \d+ \|/, "its rows are log:/// handles + tokens (the FOLD targets)");
     } finally {
         delete process.env.PLURNK_SERVICE_BUDGET_MERMAID;
         await db.close();
