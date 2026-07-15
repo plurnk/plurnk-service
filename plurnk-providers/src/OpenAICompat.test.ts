@@ -110,6 +110,22 @@ test("generate normalizes an out-of-set finish_reason to null", async () => {
     assert.equal(assistant.finishReason, null);
 });
 
+test("generate translates a backend cap synonym to canonical length (#425)", async () => {
+    // gemini shouts MAX_TOKENS, anthropic says max_tokens -- both must reach core as
+    // "length" so its truncation check (=== "length") is a cross-backend invariant.
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "MAX_TOKENS" }] }]);
+    const { assistant } = await p.generate({ runId: "r", messages: [] });
+    assert.equal(assistant.finishReason, "length");
+});
+
+test("generate translates end_turn to canonical stop (#425)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "end_turn" }] }]);
+    const { assistant } = await p.generate({ runId: "r", messages: [] });
+    assert.equal(assistant.finishReason, "stop");
+});
+
 test("generate aggregates reasoning deltas under multiple field names", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);

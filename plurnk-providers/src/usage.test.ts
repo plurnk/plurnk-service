@@ -63,6 +63,58 @@ test("normalizeUsage: absent usage → all zeros", () => {
     assert.deepEqual(normalizeUsage(undefined), { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
 });
 
+// -- Fireworks-style: reasoning shipped as TEXT, folded into completion, not itemized (#425) --
+
+test("normalizeUsage: fireworks folds reasoning into completion -- re-split by text proportion, sum preserved (#425)", () => {
+    // total = prompt + completion (no gap), reasoning_tokens absent, but 750 vs 250
+    // chars of reasoning vs content came back. Split completion 75/25; cost base held.
+    const u = normalizeUsage(
+        { prompt_tokens: 100, completion_tokens: 1000, total_tokens: 1100 },
+        "r".repeat(750),
+        "c".repeat(250),
+    );
+    assert.deepEqual(u, { prompt: 100, completion: 250, reasoning: 750, cached: 0, total: 1100 });
+    assert.equal(u.completion + u.reasoning, 1000); // billable output byte-identical
+    assert.equal(u.prompt + u.completion + u.reasoning, u.total); // invariant
+});
+
+test("normalizeUsage: pure-thinking turn (empty content) attributes all completion to reasoning (#425)", () => {
+    // The run52 runaway shape: 0 visible content, the whole budget spent thinking.
+    const u = normalizeUsage(
+        { prompt_tokens: 100, completion_tokens: 500, total_tokens: 600 },
+        "t".repeat(9000),
+        "",
+    );
+    assert.deepEqual(u, { prompt: 100, completion: 0, reasoning: 500, cached: 0, total: 600 });
+});
+
+test("normalizeUsage: text args never perturb the itemized (reasoning_tokens) path", () => {
+    // OpenAI o-series reports reasoning_tokens -> that split wins, text is ignored.
+    const u = normalizeUsage(
+        { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, completion_tokens_details: { reasoning_tokens: 40 } },
+        "r".repeat(999), "c".repeat(1),
+    );
+    assert.deepEqual(u, { prompt: 10, completion: 60, reasoning: 40, cached: 0, total: 110 });
+});
+
+test("normalizeUsage: text args never perturb the Gemini gap path (gap already yields reasoning)", () => {
+    // A real total gap means reasoning is itemized-by-subtraction; do not re-split.
+    const u = normalizeUsage(
+        { prompt_tokens: 19, completion_tokens: 285, total_tokens: 1165 },
+        "r".repeat(500), "c".repeat(500),
+    );
+    assert.equal(u.reasoning, 861); // from the gap, NOT a text re-split
+    assert.equal(u.completion, 285);
+});
+
+test("normalizeUsage: no total reported -> re-split skipped, reasoning stays 0 (cannot split an unknown base)", () => {
+    const u = normalizeUsage(
+        { prompt_tokens: 10, completion_tokens: 20 },
+        "r".repeat(500), "c".repeat(500),
+    );
+    assert.deepEqual(u, { prompt: 10, completion: 20, reasoning: 0, cached: 0, total: 30 });
+});
+
 // — computeCost —
 
 test("computeCost: bills reasoning at the output rate", () => {
