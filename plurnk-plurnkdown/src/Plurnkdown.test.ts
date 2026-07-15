@@ -48,7 +48,24 @@ test("a bare Plurnk op inside a prose block is flagged for fencing", () => {
     assert.equal(opFence[0].line, 2);
 });
 
-test("an op inside a plurnk fence is exempt", () => {
+test("an op inside a plurnk fence is exempt from op-fence", () => {
     const source = "```plurnk\n<<PLAN:do the thing:PLAN\n```";
-    assert.deepEqual(linter.lint(source), []);
+    assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-fence"), []);
+});
+
+test("a malformed op inside a plurnk fence is flagged by op-syntax", () => {
+    const source = "```plurnk\n<<READ(file.md)<N>::READ\n```"; // <N> — letters aren't valid scope
+    const diagnostics = linter.lint(source).filter(d => d.rule === "op-syntax");
+    assert.equal(diagnostics.length >= 1, true, JSON.stringify(diagnostics));
+    assert.equal(diagnostics[0].line, 2); // the op line inside the fence
+});
+
+test("valid ops inside a plurnk fence pass op-syntax", () => {
+    const source = "```plurnk\n<<PLAN:go:PLAN\n<<READ(file.md)<5>::READ\n```";
+    assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
+});
+
+test("a plain (non-plurnk) fence is never op-validated", () => {
+    const source = "```\n<<OPsuffix[signal]?(path)?:body?:OPsuffix\n```";
+    assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
 });

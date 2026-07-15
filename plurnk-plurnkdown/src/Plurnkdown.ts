@@ -1,11 +1,13 @@
 import { Lexer, type Token, type Tokens } from "marked";
+import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { Diagnostic } from "./types.ts";
 
 const PROSE_LIMIT = 280;
 
-// plurnkdown linter. Only free prose (top-level paragraph blocks) is measured;
-// every structural block — heading, list, table, fence, and the Gherkin/mermaid/
-// op constructs built on them — is exempt by not being prose.
+// plurnkdown linter. Free prose (top-level paragraphs) is capped by rendered length;
+// every structural block is exempt by not being prose. Ops written bare in prose are
+// flagged for fencing; ops inside a ```plurnk fence are delegated to plurnk-grammar
+// for statement-level validation.
 export default class Plurnkdown {
     lint(source: string): Diagnostic[] {
         const diagnostics: Diagnostic[] = [];
@@ -14,14 +16,16 @@ export default class Plurnkdown {
             if (token.type === "paragraph") {
                 this.#checkProse(token, line, diagnostics);
                 this.#checkBareOps(token, line, diagnostics);
+            } else if (token.type === "code" && (token as Tokens.Code).lang === "plurnk") {
+                this.#checkFencedOps((token as Tokens.Code).text, line, diagnostics);
             }
             line += this.#newlines(token.raw);
         }
         return diagnostics;
     }
 
-    // Free prose is capped by its RENDERED length — link URLs, emphasis marks, and
-    // code ticks don't count; the reader's visible characters do.
+    // Free prose is capped by RENDERED length — link URLs, emphasis marks, and code
+    // ticks don't count; the reader's visible characters do.
     #checkProse(token: Token, line: number, diagnostics: Diagnostic[]): void {
         const length = this.#visibleText((token as Tokens.Paragraph).tokens ?? []).trim().length;
         if (length <= PROSE_LIMIT) return;
@@ -34,8 +38,8 @@ export default class Plurnkdown {
         });
     }
 
-    // A Plurnk op sigil (`<<`) opening a prose line is a bare op; ops must live in
-    // a ```plurnk fence, which turns them into exempt structure.
+    // A Plurnk op sigil (`<<`) opening a prose line is a bare op; ops must live in a
+    // ```plurnk fence (validated below) or an inline-code span.
     #checkBareOps(token: Token, line: number, diagnostics: Diagnostic[]): void {
         token.raw.split("\n").forEach((text, index) => {
             if (!/^\s*<</.test(text)) return;
@@ -47,6 +51,22 @@ export default class Plurnkdown {
                 column: 1,
             });
         });
+    }
+
+    // Delegate a ```plurnk fence's ops to plurnk-grammar; surface each syntax error at
+    // its absolute line. Fence content line 1 sits one line below the opening fence.
+    #checkFencedOps(text: string, line: number, diagnostics: Diagnostic[]): void {
+        for (const item of PlurnkParser.parseStatements(text).items) {
+            if (item.kind !== "error") continue;
+            const error = (item as { error: { line: number; column: number; severity: string; message: string } }).error;
+            diagnostics.push({
+                rule: "op-syntax",
+                severity: error.severity === "warning" ? "warning" : "error",
+                message: error.message.replace(/^Plurnk \w+ error at line \d+:\d+ - /, ""),
+                line: line + error.line,
+                column: error.column,
+            });
+        }
     }
 
     #visibleText(tokens: Token[]): string {
