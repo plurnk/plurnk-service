@@ -12,6 +12,10 @@
     "engines": {
         "node": ">=26"
     },
+    "dependencies": {
+        "@plurnk/plurnk-grammar": "1.0.5",
+        "marked": "^18.0.5"
+    },
     "license": "MIT",
     "author": "@wikitopian",
     "type": "module",
