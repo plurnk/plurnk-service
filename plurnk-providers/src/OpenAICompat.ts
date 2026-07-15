@@ -117,11 +117,32 @@ const sleepWithAbort = (ms: number, signal: AbortSignal | undefined): Promise<vo
         signal?.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
     });
 
-// SPEC §2 closed set. Wire values outside it (provider-specific or absent)
-// collapse to null — the consumer treats null as "no signal".
-const FINISH_REASONS: ReadonlySet<string> = new Set(["stop", "length", "tool_calls", "content_filter"]);
-const normalizeFinishReason = (raw: string | null): FinishReason =>
-    raw !== null && FINISH_REASONS.has(raw) ? (raw as FinishReason) : null;
+// SPEC §2 closed set. The four canonical values pass through; known per-backend
+// synonyms translate INTO them (anthropic max_tokens/end_turn, gemini MAX_TOKENS/
+// SAFETY/RECITATION) so a token-cap hit canonicalizes to "length" whatever the
+// backend names it -- core's `finishReason === "length"` truncation check (#425)
+// is then an invariant by construction, not a convention each backend must
+// independently honor. A non-empty value outside both the set and the table
+// collapses to null AND warns once, so a new backend's unmapped cap string
+// surfaces instead of silently becoming "no signal" (which would make core miss
+// the truncation entirely). Case-folded: gemini shouts its reasons.
+const FINISH_SYNONYMS = new Map<string, Exclude<FinishReason, null>>([
+    ["stop", "stop"], ["length", "length"], ["tool_calls", "tool_calls"], ["content_filter", "content_filter"],
+    ["max_tokens", "length"], ["model_length", "length"], ["max_completion_tokens", "length"],
+    ["end_turn", "stop"], ["stop_sequence", "stop"], ["eos_token", "stop"],
+    ["tool_use", "tool_calls"],
+    ["safety", "content_filter"], ["recitation", "content_filter"],
+]);
+const normalizeFinishReason = (raw: string | null): FinishReason => {
+    if (raw === null || raw.length === 0) return null;
+    const hit = FINISH_SYNONYMS.get(raw.toLowerCase());
+    if (hit !== undefined) return hit;
+    emitWarningOnce(
+        `unrecognized finish_reason "${raw}"; treated as no-signal (finishReason=null). If it denotes a token-cap hit, core's length-cap detection will miss it -- add it to FINISH_SYNONYMS.`,
+        "PLURNK_FINISH_REASON_UNKNOWN",
+    );
+    return null;
+};
 
 // Shared budget→effort breakpoints (xai and google had identical copies).
 export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
@@ -561,7 +582,7 @@ export default class OpenAICompatProvider implements Provider {
             assistant: {
                 content: raw.content,
                 reasoning: raw.reasoning_content.length > 0 ? raw.reasoning_content : null,
-                usage: normalizeUsage(raw.usage),
+                usage: normalizeUsage(raw.usage, raw.reasoning_content, raw.content),
                 finishReason: normalizeFinishReason(raw.finish_reason),
                 model: raw.model ?? this.#model,
                 ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),

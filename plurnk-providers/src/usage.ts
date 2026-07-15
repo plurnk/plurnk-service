@@ -5,7 +5,10 @@
 //     completion_tokens_details.reasoning_tokens; total = prompt + completion.
 //   - Gemini-style: reasoning is OMITTED from completion_tokens and only
 //     recoverable as total - prompt - completion (no details field at all).
-// normalizeUsage collapses both into one invariant (see ProviderUsage):
+//   - Fireworks-style: reasoning ships as TEXT (reasoning_content) but is folded
+//     into completion_tokens with NO reasoning_tokens itemization -- unrecoverable
+//     from the numbers alone, so it is re-split from the emitted text lengths.
+// normalizeUsage collapses all three into one invariant (see ProviderUsage):
 //   total = prompt + completion + reasoning;  cached ⊆ prompt;
 //   completion EXCLUDES reasoning;  billable output = completion + reasoning.
 
@@ -21,7 +24,7 @@ export type RawUsage = {
     completion_tokens_details?: { reasoning_tokens?: number };
 };
 
-export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage => {
+export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText = "", contentText = ""): ProviderUsage => {
     const prompt = raw?.prompt_tokens ?? 0;
     const completionRaw = raw?.completion_tokens ?? 0;
     const reportedTotal = raw?.total_tokens ?? 0;
@@ -50,6 +53,17 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
         // reasoning. Only trust the gap when a total was actually reported.
         reasoning = reportedTotal > 0 ? Math.max(0, reportedTotal - prompt - completionRaw) : 0;
         completion = completionRaw;
+        // Fireworks folds thinking INTO completion_tokens and itemizes no
+        // reasoning_tokens, so a turn that shipped only reasoning reads reasoning=0
+        // though 300k chars of it arrived (#425). When reasoning TEXT came back but
+        // the reported totals leave no gap, re-split the reported completion by the
+        // emitted text proportions. Sum-preserving: billable output
+        // (completion+reasoning) and cost are byte-identical; only the
+        // visible/reasoning gauge is corrected (pure-thinking turn -> completion 0).
+        if (reasoning === 0 && reasoningText.length > 0 && reportedTotal > 0 && completionRaw > 0) {
+            reasoning = Math.round(completionRaw * reasoningText.length / (reasoningText.length + contentText.length));
+            completion = completionRaw - reasoning;
+        }
     }
     const total = reportedTotal > 0 ? reportedTotal : prompt + completion + reasoning;
     return { prompt, completion, reasoning, cached, total };
