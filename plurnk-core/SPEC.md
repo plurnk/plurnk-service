@@ -1353,9 +1353,9 @@ Strike accounting, cycle detection, sudden-death thresholds, and no-ops bookkeep
 
 ### §tools user.tools — the capability sheet
 
-The tools capability lines render **titleless**, directly under the `definition` (plurnk.md) section — the examples flow on from plurnk.md with no separate header — and **above** `## Plurnk Service Requirements`, so the model sees what it can *do* before the rules it must follow. Each enabled capability contributes one line via `PacketBuilder.#collectTools`; the section is omitted when nothing is enabled. {§tools-capability-sheet}
+The tools capability sheet renders **titleless**, directly under the `definition` (plurnk.md) section — the examples flow on from plurnk.md with no separate header — and **above** `## Recap`, so the model sees what it can *do* before the rules it must follow. The op examples ride a `plurnk` fence (matching the Schemes catalog, #441 — one packet, one shape for op-example sheets), assembled by `PacketBuilder.#collectTools`; a prose notice (e.g. the EXEC-disabled line) stays prose beside the fence, and the section is omitted when nothing is enabled. {§tools-capability-sheet}
 
-**Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE line — its canonical usage — via the shared `teachingLine` (identical shape to the scheme directory, §schemes); its doc is materialized at `plurnk://docs/<tag>.md` and discovered via the turn-1 `FIND(plurnk://docs/**)` foist, not linked inline (#270). A tag with no example contributes nothing; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, retiring the model's blind `<<EXEC[sh]…`.
+**Contributors: the wired executor tags.** Each available executor tag *with an example* contributes ONE bare op — its canonical usage — into the `plurnk` fence (identical shape to the scheme directory, §schemes); its doc is materialized at `plurnk://docs/<tag>.md` and discovered via the turn-1 `FIND(plurnk://docs/**)` foist, not linked inline (#270). A tag with no example contributes nothing; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's line + doc. The boot `ExecutorRegistry` probes availability per tag, retiring the model's blind `<<EXEC[sh]…`.
 
 ### §schemes user.schemes — the scheme directory
 
