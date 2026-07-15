@@ -148,8 +148,10 @@ Delegation breathes across turns:
 
 ```mermaid
 sequenceDiagram
+    participant User
     participant Run
     participant Worker as capital-checker
+    User->>Run: What is the capital of France?
     Run->>Worker: WORK — find the capital of France
     Note over Run: SEND[202] — await the worker
     Worker-->>Run: result lands in the log, waking the run
