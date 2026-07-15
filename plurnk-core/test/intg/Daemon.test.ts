@@ -366,7 +366,11 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     // The loop-control hook: the module supplies only session/run/prompt; runLoop fills in the provider
     // and the law-file system prompt (core's), fires the drain via the unified inject, and returns. The
     // outcome arrives on the event source, not a socket. `cancelDrain` (already public) is the cancel hook.
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    // A window that comfortably holds the packet: this test drives a loop to CONCLUSION and asserts
+    // 200, so the full system prompt (law/definition) + the materialized docs must fit the prompt
+    // budget. An 8192 mock window left only ~6.8k after reserves — under the packet — so the loop
+    // concluded 413, not 200 (#433/#355). This test verifies the seam path, not small-window viability.
+    const mock = new Mock({ contextSize: 1_000_000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
