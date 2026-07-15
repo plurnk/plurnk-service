@@ -385,8 +385,8 @@ export default class PacketBuilder {
         // stay so the model keeps its FOLD-target surface, just with no percent it can't compute.
         if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
         // #440 {§budget-mermaid} — the enriched visual Budget (default on). With a ceiling to scale
-        // against, the three budget-scaled diagrams REPLACE the tables: same per-turn/per-item/gauge
-        // numbers (weighability holds), self-scaled to pressure (calm→urgent), so never <50%-truncated.
+        // against, the two budget-scaled diagrams REPLACE the tables: same per-turn/gauge numbers
+        // (weighability holds), self-scaled to pressure (calm→urgent), so never <50%-truncated.
         // Set PLURNK_SERVICE_BUDGET_MERMAID=off to A/B against the tabular baseline (#440's before/after).
         if (process.env.PLURNK_SERVICE_BUDGET_MERMAID !== "off" && ceiling !== null && log.entries > 0) {
             if (lines.length > 0) lines.push("");
@@ -414,15 +414,16 @@ export default class PacketBuilder {
         return lines.join("\n");
     }
 
-    // #440 {§budget-mermaid} — the Budget as three budget-scaled mermaid diagrams (validated to render on
-    // GitHub; syntax: plurnk-plurnkdown/demo/budget-mermaid.md). ALL scaled to the CEILING, not the items,
-    // so salience tracks pressure: `free` dominates at low usage (calm), turns/bars fill as it climbs
-    // (urgent). free/used/system+context are placeholders — the post-assembly total resolves them.
+    // #440 {§budget-mermaid} — the Budget as two budget-scaled mermaid diagrams (validated to render on
+    // GitHub; syntax: plurnk-plurnkdown/demo/budget-mermaid.md). Both scaled to the CEILING, so salience
+    // tracks pressure: `free` dominates at low usage (calm), turn boxes fill as it climbs (urgent).
+    // free/used/system+context are placeholders — the post-assembly total resolves them. (#450 cut the xychart.)
     static #renderBudgetMermaid(
-        log: { byTurn: Array<{ turn: string; tokens: number }>; largest: Array<{ path: string; tokens: number }> },
+        log: { byTurn: Array<{ turn: string; tokens: number }> },
         ceiling: number,
     ): string {
-        // Turn composition → treemap: turn boxes + system+context + free compose the whole ceiling.
+        // Turn composition → treemap: turn boxes + system+context + free compose the whole ceiling —
+        // the per-turn FOLD surface (which turns are heavy, labeled `turn L/T`) the headline can't give.
         const treemap = [
             "```mermaid",
             "treemap-beta",
@@ -432,18 +433,9 @@ export default class PacketBuilder {
             ...log.byTurn.map((t) => `    "turn ${t.turn}": ${t.tokens}`),
             "```",
         ].join("\n");
-        // Heaviest items → xychart: ranked bars against the full ceiling — the space above is headroom.
-        const coord = (p: string): string => p.replace(/^log:\/\/\//, "").split("/").slice(0, 3).join("/");
-        const xychart = log.largest.length === 0 ? "" : [
-            "```mermaid",
-            "xychart-beta",
-            `    title "Heaviest items vs ${ceiling} ceiling"`,
-            `    x-axis [${log.largest.map((e) => `"${coord(e.path)}"`).join(", ")}]`,
-            `    y-axis "tokens" 0 --> ${ceiling}`,
-            `    bar [${log.largest.map((e) => e.tokens).join(", ")}]`,
-            "```",
-        ].join("\n");
-        // Gauge → pie: used vs free, inherently budget-scaled (used + free = ceiling).
+        // Gauge → pie: used vs free, budget-scaled (used + free = ceiling); also a visual exemplar for
+        // the model's own user-facing SENDs. (#450 cut the heaviest-items xychart — its bare-coordinate
+        // labels a floor model can't decode, and the treemap already surfaces per-turn heaviness.)
         const pie = [
             "```mermaid",
             "pie showData",
@@ -452,7 +444,7 @@ export default class PacketBuilder {
             `    "free" : ${TOKENS_FREE_PLACEHOLDER}`,
             "```",
         ].join("\n");
-        return [treemap, xychart, pie].filter((s) => s.length > 0).join("\n\n");
+        return [treemap, pie].join("\n\n");
     }
 
     // #328 — the per-session client execs policy narrows what the packet ADVERTISES, matching what
