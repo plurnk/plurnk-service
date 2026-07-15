@@ -67,9 +67,9 @@ const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 // pre-clean .tmp (test:clean-tmp) so only the current run's DBs remain —
 // no cross-run accumulation. A bare `node --test <file>` bypasses that, so
 // run `npm run test:clean-tmp` yourself first if you go around the script.
-export const openMigrated = async (): Promise<Db> => {
-    await mkdir(TMP_DIR, { recursive: true });
-    const dbPath = join(TMP_DIR, `db-${crypto.randomUUID()}.db`);
+export const openMigrated = async (atPath?: string): Promise<Db> => {
+    const dbPath = atPath ?? join(TMP_DIR, `db-${crypto.randomUUID()}.db`);
+    await mkdir(dirname(dbPath), { recursive: true });
     const db = (await SqlRite.open({
         path: dbPath,
         dir: [
