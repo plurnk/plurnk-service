@@ -340,3 +340,48 @@ test("budget: a window narrower than CTX governs the partition — ceiling = win
         assert.equal(ceiling, 12, "window 12 < CTX, zero reserves → promptBudget 12");
     } finally { await db.close(); }
 });
+
+test("[§budget-mermaid] toggle on: three budget-scaled mermaid diagrams, placeholders resolved, headline preserved, never truncated at low usage", async () => {
+    // #440 — the visual layer, measured against the tabular baseline (default off). Under a WIDE ceiling
+    // usage is <50%, where the TABLES would truncate; the diagrams must stay (calm view is the point).
+    process.env.PLURNK_SERVICE_BUDGET_MERMAID = "on";
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, WIDE);
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT, 1), ...okSends(1)] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES });        // turn 1: fat READ folds into turn 2
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES }); // turn 2: its packet carries the log weight
+        const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
+        // Headline stays (weighability), and it is NOT truncated to just the headline despite <50% usage.
+        assert.match(budget, /Token Ceiling \d+ · Token Usage \d+ \((<1|\d+)%\) · Tokens Free \d+/, "the ceiling/usage/free line stays");
+        assert.equal((budget.match(/```mermaid/g) ?? []).length, 3, "three mermaid diagrams render even under half-full (self-scaling, not truncated)");
+        // Treemap: turn boxes + system+context + free compose the ceiling; all resolved to numbers.
+        assert.match(budget, /treemap-beta/, "turn-composition treemap");
+        assert.match(budget, /"free": \d+/, "treemap free box resolved to a number");
+        assert.match(budget, /"system \+ context": \d+/, "treemap system+context box resolved (total − Σturns)");
+        assert.match(budget, /"turn 1\/1": \d+/, "a per-turn box carries its token weight");
+        // Xychart: bars against the FULL ceiling y-axis (the space above is headroom).
+        assert.match(budget, /xychart-beta[\s\S]*?y-axis "tokens" 0 --> \d+/, "heaviest-items bars scaled to the full ceiling");
+        // Pie: used vs free.
+        assert.match(budget, /pie showData[\s\S]*?"used" : \d+[\s\S]*?"free" : \d+/, "used-vs-free gauge");
+        // No placeholder survived — every total-dependent value resolved post-assembly.
+        assert.doesNotMatch(budget, /\{\{/, "no {{…}} placeholder left in any diagram");
+    } finally {
+        delete process.env.PLURNK_SERVICE_BUDGET_MERMAID;
+        await db.close();
+    }
+});
+
+test("[§budget-mermaid] toggle OFF (default): the tabular readout is unchanged — the measured baseline", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, WIDE);
+        const provider = new Mock({ contextSize: WINDOW, responses: [...fatReads(FAT, 1), ...okSends(1)] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES });
+        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES });
+        const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
+        assert.doesNotMatch(budget, /```mermaid/, "off by default — no diagrams, the tabular baseline");
+    } finally { await db.close(); }
+});

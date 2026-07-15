@@ -30,6 +30,7 @@ import ProviderInstantiate from "./ProviderInstantiate.ts";
 const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
 const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
+const SYSTEM_CTX_PLACEHOLDER = "{{systemCtx}}"; // #440 — treemap's non-turn overhead = total − Σturns, known only post-assembly
 
 // §tokenomics-window-partition — the four partition numbers. REQUIRED (fail-hard, the
 // providers-env convention): the ceiling is DERIVED from these, never set directly
@@ -269,7 +270,8 @@ export default class PacketBuilder {
         // PLURNK_BUDGET_CEILING (null when no window is reported → headline
         // omitted, section lines still shown). §tokenomics-render-weight-budget
         const ceiling = this.ceilingFor(provider);
-        const budgetReadout = this.#renderBudget(PacketWire.measureLogBudget(log, countTokens), ceiling);
+        const logBudget = PacketWire.measureLogBudget(log, countTokens);
+        const budgetReadout = this.#renderBudget(logBudget, ceiling);
         // The default packet: an ordered list of addressable sections (§packet-assembly).
         // `slot` is a TRUST boundary (and the prompt-cache boundary): system holds only
         // framework-authored, non-injectable sections — the static head (definition/tools/
@@ -335,7 +337,9 @@ export default class PacketBuilder {
                 // half-full, the headline's numbers stand alone (truncate at the first blank line) and
                 // the total RE-measures — the substituted figures must reconcile with what ships.
                 // A null ceiling can't calibrate, so the full readout stays.
-                if ((total / ceiling) * 100 < 50) {
+                // A mermaid budget (#440) self-scales to pressure, so it is never truncated — the calm
+                // low-usage view IS the point; only the tabular readout collapses under half-full.
+                if (!budgetSec.content.includes("```mermaid") && (total / ceiling) * 100 < 50) {
                     const cut = budgetSec.content.indexOf("\n\n");
                     if (cut !== -1) {
                         budgetSec.content = budgetSec.content.slice(0, cut);
@@ -344,12 +348,17 @@ export default class PacketBuilder {
                 }
                 const tokensFree = Math.max(0, ceiling - total); // free floors at 0 on overshoot — §tokenomics-over-budget-floor
                 const percent = (total / ceiling) * 100; // usage as % of the ceiling — §tokenomics-context-percent
+                const sumTurns = logBudget.byTurn.reduce((s, t) => s + t.tokens, 0); // #440 — treemap non-turn box = total − Σturns
+                const systemCtx = Math.max(0, total - sumTurns);
+                // replaceAll: a mermaid budget recurs free/used across the headline + treemap + pie, so a
+                // single .replace would leave the diagrams carrying literal {{…}} placeholders.
                 budgetSec.content = budgetSec.content
-                    .replace(TOKEN_USAGE_PLACEHOLDER, String(total))
+                    .replaceAll(TOKEN_USAGE_PLACEHOLDER, String(total))
                     // Any nonzero usage under 1% is "<1" — Math.round alone claimed "1%" from 0.51%,
                     // overstating a near-empty window.
-                    .replace(TOKEN_PERCENT_PLACEHOLDER, total > 0 && percent < 1 ? "<1" : String(Math.round(percent)))
-                    .replace(TOKENS_FREE_PLACEHOLDER, String(tokensFree));
+                    .replaceAll(TOKEN_PERCENT_PLACEHOLDER, total > 0 && percent < 1 ? "<1" : String(Math.round(percent)))
+                    .replaceAll(TOKENS_FREE_PLACEHOLDER, String(tokensFree))
+                    .replaceAll(SYSTEM_CTX_PLACEHOLDER, String(systemCtx));
             }
         }
         // Pass 2: per-section render-weight + the assembled packet total (post
@@ -375,6 +384,15 @@ export default class PacketBuilder {
         // #421 — no ceiling (unbounded window): omit the headline entirely; the section lines below
         // stay so the model keeps its FOLD-target surface, just with no percent it can't compute.
         if (ceiling !== null) lines.push(`Token Ceiling ${ceiling} · Token Usage ${TOKEN_USAGE_PLACEHOLDER} (${TOKEN_PERCENT_PLACEHOLDER}%) · Tokens Free ${TOKENS_FREE_PLACEHOLDER}`);
+        // #440 {§budget-mermaid} — the visual layer, toggled for measurement. When on with a ceiling to
+        // scale against, the three budget-scaled diagrams REPLACE the tables: they carry the same
+        // per-turn/per-item/gauge numbers (weighability holds), self-scale to pressure (calm→urgent), and
+        // so are never <50%-truncated. Off (default) keeps the tables — the measured baseline.
+        if (process.env.PLURNK_SERVICE_BUDGET_MERMAID === "on" && ceiling !== null && log.entries > 0) {
+            if (lines.length > 0) lines.push("");
+            lines.push(PacketBuilder.#renderBudgetMermaid(log, ceiling));
+            return lines.join("\n");
+        }
         if (log.entries > 0) {
             if (lines.length > 0) lines.push("");
             lines.push(`Log entries: ${log.entries} entries, ${log.tokens} tokens`);
@@ -394,6 +412,47 @@ export default class PacketBuilder {
             }
         }
         return lines.join("\n");
+    }
+
+    // #440 {§budget-mermaid} — the Budget as three budget-scaled mermaid diagrams (validated to render on
+    // GitHub; syntax: plurnk-plurnkdown/demo/budget-mermaid.md). ALL scaled to the CEILING, not the items,
+    // so salience tracks pressure: `free` dominates at low usage (calm), turns/bars fill as it climbs
+    // (urgent). free/used/system+context are placeholders — the post-assembly total resolves them.
+    static #renderBudgetMermaid(
+        log: { byTurn: Array<{ turn: string; tokens: number }>; largest: Array<{ path: string; tokens: number }> },
+        ceiling: number,
+    ): string {
+        // Turn composition → treemap: turn boxes + system+context + free compose the whole ceiling.
+        const treemap = [
+            "```mermaid",
+            "treemap-beta",
+            `"Budget — ceiling ${ceiling}"`,
+            `    "free": ${TOKENS_FREE_PLACEHOLDER}`,
+            `    "system + context": ${SYSTEM_CTX_PLACEHOLDER}`,
+            ...log.byTurn.map((t) => `    "turn ${t.turn}": ${t.tokens}`),
+            "```",
+        ].join("\n");
+        // Heaviest items → xychart: ranked bars against the full ceiling — the space above is headroom.
+        const coord = (p: string): string => p.replace(/^log:\/\/\//, "").split("/").slice(0, 3).join("/");
+        const xychart = log.largest.length === 0 ? "" : [
+            "```mermaid",
+            "xychart-beta",
+            `    title "Heaviest items vs ${ceiling} ceiling"`,
+            `    x-axis [${log.largest.map((e) => `"${coord(e.path)}"`).join(", ")}]`,
+            `    y-axis "tokens" 0 --> ${ceiling}`,
+            `    bar [${log.largest.map((e) => e.tokens).join(", ")}]`,
+            "```",
+        ].join("\n");
+        // Gauge → pie: used vs free, inherently budget-scaled (used + free = ceiling).
+        const pie = [
+            "```mermaid",
+            "pie showData",
+            `    title Budget — used vs free (ceiling ${ceiling})`,
+            `    "used" : ${TOKEN_USAGE_PLACEHOLDER}`,
+            `    "free" : ${TOKENS_FREE_PLACEHOLDER}`,
+            "```",
+        ].join("\n");
+        return [treemap, xychart, pie].filter((s) => s.length > 0).join("\n\n");
     }
 
     // #328 — the per-session client execs policy narrows what the packet ADVERTISES, matching what
