@@ -80,9 +80,18 @@ plurnkdown owns the shape, not the wording.
 ### Git Status — live state
 Already clean: `` branch `master` — 0 staged, 2 unstaged, 1 untracked ``. Keep; drop the prefix.
 
-### Budget — live state
-Already clean: the ceiling/usage/free line, plus the turns + heaviest-items markdown tables
-when log pressure warrants them. Keep; drop the prefix.
+### Budget — live state, visualized
+The ceiling/usage/free line, plus **dynamic mermaid** — validated to render on GitHub (demo:
+`demo/budget-mermaid.md`), all **budget-scaled** (the ceiling is the reference, not the items),
+so salience tracks pressure: calm with headroom, urgent near the ceiling.
+
+- **Turn composition → treemap** — turn boxes + `free` compose the ceiling; fills as usage climbs.
+- **Heaviest items → xychart** — ranked bars against the full ceiling; the space above is headroom.
+- **Gauge → pie** — used vs free; a visual exemplar for the model's own user-facing SENDs as much as a meter.
+
+The token numbers stay available (weighability) — the diagrams are a visual layer over the
+data, not a replacement. This is an enrichment to implement and **measure**: it costs packet
+tokens on the weak model it's meant to help, so it earns in on a behavior delta, not on looks.
 
 ### User Prompts — live input
 The incoming prompts / environment updates. Render faithful, as clean prose or a light list.
