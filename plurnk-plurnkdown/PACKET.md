@@ -21,6 +21,14 @@ The bar is **coherent plurnkdown** — fenced typed content, no bullet-colliding
 honesty intact — *not* merely *parseable markdown*, which today's packet passes by accident
 while being a dump.
 
+## Prose — atomic sentences
+
+Prose is short and single-idea. Avoid long multi-compound run-ons — a semicolon welding two
+independent clauses, or a ~200+ char sentence — because the floor model parses atomic units
+better than dense compounds. **Split, don't weld.** The linter soft-*warns* on the two shapes
+(a `>= 180`-char sentence, or a `>= 120`-char semicolon-weld); it's a heuristic for review, not
+a hard gate — a long single-clause list can be fine.
+
 ## 1. One section scheme — bare, no prefix
 
 The H1 `# Plurnk Service` owns the namespace, so sections are bare distinct nouns. Core drops

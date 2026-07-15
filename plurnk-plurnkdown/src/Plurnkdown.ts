@@ -3,6 +3,8 @@ import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { Diagnostic } from "./types.ts";
 
 const PROSE_LIMIT = 280;
+const RUNON_LIMIT = 180; // a long run-on regardless of structure
+const WELD_LIMIT = 120;  // a semicolon welding clauses in a non-trivial sentence
 
 // plurnkdown linter. Free prose (top-level paragraphs) is capped by rendered length;
 // every structural block is exempt by not being prose. Ops written bare in prose are
@@ -16,6 +18,7 @@ export default class Plurnkdown {
             if (token.type === "paragraph") {
                 this.#checkProse(token, line, diagnostics);
                 this.#checkBareOps(token, line, diagnostics);
+                this.#checkRunOns(token, line, diagnostics);
             } else if (token.type === "code" && (token as Tokens.Code).lang === "plurnk") {
                 this.#checkFencedOps((token as Tokens.Code).text, line, diagnostics);
             }
@@ -51,6 +54,31 @@ export default class Plurnkdown {
                 column: 1,
             });
         });
+    }
+
+    // Soft-warn (#453): the floor model reads short atomic sentences better than dense
+    // compounds. Flag a long run-on (>= RUNON_LIMIT) or a semicolon-welded clause pair
+    // (>= WELD_LIMIT with a `;`). A `;` is not treated as a sentence split — the weld
+    // IS the anti-pattern. Warning, not error: it's a heuristic for human review.
+    #checkRunOns(token: Token, line: number, diagnostics: Diagnostic[]): void {
+        const text = this.#visibleText((token as Tokens.Paragraph).tokens ?? []);
+        // Per line, then per sentence — a soft line break is a unit boundary in this
+        // one-idea-per-line style, so a multi-line paragraph isn't read as one run-on.
+        for (const lineText of text.split("\n")) {
+            for (const raw of lineText.split(/(?<=\.)\s+/)) {
+                const sentence = raw.trim();
+                if (sentence === "") continue;
+                const welded = sentence.length >= WELD_LIMIT && sentence.includes(";");
+                if (sentence.length < RUNON_LIMIT && !welded) continue;
+                diagnostics.push({
+                    rule: "run-on",
+                    severity: "warning",
+                    message: `Prose sentence is ${sentence.length} chars${welded ? " and semicolon-welded" : ""}; keep it atomic — split, don't weld.`,
+                    line,
+                    column: 1,
+                });
+            }
+        }
     }
 
     // Delegate a ```plurnk fence's ops to plurnk-grammar; surface each syntax error at
