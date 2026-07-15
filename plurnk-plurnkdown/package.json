@@ -12,6 +12,9 @@
     "engines": {
         "node": ">=26"
     },
+    "dependencies": {
+        "marked": "^18.0.5"
+    },
     "license": "MIT",
     "author": "@wikitopian",
     "type": "module",
