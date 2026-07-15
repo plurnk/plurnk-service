@@ -287,8 +287,30 @@ test("[§tokenomics-output-truncated] a finish=length turn's parse errors are le
         assert.ok(errs.length >= 2, "the truncation row AND the parse artifact both recorded");
         const first = JSON.parse(errs[0]!.rx) as { kind?: string; message?: string };
         assert.equal(first.kind, "output_truncated", "the CAUSE leads");
-        assert.match(first.message ?? "", /truncation artifacts; emit fewer ops per turn/, "the remedy is the real one — not a syntax fix");
+        assert.match(first.message ?? "", /cut mid-op — the parse errors below are truncation artifacts/, "the cause is stated as FACT — the tail parse errors are artifacts, no remedy menu");
         assert.match(errs.map((e) => e.rx).join(" "), /never closed/, "the parse artifacts stay — the record never hides");
+    } finally { await db.close(); }
+});
+
+test("[§tokenomics-output-truncated] a finish=length turn that emitted NOTHING — reasoning ran away — is led by the empty-emission cause, not a syntax lie (run52)", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        const engine = engineAt(db, WIDE);
+        // The runaway-reasoning shape (run52 T33/T71): the whole decode pool went to thinking, content
+        // EMPTY, guillotined at the cap. The parser sees empty content → "must begin with PLAN" — a red
+        // herring the model must NOT read as a structure mistake; the 413 leads and frames it.
+        const provider = new Mock({ contextSize: 100000, responses: [{
+            assistant: { content: "", reasoning: "ran away thinking for the whole pool", finishReason: "length", usage: { prompt: 10, completion: 65536, reasoning: 0, cached: 0, total: 65546 } },
+        } as never] });
+        await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        assert.ok(errs.length >= 2, "the truncation row AND the empty-emission parse artifact both recorded — the record never hides");
+        const first = JSON.parse(errs[0]!.rx) as { kind?: string; message?: string };
+        assert.equal(first.kind, "output_truncated", "the CAUSE leads");
+        assert.match(first.message ?? "", /nothing was emitted before the pool was consumed/, "the empty-emission cause is stated — the model emitted zero ops, so 'emit fewer' would be a lie");
+        assert.doesNotMatch(first.message ?? "", /cut mid-op|emit fewer ops/, "no mid-op framing — there was no emission to cut");
+        assert.match(errs.map((e) => e.rx).join(" "), /a turn must begin with/, "the red-herring parse artifact stays — the record never hides; the 413 reframes it, never suppresses it");
     } finally { await db.close(); }
 });
 
