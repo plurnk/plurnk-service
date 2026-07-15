@@ -9,9 +9,10 @@
 // asserts); liveLoop is the single loop-driver (always server-YOLO, the live/demo
 // stance). Everything funnels through these two so the tier has exactly one path.
 
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { rmSync, readdirSync } from "node:fs";
+import { tmpdir, homedir } from "node:os";
+import { join, resolve } from "node:path";
 import type SeamSocket from "./intg/_seam.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import type { Provider } from "@plurnk/plurnk-providers";
@@ -25,8 +26,45 @@ export interface LiveSession {
     db: Db;
     ws: SeamSocket;
     sessionId: number;
+    runDir: string;
     cleanup: () => Promise<void>;
 }
+
+// §archaeology (#410) — a failed live/demo run must PRESERVE itself, not depend on a human racing
+// the next `.tmp` pre-clean. So a run's db is BORN in `benchmarks/run<N>-<lane>/` and KEPT by
+// default: a missed cleanup leaves harmless clutter, never a lost specimen — the inverse of
+// copy-on-failure, where a missed hook loses the run forever. Passing runs are swept at worker exit
+// (best-effort, safe); failures stay, greppable by session name (the `session` file inside).
+const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(homedir(), "repo/plurnk/benchmarks");
+const LANE = process.env.PLURNK_LANE ?? "core";
+const createdRuns: string[] = [];
+
+// Atomic claim: mkdir fails if the dir exists, so a concurrent worker (or a sibling lane) can never
+// take the same run number — the run46 meta/bench collision the issue names. Numbers are sparse by
+// design (owner ruling): passing runs are swept, so a run number is a findable id, not a count.
+const claimRunDir = async (session: string): Promise<string> => {
+    await mkdir(BENCHMARKS, { recursive: true });
+    let n = 1;
+    for (const e of readdirSync(BENCHMARKS)) { const m = /^run(\d+)-/.exec(e); if (m) n = Math.max(n, Number(m[1]) + 1); }
+    for (;;) {
+        const dir = join(BENCHMARKS, `run${n}-${LANE}`);
+        try { await mkdir(dir); await writeFile(join(dir, "session"), `${session}\n`); return dir; }
+        catch (e) { if ((e as { code?: string }).code !== "EEXIST") throw e; n++; }
+    }
+};
+
+// Delete-on-pass, best-effort: node:test sets process.exitCode truthy iff a test in THIS file
+// failed. All-passed → the file's runs were noise, sweep them; any failure → KEEP every run this
+// worker created (coarse but SAFE — the point is never to lose a failure; a spare passing run is fine).
+let _sweepArmed = false;
+const armSweep = (): void => {
+    if (_sweepArmed) return;
+    _sweepArmed = true;
+    process.on("exit", () => {
+        if (process.exitCode) return; // a failure occurred — preserve every run this file created
+        for (const dir of createdRuns) { try { rmSync(dir, { recursive: true, force: true }); } catch { /* leave it — clutter beats loss */ } }
+    });
+};
 
 // Resolve the active env provider the launcher way (PLURNK_MODEL →
 // loadActiveProvider). Live/demo runners set the model via .env, so an
@@ -46,7 +84,12 @@ export const liveProvider = async (): Promise<Provider> => {
 // callers drive loop.run from id 2. This owns only the boot + open-db lifecycle.
 export const liveSession = async (opts: { name: string; projectRoot?: string }): Promise<LiveSession> => {
     const provider = await liveProvider();
-    const db = await openMigrated();
+    armSweep();
+    // §archaeology (#410) — born in benchmarks/, kept by default; the exit sweep reclaims it only if
+    // the file passed. So a failure is preserved with zero capture logic — no racing, no copy.
+    const runDir = await claimRunDir(opts.name);
+    const db = await openMigrated(join(runDir, "plurnk.db"));
+    createdRuns.push(runDir);
     const daemon = new Daemon({ db, provider });
     await daemon.start(); // listenerless — the harness rides the seam (#364)
     const ws = await connect({ daemon });
@@ -61,8 +104,10 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
         name: opts.name, projectRoot,
     })).result as { id: number };
     return {
-        db, ws, sessionId: created.id,
+        db, ws, sessionId: created.id, runDir,
         cleanup: async () => {
+            // The run dir is intentionally LEFT on disk (§archaeology preserve-default); the exit
+            // sweep removes it iff this file's tests all passed. Only the ephemeral sandbox is torn down.
             ws.close(); await daemon.stop(); await db.close();
             if (ownsSandbox) await rm(projectRoot, { recursive: true, force: true });
         },
