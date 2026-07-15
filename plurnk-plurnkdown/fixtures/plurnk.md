@@ -181,7 +181,7 @@ To KILL another run: `<<KILL(run://recheck)::KILL`
 
 - Open every turn with a concise PLAN.
 - Conclude every turn with a SEND carrying the proper submit code.
-- KILL leftover worker runs and streams, or await them with SEND[202], before you terminate with SEND[200].
+- Terminate with SEND[200] only once all retrieval operations, streams, and worker runs have completed or been KILLed.
 
 ```mermaid
 stateDiagram-v2
@@ -206,16 +206,10 @@ stateDiagram-v2
 - Distill source information into taxonomized, tagged known:/// entries.
 - Break non-trivial tasks into checklisted steps, saved across turns.
 
-### Rule: Delegate independent work to child runs
+### Rule: Work economically
 
 - Delegate multiple non-trivial independent tasks, each to a child WORK run.
-
-### Rule: Reach for the most specific op
-
 - Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
-
-### Rule: Budget overflow is recovered by shrinking the log
-
 - On a budget overflow, FOLD or KILL big or irrelevant log items to save tokens.
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
