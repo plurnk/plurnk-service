@@ -1,59 +1,48 @@
-# Budget as dynamic mermaid — sketches (run1 real data)
+# Budget as dynamic mermaid — budget-scaled (run1 real data)
 
-Exploration of new mermaid formats for the `Budget` section. `treemap`/`xychart` are recent
-mermaid types; whether GitHub renders them is the open question these sketches answer.
+Both scaled to the **full budget** (ceiling 44236), not relative to the items. The point:
+**salience tracks pressure** — near-empty and calm at low usage (here, 11%), filling toward
+urgent as the ceiling nears. The real test is a *high-usage* run, where the turns must fill
+the treemap and the bars must climb. This low example should read sparse — that's correct.
 
-## Heaviest items → treemap (the eviction map)
+## Turn size → treemap (budget composition)
 
-Biggest box = the thing to FOLD/KILL. Aimed at the budget-overflow recovery rail.
-
-```mermaid
-treemap-beta
-"Heaviest log items — tokens"
-    "READ 1/1/5": 731
-    "PLAN 1/7/1": 145
-    "PLAN 1/6/1": 112
-    "PLAN 1/5/1": 106
-    "PLAN 1/2/1": 66
-    "EXEC 1/6/2": 61
-    "SEND 1/6/3": 52
-    "PLAN 1/4/1": 52
-    "PLAN 1/3/1": 48
-    "PLAN 1/1/4": 47
-```
-
-### Richer variant — grouped by op (two levels of insight)
+Turn boxes + `free` = the whole ceiling. At 11% usage, `free` dominates by design.
 
 ```mermaid
 treemap-beta
-"Budget by op"
-    "READ"
-        "1/1/5": 731
-    "PLAN"
-        "1/7/1": 145
-        "1/6/1": 112
-        "1/5/1": 106
-        "1/2/1": 66
-        "1/4/1": 52
-        "1/3/1": 48
-        "1/1/4": 47
-    "EXEC"
-        "1/6/2": 61
-    "SEND"
-        "1/6/3": 52
+"Budget — ceiling 44236"
+    "free": 39553
+    "system + context": 2756
+    "turn 1/1": 898
+    "turn 1/2": 145
+    "turn 1/3": 154
+    "turn 1/4": 116
+    "turn 1/5": 174
+    "turn 1/6": 225
+    "turn 1/7": 215
 ```
 
-## Per-turn spend → xychart (velocity / spikes)
+## Top-ten items → xychart (bars against the full ceiling)
+
+The empty space above the bars **is** the headroom.
 
 ```mermaid
 xychart-beta
-    title "Tokens per turn"
-    x-axis [t1, t2, t3, t4, t5, t6, t7]
-    y-axis "tokens" 0 --> 900
-    bar [898, 145, 154, 116, 174, 225, 215]
+    title "Heaviest items vs 44236 ceiling"
+    x-axis ["1/1/5", "1/7/1", "1/6/1", "1/5/1", "1/2/1", "1/6/2", "1/6/3", "1/4/1", "1/3/1", "1/1/4"]
+    y-axis "tokens" 0 --> 44236
+    bar [731, 145, 112, 106, 66, 61, 52, 52, 48, 47]
 ```
 
-## The gauge — deliberately NOT a diagram
+## Gauge → pie (used vs free)
 
-`Token Ceiling 97280 · Token Usage 33109 (34%) · Tokens Free 64171` — a line wins. A pie of
-used/free is decoration for a value already clear as a percentage.
+Inherently budget-scaled — used + free = the whole ceiling. As much a training exemplar for
+the model's own user-facing SENDs as it is a meter.
+
+```mermaid
+pie showData
+    title Budget — used vs free (ceiling 44236)
+    "used" : 4683
+    "free" : 39553
+```
