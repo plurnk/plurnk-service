@@ -341,7 +341,7 @@ test("budget: a window narrower than CTX governs the partition — ceiling = win
     } finally { await db.close(); }
 });
 
-test("[§budget-mermaid] toggle on: three budget-scaled mermaid diagrams, placeholders resolved, headline preserved, never truncated at low usage", async () => {
+test("[§budget-mermaid] toggle on: two budget-scaled mermaid diagrams, placeholders resolved, headline preserved, never truncated at low usage", async () => {
     // #440 — the visual layer, measured against the tabular baseline (default off). Under a WIDE ceiling
     // usage is <50%, where the TABLES would truncate; the diagrams must stay (calm view is the point).
     process.env.PLURNK_SERVICE_BUDGET_MERMAID = "on";
@@ -355,14 +355,14 @@ test("[§budget-mermaid] toggle on: three budget-scaled mermaid diagrams, placeh
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
         // Headline stays (weighability), and it is NOT truncated to just the headline despite <50% usage.
         assert.match(budget, /Token Ceiling \d+ · Token Usage \d+ \((<1|\d+)%\) · Tokens Free \d+/, "the ceiling/usage/free line stays");
-        assert.equal((budget.match(/```mermaid/g) ?? []).length, 3, "three mermaid diagrams render even under half-full (self-scaling, not truncated)");
+        assert.equal((budget.match(/```mermaid/g) ?? []).length, 2, "two mermaid diagrams render even under half-full (self-scaling, not truncated)");
+        assert.doesNotMatch(budget, /xychart/, "the heaviest-items xychart was cut (#450 — cryptic coord labels)");
         // Treemap: turn boxes + system+context + free compose the ceiling; all resolved to numbers.
         assert.match(budget, /treemap-beta/, "turn-composition treemap");
         assert.match(budget, /"free": \d+/, "treemap free box resolved to a number");
         assert.match(budget, /"system \+ context": \d+/, "treemap system+context box resolved (total − Σturns)");
         assert.match(budget, /"turn 1\/1": \d+/, "a per-turn box carries its token weight");
         // Xychart: bars against the FULL ceiling y-axis (the space above is headroom).
-        assert.match(budget, /xychart-beta[\s\S]*?y-axis "tokens" 0 --> \d+/, "heaviest-items bars scaled to the full ceiling");
         // Pie: used vs free.
         assert.match(budget, /pie showData[\s\S]*?"used" : \d+[\s\S]*?"free" : \d+/, "used-vs-free gauge");
         // No placeholder survived — every total-dependent value resolved post-assembly.
