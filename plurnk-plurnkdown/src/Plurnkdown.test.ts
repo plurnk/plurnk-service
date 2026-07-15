@@ -6,7 +6,7 @@ const linter = new Plurnkdown();
 
 test("free prose over 280 chars is flagged", () => {
     const prose = "x ".repeat(200).trim(); // 399 chars on one line → one paragraph
-    const diagnostics = linter.lint(prose);
+    const diagnostics = linter.lint(prose).filter(d => d.rule === "prose-280");
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0].rule, "prose-280");
     assert.equal(diagnostics[0].severity, "error");
@@ -14,7 +14,7 @@ test("free prose over 280 chars is flagged", () => {
 });
 
 test("free prose at exactly 280 chars passes", () => {
-    assert.deepEqual(linter.lint("a".repeat(280)), []);
+    assert.deepEqual(linter.lint("a".repeat(280)).filter(d => d.rule === "prose-280"), []);
 });
 
 test("prose length counts rendered text, not markdown syntax", () => {
@@ -35,7 +35,7 @@ test("structural blocks are exempt regardless of length", () => {
 
 test("line number tracks the offending prose block", () => {
     const source = `# Heading\n\nShort intro.\n\n${"z".repeat(300)}`;
-    const diagnostics = linter.lint(source);
+    const diagnostics = linter.lint(source).filter(d => d.rule === "prose-280");
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0].rule, "prose-280");
     assert.equal(diagnostics[0].line, 5);
@@ -68,4 +68,22 @@ test("valid ops inside a plurnk fence pass op-syntax", () => {
 test("a plain (non-plurnk) fence is never op-validated", () => {
     const source = "```\n<<OPsuffix[signal]?(path)?:body?:OPsuffix\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
+});
+
+test("a long run-on prose sentence warns (not errors)", () => {
+    const warns = linter.lint("x".repeat(190) + ".").filter(d => d.rule === "run-on");
+    assert.equal(warns.length, 1);
+    assert.equal(warns[0].severity, "warning");
+});
+
+test("a semicolon-welded clause pair warns under the run-on length", () => {
+    const welded = "a".repeat(60) + "; " + "b".repeat(60) + "."; // 123 chars, welded, < 180
+    const warns = linter.lint(welded).filter(d => d.rule === "run-on");
+    assert.equal(warns.length, 1);
+    assert.equal(warns[0].severity, "warning");
+});
+
+test("short atomic sentences do not warn", () => {
+    const source = "Open every turn with a PLAN. Conclude with a SEND. Keep it short.";
+    assert.deepEqual(linter.lint(source).filter(d => d.rule === "run-on"), []);
 });
