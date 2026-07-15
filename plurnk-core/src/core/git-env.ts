@@ -4,5 +4,17 @@
 // lane branches and deleted tracked files; a hook-launched daemon would misread project git
 // state the same way). Git resolves everything it needs from cwd; project state binds to the
 // session's project_root, never to whoever spawned us.
-export const hermeticGitEnv = (): NodeJS.ProcessEnv =>
-    Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+//
+// AND the machine's GLOBAL/SYSTEM config is severed (#428): a sandbox git op that reads
+// ~/.gitconfig picks up the user's `core.hooksPath` — the dotfiles hook symlinked from
+// ~/.git/templates/hooks — and a probe overwrote that global hook with `exit 1`, silently failing
+// every leaf repo's push for a day (a recurrence of #401's class via the global-config vector).
+// Pointing GIT_CONFIG_GLOBAL/SYSTEM at /dev/null means NO git op we spawn can read, invoke, or
+// write the machine's global hooks/config — membership is repo-scoped and machine-deterministic,
+// and a sandbox can never escape to ~/.git or ~/.gitconfig. (Our reads — ls-files/rev-parse — need
+// no user identity; `--exclude-standard` honors the repo's own .gitignore, never a global one.)
+export const hermeticGitEnv = (): NodeJS.ProcessEnv => ({
+    ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_SYSTEM: "/dev/null",
+});

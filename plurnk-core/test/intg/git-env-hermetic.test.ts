@@ -8,7 +8,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, chmod, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GitMembership from "../../src/core/git-membership.ts";
@@ -77,6 +78,49 @@ test("[§membership-git-hermetic] fixture + production git spawns ignore a hook'
         if (priorGitDir === undefined) delete process.env.GIT_DIR;
         else process.env.GIT_DIR = priorGitDir;
         await db.close();
+        await rm(base, { recursive: true, force: true });
+    }
+});
+
+test("[§membership-git-hermetic] a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it never fires or escapes (#428)", async () => {
+    const base = await mkdtemp(join(tmpdir(), "plurnk-hooksesc-"));
+    const priorGlobal = process.env.GIT_CONFIG_GLOBAL;
+    try {
+        // A HOSTILE machine global config: core.hooksPath → a hook dir whose pre-commit fires a marker.
+        // This is the #428 vector — a real global core.hooksPath (the dotfiles hook) a sandbox git read.
+        const evilHooks = join(base, "evil-hooks"); await mkdir(evilHooks);
+        const marker = join(base, "PWNED");
+        await writeFile(join(evilHooks, "pre-commit"), `#!/bin/sh\ntouch "${marker}"\n`); await chmod(join(evilHooks, "pre-commit"), 0o755);
+        const hostileGlobal = join(base, "hostile-gitconfig");
+        await writeFile(hostileGlobal, `[core]\n\thooksPath = ${evilHooks}\n`);
+        process.env.GIT_CONFIG_GLOBAL = hostileGlobal; // the machine's global config is now hostile
+
+        const commit = async (repo: string, env: NodeJS.ProcessEnv): Promise<void> => {
+            await mkdir(repo, { recursive: true });
+            const g = (args: string[]) => execFileP("git", args, { cwd: repo, env });
+            await g(["init", "-q"]); await g(["config", "user.email", "t@t"]); await g(["config", "user.name", "t"]);
+            await writeFile(join(repo, "f.md"), "x"); await g(["add", "f.md"]);
+            await g(["commit", "-q", "-m", "c"]); // NO --no-verify, NO -c hooksPath — a global hook WOULD fire if read
+        };
+
+        // CONTROL: a GIT_*-scrubbed env + the hostile global DOES fire the hook — proves the vector is
+        // real, not a tautology. The scrub is essential and self-referential: raw process.env would
+        // inherit a pre-push hook's absolute GIT_DIR (this test runs inside the drill) and the control
+        // commit would ESCAPE into the worktree — the very #401/#428 class under test. Scrubbing GIT_*
+        // (what hermeticGitEnv also does) confines the commit to its own repo while the hostile
+        // GIT_CONFIG_GLOBAL still routes the hook.
+        const scrubbedGit = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+        await commit(join(base, "raw"), { ...scrubbedGit, GIT_CONFIG_GLOBAL: hostileGlobal });
+        assert.ok(existsSync(marker), "control: under the hostile global config, the hook fires");
+
+        // THE FIX: the same commit under hermeticGitEnv (GIT_CONFIG_GLOBAL → /dev/null) does NOT read it.
+        const marker2 = join(base, "PWNED2");
+        await writeFile(join(evilHooks, "pre-commit"), `#!/bin/sh\ntouch "${marker2}"\n`); await chmod(join(evilHooks, "pre-commit"), 0o755);
+        await commit(join(base, "hermetic"), hermeticGitEnv());
+        assert.ok(!existsSync(marker2), "hermeticGitEnv severed the global config — the hostile hooksPath never fired");
+    } finally {
+        if (priorGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+        else process.env.GIT_CONFIG_GLOBAL = priorGlobal;
         await rm(base, { recursive: true, force: true });
     }
 });
