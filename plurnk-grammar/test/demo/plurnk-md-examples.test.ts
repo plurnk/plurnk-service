@@ -139,3 +139,24 @@ test("every ```jsonplurnk fenced block in plurnk.md strips to valid JSON", () =>
         assert.ok(Array.isArray(parsed), "a jsonplurnk block must strip to a JSON array");
     }
 });
+
+// The atomic-sentence standard (#453, PACKET.md §Prose): canon prose stays short and
+// single-idea. A run-on is a sentence >=180 chars, or >=120 chars welded with a `;`. Gate it
+// here so the next weld is caught at the source, before it ships - not after, in a sibling's
+// linter against a stale copy. The canonical rule lives in PACKET.md; this mirrors its shape.
+test("plurnk.md prose has no run-on sentences (#453 — split, don't weld)", () => {
+    let inFence = false;
+    const prose: string[] = [];
+    for (const line of plurnkMd.split("\n")) {
+        if (line.startsWith("```")) { inFence = !inFence; continue; }
+        if (inFence || /^\s*\|/.test(line) || /^#{1,6}\s/.test(line) || line.trim() === "") continue;
+        prose.push(line.replace(/^\s*[-*]\s+/, ""));
+    }
+    const runons: string[] = [];
+    for (const line of prose) {
+        for (const s of line.split(/(?<=\.)\s+/).map((x) => x.trim()).filter(Boolean)) {
+            if (s.length >= 180 || (s.length >= 120 && s.includes(";"))) runons.push(`[${s.length}c] ${s}`);
+        }
+    }
+    assert.equal(runons.length, 0, `run-on sentences in plurnk.md prose:\n${runons.join("\n")}`);
+});
