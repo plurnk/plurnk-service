@@ -1,6 +1,7 @@
 #!/bin/sh
-# The gate: branch policy, then the drill (lint+unit full; intg scoped to the
-# changed workspaces, full on a root-level change). Never GitHub CI (AGENTS §one-gate).
+# The gate: branch-name policy on EVERY push; the drill (lint+unit full; intg
+# scoped to the changed workspaces, full on a root-level change) on pushes to MAIN
+# ONLY — main is what ships and what every lane builds on. Never GitHub CI (AGENTS §one-gate).
 # Branches are main or type/kebab-slug; tags pass. Deletions are exempt from both
 # the name policy and the drill — a deletion pushes no code to gate and removes a
 # ref rather than naming one (so a mis-named branch can always be deleted).
@@ -8,13 +9,15 @@ zero=0000000000000000000000000000000000000000
 any_update=0
 ref_count=0
 gate_base=
+gates_main=0
 while read -r _local_ref local_sha remote_ref remote_sha; do
     [ "$local_sha" = "$zero" ] && continue
     any_update=1
     ref_count=$((ref_count + 1))
     [ "$remote_sha" != "$zero" ] && gate_base="$remote_sha"
     case "$remote_ref" in
-        refs/heads/main|refs/tags/*) : ;;
+        refs/heads/main) gates_main=1 ;;
+        refs/tags/*) : ;;
         refs/heads/*)
             branch="${remote_ref#refs/heads/}"
             if ! printf '%s' "$branch" | grep -qE '^(feat|fix|docs|refactor|perf|test|build|chore)/[a-z0-9._-]+$'; then
@@ -25,6 +28,12 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
     esac
 done
 [ "$any_update" = 0 ] && exit 0
+
+# The drill gates MAIN only. A push that touches no main ref (feature/preview/WIP,
+# already name-policed above) pushes free — its red can't reach main, because main
+# is only ever updated by a push to main, which IS gated. Healthy branch workflows
+# unblocked; main's protection unchanged.
+[ "$gates_main" = 1 ] || exit 0
 
 # Worktree isolation at the push boundary: hand drill the remote base sha so intg
 # scopes to the changed workspaces. Single-ref, non-new pushes only — a multi-ref
