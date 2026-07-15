@@ -59,13 +59,13 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 - **PLAN** — required at the beginning of a turn.
 - **FIND** — returns a JSON array of matches; each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
 - **READ** — returns lines of matching content; every line is prefixed with its line number then a hard tab.
-- **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<line,line>` with literal body content (never patterns); without `<scope>` it replaces the entire entry, or creates it if absent.
+- **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<line,line>` with literal body content, never patterns. Without `<scope>`, it replaces the whole entry, or creates it if absent.
 - **EDIT nesting** — add a single-digit (or label) suffix when nesting ops, as in `EDIT1 … :EDIT:EDIT1`.
 - **OPEN** — expands (`+`) the log item body to view it (costs tokens); not all log items have a body (`*`).
 - **FOLD** — hides (`-`) the log item body (saves tokens); a FOLDed item's `tokens=""` shows its cost if OPENed.
 - **EXEC** — produces output stream channels on the next turn that you can then FIND, READ, or KILL.
 - **KILL** — deletes files and entries, erases log items, and kills streams.
-- **SEND** — submits the turn: `[102]` continue with more ops, `[202]` wait on live workers, streams, and results, `[200]` terminate a completed run only after all ops, streams, and runs have returned.
+- **SEND** — submits the turn: `[102]` continue, `[202]` wait for workers, streams, and retrievals, `[200]` terminate once all have returned.
 
 ### Pattern Filtering (FIND, READ, OPEN, FOLD)
 
@@ -88,7 +88,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 ### `(path)`
 
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
-* A `run://` path names a run (WORK to spawn a fresh worker, READ to collect its result, FORK to branch the current run, KILL to stop); a path beneath it, like `run://checker/notes.md`, is an entry in its workspace.
+* A `run://` path names a run: WORK spawns a fresh worker, READ collects its result, FORK branches the current run, KILL stops it. A path beneath it, like `run://checker/notes.md`, is an entry in its workspace.
 * Log item paths are nested (`log:///1/2/3` is loop/turn/item) and accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
@@ -134,7 +134,7 @@ On structured files, entries, and items, `<scope>` addresses result index, not l
 - FIND retrieves results with a semantic score of 0.7 or greater.
 - READ retrieves the 10th-20th results with a semantic score of 0.5 or greater.
 
-A leading decimal is a `~`-similarity threshold (results scoring at least that value); following integers are positions, threshold first then range.
+A leading decimal is a `~`-similarity threshold — results scoring at least that value. Following integers are positions, threshold first then range.
 
 ### `:body:`
 
@@ -199,8 +199,9 @@ To KILL another run: `<<KILL(run://recheck)::KILL`
 ### Rule: A turn is a PLAN, then ops, then a SEND
 
 - Open every turn with a concise PLAN.
-- Conclude every turn with a SEND carrying the proper submit code.
-- Terminate with SEND[200] only once all retrieval operations, streams, and worker runs have completed or been KILLed.
+- Close every turn with a SEND.
+- Use SEND[102] or SEND[202] while any retrieval operation, stream, or worker run is still pending.
+- Use SEND[200] only once they have all completed or been KILLed.
 
 ```mermaid
 stateDiagram-v2
