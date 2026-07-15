@@ -9,7 +9,7 @@ Plurnk Service Features:
 * Knowledgebase: Use taxonomical trees and folksonomic tags to distill piles of data into known:/// information.
 * Extended Context: Agents FOLD, OPEN, and KILL their own Active Context log for lossless, limitless memory management.
 
-## Plurnk Service Grammar
+## Grammar
 
 YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|WORK|FORK|KILL|SEND).
 
