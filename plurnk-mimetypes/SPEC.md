@@ -39,7 +39,7 @@ interface Handler {
 }
 ```
 
-**Authority split (v0.15.0).** The handler is the sole authority on each channel's material; the framework owns channel selection (§5), routing, the default deep-xml projection, and the references query-file engine (§16). There is no token budget anywhere in the framework — budgeting, rendering, and tokenization are consumer concerns. (The pre-0.15 preview/fitting layer was removed when its only consumer, plurnk-service's index, was torn down.)
+**Authority split.** The handler is the sole authority on each channel's material; the framework owns channel selection (§5), routing, the default deep-xml projection, and the references query-file engine (§16). There is no token budget anywhere in the framework — budgeting, rendering, and tokenization are consumer concerns.
 
 **Content shape.** Text mimetypes receive `string` (utf-8 decoded). Binary mimetypes (PDF, images, archives) receive `Uint8Array`. Handlers signal which they expect via `plurnk.binary: true` at the top of the package's `plurnk` block — applies to all handler entries in the package. The framework reads files (or routes inline content) to the appropriate shape per handler.
 
@@ -157,7 +157,7 @@ type SymbolKind =
     | "variable" | "constant" | "heading";
 ```
 
-### Container (issue #18, framework v0.15)
+### Container (issue #18)
 
 `container` is the dot-joined path of the enclosing *emitted* named symbols: `parse` inside class `Parser` carries `container: "Parser"`; a method on a nested class carries `"Outer.Inner"`. Absent (not empty-string) for top-level symbols. Rules:
 
@@ -208,15 +208,15 @@ class Parser [5-47]
 function topLevel(a, b) [50-60]
 ```
 
-## 5. Channel selection (framework v0.15.0, issue #17)
+## 5. Channel selection (issue #17)
 
-`Mimetypes.process(input, { channels? })` materializes exactly the requested structural channels:
+`Mimetypes.process(input, { channels? })` materializes exactly the requested channels:
 
 ```ts
-type Channel = "symbols" | "deepJson" | "deepXml" | "references";
+type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
 ```
 
-- **Default: all four.** `process()` remains the universal projection surface (#11); callers that want less say less.
+- **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` (§18) is cheap pure-JS and ships by default; `embedding` (§17) is model inference and is **opt-in only** — never in the default set. `process()` remains the universal projection surface (#11); callers that want less say less.
 - **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
 - **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`, `extent`), no parse paid. This is the cheap stat call (plurnk-service's manifest uses it for line counts).
 - The default deep-xml projection consumes the deep-json value; when `deepXml` alone is requested the framework computes deep-json internally without exposing it.
@@ -233,7 +233,7 @@ When `validate` throws inside `Mimetypes.process`, the error propagates to the c
 
 ## 7. Error policy
 
-`ProcessResult` (v0.15.0):
+`ProcessResult`:
 
 ```ts
 interface ProcessResult {
@@ -243,12 +243,17 @@ interface ProcessResult {
     totalLines: number;
     extent: number;            // §12.5
     grammarMissing?: string;   // §13.5
+    noEmbed?: string;          // §21 — matched NO_EMBED pattern (derivation-eligibility)
     telemetry?: readonly TelemetryEvent[]; // warn events for hidden degradations — §11.5
     // channels — present iff requested (§5)
     symbols?: MimeSymbol[];    // structured definitions; render via format() if needed
     deepJson?: unknown;
     deepXml?: string;
     references?: MimeRef[];    // §16
+    content?: string;          // §18 — model-facing readable projection (HTML → markdown)
+    embedding?: Uint8Array;    // §17 — Float32 bytes; opt-in
+    embeddingMissing?: string; // §17 — install hint when the embedder package is absent
+    embeddingModel?: string;   // §17 — vector identity (staleness detector)
 }
 ```
 
@@ -274,11 +279,11 @@ interface ProcessResult {
 1. `hint` — caller asserts a mimetype directly.
 2. `path` basename matches a registered filename (`Dockerfile`, `Makefile`).
 3. `ext` (explicit) or `extname(path)` matches a registered extension (case-insensitive, leading-dot enforced on lookup).
-4. `content` — magic-byte sniffing. **Future hook**; no implementation in v0.1.
+4. `content` — magic-byte sniffing. **Future hook**; not implemented (`detect.ts` returns null for this lane).
 
 Returns the resolved mimetype string or `null`.
 
-`Mimetypes.detect()` (the orchestrator method) wraps the pure `detect()` and additionally applies an optional **default fallback** from `MimetypesOptions.defaultMimetype`. When all four lanes above miss but a default is configured, the orchestrator returns the default — never `null`. plurnk-service sets `defaultMimetype: "text/markdown"` because LLM output is overwhelmingly markdown; standalone consumers omit the option to preserve strict null-on-miss behavior. The default only affects the orchestrator's resolution; downstream handler discovery still applies normally (an unknown default mimetype falls into the raw-content fallback path per §7).
+`Mimetypes.detect()` (the orchestrator method) wraps the pure `detect()` and additionally applies an optional **default fallback** from `MimetypesOptions.defaultMimetype`. When all four lanes above miss but a default is configured, the orchestrator returns the default — never `null`. plurnk-service sets `defaultMimetype: "text/markdown"` because LLM output is overwhelmingly markdown; standalone consumers omit the option to preserve strict null-on-miss behavior. The default only affects the orchestrator's resolution; downstream handler discovery still applies normally (an unknown default mimetype resolves no handler, so `process()` returns the §7 handler-missing result — `ok: false`, no channel fields).
 
 ## 9. Parser backends
 
@@ -313,7 +318,7 @@ ANTLR-backed handlers shipped at 0.1.x stay on ANTLR. The hierarchy applies forw
 For ANTLR-backed handlers (existing pattern, still supported):
 
 1. Vendor `.g4` files in `grammar/` at the handler repo root.
-2. Add the compiler to your own devDependencies (the `antlr4ng` runtime ships with the framework as a direct dependency since v0.14.0; the `antlr-ng` compiler is the framework's only optional peer):
+2. Add the compiler to your own devDependencies (the `antlr4ng` runtime ships with the framework as a direct dependency; the `antlr-ng` compiler is the framework's only optional peer):
    ```
    npm install --save-dev antlr-ng@^1.0.10
    ```
@@ -324,17 +329,15 @@ For ANTLR-backed handlers (existing pattern, still supported):
 
 Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]` — the symbols channel comes back empty rather than erroring; there is no substitution to text content.
 
-### 9.4 Async `extractRaw` contract (framework v0.8.0)
+### 9.4 Async `extractRaw` contract
 
-`BaseHandler.extractRaw(content)` returns `MimeSymbol[] | Promise<MimeSymbol[]>`. Existing synchronous handlers (all AntlrExtractor- and hand-roll-based handlers shipped at v0.1.x–v0.2.x) continue to return `MimeSymbol[]` directly — that's assignable to the union and no handler-side change is needed. New tree-sitter-based handlers return `Promise<MimeSymbol[]>` to honor WASM grammar init.
+`BaseHandler.extractRaw(content)` returns `MimeSymbol[] | Promise<MimeSymbol[]>` — synchronous handlers (AntlrExtractor, hand-rolled) return the array directly; tree-sitter handlers return a promise to honor WASM grammar init. Every consumer (`Mimetypes.process`, `symbolsRaw`, query routes) **`await`s the result unconditionally** — the union is awaitable either way.
 
-**Consumer-side breaking change:** all consumers of `extractRaw` (including `Mimetypes.process`, `symbolsRaw`, query routes) must `await` the result. The framework's internal call sites are updated in v0.8.0; external consumers of the diagnostic `extractRaw` / `symbolsRaw` surfaces need their call sites updated when they move to ≥0.8.0.
-
-### 9.5 Tree-sitter extractor (framework v0.8.0)
+### 9.5 Tree-sitter extractor
 
 For tree-sitter-backed handlers:
 
-1. The `web-tree-sitter` runtime ships with the framework as a direct dependency (since v0.14.0); no handler-side install needed.
+1. The `web-tree-sitter` runtime ships with the framework as a direct dependency; no handler-side install needed.
 2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit (Tier 2 pattern, §13.6-style reproducible build).
 3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
 4. Implement `loadParser()` (async; init web-tree-sitter, load the language WASM, return a ready parser) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). The base class handles parser lifecycle and async coordination via a primed-promise cache.
@@ -345,9 +348,9 @@ Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to
 
 For the rare format where neither tree-sitter nor grammars-v4 has coverage and the syntax is simple enough to scan directly: extend `BaseHandler` and implement `extractRaw(content)` returning `MimeSymbol[]` (or `Promise<MimeSymbol[]>` if the scanner needs async I/O, which it shouldn't). The handler README must justify why neither §9.5 nor §9.3 was viable — the bar is intentionally high to keep the family converged on community-maintained grammars.
 
-## 10. Tokenization (removed in v0.15.0) <!-- coverage: policy -->
+## 10. Tokenization — a consumer concern <!-- coverage: policy -->
 
-The framework neither tokenizes nor budgets. The pre-0.15 tokenize-injection architecture served the preview fitting layer (§5, also removed); both died with their only consumer, plurnk-service's index. Token counting is wholly a consumer concern — the service tokenizes content with its live provider at render time and never trusts write-time counts.
+The framework neither tokenizes nor budgets content for its own pipeline. Token counting is wholly a consumer concern — the service tokenizes content with its live provider at render time and never trusts write-time counts. The opt-in `Tokenizers` seam (§19) exposes exact model-vocab counting *for consumers that want it*; the framework never calls it for its own budgeting.
 
 ## 11. Body-matcher query
 
@@ -415,7 +418,7 @@ This is the symmetric design promised in issue #10: jsonpath dispatches against 
 | Detection returns null | `Mimetypes.query` throws `ReferenceError` |
 | Content unreadable | `Mimetypes.query` throws `ReferenceError` |
 | Dialect unsupported for resolved mimetype | `UnsupportedDialectError` → consumer maps to 415 |
-| Body-glob 415 case (not in v0.6.0) | per grammar #17, glob-on-body returns line matches; no 415 |
+| Body-glob (grammar #17) | glob-on-body returns line matches; no 415 |
 | Malformed expression | `InvalidExpressionError` → consumer maps to 400 |
 | Content can't be parsed for the dialect | `QueryParseFailureError` → consumer maps to 422 |
 | Zero matches | returns `[]` → consumer maps to 204 |
@@ -428,9 +431,9 @@ All four error classes — `UnsupportedDialectError`, `InvalidExpressionError`, 
 
 **Degradation telemetry (`ProcessResult.telemetry`).** A degraded result reports `ok: true`, so its severity is invisible in the status — the producer surfaces it as a `warn` event instead. When the default (non-strict) path degrades, `process()` attaches one `TelemetryEvent` per degradation to `ProcessResult.telemetry[]`: `kind: "grammar_degraded"` when `grammarMissing` is set, `kind: "embedding_degraded"` when `embeddingMissing` is set, each `level: "warn"` and carrying `plurnkPackage`. The host forwards these into `packet.user.telemetry.events[]`. The array is absent on the happy path. Hard failures (`ok: false`) carry no entry — the status *is* the severity.
 
-## 12. Channel architecture (v0.9.0; channels selectable since v0.15.0)
+## 12. Channel architecture
 
-Per plurnk-mimetypes#10 and #17, `ProcessResult` carries up to four channels of structural information about the entry, materialized per the caller's `channels` selection (§5).
+Per plurnk-mimetypes#10 and #17, `ProcessResult` carries up to six channels, materialized per the caller's `channels` selection (§5): the four **structural** channels below, plus `content` (the readable projection — §18) and `embedding` (the vector — §17), which have their own sections.
 
 ### 12.1 The channels
 
@@ -499,7 +502,7 @@ The deep channels are **never model-visible**. They are consumed exclusively by 
 
 Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` addresses for that content — line count for text, item count for structured. Exposed on `ProcessResult` so consumers can hand the model navigation bounds (`READ<100,150>` needs to know whether 150 is in range). Defaults: `extent = totalLines` for text content, `0` for binary; handlers with non-line units (structured archives, paginated documents) override `BaseHandler.extent()`.
 
-## 13. Per-grammar package architecture (framework v0.11.0) <!-- coverage: policy -->
+## 13. Per-grammar package architecture <!-- coverage: policy -->
 
 ### 13.1 The split
 
@@ -523,20 +526,7 @@ Our grammar packages declare only `web-tree-sitter` as a peer. No conflicts. No 
 
 ### 13.3 What each grammar package contains
 
-Just data:
-
-```
-@plurnk/plurnk-mimetypes-grammar-{slug}/
-├── package.json              # peerDeps: { web-tree-sitter, @plurnk/plurnk-mimetypes }
-├── index.js                  # exports wasmPath (absolute path to the WASM)
-├── {slug}.wasm               # pre-built from a pinned upstream commit
-├── .grammar-pin              # the commit SHA
-└── scripts/
-    ├── build-wasm.mjs        # reproducible rebuild from pinned source
-    └── verify-wasm.mjs       # CI byte-identical check
-```
-
-No handler code, no mapping. The framework's `TREE_SITTER_REGISTRY` owns those. The grammar package is interchangeable plumbing.
+Just data — no handler code, no mapping (the framework's `TREE_SITTER_REGISTRY` owns those; the grammar package is interchangeable plumbing). The **only** contract the framework depends on is: **a pre-built `{slug}.wasm` at the package root**, resolved by `resolveWasmPath` (§13.1) via the package's `package.json` location — read directly from disk, not through any `index.js` export. Grammar packages are independent repos (outside the monorepo); their build/pin/verify tooling is their own concern (§13.6), not framework-enforced.
 
 ### 13.4 Registry entry shape
 
@@ -556,14 +546,14 @@ The legacy `wasmPackage`/`wasmFile` fields are deprecated but kept populated for
 
 ### 13.5 Install patterns
 
-- **Floor:** `npm i @plurnk/plurnk-mimetypes` alone gives a working framework for the floor types (`text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv`) — the floor handler packages and both parser loaders are direct dependencies (v0.14.0, issue #14).
+- **Floor:** `npm i @plurnk/plurnk-mimetypes` alone gives a working framework for the floor types (`text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv`) — the floor handler packages and both parser loaders are direct dependencies (issue #14).
 - **Slim:** add only the grammars you need (e.g. `npm i @plurnk/plurnk-mimetypes-grammar-python @plurnk/plurnk-mimetypes-grammar-rust`).
 - **Kitchen sink:** the README carries a copy-paste `npm install` block listing every published grammar. (A `grammars-all` meta package was considered and rejected — a layer of indirection that does nothing.)
 - **Degrade, not throw (issue #14):** `detect()` is install-state-blind — it returns the source mimetype regardless of whether the grammar package is installed. When `process()` then finds the grammar missing, it degrades to a text-plain fallback with `ok: true` and surfaces the missing package name on `ProcessResult.grammarMissing` so consumers can show an actionable install hint. `process(input, { strict: true })` opts into throwing `GrammarNotInstalledError` instead.
 
 ### 13.6 Reproducibility
 
-Each grammar package's `scripts/build-wasm.mjs` rebuilds the WASM from the pinned upstream commit using `tree-sitter-cli`'s bundled wasi-sdk. CI runs `scripts/verify-wasm.mjs` to confirm the committed WASM is byte-identical to a fresh rebuild — this catches tampering and forces grammar updates through pin bumps rather than ad-hoc rebuilds.
+Grammar packages are expected to rebuild their WASM from a pinned upstream commit (`tree-sitter-cli`'s bundled wasi-sdk) and verify the committed WASM is byte-identical to a fresh rebuild — so grammar updates flow through pin bumps, not ad-hoc rebuilds. This is the grammar repo's own discipline (each ships its own build/verify scripts); the framework consumes only the resulting `{slug}.wasm` (§13.3) and cannot enforce it.
 
 ## 14. Testing discipline (issue-driven test files)
 
@@ -581,7 +571,7 @@ describe("Issue #10 — C3: cross-dispatch matrix", () => {
 });
 ```
 
-If C3 had been written when issue #10 first landed, the xpath-on-non-XML gap (issue #10's symmetric half, undelivered until framework v0.12.0) would have failed the test immediately rather than shipping silently for several framework versions.
+If C3 had been written when issue #10 first landed, the xpath-on-non-XML gap (issue #10's symmetric half, delivered late) would have failed the test immediately rather than shipping silently until someone noticed.
 
 ### 14.1 Query-line conformance harness (#41)
 
@@ -594,9 +584,9 @@ The dialect-symmetry invariant (§11.2) is enforced by a shipped harness, not ey
 
 ## 15. Public API stability <!-- coverage: policy -->
 
-All exports from `@plurnk/plurnk-mimetypes/index` are stable from `v0.1.0` onward under semver. Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change between minor versions. v0.15.0 is a deliberate clean break (issue #16/#17): the preview/fitting/tokenize surface was removed outright.
+All exports from `@plurnk/plurnk-mimetypes/index` are the stable API surface under semver; a breaking change to them is a platform MAJOR (announced, rare). Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change freely.
 
-## 16. References channel (framework v0.15.x — issues #16/#19, complete)
+## 16. References channel (issues #16/#19)
 
 The references channel carries **classified symbol uses** — never definitions (those are the symbols channel's job). It is the per-entry raw material for plurnk-service's `symbol_refs` graph rows; linking, traversal, and cross-entry identity are entirely service-side SQL.
 
@@ -618,7 +608,7 @@ interface MimeRef {
 
 **`ref.container` is the enclosing definition's FULL qualified path** — a call inside method `parse` of class `Parser` carries `container: "Parser.parse"`, exactly equal to the source def's composed `container + "." + name`. That equality is the join key for `@>` (edge source → def) — emitting only the immediate class would break it. Module-top-level references omit the key.
 
-**Extraction mechanism (issue #19, engine landed v0.15.x).** Tree-sitter-backed languages declare per-language queries in `src/treesitter/queries/{slug}.ts` — the `.scm` S-expression source embedded as an exported string (reviewable query content without a build-time copy step), re-exported as `refsQuery` from the mapping module. One framework engine (`refsEngine.ts`) executes them via web-tree-sitter's Query API and resolves each ref's `container` against the symbols channel by line containment (innermost emitted def; equal spans go to the later emission, i.e. the deeper scope). ANTLR and hand-rolled handlers implement `references()` visitor-side (`withExtractor.addRef` + `gateContainer`, or a direct `MimeRef[]` scan); `withExtractor.refs` returns document order to match the engine. Default everywhere: `[]`.
+**Extraction mechanism (issue #19).** Tree-sitter-backed languages declare per-language queries in `src/treesitter/queries/{slug}.ts` — the `.scm` S-expression source embedded as an exported string (reviewable query content without a build-time copy step), re-exported as `refsQuery` from the mapping module. One framework engine (`refsEngine.ts`) executes them via web-tree-sitter's Query API and resolves each ref's `container` against the symbols channel by line containment (innermost emitted def; equal spans go to the later emission, i.e. the deeper scope). ANTLR and hand-rolled handlers implement `references()` visitor-side (`withExtractor.addRef` + `gateContainer`, or a direct `MimeRef[]` scan); `withExtractor.refs` returns document order to match the engine. Default everywhere: `[]`.
 
 Coverage: every code language in the registry ships a conformance-gated query (23 in-registry suites), and the standalone handler family (the DSLs — terraform/dockerfile/protobuf/graphql/cmake/SQL — plus the standalone languages — swift/r/nix/perl/erlang/prolog/datalog/clojure/common-lisp/sparql/csharp/vim) emits conformance-gated references too. Data formats (YAML, TOML, CSS, JSON, CSV, INI, dotenv, …) and Redis are refs-free by design — references are a code-graph concept. Languages whose syntax can't honestly support a kind omit it rather than guess (Haskell emits no `instantiate` — constructor application is syntactically identical to pattern deconstruction; Lua emits `call` only).
 
@@ -660,7 +650,7 @@ it("acme-mime-foo refs are conformant", async () => {
 - `references()` is one call to `this.collectRefs(content, querySource, extractDefs, wrap?)`, which owns parse → compile-and-cache query → run `collectReferences` against `extractDefs`'s symbols → cleanup, plus the shared error policy (`GrammarNotInstalledError` propagates for the #14 degrade; parse/query failures → empty channel). The in-registry `TreeSitterLanguageHandler` uses the identical helper — one priming implementation.
 - A language needing **match-level composition** the engine's flat `captures()` can't express (HCL names defs `TYPE.NAME`) passes `wrap` to adapt the raw compiled query, and composes the qualified name into a `RefsCaptureNode` (`{text, startPosition, endPosition}` — the exact, blessed surface the engine reads off a capture, so no cast through `TreeSitterNode`).
 
-## 17. Embedding channel (framework v0.15.x, issue #24)
+## 17. Embedding channel (issue #24)
 
 The `embedding` channel is the per-entry vector supply for plurnk-service's `~semantic` dialect: **native-endian raw Float32 bytes** (`Uint8Array`, length = 4 × dimension), **scalar per entry**. The service stores the bytes verbatim as a sqlite BLOB and cosine-ranks over a `Float32Array` view — no JSON round-trip. The same channel embeds arbitrary text: an entry's body and a `~query`'s query text ride the identical path.
 
@@ -672,9 +662,9 @@ The `embedding` channel is the per-entry vector supply for plurnk-service's `~se
 - The dimension is **fixed per deployment** — changing the model/dimension invalidates the service's stored vectors; that is a consumer-side migration, not a framework concern. The embedder declares its identity (`model`, e.g. `"Xenova/all-MiniLM-L6-v2@751bff37+q8"`), surfaced as `ProcessResult.embeddingModel` — store it alongside each BLOB; it is the staleness detector that makes the migration detectable. The identity encodes **both** the model revision and the quantization, since either changes the vectors; the embedder derives it from its pin, never a hand-synced literal.
 - **Lossless chunking facts** (`embedderInfo()`, embeddings#1, #31): the embedder optionally exports two pure model facts — `maxTokens` (the token window past which `embed()` truncates) and `countTokens(text): Promise<number>` (a count in the model's **own** tokenizer, special tokens included, untruncated) — plus its `model` identity. The framework surfaces them via `mimetypes.embedderInfo(): Promise<EmbedderInfo | null>` — **recontracted by #50: null means exactly one thing, NO embedder resolves.** A working embedder with an incomplete self-report (remote endpoint without a local tokenizer; a legacy embedder) returns `{ dimension, maxTokens: number | null, countTokens: fn | null, model? }` — "present, window unknown" and "absent" are different facts and are never conflated (a conflating presence gate silently FTS-degraded working remote embedders, service#343). Remote deployments declare the window via `PLURNK_MIMETYPES_EMBED_MAX_TOKENS` (an operator-known model fact). `model` (the same string as `ProcessResult.embeddingModel`) lets the host fold the embedder id into each entry's derivation hash, so a model-id change (a re-quantization, or a swap keeping the same window) re-derives existing embeddings instead of silently excluding the stale-id vectors from `~query`. Omitted if the embedder predates exporting it. The host calls it once per derivation: info `null` → no embedder at all (FTS-only); info present with `maxTokens: null` → embed on the host's null-window lane (whole-entry or its own chunk knob); full facts → tile into `≤ maxTokens` chunks measured by `countTokens`. The framework owns no chunking logic — these are facts the host's chunker consumes.
 
-- **Bulk embedding** (`embedBatch()`, plurnk-service#272): `mimetypes.embedBatch(texts, { onProgress?, signal? }): Promise<Uint8Array[]>` — one vector per input text, **input order**, bit-identical to embedding each text through the channel (so nothing already stored re-embeds). The single framework seam for corpus ingest: resolution + model identity stay framework-owned (pair with `embedderInfo()` for chunk budgeting), so the host never reaches into the embeddings package directly. Delegates to the embedder's data-parallel `embedBatch` when present (embeddings 0.5.0+, ~6× at 8 workers, `PLURNK_EMBED_WORKERS`-tunable); falls back to a sequential `embed()` loop for older embedders, still firing `onProgress({ completed, total })` and honoring `signal`. Unlike the per-entry channel (which degrades to empty bytes when the package is absent), this is an explicit bulk call — a missing embedder **throws** rather than silently storing empties.
+- **Bulk embedding** (`embedBatch()`, plurnk-service#272): `mimetypes.embedBatch(texts, { onProgress?, signal? }): Promise<Uint8Array[]>` — one vector per input text, **input order**, bit-identical to embedding each text through the channel (so nothing already stored re-embeds). The single framework seam for corpus ingest: resolution + model identity stay framework-owned (pair with `embedderInfo()` for chunk budgeting), so the host never reaches into the embeddings package directly. Delegates to the embedder's data-parallel `embedBatch` (a work-stealing worker pool, `PLURNK_MIMETYPES_EMBED_WORKERS`-tunable — benched ~7× across cores on a saturating batch); falls back to a sequential `embed()` loop for an embedder without the pool, still firing `onProgress({ completed, total })` and honoring `signal`. Throughput scales with batch size: a one-text batch uses one worker, so consumers saturate the pool by batching across entries, not per-entry (#420). Unlike the per-entry channel (which degrades to empty bytes when the package is absent), this is an explicit bulk call — a missing embedder **throws** rather than silently storing empties.
 
-## 18. Content channel (framework v0.15.x)
+## 18. Content channel
 
 The `content` channel is the **model-facing readable text** of an entry — the markup-free projection a model reads for information (what plurnk-service's READ returns) and the **embed-source** (the embedding channel embeds `content` over the raw bytes). `ProcessResult.content?: string`.
 
@@ -688,7 +678,7 @@ The `content` channel is the **model-facing readable text** of an entry — the 
 
 **Relationship to `toText`.** A handler that overrides `content` typically routes `toText` (the regex/glob query surface) through the same projection, so there is one readable-text implementation per handler. The framework's embed-source resolves as `content() ?? toText()`: HTML markdown, else binary page-text, else the passthrough body.
 
-## 19. Tokenizer seam (framework v0.17.0, issue #44)
+## 19. Tokenizer seam (issue #44)
 
 Exact LLM token counting for the host's window math, on the embeddings pattern (§17). The framework runs the universal engine question; per-model vocabularies are pure data in ONE opt-in artifact package — `@plurnk/plurnk-mimetypes-tokenizers` — under the pin/sha256/fetch-verify discipline. Kept separate from the embeddings package so a deployment wanting window math never carries MiniLM ONNX weights.
 
@@ -717,7 +707,7 @@ For exact resolutions the id derives from the `tokenizer.json` bytes (sha256 pre
 
 The tokenizers package default-exports (or exports) `resolve(modelRef) → Promise<{ countTokens, tokenizerId } | null>` — null meaning "no bundled tokenizer matches this ref" (a data gap, not an error; the seam degrades). Optional `dispose()` releases engine state, forwarded from `Mimetypes.dispose()`. Loader errors follow the §17 rule: `ERR_MODULE_NOT_FOUND`/`MODULE_NOT_FOUND` → absent; anything else → a misconfigured-but-present artifact and rethrows.
 
-## 20. Classification authority (framework v0.18.0, issue #43)
+## 20. Classification authority (issue #43)
 
 This family is the single source of filetype truth, so **binary-vs-text** and **line-vs-tree navigation** are answered here; consumers retire hand-maintained allowlists (the `application/jsonl` → 415 drift, schemes#28, is the motivating bug).
 
@@ -744,9 +734,9 @@ The axes do not collapse: NDJSON is text AND line-navigable (each line is a reco
 
 plurnk-schemes retires `TEXT_APPLICATION_MIMETYPES` / `TREE_NAVIGABLE_MIMETYPES` and delegates: sync call sites use `classifyMimetype`, registry-aware sites use `classify()`. The third axis schemes floated (structural-JSON for `<L>` item dispatch) stays scheme-semantics (`isJson` is RFC 6839 trivia, not handler knowledge) — not absorbed.
 
-## 21. Embedding-eligibility suppression (framework v0.18.1, issue #47)
+## 21. Embedding-eligibility suppression (issue #47)
 
-Machine-generated content (minified bundles, lockfiles, sourcemaps) is honest bytes but semantic-derivation waste — a minified vuepress bundle chunked to 2,162 embeddings wall-clocked a CPU run (service#337). The eligibility decision is **operator configuration, not code**: `PLURNK_MIMETYPES_NO_EMBED` is a comma-separated pattern list — an entry without `/` matches the **basename**, an entry with `/` matches the **full path** (directory drawers like `*/dist/*`; hashed bundle names defeat basename rules — the run18 offender was `dist/assets/js/12.5188bb.js`). glob syntax is the body-matcher dialect's engine (§11.3 `globToRegex` — `*` crosses `/`, `?`, `[...]`; one glob engine per family, never a second variant); no wildcard = exact; first match wins whose sane default ships in `.env.example`. The knob IS the classification — tunable per deployment, extensible without a release, and the matched pattern is the observable reason.
+Machine-generated content (minified bundles, lockfiles, sourcemaps) is honest bytes but semantic-derivation waste — a minified vuepress bundle chunked to 2,162 embeddings wall-clocked a CPU run (service#337). The eligibility decision is **operator configuration, not code**: `PLURNK_MIMETYPES_NO_EMBED` is a comma-separated pattern list — an entry without `/` matches the **basename**, an entry with `/` matches the **full path** (directory drawers like `*/dist/*`; hashed bundle names defeat basename rules — the run18 offender was `dist/assets/js/12.5188bb.js`). glob syntax is the body-matcher dialect's engine (§11.3 `globToRegex` — `*` crosses `/`, `?`, `[...]`; one glob engine per family, never a second variant); no wildcard = exact; first match wins. The sane default ships in this package's `.env.defaults` (the shipped operator floor, #52). The knob IS the classification — tunable per deployment, extensible without a release, and the matched pattern is the observable reason.
 
 - `ProcessResult.noEmbed?: string` — the matched pattern, present iff matched (also on the grammar-degraded path); consumers skip semantic derivation and stay FTS-only for these entries.
 - `matchNoEmbed(path)` — the exported matcher, read at call time from the host env like the pdf caps. Unset/empty → nothing suppressed; **no code fallback carries a hidden default**.
