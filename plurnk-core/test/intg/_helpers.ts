@@ -152,7 +152,7 @@ export const packetSection = (packet: unknown, name: string): string =>
 
 // Parse the rendered log section's fenced jsonplurnk array back into structured records — lets
 // tests assert on the model's actual log VIEW with field precision (coordinate via `path`, the
-// model-facing `target` URI, op, status, origin, fold). Strips the ONE deviation (a `body` value
+// model-facing `target` URI, op, status, origin, display). Strips the ONE deviation (a `body` value
 // is a raw <<:::tag … :::tag heredoc) to recover strict JSON — the same content-agnostic,
 // TAG-anchored transform the plurnkdown linter applies (§jsonplurnk).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {

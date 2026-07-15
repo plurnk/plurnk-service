@@ -11,7 +11,7 @@ const tok = (s: string): number => Math.ceil(s.length / 4);
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("[§jsonplurnk] log entry: a no-body row renders as a jsonplurnk object with fold:none — path is log URI, target is action operand", () => {
+test("[§jsonplurnk] log entry: a no-body row renders as a jsonplurnk object with display:none — path is log URI, target is action operand", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -25,7 +25,7 @@ test("[§jsonplurnk] log entry: a no-body row renders as a jsonplurnk object wit
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\{"fold":"none","op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; fold:none (no body); path = log URI identity; target = action operand; tokens:0");
+    assert.match(out, /\{"display":"none","op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none (no body); path = log URI identity; target = action operand; tokens:0");
 });
 
 test("a folded-authority web URL renders https://host/... — never https:///host (#370 class, run42 sweep)", () => {
@@ -347,7 +347,7 @@ test("[§model-entry] a folded model row renders meta-only — the verbatim hide
         coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: true,
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"fold":"folded","lines":2,"op":"model"/, "folded → fold:folded, meta only — lines counts the navigable body");
+    assert.match(out, /\{"display":"folded","lines":2,"op":"model"/, "folded → display:folded, meta only — lines counts the navigable body");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
 
@@ -356,7 +356,7 @@ test("[§model-entry] an open model row mirrors the model's own emission back, l
         coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: false,
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"fold":"open","lines":2,"op":"model"/, "open → fold:open — lines counts the navigable body");
+    assert.match(out, /\{"display":"open","lines":2,"op":"model"/, "open → display:open — lines counts the navigable body");
     assert.match(out, /1:\t<<PLAN:Initialize:PLAN/, "the model sees its own emission — line 1");
     assert.match(out, /2:\t<<SEND\[102\]:Initialized:SEND/, "line 2, referenceable when reasoning through a syntax error");
 });
@@ -372,8 +372,8 @@ test("[§jsonplurnk] the Log renders as a fenced jsonplurnk array that strips to
     assert.ok(m, "a fenced jsonplurnk block");
     // Strip the ONE deviation (a `body` heredoc) with a content-agnostic, TAG-anchored transform → strict JSON.
     const strict = m![2].replace(/"body":\n<<:::(.+)\n[\s\S]*?\n:::\1\n\}/g, '"body":""}');
-    const arr = JSON.parse(strict) as Array<{ fold: string; body?: string }>;
-    assert.deepEqual(arr.map((e) => e.fold), ["none", "folded", "open"], "the three fold states render explicitly — no glyph legend");
+    const arr = JSON.parse(strict) as Array<{ display: string; body?: string }>;
+    assert.deepEqual(arr.map((e) => e.display), ["none", "folded", "open"], "the three display states render explicitly — no glyph legend");
     assert.equal(arr[2].body, "", "the open row's heredoc body — the one deviation — strips to a string, recovering valid JSON");
 });
 
