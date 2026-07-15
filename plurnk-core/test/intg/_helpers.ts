@@ -150,14 +150,17 @@ const MIN_PACKET = JSON.stringify({
 export const packetSection = (packet: unknown, name: string): string =>
     PacketWire.sectionContent(packet as Parameters<typeof PacketWire.sectionContent>[0], name);
 
-// Parse the rendered log section's meta lines (`<marker> {json}`, marker */+/-) back
-// into structured records — lets tests assert on the model's actual log VIEW with field
-// precision (coordinate via `path`, the model-facing `target` URI, op, status, origin).
-// Test-only: the `{` guard takes meta lines only, skipping body lines like `- [ ] x`.
-export const logEntries = (packet: unknown): Array<Record<string, unknown>> =>
-    packetSection(packet, "log").split("\n")
-        .filter((l) => /^[*+-] \{/.test(l))
-        .map((l) => JSON.parse(l.slice(2)) as Record<string, unknown>);
+// Parse the rendered log section's fenced jsonplurnk array back into structured records — lets
+// tests assert on the model's actual log VIEW with field precision (coordinate via `path`, the
+// model-facing `target` URI, op, status, origin, fold). Strips the ONE deviation (a `body` value
+// is a raw <<:::tag … :::tag heredoc) to recover strict JSON — the same content-agnostic,
+// TAG-anchored transform the plurnkdown linter applies (§jsonplurnk).
+export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
+    const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1(?:\n|$)/.exec(packetSection(packet, "log"));
+    if (fence === null) return [];
+    const strict = fence[2].replace(/"body":\n<<:::(.+)\n[\s\S]*?\n:::\1\n\}/g, '"body":""}');
+    return JSON.parse(strict) as Array<Record<string, unknown>>;
+};
 
 // Fixture root-assignment (headless-is-forever: production sets projectRoot ONLY at
 // session.create; tests that build sessions piecemeal root them here — a direct UPDATE plus the
