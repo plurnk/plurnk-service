@@ -322,7 +322,7 @@ export default class Engine {
     // budget the packet actually lives under (effective window minus the partition reserves),
     // the same number loop-usage stores per turn. providers.list advertised the raw KV and the
     // client's gauge rendered a window the model can never fill.
-    promptBudgetFor(provider: Provider): number {
+    promptBudgetFor(provider: Provider): number | null {
         return this.#packets.promptBudgetFor(provider);
     }
 
