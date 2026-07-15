@@ -22,7 +22,13 @@ interface PwResponse {
     statusText(): string;
     headers(): Record<string, string>;
 }
+interface PwRoute {
+    request(): { url(): string };
+    continue(): Promise<void>;
+    abort(): Promise<void>;
+}
 interface PwPage {
+    route(pattern: string, handler: (route: PwRoute) => Promise<void>): Promise<void>;
     goto(url: string, opts: { waitUntil: "networkidle"; timeout: number }): Promise<PwResponse | null>;
     setExtraHTTPHeaders(headers: Record<string, string>): Promise<void>;
     content(): Promise<string>;
@@ -130,11 +136,17 @@ export default class Browser {
     // the page. Throws on navigation failure (the caller maps it to a status).
     async render(
         url: string,
-        { runId, signal, headers, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
-            { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; timeout?: number },
+        { runId, signal, headers, guard, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
+            { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean>; timeout?: number },
     ): Promise<RenderResult> {
         const context = await this.#getContext(runId);
         const page = await context.newPage();
+        // SSRF interception (WebFetcher, #454): re-guard every navigation AND
+        // subresource — a rendered public page must not reach private space.
+        // Aborted requests surface as a nav/subresource failure, which the
+        // caller reads as dead. Only wired when a guard is supplied (the general
+        // READ render path passes none — unchanged).
+        if (guard) await page.route("**", async (r) => { (await guard(r.request().url())) ? await r.continue() : await r.abort(); });
         // Request headers (auth/accept) apply to the navigation too, so an authed
         // HTML page renders authenticated. Ordered pairs collapse to a record here
         // — Playwright's per-page header API is single-valued (dup names not a

@@ -77,3 +77,16 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 - **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC §operator-config-env-defaults, schemes#31). Required render-path numerics — `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT` — fail hard when unset (no in-code defaults). `MOBILE` is floor-defaulted to `1` and a required read (unset crashes). Absence-is-a-mode knobs: `PLAYWRIGHT_WS`, `NO_SANDBOX`, `CHROMIUM_HEAP_MB`.
 - **Freshness (READ):** {§revalidation} one predicate (`#storedCopyServable`), two phases. Pre-fetch: a stored copy whose materialization stamp (`x-plurnk-fetched-at`, HEADER channel) is inside `PLURNK_SCHEMES_HTTP_TTL_MS` serves with zero round-trips — identical for model READs and lane-1 prefetch (#405); `0` disables the window. The stamp resets only when the origin vouches (fetch or 304), never on a cache serve. Past the window a repeat READ recovers the prior fetch's validators from its own stored entry (`ETag`→`If-None-Match`, `Last-Modified`→`If-Modified-Since`) and revalidates. A `304` re-serves the stored body and **skips the render** — a first-class READ (the model sees an ordinary streaming result, never a cache status; `revalidated 304` rides the close summary). The TTL is the #333 milestone landed at that same one-predicate boundary (blessed by service#341; delivered per #405). `SEND[410]` drops the stored copy, forcing the next READ to full-fetch.
 - **Cancel:** the composed `AbortSignal` / SEND[499] handle aborts the render by closing the page (in-flight `goto` rejects promptly).
+
+## §7 Prefetch primitive {§prefetch}
+
+`WebFetcher` is the guarded fetch/render seam core's entry-materialization calls (#454):
+
+```ts
+new WebFetcher().fetch(url: string, opts?: { signal?: AbortSignal }): Promise<{ body: string; mimetype: string } | null>
+```
+
+- **`{ body, mimetype }`** — the rendered (HTML → playwright/salvage) or raw (textual) body of a live, public, textual URL.
+- **`null`** — dead: SSRF-refused, unreachable, non-2xx, non-textual (binary pruned), or empty. Dead-ness is a **value, not a throw** — the liveness verdict core prunes on.
+- **SSRF guard** (`Guard`): http(s) only, no localhost, every resolved address public (RFC-reserved v4/v6 ranges blocked), with **manual per-hop redirect re-guarding**; the chromium render is guarded too via request interception. Hops capped by `PLURNK_SCHEMES_HTTP_REDIRECTS`. Residual DNS-rebinding sliver (runtime re-resolves after the check) accepted day-one.
+- **Textual set**: `text/*`, `application/{json,xml,xhtml+xml}`, `+json`/`+xml` suffixes.
