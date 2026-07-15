@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { packetSection } from "./_helpers.ts";
 
 const answer = () => new Mock({ contextSize: 16384, responses: [makeMockResponse("<<SEND[200]:the answer is 4:SEND", 10)] });
 
@@ -31,6 +32,9 @@ test("act mode: no disabled line — the runtimes advertise normally", async () 
             const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "what is 2+2?" });
             const turn = await (db.test_first_turn_for_loop as PrepMethod).get<{ packet: string }>({ loop_id: loopId });
             assert.doesNotMatch(turn!.packet, /EXEC operations are disabled/, "act mode never carries the negative line");
+            // #441 — the capability sheet's op examples ride a `plurnk` fence, matching the Schemes catalog.
+            const tools = packetSection(JSON.parse(turn!.packet) as Parameters<typeof packetSection>[0], "tools");
+            assert.match(tools, /^```plurnk\n<</, "act mode: executor examples advertise inside a plurnk fence, not bullets (#441)");
         } finally { ws.close(); }
     });
 });

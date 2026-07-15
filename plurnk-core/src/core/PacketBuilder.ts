@@ -6,7 +6,7 @@ import type TelemetryChannel from "./TelemetryChannel.ts";
 import type { GitStatus } from "./git-state.ts";
 import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
-import { teachingLine, docsExcludeSet } from "./teaching.ts";
+import { docsExcludeSet } from "./teaching.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import SessionSettings from "./session-settings.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
@@ -293,7 +293,7 @@ export default class PacketBuilder {
             .map((r) => ({ status: r.status, path: `run://${r.name}` }));
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
-            { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
+            { name: "tools", slot: "system", header: null, content: tools, tokens: 0 }, // titleless — the fenced op catalog flows on from plurnk.md (definition) directly above
             { name: "schemes", slot: "system", header: "Schemes", content: this.#schemes.teach(), tokens: 0 },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject, tokens: 0 }] : []),
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
@@ -477,44 +477,39 @@ export default class PacketBuilder {
         catch { return DEFAULT_LOOP_FLAGS; }
     }
 
-    #collectTools(sessionEnabled: (tag: string) => boolean, questionsOn = false, activeSchemes?: Set<string>): string[] {
-        const tools: string[] = [];
+    #collectTools(sessionEnabled: (tag: string) => boolean, questionsOn = false, activeSchemes?: Set<string>): string {
+        // §PACKET Tools (#441) — the capability sheet's OP examples ride a `plurnk` fence, matching the
+        // Schemes catalog (one packet, one shape for op-example sheets). Prose notices (EXEC-disabled)
+        // stay prose beside the fence — a prose line isn't an op for the op-fence gate to validate.
+        const ops: string[] = [];
+        const notices: string[] = [];
         // §send-300-choices — the one-liner rides ONLY where questions are enabled (allowed +
         // client-requested); the fuller questions.md doc injects through docEntries the same way.
-        if (questionsOn) tools.push(teachingLine("<<SEND[300]:Deploy where?;staging;production:SEND"));
-        // Each available runtime tag contributes its self-documenting example —
-        // the example carries syntax + purpose, so there's no prose line. Tags
-        // with no example (sh/node, covered by the core prompt) contribute
-        // nothing; available-only, so the model never sees an unusable tag. `* `
-        // bullets + bare op forms match the packet's list/op rendering (no `- `,
-        // no backticks — see packet-wire.ts).
+        if (questionsOn) ops.push("<<SEND[300]:Deploy where?;staging;production:SEND");
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
             const runtimes = executors.availableRuntimes();
-            // execs#24 (operator design, via the client) + the #367 filter CORRECTED: the per-tag
-            // runtime schemes are READ faces (reading sh:// history is legitimate in ask mode), so
-            // keying the sheet on activeSchemes.has(tag) filtered NOTHING — the untested corner of
-            // be8a77c. The sheet's lines are EXEC-usage examples, so the key is the 'exec' scheme
-            // (the op face, excludedInAsk). When it's inactive, say so POSITIVELY: plurnk.md still
-            // teaches EXEC as language, and silent absence measurably invites confabulated runtimes
-            // (the client's 5-probe: 500×3). Core speaks the line — only core knows the gate closed.
+            // execs#24 / #367: the sheet's lines are EXEC-usage examples, keyed on the 'exec' scheme
+            // (the op face, excludedInAsk). When inactive, say so POSITIVELY (a prose notice): plurnk.md
+            // still teaches EXEC as language, and silent absence measurably invites confabulated runtimes.
             const execActive = activeSchemes === undefined || activeSchemes.has("exec");
             if (runtimes.length > 0 && !execActive) {
-                tools.push(teachingLine("EXEC operations are disabled for this loop — do not run commands; answer or advise directly"));
-                return tools;
-            }
-            for (const tag of runtimes) {
-                if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
-                if (!sessionEnabled(tag)) continue; // #328 — session-disabled tags aren't advertised
-                const entry = executors.entry(tag);
-                // #240 — identical treatment with the scheme directory: the example IS the oneliner,
-                // the fuller doc (materialized at plurnk://docs/<tag>.md) rides an inline link whose
-                // token cost lives on that manifest entry. No example → no line (like a provisional scheme).
-                if (entry?.example) tools.push(teachingLine(entry.example));
+                notices.push("EXEC operations are disabled for this loop — do not run commands; answer or advise directly");
+            } else {
+                for (const tag of runtimes) {
+                    if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
+                    if (!sessionEnabled(tag)) continue; // #328 — session-disabled tags aren't advertised
+                    const entry = executors.entry(tag);
+                    // #240 — the example IS the oneliner (a bare op, fenced below); the fuller doc
+                    // materializes at plurnk://docs/<tag>.md. No example → no line.
+                    if (entry?.example) ops.push(entry.example);
+                }
             }
         }
-        return tools;
+        const parts: string[] = [...notices];
+        if (ops.length > 0) parts.push(`\`\`\`plurnk\n${ops.join("\n")}\n\`\`\``);
+        return parts.join("\n\n");
     }
 
     // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
