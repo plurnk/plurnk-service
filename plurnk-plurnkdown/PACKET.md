@@ -60,13 +60,35 @@ terms. Freedom is in what it says, not whether it's clean — `op-fence`/`op-syn
 ops either way; only terminology drift ("status" vs "submit", stale op names) is uncaught,
 and a one-line glossary check covers it if wanted.
 
-## Deferred — log-item rendering
+## 3. Section forms
 
-The `## Log` body (105k+ items: header JSON + typed bodies; `-`/`+`/`*` = FOLD/OPEN/bodyless
-prefixes that currently collide with markdown lists) is owner-held. The invariants above bind
-whatever it becomes; the shape is not settled here.
+Each section's clean-plurnkdown target. The *content* is core's (the owner's, for `Policy`);
+the *shape* is the contract. How core generates it is core's own — this specifies output only.
 
-## Next phase — section generation
+### Schemes — reference op examples
+Today a bullet list of bare ops (`* <<READ(log:///…)::READ` …) demonstrating each scheme
+(`log:///`, `known:///`, `unknown:///`, `run://`, `https://`). Target: a ```plurnk fenced
+catalog — validatable by the same fence-gate as the doc, not bullets.
 
-How core generates each dynamic section (`Schemes`, `Policy`, `Git Status`, `Budget`,
-`User Prompts`) and how each better aligns with plurnkdown — TBD.
+### Policy — persona / config
+Today loose `You …` / `Your X:` paragraphs. Target: a bulleted list; the labeled `Your X:`
+directives become bold-label bullets (`- **Knowledgebase:** …`). **Content and framing
+untouched** — this is hand-tuned config, and its negatives ("you never apologize") are
+character boundaries, not turn-mechanic failure modes, so the positive-flip does not apply.
+plurnkdown owns the shape, not the wording.
+
+### Git Status — live state
+Already clean: `` branch `master` — 0 staged, 2 unstaged, 1 untracked ``. Keep; drop the prefix.
+
+### Budget — live state
+Already clean: the ceiling/usage/free line, plus the turns + heaviest-items markdown tables
+when log pressure warrants them. Keep; drop the prefix.
+
+### User Prompts — live input
+The incoming prompts / environment updates. Render faithful, as clean prose or a light list.
+
+### Log — black box (owner-held)
+Not specced here. The invariants above bind whatever it becomes.
+
+**Net:** only `Schemes` (fence the ops) and `Policy` (bulletize) change shape; the rest is
+drop-the-prefix. The core-facing ask stays small.
