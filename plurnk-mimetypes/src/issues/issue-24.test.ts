@@ -92,13 +92,13 @@ describe("a present-but-broken embedder crashes, never silently degrades to abse
                 // Installed but throws on import — a misconfiguration the loader
                 // catch must NOT swallow as "no embedder" (that would hide it as
                 // a silent FTS-only downgrade). Distinct from ERR_MODULE_NOT_FOUND.
-                if (pkg === EMB_PKG) throw new RangeError("PLURNK_EMBED_WORKERS is required");
+                if (pkg === EMB_PKG) throw new RangeError("PLURNK_MIMETYPES_EMBED_WORKERS is required");
                 return { default: PlainHandler };
             },
         });
         await assert.rejects(
             () => m.process({ path: "a.txt", content: "hi" }, { channels: ["embedding"] }),
-            /PLURNK_EMBED_WORKERS is required/,
+            /PLURNK_MIMETYPES_EMBED_WORKERS is required/,
         );
     });
 });
