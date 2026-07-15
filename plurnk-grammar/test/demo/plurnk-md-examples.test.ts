@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { PlurnkParser } from "../../src/index.ts";
+import { PlurnkParser, Jsonplurnk } from "../../src/index.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
@@ -124,4 +124,18 @@ test("every ```plurnk fenced block in plurnk.md parses clean", () => {
         }
     });
     assert.equal(failures.length, 0, `plurnk fenced blocks that do not parse:\n${failures.join("\n")}`);
+});
+
+// The jsonplurnk teaching (#437) carries a live ```jsonplurnk example. It must strip to valid
+// JSON under the one heredoc carve-out - the magnum-opus assertion, dogfooded against canon so
+// the Log example we teach can never drift from what the strip-parser accepts.
+const JSONPLURNK_FENCE = /^```jsonplurnk\n([\s\S]*?)^```/gm;
+test("every ```jsonplurnk fenced block in plurnk.md strips to valid JSON", () => {
+    const fences = [...plurnkMd.matchAll(JSONPLURNK_FENCE)].map((m) => m[1]);
+    assert.ok(fences.length >= 1, `expected a jsonplurnk fence, found ${fences.length}`);
+
+    for (const body of fences) {
+        const parsed = Jsonplurnk.parse(body);
+        assert.ok(Array.isArray(parsed), "a jsonplurnk block must strip to a JSON array");
+    }
 });
