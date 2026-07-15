@@ -258,7 +258,7 @@ stateDiagram-v2
 * When the turn runs
 * Then FOLD or KILL big or irrelevant log items to save tokens
 
-YOU MUST submit the OPs by SENDing a brief response or a Github-flavored markdown response with the proper submit code:
+YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
 
 - 102: submit a continuing turn with submit code 102: `<<SEND[102]:Performing retrieval operations.:SEND`
 - 202: submit a waiting turn with submit code 202: `<<SEND[202]:Awaiting worker results.:SEND`
