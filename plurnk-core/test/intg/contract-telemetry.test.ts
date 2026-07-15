@@ -109,7 +109,7 @@ test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unen
         // The wire: a meta line carrying the position, no snippet / error:// fence. The Errors
         // section is framework status (uri+status pointers) — it rides the SYSTEM slot (§packet-assembly).
         const wire = PacketWire.renderSlot(p2.sections, "system");
-        assert.match(wire, /## Plurnk Service Errors/);
+        assert.match(wire, /## Errors/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
         assert.match(wire, /^\* grammar_unenforced 2:4$/m, "the notice renders as a terse kind + content-offset line:col");

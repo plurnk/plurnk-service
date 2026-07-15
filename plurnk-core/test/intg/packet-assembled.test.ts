@@ -179,8 +179,10 @@ test("assembled packet: the grammar definition reaches the packet + the schemes 
         // Every scheme-directory line is a well-formed heredoc — the service-side guard for the
         // <<-less example class (a render dropping the << teaches the model malformed ops, the
         // exact failure mode the EXEC examples shipped). Covers the part the service controls.
-        const schemeLines = packetSection(packet, "schemes").split("\n").filter((l) => l.startsWith("* "));
+        const schemesSection = packetSection(packet, "schemes");
+        assert.ok(schemesSection.startsWith("```plurnk"), "the schemes catalog is a fenced plurnk block (#436), not a bullet list");
+        const schemeLines = schemesSection.split("\n").filter((l) => l.startsWith("<<"));
         assert.ok(schemeLines.length > 0, "the schemes directory lists entries");
-        for (const line of schemeLines) assert.match(line, /^\* <</, `scheme directory line must be a << heredoc: ${line}`);
+        for (const line of schemeLines) assert.match(line, /^<</, `scheme directory line must be a << heredoc: ${line}`);
     } finally { await db.close(); }
 });

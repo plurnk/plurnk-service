@@ -22,7 +22,8 @@ test("[note 12] teach() surfaces a scheme's example (no inline doc-link); docs()
     registry.register("docstub", new DocStub() as unknown as Parameters<typeof registry.register>[1]);
 
     const teaching = registry.teach();
-    assert.match(teaching, /\* <<READ\(docstub:\/\/\/x\)::READ/, "the scheme's canonical example is its directory line (no redundant scheme prefix — the example self-documents)");
+    assert.match(teaching, /^```plurnk\n/, "the Schemes catalog is a fenced plurnk block (#436), not a bullet list");
+    assert.match(teaching, /<<READ\(docstub:\/\/\/x\)::READ/, "the scheme's canonical example is its bare op line (no bullet, no redundant scheme prefix — the example self-documents)");
     assert.doesNotMatch(teaching, /\(docs:/, "no inline doc-link in the raw packet — docs are discovered via the turn-1 FIND(plurnk://docs/**) foist (#270)");
 
     const stub = registry.docs().find((d) => d.name === "docstub");

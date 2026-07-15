@@ -292,10 +292,10 @@ export default class PacketBuilder {
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
             { name: "tools", slot: "system", header: null, content: tools.join("\n"), tokens: 0 }, // titleless — the examples flow on from plurnk.md (definition) directly above
-            { name: "schemes", slot: "system", header: "Plurnk Service Schemes", content: this.#schemes.teach(), tokens: 0 },
-            ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Plurnk Operator Notes", content: inject, tokens: 0 }] : []),
+            { name: "schemes", slot: "system", header: "Schemes", content: this.#schemes.teach(), tokens: 0 },
+            ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject, tokens: 0 }] : []),
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
-            { name: "system-policy", slot: "system", header: "Plurnk Service Policy", content: systemPolicy ?? "", tokens: 0 },
+            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "", tokens: 0 },
             { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "", tokens: 0 },
             // The packet split is a TRUST boundary: system carries only framework-authored, non-injectable
             // sections; anything that could carry attacker-reachable text (a READ result, exec output, the
@@ -304,19 +304,19 @@ export default class PacketBuilder {
             // neither is an injection surface; both sit at the bottom of system, just above budget-the-law.
             // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
-            { name: "child-streams", slot: "system", header: "Plurnk Service Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
-            { name: "child-runs", slot: "system", header: "Plurnk Service Active Child Worker Runs", content: PacketWire.renderChildPointers(childRuns), tokens: 0 },
-            { name: "errors", slot: "system", header: "Plurnk Service Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
-            { name: "git", slot: "system", header: "Plurnk Service Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
+            { name: "child-streams", slot: "system", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
+            { name: "child-runs", slot: "system", header: "Active Child Worker Runs", content: PacketWire.renderChildPointers(childRuns), tokens: 0 },
+            { name: "errors", slot: "system", header: "Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
+            { name: "git", slot: "system", header: "Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget — LAW (a hard ceiling the model must obey).
-            { name: "budget", slot: "system", header: "Plurnk Service Budget", content: budgetReadout, tokens: 0 },
+            { name: "budget", slot: "system", header: "Budget", content: budgetReadout, tokens: 0 },
             // §prompt-auto-read (owner): the prompts section is the system slot's very bottom —
             // a paths-only list (the errors shape); bodies arrive via the foisted auto-READ.
-            { name: "prompt", slot: "system", header: "Plurnk Service User Prompts", content: prompt, tokens: 0 },
+            { name: "prompt", slot: "system", header: "User Prompts", content: prompt, tokens: 0 },
             // log in the user slot: injectable content (READ results, exec output, the model's own mirror) — data, never rules — kept at the action point so the model consults its history.
-            { name: "log", slot: "user", header: "Plurnk Service Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
+            { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
             // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
-            { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: baseRequirements, tokens: 0 },
+            { name: "requirements", slot: "user", header: "Recap", content: baseRequirements, tokens: 0 },
         ];
         // Plugin packet control (§packet-assembly): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
