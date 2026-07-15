@@ -122,7 +122,7 @@ This field can contain one or more numeric entries limiting the scope of the ope
 - FIND retrieves results N through M, inclusive.
 - EDIT appends a new line.
 
-Sentinels: <0> before position 1 (prepend), `<-1>` after the last position (append).
+Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 On structured files, entries, and items, `<scope>` addresses result index, not line number.
 
@@ -138,7 +138,7 @@ A leading decimal is a `~`-similarity threshold (results scoring at least that v
 
 ### `:body:`
 
-Empty (no body) OPs contain two colons: <<READ(AGENTS.md)::READ
+Empty (no body) OPs contain two colons: `<<READ(AGENTS.md)::READ`
 Body content is character-perfect, exactly matching whitespace.
 On filtering operations, the matching pattern goes in the body.
 
@@ -159,9 +159,9 @@ The worker's answer arrives in the log and wakes the run:
 <<SEND[200]:The capital of France is Paris.:SEND
 ```
 
-To FORK the current run: <<FORK(run://recheck):Re-derive the capital from a primary source:FORK
-To SEND a run a new message: <<SEND(run://recheck):Also, what's the capital of Germany?:SEND
-To KILL another run: <<KILL(run://recheck)::KILL
+To FORK the current run: `<<FORK(run://recheck):Re-derive the capital from a primary source:FORK`
+To SEND a run a new message: `<<SEND(run://recheck):Also, what's the capital of Germany?:SEND`
+To KILL another run: `<<KILL(run://recheck)::KILL`
 
 ## Imperatives
 
