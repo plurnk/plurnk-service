@@ -142,6 +142,25 @@ Empty (no body) OPs contain two colons: `<<READ(AGENTS.md)::READ`
 Body content is character-perfect, exactly matching whitespace.
 On filtering operations, the matching pattern goes in the body.
 
+### The Log
+
+Your run's history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
+
+* `display` is `none` (no body), `folded` (body hidden), or `open` (body shown). OPEN a folded entry to reveal its body; FOLD an open one to reclaim context.
+* An `open` entry's `body` is the one non-JSON value: a HEREDOC shown verbatim, not a JSON-escaped string.
+
+```jsonplurnk
+[
+{"op":"FIND","path":"log:///1/1/2/FIND","status":200,"items":0,"tokens":0,"display":"none"},
+{"op":"READ","path":"log:///1/1/3/READ","status":200,"target":"plurnk://docs/api.md","tokens":140,"display":"folded"},
+{"op":"READ","path":"log:///1/1/4/READ","status":200,"target":"known:///notes.md","tokens":88,"display":"open","body":
+<<:::known:///notes.md
+1:	the note body, shown verbatim
+:::known:///notes.md
+}
+]
+```
+
 ## Delegation
 
 Delegation breathes across turns:
