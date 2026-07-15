@@ -25,7 +25,7 @@ export type { ValidationResult } from "./Validator.ts";
 // op enums / SQL CHECKs from this single source instead of hand-copying the literal list.
 export { PLURNK_OPS } from "./types.ts";
 
-export type { ErrorSource } from "./PlurnkParseError.ts";
+export type { ErrorSource, Severity } from "./PlurnkParseError.ts";
 export type {
     BuffStatement,
     ClientOp,

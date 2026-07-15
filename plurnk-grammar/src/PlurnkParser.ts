@@ -110,9 +110,9 @@ export default class PlurnkParser {
     // model to the anchor; a present-PLAN, absent-SEND turn gets the terminator imperative.
     static #imperativeTurnShape(items: ParseItem<any>[]): void {
         const hasPlan = items.some((i: any) => i.kind === "statement" && i.statement.op === "PLAN");
-        // A turn terminates on a DISPOSITION-coded SEND only — a mid-comms SEND (e.g. the
-        // retired 202, now an ordinary code) does not satisfy the terminal requirement, so a
-        // turn ending on one still gets the end-with-terminal imperative (the migration steer).
+        // A turn terminates on a DISPOSITION-coded SEND only — a mid-comms SEND does not
+        // satisfy the terminal requirement, so a turn ending on one still gets the
+        // end-with-terminal imperative (the migration steer).
         const hasSend = items.some(
             (i: any) => i.kind === "statement" && i.statement.op === "SEND" && PlurnkParser.#DISPOSITIONS.has(i.statement.signal),
         );
