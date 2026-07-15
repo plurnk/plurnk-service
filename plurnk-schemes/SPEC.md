@@ -76,7 +76,7 @@ export interface SchemeHandler {
 }
 ```
 
-A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set is exactly grammar's `PlurnkStatement` dispatch union and moves with the framework's grammar bump (0.74.57 added `work?`/`fork?`; `LOOK`/`BUFF` are grammar `ClientStatement` ops, client-facing and never dispatched to a scheme, so they're intentionally absent here). **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and exact-pins ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive pin (§3).
+A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set is exactly grammar's `PlurnkStatement` dispatch union and moves with the framework's grammar bump (0.74.57 added `work?`/`fork?`; `LOOK`/`BUFF` are grammar `ClientStatement` ops, client-facing and never dispatched to a scheme, so they're intentionally absent here). **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
 Two surfaces are NOT yet in `SchemeHandler`, pending their result types migrating here from plurnk-service v0: the **CRUD primitives** (`readEntry`/`writeEntry`/`deleteEntry`, required for entry-bearing schemes) and the **proposal lifecycle** (the optional `ProposalAware.applyResolution` hook, already exported via §3.bis). Until then a scheme declares those methods directly.
 
@@ -136,7 +136,7 @@ Behavior ships as `export default class` (one class per file, static methods) �
 
 ### §3.bis Capability ctx — the DB-free authoring surface {§capability-ctx}
 
-The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be authored without importing `@plurnk/plurnk-service` or touching a raw DB handle (forbidden by §5). **Interfaces only**: this repo exports the shapes; plurnk-service injects a db-backed implementation behind them (the `scheme-types.ts` seam, widened). In-tree schemes keep using `db` directly during transition and cut over scheme-by-scheme. Design converged on [plurnk-service#180](https://github.com/plurnk/plurnk-service/issues/180).
+The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be authored without importing `@plurnk/plurnk-service` or touching a raw DB handle (forbidden by §5). **Interfaces only**: this repo exports the shapes; the consumer (`plurnk-core`) injects a db-backed implementation behind them. Design converged on [plurnk-service#180](https://github.com/plurnk/plurnk-service/issues/180).
 
 `SchemeCtx` carries per-dispatch identity (`sessionId`/`runId`/`loopId`/`turnId`/`writer`/`signal`) plus **five live capability namespaces** replacing raw `db`:
 
@@ -154,16 +154,7 @@ There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in pl
 
 ## §4 What's NOT in this repo
 
-DB-coupled helpers stay in plurnk-service for v0:
-
-- `_entry-ops.ts` (read/edit/show/hide session entries)
-- `_entry-crud.ts` (CRUD primitives + write-time tokenization helper)
-- `_entry-send.ts` (SEND[410]/[499] dispatcher)
-- `_entry-find.ts` (pathname-glob FIND)
-- `ChannelWrite.ts` (channel append + subscription registry)
-- `PlurnkSchemeContext` (per-call helper with DB handle)
-
-These migrate when the v1 namespaced ctx API lands (entries / channels / visibility / tags / subscriptions / proposals / crossScheme / notify). v0 scope: types + pure helpers only.
+DB-coupled entry/channel machinery — CRUD + write-time tokenization, the SEND/FIND dispatchers, the channel-write/subscription registry, the per-call DB-handle context — lives in the consumer (`plurnk-core`), never here. This package is types + pure helpers only; a scheme reaches the substrate through the §3.bis capability ctx, never a raw DB handle.
 
 ## §5 Forbidden (for third-party schemes) {§forbidden}
 
@@ -187,8 +178,8 @@ These migrate when the v1 namespaced ctx API lands (entries / channels / visibil
 A scheme handler is discovered and registered with **zero first-party involvement** — install it, it lights up. The contract:
 
 - **Declare** `plurnk.kind: "scheme"` and `plurnk.name: "<scheme>"` in `package.json`, and `export default` the handler class.
-- **`SchemeDiscovery` owns the scan (this package).** `SchemeDiscovery.discover({ cwd? })` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — and returns `{ schemes: {name, packageName, attribution?}[], skipped }` for every package declaring `plurnk.kind === "scheme"` + `plurnk.name`. Scope-agnostic, so a third party under their own scope is found with no first-party allow-list (plurnk-service#227); two externals claiming one prefix fail-hard. It returns **descriptors, not handlers** — contract-only, it never imports a scheme package; the consumer imports each `packageName` and registers `new mod.default()`, applying in-tree precedence. Co-located with its tests here, parallel to `plurnk-execs`/`plurnk-mimetypes`/`plurnk-providers` discover().
+- **`SchemeDiscovery` owns the scan (this package).** `SchemeDiscovery.discover({ cwd? })` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — and returns `{ schemes: {name, packageName, attribution?}[], skipped }` for every package declaring `plurnk.kind === "scheme"` + `plurnk.name`. Scope-agnostic, so a third party under their own scope is found with no first-party allow-list (plurnk-service#227); two externals claiming one prefix fail-hard. It returns **descriptors, not handlers** — contract-only, it never imports a scheme package; the consumer imports each `packageName` and registers `new mod.default()`, applying in-tree precedence. The scan primitives — package enumeration, the `PLURNK_PLUGINS_TRUSTED_ONLY` trust gate, the deployment-root `node_modules` walk — are one implementation in `@plurnk/plurnk-meta`, shared by all four family-head scanners; `SchemeDiscovery` adds only the scheme-descriptor shape on top.
 - **`attribution` rides the descriptor verbatim.** A package may declare `plurnk.attribution` (a credit string, or an array of them); the scan passes it through untouched as `SchemeInfo.attribution` (`string | string[] | undefined`) — anything that isn't a string or string-array is dropped. The framework neither validates nor normalizes it: the `@plurnk`-tags-only-from-`@plurnk`-packages reservation policy is the **consumer's** to enforce on the surfaced credit (plurnk-service#26).
-- **The framework stays contract-only.** `@plurnk/plurnk-schemes` never depends on a scheme package — that would nest daughters under it and the top-level scan would miss them. Daughters peer-pin the framework (exact); it arrives transitively and is itself ignored by the scan (no `plurnk.kind`).
-- **`@plurnk/plurnk-schemes-all`** is the first-party convenience bundle: it deps the first-party siblings flat so one install surfaces them all. It is never a gate — operators install individual packages or third-party ones identically.
+- **The framework stays contract-only.** `@plurnk/plurnk-schemes` never depends on a scheme package — that would nest daughters under it and the top-level scan would miss them. Daughters peer the framework (`^1`); it arrives transitively and is itself ignored by the scan (no `plurnk.kind`).
+- **The default bundle is the daemon's own `dependencies`**, not an aggregator package (the `-all` metapackages are retired). Installing `plurnk-core` surfaces the first-party schemes; any other leaf — first-party or third-party — is added by installing it, and scope-agnostic discovery lights it up identically. No bundle is ever a gate.
 - **Trust.** An operator can require host-level trust before a discovered plugin registers (`PLURNK_PLUGINS_TRUSTED_ONLY`, plurnk-service#229) — the scope-agnostic scan widens reach, the trust gate bounds it.
