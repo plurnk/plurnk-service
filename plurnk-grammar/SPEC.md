@@ -532,7 +532,7 @@ not source-shaped. To leave a self-documenting breadcrumb, use
 
 ## 12. Public API
 
-The entry points are `PlurnkParser.parse` (a model turn), `PlurnkParser.parseStatements` (a bare statement sequence), `PlurnkParser.parseLog` (a multi-turn log), and `PlurnkParser.parseClient` (the client tier — protocol ops plus the client-only utility ops LOOK and BUFF), alongside the AST type union and a top-level `parsePath` helper. The full surface area:
+The entry points are `PlurnkParser.parse` (a model turn), `PlurnkParser.parseStatements` (a bare statement sequence), `PlurnkParser.parseLog` (a multi-turn log), and `PlurnkParser.parseClient` (the client tier — protocol ops plus the client-only utility ops LOOK and BUFF), alongside the AST type union and a top-level `parsePath` helper. The parse surface area:
 
 ```typescript
 // Parse a model TURN — the `*:PLAN:OPS:SEND[N]` sandwich, enforced entirely by the
@@ -597,7 +597,7 @@ type ClientStatement = PlurnkStatement | LookStatement | BuffStatement;
 interface StatementBase<S> {
     suffix: string;          // empty string if no suffix
     signal: S | null;        // null = no [signal] slot; type S varies per OP (see below)
-    path: ParsedPath | null; // typed parse of (path); null if no slot or empty
+    target: ParsedPath | null; // parsed (path) slot — the operand URI; null if omitted or empty
     lineMarker: LineMarker | null;
     position: Position;
     // body type varies per OP — declared on each concrete statement (below).
@@ -605,14 +605,23 @@ interface StatementBase<S> {
 
 interface LineMarker { marks: number[]; } // 1+ ordered components; arity = consumer interpretation
 
-// Path is local (no scheme) or URL (has scheme). The Visitor decides by
-// matching the leading [a-z][a-z0-9+.-]*:// pattern; only URLs are passed
+// Path is local (no scheme), URL (has scheme), or a regex-shaped target. The Visitor
+// decides by matching the leading [a-z][a-z0-9+.-]*:// pattern; only URLs are passed
 // through `new URL()` for component breakdown.
-type ParsedPath = LocalPath | UrlPath;
+type ParsedPath = LocalPath | UrlPath | RegexPath;
 
 interface LocalPath {
     kind: "local";
     raw: string;             // filesystem path or other non-URL identifier
+}
+
+// A regex-shaped target — a `#pattern#` literal in the (path) slot (e.g.
+// `FIND(#.*\.test\.ts#)`). pattern/flags split out of the literal.
+interface RegexPath {
+    kind: "regex";
+    raw: string;
+    pattern: string;
+    flags: string;
 }
 
 interface UrlPath {
@@ -625,8 +634,9 @@ interface UrlPath {
                              // `known:///entries/foo`, hostname = "entries"
     port: number | null;
     pathname: string;        // path component, may be empty
-    search: Record<string, string | string[]>;
+    params: Record<string, string | string[]>;
     fragment: string | null;
+    headers?: [string, string][]; // trailing `{key: value}` request-metadata blocks (#46)
 }
 
 // Typed body for FIND/READ/OPEN/FOLD — the leading prefix claims the dialect (§6).
