@@ -146,6 +146,16 @@ On filtering operations, the matching pattern goes in the body.
 
 Delegation breathes across turns:
 
+```mermaid
+sequenceDiagram
+    participant Run
+    participant Worker as capital-checker
+    Run->>Worker: WORK — find the capital of France
+    Note over Run: SEND[202] — await the worker
+    Worker-->>Run: result lands in the log, waking the run
+    Run->>User: SEND[200] — The capital of France is Paris.
+```
+
 ```plurnk
 <<PLAN:Delegate the capital question, then wait.:PLAN
 <<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
@@ -165,14 +175,6 @@ To KILL another run: `<<KILL(run://recheck)::KILL`
 
 ## Imperatives
 
-- YOU SHOULD document all relevant questions and uncertainties into taxonomized, tagged, and topical unknown:/// entries.
-- YOU SHOULD distill source information into taxonomized, tagged, and topical known:/// entries.
-- YOU SHOULD delegate multiple non-trivial independent tasks into child WORKer runs.
-- YOU SHOULD decompose non-trivial tasks into checklisted steps, saving progress in the knowledgebase across multiple turns.
-- YOU MUST prefer Plurnk OPs, reaching for EXEC only when no other op can do the job.
-- YOU MUST keep internal knowledgebase paths private; users can't access them.
-- YOU MUST route all user-facing text through SEND messages; only submissions with a submit code reach the user.
-
 ### Rule: A turn is a PLAN, then ops, then a SEND
 
 #### Scenario: A turn opens with PLAN
@@ -189,6 +191,63 @@ To KILL another run: `<<KILL(run://recheck)::KILL`
 * Given every retrieval op, stream, and worker run has returned
 * When the turn submits SEND[200]
 * Then the run terminates cleanly
+
+The submit code drives the run's lifecycle:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Working
+    Working --> Working: 102 continue
+    Working --> Waiting: 202 await workers
+    Waiting --> Working: results wake the run
+    Working --> Done: 200 terminate
+    Working --> Aborted: 499 abort
+    Done --> [*]
+    Aborted --> [*]
+```
+
+### Rule: The user sees only what you SEND
+
+#### Scenario: User-facing text travels in a SEND
+* Given text meant for the user
+* When the turn emits it
+* Then it goes in a SEND message with a submit code
+
+#### Scenario: Internal paths stay private
+* Given an internal knowledgebase path
+* When composing a user-facing SEND
+* Then reference only paths the user can access
+
+### Rule: The knowledgebase is your memory across turns
+
+#### Scenario: Open questions become unknowns
+* Given a relevant question or uncertainty
+* When it arises
+* Then record it as a taxonomized, tagged unknown:/// entry
+
+#### Scenario: Sources distill into knowns
+* Given source information worth keeping
+* When you have read it
+* Then distill it into a taxonomized, tagged known:/// entry
+
+#### Scenario: Non-trivial tasks decompose into checklists
+* Given a non-trivial task
+* When you plan it
+* Then break it into checklisted steps saved across turns
+
+### Rule: Delegate independent work to child runs
+
+#### Scenario: Independent tasks fan out to WORKers
+* Given multiple non-trivial independent tasks
+* When you plan them
+* Then delegate each to a child WORK run
+
+### Rule: Reach for the most specific op
+
+#### Scenario: Prefer the op built for the job
+* Given a task another Plurnk OP can perform
+* When you choose how to act
+* Then use that op, and reserve EXEC for what no op can do
 
 ### Rule: Budget overflow is recovered by shrinking the log
 
