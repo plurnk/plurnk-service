@@ -541,6 +541,11 @@ export default class Daemon {
         for (const scope of this.#runAborts.values()) { if (!scope.signal.aborted) scope.abort("daemon_stopping"); }
         for (const t of this.#pollTimers.values()) clearTimeout(t); // drop pending hibernation poll-wakes
         this.#pollTimers.clear();
+        // …and the park-DEADLINE timers (#432): a bounded park's timer fires #wakeParkedRun after
+        // stop/db-close if left pending — an unhandled rejection (SqlRite closed) that abnormally
+        // exits the worker under load. Symmetric with the poll-wakes above; both must be reaped.
+        for (const t of this.#parkTimers.values()) clearTimeout(t);
+        this.#parkTimers.clear();
         const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
         await Promise.allSettled(drainPromises);
         await this.#drainStreamingSchemes();
@@ -769,7 +774,7 @@ export default class Daemon {
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // (#handleWakeRun) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect (§exec-poll). §run-lifecycle-wake-liveness.
-                        void this.#schedulePollWake(sessionId, runId, provider, systemPrompt);
+                        void this.#schedulePollWake(sessionId, runId, provider, systemPrompt).catch((err: unknown) => console.error("poll-wake scheduling failed:", err instanceof Error ? err.message : String(err)));
                         // §send-premature-terminate/[102]<T> — the park DEADLINE (grammar 0.75.0): the
                         // dispatcher recorded the marker's seconds; a bounded park is woken at T
                         // regardless of arrivals, so a park always has a next turn. -1 (indefinite:
@@ -783,7 +788,7 @@ export default class Daemon {
                             if (deadline !== undefined && deadline > 0) {
                                 const t = setTimeout(() => {
                                     this.#parkTimers.delete(runId);
-                                    void this.#wakeParkedRun(sessionId, runId, provider, systemPrompt);
+                                    void this.#wakeParkedRun(sessionId, runId, provider, systemPrompt).catch((err: unknown) => console.error("park-deadline wake failed:", err instanceof Error ? err.message : String(err)));
                                 }, deadline * 1000);
                                 t.unref();
                                 this.#parkTimers.set(runId, t);
