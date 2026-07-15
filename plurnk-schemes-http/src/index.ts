@@ -8,3 +8,8 @@ export { default as Http } from "./Http.ts";
 // troubleshooting MCP package can sit on the same warm-Chromium pool.
 export { default as Browser } from "./Browser.ts";
 export type { ChromiumEngine, ChromiumFactory, RenderResult } from "./Browser.ts";
+
+// The guarded fetch/render prefetch seam core's entrySink calls (#454):
+// `new WebFetcher().fetch(url) → { body, mimetype } | null`.
+export { default as WebFetcher } from "./WebFetcher.ts";
+export { default as Guard, GuardBlockedError } from "./Guard.ts";
