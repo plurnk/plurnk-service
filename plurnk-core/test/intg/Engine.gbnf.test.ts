@@ -43,12 +43,17 @@ test("[§gbnf-per-alias] PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias
     try {
         process.env.PLURNK_PROVIDERS_GBNF = "";  // bare OFF
         process.env[suffixKey] = "plurnk.gbnf";  // the active alias opts IN
-        const on = new GrammarCapturingMock({ contextSize: 8192, responses: [makeMockResponse(dsl, 10)] });
+        // Window must clear the bundled generation-envelope floor (REASONING+ASSISTANT+SAFETY
+        // ≈ 66.5k, plurnk-core/.env.defaults). 8192 fell UNDER it, so the budget derivation threw
+        // "window partition contradiction" and the turn died before generate — #grammarConstraint
+        // never ran, so lastGrammar was undefined regardless of the alias knob (#433). The window
+        // is incidental here; this test verifies grammar RESOLUTION, not the small-window envelope.
+        const on = new GrammarCapturingMock({ contextSize: 1_000_000, responses: [makeMockResponse(dsl, 10)] });
         await runOneTurn(on, "gbnf-on");
         assert.ok(on.lastGrammar?.includes("root ::="), "the alias suffix → that grammar reaches the provider despite bare being off");
 
         process.env[suffixKey] = "0";  // the active alias opts OUT
-        const off = new GrammarCapturingMock({ contextSize: 8192, responses: [makeMockResponse(dsl, 10)] });
+        const off = new GrammarCapturingMock({ contextSize: 1_000_000, responses: [makeMockResponse(dsl, 10)] });
         await runOneTurn(off, "gbnf-off");
         assert.equal(off.lastGrammar, undefined, "the alias off → no grammar reaches the provider");
     } finally {
