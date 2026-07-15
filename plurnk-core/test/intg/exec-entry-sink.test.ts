@@ -104,7 +104,7 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view(true), countTokens);
-        assert.match(foldedLine, /^- \{/, "a sink EDIT row is folded by default — `-` marker, OPENable");
+        assert.match(foldedLine, /"fold":"folded"/, "a sink EDIT row is folded by default — fold:folded, OPENable");
         assert.match(foldedLine, /"tokens":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
         assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");

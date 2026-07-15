@@ -106,11 +106,21 @@ export default class PacketWire {
         return git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
     }
 
-    // The log section's content: the model's curated rows rendered to markdown
-    // (the same #renderLogEntries the wire ships). Empty log → "" (omitted).
+    // §jsonplurnk — the Note that leads the Log's fenced block, teaching the one carve-out inline.
+    static #JSONPLURNK_NOTE = "Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when present, is a HEREDOC-style `<<:::tag … :::tag` block.";
+
+    // The log section's content: the model's curated rows as a fenced `jsonplurnk` array (§jsonplurnk).
+    // Empty log → "" (the section is omitted).
     static renderLog(entries: unknown, countTokens: CountTokens): string {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        return log.length > 0 ? PacketWire.#renderLogEntries(log, countTokens) : "";
+        if (log.length === 0) return "";
+        const items = PacketWire.#renderLogEntries(log, countTokens);
+        // The opening fence is DYNAMIC — one backtick longer than the longest run in any body — so a
+        // code sample inside a body can never close the block early (CommonMark closes a fence only on
+        // a line of ≥ its own length). §jsonplurnk-dynamic-fence
+        const longestTicks = Math.max(0, ...[...items.matchAll(/`+/g)].map((m) => m[0].length));
+        const fence = "`".repeat(Math.max(3, longestTicks + 1));
+        return `${PacketWire.#JSONPLURNK_NOTE}\n\n${fence}jsonplurnk\n[\n${items}\n]\n${fence}`;
     }
 
     // Read one section's content by name off a packet (Engine's or re-parsed).
@@ -145,7 +155,7 @@ export default class PacketWire {
         largest: Array<{ path: string; tokens: number }>;
     } {
         const logEntries: LogEntryView[] = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        const logBody = logEntries.length > 0 ? PacketWire.#renderLogEntries(logEntries, countTokens) : "";
+        const logBody = logEntries.length > 0 ? PacketWire.renderLog(logEntries, countTokens) : "";
         const HEAVIEST_COUNT = 5;
         const byTurn = new Map<string, number>();
         const perEntry: Array<{ path: string; tokens: number }> = [];
@@ -445,13 +455,15 @@ export default class PacketWire {
                 if (navigable > 0) meta.lines = navigable;
             }
 
-            // Body-state marker — body-aware so `-` never sits on a bodyless row:
-            // `*` no body (nothing to OPEN) · `+` open (body shown) · `-` folded (OPEN to expand).
-            const marker = body.length === 0 ? "*" : e.folded === true ? "-" : "+";
-            const metaLine = `${marker} ${PacketWire.#canonicalJson(meta)}`;
-            // Render the body only when OPEN; a folded row is its meta line alone (body hidden).
-            return (e.folded !== true && body.length > 0) ? `${metaLine}\n${body}` : metaLine;
-        }).join("\n");
+            // §jsonplurnk — the fold-state field replaces the old -/+/* glyph: `none` (no body,
+            // nothing to OPEN), `folded` (body exists, hidden — OPEN to expand), `open` (body shown).
+            // The one deviation from valid JSON: an OPEN row appends its heredoc body as a raw `body`
+            // value (unescaped, delimited by its <<:::tag … :::tag fence). §jsonplurnk
+            const fold = body.length === 0 ? "none" : e.folded === true ? "folded" : "open";
+            meta.fold = fold;
+            const obj = PacketWire.#canonicalJson(meta);
+            return fold === "open" ? obj.replace(/\}$/, `,"body":\n${body}\n}`) : obj;
+        }).join(",\n");
     }
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {

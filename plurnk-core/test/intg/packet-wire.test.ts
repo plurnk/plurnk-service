@@ -11,7 +11,7 @@ const tok = (s: string): number => Math.ceil(s.length / 4);
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("log entry: renders as a single JSON meta line — path is log URI, target is action operand", () => {
+test("[§jsonplurnk] log entry: a no-body row renders as a jsonplurnk object with fold:none — path is log URI, target is action operand", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -25,7 +25,7 @@ test("log entry: renders as a single JSON meta line — path is log URI, target 
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\* \{"op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "single meta line; path = log URI identity; target = action operand; tokens:0 on a no-body row");
+    assert.match(out, /\{"fold":"none","op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; fold:none (no body); path = log URI identity; target = action operand; tokens:0");
 });
 
 test("a folded-authority web URL renders https://host/... — never https:///host (#370 class, run42 sweep)", () => {
@@ -347,7 +347,7 @@ test("[§model-entry] a folded model row renders meta-only — the verbatim hide
         coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: true,
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^- \{"lines":2,"op":"model"/, "folded → '-' marker, meta line only — lines counts the navigable body");
+    assert.match(out, /\{"fold":"folded","lines":2,"op":"model"/, "folded → fold:folded, meta only — lines counts the navigable body");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
 
@@ -356,7 +356,35 @@ test("[§model-entry] an open model row mirrors the model's own emission back, l
         coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: false,
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^\+ \{"lines":2,"op":"model"/, "open → '+' marker — lines counts the navigable body");
+    assert.match(out, /\{"fold":"open","lines":2,"op":"model"/, "open → fold:open — lines counts the navigable body");
     assert.match(out, /1:\t<<PLAN:Initialize:PLAN/, "the model sees its own emission — line 1");
     assert.match(out, /2:\t<<SEND\[102\]:Initialized:SEND/, "line 2, referenceable when reasoning through a syntax error");
+});
+
+test("[§jsonplurnk] the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
+    const out = PacketWire.renderLog([
+        { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "known", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true, target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
+        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: false, target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: heredoc body
+    ], tok);
+    assert.match(out, /^Note: jsonplurnk is otherwise-valid JSON/, "the Note leads, teaching the one carve-out");
+    const m = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1/.exec(out);
+    assert.ok(m, "a fenced jsonplurnk block");
+    // Strip the ONE deviation (a `body` heredoc) with a content-agnostic, TAG-anchored transform → strict JSON.
+    const strict = m![2].replace(/"body":\n<<:::(.+)\n[\s\S]*?\n:::\1\n\}/g, '"body":""}');
+    const arr = JSON.parse(strict) as Array<{ fold: string; body?: string }>;
+    assert.deepEqual(arr.map((e) => e.fold), ["none", "folded", "open"], "the three fold states render explicitly — no glyph legend");
+    assert.equal(arr[2].body, "", "the open row's heredoc body — the one deviation — strips to a string, recovering valid JSON");
+});
+
+test("[§jsonplurnk-dynamic-fence] the opening fence outgrows any backtick run a body carries — a code sample can't close the block", () => {
+    // A body whose own text opens a triple-backtick fence (a READ of a doc with a code sample). The
+    // jsonplurnk opener must be LONGER, so the body can never close the block early.
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/1", origin: "model", op: "READ", status: 200,
+        target: { scheme: null, pathname: "/doc.md" },
+        rx: { content: "```js\nx();\n```", mimetype: "text/markdown", startLine: 1 },
+    }], tok);
+    const opener = /(`{3,})jsonplurnk/.exec(out)?.[1] ?? "";
+    assert.ok(opener.length >= 4, `fence opens with ${opener.length} backticks — longer than the body's 3-run, so the body cannot close it`);
 });
