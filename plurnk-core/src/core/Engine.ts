@@ -1155,18 +1155,26 @@ export default class Engine {
         // mint dressed op results as source:"engine" faults — the jumbo model chased a phantom
         // "engine run 400 error" off a message-less item). Genuine engine-internal faults CRASH
         // (fail-hard, §turn-never-blank) and never mint model-facing rows.
-        // §tokenomics-output-truncated (#351) — packet honesty at the completion cap: a
-        // finish=length turn was GUILLOTINED mid-emission, and its parse errors are truncation
-        // ARTIFACTS. This one MINTS (actionless — no op row exists to self-explain): the cause
-        // must lead the artifact rows it explains, or the model fixes syntax forever.
-        if (finishReason === "length" && (parseErrors?.length ?? 0) > 0) {
+        // §tokenomics-output-truncated — packet honesty at the completion cap: a finish=length turn was
+        // GUILLOTINED at the decode pool, and this actionless row MINTS to LEAD the artifact rows it
+        // explains (the cause must lead, or the model fixes syntax forever). Two shapes, honestly
+        // distinguished: content cut MID-OP (a valid prefix dispatched; the parse errors are the
+        // severed tail) vs the pool consumed with NOTHING emitted (reasoning ran away — the parse
+        // 'must begin with PLAN' is an artifact of the empty emission, not a malformed turn). The parse
+        // rows below STAY (the record never hides); the 413 leads and frames them for what they are.
+        const truncatedEmpty = finishReason === "length" && packetAssistant.content.trim().length === 0;
+        if (finishReason === "length" && (truncatedEmpty || (parseErrors?.length ?? 0) > 0)) {
+            const cap = this.#packets.decodeBudget(provider);
+            const message = truncatedEmpty
+                ? `output truncated at the completion cap (${cap} tokens): nothing was emitted before the pool was consumed — the parse error below is an artifact of the empty emission, not a malformed turn`
+                : `output truncated at the completion cap (${cap} tokens): the emission was cut mid-op — the parse errors below are truncation artifacts`;
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
                 run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
                 origin: "model", source: "engine", op: "error", suffix: "", signal: null,
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, params: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain",
-                rx: JSON.stringify({ status: 413, kind: "output_truncated", message: `output truncated at the completion cap (${this.#packets.decodeBudget(provider)} tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue` }),
+                rx: JSON.stringify({ status: 413, kind: "output_truncated", message }),
                 mimetype_rx: "application/json", status_rx: 413, tokens: 0, state: "failed", outcome: "output_truncated",
                 attrs: "{}",
             });
