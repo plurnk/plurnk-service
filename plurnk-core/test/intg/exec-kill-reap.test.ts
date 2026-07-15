@@ -4,6 +4,7 @@
 // `{ housekeeping, graceMs }` on teardown, not a bare abort the executor can't escalate past SIGHUP.
 
 import test from "node:test";
+import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, waitForDb } from "./_rpc.ts";
@@ -22,7 +23,7 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
     const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
     process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = "50";  // a fast SIGKILL grace — deterministic, far under the waitFor budget
     try {
-        const mock = new Mock({ contextSize: 8192, responses: [mockTurn(stubbornSpawn)] });
+        const mock = new Mock({ contextSize: viableWindow(), responses: [mockTurn(stubbornSpawn)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

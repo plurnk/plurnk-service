@@ -16,14 +16,14 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import Envelope from "../../src/server/envelope.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated, viableWindow } from "./_helpers.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, flush, runLoopToTerminal } from "./_rpc.ts";
 
 const execFileP = promisify(execFile);
 
 // Turn 1 emits two model EDITs; the cap decides how many land. Turn 2 SENDs to terminate
 // (no reliance on maxTurns composition), so the loop ends cleanly either way.
-const twoEdits = () => new Mock({ contextSize: 8192, responses: [
+const twoEdits = () => new Mock({ contextSize: viableWindow(), responses: [
     makeMockResponse("<<EDIT(known:///a.md):aaa:EDIT\n<<EDIT(known:///b.md):bbb:EDIT", 50),
     makeMockResponse("<<SEND[200]:done:SEND", 50),
 ] });
@@ -66,7 +66,7 @@ test("[§operator-config-session-max-commands-floor] maxCommands:0 admits PLAN +
         // One turn: two EDIT actions wrapped by the mandatory PLAN and a terminal SEND.
         // maxCommands:0 caps actions at zero — both EDITs drop — but PLAN and the terminal
         // SEND always dispatch, so the loop still plans and concludes (0's only coherent meaning).
-        const mock = new Mock({ contextSize: 8192, responses: [
+        const mock = new Mock({ contextSize: viableWindow(), responses: [
             makeMockResponse("<<EDIT(known:///a.md):aaa:EDIT\n<<EDIT(known:///b.md):bbb:EDIT\n<<SEND[200]:done:SEND", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -118,7 +118,7 @@ test("[§operator-config-session-git] session settings.git:false denies git memb
 });
 
 test("session.create rejects malformed ceiling settings — fail hard, no silent accept (#232)", async () => {
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    const mock = new Mock({ contextSize: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

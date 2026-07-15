@@ -3,13 +3,14 @@
 // from a deliberate kill (499). Own file: real subprocess + timing, process-isolated.
 
 import test from "node:test";
+import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, flush } from "./_rpc.ts";
 
 test("[§exec-timeout] EXEC <T> kills the spawn after T seconds and closes the stream 504", async () => {
     // `sleep 30` under a 1s timeout: the spawn MUST be killed near 1s, never run to completion.
-    const mock = new Mock({ contextSize: 8192, responses: [
+    const mock = new Mock({ contextSize: viableWindow(), responses: [
         makeMockResponse("<<EXEC[sh]<1>:sleep 30:EXEC\n<<SEND[102]:running:SEND", 10),
         makeMockResponse("<<SEND[200]:the spawn timed out; done:SEND", 10),
     ] });
