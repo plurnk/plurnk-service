@@ -1,6 +1,7 @@
 import AstBuilder from "./AstBuilder.ts";
 
 export { default as PlurnkParser } from "./PlurnkParser.ts";
+export { default as Jsonplurnk } from "./Jsonplurnk.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";
 export { default as PlurnkErrorStrategy } from "./PlurnkErrorStrategy.ts";
 export { AstBuilder };
