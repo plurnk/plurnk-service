@@ -75,13 +75,10 @@ test("plurnk.md examples cover every OP", () => {
 // (suffix-aware, non-greedy, multiline), then parse each in isolation.
 const HEREDOC = /<<(FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|WORK|FORK|KILL|SEND|PLAN)(\d|[a-z]+)?[\s\S]*?:\1\2(?![A-Za-z0-9])/g;
 
-// Schematic metavariable examples: the `<Line>` slot is a placeholder (N, M), not a
-// literal, so they intentionally do not parse. Any addition here is a deliberate act.
-const SCHEMATIC = new Set([
-    "<<READ(file.md)<N>::READ",
-    "<<FIND(src/**)<N,M>::FIND",
-]);
-
+// Every heredoc example must be a VALID, parseable statement — no schematic exceptions
+// (the old `<N>`/`<N,M>` metavariable allowlist let invalid scope examples hide; grammar#435
+// made them concrete, per concrete-over-placeholder). A heredoc-shaped example that does not
+// parse is a defect, full stop.
 test("every heredoc in plurnk.md parses to one clean statement", () => {
     const heredocs = [...plurnkMd.matchAll(HEREDOC)].map((m) => m[0]);
     // Guard against a broken regex silently matching nothing and passing vacuously.
@@ -89,7 +86,6 @@ test("every heredoc in plurnk.md parses to one clean statement", () => {
 
     const failures: string[] = [];
     for (const h of heredocs) {
-        if (SCHEMATIC.has(h)) continue;
         const result = PlurnkParser.parseStatements(h);
         const statements = result.items.filter((i) => i.kind === "statement");
         const errors = result.items.filter((i) => i.kind === "error");
