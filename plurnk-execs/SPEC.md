@@ -34,10 +34,12 @@ interface ExecArgs {
     command: string;            // EXEC body: shell line / source / search query
     cwd: string | null;         // process working dir (session workspace); null for logical runtimes
     target: string | null;      // parsed EXEC (target) slot, interpreted per-runtime (data: input+body=program / executable: program+body=stdin); resolved vs cwd; null if none
+    env?: NodeJS.ProcessEnv;    // consumer-scoped child env — drops plurnk's own secrets (plurnk-execs#8); host env inherited when omitted
     signal: AbortSignal;        // cancellation — executors must honor it
-    write: (channel: string, chunk: string) => void;          // write a chunk to a declared channel
-    setState: (channel: string, state: ChannelState) => void; // drive a declared channel's lifecycle
-    emit: (event: TelemetryEvent) => void;                    // emit telemetry/error (§2.2)
+    write: (channel: string, chunk: string, mimetype?: string) => void;  // write a chunk; optional mimetype stamps the channel's real per-call output type
+    setState: (channel: string, state: ChannelState) => void;            // drive a declared channel's lifecycle
+    emit: (event: TelemetryEvent) => void;                               // emit telemetry/error (§2.2)
+    entry?: (path: string, content: string, opts: { tags: string[]; mimetype: string }) => Promise<void>;  // request substrate materialization — optional sink (§2.6)
 }
 
 interface ExecResult {
@@ -121,7 +123,7 @@ MCP is the proof, not the exception: `plurnk-execs-mcp` is a plain producer — 
 
 ## §3 Discovery
 
-`discover(options?) → { registry }`. Scans **every installed package** under `<cwd>/node_modules` — scope-agnostic (scoped and unscoped) — for those declaring `plurnk.kind === "exec"`, and registers each runtime tag from `plurnk.runtimes[]`. The scan is deliberately not limited to `@plurnk/*`: a **third party** can publish an executor under their own scope (`@acme/acme-execs-foo`) and have it discovered with no involvement from this project. (For the batteries-included set, an aggregator package — `@plurnk/plurnk-execs-all` — depends on the framework's daughters flat so one install surfaces them all; the framework itself stays contract-only.)
+`discover(options?) → { registry, skipped, disabled }`. Scans **every installed package** under the nearest `node_modules` (walking up from `cwd` for workspace hoisting) — scope-agnostic (scoped and unscoped) — for those declaring `plurnk.kind === "exec"`, and registers each runtime tag from `plurnk.runtimes[]`. The scan is deliberately not limited to `@plurnk/*`: a **third party** can publish an executor under their own scope (`@acme/acme-execs-foo`) and have it discovered with no involvement from this project. (No aggregator package: the default bundle is the daemon's own dependency list, not a metapackage.)
 
 ```json
 {
@@ -164,7 +166,7 @@ Two guarantees frame the hook:
 
 `runtimes[]` and `runtimesModule` are mutually exclusive; if both are present the **static array wins** and the hook is never loaded.
 
-**Trust gate.** `discover()` honors the host's **`PLURNK_PLUGINS_TRUSTED_ONLY`** env var (plurnk-service#229) — the one posture decided once and enforced across every scope-agnostic discovery surface (schemes/mimetypes/providers/execs). Unset/`""`/`0` → off: every installed package registers (no regression). Any value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`1` = on with zero third-party). An untrusted package is **discovered but not registered** — never a crash — and returned in **`Discovery.skipped`** (package names) so the consumer can emit a telemetry note (`discover()` has no sink of its own). The policy mirrors plurnk-service's `PluginTrust.isTrusted`; it's duplicated, not shared, since it can't cross the package boundary.
+**Trust gate.** `discover()` honors the host's **`PLURNK_PLUGINS_TRUSTED_ONLY`** env var (plurnk-service#229) — the one posture decided once and enforced across every scope-agnostic discovery surface (schemes/mimetypes/providers/execs). Unset/`""`/`0` → off: every installed package registers (no regression). Any value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`1` = on with zero third-party). An untrusted package is **discovered but not registered** — never a crash — and returned in **`Discovery.skipped`** (package names) so the consumer can emit a telemetry note (`discover()` has no sink of its own). The trust predicate is the single shared implementation in **`@plurnk/plurnk-meta`** (`Meta.isTrusted`), consumed identically by the daemon and every family-head scanner — trust is defined once for the whole family, never duplicated.
 
 Each runtime package's **default export** is its `BaseExecutor` subclass (also a named export — `export { default as Sh }` / `export { default }`); the consumer instantiates it per matched tag with the tag + glyph from the registry.
 
@@ -185,7 +187,7 @@ This split *is* the progressive disclosure that bounds the sheet: N available se
 |---|---|---|
 | Installed package (boot discovery) | first-party (`@plurnk/*`) | **Active** |
 | Installed package (boot discovery) | third-party | **Available** |
-| Env-declared (e.g. `PLURNK_MCP_<server>`, model-alias style) | — | **Available** |
+| Env-declared (e.g. `PLURNK_EXECS_MCP_<server>`, model-alias style) | — | **Available** |
 | Runtime hotload (`/mcp`, gated — below) | — | **Active** on add |
 
 The principle: *Active = the operator unambiguously committed this capability ON* (installed a first-party package; explicitly hotloaded). Configuring connection details (env) or installing a third-party package is the lighter act → Available, opt-in. Mirrors `PLURNK_MODEL_*` — declare many aliases, activate a subset.
@@ -194,9 +196,9 @@ The principle: *Active = the operator unambiguously committed this capability ON
 
 **Capability vs substrate.** enable/disable targets **capability** tags only (execs and executor-backed schemes). Core **substrate** schemes (`file://`, the addressing/ops ground) are always-active and never toggleable — `/disable file` must not be able to brick the address space. For an executor-backed scheme, `disable` gates *new production*; existing `tag://` entries stay READable (reads are pure).
 
-**Security — one gate, on introduction not activation.** `enable` / `disable` are **not** trust-gated: a client (and the model itself) may freely activate any *registered* capability. This is safe because the registered set is operator-bounded — only env-declared or package-installed capabilities exist — *unless* the single daemon gate **`PLURNK_MCP_INSTALL`** (default off) opens the runtime-hotload route, permitting *arbitrary* tooling to be **added**. Gate the introduction of capabilities, never their activation. The trust gate (§3) still bounds *registration*; activation rides on top of an already-trusted set.
+**Security — one gate, on introduction not activation.** `enable` / `disable` are **not** trust-gated: a client (and the model itself) may freely activate any *registered* capability. This is safe because the registered set is operator-bounded — only env-declared or package-installed capabilities exist — *unless* the single daemon gate **`PLURNK_EXECS_MCP_INSTALL`** (default off) opens the runtime-hotload route, permitting *arbitrary* tooling to be **added**. Gate the introduction of capabilities, never their activation. The trust gate (§3) still bounds *registration*; activation rides on top of an already-trusted set.
 
-Execs owns none of the overlay machinery — the live Active/Available state, the `/enable` `/disable` `/mcp` commands, and the gate enforcement are the consumer's (plurnk-service#240). Execs' contribution is the static signals above and (for the hotload route) an MCP executor that accepts a runtime-injected server config and re-checks `PLURNK_MCP_INSTALL` at its connect path (defense in depth).
+Execs owns none of the overlay machinery — the live Active/Available state, the `/enable` `/disable` `/mcp` commands, and the gate enforcement are the consumer's (plurnk-service#240). Execs' contribution is the static signals above and (for the hotload route) an MCP executor that accepts a runtime-injected server config and re-checks `PLURNK_EXECS_MCP_INSTALL` at its connect path (defense in depth).
 
 ### §3.3 Runtime policy (the enable/disable cascade)
 
@@ -247,7 +249,7 @@ interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; stdin?: st
 
 **With a `(target)`** — `resolveRuntime(runtime, command, target)` runs the **target as the program** and the **body as its stdin** (plurnk-execs#15): a shell runs `sh -c "<target>"` (the shell tokenizes the target — the framework parses nothing), any other runtime runs `<interpreter> <target>` (a single script-file positional). No target → the body is the inline program (`-c`/`-e`) as in the table. This is family-relative: the *data* runtimes (jq/sqlite/wasm) invert it — `target` is the data, `body` the program — inside their own `run()`. Each daughter maps the two raw strings to its own tool's CLI; the parent hands them down and parses neither.
 
-The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveRuntime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). Subclasses with their own interpreter table override the **`protected spawnArgs(runtime, command) → SpawnArgs`** hook (default delegates to `resolveRuntime`) — and so inherit run()'s streaming + process-group abort handling. `SpawnArgs.stdin?` lets filter-style runtimes feed their program/input via stdin (`bc`, `tclsh`; or `""` for an `awk` BEGIN with EOF). On abort it signals the whole **process group** (`detached` spawn + `process.kill(-pid, …)`) so shell grandchildren can't leak (plurnk-execs#4): the default abort is a polite **SIGHUP**, once, no escalation; a `KILL[code]` reason carrying `{ signal }` delivers exactly that signal, fire-and-forget; only the consumer's loop-end housekeeping reason (`{ housekeeping: true, graceMs }`) escalates SIGHUP→**SIGKILL** after the consumer-sourced grace (never a magic number here). The `plurnk-execs-common` sibling subclasses it — claiming the whole subprocess set (sh/bash/node/python plus detected host interpreters) via a recipe table behind a `spawnArgs()` / `probe()` override. `isKnownRuntime` / `KNOWN_RUNTIMES` are the legacy 501 gate; the discovery registry + `probe()` supersede them once a consumer wires the registry.
+The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveRuntime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). Subclasses with their own interpreter table override the **`protected spawnArgs(runtime, command, target) → SpawnArgs`** hook (default delegates to `resolveRuntime`) — and so inherit run()'s streaming + process-group abort handling. `SpawnArgs.stdin?` lets filter-style runtimes feed their program/input via stdin (`bc`, `tclsh`; or `""` for an `awk` BEGIN with EOF). On abort it signals the whole **process group** (`detached` spawn + `process.kill(-pid, …)`) so shell grandchildren can't leak (plurnk-execs#4): the default abort is a polite **SIGHUP**, once, no escalation; a `KILL[code]` reason carrying `{ signal }` delivers exactly that signal, fire-and-forget; only the consumer's loop-end housekeeping reason (`{ housekeeping: true, graceMs }`) escalates SIGHUP→**SIGKILL** after the consumer-sourced grace (never a magic number here). The `plurnk-execs-common` sibling subclasses it — claiming the whole subprocess set (sh/bash/node/python plus detected host interpreters) via a recipe table behind a `spawnArgs()` / `probe()` override. `isKnownRuntime` / `KNOWN_RUNTIMES` are the legacy 501 gate; the discovery registry + `probe()` supersede them once a consumer wires the registry.
 
 ## §5 Consumer surface (plurnk-service)
 
