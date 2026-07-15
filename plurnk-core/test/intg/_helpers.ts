@@ -1,7 +1,9 @@
 import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
+import { Paths } from "../../src/index.ts";
+import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -94,6 +96,19 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
     const exec = schemes.get("exec") as { idle?: () => Promise<void> } | undefined;
     if (exec?.idle !== undefined) await exec.idle();
 };
+
+// A mock context window sized to the REAL packet floor, not a magic number. The floor is the
+// law/definition (grammar's plurnk.md — it GROWS as teaching is added, e.g. #430's harmony channel)
+// plus the generation reserves; a docs-foisting turn roughly doubles it (the teaching-docs catalog
+// is ~law-sized). A hardcoded window (the old `8192`) silently drifts UNDER that floor as the
+// definition grows and the turn hard-413s instead of concluding (#433/#355). This tracks it: measure
+// the law ONCE at module load (after setup.ts set the reserves), ×2 to cover the docs catalog +
+// headroom. Tight relative to a real model's window (the grinder still engages on large content),
+// but never impossible. Use it wherever a test runs a loop to CONCLUSION and just needs the packet
+// to fit — NOT for grinder/overflow tests, which deliberately pick a sub-floor window.
+const _reserves = ["REASONING", "ASSISTANT", "SAFETY"].reduce((n, k) => n + Number(process.env[`PLURNK_SERVICE_${k}`] ?? 0), 0);
+const _viableWindow = Math.ceil((rulerCount(await readFile(Paths.instructionsSystem, "utf8")) + _reserves) * 2);
+export const viableWindow = (): number => _viableWindow;
 
 export const insertSession = async (db: Db, name: string): Promise<number> => {
     const row = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name });

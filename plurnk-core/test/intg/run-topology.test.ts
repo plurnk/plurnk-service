@@ -3,6 +3,7 @@
 // The proof: the parent concludes at all — a non-woken 202 would hang (runLoopToTerminal times out).
 
 import test from "node:test";
+import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
@@ -105,7 +106,7 @@ test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a CONCLUDED
     // park awaiting voice. So the voice door (a sibling's irc) reawakens it as a NEW loop carrying the
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
-    const mock = new Mock({ contextSize: 8192, responses: [
+    const mock = new Mock({ contextSize: viableWindow(), responses: [
         makeMockResponse("<<SEND[200]:standing by for the entry code:SEND", 10),        // loop 1 — idle actor concludes
         makeMockResponse("<<SEND[200]:received the entry code and confirmed:SEND", 10), // loop 2 — woken by the irc
     ] });
@@ -132,7 +133,7 @@ test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a CONCLUDED
 });
 
 test("[§run-lifecycle-idle-is-concluded] an idle run's wait concludes (loop/terminated 200) — it never parks or quiesces", async () => {
-    const mock = new Mock({ contextSize: 8192, responses: [
+    const mock = new Mock({ contextSize: viableWindow(), responses: [
         // A wait with nothing running under it — an idle subtree. A wait on zero obligations concludes.
         makeMockResponse("<<SEND[202]:nothing running; done for now:SEND", 10),
     ] });

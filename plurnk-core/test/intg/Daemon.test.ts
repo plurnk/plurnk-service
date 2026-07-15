@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, makeMockResponse } from "./_rpc.ts";
-import { insertSession, insertRun, insertLoop, insertTurn, openMigrated } from "./_helpers.ts";
+import { insertSession, insertRun, insertLoop, insertTurn, openMigrated, viableWindow } from "./_helpers.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import type { CoreSeam } from "../../src/server/Daemon.ts";
 import Dsl from "./dsl.ts";
@@ -370,7 +370,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     // 200, so the full system prompt (law/definition) + the materialized docs must fit the prompt
     // budget. An 8192 mock window left only ~6.8k after reserves — under the packet — so the loop
     // concluded 413, not 200 (#433/#355). This test verifies the seam path, not small-window viability.
-    const mock = new Mock({ contextSize: 1_000_000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    const mock = new Mock({ contextSize: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

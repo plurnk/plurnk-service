@@ -5,13 +5,14 @@
 // grinder's uniform prior-turn fold (which would collapse the SEND too).
 
 import test from "node:test";
+import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string; expanded: number; turn_id: number };
-const mock = () => new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+const mock = () => new Mock({ contextSize: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
 
 test("[§prompt-fold] the foisted prompt EDIT log row is folded by default; a normal op in the same turn stays open", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
