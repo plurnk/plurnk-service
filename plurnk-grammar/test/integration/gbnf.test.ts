@@ -182,7 +182,11 @@ test("GBNF: every plurnk.md example derives from statement", () => {
     assert.ok(headingMatch, "plurnk.md is missing its `## Examples` section");
     const rest = plurnkMd.substring(headingMatch.index + headingMatch[0].length);
     const nextHeading = /^## /m.exec(rest);
-    const block = rest.substring(0, nextHeading ? nextHeading.index : rest.length).trim().replace(/^[ \t]*\* /gm, "");
+    const section = rest.substring(0, nextHeading ? nextHeading.index : rest.length);
+    // Examples live in ```plurnk fenced blocks (plurnkdown house-style); parse the fence bodies.
+    const fences = [...section.matchAll(/^```plurnk\n([\s\S]*?)^```/gm)].map((m) => m[1]);
+    assert.ok(fences.length > 0, "`## Examples` section has no ```plurnk fenced block");
+    const block = fences.join("\n").trim();
 
     const result = PlurnkParser.parseStatements(block);
     const statements = result.items.filter((item) => item.kind === "statement");
