@@ -1,23 +1,22 @@
 {
     "name": "@plurnk/plurnk-execs-git",
     "version": "1.0.5",
-    "description": "git + GitHub-CLI runtime executor for plurnk-service's exec scheme — shells the system git/gh binaries (no third-party lib) for EXEC[git] / EXEC[gh].",
+    "description": "In-process git runtime executor for plurnk-service's exec scheme — isomorphic-git (no subprocess, no shell escape) for EXEC[git]. The sandbox-portable versioning surface.",
     "keywords": [
         "plurnk",
         "exec",
         "runtime",
         "executor",
         "git",
-        "gh",
-        "github"
+        "isomorphic-git"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-execs-git#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-execs-git/issues"
+        "url": "https://github.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-execs-git.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git"
     },
     "engines": {
         "node": ">=26"
@@ -34,12 +33,7 @@
             {
                 "name": "git",
                 "glyph": "🔀",
-                "example": "<<EXEC[git]:log --oneline -10:EXEC"
-            },
-            {
-                "name": "gh",
-                "glyph": "🐙",
-                "example": "<<EXEC[gh]:pr list --state open:EXEC"
+                "example": "<<EXEC[git]:status:EXEC\n<<EXEC[git]:commit -m \"save work\":EXEC"
             }
         ]
     },
@@ -53,7 +47,8 @@
     },
     "files": [
         "dist/**/*",
-        "README.md"
+        "README.md",
+        "docs/**/*"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
@@ -62,6 +57,9 @@
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
         "prepack": "npm run build"
+    },
+    "dependencies": {
+        "isomorphic-git": "1.38.7"
     },
     "peerDependencies": {
         "@plurnk/plurnk-execs": "1.0.5"
