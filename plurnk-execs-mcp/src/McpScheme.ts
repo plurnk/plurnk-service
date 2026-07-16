@@ -32,7 +32,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import { serverConfig, isInjected, installAllowed } from "./config.ts";
-import { connect, catalog, cacheHints, isAuthRequired, msg, type Catalog } from "./client.ts";
+import { connect, catalog, allTools, cacheHints, isAuthRequired, msg, type Catalog } from "./client.ts";
 
 const BODY = "body";
 const JSON_MIME = "application/json";
@@ -146,7 +146,7 @@ export default class McpScheme implements SchemeHandler {
             }
             case "tool": {
                 if (caps.tools === undefined) throw new RouteError(501, "mcp_unadvertised", `MCP server '${server}' does not advertise tools`);
-                const { tools } = await client.listTools(undefined, opts);
+                const tools = await allTools(client, opts);
                 cacheHints(server, tools);
                 const tool = tools.find((t) => t.name === route.name);
                 if (tool === undefined) throw new RouteError(404, "mcp_unknown_tool", `no tool '${route.name}' on '${server}'`);

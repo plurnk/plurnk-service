@@ -30,12 +30,19 @@ const capabilities = mode === "bare"
 
 const server = new Server({ name: "echo", version: "0.0.0" }, { capabilities });
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-        { name: "echo", description: "Echo the arguments back", inputSchema: { type: "object", properties: { msg: { type: "string" } } }, annotations: { readOnlyHint: true } },
-        { name: "boom", description: "Always returns an error", inputSchema: { type: "object", properties: {} } },
-    ],
-}));
+const TOOLS = [
+    { name: "echo", description: "Echo the arguments back", inputSchema: { type: "object", properties: { msg: { type: "string" } } }, annotations: { readOnlyHint: true } },
+    { name: "boom", description: "Always returns an error", inputSchema: { type: "object", properties: {} } },
+];
+
+// Full mode serves the tool list PAGINATED (one tool per page) so the client's
+// cursor-following is proven by every existing "both tools present" assertion —
+// a client that reads only the first page sees `echo` and never `boom`.
+server.setRequestHandler(ListToolsRequestSchema, async (req) => {
+    if (mode === "bare") return { tools: TOOLS };
+    if (req.params?.cursor === undefined) return { tools: [TOOLS[0]], nextCursor: "page-2" };
+    return { tools: [TOOLS[1]] };
+});
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { name, arguments: args } = req.params;

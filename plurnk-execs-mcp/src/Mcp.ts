@@ -2,7 +2,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
 import { serverConfig, isInjected, installAllowed, registerServer, deregisterServer, parseTarget } from "./config.ts";
-import { connect, catalog, cacheHints, readOnlyHint, isAuthRequired, msg } from "./client.ts";
+import { connect, catalog, allTools, cacheHints, readOnlyHint, isAuthRequired, msg } from "./client.ts";
 import { runtimeDecl } from "./runtimes.ts";
 
 // Connection cache, OAuth overlay, readOnlyHint cache, and the capability-aware
@@ -37,7 +37,7 @@ export default class Mcp extends BaseExecutor {
             const caps = client.getServerCapabilities() ?? {};
             const parts: string[] = [];
             if (caps.tools !== undefined) {
-                const { tools } = await client.listTools();
+                const tools = await allTools(client);
                 cacheHints(this.runtime, tools);
                 parts.push(`${tools.length} tool${tools.length === 1 ? "" : "s"}`);
             }
