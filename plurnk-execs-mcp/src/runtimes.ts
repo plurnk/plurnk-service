@@ -28,40 +28,45 @@ export const runtimeDecl = (name: string): RuntimeDecl => ({
     documentation: doc(name),
 });
 
-// Per-tag documentation served on demand. Static usage — the *live* tool
-// catalog is fetched by running the tag with an empty (or `?`) body, since
-// listing tools requires a connection we deliberately don't open at scan time.
+// Per-tag documentation served on demand. Static usage — the *live* catalog
+// is fetched by running the tag with an empty (or `?`) body, since listing
+// requires a connection we deliberately don't open at scan time.
 const doc = (name: string): string => `# ${name} (MCP)
 
-An MCP server bridged as an EXEC tag. Its output lands behind \`${name}://\` and
-is READ back slice-wise — never dumped inline.
+An MCP server bridged as an EXEC tag. Tool results land behind \`${name}://\`
+and are READ back slice-wise — never dumped inline.
 
 ## Calling a tool
 
-\`\`\`
-<<EXEC[${name}]:<tool_name> <json-arguments>:EXEC
-\`\`\`
-
-\`<json-arguments>\` is a single JSON object (omit it for a no-argument tool):
+The tool is the \`(target)\` slot; its arguments are the body — a single JSON
+object (omit it for a no-argument tool):
 
 \`\`\`
-<<EXEC[${name}]:create_issue {"title":"Bug","body":"…"}:EXEC
-<<EXEC[${name}]:list_repos:EXEC
+<<EXEC[${name}](create_issue):{"title":"Bug","body":"…"}:EXEC
+<<EXEC[${name}](list_repos):EXEC
 \`\`\`
 
-## Discovering tools
+## Discovering the server
 
 Run the tag with \`?\` (or \`help\`, or an empty body) to write the server's live
-tool catalog — names, descriptions, and input JSON schemas — to the results
-stream:
+capability-aware catalog — tools (with input JSON schemas), resources, resource
+templates, and prompts, per what the server advertises — to the results stream:
 
 \`\`\`
 <<EXEC[${name}]:?:EXEC
 \`\`\`
 
+What the server HOLDS is also addressable directly:
+
+\`\`\`
+<<READ(mcp://${name}/)::READ                          the same catalog
+<<READ(mcp://${name}/resources/<encoded-uri>)::READ   read a resource
+<<READ(mcp://${name}/prompts/<prompt>?<args>)::READ   fetch a prompt
+\`\`\`
+
 ## Output & gating
 
-The tool result is JSON on the \`results\` channel. Every call is proposal-gated
-(treated as host-effecting) — the side-effect class of an individual MCP tool
-isn't known at gate time, so the conservative default applies.
+The tool result is JSON on the \`results\` channel. Gating is per tool by its
+\`readOnlyHint\` (cached from the catalog): a read-only tool auto-runs; a
+mutating — or not-yet-probed — tool is proposed. The catalog itself is read-only.
 `;
