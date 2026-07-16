@@ -234,7 +234,7 @@ test("GBNF: no idle turns (§no-idle-102) — a zero-op [102] does not derive; o
     // The idle turn: PLAN straight into a [102] terminal. Not derivable.
     assert.equal(derives("root-turn", "<<PLAN:think:PLAN\n<<SEND[102]:working:SEND"), false);
     // Targeted changes nothing — still idle.
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102](run://self):working:SEND"), false);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102](worker://self):working:SEND"), false);
     // One real op before it: derives.
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:working:SEND"), true);
     // A mid-comms SEND is a statement too (report-progress-and-continue): derives.
@@ -341,7 +341,7 @@ test("PlurnkParser.parse: a mid-turn termination is ILLEGAL — a disposition-co
     // Legal: a mid-comms SEND (non-disposition INT, statusless, or empty) may precede the
     // terminal; prose may follow the terminal.
     assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[400]:report:SEND\n<<EDIT(known://a):v:EDIT\n<<SEND[200]:done:SEND"), true);
-    assert.equal(valid("<<PLAN:p:PLAN\n<<SEND(run://peer):hint:SEND\n<<SEND[102]:cont:SEND"), true);
+    assert.equal(valid("<<PLAN:p:PLAN\n<<SEND(worker://peer):hint:SEND\n<<SEND[102]:cont:SEND"), true);
     assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\nall set, boss"), true);
     // 202 is a disposition again (waitpid contract): a mid SEND[202] is a mid-termination
     // parse error, and a turn ENDING on it terminates cleanly.
@@ -371,7 +371,7 @@ test("GBNF: the terminal [202] park <T>/<T,P>/<-1> — bounded, polled, indefini
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<30>:polling:SEND"), true);          // bounded wait
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<-1>:standing by:SEND"), true);      // indefinite (join-bounded)
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<60,5>:watching stream:SEND"), true); // timeout + poll cadence (mirrors EXEC)
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202](run://w)<60>:awaiting:SEND"), true); // targeted + park
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202](worker://w)<60>:awaiting:SEND"), true); // targeted + park
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102]<30>:cont:SEND"), false);            // 102 is a pure continue — the wait is 202's meaning
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]<30>:done:SEND"), false);            // 200 ends the loop — no wait to carry
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[300]<30>:choose:SEND"), false);          // 300 waits on the operator exclusively — indefinite by definition
@@ -380,7 +380,7 @@ test("GBNF: the terminal [202] park <T>/<T,P>/<-1> — bounded, polled, indefini
 
 test("GBNF: SEND[499] is a terminal disposition; 500 is not a valid terminal (engine verdict)", () => {
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499]:giving up:SEND"), true);
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499](run://parent):aborting:SEND"), true); // terminate-and-report give-up
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499](worker://parent):aborting:SEND"), true); // terminate-and-report give-up
     // 500 is an engine verdict — not in the terminal set, so not a valid turn closer.
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[500]:report:SEND"), false);
     // 499 is terminal-reserved: it IS the terminal, so it can't be a mid comms before another SEND.
@@ -467,10 +467,10 @@ test("GBNF: root rejects a batch with no final status SEND", () => {
 
 test("GBNF: root accepts a targeted terminal SEND (terminate-and-report)", () => {
     // The terminal is path-agnostic: a disposition code closes the turn with or without a target.
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](run://parent):result:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](worker://parent):result:SEND"), true);
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:done:SEND"), true);
     // two disposition SENDs in one turn is now illegal — the first SEND[200] IS the terminal, nothing follows.
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](run://parent):result:SEND\n<<SEND[200]:again:SEND"), false);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](worker://parent):result:SEND\n<<SEND[200]:again:SEND"), false);
     // ...but the turn must still END on a SEND — a trailing non-SEND op is rejected.
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:result:SEND\n<<EDIT(known://a.md):x:EDIT"), false);
 });
@@ -512,34 +512,34 @@ test("GBNF: EXEC accepts an optional <timeout,poll> line slot (canonical signal,
     assert.equal(derives("op-statement", "<<EXEC(sh:///x)<60,5>:cmd:EXEC"), true);         // slotless executor
 });
 
-test("GBNF: WORK/FORK are delegation ops — target (run://name) REQUIRED, body, no signal slot", () => {
+test("GBNF: WORK/FORK are delegation ops — target (worker://name) REQUIRED, body, no signal slot", () => {
     // WORK spawns a fresh named worker; FORK branches the current run into a named child.
-    assert.equal(derives("op-statement", "<<WORK(run://worker-db):resolve the db field:WORK"), true);
-    assert.equal(derives("op-statement", "<<FORK(run://recheck):re-derive from a primary source:FORK"), true);
+    assert.equal(derives("op-statement", "<<WORK(worker://worker-db):resolve the db field:WORK"), true);
+    assert.equal(derives("op-statement", "<<FORK(worker://recheck):re-derive from a primary source:FORK"), true);
     // The rail REQUIRES the target — a nameless worker/branch can't be addressed.
     assert.equal(derives("op-statement", "<<WORK:do a thing:WORK"), false);
     assert.equal(derives("op-statement", "<<FORK:do a thing:FORK"), false);
     // No signal slot — a [tag]/[int] on WORK/FORK is not sampleable.
-    assert.equal(derives("op-statement", "<<WORK[x](run://w):t:WORK"), false);
+    assert.equal(derives("op-statement", "<<WORK[x](worker://w):t:WORK"), false);
     // They derive as mid-ops before the terminal SEND.
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<WORK(run://w):task:WORK\n<<SEND[102]:spawned:SEND"), true);
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FORK(run://r):retry:FORK\n<<SEND[102]:forked:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<WORK(worker://w):task:WORK\n<<SEND[102]:spawned:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FORK(worker://r):retry:FORK\n<<SEND[102]:forked:SEND"), true);
 });
 
-test("parse: WORK/FORK build the right AST — op, run:// target, opaque body, null signal + lineMarker", () => {
+test("parse: WORK/FORK build the right AST — op, worker:// target, opaque body, null signal + lineMarker", () => {
     const one = (s: string) => {
         const r = PlurnkParser.parseStatements(s);
         const item = r.items.find((i) => i.kind === "statement");
         assert.ok(item && item.kind === "statement", `no statement parsed from ${s}`);
         return item.statement;
     };
-    const w = one("<<WORK(run://capital-checker):Find the capital of France:WORK");
+    const w = one("<<WORK(worker://capital-checker):Find the capital of France:WORK");
     assert.equal(w.op, "WORK");
     assert.equal(w.signal, null);
     assert.equal(w.lineMarker, null);
     assert.equal(w.body, "Find the capital of France");
     assert.ok(w.target !== null && JSON.stringify(w.target).includes("capital-checker"));
-    const f = one("<<FORK(run://recheck):Re-derive the capital:FORK");
+    const f = one("<<FORK(worker://recheck):Re-derive the capital:FORK");
     assert.equal(f.op, "FORK");
     assert.equal(f.signal, null);
     assert.equal(f.lineMarker, null);
@@ -574,7 +574,7 @@ test("GBNF: the READ→200 rail is DELETED (#54) — premature-conclude is the E
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<FIND(known:///**)::FIND\n<<SEND[200]:done:SEND"), true);   // ditto
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:reading:SEND"), true); // the taught pattern: 102 to receive
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<EDIT(known:///x):42:EDIT\n<<SEND[200]:done:SEND"), true);  // fire-and-forget → 200
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND(run://peer):ping:SEND\n<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND(worker://peer):ping:SEND\n<<SEND[200]:done:SEND"), true);
 });
 
 // {§terminal-body-nonempty}
@@ -582,7 +582,7 @@ test("GBNF: terminal SEND body is required non-empty — a turn must not end emp
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:Paris:SEND"), true);
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]::SEND"), false);          // empty terminal
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499]::SEND"), false);          // any terminal code
-    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](run://parent)::SEND"), false); // targeted, still empty
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](worker://parent)::SEND"), false); // targeted, still empty
     // MID sends stay lax — terse/empty comms allowed before the terminal.
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND::SEND\n<<SEND[102]:done:SEND"), true);
 });

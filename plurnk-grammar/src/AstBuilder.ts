@@ -212,7 +212,7 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
         // COPY's body is opaque: a destination path for entry copies, a prompt for
-        // run forks. The scheme handler interprets it — the parser stays out of it
+        // worker forks. The scheme handler interprets it — the parser stays out of it
         // (unlike MOVE, whose body is always a genuine destination path).
         return {
             op: "COPY",

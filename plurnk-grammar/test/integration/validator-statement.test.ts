@@ -46,8 +46,8 @@ test("PlurnkStatement: COPY with raw string body (destination)", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: COPY with raw string body (run-fork prompt)", () => {
-    const r = validateRoundTrip("<<COPY(run://.):Re-derive the capital from a primary source.:COPY");
+test("PlurnkStatement: COPY with raw string body (worker-fork prompt)", () => {
+    const r = validateRoundTrip("<<COPY(worker://.):Re-derive the capital from a primary source.:COPY");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 

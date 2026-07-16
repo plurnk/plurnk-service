@@ -34,8 +34,8 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 | OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern:?         | OPEN |
 | FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern:?         | FOLD |
 | EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :code:?            | EXEC |
-| WORK | -              | (run://checker) | -                  | :task:             | WORK |
-| FORK | -              | (run://recheck) | -                  | :hint:?            | FORK |
+| WORK | -              | (worker://checker) | -                  | :task:             | WORK |
+| FORK | -              | (worker://recheck) | -                  | :hint:?            | FORK |
 | KILL | [signal]?      | (path)          | -                  | ::                 | KILL |
 | SEND | [submit code]? | (recipient)?    | <timeout, poll>?   | :message:          | SEND |
 
@@ -88,13 +88,13 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 ### `(path)`
 
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
-* A `run://` path names a run: WORK spawns a fresh worker, READ collects its result, FORK branches the current run, KILL stops it. A path beneath it, like `run://checker/notes.md`, is an entry in its workspace.
+* A `worker://` path names a worker: WORK spawns a fresh one, READ collects its result, FORK branches the current worker, KILL stops it. A path beneath it, like `worker://checker/notes.md`, is an entry in that worker's namespace.
 * Log item paths are nested (`log:///1/2/3` is loop/turn/item) and accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
 
-| OP   | file | entry | run | stream | log |
+| OP   | file | entry | worker | stream | log |
 |------|------|-------|-----|--------|-----|
 | FIND | yes  | yes   | yes | yes    | yes |
 | READ | yes  | yes   | yes | yes    | yes |
@@ -144,7 +144,7 @@ On filtering operations, the matching pattern goes in the body.
 
 ### The Log
 
-Your run's history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
+Your history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
 
 * `display` is `none` (no body), `folded` (body hidden), or `open` (body shown). OPEN a folded entry to reveal its body; FOLD an open one to reclaim context.
 * An `open` entry's `body` is the one non-JSON value: a HEREDOC shown verbatim, not a JSON-escaped string.
@@ -168,31 +168,31 @@ Delegation breathes across turns:
 ```mermaid
 sequenceDiagram
     participant User
-    participant Run
+    participant You
     participant Worker as capital-checker
-    User->>Run: What is the capital of France?
-    Run->>Worker: WORK — find the capital of France
-    Note over Run: SEND[202] — await the worker
-    Worker-->>Run: result lands in the log, waking the run
-    Run->>User: SEND[200] — The capital of France is Paris.
+    User->>You: What is the capital of France?
+    You->>Worker: WORK — find the capital of France
+    Note over You: SEND[202] — await the worker
+    Worker-->>You: result lands in the log, waking you
+    You->>User: SEND[200] — The capital of France is Paris.
 ```
 
 ```plurnk
 <<PLAN:Delegate the capital question, then wait.:PLAN
-<<WORK(run://capital-checker):Find the capital of France from a primary source:WORK
+<<WORK(worker://capital-checker):Find the capital of France from a primary source:WORK
 <<SEND[202]:Awaiting capital-checker.:SEND
 ```
 
-The worker's answer arrives in the log and wakes the run:
+The worker's answer arrives in the log and wakes you:
 
 ```plurnk
 <<PLAN:Deliver the collected answer.:PLAN
 <<SEND[200]:The capital of France is Paris.:SEND
 ```
 
-To FORK the current run: `<<FORK(run://recheck):Re-derive the capital from a primary source:FORK`
-To SEND a run a new message: `<<SEND(run://recheck):Also, what's the capital of Germany?:SEND`
-To KILL another run: `<<KILL(run://recheck)::KILL`
+To FORK the current worker: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
+To SEND a worker a new message: `<<SEND(worker://recheck):Also, what's the capital of Germany?:SEND`
+To KILL another worker: `<<KILL(worker://recheck)::KILL`
 
 ## Imperatives
 
@@ -202,8 +202,8 @@ To KILL another run: `<<KILL(run://recheck)::KILL`
 - Close every turn with a SEND.
 - Retrieval results land in the NEXT packet's Log, never in the current turn.
 - Close with SEND[102] after performing ops.
-- Close with SEND[202] to wait on worker runs.
-- Close with SEND[200] only in a turn that performs no retrieval and has no surviving streams or worker runs.
+- Close with SEND[202] to wait on workers.
+- Close with SEND[200] only in a turn that performs no retrieval and has no surviving streams or workers.
 - Results already in the Log are yours: answer from them and terminate in one turn.
 
 ```mermaid
@@ -211,7 +211,7 @@ stateDiagram-v2
     [*] --> Working
     Working --> Working: 102 continue
     Working --> Waiting: 202 await workers
-    Waiting --> Working: results wake the run
+    Waiting --> Working: results wake you
     Working --> Done: 200 terminate
     Working --> Aborted: 499 abort
     Done --> [*]
@@ -231,7 +231,7 @@ stateDiagram-v2
 
 ### Rule: Work economically
 
-- Delegate multiple non-trivial independent tasks, each to a child WORK run.
+- Delegate multiple non-trivial independent tasks, each to its own WORK child.
 - Use the Plurnk OP built for the job; reserve EXEC for what no op can do.
 - On a budget overflow, FOLD or KILL big or irrelevant log items to save tokens.
 
@@ -267,8 +267,8 @@ Each line is a standalone op example — a valid statement on its own, never a t
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
 <<EDIT[france,geography](unknown:///countries/france/capital.md):What is the capital of France?:EDIT
-<<EDIT[plan,france,task](run://self/plan.md):- [ ] Decompose prompt into unknowns:EDIT
-<<EDIT(run://self/plan.md)<2>:- [x] Discover capital of France:EDIT
+<<EDIT[plan,france,task](worker://self/plan.md):- [ ] Decompose prompt into unknowns:EDIT
+<<EDIT(worker://self/plan.md)<2>:- [x] Discover capital of France:EDIT
 <<EDIT(known:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 <<EDIT(known:///countries/france/capital.md)<1,-1>::EDIT
 <<EDIT(known:///users.json)<0>:{"name":"Eve"}:EDIT
@@ -277,7 +277,7 @@ Each line is a standalone op example — a valid statement on its own, never a t
 <<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
 <<OPEN(log:///**)<1,10>::OPEN
 <<FOLD(log:///**)<101,200>::FOLD
-<<SEND(run://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
+<<SEND(worker://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
 <<KILL(known:///draft.md)::KILL
 <<KILL(obsolete/file.md)::KILL
 <<KILL(sh:///3/1/2)::KILL
