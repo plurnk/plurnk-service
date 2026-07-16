@@ -28,7 +28,7 @@
         "access": "public"
     },
     "plurnk": {
-        "kind": "exec",
+        "kind": ["exec", "scheme"],
         "attribution": "mcp",
         "runtimesModule": "./runtimes",
         "schemes": [

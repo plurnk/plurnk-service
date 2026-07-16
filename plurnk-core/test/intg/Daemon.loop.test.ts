@@ -26,12 +26,12 @@ test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcom
 
             const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
             // known:///france/capital + plurnk://prompt/<run>/<loop>/<N> (2 base — no manifest.json entry, the
-            // catalog is FIND-served), plus 9 docs: the 4 non-excluded in-tree schemes (log/known/unknown/run
+            // catalog is FIND-served), plus 11 docs: the 4 non-excluded in-tree schemes (log/known/unknown/run
             // — plurnk/file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE), the boot-discovered `http`
-            // + `wss` externals (one package, two first-class schemes, #473), and sh/node/sqlite/git —
+            // + `wss` + `mcp` externals (#473; mcp joined via the dual-kind flip, #483), and sh/node/sqlite/git —
             // executor docs the execs family ships (plurnk-execs#12; git joined with the in-process
-            // iso-git executor, #460). 2 + 10 = 12.
-            assert.equal(entryCount, 12);
+            // iso-git executor, #460). 2 + 11 = 13.
+            assert.equal(entryCount, 13);
         } finally { ws.close(); }
     });
 });
