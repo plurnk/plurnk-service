@@ -10,6 +10,8 @@ The command runs with a **scoped** environment: the host daemon's own secrets �
 
 `EXEC[sh](./dir):…` runs in `./dir`. With no target the command runs in the session's project root — the same place the `file` scheme writes — so it finds files a prior `EDIT` just created, rather than the daemon's cwd.
 
+The `(target)` slot is a **directory, not a program.** To run a script file you wrote, put the command in the **body** — `<<EXEC[sh]:bash greet.sh:EXEC` (or `sh greet.sh`). `<<EXEC[sh](greet.sh):EXEC` does *not* run the script: it reads `greet.sh` as a working directory and finds an empty command → 400.
+
 ## Channels
 
 Output streams into two channels on the `exec://` entry: `#stdout` (default) and `#stderr` (both `text/stream`). A host-effecting command proposes for review before it runs; a read-only one runs without the review pause. The stream opens when the command concludes — for a quick command, right on your next turn (folded only while it still runs); READ the entry to revisit or slice it. A non-zero exit closes the entry with status 500, the message on `stderr`.
