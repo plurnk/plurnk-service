@@ -28,7 +28,10 @@
     },
     "plurnk": {
         "kind": "scheme",
-        "name": "http"
+        "schemes": [
+            { "name": "http", "export": "default" },
+            { "name": "wss", "export": "Ws" }
+        ]
     },
     "exports": {
         ".": {
