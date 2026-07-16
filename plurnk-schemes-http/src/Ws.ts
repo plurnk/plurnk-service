@@ -29,6 +29,7 @@ import type {
     SchemeCtx,
     SubscriptionHandle,
     PassthroughResult,
+    SchemeManifest,
     SchemeHandler,
     ReadStatement,
     SendStatement,
@@ -36,10 +37,13 @@ import type {
     EntryData,
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
+import { readFile } from "node:fs/promises";
 import Guard from "./Guard.ts";
 
 // The inbound-frame channel — every message the origin pushes streams here.
 const MESSAGES = "messages";
+
+const documentation = await readFile(new URL("../docs/wss.md", import.meta.url), "utf-8");
 
 // The minimal WebSocket surface Ws needs — structurally satisfied by the global
 // `WebSocket` and by the test fake. Events are read loosely: a `message` carries
@@ -64,6 +68,27 @@ const connectGlobal: SocketFactory = (url) =>
     new (globalThis as unknown as { WebSocket: new (u: string) => Socket }).WebSocket(url);
 
 export default class Ws implements SchemeHandler {
+    // Registered as its own first-class scheme once discovery surfaces the
+    // package's second manifest (#473): own 🔌 entry, `messages` channel, ws
+    // example. Until core flips the routing, Http delegates ws/wss here and this
+    // manifest is inert-but-ready (landed ahead to de-risk the flip).
+    static manifest: SchemeManifest = {
+        name: "wss",
+        channels: { [MESSAGES]: "text/plain" },
+        defaultChannel: MESSAGES,
+        category: "data",
+        scope: "session",
+        writableBy: ["model", "client"],
+        volatile: true,
+        modelVisible: true,
+        glyph: "🔌",
+        example: "<<READ(wss://echo.websocket.events)::READ",
+        documentation,
+        flags: {
+            requiresWeb: true,
+        },
+    };
+
     // The socket factory (injectable for tests) and the live-connection registry
     // — the stateless-contract exception (SPEC §ws). One socket per
     // session+pathname; SEND/KILL find the socket a prior READ opened.
@@ -166,10 +191,13 @@ export default class Ws implements SchemeHandler {
         return `${sessionId}:${pathname}`;
     }
 
-    // Seed entry with the messages channel (empty content + seed mimetype), so
-    // open() binds an existing entry (http#3) — same shape as Http.#seedEntry.
+    // Seed entry mirroring the manifest channel (empty content + seed mimetype),
+    // so open() binds an existing entry (http#3) — same shape as Http.#seedEntry.
     static #seedEntry(): EntryData {
-        return { channels: { [MESSAGES]: { content: "", mimetype: "text/plain" } }, tags: [] };
+        const channels = Object.fromEntries(
+            Object.entries(Ws.manifest.channels).map(([name, mimetype]) => [name, { content: "", mimetype }]),
+        );
+        return { channels, tags: [] };
     }
 
     static #bad(status: number, kind: string, message: string): PassthroughResult {
