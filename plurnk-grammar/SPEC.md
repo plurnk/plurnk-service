@@ -84,7 +84,7 @@ Optionality:
 | `OP`        | required      |
 | `suffix`    | optional; used for nesting and `:OPkeyword` escape (see §8) |
 | `[signal]`  | optional, OP-dependent contents |
-| `(path)`    | required for all OPs except SEND (recipient), EXEC (cwd), and PLAN (no operand), where it is optional; WORK/FORK require a `run://` target naming the child |
+| `(path)`    | required for all OPs except SEND (recipient), EXEC (cwd), and PLAN (no operand), where it is optional; WORK/FORK require a `worker://` target naming the child |
 | `<L>`       | optional; single position or range (see §7) |
 | `:`         | required (header → body delimiter) |
 | `body`      | optional, OP-dependent meaning |
@@ -116,14 +116,14 @@ All other restrictions are runtime concerns, not grammar concerns.
 | FIND   | tag filter (CSV)  | required | pattern matcher         | result-set pagination |
 | READ   | tag filter (CSV)  | required | pattern matcher         | per-entry lines |
 | EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
-| COPY   | tags to apply (CSV) | required | destination URI (plain resource copy — the run-fork overload was retired for the dedicated FORK verb, 0.74.54) | entry lines |
+| COPY   | tags to apply (CSV) | required | destination URI (plain resource copy — the worker-fork overload was retired for the dedicated FORK verb, 0.74.54) | entry lines |
 | MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
 | EXEC   | executor (single string; `sh` default, `node`, `python`, …) | optional (cwd) | command or code snippet | `<timeout, poll>` — spawn lifetime cap + poll cadence |
-| WORK   | none (parses as null) | required `run://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
-| FORK   | none (parses as null) | required `run://` target naming the branch | optional hint for the context-inheriting branch | none (parses as null) |
+| WORK   | none (parses as null) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
+| FORK   | none (parses as null) | required `worker://` target naming the branch | optional hint for the context-inheriting branch | none (parses as null) |
 | KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |
 | PLAN   | tag filter (CSV; parse-side, canon is slotless) | optional (parse-side; canon is slotless) | reasoning text (recorded to the log; no other effect) | parse-side only |
 
@@ -454,7 +454,7 @@ structural:
 
 SEND with no `(path)` broadcasts to the default control channel — the
 turn's disposition. SEND with `(path)` directs the message at a
-specific recipient URI (a worker run, a stream, a peer).
+specific recipient URI (a worker, a stream, a peer).
 
 ### Response Body Convention
 
@@ -681,7 +681,7 @@ interface EditStatement extends StatementBase<string[]> { op: "EDIT"; body: stri
 interface MoveStatement extends StatementBase<string[]> { op: "MOVE"; body: ParsedPath | null; }
 // COPY — body is the destination URI, carried as a raw string on the wire (the
 // scheme handler resolves it via parsePath). Plain resource copy only — the
-// run-fork overload was retired for the dedicated FORK verb (0.74.54).
+// worker-fork overload was retired for the dedicated FORK verb (0.74.54).
 interface CopyStatement extends StatementBase<string[]> { op: "COPY"; body: string | null; }
 
 // SEND — body is raw + best-effort JSON.
@@ -690,10 +690,10 @@ interface SendStatement extends StatementBase<number> { op: "SEND"; body: SendBo
 // EXEC — body is a command or code snippet. Raw.
 interface ExecStatement extends StatementBase<string> { op: "EXEC"; body: string | null; }
 
-// WORK — spawn a fresh worker run. Target names the child (required, run://);
+// WORK — spawn a fresh worker. Target names the child (required, worker://);
 // no signal, no scope (both parse as null). Body is the worker's task prompt.
 interface WorkStatement extends StatementBase<never> { op: "WORK"; body: string | null; }
-// FORK — branch the current run, inheriting context. Same shape as WORK;
+// FORK — branch the current worker, inheriting context. Same shape as WORK;
 // body is an optional hint for the branch.
 interface ForkStatement extends StatementBase<never> { op: "FORK"; body: string | null; }
 

@@ -13,7 +13,7 @@ export { default as RecordingListener } from "./RecordingListener.ts";
  * touch AstBuilder.
  *
  * Primary use: resolving a COPY destination. COPY's body is an opaque string — a
- * destination URI for an entry copy, a prompt for a run fork (`run://`) — so the
+ * destination URI for an entry copy, a prompt for a worker fork (`worker://`) — so the
  * scheme handler interprets it, then calls this for the destination case. MOVE
  * destinations arrive pre-parsed (its body is always a path); COPY's does not,
  * because its body is polymorphic. See SPEC §4 (COPY) and §12.

@@ -110,7 +110,7 @@ sendStatement : OPEN_SEND termModifiers COLON? body? CLOSE_TAG ;
 midSend       : OPEN_SEND midModifiers? COLON? body? CLOSE_TAG ;
 execStatement : OPEN_EXEC execModifiers? COLON? body? CLOSE_TAG ;
 
-// Delegation verbs — target (the run://<name>) + body (task/hint), no signal, no line marker.
+// Delegation verbs — target (the worker://<name>) + body (task/hint), no signal, no line marker.
 // WORK spawns a fresh named worker; FORK branches the current run into a named child. Target is
 // optional here (forgiving parser); canon and the GBNF rail require it.
 workStatement : OPEN_WORK target? COLON? body? CLOSE_TAG ;

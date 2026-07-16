@@ -10,7 +10,7 @@ const minimalSchemeReg = () => ({
     name: "wiki",
     model_visible: true,
     category: "external",
-    default_scope: "session" as const,
+    default_scope: "workspace" as const,
     default_channel: "body",
     writable_by: ["model" as const],
     volatile: false,
@@ -22,14 +22,18 @@ test("Validator: SchemeRegistration accepts minimal row", () => {
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: SchemeRegistration accepts run-scoped default", () => {
-    const { valid, errors } = Validator.validateSchemeRegistration({ ...minimalSchemeReg(), name: "run", default_scope: "run" });
+test("Validator: SchemeRegistration accepts worker-scoped default", () => {
+    const { valid, errors } = Validator.validateSchemeRegistration({ ...minimalSchemeReg(), name: "worker", default_scope: "worker" });
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: SchemeRegistration rejects retired agent scope", () => {
-    const { valid } = Validator.validateSchemeRegistration({ ...minimalSchemeReg(), default_scope: "agent" });
-    assert.equal(valid, false);
+// Retired words retire EMPTY (#486 law 2): the old scope nouns never come back with
+// shifted referents — a live word with a flipped meaning poisons every existing log and doc.
+test("Validator: SchemeRegistration rejects retired scopes — agent, run, session", () => {
+    for (const scope of ["agent", "run", "session"]) {
+        const { valid } = Validator.validateSchemeRegistration({ ...minimalSchemeReg(), default_scope: scope as never });
+        assert.equal(valid, false, `retired scope "${scope}" must not validate`);
+    }
 });
 
 test("Validator: SchemeRegistration accepts null handler (core scheme)", () => {

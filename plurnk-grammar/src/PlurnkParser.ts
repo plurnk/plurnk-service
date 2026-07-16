@@ -62,7 +62,7 @@ export default class PlurnkParser {
         WRITE: "`<<EDIT`", CREATE: "`<<EDIT`", UPDATE: "`<<EDIT`", SET: "`<<EDIT`",
         LIST: "`<<FIND`", SEARCH: "`<<FIND`", GREP: "`<<FIND`", QUERY: "`<<FIND`",
         RUN: "`<<EXEC`", SHELL: "`<<EXEC`",
-        SPAWN: "`<<WORK(run://name)` to spawn a worker run", DELEGATE: "`<<WORK(run://name)` to spawn a worker run",
+        SPAWN: "`<<WORK(worker://name)` to spawn a worker", DELEGATE: "`<<WORK(worker://name)` to spawn a worker",
     };
 
     // Surface near-miss ops that the forgiving parser swallowed as prose: a `<<Word…:Word`
