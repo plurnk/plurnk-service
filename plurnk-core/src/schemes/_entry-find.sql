@@ -31,10 +31,10 @@ WHERE e.scope = 'workspace'
 ORDER BY e.pathname;
 
 -- PREP: find_worker_entry_candidates
--- §run-scheme — run-scope FIND, byte-identical to find_workspace_entry_candidates BUT scope='worker'.
+-- §worker-scheme — worker-scope FIND, byte-identical to find_workspace_entry_candidates BUT scope='worker'.
 -- The owner narrowing rides $scope_pathname (Run.find folds the owner into the prefix glob —
--- `/<owner>/*`), so a run reaches only its own (self) or a named sister's scratch. Additive: the
--- workspace query above is untouched (§run-scheme Inc-1).
+-- `/<owner>/*`), so a worker reaches only its own (self) or a named sister's scratch. Additive: the
+-- workspace query above is untouched (§worker-scheme Inc-1).
 SELECT e.id AS entry_id, e.pathname, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel

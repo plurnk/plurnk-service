@@ -68,8 +68,8 @@ test("EDIT with an accept-path span (rx.body from a proposed file edit) renders 
     assert.match(out, /<<:::src\/app\.js\n3:\tapp\.listen\(8080\);\n4:\t\/\/ error handler configured\n:::src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
 });
 
-test("log entry: a worker:// spawn renders the worker NAME in the target — authority survives (§run-scheme)", () => {
-    // The spawn-blindness root cause: the run name lives in the URI authority (worker://<name>),
+test("log entry: a worker:// spawn renders the worker NAME in the target — authority survives (§worker-scheme)", () => {
+    // The spawn-blindness root cause: the worker name lives in the URI authority (worker://<name>),
     // not the path. Rendering scheme+path alone collapsed every spawn to a bare `worker://`, so the
     // model could not tell worker_db from worker_pool in its own log and re-spawned. The authority
     // must reach the rendered target.
@@ -314,7 +314,7 @@ test("[§requirements-requirements-omitted-when-empty] empty requirements sectio
 });
 
 test("[§render-rule-find-renders-result] log render: FIND@200 renders its result catalog, not just the echoed query", () => {
-    // The turn-0 foisted FIND(scheme:///**) is how a run's opening catalog reaches
+    // The turn-0 foisted FIND(scheme:///**) is how a worker's opening catalog reaches
     // the packet. If the renderer only re-emits the query statement (the regression),
     // the model is shown its own question and zero entries.
     const catalog = '[\n  {\n    "path": "plurnk://prompt/1/1",\n    "channels": {\n      "plurnk://prompt/1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';

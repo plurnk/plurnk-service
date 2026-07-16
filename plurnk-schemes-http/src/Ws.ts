@@ -95,7 +95,7 @@ export default class Ws implements SchemeHandler {
 
     // READ → open the socket, stream inbound frames into `messages`, hold the op
     // until the socket closes (mirrors the http streaming lifecycle: 102 now, the
-    // subscription drives content, the run wakes on close).
+    // subscription drives content, the worker wakes on close).
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad_target", "READ requires a ws(s):// URL target");

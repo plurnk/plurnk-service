@@ -30,7 +30,7 @@ interface Renderer {
 
 export default class WebFetcher {
     // One warm-Chromium pool shared across prefetches (render context keyed 0 —
-    // prefetch is public-page acquisition, no per-run cookie isolation to keep).
+    // prefetch is public-page acquisition, no per-worker cookie isolation to keep).
     readonly #browser: Renderer;
     constructor(browser: Renderer = new Browser()) {
         this.#browser = browser;

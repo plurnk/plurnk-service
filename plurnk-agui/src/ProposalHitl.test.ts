@@ -60,7 +60,7 @@ test("resurface(): a workspace's pending stopped-worlds come back as tool-calls"
     assert.equal(starts[1].toolCallName, "request_user_input", "the [300] SEND re-surfaces as an input request");
 });
 
-test("a server-owned proposal (flags.yolo / noProposals) emits NO tool-call — the run must not terminate", () => {
+test("a server-owned proposal (flags.yolo / noProposals) emits NO tool-call — the worker must not terminate", () => {
     const m = mockSeam();
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();

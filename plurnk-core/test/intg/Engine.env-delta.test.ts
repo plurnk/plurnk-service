@@ -1,7 +1,7 @@
 // SPEC §env-delta / §machine-processes — the environment delta as a PULL from the
-// shared log. No per-run snapshot: every edit is already a span-carrying log row, so
-// at pre-turn a run surfaces other actors' edits on shared entries since its OWN last
-// turn, folded. Two producers: real cross-run edits (a sibling's EDIT) and the
+// shared log. No per-worker snapshot: every edit is already a span-carrying log row, so
+// at pre-turn a worker surfaces other actors' edits on shared entries since its OWN last
+// turn, folded. Two producers: real cross-worker edits (a sibling's EDIT) and the
 // filesystem-as-the-plurnk-run fs-sync fictions (source=file) for ambient disk drift.
 
 import test from "node:test";
@@ -49,7 +49,7 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("[§machine-processes-run-is-its-log] a run learns a sibling's edit through its own log — pulled from the shared log, no per-run snapshot", async () => {
+test("[§machine-processes-worker-is-its-log] a worker learns a sibling's edit through its own log — pulled from the shared log, no per-worker snapshot", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `xrun-${crypto.randomUUID()}`);
@@ -70,7 +70,7 @@ test("[§machine-processes-run-is-its-log] a run learns a sibling's edit through
         assert.ok(edit.status === 200 || edit.status === 201, "B's edit to the shared entry lands");
 
         // A's turn 2 pulls B's edit from the shared log as a FOLDED delta — A consulted no
-        // per-run snapshot; it learned its world moved purely through its own log.
+        // per-worker snapshot; it learned its world moved purely through its own log.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "known" && r.pathname === "/shared.md");
@@ -82,7 +82,7 @@ test("[§machine-processes-run-is-its-log] a run learns a sibling's edit through
     }
 });
 
-test("[§actor-boundary-two-doors] exactly two cross-run channels — state via the env-delta, a message via inject", async () => {
+test("[§actor-boundary-two-doors] exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
     // Both doors in one place. (Was a stale `unbuilt` todo stub — the voice door IS built: inject,
     // and irc through it, resume parked runs in place, #55.) No third channel — by design.
     const db = await openMigrated();
@@ -118,7 +118,7 @@ test("[§actor-boundary-two-doors] exactly two cross-run channels — state via 
     }
 });
 
-test("an out-of-band disk change surfaces as a source=file delta — the plurnk run narrates the fs fiction (§env-delta)", async () => {
+test("an out-of-band disk change surfaces as a source=file delta — the plurnk worker narrates the fs fiction (§env-delta)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-"));
     const db = await openMigrated();
     try {
@@ -145,7 +145,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
         // The file changes out-of-band (an external editor, a git pull).
         await writeFile(join(root, "notes.md"), "line1\nline2\nline3-external\n");
 
-        // Turn 2 — the plurnk run logs the divergence as a source=file EDIT; A pulls it.
+        // Turn 2 — the plurnk worker logs the divergence as a source=file EDIT; A pulls it.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
@@ -159,12 +159,12 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
     }
 });
 
-// §run-scheme loop-termination rides the same env-delta rail: when a sibling's loop
+// §worker-scheme loop-termination rides the same env-delta rail: when a sibling's loop
 // reaches a terminal status, the observer pulls it at pre-turn as a FOLDED SEND from
 // worker://<name> carrying the loop's deliverable — the SEND[200] body or, for an
 // abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,
 // so a graceful 200 and a grinder 499 surface the same way.
-test("[§run-scheme-collect] a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, an abandonment folded", async () => {
+test("[§worker-scheme-collect] a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, an abandonment folded", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);
@@ -192,7 +192,7 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces — a 2xx del
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a run-delta in A's log");
         assert.equal(win!.origin, "plurnk", "the termination delta is the engine's narration");
-        assert.equal(win!.source, String(worker), "attributed to the run that terminated");
+        assert.equal(win!.source, String(worker), "attributed to the worker that terminated");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
         assert.equal(win!.rx, "the answer is 42", "the SEND body — the loop's deliverable — rides the delta");
         assert.equal(win!.expanded, 1, "born OPEN — a child's 2xx deliverable reaches the parent open + awakening, not hidden behind a fold");

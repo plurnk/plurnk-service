@@ -98,7 +98,7 @@ test("a JSON entry large enough to tile builds through the live embedder — the
         // A VALID JSON document large enough to exceed the embedder window, so it tiles —
         // and each tile is an invalid JSON fragment. With the embedder live in
         // DEFAULT_MIMETYPES, the manifest build's deriveEmbeddings runs the tile+embed path:
-        // the exact code that crashed every run, exercised end-to-end against the real model.
+        // the exact code that crashed every worker, exercised end-to-end against the real model.
         const big = JSON.stringify(Object.fromEntries(
             Array.from({ length: 80 }, (_, i) => [`key_${i}`, `value number ${i} with several descriptive words here`]),
         ), null, 2);

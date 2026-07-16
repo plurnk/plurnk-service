@@ -208,7 +208,7 @@ export default class Http implements SchemeHandler {
         // header: text/plain) — the same channels notifyChunk then populates.
         await ctx.entries.write(pathname, Http.#seedEntry());
 
-        // open() returns the run+teardown-composed signal — fires on loop.cancel
+        // open() returns the worker+teardown-composed signal — fires on loop.cancel
         // OR our local teardown. Wire it so either path aborts the fetch/render.
         const composed = await ctx.subscriptions.open(pathname, handle);
         const onAbort = () => local.abort();

@@ -64,8 +64,8 @@ const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 // can be tossed straight at `npm run test:digest -- test/intg/.tmp/db-<id>.db`
 // without rebuilding plumbing. The path is logged on close so a failed
 // test's forensic db is one grep away. The intg/demo/live runner scripts
-// pre-clean .tmp (test:clean-tmp) so only the current run's DBs remain —
-// no cross-run accumulation. A bare `node --test <file>` bypasses that, so
+// pre-clean .tmp (test:clean-tmp) so only the current worker's DBs remain —
+// no cross-worker accumulation. A bare `node --test <file>` bypasses that, so
 // run `npm run test:clean-tmp` yourself first if you go around the script.
 export const openMigrated = async (atPath?: string): Promise<Db> => {
     const dbPath = atPath ?? join(TMP_DIR, `db-${crypto.randomUUID()}.db`);

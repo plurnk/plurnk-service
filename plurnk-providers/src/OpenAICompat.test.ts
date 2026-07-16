@@ -612,7 +612,7 @@ test("slot affinity: no pinning backend or unknown slotCount → no id_slot ever
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("slot affinity: a run past the LRU window (slotCount*8) loses its pin; recent runs stay sticky (#11)", async () => {
+test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; recent runs stay sticky (#11)", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const slotOf = (i: number) => JSON.parse(calls[i].init.body as string).id_slot;

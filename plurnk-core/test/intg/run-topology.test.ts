@@ -1,4 +1,4 @@
-// §run-lifecycle topology join — a child run finishing is a WAKE EDGE for a parent that parked
+// §run-lifecycle topology join — a child worker finishing is a WAKE EDGE for a parent that parked
 // (SEND[202]) awaiting it. Without it, a parent that spawns work and hibernates would dead-park.
 // The proof: the parent concludes at all — a non-woken 202 would hang (runLoopToTerminal times out).
 
@@ -9,13 +9,13 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 
-test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked at 202", async () => {
+test("[§worker-lifecycle-child-wake] a child worker concluding wakes a parent parked at 202", async () => {
     // Response order is forced by causality: the parent can't resume until the child concludes,
     // and the child can't run until the parent spawns it — so the Mock queue is deterministic.
     // 16384: the parent's final resume carries the whole child subtree; that accumulation crests at the 8192 edge
     // and grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake topology, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        // Parent turn 1: spawn a child run, then hibernate awaiting it.
+        // Parent turn 1: spawn a child worker, then hibernate awaiting it.
         makeMockResponse("<<WORK(worker://worker):compute the thing and finish:WORK\n<<SEND[102]<-1>:spawned worker; waiting on it:SEND", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
         makeMockResponse("<<SEND[200]:worker done:SEND", 10),
@@ -39,7 +39,7 @@ test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked 
     });
 });
 
-test("[§run-lifecycle-child-wake] a child FAILING (499) also wakes the parent — any conclusion is a wake edge", async () => {
+test("[§worker-lifecycle-child-wake] a child FAILING (499) also wakes the parent — any conclusion is a wake edge", async () => {
     // A child that abandons (SEND[499]) is still "done"; the parent must wake, not wait forever.
     // 16384: the parent's woken turn carries the whole child history + collect delta, cresting at the
     // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
@@ -59,7 +59,7 @@ test("[§run-lifecycle-child-wake] a child FAILING (499) also wakes the parent �
     });
 });
 
-test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent→child→grandchild)", async () => {
+test("[§worker-lifecycle-child-wake] wake propagates UP a grandchild chain (parent→child→grandchild)", async () => {
     // Each level parks until the one below concludes — so the order is forced and the recursion shows:
     // grandchild concludes → wakes child → child concludes → wakes parent → parent concludes.
     // 16384: a 2-deep chain piles grandchild→child→parent results into the parent's final resume, cresting at the
@@ -81,7 +81,7 @@ test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent
     });
 });
 
-test("[§run-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
+test("[§worker-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     // 16384: the static packet (tools sheet + docs) grew with execs-search 0.3.0's ten category
     // tags — the same teaching-growth budget-edge the delegation test hit at the FORK/WORK adopt.
     const mock = new Mock({ contextWindow: 16384, responses: [
@@ -102,7 +102,7 @@ test("[§run-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (mu
 });
 
 test("[§actor-boundary-passive-wake] an irc (SEND worker://name) wakes a CONCLUDED sibling — the voice door mints a fresh loop", async () => {
-    // Under §run-lifecycle-idle-is-concluded, an actor with nothing to wait on CONCLUDES — it does not
+    // Under §worker-lifecycle-idle-is-concluded, an actor with nothing to wait on CONCLUDES — it does not
     // park awaiting voice. So the voice door (a sibling's irc) reawakens it as a NEW loop carrying the
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
@@ -132,7 +132,7 @@ test("[§actor-boundary-passive-wake] an irc (SEND worker://name) wakes a CONCLU
     });
 });
 
-test("[§run-lifecycle-idle-is-concluded] an idle run's wait concludes (loop/terminated 200) — it never parks or quiesces", async () => {
+test("[§worker-lifecycle-idle-is-concluded] an idle worker's wait concludes (loop/terminated 200) — it never parks or quiesces", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // A wait with nothing running under it — an idle subtree. A wait on zero obligations concludes.
         makeMockResponse("<<SEND[202]:nothing running; done for now:SEND", 10),
@@ -150,7 +150,7 @@ test("[§run-lifecycle-idle-is-concluded] an idle run's wait concludes (loop/ter
     });
 });
 
-test("[§run-delegation-inherits-flags] spawn and fork carry the delegating loop's flags — a YOLO parent's child EDITs without proposing", async () => {
+test("[§worker-delegation-inherits-flags] spawn and fork carry the delegating loop's flags — a YOLO parent's child EDITs without proposing", async () => {
     // The four-sweep fan-out wedge: injectWorker dropped flags, so a delegated child's every
     // side-effecting op proposed into a resolver-less void (300s auto-cancel per attempt).
     // Proof is behavioral AND through the real dispatch path: the child's EDIT must land
@@ -189,7 +189,7 @@ test("[§run-delegation-inherits-flags] spawn and fork carry the delegating loop
     });
 });
 
-test("[§run-lifecycle-wake-requeue-not-terminal] a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async () => {
+test("[§worker-lifecycle-wake-requeue-not-terminal] a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async () => {
     // The delegation-flags flake: a conclusion-wake re-queues a parent's loop (202→100) between its
     // turn-end and its drain's next status check; pre-fix, runLoop read the queued 100 as an external
     // terminal and broadcast a QUEUED loop as loop/terminated{100}.

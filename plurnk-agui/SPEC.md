@@ -12,19 +12,19 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
   the client interface. No WebSocket, no separate process.
 - **A plurnk SESSION is the world; an AG-UI THREAD is a conversation over it** {§agui-thread-is-run}
   — plurnk's machine model (service SPEC §machine-processes) splits the WORLD (a workspace: one
-  curated workspace) from the CONVERSATION (a run: a history over that world). AG-UI's workspace
+  curated workspace) from the CONVERSATION (a worker: a history over that world). AG-UI's workspace
   concept is the workspace, selected by name, VERBATIM, via `forwardedProps.plurnk.workspace`
   (attach if it exists, create with exactly that name otherwise — no prefix, no forging). The
-  workspace is REQUIRED: a run has no existence without a world, so its absence is a contract
+  workspace is REQUIRED: a worker has no existence without a world, so its absence is a contract
   violation the module rejects (500) — never a workspace forged from the `threadId`. The
   `threadId` is the conversation — a RUN over that world, and the name is the identity at
   BOTH levels: `threadId` == the workspace name binds the workspace's MODEL run (the default
   conversation, `ensureModelWorker` — origin identifies it, never a name parse); a DISTINCT
-  `threadId` names its own conversation run — found by name if it exists (forks and prior
+  `threadId` names its own conversation worker — found by name if it exists (forks and prior
   conversations are addressable as threads), minted via `createConversationWorker` (svc#366)
   if it doesn't. World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
-  `run.fork`) operate on the THREAD's conversation, never blindly on the model run.
-  Extended context persists across AG-UI runs because the run's log does.
+  `run.fork`) operate on the THREAD's conversation, never blindly on the model worker.
+  Extended context persists across AG-UI runs because the worker's log does.
 - **Family-internal runtime deps only** {§agui-zero-dep} — `@plurnk/*` packages (the grammar,
   for edge parsing) are welcome, exact-pinned; third-party runtime deps (e.g. `@ag-ui/core`
   with its Zod) stay out. Event shapes remain hand-defined plain JSON.
@@ -73,11 +73,11 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
   daemon's `providers.list` truth (the effective prompt budget, the active model), then
   `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging
-  up IS the abort signal; no run is orphaned unwatched.
+  up IS the abort signal; no worker is orphaned unwatched.
 
 - **Reattach replays** {§agui-replay} — a rediscovered thread (the bridge restarted, a second
   frontend arrived) attaches to its existing workspace by name→id and opens ORIENTED: the model
-  run's SENDs replay as `MESSAGES_SNAPSHOT` (the conversation spine; everything else stays
+  worker's SENDs replay as `MESSAGES_SNAPSHOT` (the conversation spine; everything else stays
   reachable via live `plurnk.row`), and every pending stop-the-world proposal re-surfaces
   immediately via the daemon's `proposal.list` — the indefinite-wait ruling's client half: a
   days-old question is discoverable, never a mystery hang.
@@ -90,26 +90,26 @@ surfaces as `CUSTOM plurnk.proposal` carrying `{logEntryId, op, target, body, at
 `POST /resolve {threadId, logEntryId, decision, body?}` — a passthrough to the daemon's
 `loop.resolve`, where an accept `body` is the answer. The SSE stream stays open while the
 world is stopped — **indefinitely by default** (service ruling: a stopped world waits for its
-human; the timeout is operator opt-in) — and the run resumes on resolution.
+human; the timeout is operator opt-in) — and the worker resumes on resolution.
 
 ## The action surface {§agui-management-plane}
 
 A verb is a §3 action run: `forwardedProps.plurnk.action = {kind, …params}` in, one
 `CUSTOM plurnk.action.result` (`{kind, ok, result|error}`) out, `RUN_FINISHED`. There is
-no side-channel RPC endpoint; the run envelope is the whole interface. Unknown kinds
+no side-channel RPC endpoint; the worker envelope is the whole interface. Unknown kinds
 error honestly (`ok:false`). `loop.inject` rides this surface; its steered effect
-streams on the original run's open SSE. `loop.cancel` is its counterpart — it aborts
-the model run's active drain (the addressable spelling of the SSE-hangup abort; both
+streams on the original worker's open SSE. `loop.cancel` is its counterpart — it aborts
+the model worker's active drain (the addressable spelling of the SSE-hangup abort; both
 clients' stop controls ride it).
 
 ## Topology scope {§agui-topology-scope}
 
-The workspace broadcast carries EVERY run's rows (workers, the plurnk run, siblings);
-only the thread's model run projects onto the core vocabulary. Foreign-run rows ride
+The workspace broadcast carries EVERY worker's rows (workers, the plurnk worker, siblings);
+only the thread's model worker projects onto the core vocabulary. Foreign-run rows ride
 `plurnk.row`/`plurnk.ambient` — visible to rich clients as topology, never interleaved
 into the conversation a generic frontend renders.
 
-## The run endpoint {§agui-run-endpoint}
+## The worker endpoint {§agui-run-endpoint}
 
 `POST /` (or `/agui`) with an AG-UI `RunAgentInput` body: the last `user` message becomes the
 `loop.run` prompt (`maxTurns`/`flags.yolo` from env); the response is `text/event-stream`,

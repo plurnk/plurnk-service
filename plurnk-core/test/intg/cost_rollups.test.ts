@@ -90,7 +90,7 @@ test("cost rollups: turns in different runs of same workspace aggregate", async 
     } finally { await db.close(); }
 });
 
-test("cost rollups: forked run's turn rolls into the same workspace", async () => {
+test("cost rollups: forked worker's turn rolls into the same workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-cost-fork");

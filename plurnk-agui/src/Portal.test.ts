@@ -1,4 +1,4 @@
-// The orchestration engine, tested against a mock seam — the pieces compose: a run
+// The orchestration engine, tested against a mock seam — the pieces compose: a worker
 // re-surfaces pending + drives the loop, live events fan to the bound thread as AG-UI,
 // a proposal reaches the thread as a tool-call, and a resume resolves it. No daemon.
 
@@ -28,7 +28,7 @@ const mockSeam = (pending: PendingProposal[] = []) => {
     return { seam, fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)), workers, resolves, cancelled: () => cancelled };
 };
 
-test("a run re-surfaces pending, drives the loop, then live events fan as AG-UI", async () => {
+test("a worker re-surfaces pending, drives the loop, then live events fan as AG-UI", async () => {
     const pending: PendingProposal[] = [{ logEntryId: 5, workerId: 1, loopId: 1, turnId: 1, op: "EXEC", suffix: "", scheme: "sh", pathname: null, tx: "ls", attrs: null }];
     const m = mockSeam(pending);
     const seen: AguiEvent[] = [];
@@ -69,6 +69,6 @@ test("a live proposal reaches the bound thread as a tool-call; resume resolves i
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept" } });
 
     assert.equal(portal.cancel(10), true);
-    assert.equal(m.cancelled(), 10, "cancel cancels the run's drain");
+    assert.equal(m.cancelled(), 10, "cancel cancels the worker's drain");
     portal.stop();
 });

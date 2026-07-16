@@ -1,4 +1,4 @@
-// Regression guard for the live/demo exec failure: a model runs an EXEC, the
+// Regression guard for the live/demo exec failure: a model workers an EXEC, the
 // entry is created in the DB — but its result must also surface in the NEXT
 // turn's LOG (the EXEC log row links its output via stream=<runtime>:///<coord>),
 // or the model is blind to its own output and loops forever. The bug only manifested in the

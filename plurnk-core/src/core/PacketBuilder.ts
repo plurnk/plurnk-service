@@ -290,7 +290,7 @@ export default class PacketBuilder {
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
         const projectPolicy = await readProjectPolicy(workspaceRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
         // Child-orientation (§child-orientation): the live things THIS run holds — open streams +
-        // unconcluded child runs — surfaced every turn as terse `* <status> <path>` pointers (same shape
+        // unconcluded child workers — surfaced every turn as terse `* <status> <path>` pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
         const childStreams = (await (this.#db.engine_child_streams_open as PrepMethod).all<{ scheme: string; pathname: string }>({ worker_id: workerId }))
@@ -313,7 +313,7 @@ export default class PacketBuilder {
             // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
             { name: "child-streams", slot: "system", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
-            { name: "child-runs", slot: "system", header: "Active Child Worker Runs", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
+            { name: "child-workers", slot: "system", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
             { name: "errors", slot: "system", header: "Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
             { name: "git", slot: "system", header: "Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget — LAW (a hard ceiling the model must obey).
@@ -631,8 +631,8 @@ export default class PacketBuilder {
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
     async #buildLog(workerId: number): Promise<object[]> {
-        // SPEC §packet-terms: runs own log entries — log is the run's history,
-        // not the loop's. Span all loops in the run so the model sees
+        // SPEC §packet-terms: runs own log entries — log is the worker's history,
+        // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
         //
         // User prompts are first-class log entries: runTurn writes a

@@ -93,7 +93,7 @@ WHERE e.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS N
 
 -- PREP: test_exec_close_status_by_session
 -- The close_status the registry recorded for a workspace's most-recently-closed
--- stream of a scheme — proves the registry-routed reap (§run-lifecycle-total-reap)
+-- stream of a scheme — proves the registry-routed reap (§worker-lifecycle-total-reap)
 -- closed the subscription at 499, not just that a notification fired.
 SELECT s.close_status FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
@@ -131,7 +131,7 @@ SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: test_log_tags_by_run
--- §log-region-tagging — a run's log tags with the coordinate they sit on (fork-copy assertions).
+-- §log-region-tagging — a worker's log tags with the coordinate they sit on (fork-copy assertions).
 SELECT (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate, lt.tag
 FROM log_tags lt
 JOIN log_entries le ON le.id = lt.log_entry_id
@@ -148,16 +148,16 @@ SELECT id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, rx, expa
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_worker_id_by_loop
--- Resolve which run a loop lives in — the model loop is in the model's own run.
+-- Resolve which run a loop lives in — the model loop is in the model's own worker.
 SELECT worker_id FROM loops WHERE id = $loop_id;
 
 -- PREP: test_run_lineage
--- A run's workspace + fork parent — for proving a fork is a new run in the same workspace.
+-- A worker's workspace + fork parent — for proving a fork is a new worker in the same workspace.
 SELECT workspace_id, parent_worker_id FROM workers WHERE id = $id;
 
 -- PREP: test_get_log_rx_by_run_op
 -- Forensic read-back for read-only ops in live tests: the latest rx the engine
--- recorded for a given op in a run (e.g. what a READ<L> actually sliced).
+-- recorded for a given op in a worker (e.g. what a READ<L> actually sliced).
 SELECT rx FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id DESC LIMIT 1;
 
 -- PREP: test_count_log_entries
@@ -289,11 +289,11 @@ SELECT cosine($a, $b) AS sim;
 
 
 -- PREP: test_all_loops
--- [§run-delegation-inherits-flags] — every loop's persisted flags, delegation-tree-wide.
+-- [§worker-delegation-inherits-flags] — every loop's persisted flags, delegation-tree-wide.
 SELECT id, worker_id, flags FROM loops ORDER BY id;
 
 -- PREP: test_edit_states
--- [§run-delegation-inherits-flags] — EDIT rows' proposal states: a delegated child's EDIT
+-- [§worker-delegation-inherits-flags] — EDIT rows' proposal states: a delegated child's EDIT
 -- must land resolved (inherited YOLO), never proposed/cancelled into the void.
 SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
 

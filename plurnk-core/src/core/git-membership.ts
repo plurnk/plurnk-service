@@ -39,8 +39,8 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
 // §env-delta — an ambient disk divergence captured at pre-turn: the entry's content
-// before the git-membership re-read vs the disk content after. The plurnk run narrates
-// it as a source=file EDIT so every run pulls it through the one delta path.
+// before the git-membership re-read vs the disk content after. The plurnk worker narrates
+// it as a source=file EDIT so every worker pulls it through the one delta path.
 export interface FsDivergence {
     pathname: string;
     scheme: string | null;
@@ -394,7 +394,7 @@ export default class GitMembership {
         return null;
     }
 
-    // Full membership + materialization pass for a run. Registers git members,
+    // Full membership + materialization pass for a worker. Registers git members,
     // then materializes each active (on-disk, non-binary) member as an entry
     // through writeEntry. Called at packet-composition time (Engine.runTurn) per
     // D5. No-ops on headless / non-git workspaces.

@@ -116,7 +116,7 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     } finally { await mod.close(); }
 });
 
-test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the workspace prop selects the world; the thread is a run over it (svc#366 landed — the interim bind-the-model-run behavior is retired)", async () => {
+test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the workspace prop selects the world; the thread is a worker over it (svc#366 landed — the interim bind-the-model-run behavior is retired)", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const ensured: number[] = [];
@@ -134,12 +134,12 @@ test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the workspa
         // distinct threads naming the SAME workspace share the one workspace.
         await post(mod.address().port, { threadId: "chat-1", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace-a" } } });
         assert.deepEqual(attaches, [7], "the workspace 'workspace-a' was attached (not a workspace named 'chat-1')");
-        assert.deepEqual(ensured, [], "a DISTINCT thread never binds the model run (that's the default thread's door)");
-        assert.deepEqual(drivenRuns, [300], "the loop drove in the thread's own conversation run");
+        assert.deepEqual(ensured, [], "a DISTINCT thread never binds the model worker (that's the default thread's door)");
+        assert.deepEqual(drivenRuns, [300], "the loop drove in the thread's own conversation worker");
     } finally { await mod.close(); }
 });
 
-test("NO workspace prop is a HARD ERROR (500) — a run has no world to forge from the threadId", async () => {
+test("NO workspace prop is a HARD ERROR (500) — a worker has no world to forge from the threadId", async () => {
     let created = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
@@ -155,7 +155,7 @@ test("NO workspace prop is a HARD ERROR (500) — a run has no world to forge fr
     } finally { await mod.close(); }
 });
 
-test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none (operator ruling: not everything is a run)", async () => {
+test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none (operator ruling: not everything is a worker)", async () => {
     let created = 0, ensured = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 1, name: "a" }, { id: 2, name: "b" }];
@@ -170,7 +170,7 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none (oper
         assert.equal(r.value.result.workspaces.length, 2, "listed the real workspaces");
         assert.equal(ev[ev.length - 1].type, "RUN_FINISHED");
         assert.equal(created, 0, "no ephemeral workspace was created");
-        assert.equal(ensured, 0, "no model run was spun for a control-plane action");
+        assert.equal(ensured, 0, "no model worker was spun for a control-plane action");
     } finally { await mod.close(); }
 });
 
@@ -193,7 +193,7 @@ test("workspace.create WITH a name is worldless and does NOT demand a pre-bound 
     seam.createWorkspace = async (a) => ({ workspaceId: 12, workspaceName: a.name ?? "auto", projectRoot: null, workerId: 3, workerName: "client-1", modelWorkerId: null, clientLoopId: null });
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
-        // No forwardedProps.plurnk.workspace on the run itself — workspace.create supplies its own world.
+        // No forwardedProps.plurnk.workspace on the worker itself — workspace.create supplies its own world.
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "workspace.create", name: "fresh-world" } } } });
         const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { name: string }; error?: string } };
         assert.equal(r.value.ok, true, r.value.error ?? "");
@@ -201,7 +201,7 @@ test("workspace.create WITH a name is worldless and does NOT demand a pre-bound 
     } finally { await mod.close(); }
 });
 
-test("loop.cancel is a REAL action kind — cancels the model run's drain (both clients' stop buttons ride it)", async () => {
+test("loop.cancel is a REAL action kind — cancels the model worker's drain (both clients' stop buttons ride it)", async () => {
     const cancelled: number[] = [];
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
@@ -214,17 +214,17 @@ test("loop.cancel is a REAL action kind — cancels the model run's drain (both 
         const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { cancelled: boolean }; error?: string } };
         assert.equal(r.value.ok, true, r.value.error ?? "loop.cancel must be a known kind");
         assert.equal(r.value.result.cancelled, true);
-        assert.deepEqual(cancelled, [20], "the MODEL run's drain was cancelled");
+        assert.deepEqual(cancelled, [20], "the MODEL worker's drain was cancelled");
     } finally { await mod.close(); }
 });
 
 // ── THREAD ↔ RUN (svc#366 landed): the threadId is the CONVERSATION ──────────
-// threadId == workspace name → the model run (the default conversation, unchanged).
-// A DISTINCT threadId names its own conversation run within the world: found by
+// threadId == workspace name → the model worker (the default conversation, unchanged).
+// A DISTINCT threadId names its own conversation worker within the world: found by
 // name if it exists, minted via createConversationWorker if it doesn't — the name is
-// the identity at BOTH levels. Forks (named runs) are addressable as threads.
+// the identity at BOTH levels. Forks (named workers) are addressable as threads.
 
-test("[§agui-thread-is-run] a distinct threadId MINTS a conversation run named for it, and the loop drives there", async () => {
+test("[§agui-thread-is-run] a distinct threadId MINTS a conversation worker named for it, and the loop drives there", async () => {
     const created: Array<{ workspaceId: number; name?: string }> = [];
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
@@ -236,8 +236,8 @@ test("[§agui-thread-is-run] a distinct threadId MINTS a conversation run named 
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         await post(mod.address().port, { threadId: "chat-2", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
-        assert.deepEqual(created, [{ workspaceId: 3, name: "chat-2" }], "the conversation run is named for the thread, verbatim");
-        assert.deepEqual(driven, [77], "the loop drove in the NEW conversation run, not the model run");
+        assert.deepEqual(created, [{ workspaceId: 3, name: "chat-2" }], "the conversation worker is named for the thread, verbatim");
+        assert.deepEqual(driven, [77], "the loop drove in the NEW conversation worker, not the model worker");
     } finally { await mod.close(); }
 });
 
@@ -270,12 +270,12 @@ test("[§agui-thread-is-run] threadId == workspace name stays the MODEL run (the
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         await post(mod.address().port, { threadId: "workspace", workerId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "workspace" } } });
-        assert.deepEqual(driven, [20], "the default conversation is the model run");
+        assert.deepEqual(driven, [20], "the default conversation is the model worker");
         assert.equal(minted, 0, "no fresh run for the default thread");
     } finally { await mod.close(); }
 });
 
-test("[§agui-thread-is-run] loop.inject on a distinct thread folds into THAT conversation, never the model run", async () => {
+test("[§agui-thread-is-run] loop.inject on a distinct thread folds into THAT conversation, never the model worker", async () => {
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
@@ -285,7 +285,7 @@ test("[§agui-thread-is-run] loop.inject on a distinct thread folds into THAT co
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
-        assert.deepEqual(driven, [44], "the steer reached the thread's own run");
+        assert.deepEqual(driven, [44], "the steer reached the thread's own worker");
     } finally { await mod.close(); }
 });
 
@@ -302,14 +302,14 @@ test("[§agui-run-endpoint] SSE heartbeat: a silent run stays alive — comment 
         const raw = await res.text();
         const beats = (raw.match(/^: hb$/gm) ?? []).length;
         assert.ok(beats >= 2, `the silent window carried heartbeats (got ${beats}) — no client bodyTimeout can starve mid-generate`);
-        assert.match(raw, /RUN_FINISHED/, "the run still ends clean");
+        assert.match(raw, /RUN_FINISHED/, "the worker still ends clean");
     } finally { await mod.close(); }
 });
 
 
 test("a message run forwards forwardedProps.plurnk alias+model into runLoop (#414 per-loop model selection)", async () => {
     const { seam, loopRuns, finish } = mockSeam();
-    // The run self-completes: the runLoop override closes the stream for its workspace (the working
+    // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
     seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}) }); finish(a.workspaceId); return { action: "enqueued_new_loop" as const, loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);

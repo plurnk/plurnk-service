@@ -1,6 +1,6 @@
 import type { Db, PrepMethod } from "./Db.ts";
 
-// Workspace-tier ceiling on CONCURRENT active runs (a run with a non-terminal loop)
+// Workspace-tier ceiling on CONCURRENT active workers (a worker with a non-terminal loop)
 // — the fork-bomb / destabilization brake. `PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE` is the
 // knob; -1 / unset / invalid = no cap. Only concurrency is bounded, never lifetime:
 // workspaces persist for months, so a total-created cap would punish longevity. A

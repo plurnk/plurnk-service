@@ -1,7 +1,7 @@
 // The in-process HITL core (service#355 hooks B + C + A-resolve; plurnk-agui#2 WS-1).
 // Subscribes to the daemon's event source, renders each stopped-world proposal as an
 // AG-UI tool-call (via AguiPlus), re-surfaces a workspace's pending proposals on
-// (re)connect, and maps a resume run's tool-result back to resolveProposal. The
+// (re)connect, and maps a resume worker's tool-result back to resolveProposal. The
 // engine's pause/gate/applyResolution stay core; this is the view + the round-trip.
 
 import type { AguiEvent, ProposalNotification } from "./types.ts";
@@ -27,7 +27,7 @@ export default class ProposalHitl {
             if (method !== "loop/proposal" || workspaceId === null) return;
             // Server-owned stopped-worlds (flags.yolo auto-accept / noProposals
             // auto-reject) settle in-process moments later — the loop continues on this
-            // same run. Emitting a tool-call would TERMINATE the run and orphan that
+            // same run. Emitting a tool-call would TERMINATE the worker and orphan that
             // continuation, so a tool-call strictly means client-owned.
             const flags = (params as ProposalNotification).flags as Record<string, unknown> | undefined;
             if (flags?.yolo === true || flags?.noProposals === true) return;
@@ -47,7 +47,7 @@ export default class ProposalHitl {
         return pending.flatMap((p) => proposalToolCall(ProposalHitl.#normalize(p)));
     }
 
-    // A resume run's tool-result → resolveProposal. Returns true if it resolved a
+    // A resume worker's tool-result → resolveProposal. Returns true if it resolved a
     // proposal (false = not a plurnk proposal tool-result; the caller handles it as
     // an ordinary message).
     resolve(message: ToolResultMessage): boolean {

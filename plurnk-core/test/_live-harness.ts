@@ -31,9 +31,9 @@ export interface LiveWorkspace {
 }
 
 // §archaeology (#410) — a failed live/demo run must PRESERVE itself, not depend on a human racing
-// the next `.tmp` pre-clean. So a run's db is BORN in `benchmarks/run<N>-<lane>/` and KEPT by
+// the next `.tmp` pre-clean. So a worker's db is BORN in `benchmarks/run<N>-<lane>/` and KEPT by
 // default: a missed cleanup leaves harmless clutter, never a lost specimen — the inverse of
-// copy-on-failure, where a missed hook loses the run forever. Passing runs are swept at worker exit
+// copy-on-failure, where a missed hook loses the worker forever. Passing workers are swept at worker exit
 // (best-effort, safe); failures stay, greppable by workspace name (the `workspace` file inside).
 const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(homedir(), "repo/plurnk/benchmarks");
 const LANE = process.env.PLURNK_LANE ?? "core";
@@ -41,7 +41,7 @@ const createdRuns: string[] = [];
 
 // Atomic claim: mkdir fails if the dir exists, so a concurrent worker (or a sibling lane) can never
 // take the same run number — the run46 meta/bench collision the issue names. Numbers are sparse by
-// design (owner ruling): passing runs are swept, so a run number is a findable id, not a count.
+// design (owner ruling): passing workers are swept, so a worker number is a findable id, not a count.
 const claimRunDir = async (workspace: string): Promise<string> => {
     await mkdir(BENCHMARKS, { recursive: true });
     let n = 1;
@@ -54,14 +54,14 @@ const claimRunDir = async (workspace: string): Promise<string> => {
 };
 
 // Delete-on-pass, best-effort: node:test sets process.exitCode truthy iff a test in THIS file
-// failed. All-passed → the file's runs were noise, sweep them; any failure → KEEP every run this
+// failed. All-passed → the file's runs were noise, sweep them; any failure → KEEP every worker this
 // worker created (coarse but SAFE — the point is never to lose a failure; a spare passing run is fine).
 let _sweepArmed = false;
 const armSweep = (): void => {
     if (_sweepArmed) return;
     _sweepArmed = true;
     process.on("exit", () => {
-        if (process.exitCode) return; // a failure occurred — preserve every run this file created
+        if (process.exitCode) return; // a failure occurred — preserve every worker this file created
         for (const dir of createdRuns) { try { rmSync(dir, { recursive: true, force: true }); } catch { /* leave it — clutter beats loss */ } }
     });
 };
@@ -106,7 +106,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     return {
         db, ws, workspaceId: created.id, runDir,
         cleanup: async () => {
-            // The run dir is intentionally LEFT on disk (§archaeology preserve-default); the exit
+            // The worker dir is intentionally LEFT on disk (§archaeology preserve-default); the exit
             // sweep removes it iff this file's tests all passed. Only the ephemeral sandbox is torn down.
             ws.close(); await daemon.stop(); await db.close();
             if (ownsSandbox) await rm(projectRoot, { recursive: true, force: true });
@@ -115,9 +115,9 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
 };
 
 // The single loop-driver for the live/demo tier: fire loop.run (server-YOLO — the
-// tier auto-accepts so an unattended model run isn't blocked on review), await
+// tier auto-accepts so an unattended model worker isn't blocked on review), await
 // loop/terminated, and return the outcome + the model's final reply. modelWorkerId
-// (the run the model's ops landed in, for run-scoped forensic queries) is
+// (the worker the model's ops landed in, for worker-scoped forensic queries) is
 // guaranteed by loop.run; absence is a hard failure, not a silent 0.
 export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
@@ -177,7 +177,7 @@ export const readBody = async (db: Db, pathname: string): Promise<string | undef
     return row?.content;
 };
 
-// Forensic read-back: the latest rx the engine logged for an op in the model run
+// Forensic read-back: the latest rx the engine logged for an op in the model worker
 // (what a READ actually sliced / a FIND actually matched). modelWorkerId rides the
 // loop/terminated event (liveLoop returns it).
 export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise<string> => {

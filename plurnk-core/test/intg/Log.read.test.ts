@@ -71,7 +71,7 @@ test("Log.read: each coordinate addresses its own entry's rx", async () => {
     } finally { db.close(); }
 });
 
-test("Log.read: cross-loop coordinates within a run resolve correctly", async () => {
+test("Log.read: cross-loop coordinates within a worker resolve correctly", async () => {
     const { db, engine, workspaceId, workerId, loopId: loop1, turnId: turn1 } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), workspaceId, workerId, loopId: loop1, turnId: turn1, sequence: 1, origin: "model" });

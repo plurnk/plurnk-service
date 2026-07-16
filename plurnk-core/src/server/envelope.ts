@@ -4,7 +4,7 @@
 // the client picks the workspace explicitly (workspace.create / workspace.attach)
 // or the daemon auto-creates one on first requiresInit RPC. In both cases
 // the daemon opens a NEW run within the workspace and a NEW client loop within
-// that run; the client loop closes on disconnect.
+// that worker; the client loop closes on disconnect.
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 import GitMembership from "../core/git-membership.ts";
@@ -25,12 +25,12 @@ export interface WorkerRow {
     origin: "model" | "client" | "plurnk";
 }
 
-// Per-connection envelope. `workerId` is the connection's own run — the client
+// Per-connection envelope. `workerId` is the connection's own worker — the client
 // actor's: `op.*` and `log.read` live there (§connection-lifecycle, §machine-processes). `modelWorkerId` is the
 // model's separate run (the conversation); `loop.run`/`loop.cancel` target it and
 // the packet renders it, so client ops are absent from what the model sees with no
 // filter. Both `modelWorkerId` and `clientLoopId` are lazily allocated on first use —
-// a connection that never drives a model never spawns a model run.
+// a connection that never drives a model never spawns a model worker.
 export interface ClientEnvelope {
     workspaceId: number;
     workspaceName: string;
@@ -43,10 +43,10 @@ export interface ClientEnvelope {
 
 export default class Envelope {
     // Run names reserved for non-client actors: a client must not create OR
-    // attach to a run under a reserved name (origin-impersonation — `plurnk`
+    // attach to a worker under a reserved name (origin-impersonation — `plurnk`
     // is the runtime actor, §authority-terms/§actor-boundary). Checked case-insensitively, before
     // lookup, so a client can neither forge nor hijack one (SPEC §methods).
-    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = new Set(["plurnk"]); // §methods-run-name-reserved
+    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = new Set(["plurnk"]); // §methods-worker-name-reserved
 
     // Grammar 0.5.0 (#10): Workspace and Run carry user-renameable string names.
     // Defaults are `workspace-{unixtime}` and `run-{unixtime}`; random suffix avoids
@@ -86,7 +86,7 @@ export default class Envelope {
         };
     }
 
-    // Resolve the run inside a workspace. Three modes:
+    // Resolve the worker inside a workspace. Three modes:
     // - opts.workerId given: lookup by id, verify workspace ownership (else throw).
     // - opts.workerName given: lookup by (workspaceId, name); reuse if found, create otherwise.
     // - neither: create a new run with an auto-generated name (current behavior).
@@ -103,7 +103,7 @@ export default class Envelope {
         }
         if (opts.workerName !== undefined) {
             if (Envelope.RESERVED_RUN_NAMES.has(opts.workerName.toLowerCase())) {
-                throw new Error(`run name "${opts.workerName}" is reserved for a non-client actor`);
+                throw new Error(`worker name "${opts.workerName}" is reserved for a non-client actor`);
             }
             const existing = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number; name: string }>({ workspace_id: workspaceId, name: opts.workerName });
             if (existing !== undefined) return existing;
@@ -138,11 +138,11 @@ export default class Envelope {
         return loop.id;
     }
 
-    // Lazy model-run allocator (§connection-lifecycle, §machine-processes — the client writes to its own run).
+    // Lazy model-run allocator (§connection-lifecycle, §machine-processes — the client writes to its own worker).
     // The model's conversation lives in its OWN run, distinct from the connection's
     // (client) run, so the packet — rendered from the model's run — never carries
     // the client's op.*. Created on the first loop.run; reused for the connection.
-    // #366 — a FRESH conversation over the same world (§machine-processes: two runs are two
+    // #366 — a FRESH conversation over the same world (§machine-processes: two workers are two
     // conversations about one curated workspace): a named, empty-log, model-origin ROOT run.
     // Distinct from ensureModelWorker (the stable default conversation) and forkWorker (copies history).
     static async createModelWorker(db: Db, workspaceId: number, name?: string): Promise<{ id: number; name: string }> {
@@ -154,7 +154,7 @@ export default class Envelope {
     static async ensureModelWorker(db: Db, workspaceId: number): Promise<number> {
         // #371 — ensure means FIND-FIRST (the WS connection's per-workspace cache used to hide the
         // insert-only bug; the seam has no connection state, so idempotence lives HERE): reuse the
-        // workspace's canonical conversation run — the earliest model-origin root (forks/workers
+        // workspace's canonical conversation worker — the earliest model-origin root (forks/workers
         // inherit origin and are excluded by parent_worker_id). #366 is the explicit fresh-run door.
         const existing = await (db.envelope_get_model_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId });
         if (existing !== undefined) return existing.id;
@@ -166,7 +166,7 @@ export default class Envelope {
     // Self-hosting keystone (§actor-boundary): the workspace's reserved `plurnk` run, where the
     // runtime acts as an ordinary actor (doc materialization today; fs/git work
     // later). One per workspace, reused; its log is the runtime's own — invisible
-    // to other runs except through the shared workspace filesystem.
+    // to other workers except through the shared workspace filesystem.
     static async ensurePlurnkWorker(db: Db, workspaceId: number): Promise<number> {
         const existing = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         if (existing !== undefined) return existing.id;
@@ -179,7 +179,7 @@ export default class Envelope {
         return await (db.envelope_list_workers_for_workspace as PrepMethod).all<WorkerRow>({ workspace_id: workspaceId });
     }
 
-    // #238 — a workspace's prior user prompts, newest-first, capped. The conversation run's
+    // #238 — a workspace's prior user prompts, newest-first, capped. The conversation worker's
     // loop seeds (engine_get_loop_prompt is the per-loop read); exposed directly so a
     // client seeds up/down history without log archaeology.
     static async listPromptsForWorkspace(db: Db, workspaceId: number, limit: number): Promise<string[]> {
@@ -195,7 +195,7 @@ export default class Envelope {
         return await (db.envelope_list_workspaces as PrepMethod).all<WorkspaceRow>();
     }
 
-    // workspace.rename — the workspace name is a mutable handle (vs a run's immutable
+    // workspace.rename — the workspace name is a mutable handle (vs a worker's immutable
     // name, §machine-processes). Mutates workspaces.name only; the UNIQUE constraint is
     // the real guard against collision (the handler pre-checks for a clean error).
     static async updateWorkspaceName(db: Db, workspaceId: number, name: string): Promise<string> {

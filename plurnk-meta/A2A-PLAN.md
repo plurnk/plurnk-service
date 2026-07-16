@@ -18,8 +18,8 @@ A2A tasks are plurnk runs wearing a wire format — the delegation breath (spawn
 
 **Inbound (plurnk serves), via the `plurnk-a2a` module:**
 - In-process daemon module (transport belongs to modules), serving the A2A JSON-RPC surface + the well-known card.
-- An inbound task becomes a run in the REGISTERED LISTENER SESSION (owner ruling 3): a workspace opts in by registering as the a2a listener; no registration = inbound refused. Registration is a workspace-level RPC in the workspace.constrain family (core seam - negotiate, do not improvise).
-- Artifacts = the run's entries/channels, translated outbound by the module.
+- An inbound task becomes a worker in the REGISTERED LISTENER SESSION (owner ruling 3): a workspace opts in by registering as the a2a listener; no registration = inbound refused. Registration is a workspace-level RPC in the workspace.constrain family (core seam - negotiate, do not improvise).
+- Artifacts = the worker's entries/channels, translated outbound by the module.
 - The agent card is GENERATED from the live capability surface (registered schemes, available exec census — the same truth the tools sheet reads), never hand-maintained.
 
 ## Owner rulings (2026-07-13)

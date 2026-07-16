@@ -1,4 +1,4 @@
-// §log-uniform-query — FIND over the run's log rows, on the SAME source-agnostic primitive every
+// §log-uniform-query — FIND over the worker's log rows, on the SAME source-agnostic primitive every
 // entry scheme runs (§find-source-agnostic). The jumbo forensic: the model ran
 // `FIND(log:///**):#engine#i` six times — a canon-documented gesture (plurnk.md:148) — and got a
 // bare 501 from the one scheme that sat outside the universal paradigm. These pin the uniform

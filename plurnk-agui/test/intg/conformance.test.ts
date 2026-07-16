@@ -1,6 +1,6 @@
 // The standard's own client as the conformance gate (plurnk-agui#2 WS-5): HttpAgent
 // from @ag-ui/client — the exact engine under `npx create-ag-ui-app` frontends —
-// drives a REAL model run against the in-process module. Their verifier validates
+// drives a REAL model worker against the in-process module. Their verifier validates
 // every event; a spec drift is THEIR rejection, not our opinion. Env-gated like the
 // go-live smoke; devDep only (the runtime stays family-internal, §agui-zero-dep).
 
@@ -41,7 +41,7 @@ test("[§agui-projection][§agui-run-endpoint] the official @ag-ui/client accept
             onEvent: ({ event }: { event: { type: string } }) => { seen.add(event.type); },
         });
         // Their verifier throwing = rejection; reaching here = the stream validated.
-        assert.ok(seen.has("RUN_FINISHED"), "the run completed through their client");
+        assert.ok(seen.has("RUN_FINISHED"), "the worker completed through their client");
         assert.ok(seen.has("TEXT_MESSAGE_CONTENT"), "assistant speech flowed through their parser");
         const last = agent.messages.at(-1) as { role: string; content?: string };
         assert.equal(last.role, "assistant", "their message-builder assembled the reply");

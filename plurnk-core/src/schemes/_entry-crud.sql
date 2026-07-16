@@ -20,7 +20,7 @@ VALUES ('workspace', $workspace_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: crud_find_worker_entry
--- Run-scope twin of crud_find_workspace_entry (§run-scheme). A run entry is keyed
+-- Run-scope twin of crud_find_workspace_entry (§worker-scheme). A worker entry is keyed
 -- (scope='worker', scheme='worker', pathname); the owning run rides the pathname's first
 -- segment (the folded worker:// authority), so there is no worker_id column.
 SELECT id FROM entries

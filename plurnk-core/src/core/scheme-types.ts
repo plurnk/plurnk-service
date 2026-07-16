@@ -63,9 +63,9 @@ export interface PlurnkSchemeContext {
     readonly signal: AbortSignal | undefined;
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeWorkerNotify?: WakeWorkerNotify;
-    // Start/deliver-to a sister run — the worker:// op family's loop-start primitive
+    // Start/deliver-to a sister worker — the worker:// op family's loop-start primitive
     // (spawn/fork/irc). Engine-populated (daemon-wired to Daemon.inject); absent
-    // in bare test fixtures. The run scheme handler fail-hards if absent rather
+    // in bare test fixtures. The worker scheme handler fail-hards if absent rather
     // than silently dropping a spawn/irc.
     readonly injectWorker?: InjectWorkerNotify;
     readonly mimetypes?: Mimetypes;

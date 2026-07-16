@@ -51,7 +51,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
     // A liveLoop throw (loop.run rejection, waitFor timeout) happens BEFORE the caller holds the
     // StoryResult, so its finally-cleanup is unreachable — tear down HERE or the orphaned daemon's
-    // handles (ws pair, db worker) keep the child process alive after the run and wedge the tier.
+    // handles (ws pair, db worker) keep the child process alive after the worker and wedge the tier.
     let loop;
     try {
         loop = await liveLoop(

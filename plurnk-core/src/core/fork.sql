@@ -1,6 +1,6 @@
--- Fork a run: deep-copy its log into a NEW run in the SAME workspace (SPEC §machine-processes —
+-- Fork a worker: deep-copy its log into a NEW run in the SAME workspace (SPEC §machine-processes —
 -- branch the log, share the world). loops → turns → entries are copied with their
--- fold-state (expanded) and attribution (origin/source) intact; only the run/loop/
+-- fold-state (expanded) and attribution (origin/source) intact; only the worker/loop/
 -- turn ids are remapped. Nothing of the world is copied (§machine-processes-fork-shares-the-world) — the workspace's entries and
 -- overlay are shared. The §env-delta reconciliation snapshot (worker_watermarks) is NOT
 -- copied; the branch first-sights its world like any fresh run.
@@ -9,7 +9,7 @@
 SELECT workspace_id, name, origin FROM workers WHERE id = $id;
 
 -- PREP: fork_insert_worker
--- A new run in the parent's workspace; lineage recorded via parent_worker_id (§lifecycle-terms).
+-- A new worker in the parent's workspace; lineage recorded via parent_worker_id (§lifecycle-terms).
 INSERT INTO workers (workspace_id, name, parent_worker_id, origin)
 VALUES ($workspace_id, $name, $parent_worker_id, $origin)
 RETURNING id;
@@ -17,7 +17,7 @@ RETURNING id;
 -- PREP: fork_count_branches
 -- How many fork branches the parent already has — for a UNIQUE `<parent>-fork-<N>` default name, so N
 -- self-forks of one parent are individually addressable (KILL/SEND/READ by name) instead of colliding
--- on a single `<parent>-fork` that worker_resolve_by_name would resolve to the newest only (§run-scheme-fork).
+-- on a single `<parent>-fork` that worker_resolve_by_name would resolve to the newest only (§worker-scheme-fork).
 SELECT COUNT(*) AS n FROM workers WHERE parent_worker_id = $parent_worker_id AND name LIKE $name_prefix;
 
 -- PREP: fork_get_loops
@@ -30,7 +30,7 @@ VALUES ($worker_id, $sequence, $status, $prompt, $flags)
 RETURNING id;
 
 -- PREP: fork_get_turns
--- All turns across the run's loops, in order — loop_id is remapped by the caller.
+-- All turns across the worker's loops, in order — loop_id is remapped by the caller.
 SELECT t.id, t.loop_id, t.sequence, t.timestamp, t.status,
        t.usage_prompt, t.usage_completion, t.usage_cached, t.usage_cost_pico,
        t.packet, t.finish_reason, t.model
@@ -64,20 +64,20 @@ RETURNING id;
 INSERT INTO log_tags (log_entry_id, tag)
 SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 
--- §run-scheme — a fork inherits the parent's run-scope SCRATCH (its private workspace), distinct
+-- §worker-scheme — a fork inherits the parent's worker-scope SCRATCH (its private workspace), distinct
 -- from the shared workspace world above: "fork = everything-in-common-but-name, then diverges". The
 -- entries are deep-copied (new ids) with the owner remapped in the pathname (parent → branch), so
 -- the branch's scratch is independent — it edits its own without touching the parent's.
 
 -- PREP: fork_get_worker_scope_entries
--- The parent's run-scope entries (owner = the parent's run name, prefix `/<parent>/*`). deep_hash
+-- The parent's worker-scope entries (owner = the parent's worker name, prefix `/<parent>/*`). deep_hash
 -- and attributes ride along; copying the channels with their tokens keeps the deep_hash valid so
 -- the next-turn pump skips re-derivation (the content is byte-identical).
 SELECT id, scheme, pathname, deep_hash, attributes
 FROM entries WHERE scope = 'worker' AND workspace_id = $workspace_id AND pathname GLOB $owner_prefix ORDER BY id;
 
 -- PREP: fork_insert_worker_scope_entry
--- A run-scope entry copy with the owner-remapped pathname. synced_sig/membership_origin are NULL
+-- A worker-scope entry copy with the owner-remapped pathname. synced_sig/membership_origin are NULL
 -- (scratch is never disk-synced nor a file member); version defaults 0.
 INSERT INTO entries (scope, workspace_id, scheme, pathname, deep_hash, attributes)
 VALUES ('worker', $workspace_id, $scheme, $pathname, $deep_hash, $attributes)

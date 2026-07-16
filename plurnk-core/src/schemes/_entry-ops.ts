@@ -56,8 +56,8 @@ export default class EntryOps {
         return target;
     }
 
-    // §run-scheme — pick the scope's CRUD/read statement. A run-scope scheme
-    // (manifest.scope === "worker", today only worker://) keys its entries in the run
+    // §worker-scheme — pick the scope's CRUD/read statement. A worker-scope scheme
+    // (manifest.scope === "worker", today only worker://) keys its entries in the worker
     // partition; every other scheme resolves the workspace statement, byte-identical.
     static #stmt(db: Db, scope: string, base: "crud_find" | "crud_insert" | "ops_read_channel"): PrepMethod {
         const run = { crud_find: "crud_find_worker_entry", crud_insert: "crud_insert_worker_entry", ops_read_channel: "ops_read_channel_worker" } as const;
@@ -179,7 +179,7 @@ export default class EntryOps {
     }
 
     // Scope-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves the
-    // entry via the scope's crud_find variant (so a run-scope row is found, not just
+    // entry via the scope's crud_find variant (so a worker-scope row is found, not just
     // workspace), then deletes by id (channels/tags CASCADE). 404 when the entry is absent.
     static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<{ status: number }> {
         if (statement.target === null) return { status: 400 };

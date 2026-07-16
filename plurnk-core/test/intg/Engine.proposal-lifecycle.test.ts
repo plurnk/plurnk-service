@@ -161,7 +161,7 @@ test("[§proposal-proposed-hidden] proposal: status=202 + state='proposed' rows 
         const logEntryId = await idDeferred.promise;
 
         // Render the log — proposed entry should be invisible.
-        // engine_render_log is run-scoped per SPEC §packet-terms (runs own log entries).
+        // engine_render_log is worker-scoped per SPEC §packet-terms (runs own log entries).
         const rendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
         const proposedVisible = rendered.find((r) => r.status_rx === 202 && r.state === "proposed");
         assert.equal(proposedVisible, undefined, "proposed entries must be invisible to log render");

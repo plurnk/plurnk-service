@@ -264,7 +264,7 @@ test("[§membership-resolved-effects] resolveMembershipEffects tags each file me
     });
 });
 
-test("[§machine-processes-one-overlay] membership is the workspace's — one overlay, identical for every run", async () => {
+test("[§machine-processes-one-overlay] membership is the workspace's — one overlay, identical for every worker", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // ctx.workerId is run A. Spin a SECOND run on the same workspace.
         const workerB = await insertWorker(db, ctx.workspaceId);
@@ -272,10 +272,10 @@ test("[§machine-processes-one-overlay] membership is the workspace's — one ov
 
         // The overlay is keyed by SESSION, never run: resolveMembershipEffects and crud_find_workspace_entry
         // both take workspace_id ONLY (membership lives on workspace_constraints.workspace_id / entries.workspace_id —
-        // there is no worker_id anywhere in it). So both runs resolve the IDENTICAL member set; there is no
-        // per-run overlay to diverge. Divergent membership is a different workspace (§machine-processes).
+        // there is no worker_id anywhere in it). So both workers resolve the IDENTICAL member set; there is no
+        // per-worker overlay to diverge. Divergent membership is a different workspace (§machine-processes).
         const { members } = await GitMembership.resolveMembershipEffects(db, ctx.workspaceId, undefined);
-        assert.ok(members.some((m) => m.path === `/${trackedPath}` && m.effect === "member"), "the git-tracked file is a member of the workspace (not of a run)");
+        assert.ok(members.some((m) => m.path === `/${trackedPath}` && m.effect === "member"), "the git-tracked file is a member of the workspace (not of a worker)");
         const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${trackedPath}` });
         assert.ok(entry, "the member entry is workspace-scoped — run A and run B see the identical row (one filesystem)");
     });

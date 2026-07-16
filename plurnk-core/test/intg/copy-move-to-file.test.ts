@@ -112,7 +112,7 @@ test("[#2-move-to-file-reject] a rejected MOVE into file:/// preserves the sourc
 
 test("[#2-move-file-to-file] MOVE file:/// → file:/// into a NEW subdir lands the dest AND unlinks the source (no silent 501 noop)", async () => {
     // The file→file MOVE that was a silent noop: File lacked deleteEntry, so #handleMove returned a
-    // bare 501 before any write — the model's correct MOVE did nothing while the run concluded 200.
+    // bare 501 before any write — the model's correct MOVE did nothing while the worker concluded 200.
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "brief.md", "the brief\n");
         // BARE paths — exactly what the model emits (`MOVE(brief.md):drafts/brief.md`). The source

@@ -22,7 +22,7 @@ Response status + headers land in the `header` channel; the body in `body` (the 
 
 ## Design
 
-- **Streaming via the capability `subscriptions` lifecycle** (`open` → `notifyChunk` → `close`). `open()` returns the run+teardown-composed `AbortSignal`; a `SubscriptionHandle` is registered so the engine routes `SEND[499]` cancellation to the in-flight `fetch`.
+- **Streaming via the capability `subscriptions` lifecycle** (`open` → `notifyChunk` → `close`). `open()` returns the worker+teardown-composed `AbortSignal`; a `SubscriptionHandle` is registered so the engine routes `SEND[499]` cancellation to the in-flight `fetch`.
 - **No runtime dependencies** — `fetch`, `AbortController`, `TextDecoder`, `ReadableStream` are Node ≥25 built-ins.
 - **DB-free** — reaches the substrate only through `ctx` capabilities (`subscriptions`, `entries`), never a raw DB handle (plurnk-schemes SPEC §5). This is what the keystone capability ctx made possible.
 

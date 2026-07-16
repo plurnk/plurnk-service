@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS workers (
 
 CREATE        INDEX IF NOT EXISTS workers_workspace_id_created_at ON workers (workspace_id, created_at);
 CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (parent_worker_id);
--- NOT unique: a name is frozen per run (§machine-processes-run-origin) but RECLAIMABLE across
+-- NOT unique: a name is frozen per worker (§machine-processes-worker-origin) but RECLAIMABLE across
 -- time — a terminated run keeps its name in permanent history while a fresh spawn reuses it;
 -- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Run.edit
 -- → worker_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- #260 — client-passed @file paths foisted as turn-0 READs (string[] JSON). The daemon owns the
     -- workspace, so it READs them in instead of the client inlining bytes (co-location law).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
-    -- §run-scheme loop-termination delta: terminated_at is stamped by the trigger
+    -- §worker-scheme loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly);
     -- terminal_message is the deliverable — the SEND[200] body or the abandonment
     -- reason — set by the terminating PREP (engine_loop_set_status).
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS loops (
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
 
--- §run-scheme: a loop crossing into a terminal status stamps terminated_at, so sibling
+-- §worker-scheme: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- runs pull the termination as a folded ambient delta — caught uniformly across every
 -- death-path (SEND, grinder, max-turns, strike, KILL). The stamp updates terminated_at,
 -- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS entries (
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS entries_workspace_identity ON entries (workspace_id, scheme, pathname) WHERE scope = 'workspace';
--- §run-scheme — run-scope entries key (workspace, scheme='run', pathname='/<owner>/<path>'); the owner rides the pathname (no worker_id).
+-- §worker-scheme — worker-scope entries key (workspace, scheme='run', pathname='/<owner>/<path>'); the owner rides the pathname (no worker_id).
 CREATE UNIQUE INDEX IF NOT EXISTS entries_worker_identity ON entries (workspace_id, scheme, pathname) WHERE scope = 'worker';
 
 -- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap
@@ -287,7 +287,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'plurnk', 'plugin')),
     -- §env-delta environment-delta cause: a sibling run-id or a scheme ('file');
-    -- NULL = the owning run itself (self), rendered without a run= label.
+    -- NULL = the owning run itself (self), rendered without a worker= label.
     source          TEXT,
 
     -- 'error' is an ACTIONLESS row (§telemetry — errors are log items): a parse failure that
@@ -460,7 +460,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     -- grammar 0.74.20 EXEC `<T,P>` poll cadence (seconds). NULL = not polled. While the owning
     -- loop hibernates (202), the daemon wakes it every poll_seconds to inspect this stream (§exec-poll).
     poll_seconds INTEGER          CHECK (poll_seconds IS NULL OR poll_seconds > 0),
-    -- EXEC `<0>` — turn-scoped: the stream is reaped at the run's next pre-turn so it never survives
+    -- EXEC `<0>` — turn-scoped: the stream is reaped at the worker's next pre-turn so it never survives
     -- into the subsequent turn; its terminal output surfaces born-OPEN like any conclusion. §exec-poll
     turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
     closed_at    TEXT,
@@ -481,7 +481,7 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
 
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
--- (worker_watermarks removed — §env-delta is now pull-from-log, no per-run snapshot.)
+-- (worker_watermarks removed — §env-delta is now pull-from-log, no per-worker snapshot.)
 
 -- INIT: workspace_constraints
 -- SPEC §membership constraint overlay — the client's supersede over git membership.

@@ -35,8 +35,8 @@ export function foldAuthorityIntoPath(hostname: string | null, pathname: string)
 }
 
 // §prompt-auto-read — the prompt address is RUN-QUALIFIED (#382 fault-1): entries are
-// workspace-scoped while loop sequences are per-run, so every run's first loop is sequence 1 and
-// a WORK-spawned sister's turn-1 foist would clobber its parent's /prompt/1/1. The run id in
+// workspace-scoped while loop sequences are per-worker, so every worker's first loop is sequence 1 and
+// a WORK-spawned sister's turn-1 foist would clobber its parent's /prompt/1/1. The worker id in
 // the path is /proc/<pid>-style process qualification — one filesystem, collision-free
 // coordinates. Every prompt writer and query builds through these two.
 export function promptPathname(workerId: number, loopSeq: number, turnSeq: number): string {
@@ -51,7 +51,7 @@ export function renderAddress(scheme: string, pathname: string): string {
     if (scheme === "plurnk" && pathname.split("/").filter((s) => s.length > 0).length >= 2) {
         return `plurnk://${pathname.replace(/^\//, "")}`;
     }
-    // #370 — the run IS the authority (§run-scheme): a stored row whose authority was folded into
+    // #370 — the worker IS the authority (§worker-scheme): a stored row whose authority was folded into
     // the pathname (/name/...) must render worker://name/..., never worker:///name/... — one packet was
     // minting BOTH forms and the model treated them as different addresses. Same for web URLs
     // (run42 sweep: the entry-sink's materialized pages rendered https:///en.wikipedia.org/...).

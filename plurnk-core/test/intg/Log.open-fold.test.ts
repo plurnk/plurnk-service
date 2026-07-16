@@ -124,7 +124,7 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
         });
         const rows = await (db.engine_render_log as PrepMethod).all<{ sequence: number; source: string | null }>({ worker_id: workerId });
         assert.equal(rows.find((r) => r.sequence === 2)?.source, "file", "the delta's cause round-trips the render query → packet-wire renders run=\"file\"");
-        assert.equal(rows.find((r) => r.sequence === 1)?.source, null, "a self-authored entry has null source — rendered without a run= label");
+        assert.equal(rows.find((r) => r.sequence === 1)?.source, null, "a self-authored entry has null source — rendered without a worker= label");
     } finally { await db.close(); }
 });
 

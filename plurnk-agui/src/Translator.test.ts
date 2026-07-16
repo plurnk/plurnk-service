@@ -94,10 +94,10 @@ test("[§agui-projection] a non-200 termination is RUN_ERROR carrying the status
     assert.equal(error?.code, "500");
 });
 
-test("[§agui-topology-scope] a FOREIGN run's rows never enter the core stream — plurnk.row/ambient only", () => {
+test("[§agui-topology-scope] a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
     const tr = new Translator({ threadId: "th", workerId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
-    assert.ok(own.some((e) => e.type === "REASONING_MESSAGE_START"), "the thread's model run projects");
+    assert.ok(own.some((e) => e.type === "REASONING_MESSAGE_START"), "the thread's model worker projects");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");

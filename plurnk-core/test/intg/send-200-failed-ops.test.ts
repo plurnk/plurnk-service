@@ -1,4 +1,4 @@
-// §send-200-failed-ops (#363, owner ruling) — a run must not conclude 200 over a failed op.
+// §send-200-failed-ops (#363, owner ruling) — a worker must not conclude 200 over a failed op.
 // A turn's failures (op results >= 400, this emission's parse errors) are UNSEEN until the next
 // packet; a same-turn SEND[200] is refused 409 (weigh, then conclude), SEND[499] is never gated,
 // and the gate judges only the current turn (no re-arm on its own refusal).

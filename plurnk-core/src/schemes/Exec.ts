@@ -33,7 +33,7 @@ interface ExecAttrs {
     inline?: boolean;       // effect=read/pure → auto-run (no human gate); output streams like any exec
     schemeTarget?: { scheme: string; pathname: string; fragment: string | null };  // #201 — a plurnk-scheme target resolved to content at apply-time (empty body → run-as-command; non-empty body → temp-materialize to cwd)
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
-    turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the run's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
+    turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
     pollSec?: number;       // `<T,P>` mark[1]: while the loop hibernates (202), wake it every P seconds to check this stream. Absent/≤0 = no poll-wake. {§exec-poll}
 }
 
@@ -92,7 +92,7 @@ export default class Exec {
         volatile: true,
         modelVisible: true,
         example: "<<EXEC[sqlite]:SELECT 22.0 / 7.0:EXEC",
-        documentation: "Runs a command in a runtime — `<<EXEC[runtime](cwd):command:EXEC` — output streams into the run's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
+        documentation: "Runs a command in a runtime — `<<EXEC[runtime](cwd):command:EXEC` — output streams into the worker's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
         flags: {
             excludedInAsk: true,
         },
@@ -114,16 +114,16 @@ export default class Exec {
         await Promise.allSettled([...this.#activeSpawns.values()]);
     }
 
-    // Whether the run has an in-flight spawn (a background exec). The daemon
+    // Whether the worker has an in-flight spawn (a background exec). The daemon
     // reads this only for loop.cancel's cancelled=true/false answer — the
-    // teardown itself rides the run's cancellation scope (the spawn's
+    // teardown itself rides the worker's cancellation scope (the spawn's
     // ctx.signal), so even a spawn registering after the cancel self-aborts.
     hasActiveSpawns(workerId: number): boolean {
         for (const { workerId: r } of this.#activeAborts.values()) if (r === workerId) return true;
         return false;
     }
 
-    // §exec-hold-until-concluded — does the run hold an in-flight spawn whose RUNTIME is in the
+    // §exec-hold-until-concluded — does the worker hold an in-flight spawn whose RUNTIME is in the
     // operator's hold set? The turn-hold exception (owner ruling): for streams we know and
     // control (the search family — one final JSON digest, seconds-bounded), the engine holds
     // the next packet until conclusion instead of giving the model a turn it can only waste.
@@ -153,11 +153,11 @@ export default class Exec {
         return { status: 304 };
     }
 
-    // Registry-routed reap (§run-lifecycle-total-reap): the daemon's cancel iterates
-    // the run's open subscriptions and calls this per id, aborting the spawn's
+    // Registry-routed reap (§worker-lifecycle-total-reap): the daemon's cancel iterates
+    // the worker's open subscriptions and calls this per id, aborting the spawn's
     // controller directly. Idempotent — a no-op if the spawn already finished or this
     // id isn't ours. Distinct from kill (by pathname, the model's KILL op): this is by
-    // subscription id, the run-level reap that does not depend on the signal listener.
+    // subscription id, the worker-level reap that does not depend on the signal listener.
     // Always a teardown — the bounded housekeeping reap, never the model's bare signal.
     abortSubscription(subscriptionId: number): void {
         this.#activeAborts.get(subscriptionId)?.controller.abort(ExecAbort.teardownReason());
@@ -406,8 +406,8 @@ export default class Exec {
         // §exec-entry-sink (#340) — the executor's entry() materialization request. The executor
         // owns zero substrate: it hands us (path, content, {tags, mimetype}) and WE create/update
         // the entry (writeEntry upsert; tags UNIONED — writeEntry alone replaces), then narrate ONE
-        // EDIT row in the reserved plurnk run's log (the fs-fiction pattern, source = the calling
-        // run) — the existing env-delta ambience folds it into every run's next packet. The row is a
+        // EDIT row in the reserved plurnk worker's log (the fs-fiction pattern, source = the calling
+        // run) — the existing env-delta ambience folds it into every worker's next packet. The row is a
         // FULL fiction: tx carries the statement (body = the written content — the journal records
         // the write, replay/fork-complete), rx carries the span (§edit-result-render, the whole
         // content numbered — a wholesale write's span IS the content; no diff, which would be a
@@ -456,7 +456,7 @@ export default class Exec {
                 if (narration === null) {
                     const run = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
                         ?? await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk", origin: "plurnk" });
-                    if (run === undefined) throw new Error("entry(): plurnk run resolution returned no row");
+                    if (run === undefined) throw new Error("entry(): plurnk worker resolution returned no row");
                     const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ worker_id: run.id });
                     if (loop === undefined) throw new Error("entry(): loop insert returned no row");
                     const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: loop.id });
@@ -541,13 +541,13 @@ export default class Exec {
             await entryChain;
             if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
             // #201 — a materialized data-source temp file outlives the spawn it fed;
-            // unlink it once the run settles (open-unlink is safe on Linux).
+            // unlink it once the worker settles (open-unlink is safe on Linux).
             if (tempPath !== null) await unlink(tempPath).catch(() => {});
             this.#activeAborts.get(subscriptionId)?.unlink();
             this.#activeAborts.delete(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
 
-            // Every run backgrounds now (§exec-stream) — wake a parked loop on completion so the
+            // Every worker backgrounds now (§exec-stream) — wake a parked loop on completion so the
             // run resumes to the turn where the stream's terminal delta surfaces.
             if (ctx.wakeWorkerNotify !== undefined) {
                 ctx.wakeWorkerNotify({

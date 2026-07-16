@@ -5,7 +5,7 @@
 // onto: a method not on the seam is not reachable from a test.
 //
 // The shim holds the CLIENT state a transport module holds at its edge (the attached envelope,
-// the lazily-resolved model run) and the protocol niceties tests rely on (JSON-RPC envelopes,
+// the lazily-resolved model worker) and the protocol niceties tests rely on (JSON-RPC envelopes,
 // notification fan-in via subscribeToEvents filtered to the attached workspace).
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Dsl from "./dsl.ts";
@@ -29,7 +29,7 @@ export default class SeamSocket {
             if (this.#closed) return;
             if (workspaceId !== null && this.#workspace !== null && workspaceId !== this.#workspace.workspaceId) return;
             if (workspaceId !== null && this.#workspace === null) return;
-            // §notifications-envelope-carries-sessionid — the envelope stamps the scope, as the WS did.
+            // §notifications-envelope-carries-workspaceid — the envelope stamps the scope, as the WS did.
             const scoped = workspaceId !== null && params !== null && typeof params === "object" ? { ...params, workspaceId } : params;
             this.#emit("message", JSON.stringify({ jsonrpc: "2.0", method, params: scoped }));
         });
@@ -113,11 +113,11 @@ export default class SeamSocket {
                 return { ...run, modelWorkerId: s.modelWorkerId, finalStatus: 100, hitMaxTurns: false, turnIds: [] };
             }
             case "loop.inject": {
-                // inject speaks to an EXISTING model run; the seam's runLoop injects into a live
+                // inject speaks to an EXISTING model worker; the seam's runLoop injects into a live
                 // drain identically (daemon.inject under both) — refusing only the run-start.
                 const s = this.#attached();
                 if (typeof p.prompt !== "string" || p.prompt.length === 0) throw new Error("loop.inject requires non-empty params.prompt");
-                if (s.modelWorkerId === null) throw new Error("loop.inject: no model run to inject into — start one with loop.run");
+                if (s.modelWorkerId === null) throw new Error("loop.inject: no model worker to inject into — start one with loop.run");
                 const run = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
@@ -165,7 +165,7 @@ export default class SeamSocket {
                 })) };
             }
             case "log.read": {
-                // Default = the connection's OWN (client) run — §machine-processes; the model run is
+                // Default = the connection's OWN (client) run — §machine-processes; the model worker is
                 // read by explicit workerId (loop.run returns modelWorkerId for exactly that).
                 const s = this.#attached();
                 const workerId = (p.workerId as number | undefined) ?? s.workerId;
@@ -177,10 +177,10 @@ export default class SeamSocket {
                 return daemon.readEntry({ workspaceId: s.workspaceId, target: p.target as string, channel: p.channel as string | undefined, offset: p.offset as number | undefined });
             }
             case "run.fork": {
-                // fork branches an EXISTING model run — no run yet is a caller error, never an implicit create.
+                // fork branches an EXISTING model worker — no worker yet is a caller error, never an implicit create.
                 const s = this.#attached();
                 const workerId = (p.workerId as number | undefined) ?? s.modelWorkerId;
-                if (workerId === null || workerId === undefined) throw new Error("run.fork: no model run to fork — loop.run first");
+                if (workerId === null || workerId === undefined) throw new Error("run.fork: no model worker to fork — loop.run first");
                 return daemon.forkWorker({ workspaceId: s.workspaceId, workerId, name: p.name as string | undefined });
             }
             case "workspace.rename": {

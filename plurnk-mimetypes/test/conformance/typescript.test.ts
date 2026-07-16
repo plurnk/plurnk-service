@@ -43,7 +43,7 @@ describe("conformance: text/typescript defs + refs (issues #19/#20)", () => {
                 { name: "Shape", kind: "type", line: 5, container: "Parser.field" },
                 { name: "Token", kind: "type", line: 6 },
                 { name: "Helper", kind: "instantiate", line: 7, container: "Parser.parse" },
-                { name: "run", kind: "call", line: 8, container: "Parser.parse" },
+                { name: "worker", kind: "call", line: 8, container: "Parser.parse" },
                 { name: "tokenize", kind: "call", line: 9, container: "Parser.parse" },
                 { name: "inner", kind: "call", line: 15, container: "tokenize" },
             ],

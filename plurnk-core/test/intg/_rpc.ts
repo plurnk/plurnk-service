@@ -94,7 +94,7 @@ export const waitForDb = async <T>(
 };
 
 // Model 3 — loop.run ACCEPTS and returns immediately (status 100 + loopId); a loop's real
-// outcome arrives via the loop/terminated event, never loop.run's return. A parked loop
+// outcome arrives via the loop/terminated event, never loop.worker's return. A parked loop
 // (SEND[202]) awaits an external event, so loop.run cannot block on it without deadlocking
 // the client that must send that event. This runs a loop to its true terminal the honest
 // way: fire loop.run, then await its loop/terminated. Returns the terminal status (+ the

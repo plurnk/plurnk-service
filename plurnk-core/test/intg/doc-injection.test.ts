@@ -1,10 +1,10 @@
 // PLURNK_SERVICE_MD_<ALIAS> doc injection (self-hosting keystone, §actor-boundary). An operator
 // doc declared via env is materialized as a plurnk:///<ALIAS>.md entry by the
-// plurnk run (DispatchAsPlurnk) and foisted as a READ into the model's turn 0.
-// The model sees only the READ; the materializing EDIT lives in the plurnk run.
+// plurnk worker (DispatchAsPlurnk) and foisted as a READ into the model's turn 0.
+// The model sees only the READ; the materializing EDIT lives in the plurnk worker.
 //
 // NOTE: sets a process-global env var, so run this file in isolation (the env
-// is daemon-wide by design — every model run gets the docs).
+// is daemon-wide by design — every model worker gets the docs).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +15,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-test("[§actor-boundary-doc-injection] PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk run + READ into the model's turn 0", async () => {
+test("[§actor-boundary-doc-injection] PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ into the model's turn 0", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-"));
     const docPath = join(dir, "agents.md");
     const docBody = "# Project rules\nBe excellent.\n";
@@ -38,11 +38,11 @@ test("[§actor-boundary-doc-injection] PLURNK_SERVICE_MD_<ALIAS>: doc is materia
                 }>({ loop_id: loopId });
                 const docRead = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/AGENTS.md");
                 assert.ok(docRead !== undefined, "model turn-0 should carry a READ of plurnk:///AGENTS.md");
-                assert.equal(docRead!.status_rx, 200, "the doc entry was materialized by the plurnk run — the READ hits it, not a 404");
+                assert.equal(docRead!.status_rx, 200, "the doc entry was materialized by the plurnk worker — the READ hits it, not a 404");
 
                 // The materializing EDIT must NOT be in the model loop's log.
                 const editInModel = rows.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/AGENTS.md");
-                assert.equal(editInModel, undefined, "the materializing EDIT lives in the plurnk run, not the model's log");
+                assert.equal(editInModel, undefined, "the materializing EDIT lives in the plurnk worker, not the model's log");
 
                 // The materialized entry body equals the host file content.
                 const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({

@@ -404,7 +404,7 @@ export default class OpenAICompatProvider implements Provider {
         if (client !== undefined && client.length > 0) h["Plurnk-Client"] = client;
         if (strikes !== undefined && Number.isInteger(strikes) && strikes >= 0) h["Plurnk-Strikes"] = String(strikes);
         // Run identity (#26): the opaque workerId the consumer already supplies,
-        // forwarded so the endpoint can key per-run affinity/telemetry — same
+        // forwarded so the endpoint can key per-worker affinity/telemetry — same
         // gate as every first-party signal.
         h["Plurnk-Run-Id"] = workerId;
         // Turn coordinate (#404, extends #26 per #391): workspace/loop/turn, the
@@ -503,8 +503,8 @@ export default class OpenAICompatProvider implements Provider {
     }
 
     async generate({ messages, workerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling }: { messages: ChatMessage[]; workerId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
-        // Boundary validation (SPEC §2): the run identity is required.
-        if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the run's stable, opaque identity");
+        // Boundary validation (SPEC §2): the worker identity is required.
+        if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
 
