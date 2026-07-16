@@ -212,6 +212,7 @@ export const buildModel = (): GModel => {
     const opEntries: Array<{ literal: string; tails: GSeq[] }> = [];
     const sendMidEntries: Array<{ literal: string; tails: GSeq[] }> = [];
     const sendFinalEntries: Array<{ literal: string; tails: GSeq[] }> = [];
+    const sendFinalFirstEntries: Array<{ literal: string; tails: GSeq[] }> = [];
 
     for (const op of OPS) {
         for (const suffix of SUFFIXES) {
@@ -251,6 +252,16 @@ export const buildModel = (): GModel => {
                 ] });
                 sendFinalEntries.push({ literal: open, tails: [
                     [lit("[102]"), opt(ref("target")), ...bodyNE],
+                    [lit("[202]"), opt(ref("target")), opt(ref("park")), ...bodyNE],
+                    [lit("["), ref("status-final-rest"), lit("]"), opt(ref("target")), ...bodyNE],
+                ] });
+                // NO-IDLE RULE (consumer-requested, ratified 2026-07-16): a zero-op turn may
+                // not conclude [102] - "continue" with nothing submitted is a spin, the
+                // corridor-flail escape valve. tail-0's exit trie omits the [102] tail, so a
+                // bare PLAN+SEND[102] does not derive; after >=1 op the full set returns.
+                // 200/202/300/499 stay legal bare (the delegation breath's wake turn IS
+                // PLAN+SEND[200]; a zero-op 202 is the ENGINE's obligation check, not ours).
+                sendFinalFirstEntries.push({ literal: open, tails: [
                     [lit("[202]"), opt(ref("target")), opt(ref("park")), ...bodyNE],
                     [lit("["), ref("status-final-rest"), lit("]"), opt(ref("target")), ...bodyNE],
                 ] });
@@ -349,7 +360,9 @@ export const buildModel = (): GModel => {
         model.set(`tail-${k}`, [
             [ref("send-mid-any"), ref("sep"), ref(`tail-${k + 1}`)],
             [ref("op-statement"), ref("sep"), ref(`tail-${k + 1}`)],
-            [ref("send-final-any"), ref("sep")],
+            // Position 0 exits through the no-idle trie (no [102]); every deeper
+            // position has >=1 statement behind it, so the full disposition set returns.
+            [ref(k === 0 ? "send-final-first" : "send-final-any"), ref("sep")],
         ]);
     }
     // Step budget exhausted: terminal SEND is the only continuation.
@@ -358,6 +371,7 @@ export const buildModel = (): GModel => {
     trieRules(model, "op-statement", opEntries);
     trieRules(model, "send-mid-any", sendMidEntries);
     trieRules(model, "send-final-any", sendFinalEntries);
+    trieRules(model, "send-final-first", sendFinalFirstEntries);
     // statement / send-statement: single-statement entries used only by the corpus and
     // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
     model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);

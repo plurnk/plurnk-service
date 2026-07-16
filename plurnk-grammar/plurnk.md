@@ -57,12 +57,12 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 ```
 
 - **PLAN** — required at the beginning of a turn.
-- **FIND** — returns a JSON array of matches; each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
-- **READ** — returns lines of matching content; every line is prefixed with its line number then a hard tab.
+- **FIND** (retrieval) — returns a JSON array of matches. Each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
+- **READ** (retrieval) — returns lines of matching content; every line is prefixed with its line number then a hard tab.
 - **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<line,line>` with literal body content, never patterns. Without `<scope>`, it replaces the whole entry, or creates it if absent.
 - **EDIT nesting** — add a single-digit (or label) suffix when nesting ops, as in `EDIT1 … :EDIT:EDIT1`.
-- **OPEN** — expands (`+`) the log item body to view it (costs tokens); not all log items have a body (`*`).
-- **FOLD** — hides (`-`) the log item body (saves tokens); a FOLDed item's `tokens=""` shows its cost if OPENed.
+- **OPEN** (retrieval) — reveals a folded log item's body at the cost of its `tokens` (`display` goes `folded` to `open`). A `display: none` item has no body to reveal.
+- **FOLD** — hides an open log item's body to reclaim context (`display` goes `open` to `folded`). Its `tokens` field shows what an OPEN costs.
 - **EXEC** — produces output stream channels on the next turn that you can then FIND, READ, or KILL.
 - **KILL** — deletes files and entries, erases log items, and kills streams.
 - **SEND** — submits the turn: `[102]` continue, `[202]` wait for workers, streams, and retrievals, `[200]` terminate once all have returned.
@@ -200,8 +200,11 @@ To KILL another run: `<<KILL(run://recheck)::KILL`
 
 - Open every turn with a concise PLAN.
 - Close every turn with a SEND.
-- Use SEND[102] or SEND[202] while any retrieval operation, stream, or worker run is still pending.
-- Use SEND[200] only once they have all completed or been KILLed.
+- Retrieval results land in the NEXT packet's Log, never in the current turn.
+- Close with SEND[102] after performing ops.
+- Close with SEND[202] to wait on worker runs.
+- Close with SEND[200] only in a turn that performs no retrieval and has no surviving streams or worker runs.
+- Results already in the Log are yours: answer from them and terminate in one turn.
 
 ```mermaid
 stateDiagram-v2
