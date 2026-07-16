@@ -39,7 +39,7 @@
     "devDependencies": {
         "@ag-ui/client": "0.0.57",
         "@types/ws": "8.18.1",
-        "ws": "8.21.0"
+        "ws": "8.21.1"
     },
     "keywords": [
         "plurnk",
