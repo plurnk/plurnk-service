@@ -6,7 +6,7 @@
 //
 // The shim holds the CLIENT state a transport module holds at its edge (the attached envelope,
 // the lazily-resolved model run) and the protocol niceties tests rely on (JSON-RPC envelopes,
-// notification fan-in via subscribeToEvents filtered to the attached session).
+// notification fan-in via subscribeToEvents filtered to the attached workspace).
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
@@ -18,19 +18,19 @@ export default class SeamSocket {
     #daemon: Daemon;
     #listeners = new Map<string, Set<Listener>>();
     #unsubscribe: () => void;
-    #session: ClientEnvelope | null = null;
+    #workspace: ClientEnvelope | null = null;
     #closed = false;
 
     constructor(daemon: Daemon) {
         this.#daemon = daemon;
-        // The one event pipe: seam events arrive (sessionId | null, method, params) and re-emit as
-        // JSON-RPC notifications, filtered the way the WS connection was — my session's + globals.
-        this.#unsubscribe = daemon.subscribeToEvents((sessionId, method, params) => {
+        // The one event pipe: seam events arrive (workspaceId | null, method, params) and re-emit as
+        // JSON-RPC notifications, filtered the way the WS connection was — my workspace's + globals.
+        this.#unsubscribe = daemon.subscribeToEvents((workspaceId, method, params) => {
             if (this.#closed) return;
-            if (sessionId !== null && this.#session !== null && sessionId !== this.#session.sessionId) return;
-            if (sessionId !== null && this.#session === null) return;
+            if (workspaceId !== null && this.#workspace !== null && workspaceId !== this.#workspace.workspaceId) return;
+            if (workspaceId !== null && this.#workspace === null) return;
             // §notifications-envelope-carries-sessionid — the envelope stamps the scope, as the WS did.
-            const scoped = sessionId !== null && params !== null && typeof params === "object" ? { ...params, sessionId } : params;
+            const scoped = workspaceId !== null && params !== null && typeof params === "object" ? { ...params, workspaceId } : params;
             this.#emit("message", JSON.stringify({ jsonrpc: "2.0", method, params: scoped }));
         });
     }
@@ -69,8 +69,8 @@ export default class SeamSocket {
     }
 
     #attached(): ClientEnvelope {
-        if (this.#session === null) throw new Error("no attached session — session.create/session.attach first");
-        return this.#session;
+        if (this.#workspace === null) throw new Error("no attached workspace — workspace.create/workspace.attach first");
+        return this.#workspace;
     }
 
     // --- the method map: every RPC name a test speaks → its seam call ---
@@ -78,29 +78,29 @@ export default class SeamSocket {
         const p = params as Record<string, unknown>;
         const daemon = this.#daemon;
         switch (method) {
-            case "session.create": {
-                const envelope = await daemon.createSession({
+            case "workspace.create": {
+                const envelope = await daemon.createWorkspace({
                     name: p.name as string | undefined,
                     projectRoot: (p.projectRoot as string | null | undefined) ?? null,
                     settings: p.settings as string | undefined,
                     constraints: p.constraints as Array<{ effect: string; glob: string }> | undefined,
                 });
-                this.#session = envelope;
-                return { id: envelope.sessionId, name: envelope.sessionName, runId: envelope.runId, runName: envelope.runName, projectRoot: envelope.projectRoot };
+                this.#workspace = envelope;
+                return { id: envelope.workspaceId, name: envelope.workspaceName, workerId: envelope.workerId, workerName: envelope.workerName, projectRoot: envelope.projectRoot };
             }
-            case "session.attach": {
-                const envelope = await daemon.attachSession({ sessionId: (p.sessionId ?? p.id) as number, runId: p.runId as number | undefined, runName: p.runName as string | undefined });
-                this.#session = envelope;
-                return { id: envelope.sessionId, name: envelope.sessionName, runId: envelope.runId, runName: envelope.runName, projectRoot: envelope.projectRoot };
+            case "workspace.attach": {
+                const envelope = await daemon.attachWorkspace({ workspaceId: (p.workspaceId ?? p.id) as number, workerId: p.workerId as number | undefined, workerName: p.workerName as string | undefined });
+                this.#workspace = envelope;
+                return { id: envelope.workspaceId, name: envelope.workspaceName, workerId: envelope.workerId, workerName: envelope.workerName, projectRoot: envelope.projectRoot };
             }
             case "loop.run": {
                 const s = this.#attached();
                 if (typeof p.prompt !== "string" || p.prompt.length === 0) throw new Error("loop.run requires non-empty params.prompt");
-                if (s.modelRunId === null) s.modelRunId = await daemon.ensureModelRun(s.sessionId);
+                if (s.modelWorkerId === null) s.modelWorkerId = await daemon.ensureModelWorker(s.workspaceId);
                 let run;
                 try {
                     run = await daemon.runLoop({
-                        sessionId: s.sessionId, runId: s.modelRunId, prompt: p.prompt,
+                        workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt,
                         ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                         ...(p.flags !== undefined ? { flags: p.flags as { yolo?: boolean } } : {}),
                         ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
@@ -110,27 +110,27 @@ export default class SeamSocket {
                     if (err instanceof Error && /no provider configured/.test(err.message)) return { status: 501, error: err.message };
                     throw err;
                 }
-                return { ...run, modelRunId: s.modelRunId, finalStatus: 100, hitMaxTurns: false, turnIds: [] };
+                return { ...run, modelWorkerId: s.modelWorkerId, finalStatus: 100, hitMaxTurns: false, turnIds: [] };
             }
             case "loop.inject": {
                 // inject speaks to an EXISTING model run; the seam's runLoop injects into a live
                 // drain identically (daemon.inject under both) — refusing only the run-start.
                 const s = this.#attached();
                 if (typeof p.prompt !== "string" || p.prompt.length === 0) throw new Error("loop.inject requires non-empty params.prompt");
-                if (s.modelRunId === null) throw new Error("loop.inject: no model run to inject into — start one with loop.run");
+                if (s.modelWorkerId === null) throw new Error("loop.inject: no model run to inject into — start one with loop.run");
                 const run = await daemon.runLoop({
-                    sessionId: s.sessionId, runId: s.modelRunId, prompt: p.prompt as string,
+                    workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.flags !== undefined ? { flags: p.flags as { yolo?: boolean } } : {}),
                 });
-                return { ...run, modelRunId: s.modelRunId, finalStatus: 100 };
+                return { ...run, modelWorkerId: s.modelWorkerId, finalStatus: 100 };
             }
             case "loop.cancel": {
                 const s = this.#attached();
                 const reason = (typeof p.reason === "string" && p.reason.length > 0) ? p.reason : "user_cancelled";
-                const modelRunId = s.modelRunId;
-                const cancelled = modelRunId !== null && daemon.cancelDrain(modelRunId, reason);
-                return { cancelled, runId: modelRunId, reason };
+                const modelWorkerId = s.modelWorkerId;
+                const cancelled = modelWorkerId !== null && daemon.cancelDrain(modelWorkerId, reason);
+                return { cancelled, workerId: modelWorkerId, reason };
             }
             case "loop.resolve": {
                 daemon.resolveProposal(p.logEntryId as number, {
@@ -144,7 +144,7 @@ export default class SeamSocket {
                 // The seam hands RAW state='proposed' rows (§proposal-list) — the module reshapes at
                 // its edge. Mirror the retired WS handler's shape: parsed attrs/flags, tx body lifted.
                 const s = this.#attached();
-                const rows = await daemon.pendingProposals(s.sessionId) as unknown as Array<Record<string, unknown>>;
+                const rows = await daemon.pendingProposals(s.workspaceId) as unknown as Array<Record<string, unknown>>;
                 const txBody = (tx: unknown): string => {
                     if (typeof tx !== "string" || tx.length === 0) return "";
                     try {
@@ -155,7 +155,7 @@ export default class SeamSocket {
                     } catch { return ""; }
                 };
                 return { proposals: rows.map((r) => ({
-                    logEntryId: r.logEntryId, runId: r.runId, loopId: r.loopId, turnId: r.turnId,
+                    logEntryId: r.logEntryId, workerId: r.workerId, loopId: r.loopId, turnId: r.turnId,
                     op: r.op, suffix: r.suffix,
                     target: { scheme: r.scheme ?? null, pathname: r.pathname ?? null },
                     body: txBody(r.tx),
@@ -166,58 +166,58 @@ export default class SeamSocket {
             }
             case "log.read": {
                 // Default = the connection's OWN (client) run — §machine-processes; the model run is
-                // read by explicit runId (loop.run returns modelRunId for exactly that).
+                // read by explicit workerId (loop.run returns modelWorkerId for exactly that).
                 const s = this.#attached();
-                const runId = (p.runId as number | undefined) ?? s.runId;
-                const entries = await daemon.readLog({ sessionId: s.sessionId, runId, ...(p as object) });
+                const workerId = (p.workerId as number | undefined) ?? s.workerId;
+                const entries = await daemon.readLog({ workspaceId: s.workspaceId, workerId, ...(p as object) });
                 return { status: 200, entries };
             }
             case "entry.read": {
                 const s = this.#attached();
-                return daemon.readEntry({ sessionId: s.sessionId, target: p.target as string, channel: p.channel as string | undefined, offset: p.offset as number | undefined });
+                return daemon.readEntry({ workspaceId: s.workspaceId, target: p.target as string, channel: p.channel as string | undefined, offset: p.offset as number | undefined });
             }
             case "run.fork": {
                 // fork branches an EXISTING model run — no run yet is a caller error, never an implicit create.
                 const s = this.#attached();
-                const runId = (p.runId as number | undefined) ?? s.modelRunId;
-                if (runId === null || runId === undefined) throw new Error("run.fork: no model run to fork — loop.run first");
-                return daemon.forkRun({ sessionId: s.sessionId, runId, name: p.name as string | undefined });
+                const workerId = (p.workerId as number | undefined) ?? s.modelWorkerId;
+                if (workerId === null || workerId === undefined) throw new Error("run.fork: no model run to fork — loop.run first");
+                return daemon.forkWorker({ workspaceId: s.workspaceId, workerId, name: p.name as string | undefined });
             }
-            case "session.rename": {
+            case "workspace.rename": {
                 const s = this.#attached();
-                return daemon.renameSession(s.sessionId, p.name as string);
+                return daemon.renameWorkspace(s.workspaceId, p.name as string);
             }
-            case "session.list": return { sessions: await daemon.listSessions() };
-            case "session.runs": { const sid = ((p.sessionId ?? p.id) as number | undefined) ?? this.#attached().sessionId; return { runs: await daemon.listRuns(sid) }; }
-            case "session.prompts": {
+            case "workspace.list": return { workspaces: await daemon.listWorkspaces() };
+            case "workspace.workers": { const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId; return { workers: await daemon.listWorkers(sid) }; }
+            case "workspace.prompts": {
                 if (p.limit !== undefined && (typeof p.limit !== "number" || !Number.isInteger(p.limit) || p.limit < 1)) {
-                    throw new Error("session.prompts: limit must be a positive integer");
+                    throw new Error("workspace.prompts: limit must be a positive integer");
                 }
-                const sid = ((p.sessionId ?? p.id) as number | undefined) ?? this.#attached().sessionId;
+                const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId;
                 return { prompts: await daemon.listPrompts(sid, (p.limit as number | undefined) ?? 100) };
             }
-            case "session.members": { const s = this.#attached(); return { members: await daemon.listMembers(s.sessionId) }; }
-            case "session.constraints": { const s = this.#attached(); return { constraints: await daemon.listConstraints(s.sessionId) }; }
-            case "session.constrain": { const s = this.#attached(); return daemon.constrain(s.sessionId, p.effect as string, p.glob as string); }
-            case "session.unconstrain": { const s = this.#attached(); return daemon.unconstrain(s.sessionId, p.effect as string, p.glob as string); }
+            case "workspace.members": { const s = this.#attached(); return { members: await daemon.listMembers(s.workspaceId) }; }
+            case "workspace.constraints": { const s = this.#attached(); return { constraints: await daemon.listConstraints(s.workspaceId) }; }
+            case "workspace.constrain": { const s = this.#attached(); return daemon.constrain(s.workspaceId, p.effect as string, p.glob as string); }
+            case "workspace.unconstrain": { const s = this.#attached(); return daemon.unconstrain(s.workspaceId, p.effect as string, p.glob as string); }
             case "providers.list": return daemon.listProviders();
             case "op.look": {
                 const s = this.#attached();
                 const statement = Dsl.parseSingleStatement(p.text as string);
-                return daemon.look({ sessionId: s.sessionId, runId: s.runId, statement });
+                return daemon.look({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
             }
             case "op.parse": {
                 // Parse text, dispatch each statement, surface parse failures as 400 results.
                 const s = this.#attached();
                 const { statements, errors } = Dsl.parseAllStatements(p.text as string);
                 const results: Array<{ status: number; [k: string]: unknown }> = [];
-                for (const statement of statements) results.push(await daemon.dispatchAsClient({ sessionId: s.sessionId, runId: s.runId, statement }));
+                for (const statement of statements) results.push(await daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement }));
                 for (const e of errors) results.push({ status: 400, error: e.message, position: { type: "content-offset", line: e.line, column: e.column } });
                 return { results };
             }
             case "op.dispatch": {
                 const s = this.#attached();
-                return daemon.dispatchAsClient({ sessionId: s.sessionId, runId: s.runId, statement: p.statement as PlurnkStatement });
+                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement: p.statement as PlurnkStatement });
             }
             case "op.edit": case "op.send": case "op.read": case "op.find":
             case "op.copy": case "op.move": case "op.open": case "op.fold": case "op.exec": {
@@ -229,7 +229,7 @@ export default class SeamSocket {
                     "op.open": Dsl.buildOpen, "op.fold": Dsl.buildFold, "op.exec": Dsl.buildExec,
                 };
                 const statement = build[method](p as never);
-                return daemon.dispatchAsClient({ sessionId: s.sessionId, runId: s.runId, statement });
+                return daemon.dispatchAsClient({ workspaceId: s.workspaceId, workerId: s.workerId, statement });
             }
             default:
                 throw new Error(`method not found: ${method}`);

@@ -18,7 +18,7 @@ const runOneTurn = async (mock: Mock, name: string): Promise<void> => {
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name });
+            await rpcCall(ws, 1, "workspace.create", { name });
             await runLoopToTerminal(ws, 2, { prompt: "x" });
         } finally { ws.close(); }
     });

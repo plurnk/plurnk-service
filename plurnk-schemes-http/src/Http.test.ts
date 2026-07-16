@@ -28,11 +28,11 @@ import type { RenderResult } from "./Browser.ts";
 // A fake render foundation: returns a canned rendered page, records the call
 // (including the request headers threaded through — grammar#46).
 const fakeBrowser = (html: string) => {
-    const calls: Array<{ url: string; runId: number; headers?: ReadonlyArray<readonly [string, string]> }> = [];
+    const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]> }> = [];
     return {
         calls,
-        render: async (url: string, opts: { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult> => {
-            calls.push({ url, runId: opts.runId, headers: opts.headers });
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult> => {
+            calls.push({ url, workerId: opts.workerId, headers: opts.headers });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },
     };
@@ -72,7 +72,7 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
     const crossScheme: CrossSchemeCaps = { _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape" };
 
     const ctx: SchemeCtx = {
-        sessionId: 1, runId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, tags, notify, subscriptions, crossScheme,
     };
     return {
@@ -267,7 +267,7 @@ test("READ: an HTML page is rendered — body is the final DOM, labelled text/ht
         assert.equal(r.status, 102);
     });
     const { chunks, closed } = inspect();
-    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", runId: 1, headers: [] }]);
+    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", workerId: 1, headers: [] }]);
     const bodyChunks = chunks.filter((c) => c.channel === "body");
     assert.equal(bodyChunks.length, 1); // single-shot: the whole rendered DOM
     assert.equal(bodyChunks[0].chunk, "<html><body>rendered</body></html>");

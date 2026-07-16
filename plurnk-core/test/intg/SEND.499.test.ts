@@ -35,46 +35,46 @@ const setup = async () => {
     return { db, ...env, engine };
 };
 
-const dispatch = (engine: Engine, env: { sessionId: number; runId: number; loopId: number; turnId: number }, statement: SendStatement) =>
+const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: SendStatement) =>
     engine.dispatch({ statement, ...env, sequence: 1, origin: "client" });
 
 test("SEND[499] on entry without subscription returns 404", async () => {
-    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(499, url("known", "x")));
+        await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("known", "x")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
 test("SEND[499] on nonexistent entry returns 404", async () => {
-    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(499, url("known", "nope")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("known", "nope")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
 test("SEND[499] on entry-bearing scheme with foreign subscription returns 501", async () => {
-    const { db, sessionId, runId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        const r = await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
         const entryId = r.entryId as number;
-        await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "fake-stream-scheme", handle: "h" });
+        await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "fake-stream-scheme", handle: "h" });
 
-        const cancelResult = await dispatch(engine, { sessionId, runId, loopId, turnId }, sendStmt(499, url("known", "x")));
+        const cancelResult = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("known", "x")));
         assert.equal(cancelResult.status, 501);
     } finally { await db.close(); }
 });
 
 test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscription, transitions state, closes record", async () => {
-    const { db, sessionId, runId, loopId, turnId } = await setup();
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const teardownCalls: string[] = [];
         const handles = new Map<string, () => void>();
 
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "fakestream", pathname: "/feed/x",
+            workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
         });
         if (entry === undefined) throw new Error("seed entry failed");
         const entryId = entry.id;
@@ -84,12 +84,12 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
 
         const handle = "fake-stream-1";
         handles.set(handle, () => teardownCalls.push(handle));
-        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "fakestream", handle });
+        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "fakestream", handle });
 
         class FakeStream {
             static manifest = {
                 name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
-                category: "data" as const, scope: "session" as const,
+                category: "data" as const, scope: "workspace" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number }> {
@@ -97,10 +97,10 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                 const path = statement.target;
                 if (path === null || path.kind !== "url") return { status: 400 };
                 const e = await (ctx.db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-                    session_id: ctx.sessionId, scheme: path.scheme, pathname: path.pathname,
+                    workspace_id: ctx.workspaceId, scheme: path.scheme, pathname: path.pathname,
                 });
                 if (e === undefined) return { status: 404 };
-                const sub = await ChannelWrite.findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: e.id });
+                const sub = await ChannelWrite.findActiveSubscription(ctx.db, { workerId: ctx.workerId, entryId: e.id });
                 if (sub === null) return { status: 404 };
                 const cb = handles.get(sub.handle);
                 if (cb !== undefined) cb();
@@ -116,7 +116,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
 
         const result = await engine.dispatch({
             statement: sendStmt(499, url("fakestream", "/feed/x")),
-            sessionId, runId, loopId, turnId,
+            workspaceId, workerId, loopId, turnId,
             sequence: 1, origin: "client",
         });
 
@@ -130,7 +130,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const channelState = (await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
         assert.equal(channelState, "closed", "channel state transitioned to closed");
 
-        const active = await ChannelWrite.findActiveSubscription(db, { runId, entryId });
+        const active = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
         assert.equal(active, null, "no active subscription remaining");
     } finally { await db.close(); }
 });
@@ -155,7 +155,7 @@ test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscr
         });
 
     try {
-        await rpcCall(1, "session.create", { name: "test-499" });
+        await rpcCall(1, "workspace.create", { name: "test-499" });
         await rpcCall(2, "op.edit", { target: "known:///x", content: "hi" });
         const r = await rpcCall(3, "op.send", { status: 499, recipient: "known:///x" });
         assert.equal(r.result?.status, 404, "SEND[499] on entry with no subscription is 404");

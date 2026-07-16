@@ -80,7 +80,7 @@ export default class Log {
         channels: {},  // logs render through read(), not channel storage
         defaultChannel: "",
         category: "logging",
-        scope: "session",
+        scope: "workspace",
         // Engine-only WRITES — but KILL ∈ MUTATING_OPS rides this same gate, and log-KILL is the
         // model's DB-storage curation lever (plurnk.md:10/:47 + the OP×resource matrix; §model-entry-log-curation).
         // The model clears the gate; Log's handler surface (kill only — no edit/writeEntry) is the
@@ -92,7 +92,7 @@ export default class Log {
     };
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<SchemeReadResult> {
-        const { db, runId } = ctx;
+        const { db, workerId } = ctx;
         if (statement.target === null) return { status: 400, content: null, mimetype: null };
         // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job (§log-region-tagging),
         // not a filter on a single-row read.
@@ -111,7 +111,7 @@ export default class Log {
             status_rx: number;
             rx: string;
             mimetype_rx: string;
-        }>({ run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
+        }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return { status: 404, content: null, mimetype: null };
 
@@ -133,7 +133,7 @@ export default class Log {
     // ~semantic stays 501 until the pump embeds log rows (epic S5); @graph is 501 (log rows carry
     // no symbol channels — an honest absence, not an exception).
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        const { db, runId, mimetypes } = ctx;
+        const { db, workerId, mimetypes } = ctx;
         const empty = (status: number): FindResult => ({ status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] });
         if (statement.target === null) return empty(400);
         if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph")) return empty(501);
@@ -146,8 +146,8 @@ export default class Log {
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
         type Candidate = { coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number };
         const rows = tags.length > 0
-            ? await (db.log_find_candidates_tagged as PrepMethod).all<Candidate>({ run_id: runId, glob, tags: JSON.stringify(tags) })
-            : await (db.log_find_candidates as PrepMethod).all<Candidate>({ run_id: runId, glob });
+            ? await (db.log_find_candidates_tagged as PrepMethod).all<Candidate>({ worker_id: workerId, glob, tags: JSON.stringify(tags) })
+            : await (db.log_find_candidates as PrepMethod).all<Candidate>({ worker_id: workerId, glob });
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({ key: r.coordinate, ...rxProjection(r.rx) }));
 
@@ -205,16 +205,16 @@ export default class Log {
     // by <L> (OPEN/FOLD only) — to the matched row ids. The ONE resolution OPEN/FOLD and
     // KILL share: fold flips `expanded` on the ids, kill deletes them.
     async #resolveIds(pathname: string, lineMarker: OpenStatement["lineMarker"], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
-        const { db, runId } = ctx;
+        const { db, workerId } = ctx;
         const coord = parseCoordinate(pathname);
         if (coord !== null && lineMarker === null) {
-            const row = await (db.log_id_by_coordinate as PrepMethod).get<{ id: number }>({ run_id: runId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
+            const row = await (db.log_id_by_coordinate as PrepMethod).get<{ id: number }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
             return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
         }
         // §log-coordinate-hierarchy — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
-        const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ run_id: runId, glob });
+        const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ worker_id: workerId, glob });
         // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
         // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
         // errors surface (>= 400), and the rx carries matched: 0, clearly shown.
@@ -234,11 +234,11 @@ export default class Log {
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
     async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
-        const { db, runId } = ctx;
+        const { db, workerId } = ctx;
         const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
-        const matched = await (db.log_match_coordinates_tagged as PrepMethod).all<{ id: number }>({ run_id: runId, glob, tags: JSON.stringify(tags) });
+        const matched = await (db.log_match_coordinates_tagged as PrepMethod).all<{ id: number }>({ worker_id: workerId, glob, tags: JSON.stringify(tags) });
         if (matched.length === 0) return { status: 204, ids: [] };
         let selected = matched;
         if (statement.lineMarker !== null) {
@@ -296,7 +296,7 @@ export default class Log {
     }
 
     // KILL erases log items (plurnk.md:36, :98) — the model's DB-storage curation lever and
-    // the only way to shed accumulated log rows in a long session (FOLD only collapses the
+    // the only way to shed accumulated log rows in a long workspace (FOLD only collapses the
     // render; the row persists). Same resolution as OPEN/FOLD, DELETE instead of flip. KILL
     // carries no <L> result slot, so no pagination — a concrete coordinate or a path-glob.
     async kill(pathname: string, _signal: number | null, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {

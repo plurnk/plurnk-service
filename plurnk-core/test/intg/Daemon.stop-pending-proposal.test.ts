@@ -16,7 +16,7 @@ test("Daemon.stop with a PENDING stopped-world proposal terminates — never a s
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "stop-pending" });
+            await rpcCall(ws, 1, "workspace.create", { name: "stop-pending" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
             await rpcCall(ws, 2, "loop.run", { prompt: "go" });
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });

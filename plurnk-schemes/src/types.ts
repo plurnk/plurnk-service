@@ -22,12 +22,12 @@ export interface SchemeManifest {
     readonly channels: Record<string, string>;  // channel name → mimetype; empty = dynamic per-call
     readonly defaultChannel: string;             // empty when channels is empty
     // data: entry-bearing content. logging: log:// rows. control: addresses
-    // sister processes/runs and owns no entries (run://: spawn/fork/irc).
+    // sister processes/runs and owns no entries (worker://: spawn/fork/irc).
     readonly category: "data" | "logging" | "control";
     // Matches grammar's SchemeRegistration.default_scope enum (0.67: `agent`
     // dropped — nothing used it — `run` added for per-run scratch backing
-    // `run://`). New schemes default `session`; opt into `run` only for per-run.
-    readonly scope: "session" | "run";
+    // `worker://`). New schemes default `workspace`; opt into `run` only for per-run.
+    readonly scope: "workspace" | "worker";
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;

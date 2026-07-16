@@ -27,7 +27,7 @@ you `KILL` it or the origin closes.
 
 ## Model
 
-- **One socket per target, per session.** The connection a READ opens is keyed by
+- **One socket per target, per workspace.** The connection a READ opens is keyed by
   its path; a later SEND/KILL to the same target acts on that connection.
 - **SSRF-guarded.** The target is resolved and checked before connecting — a
   `ws://`/`wss://` into loopback, link-local, or RFC-1918/CGNAT space is refused

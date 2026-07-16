@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 
 // These pin the TABULAR budget baseline; #440's default is the mermaid form (covered by [§budget-mermaid]).
 process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
@@ -23,12 +23,12 @@ test("[§tokenomics-window-partition] the prompt ceiling derives from min(CONTEX
     const db = await openMigrated();
     try {
         const run = async (contextWindow: number): Promise<string> => {
-            const sessionId = await insertSession(db, `part-${crypto.randomUUID()}`);
-            const runId = await insertRun(db, sessionId);
-            const loopId = await insertLoop(db, runId, 1, "p");
+            const workspaceId = await insertWorkspace(db, `part-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "p");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const provider = new Mock({ contextWindow, responses: [response([sendStmt(200, "done")])] });
-            const r = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+            const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
         assert.match(await run(100000), /Token Ceiling 6500 /, "wide window → CONTEXT_WINDOW governs: 10000 − 3500 reserves");
@@ -55,13 +55,13 @@ const response = (ops: PlurnkStatement[]): MockResponse => ({
 test("Engine.runTurn: budget readout — partition-derived ceiling, free reconciles to ceiling − assembled total", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 4000, responses: [response([sendStmt(200, "done")])] });
         const result = await engine.runTurn({
-            provider, sessionId, runId, loopId,
+            provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],
         });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });

@@ -13,10 +13,10 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 export interface DemoFixture {
     workspace: string;
     cleanup: () => Promise<void>;
-    addToCatalog: (db: Db, sessionId: number) => Promise<void>;
+    addToCatalog: (db: Db, workspaceId: number) => Promise<void>;
 }
 
-// The files seedDemoFixture writes — the set the client registers as session
+// The files seedDemoFixture writes — the set the client registers as workspace
 // members (the catalog) so File.read, which is membership-gated, can serve them.
 const FILES = ["package.json", "src/app.js", "src/config.json", "notes.md", "data/users.json", "data/users.html"];
 
@@ -99,12 +99,12 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
         workspace,
         cleanup: async () => { await rm(workspace, { recursive: true, force: true }); },
         // The fixture owns catalog membership: register each seeded file as a
-        // session entry (scheme=null, the file-routing internal) so the model
+        // workspace entry (scheme=null, the file-routing internal) so the model
         // may READ it. Channel-less — disk stays the truth; the entry is the
         // membership marker the read gate checks and FIND globs by path.
-        addToCatalog: async (db, sessionId) => {
+        addToCatalog: async (db, workspaceId) => {
             for (const rel of FILES) {
-                await (db.crud_insert_session_entry as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: rel });
+                await (db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: workspaceId, scheme: null, pathname: rel });
             }
         },
     };

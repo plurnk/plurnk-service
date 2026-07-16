@@ -27,7 +27,7 @@ test("[§strikes-first-party-metadata] generate carries the live streak — 0 ex
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "strikes-meta" });
+            await rpcCall(ws, 1, "workspace.create", { name: "strikes-meta" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 8 });
             assert.equal(finalStatus, 200, "the loop concluded through the struck turn");
             assert.deepEqual(mock.seen, [0, 1, 2, 0], "explicit 0 at start → 1 after the idle strike → 2 after no-ops → the working turn zeroes it");
@@ -51,7 +51,7 @@ test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "soft-416" });
+            await rpcCall(ws, 1, "workspace.create", { name: "soft-416" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 6 });
             assert.equal(finalStatus, 200);
             assert.deepEqual(mock.seen, [0, 0, 0], "the range-miss turn never bumped the streak");

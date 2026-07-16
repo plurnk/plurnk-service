@@ -44,7 +44,7 @@ The framework instantiates **one executor per tag**, injecting `{ runtime, glyph
 
 ### 3. What `run` receives (`ExecArgs`) — sinks, never the substrate
 
-`{ runtime, command, cwd, target, env, signal, write(channel, chunk, mimetype?), setState(channel, state), emit(event) }`. The executor gets sinks and honors `signal` — never the db, subscriptions, or wake machinery (those stay in the consumer). **`cwd`** is the session workspace (the process working directory); **`target`** is the parsed EXEC `(target)` slot — a referenced resource you interpret **per your tool's CLI**: a *data* runtime reads it as input with `command` as the program (jq `(file):filter`, sqlite `(db):SQL`); an *executable* runtime runs it as the program with `command` as its **stdin** (sh `(cmdline):stdin`, python `(script):stdin`). Resolved relative to `cwd`, `null` when the op names none (plurnk-execs#15). `write`'s optional `mimetype` stamps the channel with the real per-call output type. **`env`**, when the consumer scopes it, is exactly the environment a spawned child should see (the host's own secrets already dropped — never inherit `process.env` for model-run children yourself). Stay stateless across runs beyond your construction metadata.
+`{ runtime, command, cwd, target, env, signal, write(channel, chunk, mimetype?), setState(channel, state), emit(event) }`. The executor gets sinks and honors `signal` — never the db, subscriptions, or wake machinery (those stay in the consumer). **`cwd`** is the workspace workspace (the process working directory); **`target`** is the parsed EXEC `(target)` slot — a referenced resource you interpret **per your tool's CLI**: a *data* runtime reads it as input with `command` as the program (jq `(file):filter`, sqlite `(db):SQL`); an *executable* runtime runs it as the program with `command` as its **stdin** (sh `(cmdline):stdin`, python `(script):stdin`). Resolved relative to `cwd`, `null` when the op names none (plurnk-execs#15). `write`'s optional `mimetype` stamps the channel with the real per-call output type. **`env`**, when the consumer scopes it, is exactly the environment a spawned child should see (the host's own secrets already dropped — never inherit `process.env` for model-run children yourself). Stay stateless across runs beyond your construction metadata.
 
 ### How the model sees your tag
 
@@ -68,10 +68,10 @@ Declare the two and a third-party tag gets the same self-documenting surface the
 - `BaseExecutor` — abstract base: `channels`, `run(args)`, optional `probe()` / `effect(target)`.
 - `SubprocessExecutor` — concrete base for subprocess runtimes; override `spawnArgs()` (and `binary`). Streaming + process-group abort + env scoping + exit code, inherited.
 - `discover(options?)` — the scope-agnostic registry scan (trust-gated + runtime-policy-gated, fail-hard on collision).
-- `Policy` — the runtime enable/disable resolver (SPEC §3.3): `Policy.isEnabled(tag, env?)`, `Policy.enabledAcross(tag, layers)`. Same parser the daemon and the consumer's per-session client layer share.
+- `Policy` — the runtime enable/disable resolver (SPEC §3.3): `Policy.isEnabled(tag, env?)`, `Policy.enabledAcross(tag, layers)`. Same parser the daemon and the consumer's per-workspace client layer share.
 - Contract types: `ExecArgs`, `ExecResult`, `ChannelDecl`, `ChannelState`, `ExecutorMetadata`, `RuntimeAvailability`, `Effect`, `ExecInfo`, `ExecRegistry`, `Discovery`, `DiscoverOptions`.
 - `TelemetryEvent`, `ContentOffset`, `LogCoordinate` — the `emit` sink's payload (mirror of grammar's telemetry envelope).
-- `resolveRuntime`, `isKnownRuntime`, `KNOWN_RUNTIMES`, `SpawnArgs`, `RuntimeResolver` — subprocess-family helper for the consumer's legacy spawn path (SPEC §4).
+- `resolveWorkertime`, `isKnownRuntime`, `KNOWN_RUNTIMES`, `SpawnArgs`, `RuntimeResolver` — subprocess-family helper for the consumer's legacy spawn path (SPEC §4).
 
 ## Tests
 

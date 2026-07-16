@@ -8,15 +8,15 @@
 -- the default-channel content this query returns. Static query handles every
 -- filter combination via IS-NULL guards (per SqlRite LLMS.md §channels).
 
--- PREP: find_session_entry_candidates
+-- PREP: find_workspace_entry_candidates
 -- $channel: default-channel name whose content the body matcher runs against
 -- $scope_pathname: pathname-prefix glob (e.g., "foo/*") or NULL for no prefix
 -- $tags: JSON string of tag list (e.g., '["a","b"]'); '[]' or NULL for no tag filter
 SELECT e.id AS entry_id, e.pathname, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
-WHERE e.scope = 'session'
-  AND e.session_id = $session_id
+WHERE e.scope = 'workspace'
+  AND e.workspace_id = $workspace_id
   AND e.scheme IS $scheme
   AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
   AND (
@@ -30,16 +30,16 @@ WHERE e.scope = 'session'
   )
 ORDER BY e.pathname;
 
--- PREP: find_run_entry_candidates
--- §run-scheme — run-scope FIND, byte-identical to find_session_entry_candidates BUT scope='run'.
+-- PREP: find_worker_entry_candidates
+-- §run-scheme — run-scope FIND, byte-identical to find_workspace_entry_candidates BUT scope='worker'.
 -- The owner narrowing rides $scope_pathname (Run.find folds the owner into the prefix glob —
 -- `/<owner>/*`), so a run reaches only its own (self) or a named sister's scratch. Additive: the
--- session query above is untouched (§run-scheme Inc-1).
+-- workspace query above is untouched (§run-scheme Inc-1).
 SELECT e.id AS entry_id, e.pathname, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
-WHERE e.scope = 'run'
-  AND e.session_id = $session_id
+WHERE e.scope = 'worker'
+  AND e.workspace_id = $workspace_id
   AND e.scheme IS $scheme
   AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
   AND (

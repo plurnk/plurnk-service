@@ -39,7 +39,7 @@ export interface RoutedAdvisory {
 
 // npm audit exits non-zero precisely WHEN advisories exist — that's the signal, not a failure.
 // Capture stdout either way; only a missing/empty stdout is a genuine npm error.
-const runAudit = (extra: string[]): string => {
+const workerAudit = (extra: string[]): string => {
     try {
         return execFileSync("npm", ["audit", ...extra], { encoding: "utf8" });
     } catch (err) {
@@ -102,7 +102,7 @@ const LEVEL = "moderate"; // the #267 floor
 
 const main = (): number => {
     const strict = process.argv.includes("--strict");
-    const audit = JSON.parse(runAudit(["--json", `--audit-level=${LEVEL}`])) as AuditReport;
+    const audit = JSON.parse(workerAudit(["--json", `--audit-level=${LEVEL}`])) as AuditReport;
     const m = audit.metadata?.vulnerabilities ?? {};
     const total = m.total ?? 0;
 
@@ -132,7 +132,7 @@ const main = (): number => {
     }
 
     console.log("── raw npm audit ──");
-    console.log(runAudit([`--audit-level=${LEVEL}`]).trimEnd());
+    console.log(workerAudit([`--audit-level=${LEVEL}`]).trimEnd());
 
     if (!strict) return 0; // advisory by default (#267)
     return advisories.some((a) => (RANK[a.severity] ?? 0) >= RANK[LEVEL]) ? 1 : 0;

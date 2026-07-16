@@ -66,4 +66,4 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 - **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`/`_SALVAGE_MIN_BODY_CHARS`/`_IDLE_TIMEOUT` (required on the HTML render path), optional Playwright/Chromium knobs.
 - **Execs** — `PLURNK_EXECS_<runtime>=0` disables a runtime; `PLURNK_EXECS_MCP_<server>` bridges an MCP server; `PLURNK_EXECS_SEARCH_SEARXNG_URL` enables web search (unset = search off).
 
-The client's own knobs live under `PLURNK_CLIENT_*` (`--session`, `--run`, `--yolo`, `--json`…) — see `plurnk --help`.
+The client's own knobs live under `PLURNK_CLIENT_*` (`--workspace`, `--run`, `--yolo`, `--json`…) — see `plurnk --help`.

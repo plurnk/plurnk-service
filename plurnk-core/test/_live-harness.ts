@@ -1,11 +1,11 @@
 // Shared harness for the live + demo tiers — the ones that drive a REAL model.
 // Both tiers run the SAME prod loop production runs: boot the real Daemon,
-// create a session, fire loop.run, await loop/terminated. The ONLY things that
+// create a workspace, fire loop.run, await loop/terminated. The ONLY things that
 // vary from the deterministic intg tier are the provider (a real one here, a
 // Mock there) and tasteful .env tunings. There is no engine reconstruction —
 // executors, the system prompt, and doc materialization all come from loop.run.
 //
-// liveSession boots + holds the session (db stays open for post-loop forensic
+// liveWorkspace boots + holds the workspace (db stays open for post-loop forensic
 // asserts); liveLoop is the single loop-driver (always server-YOLO, the live/demo
 // stance). Everything funnels through these two so the tier has exactly one path.
 
@@ -22,10 +22,10 @@ import type { Db, PrepMethod } from "../src/core/Db.ts";
 import { openMigrated } from "./intg/_helpers.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./intg/_rpc.ts";
 
-export interface LiveSession {
+export interface LiveWorkspace {
     db: Db;
     ws: SeamSocket;
-    sessionId: number;
+    workspaceId: number;
     runDir: string;
     cleanup: () => Promise<void>;
 }
@@ -34,7 +34,7 @@ export interface LiveSession {
 // the next `.tmp` pre-clean. So a run's db is BORN in `benchmarks/run<N>-<lane>/` and KEPT by
 // default: a missed cleanup leaves harmless clutter, never a lost specimen — the inverse of
 // copy-on-failure, where a missed hook loses the run forever. Passing runs are swept at worker exit
-// (best-effort, safe); failures stay, greppable by session name (the `session` file inside).
+// (best-effort, safe); failures stay, greppable by workspace name (the `workspace` file inside).
 const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(homedir(), "repo/plurnk/benchmarks");
 const LANE = process.env.PLURNK_LANE ?? "core";
 const createdRuns: string[] = [];
@@ -42,13 +42,13 @@ const createdRuns: string[] = [];
 // Atomic claim: mkdir fails if the dir exists, so a concurrent worker (or a sibling lane) can never
 // take the same run number — the run46 meta/bench collision the issue names. Numbers are sparse by
 // design (owner ruling): passing runs are swept, so a run number is a findable id, not a count.
-const claimRunDir = async (session: string): Promise<string> => {
+const claimRunDir = async (workspace: string): Promise<string> => {
     await mkdir(BENCHMARKS, { recursive: true });
     let n = 1;
     for (const e of readdirSync(BENCHMARKS)) { const m = /^run(\d+)-/.exec(e); if (m) n = Math.max(n, Number(m[1]) + 1); }
     for (;;) {
         const dir = join(BENCHMARKS, `run${n}-${LANE}`);
-        try { await mkdir(dir); await writeFile(join(dir, "session"), `${session}\n`); return dir; }
+        try { await mkdir(dir); await writeFile(join(dir, "workspace"), `${workspace}\n`); return dir; }
         catch (e) { if ((e as { code?: string }).code !== "EEXIST") throw e; n++; }
     }
 };
@@ -77,12 +77,12 @@ export const liveProvider = async (): Promise<Provider> => {
     return provider;
 };
 
-// Boot the prod Daemon against a real provider, create a session, hand back the
-// db + ws + sessionId + cleanup. Unlike withDaemon (which auto-closes on callback
+// Boot the prod Daemon against a real provider, create a workspace, hand back the
+// db + ws + workspaceId + cleanup. Unlike withDaemon (which auto-closes on callback
 // return), the db stays OPEN so the caller can run post-loop forensic asserts;
-// cleanup stops the daemon and closes the db. session.create uses rpc id 1, so
+// cleanup stops the daemon and closes the db. workspace.create uses rpc id 1, so
 // callers drive loop.run from id 2. This owns only the boot + open-db lifecycle.
-export const liveSession = async (opts: { name: string; projectRoot?: string }): Promise<LiveSession> => {
+export const liveWorkspace = async (opts: { name: string; projectRoot?: string }): Promise<LiveWorkspace> => {
     const provider = await liveProvider();
     armSweep();
     // §archaeology (#410) — born in benchmarks/, kept by default; the exit sweep reclaims it only if
@@ -93,18 +93,18 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
     const daemon = new Daemon({ db, provider });
     await daemon.start(); // listenerless — the harness rides the seam (#364)
     const ws = await connect({ daemon });
-    // SANDBOX: every live/demo session roots at a fresh empty dir, NEVER the host repo. With
+    // SANDBOX: every live/demo workspace roots at a fresh empty dir, NEVER the host repo. With
     // PLURNK_SERVICE_GIT_ALLOWED=1 + PLURNK_SERVICE_GIT_AUTO=1 + PLURNK_SERVICE_FILES_ITEMS=-1 (the live/demo .env), an
     // in-repo projectRoot makes git membership materialize + embed ALL of plurnk-service every turn
     // — the embed cycle that turns a 7s task into a 240s timeout. seedEntry writes to the DB, so an
     // empty root costs the tests nothing. Caller may override (e.g. with a fixture git repo).
     const ownsSandbox = opts.projectRoot === undefined;
     const projectRoot = opts.projectRoot ?? await mkdtemp(join(tmpdir(), "plurnk-sandbox-"));
-    const created = (await rpcCall(ws, 1, "session.create", {
+    const created = (await rpcCall(ws, 1, "workspace.create", {
         name: opts.name, projectRoot,
     })).result as { id: number };
     return {
-        db, ws, sessionId: created.id, runDir,
+        db, ws, workspaceId: created.id, runDir,
         cleanup: async () => {
             // The run dir is intentionally LEFT on disk (§archaeology preserve-default); the exit
             // sweep removes it iff this file's tests all passed. Only the ephemeral sandbox is torn down.
@@ -116,7 +116,7 @@ export const liveSession = async (opts: { name: string; projectRoot?: string }):
 
 // The single loop-driver for the live/demo tier: fire loop.run (server-YOLO — the
 // tier auto-accepts so an unattended model run isn't blocked on review), await
-// loop/terminated, and return the outcome + the model's final reply. modelRunId
+// loop/terminated, and return the outcome + the model's final reply. modelWorkerId
 // (the run the model's ops landed in, for run-scoped forensic queries) is
 // guaranteed by loop.run; absence is a hard failure, not a silent 0.
 export const liveLoop = async (
@@ -124,16 +124,16 @@ export const liveLoop = async (
     id: number,
     params: { prompt: string; maxTurns?: number; flags?: Record<string, unknown> },
     opts: { timeoutMs: number },
-): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelRunId: number; lastContent: string }> => {
+): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
     const term = await runLoopToTerminal(s.ws, id, {
         prompt: params.prompt, flags: { yolo: true, ...params.flags },
         ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
     }, opts);
-    if (term.modelRunId === undefined) throw new Error("liveLoop: loop.run returned no modelRunId");
+    if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");
     const lastContent = await lastReply(s.db, term.turnIds);
     return {
         finalStatus: term.finalStatus, hitMaxTurns: term.hitMaxTurns ?? false,
-        turnIds: term.turnIds ?? [], modelRunId: term.modelRunId, lastContent,
+        turnIds: term.turnIds ?? [], modelWorkerId: term.modelWorkerId, lastContent,
     };
 };
 
@@ -146,21 +146,21 @@ const lastReply = async (db: Db, turnIds: number[] | undefined): Promise<string>
     return packet.assistant?.content ?? "";
 };
 
-// Seed a session entry + body channel — a test PRECONDITION (the state the prompt
+// Seed a workspace entry + body channel — a test PRECONDITION (the state the prompt
 // references), written through the prod crud statements (the same writes the File
 // scheme / git-membership use) so seeding can't drift from how entries really exist.
 // The model still has to emit the op to reach it; nothing is auto-shown.
 export const seedEntry = async (
-    db: Db, sessionId: number,
+    db: Db, workspaceId: number,
     opts: { scheme?: string | null; pathname: string; content: string; mimetype?: string },
 ): Promise<number> => {
     // known:///lines.md resolves to pathname "/lines.md" — the prod write path canonicalizes to that
     // leading-slash form, so storing the bare arg ("lines.md") 404'd the model's READ by one char.
-    // Honor the convention. (readSessionEntry is a direct scheme+pathname+channel lookup — no
-    // membership filter — so a plain session entry resolves; no git materialization needed.)
+    // Honor the convention. (readWorkspaceEntry is a direct scheme+pathname+channel lookup — no
+    // membership filter — so a plain workspace entry resolves; no git materialization needed.)
     const pathname = opts.pathname.startsWith("/") ? opts.pathname : `/${opts.pathname}`;
-    const e = await (db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({
-        session_id: sessionId, scheme: opts.scheme ?? "known", pathname,
+    const e = await (db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({
+        workspace_id: workspaceId, scheme: opts.scheme ?? "known", pathname,
     });
     if (e === undefined) throw new Error("seedEntry: insert returned no row");
     await (db.crud_write_channel as PrepMethod).run({
@@ -178,10 +178,10 @@ export const readBody = async (db: Db, pathname: string): Promise<string | undef
 };
 
 // Forensic read-back: the latest rx the engine logged for an op in the model run
-// (what a READ actually sliced / a FIND actually matched). modelRunId rides the
+// (what a READ actually sliced / a FIND actually matched). modelWorkerId rides the
 // loop/terminated event (liveLoop returns it).
-export const lastRx = async (db: Db, modelRunId: number, op: string): Promise<string> => {
-    const row = await (db.test_get_log_rx_by_run_op as PrepMethod).get<{ rx: string }>({ run_id: modelRunId, op });
+export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise<string> => {
+    const row = await (db.test_get_log_rx_by_run_op as PrepMethod).get<{ rx: string }>({ worker_id: modelWorkerId, op });
     return row?.rx ?? "";
 };
 

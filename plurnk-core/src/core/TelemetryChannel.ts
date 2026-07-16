@@ -30,7 +30,7 @@ export default class TelemetryChannel {
     #buffer = new Map<number, object[]>();
     // Telemetry event fan-out: every TelemetryEvent pushed to the loop's
     // buffer is also broadcast live to the connected client(s) on the
-    // session. Without this, the client sees `loop/terminated` with a
+    // workspace. Without this, the client sees `loop/terminated` with a
     // status code but has no way to surface why the loop degraded.
     // Per-grammar 0.17.0 protocol — see SPEC §telemetry.
     #notify: TelemetryEventNotify | undefined;
@@ -40,20 +40,20 @@ export default class TelemetryChannel {
         this.#notify = notify;
     }
 
-    push(sessionId: number, loopId: number, event: TelemetryEvent): void {
+    push(workspaceId: number, loopId: number, event: TelemetryEvent): void {
         const existing = this.#buffer.get(loopId);
         if (existing === undefined) this.#buffer.set(loopId, [event]);
         else existing.push(event);
         // Live fan-out: client sees the event the moment it lands in the
         // model's buffer (not at the next packet build). Same envelope on
         // both sides per the grammar 0.17.0 TelemetryEvent protocol.
-        this.#notify?.(sessionId, { loopId, event });
+        this.#notify?.(workspaceId, { loopId, event });
     }
 
     // Live fan-out ONLY, never buffered — for work with no loop to drain the
-    // buffer (e.g. session-scope derivation warming, loopId 0).
-    notify(sessionId: number, loopId: number, event: TelemetryEvent): void {
-        this.#notify?.(sessionId, { loopId, event });
+    // buffer (e.g. workspace-scope derivation warming, loopId 0).
+    notify(workspaceId: number, loopId: number, event: TelemetryEvent): void {
+        this.#notify?.(workspaceId, { loopId, event });
     }
 
     // Telemetry drains as it's read into the packet — each event surfaces once. §telemetry-drain-on-read
@@ -72,10 +72,10 @@ export default class TelemetryChannel {
     // a terse status + canonical term keyed by `kind` (the packet teaches recovery, not the row),
     // origin engine:rail. The errors section derives its LogCoordinate pointer from log≥400 — one
     // channel, no per-kind handling.
-    async mintEngineError(kind: EngineErrorKind, { runId, loopId, turnId, sequence }: { runId: number; loopId: number; turnId: number; sequence: number }): Promise<void> {
+    async mintEngineError(kind: EngineErrorKind, { workerId, loopId, turnId, sequence }: { workerId: number; loopId: number; turnId: number; sequence: number }): Promise<void> {
         const { status, term } = ENGINE_ERRORS[kind];
         await (this.#db.engine_insert_log_entry as PrepMethod).get({
-            run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin: "plurnk", source: "rail", op: "error", suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, params: null, fragment: null, lineMarker: null,

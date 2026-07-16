@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod, ExecMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession } from "./_helpers.ts";
+import { openMigrated, insertWorkspace } from "./_helpers.ts";
 import Envelope from "../../src/server/envelope.ts";
 
 let nameCounter = 0;
@@ -10,11 +10,11 @@ const n = (suffix: string): string => `run-${suffix}-${++nameCounter}`;
 test("[§methods-run-name-reserved] a client cannot create or resume a run named 'plurnk' (runtime impersonation)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-reserved");
-        await assert.rejects(() => Envelope.attachToSession(db, sessionId, { runName: "plurnk" }), /reserved/, "forging a plurnk run is refused");
-        await assert.rejects(() => Envelope.attachToSession(db, sessionId, { runName: "PLURNK" }), /reserved/, "case variants are refused too");
-        const ok = await Envelope.attachToSession(db, sessionId, { runName: "my-feature" });
-        assert.equal(ok.runName, "my-feature", "a normal run name still resolves");
+        const workspaceId = await insertWorkspace(db, "ws-reserved");
+        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "plurnk" }), /reserved/, "forging a plurnk run is refused");
+        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "PLURNK" }), /reserved/, "case variants are refused too");
+        const ok = await Envelope.attachToWorkspace(db, workspaceId, { workerName: "my-feature" });
+        assert.equal(ok.workerName, "my-feature", "a normal run name still resolves");
     } finally { await db.close(); }
 });
 
@@ -26,106 +26,106 @@ test("runs: table is STRICT", async () => {
     } finally { await db.close(); }
 });
 
-test("runs: trunk run insert — null parent_run_id, defaults populate", async () => {
+test("runs: trunk run insert — null parent_worker_id, defaults populate", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-trunk");
-        await (db.test_runs_insert as PrepMethod).run({ session_id: sessionId, name: n("trunk") });
+        const workspaceId = await insertWorkspace(db, "ws-trunk");
+        await (db.test_runs_insert as PrepMethod).run({ workspace_id: workspaceId, name: n("trunk") });
         const row = await (db.test_runs_get_by_session as PrepMethod).get<{
-            id: number; version: number; session_id: number; name: string; created_at: string;
-            parent_run_id: number | null; cost_pico: number;
-        }>({ session_id: sessionId });
+            id: number; version: number; workspace_id: number; name: string; created_at: string;
+            parent_worker_id: number | null; cost_pico: number;
+        }>({ workspace_id: workspaceId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
-        assert.equal(row?.session_id, sessionId);
+        assert.equal(row?.workspace_id, workspaceId);
         assert.match(row?.name ?? "", /^run-trunk-\d+$/);
         assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-        assert.equal(row?.parent_run_id, null);
+        assert.equal(row?.parent_worker_id, null);
         assert.equal(row?.cost_pico, 0);
     } finally { await db.close(); }
 });
 
-test("runs: fork insert — non-null parent_run_id pointing at trunk run", async () => {
+test("runs: fork insert — non-null parent_worker_id pointing at trunk run", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-fork");
-        const trunk = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: n("trunk") });
-        const fork = await (db.test_runs_insert_with_parent_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: n("fork"), parent_run_id: trunk?.id });
-        const forkRow = await (db.test_runs_get_parent as PrepMethod).get<{ parent_run_id: number }>({ id: fork?.id });
-        assert.equal(forkRow?.parent_run_id, trunk?.id);
+        const workspaceId = await insertWorkspace(db, "ws-fork");
+        const trunk = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: n("trunk") });
+        const fork = await (db.test_runs_insert_with_parent_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: n("fork"), parent_worker_id: trunk?.id });
+        const forkRow = await (db.test_runs_get_parent as PrepMethod).get<{ parent_worker_id: number }>({ id: fork?.id });
+        assert.equal(forkRow?.parent_worker_id, trunk?.id);
     } finally { await db.close(); }
 });
 
-test("runs: session_id NOT NULL — insert without session_id rejected", async () => {
+test("runs: workspace_id NOT NULL — insert without workspace_id rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
             () => (db.test_runs_insert_default_values as ExecMethod)(),
-            /NOT NULL constraint failed: runs\.session_id/,
+            /NOT NULL constraint failed: workers\.workspace_id/,
         );
     } finally { await db.close(); }
 });
 
-test("runs: session_id FK — insert against non-existent session rejected", async () => {
+test("runs: workspace_id FK — insert against non-existent workspace rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => (db.test_runs_insert as PrepMethod).run({ session_id: 99999, name: n("fk-fail") }),
+            () => (db.test_runs_insert as PrepMethod).run({ workspace_id: 99999, name: n("fk-fail") }),
             /FOREIGN KEY constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("runs: parent_run_id FK — insert against non-existent parent rejected", async () => {
+test("runs: parent_worker_id FK — insert against non-existent parent rejected", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-badparent");
+        const workspaceId = await insertWorkspace(db, "ws-badparent");
         await assert.rejects(
-            () => (db.test_runs_insert_with_parent as PrepMethod).run({ session_id: sessionId, name: n("badparent"), parent_run_id: 99999 }),
+            () => (db.test_runs_insert_with_parent as PrepMethod).run({ workspace_id: workspaceId, name: n("badparent"), parent_worker_id: 99999 }),
             /FOREIGN KEY constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("runs: parent_run_id self-reference CHECK — parent != id rejected", async () => {
+test("runs: parent_worker_id self-reference CHECK — parent != id rejected", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-self");
-        const run = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: n("self") });
+        const workspaceId = await insertWorkspace(db, "ws-self");
+        const run = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: n("self") });
         await assert.rejects(
-            () => (db.test_runs_set_parent as PrepMethod).run({ parent_run_id: run?.id, id: run?.id }),
+            () => (db.test_runs_set_parent as PrepMethod).run({ parent_worker_id: run?.id, id: run?.id }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("runs: ON DELETE CASCADE via session — deleting session removes all its runs", async () => {
+test("runs: ON DELETE CASCADE via workspace — deleting workspace removes all its runs", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-cascade");
-        const otherSessionId = await insertSession(db, "ws-untouched");
-        await (db.test_runs_insert as PrepMethod).run({ session_id: sessionId, name: n("c1") });
-        await (db.test_runs_insert as PrepMethod).run({ session_id: sessionId, name: n("c2") });
-        await (db.test_runs_insert as PrepMethod).run({ session_id: otherSessionId, name: n("c3") });
+        const workspaceId = await insertWorkspace(db, "ws-cascade");
+        const otherWorkspaceId = await insertWorkspace(db, "ws-untouched");
+        await (db.test_runs_insert as PrepMethod).run({ workspace_id: workspaceId, name: n("c1") });
+        await (db.test_runs_insert as PrepMethod).run({ workspace_id: workspaceId, name: n("c2") });
+        await (db.test_runs_insert as PrepMethod).run({ workspace_id: otherWorkspaceId, name: n("c3") });
         const before = await (db.test_runs_count as PrepMethod).get<{ n: number }>();
         assert.equal(before?.n, 3);
-        await (db.test_sessions_delete as PrepMethod).run({ id: sessionId });
+        await (db.test_sessions_delete as PrepMethod).run({ id: workspaceId });
         const after = await (db.test_runs_count as PrepMethod).get<{ n: number }>();
         assert.equal(after?.n, 1);
-        const survivor = await (db.test_runs_get_one_session_id as PrepMethod).get<{ session_id: number }>();
-        assert.equal(survivor?.session_id, otherSessionId);
+        const survivor = await (db.test_runs_get_one_workspace_id as PrepMethod).get<{ workspace_id: number }>();
+        assert.equal(survivor?.workspace_id, otherWorkspaceId);
     } finally { await db.close(); }
 });
 
-test("runs: ON DELETE CASCADE via parent_run_id — deleting a parent run removes its forks", async () => {
+test("runs: ON DELETE CASCADE via parent_worker_id — deleting a parent run removes its forks", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-forkcascade");
-        const trunk = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: n("fc-trunk") });
+        const workspaceId = await insertWorkspace(db, "ws-forkcascade");
+        const trunk = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: n("fc-trunk") });
         const trunkId = trunk!.id;
-        const forkA = await (db.test_runs_insert_with_parent_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: n("fc-fA"), parent_run_id: trunkId });
-        await (db.test_runs_insert_with_parent as PrepMethod).run({ session_id: sessionId, name: n("fc-fB"), parent_run_id: trunkId });
-        await (db.test_runs_insert_with_parent as PrepMethod).run({ session_id: sessionId, name: n("fc-fC"), parent_run_id: forkA?.id });
+        const forkA = await (db.test_runs_insert_with_parent_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: n("fc-fA"), parent_worker_id: trunkId });
+        await (db.test_runs_insert_with_parent as PrepMethod).run({ workspace_id: workspaceId, name: n("fc-fB"), parent_worker_id: trunkId });
+        await (db.test_runs_insert_with_parent as PrepMethod).run({ workspace_id: workspaceId, name: n("fc-fC"), parent_worker_id: forkA?.id });
         const before = await (db.test_runs_count as PrepMethod).get<{ n: number }>();
         assert.equal(before?.n, 4);
         await (db.test_runs_delete as PrepMethod).run({ id: trunkId });
@@ -137,9 +137,9 @@ test("runs: ON DELETE CASCADE via parent_run_id — deleting a parent run remove
 test("runs: negative cost_pico rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-negcost");
+        const workspaceId = await insertWorkspace(db, "ws-negcost");
         await assert.rejects(
-            () => (db.test_runs_insert_cost as PrepMethod).run({ session_id: sessionId, name: n("negcost"), cost_pico: -1 }),
+            () => (db.test_runs_insert_cost as PrepMethod).run({ workspace_id: workspaceId, name: n("negcost"), cost_pico: -1 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -148,75 +148,75 @@ test("runs: negative cost_pico rejected by CHECK", async () => {
 test("runs: negative version rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-negversion");
+        const workspaceId = await insertWorkspace(db, "ws-negversion");
         await assert.rejects(
-            () => (db.test_runs_insert_version as PrepMethod).run({ session_id: sessionId, name: n("negversion"), version: -1 }),
+            () => (db.test_runs_insert_version as PrepMethod).run({ workspace_id: workspaceId, name: n("negversion"), version: -1 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("runs: index runs_session_id_created_at exists", async () => {
+test("runs: index workers_workspace_id_created_at exists", async () => {
     const db = await openMigrated();
     try {
-        const row = await (db.test_runs_index_exists as PrepMethod).get<{ name: string }>({ name: "runs_session_id_created_at" });
-        assert.equal(row?.name, "runs_session_id_created_at");
+        const row = await (db.test_runs_index_exists as PrepMethod).get<{ name: string }>({ name: "workers_workspace_id_created_at" });
+        assert.equal(row?.name, "workers_workspace_id_created_at");
     } finally { await db.close(); }
 });
 
-test("runs: index runs_parent_run_id exists", async () => {
+test("runs: index workers_parent_worker_id exists", async () => {
     const db = await openMigrated();
     try {
-        const row = await (db.test_runs_index_exists as PrepMethod).get<{ name: string }>({ name: "runs_parent_run_id" });
-        assert.equal(row?.name, "runs_parent_run_id");
+        const row = await (db.test_runs_index_exists as PrepMethod).get<{ name: string }>({ name: "workers_parent_worker_id" });
+        assert.equal(row?.name, "workers_parent_worker_id");
     } finally { await db.close(); }
 });
 
-test("runs: a name repeats within a session — reclamation across time, NOT store-unique (§machine-processes-run-origin)", async () => {
+test("runs: a name repeats within a workspace — reclamation across time, NOT store-unique (§machine-processes-run-origin)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-reclaim");
-        const first = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
+        const workspaceId = await insertWorkspace(db, "ws-reclaim");
+        const first = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         // The store PERMITS a second 'worker': a name is frozen per run but reclaimable across time —
         // a terminated run keeps its name in permanent history while a fresh spawn reuses it. A LIVE
-        // collision is refused at the spawn gate (Engine.#handleRunCopy → run_live_by_name → 409), never by the
+        // collision is refused at the spawn gate (Engine.#handleWorkerCopy → worker_live_by_name → 409), never by the
         // store. The dropped UNIQUE index returned a raw 500 the model couldn't read.
-        const second = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
+        const second = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         assert.notEqual(first?.id, second?.id, "two distinct runs can hold the same name");
         // Resolution is newest-wins — the live/fresh run, never the corpse.
-        const resolved = await (db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "worker" });
-        assert.equal(resolved?.id, second?.id, "run_resolve_by_name resolves the newest holder");
+        const resolved = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
+        assert.equal(resolved?.id, second?.id, "worker_resolve_by_name resolves the newest holder");
     } finally { await db.close(); }
 });
 
-test("runs: index runs_session_name exists (plain — the by-name resolve/spawn lookup, not a uniqueness constraint)", async () => {
+test("runs: index workers_workspace_name exists (plain — the by-name resolve/spawn lookup, not a uniqueness constraint)", async () => {
     const db = await openMigrated();
     try {
-        const row = await (db.test_runs_index_exists as PrepMethod).get<{ name: string }>({ name: "runs_session_name" });
-        assert.equal(row?.name, "runs_session_name");
+        const row = await (db.test_runs_index_exists as PrepMethod).get<{ name: string }>({ name: "workers_workspace_name" });
+        assert.equal(row?.name, "workers_workspace_name");
     } finally { await db.close(); }
 });
 
 test("runs: id auto-assigns on insert", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-autoid");
-        await (db.test_runs_insert as PrepMethod).run({ session_id: sessionId, name: n("auto-a") });
-        await (db.test_runs_insert as PrepMethod).run({ session_id: sessionId, name: n("auto-b") });
-        const rows = await (db.test_runs_list_by_session as PrepMethod).all<{ id: number }>({ session_id: sessionId });
+        const workspaceId = await insertWorkspace(db, "ws-autoid");
+        await (db.test_runs_insert as PrepMethod).run({ workspace_id: workspaceId, name: n("auto-a") });
+        await (db.test_runs_insert as PrepMethod).run({ workspace_id: workspaceId, name: n("auto-b") });
+        const rows = await (db.test_runs_list_by_session as PrepMethod).all<{ id: number }>({ workspace_id: workspaceId });
         assert.equal(rows.length, 2);
         assert.equal(rows[1]!.id, rows[0]!.id + 1);
     } finally { await db.close(); }
 });
 
-test("runs: trunk-run lookup uses the (session_id, created_at) index", async () => {
+test("runs: trunk-run lookup uses the (workspace_id, created_at) index", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-trunklookup");
-        const trunk = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: n("tl-trunk") });
-        await (db.test_runs_insert_with_parent as PrepMethod).run({ session_id: sessionId, name: n("tl-fA"), parent_run_id: trunk?.id });
-        await (db.test_runs_insert_with_parent as PrepMethod).run({ session_id: sessionId, name: n("tl-fB"), parent_run_id: trunk?.id });
-        const found = await (db.test_runs_trunk_lookup as PrepMethod).get<{ id: number }>({ session_id: sessionId });
+        const workspaceId = await insertWorkspace(db, "ws-trunklookup");
+        const trunk = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: n("tl-trunk") });
+        await (db.test_runs_insert_with_parent as PrepMethod).run({ workspace_id: workspaceId, name: n("tl-fA"), parent_worker_id: trunk?.id });
+        await (db.test_runs_insert_with_parent as PrepMethod).run({ workspace_id: workspaceId, name: n("tl-fB"), parent_worker_id: trunk?.id });
+        const found = await (db.test_runs_trunk_lookup as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId });
         assert.equal(found?.id, trunk?.id);
     } finally { await db.close(); }
 });

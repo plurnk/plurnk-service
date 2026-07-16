@@ -9,7 +9,7 @@ import type { Provider, ProviderResponse } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 // Mock can't return `meta`; wrap it so the turn still concludes (SEND[200]) but the
@@ -33,13 +33,13 @@ class MetaProvider implements Provider {
 test("[§meta-passthrough] a provider's opaque meta blob rides through to the loop usage payload, unenforced (#252)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `meta-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `meta-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         const meta = { balancePico: 123456789, vendorWhatever: { nested: true }, future: "field we never coded for" };
-        await engine.runTurn({ provider: new MetaProvider(meta), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: new MetaProvider(meta), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const usage = await engine.loopUsage(loopId);
         // Forwarded verbatim — including fields the service has never heard of (the honest passthrough).
@@ -51,13 +51,13 @@ test("[§meta-passthrough] a provider's opaque meta blob rides through to the lo
 test("[§meta-passthrough] no provider meta → empty {} (never null, never fabricated)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `meta-empty-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `meta-empty-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // A plain Mock returns no `meta`.
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const usage = await engine.loopUsage(loopId);
         assert.deepEqual(usage.meta, {}, "absent provider meta surfaces as {}, so the client renders nothing");

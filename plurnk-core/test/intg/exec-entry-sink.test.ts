@@ -11,7 +11,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime, target: null,
@@ -38,7 +38,7 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
         executor: {
             runtime: tag,
             glyph: "?",
-            get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "run", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return {}; },
             effect: () => "pure" as const,
@@ -64,19 +64,19 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
         },
         glyph: "?", example: "", documentation: "", available: true, detail: undefined,
     });
-    const sessionId = await insertSession(db, `sink-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "sink test");
+    const workspaceId = await insertWorkspace(db, `sink-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "sink test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, schemes, sessionId, runId, loopId, turnId, tag };
+    return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
 };
 
 test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIONS tags) and the plurnk run narrates it", async () => {
-    const { db, engine, schemes, sessionId, runId, loopId, turnId } = await wire();
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
             statement: execStmt("stubsearch", "turkeys"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(result.status < 400, `the stub spawn resolved; got ${result.status}`);
         // The spawn streams — run() completes in the background. idle() is the complete barrier:
@@ -91,19 +91,19 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         assert.deepEqual(tags.map((t) => t.tag).sort(), ["second_query", "turkeys_query"], "the upsert UNIONED the slug tags across both writes");
         // The ambience: the reserved plurnk run carries ONE narration row per write (2 here), the
         // fs-fiction shape — origin plurnk, source = the calling run, tokens on the meta line.
-        const plurnkRun = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" });
-        assert.ok(plurnkRun !== undefined, "the reserved plurnk run exists");
-        const rows = await (db.test_log_entries_by_run_op as PrepMethod).all<{ pathname: string; source: string; tokens: number; attrs: string }>({ run_id: plurnkRun.id, op: "EDIT" });
+        const plurnkWorker = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        assert.ok(plurnkWorker !== undefined, "the reserved plurnk run exists");
+        const rows = await (db.test_log_entries_by_run_op as PrepMethod).all<{ pathname: string; source: string; tokens: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
-        assert.equal(narrations[0]?.source, String(runId), "source attributes the CALLING run");
+        assert.equal(narrations[0]?.source, String(workerId), "source attributes the CALLING run");
         assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries the write's real token weight");
         assert.ok(/turkeys_query/.test(narrations[0]?.attrs ?? ""), "attrs carry the slug tags for the meta line");
 
         // The row is a FULL fiction — the journal records the write itself, not just that one happened:
         // tx carries the statement with the written content (replay/fork-complete), rx carries the
         // full-content span (§edit-result-render — a wholesale write's span IS the content, numbered).
-        const full = await (db.test_log_entries_by_run_op_full as PrepMethod).all<{ pathname: string; tx: string; rx: string }>({ run_id: plurnkRun.id, op: "EDIT" });
+        const full = await (db.test_log_entries_by_run_op_full as PrepMethod).all<{ pathname: string; tx: string; rx: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const second = full.filter((r) => r.pathname === "/example.org/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");
         const tx = JSON.parse(second.tx) as { op: string; body: string };
@@ -118,7 +118,7 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
             coordinate: "1/1/2", origin: "plurnk", op: "EDIT", suffix: "", signal: null,
             target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", params: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
-            folded, source: String(runId), attrs: null,
+            folded, source: String(workerId), attrs: null,
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view(true), countTokens);
@@ -128,7 +128,7 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
         const openLine = PacketWire.renderLog(view(false), countTokens);
         assert.ok(openLine.includes("1:\twild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
-        const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ run_id: plurnkRun.id, op: "EDIT" });
+        const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
@@ -138,11 +138,11 @@ test("[§exec-entry-sink] entry(content:null) fetches through the guarded sink �
     // the fetch. A /dead URL resolves null (dead); anything else resolves rendered html bytes.
     const fetchWeb: WebFetch = async (url) =>
         url.includes("/dead") ? null : { body: "<p>fetched live turkeys</p>", mimetype: "text/html" };
-    const { db, engine, schemes, sessionId, runId, loopId, turnId, tag } = await wire({ fetchWeb, nullContent: true, tag: "stubsearch2" });
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ fetchWeb, nullContent: true, tag: "stubsearch2" });
     try {
         const result = await engine.dispatch({
             statement: execStmt(tag, "turkeys"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(result.status < 400, `the stub spawn resolved; got ${result.status}`);
         await quiesceExecs(schemes);

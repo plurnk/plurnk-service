@@ -13,7 +13,7 @@ static manifest: SchemeManifest = {
     channels: { body: "application/octet-stream", header: "text/plain" },
     defaultChannel: "body",
     category: "data",
-    scope: "session",
+    scope: "workspace",
     writableBy: ["model", "client"],
     volatile: true,        // remote content can change between fetches
     modelVisible: true,
@@ -71,7 +71,7 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 `Browser` (`export default class`, barrel-exported as a standalone foundation) is the headless-Chromium render engine — ported from rummy.web's WebFetcher, render-only.
 
 - **Gate:** a GET whose response `Content-Type` is `text/html` / `application/xhtml+xml` renders; the probe-fetch body is discarded and the browser does its own navigation. POST never renders.
-- **Render:** warm chromium (one per `Browser`), per-run `BrowserContext` keyed on `ctx.runId`, **mobile-emulated by default** (Pixel-5-class viewport + UA — responsive sites serve lighter layouts; `PLURNK_SCHEMES_HTTP_MOBILE=0` renders desktop), navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
+- **Render:** warm chromium (one per `Browser`), per-run `BrowserContext` keyed on `ctx.workerId`, **mobile-emulated by default** (Pixel-5-class viewport + UA — responsive sites serve lighter layouts; `PLURNK_SCHEMES_HTTP_MOBILE=0` renders desktop), navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
 - **Body:** the serialized DOM is delivered as one `body` chunk labelled `text/html`; the mimetype layer projects everything (`content`/`symbols`/`deepXml`/embedding) off it. http never cleans or extracts — the body is the faithful, final page (schemes-http#1).
 - **Host rewrite (bounded, first-party):** {§host-rewrite} a GitHub `…/blob/…` URL is fetched as its `raw.githubusercontent.com` source (line-navigable, exact) — the blob page is a CSP-locked JS SPA and code wants source, not a rendered viewer. This is the ONLY host rewrite; Wikipedia was measured through the extractor and deliberately gets none (desktop already extracts the full clean article; rewrites regressed it — schemes-http#4).
 - **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC §operator-config-env-defaults, schemes#31). Required render-path numerics — `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT` — fail hard when unset (no in-code defaults). `MOBILE` is floor-defaulted to `1` and a required read (unset crashes). Absence-is-a-mode knobs: `PLAYWRIGHT_WS`, `NO_SANDBOX`, `CHROMIUM_HEAP_MB`.
@@ -102,4 +102,4 @@ new WebFetcher().fetch(url: string, opts?: { signal?: AbortSignal }): Promise<{ 
 - **`SEND[499](wss://…)`** — cancel; engine routes teardown to the READ's handle (which closes the socket), scheme-level `200` no-op.
 - **`KILL(wss://…)`** — close the open socket (`404` if none open).
 
-**Stateless-contract exception:** every other scheme is stateless per schemes SPEC §forbidden ("no state past a handler return"). A live socket IS per-session state, so `Ws` holds open sockets in an **in-instance registry** across op invocations — keyed `session:pathname`, entries present only while the socket is open (every terminal path — close/error/KILL/cancel — removes). This is the ONE sanctioned exception, because that persistence is the whole point of a WebSocket. Day-one limits: text frames only, no reconnection, default handshake identity (custom headers pending) — all #468 follow-ups.
+**Stateless-contract exception:** every other scheme is stateless per schemes SPEC §forbidden ("no state past a handler return"). A live socket IS per-workspace state, so `Ws` holds open sockets in an **in-instance registry** across op invocations — keyed `workspace:pathname`, entries present only while the socket is open (every terminal path — close/error/KILL/cancel — removes). This is the ONE sanctioned exception, because that persistence is the whole point of a WebSocket. Day-one limits: text frames only, no reconnection, default handshake identity (custom headers pending) — all #468 follow-ups.

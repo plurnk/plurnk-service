@@ -9,7 +9,7 @@ import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
     kind: "url", raw: `file:///${pathname}`, scheme: "file",
@@ -33,22 +33,22 @@ const FILES: ReadonlyArray<readonly [string, string]> = [
 
 const seed = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `gfile-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const ctx = makeSchemeCtx({ db, sessionId, runId });
+    const workspaceId = await insertWorkspace(db, `gfile-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, workerId });
     // Materialize file entries exactly as git-membership does: writeEntry(scheme=null).
     for (const [pathname, content] of FILES) {
         await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, null);
     }
     // @graph derives at manifest-add (§mimetype) — build the manifest to populate the index.
     await EntryManifest.maintainDerivations(ctx);
-    return { db, sessionId, runId };
+    return { db, workspaceId, workerId };
 };
 
 test("[#186-graph-file] @graph resolves over file:/// entries — the primary codebase-navigation case", async () => {
-    const { db, sessionId, runId } = await seed();
+    const { db, workspaceId, workerId } = await seed();
     try {
-        const ctx = makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
         // FIND returns catalog rows; a file:// (scheme=null) row renders its path BARE
         // (slash-free, namespace-relative) — the same form the manifest catalogs and the
         // model types back, not the addressed file:/// form.

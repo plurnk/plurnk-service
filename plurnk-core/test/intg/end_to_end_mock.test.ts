@@ -6,7 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -30,16 +30,16 @@ const response = (ops: PlurnkStatement[], content: string = ""): MockResponse =>
     assistant: { content, ops, reasoning: null },
 });
 
-const seedEnvelopeNoTurn = async (db: Db, label: string): Promise<{ sessionId: number; runId: number; loopId: number }> => {
-    const sessionId = await insertSession(db, label);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "main");
-    return { sessionId, runId, loopId };
+const seedEnvelopeNoTurn = async (db: Db, label: string): Promise<{ workspaceId: number; workerId: number; loopId: number }> => {
+    const workspaceId = await insertWorkspace(db, label);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "main");
+    return { workspaceId, workerId, loopId };
 };
 
 const dispatchTurn = async (
     engine: Engine, provider: Mock, db: Db,
-    ctx: { sessionId: number; runId: number; loopId: number },
+    ctx: { workspaceId: number; workerId: number; loopId: number },
 ): Promise<{ turnId: number; statuses: number[] }> => {
     const { assistant } = await provider.generate({ messages: [] });
     const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: ctx.loopId });
@@ -51,7 +51,7 @@ const dispatchTurn = async (
     const statuses: number[] = [];
     for (const [i, statement] of ops.entries()) {
         const result = await engine.dispatch({
-            statement, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId,
+            statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId,
             turnId, sequence: i + 1, origin: "model",
         });
         statuses.push(result.status);
@@ -72,7 +72,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; SEND[200] broadcast terminal → 200");
 
         const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-            session_id: env.sessionId, scheme: "known", pathname: "/france/capital",
+            workspace_id: env.workspaceId, scheme: "known", pathname: "/france/capital",
         });
         assert.ok(entry !== undefined);
 
@@ -104,7 +104,7 @@ test("e2e: three EDITs in one turn — sequence 1/2/3, three entries written", a
         const result = await dispatchTurn(engine, provider, db, env);
         assert.deepEqual(result.statuses, [201, 201, 201, 102]);
 
-        const count = (await (db.test_count_entries_by_session as PrepMethod).get<{ n: number }>({ session_id: env.sessionId }))?.n;
+        const count = (await (db.test_count_entries_by_session as PrepMethod).get<{ n: number }>({ workspace_id: env.workspaceId }))?.n;
         assert.equal(count, 3);
 
         const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ sequence: number }>({ turn_id: result.turnId });

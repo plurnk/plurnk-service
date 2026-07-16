@@ -17,7 +17,7 @@
 //
 // `env` is the policy LAYER: `process.env` for the daemon's boot layer
 // (discover's default), or a client-declared map in the exact same
-// `PLURNK_EXECS_*` format for the per-session client layer. One parser, both
+// `PLURNK_EXECS_*` format for the per-workspace client layer. One parser, both
 // tiers — the consumer feeds the client's map straight to these methods.
 export default class Policy {
     // Read a PLURNK_EXECS_<suffix> key case-INSENSITIVELY. The env-var

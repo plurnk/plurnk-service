@@ -15,7 +15,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 const shippedEnv = async (): Promise<Map<string, string>> => {
@@ -66,12 +66,12 @@ test("[§operator-config-shipped-defaults] under the shipped policy wiring, the 
     delete process.env.PLURNK_SERVICE_MD_POLICY;
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `shipped-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "hello");
+        const workspaceId = await insertWorkspace(db, `shipped-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "hello");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done") as PlurnkStatement] } }] });
-        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         // The distinctive personality line appears in the system-policy section and NOWHERE else.
         const marker = "You decompose non-trivial prompts";

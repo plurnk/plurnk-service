@@ -4,7 +4,7 @@
 // subclass implementing the dispatch for those tags.
 //
 // The framework surface is `BaseExecutor.run()` + `discover()`. The runtime
-// tag → spawn-args translator (`SpawnArgs` / `resolveRuntime`) is retained as
+// tag → spawn-args translator (`SpawnArgs` / `resolveWorkertime`) is retained as
 // a subprocess-family helper: plurnk-service's exec scheme still consumes it
 // on its legacy subprocess path until the deferred SubprocessExecutor
 // migration (service#174 Q2). See SPEC.md.
@@ -43,7 +43,7 @@ export interface ExecArgs {
     runtime: string;
     // The EXEC op body: a shell line, source to interpret, or a search query.
     command: string;
-    // Process working directory — the session workspace. Filesystem-touching
+    // Process working directory — the workspace workspace. Filesystem-touching
     // runtimes resolve relative paths (including `target`) against it; subprocess
     // runtimes spawn in it. null for logical runtimes (search) that touch no
     // filesystem.

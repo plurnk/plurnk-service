@@ -21,7 +21,7 @@ export default class Plurnk {
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["client", "plurnk"],
         volatile: false,
         modelVisible: true,
@@ -30,11 +30,11 @@ export default class Plurnk {
     };
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
-        return EntryOps.editSessionEntry(statement, ctx, Plurnk.manifest);
+        return EntryOps.editWorkspaceEntry(statement, ctx, Plurnk.manifest);
     }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        return EntryOps.readSessionEntry(statement, ctx, Plurnk.manifest);
+        return EntryOps.readWorkspaceEntry(statement, ctx, Plurnk.manifest);
     }
 
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
@@ -50,10 +50,10 @@ export default class Plurnk {
     }
 
     async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<SendResult> {
-        return EntrySend.sendToSessionEntry(statement, ctx, Plurnk.manifest.name);
+        return EntrySend.sendToWorkspaceEntry(statement, ctx, Plurnk.manifest.name);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findSessionEntries(statement, ctx, Plurnk.manifest);
+        return EntryFind.findWorkspaceEntries(statement, ctx, Plurnk.manifest);
     }
 }

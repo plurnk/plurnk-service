@@ -17,7 +17,7 @@ test("[§prompt-auto-read] a short prompt foists READ(prompt)<1,-1> — whole, t
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "par-short" });
+            await rpcCall(ws, 1, "workspace.create", { name: "par-short" });
             const resp = await runLoopToTerminal(ws, 2, { prompt: "three\nshort\nlines" });
             const { loopId } = resp as { loopId: number };
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
@@ -34,7 +34,7 @@ test("[§prompt-auto-read] a 12+-line prompt foists READ(prompt)<1,12> and the s
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "par-long" });
+            await rpcCall(ws, 1, "workspace.create", { name: "par-long" });
             const fat = Array.from({ length: 30 }, (_, i) => `prompt line ${i + 1}`).join("\n");
             const resp = await runLoopToTerminal(ws, 2, { prompt: fat });
             const { loopId, turnIds } = resp as { loopId: number; turnIds: number[] };

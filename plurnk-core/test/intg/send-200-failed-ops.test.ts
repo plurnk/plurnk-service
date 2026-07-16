@@ -19,7 +19,7 @@ test("[§send-200-failed-ops] a failed op + SEND[200] same turn → 409; the NEX
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "failgate" });
+            await rpcCall(ws, 1, "workspace.create", { name: "failgate" });
             const { finalStatus, turnIds = [] } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
             assert.equal(finalStatus, 200, "the loop concluded on the SECOND turn, failures weighed");
             assert.equal(turnIds.length, 2, "exactly two turns — the refusal forced one weigh turn, no more");
@@ -48,7 +48,7 @@ test("[§send-200-failed-ops] this emission's PARSE errors gate the same-turn [2
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "parsegate" });
+            await rpcCall(ws, 1, "workspace.create", { name: "parsegate" });
             const { finalStatus, turnIds = [] } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
             assert.equal(finalStatus, 200);
             assert.ok(turnIds.length >= 2, "the parse error forced a weigh turn before concluding");
@@ -67,7 +67,7 @@ test("[§send-200-failed-ops] SEND[499] over a same-turn failure abandons unimpe
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "abandon" });
+            await rpcCall(ws, 1, "workspace.create", { name: "abandon" });
             const { finalStatus, turnIds = [] } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
             assert.equal(finalStatus, 499, "the abandon went through in ONE turn — 499 is never gated");
             assert.equal(turnIds.length, 1);

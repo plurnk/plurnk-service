@@ -11,14 +11,14 @@ import type { Db, PrepMethod } from "./Db.ts";
 import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
-import { markTerminal } from "../schemes/Run.ts";
+import { markTerminal } from "../schemes/Worker.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState from "./git-state.ts";
-import SessionSettings from "./session-settings.ts";
+import WorkspaceSettings from "./workspace-settings.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, TelemetryEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
 import { promptPathname } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
@@ -51,8 +51,8 @@ const DEFAULT_MAX_STRIKES = 3;
 // The foisted prompt EDIT/READ target — run-qualified storage (§prompt-auto-read, #382 fault-1)
 // rendered in the plurnk:// authority form (hostname carries the namespace, plurnk-uri folds it
 // back into the storage key on dispatch).
-const promptTarget = (runId: number, loopSeq: number, turnSeq: number): UrlPath => {
-    const storage = promptPathname(runId, loopSeq, turnSeq);
+const promptTarget = (workerId: number, loopSeq: number, turnSeq: number): UrlPath => {
+    const storage = promptPathname(workerId, loopSeq, turnSeq);
     return {
         kind: "url", raw: `plurnk://${storage.slice(1)}`,
         scheme: "plurnk", username: null, password: null,
@@ -72,7 +72,7 @@ const readMaxStrikes = (): number => {
 // Per-emission op ceiling — OFF by default. `-1` (or unset/non-positive) = no cap: every
 // generated op dispatches. Runaway degeneration is a sampler concern (repetition penalty),
 // not grounds to drop already-generated work. A positive value is an operator ceiling a
-// session's maxCommands may tighten (min wins), never widen (#232).
+// workspace's maxCommands may tighten (min wins), never widen (#232).
 const readMaxCommands = (): number => {
     const raw = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     if (raw === undefined || raw.length === 0) return Number.POSITIVE_INFINITY;
@@ -158,7 +158,7 @@ export default class Engine {
     // marker's seconds; -1 = indefinite), consumed by the daemon's drain park-exit to schedule
     // the deadline wake. In-memory: a daemon restart drops pending deadlines (documented).
     readonly parkDeadlines: Map<number, number> = new Map();
-    // §join-blocking-collect (#354) — loops whose turn issued a READ(run://running-child): the
+    // §join-blocking-collect (#354) — loops whose turn issued a READ(worker://running-child): the
     // blocking join. The dispatcher arms this on the READ; the turn's bare SEND[102] parks on it
     // (indefinite) instead of continuing, and any SEND clears it. Twin of parkDeadlines.
     readonly joinTargets: Set<number> = new Set();
@@ -186,11 +186,11 @@ export default class Engine {
     // (the steer's own advice is to wait; in-memory, fail-open on restart).
     #retrievalRefusalGrace = new Set<number>();
     // §derivation-off-hot-path — the background derivation chain: the per-turn pump and the
-    // session warm ride it instead of the turn (a 2-CPU container CPU-embedding a 335-entry
+    // workspace warm ride it instead of the turn (a 2-CPU container CPU-embedding a 335-entry
     // ingest starved every loop for ~28min, #316). Serialized (never two pumps interleaved),
     // drained at daemon stop (never racing db close), failures logged (never swallowed).
     // A turn never waits on an embedding; a ~query warms its own candidate slice inline
-    // (§semantic-cold-query-full-fidelity), so cold sessions still get full-fidelity search.
+    // (§semantic-cold-query-full-fidelity), so cold workspaces still get full-fidelity search.
     #derivationChain: Promise<void> = Promise.resolve();
 
     #queueDerivation(job: () => Promise<void>): Promise<void> {
@@ -207,26 +207,26 @@ export default class Engine {
     }
 
     #streamEventNotify: StreamEventNotify | undefined;
-    #wakeRunNotify: WakeRunNotify | undefined;
+    #wakeWorkerNotify: WakeWorkerNotify | undefined;
 
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
     #gbnfCache = new Map<string, string>();  // variant name -> GBNF text (per-alias selection, #353)
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeRunNotify, injectRun, cancelRun, telemetryEventNotify, tokenize }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, telemetryEventNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
-        wakeRunNotify?: WakeRunNotify;
-        injectRun?: InjectRunNotify;
-        cancelRun?: CancelRunNotify;
+        wakeWorkerNotify?: WakeWorkerNotify;
+        injectWorker?: InjectWorkerNotify;
+        cancelWorker?: CancelWorkerNotify;
         telemetryEventNotify?: TelemetryEventNotify;
         tokenize?: (text: string) => number;
     }) {
         this.#db = db;
         this.#schemes = schemes;
         this.#streamEventNotify = streamEventNotify;
-        this.#wakeRunNotify = wakeRunNotify;
+        this.#wakeWorkerNotify = wakeWorkerNotify;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
         // raw-content fitContent fallback. Daemon-managed Engine receives a
@@ -246,7 +246,7 @@ export default class Engine {
         this.#packets = new PacketBuilder({ db, schemes, telemetry: this.#telemetry, executors });
         this.#proposals = new ProposalLifecycle({
             db, schemes, telemetry: this.#telemetry,
-            streamEventNotify, wakeRunNotify,
+            streamEventNotify, wakeWorkerNotify,
             tokenize: this.#tokenize, mimetypes: this.#mimetypes, executors, loopSignal,
         });
         this.#dispatcher = new Dispatcher({ searchGate: this.searchGate,
@@ -254,7 +254,7 @@ export default class Engine {
             tokenize: this.#tokenize,
             telemetry: this.#telemetry, proposals: this.#proposals,
             executors, loopSignal,
-            streamEventNotify, wakeRunNotify, injectRun, cancelRun,
+            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker,
             parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
         });
@@ -354,7 +354,7 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, messages, requirements = "", sessionId, runId, loopId,
+        provider, messages, requirements = "", workspaceId, workerId, loopId,
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
@@ -366,7 +366,7 @@ export default class Engine {
         // slot under `## Plurnk Service Requirements`. Caller sources from
         // Paths.defaultRequirements.
         requirements?: string;
-        sessionId: number; runId: number; loopId: number;
+        workspaceId: number; workerId: number; loopId: number;
         maxTurns?: number;
         maxStrikes?: number;
         minCycles?: number;
@@ -456,7 +456,7 @@ export default class Engine {
             // is still in flight, give it a tunable beat to land in THIS turn's packet
             // before we assemble it. A fixed grace beat, never a wait-for-completion;
             // 0/unset = off. Abortable with the loop signal.
-            const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean; hasActiveHoldSpawns?: (runId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
+            const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; hasActiveHoldSpawns?: (workerId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
             // §exec-hold-until-concluded — the turn-hold exception (owner ruling): for runtimes in
             // the operator's HOLD set (the search family — streams we know and control: one final
             // JSON digest, seconds-bounded), the cycle PAUSES here until the stream concludes, so
@@ -469,19 +469,19 @@ export default class Engine {
             const holdCapMs = Number(process.env.PLURNK_SERVICE_EXEC_HOLD_MS ?? "300000");
             if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
                 const holdStart = Date.now();
-                while (execHandler.hasActiveHoldSpawns(runId, holdSet) && Date.now() - holdStart < holdCapMs) {
+                while (execHandler.hasActiveHoldSpawns(workerId, holdSet) && Date.now() - holdStart < holdCapMs) {
                     await delay(150, undefined, { signal });
                 }
             }
             const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
             if (execWaitMs > 0) {
-                if (execHandler?.hasActiveSpawns?.(runId) === true) await delay(execWaitMs, undefined, { signal });
+                if (execHandler?.hasActiveSpawns?.(workerId) === true) await delay(execWaitMs, undefined, { signal });
             }
 
             let turn;
             try {
                 turn = await this.runTurn({
-                    provider, messages, requirements, sessionId, runId, loopId, origin, signal, onDispatch,
+                    provider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
                     turnNumber: turnIds.length + 1, maxTurns,
                 });
             } catch (err) {
@@ -531,13 +531,13 @@ export default class Engine {
     }
 
     async runTurn({
-        provider, messages, requirements = "", sessionId, runId, loopId, origin = "model", signal, onDispatch,
+        provider, messages, requirements = "", workspaceId, workerId, loopId, origin = "model", signal, onDispatch,
         turnNumber = 1, maxTurns = 50,
     }: {
         provider: Provider;
         messages: ChatMessage[];
         requirements?: string;
-        sessionId: number; runId: number; loopId: number;
+        workspaceId: number; workerId: number; loopId: number;
         origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
@@ -597,11 +597,11 @@ export default class Engine {
             // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
             // lives in the plurnk run's log, never the model's.
-            // #231 — env docs (PLURNK_SERVICE_MD_*) UNION the session's client docs; foist a READ of
+            // #231 — env docs (PLURNK_SERVICE_MD_*) UNION the workspace's client docs; foist a READ of
             // each materialized plurnk:///<alias>.md (loop_run materialized the same set).
-            const { mdDocs } = await SessionSettings.read(this.#db, sessionId);
+            const { mdDocs } = await WorkspaceSettings.read(this.#db, workspaceId);
             // #269 — operator docs are run-once; foist them only on the run's first loop.
-            for (const doc of runFirstLoop ? await SessionSettings.resolveDocs(mdDocs) : []) {
+            for (const doc of runFirstLoop ? await WorkspaceSettings.resolveDocs(mdDocs) : []) {
                 const docTarget: UrlPath = {
                     kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk",
                     username: null, password: null, hostname: null, port: null,
@@ -612,7 +612,7 @@ export default class Engine {
                     lineMarker: null, body: null, position: { line: 1, column: 1 },
                 };
                 await this.dispatch({
-                    statement: docRead, sessionId, runId, loopId, turnId,
+                    statement: docRead, workspaceId, workerId, loopId, turnId,
                     sequence: nextActionIndex, origin: "plurnk", onDispatch,
                 });
                 nextActionIndex++;
@@ -620,7 +620,7 @@ export default class Engine {
             const promptRow = loopRow; // #269 — already read above (per-loop; fires every loop's turn 1)
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const promptLoopSeq = promptRow.sequence; // the loop's PER-RUN sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
-                const promptPath = promptTarget(runId, promptLoopSeq, seq);
+                const promptPath = promptTarget(workerId, promptLoopSeq, seq);
                 const promptStmt: EditStatement = {
                     op: "EDIT", suffix: "", signal: null,
                     target: promptPath, lineMarker: null,
@@ -628,7 +628,7 @@ export default class Engine {
                 };
                 let promptLogId: number | undefined;
                 await this.dispatch({
-                    statement: promptStmt, sessionId, runId, loopId, turnId,
+                    statement: promptStmt, workspaceId, workerId, loopId, turnId,
                     sequence: nextActionIndex, origin: "plurnk",
                     onDispatch: (id) => { promptLogId = id; onDispatch?.(id); },
                 });
@@ -648,7 +648,7 @@ export default class Engine {
                     body: null, position: { line: 1, column: 1 },
                 };
                 await this.dispatch({
-                    statement: promptRead, sessionId, runId, loopId, turnId,
+                    statement: promptRead, workspaceId, workerId, loopId, turnId,
                     sequence: nextActionIndex, origin: "plurnk", onDispatch,
                 });
                 nextActionIndex++;
@@ -661,18 +661,18 @@ export default class Engine {
         if (seq > 1) {
             const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
             const loopSeq = loopSeqRow?.sequence ?? loopId;
-            const injected = await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: promptPathname(runId, loopSeq, seq) });
+            const injected = await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: promptPathname(workerId, loopSeq, seq) });
             const injectedRow = injected.find((r) => typeof r.content === "string" && r.content.length > 0);
             if (injectedRow !== undefined) {
                 const lineCount = injectedRow.content.split("\n").length;
-                const injTarget = promptTarget(runId, loopSeq, seq);
+                const injTarget = promptTarget(workerId, loopSeq, seq);
                 const injRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, target: injTarget,
                     lineMarker: { marks: lineCount >= 12 ? [1, 12] : [1, -1] },
                     body: null, position: { line: 1, column: 1 },
                 };
                 await this.dispatch({
-                    statement: injRead, sessionId, runId, loopId, turnId,
+                    statement: injRead, workspaceId, workerId, loopId, turnId,
                     sequence: nextActionIndex, origin: "plurnk", onDispatch,
                 });
                 nextActionIndex++;
@@ -689,25 +689,25 @@ export default class Engine {
         // Threaded per turn — never engine state — so concurrent loops on different providers
         // each read their own honest numbers.
         const systemCtx: PlurnkSchemeContext = {
-            db: this.#db, sessionId, runId, loopId, turnId,
+            db: this.#db, workspaceId, workerId, loopId, turnId,
             writer: "plurnk",
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
-            wakeRunNotify: this.#wakeRunNotify,
+            wakeWorkerNotify: this.#wakeWorkerNotify,
             tokenize: this.#tokenize,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
+            pushTelemetry: (event) => this.#telemetry.push(workspaceId, loopId, event),
         };
         // SPEC §membership D4/D5 — git-ls-files workspace membership, resolved at
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
-        // session's project_root is a git working tree, tracked files are
+        // workspace's project_root is a git working tree, tracked files are
         // members without a client `add`; active members are materialized
         // (disk → body channel) so they appear in the catalog. No-ops
-        // on headless / non-git sessions. Runs BEFORE the derivation pump so
+        // on headless / non-git workspaces. Runs BEFORE the derivation pump so
         // this turn's packet reflects them.
         const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
-        await this.#logFsFictions(sessionId, fsDivergences);
+        await this.#logFsFictions(workspaceId, fsDivergences);
 
         this.#queueDerivation(() => EntryManifest.maintainDerivations(systemCtx)); // §derivation-off-hot-path — the turn proceeds; ~queries warm their own slice
 
@@ -717,14 +717,14 @@ export default class Engine {
         // single manifest.json). -1 → each scheme's whole catalog; N → its first N rows
         // (clamped to the scheme's count so FIND's strict <L> never 416s); off by default.
         if (seq === 1) {
-            // #231 — a session's client-chosen filesItems REPLACES the env default outright.
-            const { filesItems: sessionMI } = await SessionSettings.read(this.#db, sessionId);
-            const filesItems = sessionMI !== null ? normalizeFilesItems(sessionMI) : readFilesItems();
+            // #231 — a workspace's client-chosen filesItems REPLACES the env default outright.
+            const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
+            const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
             if (filesItems !== null && runFirstLoop) { // #269 — catalog preview is run-once
-                // engine_scheme_catalog_summary is the scheme source: session-scoped, ordered,
+                // engine_scheme_catalog_summary is the scheme source: workspace-scoped, ordered,
                 // one row per scheme that has entries (scheme=null → file). log:// is absent —
                 // it lives in log_entries, not the catalog (present-mode, the # Log section).
-                const catalogSchemes = await (this.#db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ session_id: sessionId });
+                const catalogSchemes = await (this.#db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ workspace_id: workspaceId });
                 // known:/// + unknown:/// + file ALWAYS foist, even at zero entries — else the
                 // model burns a turn running the FIND itself, assuming the catalog is merely
                 // being withheld. An empty FIND(**) is orienting, not noise (owner): it tells
@@ -765,7 +765,7 @@ export default class Engine {
                         position: { line: 1, column: 1 },
                     };
                     await this.dispatch({
-                        statement: catalogFind, sessionId, runId, loopId, turnId,
+                        statement: catalogFind, workspaceId, workerId, loopId, turnId,
                         sequence: nextActionIndex, origin: "plurnk", onDispatch,
                     });
                     nextActionIndex++;
@@ -773,21 +773,21 @@ export default class Engine {
                     // own survey, mirrored OPEN). The <L> cap rides as `<1,N>`, exactly as the model would type it.
                     turnZeroMoves.push(`<<FIND(${isPlurnk ? "plurnk://docs/**" : isFile ? "**" : `${schemeName}:///**`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
-                // §run-scheme — Manifest(run) = session-scope ∪ THIS run's run-scope. Foist the
-                // building run's OWN scratch (run://self/**, uncapped — a run needs the full view to
+                // §run-scheme — Manifest(run) = workspace-scope ∪ THIS run's run-scope. Foist the
+                // building run's OWN scratch (worker://self/**, uncapped — a run needs the full view to
                 // manage its private workspace) so it's catalogued in ITS perspective alone; other
-                // runs reach it only via explicit FIND(run://<name>/**). A run with no scratch foists nothing.
-                const selfRun = await (this.#db.run_name_by_id as PrepMethod).get<{ name: string }>({ run_id: runId });
-                const scratch = selfRun === undefined ? 0 : (await (this.#db.engine_run_scratch_count as PrepMethod).get<{ entries: number }>({ session_id: sessionId, owner_prefix: `/${selfRun.name}/*` }))?.entries ?? 0;
+                // runs reach it only via explicit FIND(worker://<name>/**). A run with no scratch foists nothing.
+                const selfWorker = await (this.#db.worker_name_by_id as PrepMethod).get<{ name: string }>({ worker_id: workerId });
+                const scratch = selfWorker === undefined ? 0 : (await (this.#db.engine_worker_scratch_count as PrepMethod).get<{ entries: number }>({ workspace_id: workspaceId, owner_prefix: `/${selfWorker.name}/*` }))?.entries ?? 0;
                 if (scratch > 0) {
                     const runFind: FindStatement = {
                         op: "FIND", suffix: "", signal: null,
-                        target: { kind: "url", raw: "run://self/**", scheme: "run", username: null, password: null, hostname: "self", port: null, pathname: "/**", params: {}, fragment: null },
+                        target: { kind: "url", raw: "worker://self/**", scheme: "worker", username: null, password: null, hostname: "self", port: null, pathname: "/**", params: {}, fragment: null },
                         body: null, lineMarker: null, position: { line: 1, column: 1 },
                     };
-                    await this.dispatch({ statement: runFind, sessionId, runId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
+                    await this.dispatch({ statement: runFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                     nextActionIndex++;
-                    turnZeroMoves.push("<<FIND(run://self/**)::FIND");  // §model-entry — the run-scope survey, into the turn-0 echo
+                    turnZeroMoves.push("<<FIND(worker://self/**)::FIND");  // §model-entry — the run-scope survey, into the turn-0 echo
                 }
             }
             // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
@@ -806,7 +806,7 @@ export default class Engine {
                     body: null, position: { line: 1, column: 1 },
                 };
                 await this.dispatch({
-                    statement: fileRead, sessionId, runId, loopId, turnId,
+                    statement: fileRead, workspaceId, workerId, loopId, turnId,
                     sequence: nextActionIndex, origin: "plurnk", onDispatch,
                 });
                 nextActionIndex++;
@@ -817,7 +817,7 @@ export default class Engine {
             // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
             if (runFirstLoop) {
                 const emission = ["<<PLAN:Initialize:PLAN", ...turnZeroMoves, "<<SEND[102]:Initialized:SEND"].join("\n");
-                await this.#dispatcher.writeModelEntry({ verbatim: emission, runId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
+                await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
         }
 
@@ -829,25 +829,25 @@ export default class Engine {
         // §exec-poll — EXEC `<0>` is turn-scoped: reap the run's open turn-scoped streams (necessarily
         // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
         // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
-        await this.#reapTurnScopedStreams(runId);
-        nextActionIndex += await this.#materializeEnvironmentDeltas({ sessionId, runId, loopId, turnId, fromSequence: nextActionIndex });
-        nextActionIndex += await this.#materializeStreamDeltas({ runId, loopId, turnId, fromSequence: nextActionIndex });
+        await this.#reapTurnScopedStreams(workerId);
+        nextActionIndex += await this.#materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += await this.#materializeStreamDeltas({ workerId, loopId, turnId, fromSequence: nextActionIndex });
 
         // SPEC §telemetry — git working-tree state for the telemetry section, read once
         // (a service-side `git status` shell-out) and threaded into the budget
         // rebuild too so it isn't re-shelled on overflow.
-        const gitStatus = await GitState.status(this.#db, sessionId, this.#loopAborts.get(loopId)?.signal);
+        const gitStatus = await GitState.status(this.#db, workspaceId, this.#loopAborts.get(loopId)?.signal);
 
         // Build the spec'd packet (Packet.json) request half. The log build
         // queries log_entries scoped to the run — the prompt entry just
         // written (if turn 1) is part of that query result.
         let requestPacket = await this.#packets.buildRequestPacket({
-            initialMessages: messages, requirements, sessionId, runId, loopId,
+            initialMessages: messages, requirements, workspaceId, workerId, loopId,
             currentTurnSeq: seq, provider, gitStatus,
         });
         // SPEC §grinder — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
-            packet: requestPacket, provider, runId, loopId, turnId,
+            packet: requestPacket, provider, workerId, loopId, turnId,
             // The overflow error row is minted at the turn's running sequence (nextActionIndex), pre-generate;
             // runTurn advances the counter past it below so the post-generate dispatch rows never collide.
             mintSequence: nextActionIndex,
@@ -855,7 +855,7 @@ export default class Engine {
             // overflow row just minted surfaces THIS turn (§grinder-overflow-error-row). Safe: the
             // ephemeral buffer is empty pre-generate (events drain on the next turn's build).
             rebuild: () => this.#packets.buildRequestPacket({
-                initialMessages: messages, requirements, sessionId, runId, loopId,
+                initialMessages: messages, requirements, workspaceId, workerId, loopId,
                 currentTurnSeq: seq, provider, gitStatus,
             }),
         });
@@ -878,7 +878,7 @@ export default class Engine {
             if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
                 this.#hardOverflowRecovery.add(loopId);
                 await (this.#db.engine_insert_log_entry as PrepMethod).get({
-                    run_id: runId, loop_id: loopId, turn_id: turnId, sequence: nextActionIndex++,
+                    worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: nextActionIndex++,
                     origin: "model", source: "engine", op: "error", suffix: "", signal: null,
                     scheme: null, username: null, password: null, hostname: null, port: null,
                     pathname: null, params: null, fragment: null, lineMarker: null,
@@ -891,7 +891,7 @@ export default class Engine {
                 // errors sections (the same re-derive contract the soft grind uses).
                 nextActionIndex += 1;
                 requestPacket = await this.#packets.buildRequestPacket({
-                    initialMessages: messages, requirements, sessionId, runId, loopId,
+                    initialMessages: messages, requirements, workspaceId, workerId, loopId,
                     currentTurnSeq: seq, provider, gitStatus,
                 });
             } else {
@@ -925,8 +925,8 @@ export default class Engine {
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
         // #249 — tag the loop (the activity) with its active plugins' attribution tags, write-once.
         if (attributions.length > 0) await (this.#db.engine_tag_loop_attributions as PrepMethod).run({ loop_id: loopId, attributions: JSON.stringify(attributions) });
-        // #249 — session-stable frontend id, forwarded as Plurnk-Client by the plurnk provider only.
-        const { client } = await SessionSettings.read(this.#db, sessionId);
+        // #249 — workspace-stable frontend id, forwarded as Plurnk-Client by the plurnk provider only.
+        const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
         try {
             // §turn-lifecycle (#301) — the provider call is the long, opaque window (submit → first
             // committed op is provider latency + a full first-turn generation, ~70s local): a static
@@ -934,18 +934,18 @@ export default class Engine {
             // so a client can show "awaiting model" the instant the turn starts and flip to "parsing" when
             // ops are about to land. Base telemetry/event channel (the embed_progress precedent, §tokenomics
             // clients already render it unconditionally); the abort guard keeps a cancelled loop silent.
-            if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
+            if (!signal?.aborted) this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
             // generate rides the LOOP signal (already chained from the caller's), so a loop-level
             // abort — the §operator-config-loop-timeout wall — cancels a stuck provider call, not
             // just the schemes. Bare runTurn (no runLoop) has no loop entry → the caller's signal.
-            // #391 — the turn COORDINATE (session + loop-seq/turn-seq of the turn being generated)
-            // rides as first-party metadata (Plurnk-Session-Id/Loop/Turn) so the endpoint flywheel keys
+            // #391 — the turn COORDINATE (workspace + loop-seq/turn-seq of the turn being generated)
+            // rides as first-party metadata (Plurnk-Workspace-Id/Loop/Turn) so the endpoint flywheel keys
             // on an AUTHORITATIVE hierarchy, not a scraped context-log approximation. The daemon owns
             // the value; providers stamps the header (same split as Run-Id, #26). loopSeq (the 1-based
             // coordinate, not the DB id) resolves the same way the prompt-slot path does (§log coords).
             const loopSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(provider), maxTokens: this.#packets.maxTokensFor(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, sessionId: String(sessionId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
-            if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
+            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(provider), maxTokens: this.#packets.maxTokensFor(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            if (!signal?.aborted) this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
             // beyond retries, rate limit): no completed exchange exists, so no turn exists —
@@ -958,7 +958,7 @@ export default class Engine {
             // adjudication into a model-behavior 422 — a state the system otherwise forbids,
             // a record that lied, and days of forensics pointed at the wrong suspect.
             if (err instanceof ProviderError) {
-                this.#telemetry.push(sessionId, loopId, { source: "provider", kind: err.kind, message: err.message, level: "error" });
+                this.#telemetry.push(workspaceId, loopId, { source: "provider", kind: err.kind, message: err.message, level: "error" });
             }
             throw err;
         }
@@ -995,7 +995,7 @@ export default class Engine {
             const located = typeof event.position === "number"
                 ? this.#offsetToLineColumn(packetAssistant.content, event.position)
                 : null;
-            this.#telemetry.push(sessionId, loopId, {
+            this.#telemetry.push(workspaceId, loopId, {
                 source: event.source,
                 kind: event.kind,
                 message: event.message ?? "",
@@ -1091,8 +1091,8 @@ export default class Engine {
         // already-generated work post-hoc. The ceiling is an OPT-IN operator/client bound:
         // when set, overflow ops drop without per-op log entries (no forensics flood) and the
         // model gets one telemetry signal next packet.
-        // #232 — a session's maxCommands is a tighten-only ceiling: min() the env ceiling.
-        const maxCommands = Math.min(readMaxCommands(), (await SessionSettings.read(this.#db, sessionId)).maxCommands ?? Number.POSITIVE_INFINITY);
+        // #232 — a workspace's maxCommands is a tighten-only ceiling: min() the env ceiling.
+        const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
         // PLAN (reasoning) and a terminal SEND (signal ≥ 200, the conclusion) are not
         // actions — they always dispatch and never count against the cap. maxCommands
         // bounds real actions only; maxCommands:0 still admits a plan and a conclusion
@@ -1112,7 +1112,7 @@ export default class Engine {
         let rowSeq = nextActionIndex;
         for (const statement of opsToDispatch) {
             const result = await this.dispatch({
-                statement, sessionId, runId, loopId, turnId,
+                statement, workspaceId, workerId, loopId, turnId,
                 sequence: rowSeq,
                 origin, onDispatch,
                 // §send-200-failed-ops — parse errors mint as rows AFTER this loop; the terminal
@@ -1149,7 +1149,7 @@ export default class Engine {
         let errSeq = rowSeq;
         // max_commands_exceeded IS model-facing: dropped ops the model emitted that didn't run.
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
-        for (const kind of pendingEngineErrors) await this.#telemetry.mintEngineError(kind, { runId, loopId, turnId, sequence: errSeq++ });
+        for (const kind of pendingEngineErrors) await this.#telemetry.mintEngineError(kind, { workerId, loopId, turnId, sequence: errSeq++ });
         // §log-row-self-explains (Q2, owner-clarified) — a model-op failure is the MODEL'S OWN op
         // result: the op row carries its failure message on its meta line (packet-wire), and the
         // errors section points at the row. No separate minted item (the retired action_failure
@@ -1170,7 +1170,7 @@ export default class Engine {
                 ? `output truncated at the completion cap (${cap} tokens): nothing was emitted before the pool was consumed — the parse error below is an artifact of the empty emission, not a malformed turn`
                 : `output truncated at the completion cap (${cap} tokens): the emission was cut mid-op — the parse errors below are truncation artifacts`;
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
-                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
+                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
                 origin: "model", source: "engine", op: "error", suffix: "", signal: null,
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, params: null, fragment: null, lineMarker: null,
@@ -1184,7 +1184,7 @@ export default class Engine {
         // resolved against the model's folded mirror row (§model-entry) — origin 'model', not engine.
         for (const { message, line, column, source } of parseErrors ?? []) {
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
-                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
+                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: errSeq++,
                 origin: "model", source: "grammar", op: "error", suffix: "", signal: null,
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: null, params: null, fragment: null, lineMarker: null,
@@ -1207,7 +1207,7 @@ export default class Engine {
         // introspect any prior emission of its own the same way. Empty emissions (a struck/
         // silent turn) write nothing — no prior output to mirror.
         if (packetAssistant.content.trim().length > 0) {
-            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, runId, loopId, turnId, sequence: errSeq++, folded: true });
+            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true });
         }
 
         // Zero ops is NOT an error to report — the model knows it emitted
@@ -1283,8 +1283,8 @@ export default class Engine {
 
     // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs).
-    docEntries(sessionId: number): Promise<Array<{ name: string; content: string }>> {
-        return this.#packets.docEntries(sessionId);
+    docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
+        return this.#packets.docEntries(workspaceId);
     }
 
     // §env-delta (§actor-boundary-no-mutex: runs share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
@@ -1294,22 +1294,22 @@ export default class Engine {
     // fs-sync fictions — and materialize each as a FOLDED delta reusing the row's span +
     // cause. Returns the count so the caller advances nextActionIndex past the deltas.
     async #materializeEnvironmentDeltas(args: {
-        sessionId: number; runId: number; loopId: number; turnId: number; fromSequence: number;
+        workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
-        const { sessionId, runId, loopId, turnId, fromSequence } = args;
-        const boundary = await (this.#db.engine_run_prior_turn_time as PrepMethod).get<{ since: string | null }>({ run_id: runId, turn_id: turnId });
+        const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
+        const boundary = await (this.#db.engine_worker_prior_turn_time as PrepMethod).get<{ since: string | null }>({ worker_id: workerId, turn_id: turnId });
         const since = boundary?.since ?? null;
         if (since === null) return 0;  // first turn — nothing prior; the model reads current state fresh
         const rows = await (this.#db.engine_pull_env_deltas as PrepMethod).all<{
-            run_id: number; scheme: string | null; pathname: string; rx: string; source: string | null;
-        }>({ session_id: sessionId, run_id: runId, since });
+            worker_id: number; scheme: string | null; pathname: string; rx: string; source: string | null;
+        }>({ workspace_id: workspaceId, worker_id: workerId, since });
         let written = 0;
         for (const r of rows) {
             // source: the originating run (a real cross-run edit) or 'file' (an fs fiction);
             // rx reuses the originating row's result span — the edit as it looked then.
             await (this.#db.engine_insert_env_delta as PrepMethod).run({
-                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
-                source: r.source ?? String(r.run_id), scheme: r.scheme, pathname: r.pathname, rx: r.rx,
+                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                source: r.source ?? String(r.worker_id), scheme: r.scheme, pathname: r.pathname, rx: r.rx,
             });
             written++;
         }
@@ -1317,12 +1317,12 @@ export default class Engine {
         // same way an entry-change does, carrying its deliverable (the SEND body) or the
         // abandonment reason. Folded, attributed to the terminated run.
         const terms = await (this.#db.engine_pull_loop_terminations as PrepMethod).all<{
-            run_id: number; run_name: string; status: number; prompt: string; terminal_message: string | null; terminated_by: string | null;
-        }>({ session_id: sessionId, run_id: runId, since });
+            worker_id: number; worker_name: string; status: number; prompt: string; terminal_message: string | null; terminated_by: string | null;
+        }>({ workspace_id: workspaceId, worker_id: workerId, since });
         for (const t of terms) {
             await (this.#db.engine_insert_loop_termination_delta as PrepMethod).run({
-                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
-                source: String(t.run_id), pathname: `/${t.run_name}`,
+                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                source: String(t.worker_id), pathname: `/${t.worker_name}`,
                 rx: markTerminal(t.terminated_by, t.terminal_message) ?? `loop "${t.prompt}" ended (${t.status})`,
                 status: t.status,
             });
@@ -1336,8 +1336,8 @@ export default class Engine {
     // before the turn's own spawns, so every open turn-scoped sub here is from a prior turn — it
     // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its
     // terminal output surfaces born-OPEN through the stream-delta path (§exec-stream).
-    async #reapTurnScopedStreams(runId: number): Promise<void> {
-        const open = await (this.#db.find_open_turn_scoped_subscriptions_for_run as PrepMethod).all<{ id: number; scheme: string }>({ run_id: runId });
+    async #reapTurnScopedStreams(workerId: number): Promise<void> {
+        const open = await (this.#db.find_open_turn_scoped_subscriptions_for_worker as PrepMethod).all<{ id: number; scheme: string }>({ worker_id: workerId });
         for (const { id, scheme } of open) {
             const handler = this.#schemes.get(scheme) as { abortSubscription?: (subscriptionId: number) => void } | undefined;
             handler?.abortSubscription?.(id);
@@ -1350,16 +1350,16 @@ export default class Engine {
     // streamEnd recorded on the channel's prior delta — no exec-specific surfacing, just the
     // env-observe loop with a byte cursor where env-delta uses a timestamp. §exec-stream
     async #materializeStreamDeltas(args: {
-        runId: number; loopId: number; turnId: number; fromSequence: number;
+        workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
-        const { runId, loopId, turnId, fromSequence } = args;
-        const channels = await (this.#db.engine_run_stream_channels as PrepMethod).all<{
+        const { workerId, loopId, turnId, fromSequence } = args;
+        const channels = await (this.#db.engine_worker_stream_channels as PrepMethod).all<{
             subscription_id: number; runtime: string; coord: string; channel: string; content: string; state: string; close_status: number | null;
-        }>({ run_id: runId });
+        }>({ worker_id: workerId });
         let written = 0;
         for (const ch of channels) {
             const prior = await (this.#db.engine_stream_cursor as PrepMethod).get<{ attrs: string }>({
-                run_id: runId, scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
+                worker_id: workerId, scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
             });
             const priorAttrs = prior !== undefined ? (JSON.parse(prior.attrs) as { streamEnd?: number; terminal?: boolean }) : {};
             const cursor = priorAttrs.streamEnd ?? 0;
@@ -1373,7 +1373,7 @@ export default class Engine {
                 // pointer to the already-delivered bytes, never a re-send (§tokenomics-fetch-fits-free).
                 if (closed && priorAttrs.terminal !== true && cursor > 0) {
                     await (this.#db.engine_insert_stream_delta as PrepMethod).run({
-                        run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                        worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                         scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
                         rx: JSON.stringify({ status: ch.close_status ?? 200, content: `[ stream closed (${ch.close_status ?? 200}) — full output already delivered above; READ ${ch.runtime}://${ch.coord}#${ch.channel} to revisit ]`, mimetype: "text/stream" }),
                         attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
@@ -1387,7 +1387,7 @@ export default class Engine {
             // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. §exec-stream
             const startLine = (ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0) + 1;
             await (this.#db.engine_insert_stream_delta as PrepMethod).run({
-                run_id: runId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
+                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                 scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
                 rx: JSON.stringify({ status: 200, content: ch.content.slice(cursor), mimetype: "text/stream", startLine }),
                 attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: closed }),
@@ -1405,12 +1405,12 @@ export default class Engine {
     // would show. The fiction lives in the plurnk run's log; every other run pulls it
     // through the one delta path, exactly like a sibling's real edit.
     // §membership-emi-divergence-signal — disk divergences logged as the plurnk run's source=file EDIT fictions
-    async #logFsFictions(sessionId: number, divergences: FsDivergence[]): Promise<void> {
+    async #logFsFictions(workspaceId: number, divergences: FsDivergence[]): Promise<void> {
         if (divergences.length === 0) return;
-        const run = await (this.#db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" })
-            ?? await (this.#db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk", origin: "plurnk" });
+        const run = await (this.#db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" })
+            ?? await (this.#db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
         if (run === undefined) throw new Error("logFsFictions: plurnk run resolution returned no row");
-        const loop = await (this.#db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
+        const loop = await (this.#db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ worker_id: run.id });
         if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");
         const seq = await (this.#db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: loop.id });
         const turn = await (this.#db.client_turn_insert as PrepMethod).get<{ id: number }>({ loop_id: loop.id, sequence: seq?.next ?? 1, packet: "{}" });
@@ -1419,7 +1419,7 @@ export default class Engine {
         for (const d of divergences) {
             const span = editedSpan(d.before, d.after);
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
-                run_id: run.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
+                worker_id: run.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                 origin: "plurnk", source: "file", op: "EDIT", suffix: "", signal: null,
                 scheme: d.scheme, username: null, password: null, hostname: null, port: null,
                 pathname: d.pathname, params: null, fragment: null, lineMarker: null,
@@ -1438,7 +1438,7 @@ export default class Engine {
     // log_entries row: the client's off-run inspection primitive. {§op-look}
     async look(context: {
         statement: PlurnkStatement;
-        sessionId: number; runId: number; loopId: number;
+        workspaceId: number; workerId: number; loopId: number;
         origin?: WriterTier;
     }): Promise<DispatchResult> {
         return this.#dispatcher.look(context);
@@ -1472,29 +1472,29 @@ export default class Engine {
     // run still accepting turns?" If yes, skip the wake — the active loop
     // will pick up the channel transition at its next turn boundary. If no,
     // the daemon opens a fresh loop with the wake prompt.
-    async hasActiveLoopForRun(runId: number): Promise<boolean> {
-        const row = await (this.#db.engine_count_active_loops_for_run as PrepMethod).get<{ n: number }>({ run_id: runId });
+    async hasActiveLoopForWorker(workerId: number): Promise<boolean> {
+        const row = await (this.#db.engine_count_active_loops_for_worker as PrepMethod).get<{ n: number }>({ worker_id: workerId });
         return (row?.n ?? 0) > 0;
     }
 
     // #290 — run the derivation pump (deep channels: symbols/refs/FTS +
     // embeddings, deep_hash-gated) at SESSION-SCOPE, off the per-turn path, so a freshly-created
-    // session's corpus warms DURING the client's startup window instead of freezing the first
-    // loop.run. session.create fires this and returns immediately; embed_progress live-fans-out as it
+    // workspace's corpus warms DURING the client's startup window instead of freezing the first
+    // loop.run. workspace.create fires this and returns immediately; embed_progress live-fans-out as it
     // runs. Idempotent + deep_hash-gated, so turn 1's pump finds the work done (or harmlessly re-runs);
     // a no-embedder build derives the cheap symbols/refs/FTS channels and skips the embed pass. Has no
     // loop yet — telemetry fans out live only (loopId 0), never buffered to a loop that never drains.
-    async warmSessionDerivations(sessionId: number): Promise<void> {
+    async warmWorkspaceDerivations(workspaceId: number): Promise<void> {
         const ctx: PlurnkSchemeContext = {
-            db: this.#db, sessionId, runId: 0, loopId: 0, turnId: 0,
+            db: this.#db, workspaceId, workerId: 0, loopId: 0, turnId: 0,
             writer: "plurnk",
             signal: undefined,
             streamEventNotify: this.#streamEventNotify,
-            wakeRunNotify: this.#wakeRunNotify,
+            wakeWorkerNotify: this.#wakeWorkerNotify,
             tokenize: this.#tokenize,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushTelemetry: (event) => this.#telemetry.notify(sessionId, 0, event),
+            pushTelemetry: (event) => this.#telemetry.notify(workspaceId, 0, event),
         };
         await this.#queueDerivation(() => EntryManifest.maintainDerivations(ctx)); // §derivation-off-hot-path
     }
@@ -1511,26 +1511,26 @@ export default class Engine {
     //
     // Rummy parallel: AgentLoop.inject(). The "active drain → write
     // prompt entry, return immediately" branch.
-    async inject(runId: number, prompt: string): Promise<
+    async inject(workerId: number, prompt: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {
-        const loopRow = await (this.#db.drain_current_loop_for_run as PrepMethod).get<{ id: number; sequence: number }>({ run_id: runId });
+        const loopRow = await (this.#db.drain_current_loop_for_worker as PrepMethod).get<{ id: number; sequence: number }>({ worker_id: workerId });
         if (loopRow === undefined) return null;
         const loopId = loopRow.id;
         const turnRow = await (this.#db.drain_next_turn_seq_for_loop as PrepMethod).get<{ next: number }>({ loop_id: loopId });
         const turnSeq = turnRow?.next ?? 1;
-        const sessionRow = await (this.#db.drain_get_run_session as PrepMethod).get<{ session_id: number }>({ run_id: runId });
-        if (sessionRow === undefined) throw new Error(`Engine.inject: run ${runId} not found`);
-        const pathname = promptPathname(runId, loopRow.sequence, turnSeq); // canonical storage form, run-qualified loop-SEQ coordinates matching the turn-1 foist
+        const workspaceRow = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: workerId });
+        if (workspaceRow === undefined) throw new Error(`Engine.inject: run ${workerId} not found`);
+        const pathname = promptPathname(workerId, loopRow.sequence, turnSeq); // canonical storage form, run-qualified loop-SEQ coordinates matching the turn-1 foist
         const ctx: PlurnkSchemeContext = {
-            db: this.#db, sessionId: sessionRow.session_id, runId, loopId,
+            db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
             writer: "plurnk",
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
-            wakeRunNotify: this.#wakeRunNotify,
+            wakeWorkerNotify: this.#wakeWorkerNotify,
             tokenize: this.#tokenize,
-            pushTelemetry: (event) => this.#telemetry.push(sessionRow.session_id, loopId, event),
+            pushTelemetry: (event) => this.#telemetry.push(workspaceRow.workspace_id, loopId, event),
         };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
@@ -1542,7 +1542,7 @@ export default class Engine {
 
     //  — can this op open a wake edge mid-turn? The grounding scan for a
     // same-turn spawn-then-hibernate: an EXEC (stream conclusion / poll cadence wakes), a COPY to
-    // run:// (child-conclusion wake, §run-lifecycle-child-wake), a directed SEND to run:// (irc — the
+    // worker:// (child-conclusion wake, §run-lifecycle-child-wake), a directed SEND to worker:// (irc — the
     // addressee can act and conclude back), or an http READ (a web fetch streams into a subscription).
     // Conservative on purpose: a false PERMIT risks a dead park only in the spawn-failed corner; a
     // false REFUSE breaks legitimate hibernation.

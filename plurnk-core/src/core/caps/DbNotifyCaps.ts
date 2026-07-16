@@ -1,6 +1,6 @@
 // db-backed NotifyCaps (@plurnk/plurnk-schemes 0.4.3) — keystone PR-2 seam (#180).
 // streamEvent fires a stream/event notification for a channel transition.
-// (wakeRun was dropped in 0.4.3 — the rich run-wake lives on subscriptions.close,
+// (wakeWorker was dropped in 0.4.3 — the rich run-wake lives on subscriptions.close,
 // the only place with the close context to populate it.)
 //
 // streamEvent is sync per the cap contract, but the StreamEventPayload's entryId
@@ -35,6 +35,6 @@ export default class DbNotifyCaps implements NotifyCaps {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
         if (entryId === null) return;
         const target = this.#scheme === null ? `file://${pathname}` : `${this.#scheme}://${pathname}`;
-        notify(this.#ctx.sessionId, { entryId, target, channel, state, contentLength });
+        notify(this.#ctx.workspaceId, { entryId, target, channel, state, contentLength });
     }
 }

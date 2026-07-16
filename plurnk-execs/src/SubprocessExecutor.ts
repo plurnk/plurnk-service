@@ -22,7 +22,7 @@ const housekeepingGrace = (reason: unknown): number | null => {
 };
 
 // Concrete BaseExecutor for subprocess runtimes (sh, node, python, …). Spawns
-// via resolveRuntime, streams the process's stdout/stderr into the declared
+// via resolveWorkertime, streams the process's stdout/stderr into the declared
 // channels, honors cancellation, and reports the exit code. The sibling
 // packages (plurnk-execs-sh / -node / -python) subclass this and differ only
 // in which runtime tags they claim in their `plurnk.runtimes[]` manifest.

@@ -24,7 +24,7 @@
 //     - The wire roundtrip still happens; the daemon stays unaware that
 //       no human reviewed.
 //     - Use cases: real users who want "stop bothering me" ergonomics
-//       across an interactive session. Documented in client SPEC §open-fold.
+//       across an interactive workspace. Documented in client SPEC §open-fold.
 //
 // Listener fires BEFORE ProposalLifecycle.awaitResolution awaits the waiter, so a
 // synchronous resolveProposal here is delivered to the awaiting dispatch
@@ -43,7 +43,7 @@ export default class Yolo {
         engine.onProposalPending((event: ProposalPendingEvent) => {
             if (!event.flags.yolo) return;
             // A [300] question is NOT yolo-able (#346): it exists precisely to stop the world
-            // for a human — auto-accepting answers nothing. The session opted into questions
+            // for a human — auto-accepting answers nothing. The workspace opted into questions
             // (settings.questions), so the stop is wanted even under yolo.
             if (event.op === "SEND" && (event.attrs as { question?: string }).question !== undefined) return;
             try {

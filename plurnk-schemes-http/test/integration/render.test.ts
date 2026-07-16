@@ -39,7 +39,7 @@ test("Browser.render: real chromium runs the page JS and serializes the final DO
     const server = await startServer();
     const browser = new Browser();
     try {
-        const r = await browser.render(urlOf(server), { runId: 1 });
+        const r = await browser.render(urlOf(server), { workerId: 1 });
         assert.equal(r.status, 200);
         assert.match(r.html, /RENDERED_BY_JS/);   // JS executed
         assert.doesNotMatch(r.html, /SHIM/);        // post-hydration DOM, not the as-served body
@@ -55,7 +55,7 @@ const makeCtx = () => {
     let closed: { reason: string; outcome?: string } | null = null;
     const ok = async () => ({ status: 200 });
     const ctx: SchemeCtx = {
-        sessionId: 1, runId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries: { read: async () => ({ status: 404, entry: null }), write: async () => ({ status: 201, created: true, entryId: 1 }), delete: ok },
         channels: { append: ok, replace: ok, setState: ok },
         tags: { add: ok, remove: ok, list: async () => ({ status: 200, tags: [] }) },

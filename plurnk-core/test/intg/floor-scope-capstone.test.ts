@@ -95,13 +95,13 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: env.loopId }))?.status;
         assert.equal(loopStatus, 200);
 
-        const allEntries = (await (db.test_list_entries_by_session_session_pathname as PrepMethod).all<{ scheme: string; pathname: string }>({ session_id: env.sessionId })).map((r) => ({ scheme: r.scheme, pathname: r.pathname }));
+        const allEntries = (await (db.test_list_entries_by_workspace_workspace_pathname as PrepMethod).all<{ scheme: string; pathname: string }>({ workspace_id: env.workspaceId })).map((r) => ({ scheme: r.scheme, pathname: r.pathname }));
         assert.deepEqual(allEntries, [{ scheme: "known", pathname: "/archive/france/capital" }]);
 
-        const logCount = (await (db.test_count_log_entries_by_run as PrepMethod).get<{ n: number }>({ run_id: env.runId }))?.n;
+        const logCount = (await (db.test_count_log_entries_by_run as PrepMethod).get<{ n: number }>({ worker_id: env.workerId }))?.n;
         assert.equal(logCount, 9);
 
-        const clientLogCount = (await (db.test_count_log_entries_run_origin as PrepMethod).get<{ n: number }>({ run_id: env.runId, origin: "client" }))?.n;
+        const clientLogCount = (await (db.test_count_log_entries_run_origin as PrepMethod).get<{ n: number }>({ worker_id: env.workerId, origin: "client" }))?.n;
         assert.equal(clientLogCount, 9);
     } finally { await db.close(); }
 });

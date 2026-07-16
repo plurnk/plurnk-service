@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import Log from "../../src/schemes/Log.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors } from "./_helpers.ts";
 import { foldStmt, urlPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -31,15 +31,15 @@ test("[§subscriptions-fold-keeps-subscription] FOLD on a streaming exec's log r
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `exec-fold-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "fold keeps stream");
+        const workspaceId = await insertWorkspace(db, `exec-fold-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "fold keeps stream");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("sh", "for i in 4 3 2 1; do echo $i; sleep 0.4; done"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -52,16 +52,16 @@ test("[§subscriptions-fold-keeps-subscription] FOLD on a streaming exec's log r
 
         // Mid-stream: FOLD the exec's log row (log:///1/1/1) — render-only curation.
         await new Promise((r) => setTimeout(r, 500));
-        const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, sessionId, runId, loopId, turnId, writer: "model" }));
+        const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(fold.status, 200, "FOLD of the exec log row succeeds");
 
         // The subscription is STILL open — FOLD touched expanded, not the registry.
-        const midSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ closed_at: string | null }>({ run_id: runId, entry_id: entryRow!.id });
+        const midSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ closed_at: string | null }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.equal(midSub?.closed_at, null, "FOLD did not cancel the live subscription");
 
         // The stream runs to its own completion, closing 200 (never 499 from the FOLD).
         await exec.idle();
-        const endSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ closed_at: string | null; close_status: number | null }>({ run_id: runId, entry_id: entryRow!.id });
+        const endSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ closed_at: string | null; close_status: number | null }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.ok(endSub?.closed_at, "subscription closes on the spawn's own exit");
         assert.equal(endSub?.close_status, 200, "clean 200 exit, not a 499 cancellation");
     } finally { await db.close(); }

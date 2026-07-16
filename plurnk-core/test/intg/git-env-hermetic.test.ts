@@ -15,7 +15,7 @@ import { join } from "node:path";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, rootSession, insertRun, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 
 const execFileP = promisify(execFile);
@@ -53,20 +53,20 @@ test("[§membership-git-hermetic] fixture + production git spawns ignore a hook'
         assert.match(sandboxLog, /seed/, "the sandbox owns its seed commit");
 
         // Production class: membership resolution against the sandbox must read the SANDBOX.
-        const sessionId = await insertSession(db, `hermetic-${crypto.randomUUID()}`);
-        await rootSession(db, sessionId, sandbox);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1);
+        const workspaceId = await insertWorkspace(db, `hermetic-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, sandbox);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, sessionId, runId, loopId, turnId,
+            db, workspaceId, workerId, loopId, turnId,
             writer: "plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             tokenize: (t: string) => Math.ceil(t.length / 4),
         };
         await GitMembership.indexGitMembership(ctx);
-        const member = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname: "/tracked.md" });
+        const member = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: null, pathname: "/tracked.md" });
         assert.ok(member, "membership read the sandbox's ls-files, not the victim's");
-        const leak = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: null, pathname: "/victim-file.md" });
+        const leak = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: null, pathname: "/victim-file.md" });
         assert.equal(leak, undefined, "no victim file leaked into membership");
 
         // The victim is pristine: same HEAD, clean tree, no seed stacked on the lane branch.

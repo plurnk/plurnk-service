@@ -11,7 +11,7 @@ import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 // Despite the name, this suite includes chunked-embedding e2e cases that assert REAL vector ranking —
 // re-enable the embedder the fast lane turns off (.env.test PLURNK_SERVICE_EMBED_DISABLE=1); per-file isolation.
@@ -27,32 +27,32 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-const fts = async (db: Db, sessionId: number, query: string): Promise<string[]> => {
-    const rows = await (db.test_fts_search as PrepMethod).all<{ pathname: string }>({ session_id: sessionId, query });
+const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {
+    const rows = await (db.test_fts_search as PrepMethod).all<{ pathname: string }>({ workspace_id: workspaceId, query });
     return rows.map((r) => r.pathname);
 };
 
 test("[#186-fts] manifest-add indexes body content into entry_fts; re-indexes on change", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `fts-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `fts-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         await new Known().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
         await new Known().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
         await EntryManifest.maintainDerivations(ctx);
 
-        assert.deepEqual(await fts(db, sessionId, "processPayment"), ["/pay.ts"]);
-        assert.deepEqual(await fts(db, sessionId, "authenticate"), ["/auth.ts"]);
-        assert.deepEqual(await fts(db, sessionId, "nonexistent"), []);
+        assert.deepEqual(await fts(db, workspaceId, "processPayment"), ["/pay.ts"]);
+        assert.deepEqual(await fts(db, workspaceId, "authenticate"), ["/auth.ts"]);
+        assert.deepEqual(await fts(db, workspaceId, "nonexistent"), []);
 
         // Change pay.ts: re-index must drop the old term and add the new one;
         // auth.ts is unchanged (gate skips it) and stays indexed.
         await new Known().edit(editStmt(url("pay.ts"), "export function refund() {}\n"), ctx);
         await EntryManifest.maintainDerivations(ctx);
-        assert.deepEqual(await fts(db, sessionId, "processPayment"), [], "old term gone after re-index");
-        assert.deepEqual(await fts(db, sessionId, "refund"), ["/pay.ts"], "new term indexed");
-        assert.deepEqual(await fts(db, sessionId, "authenticate"), ["/auth.ts"], "unchanged entry stays indexed");
+        assert.deepEqual(await fts(db, workspaceId, "processPayment"), [], "old term gone after re-index");
+        assert.deepEqual(await fts(db, workspaceId, "refund"), ["/pay.ts"], "new term indexed");
+        assert.deepEqual(await fts(db, workspaceId, "authenticate"), ["/auth.ts"], "unchanged entry stays indexed");
     } finally { db.close(); }
 });
 
@@ -74,9 +74,9 @@ test("[#186-cosine] the cosine SqlRite function ranks Float32-BLOB vectors", asy
 test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `fusion-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `fusion-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
 
         // Three "payment" entries (FTS-match) with distinct embeddings, plus an "auth"
@@ -91,7 +91,7 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
         for (const [p, c] of ENTRIES) await new Known().edit(editStmt(url(p), c), ctx);
         await EntryManifest.maintainDerivations(ctx);  // FTS-indexes every entry
         for (const [p, , v] of ENTRIES) {
-            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: `/${p}` });
+            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "known", pathname: `/${p}` });
             assert.ok(e);
             // maintainDerivations stored a real one-chunk embedding; clear it and seed
             // the deterministic test vector as the entry's single chunk.
@@ -100,7 +100,7 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
         }
 
         const r = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({
-            fts_query: "payment", session_id: sessionId, scheme: "known",
+            fts_query: "payment", workspace_id: workspaceId, scheme: "known",
             query_vector: blob([1, 0, 0]), embedding_model: "test-model", k: 2,
         });
         assert.deepEqual(r.map((x) => x.pathname), ["/pay1.ts", "/pay2.ts"],
@@ -111,9 +111,9 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
 test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a non-first chunk clears the floor", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `maxpool-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `maxpool-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
         // Both FTS-match "payment". doc.ts gets two chunks — first orthogonal to the
         // query, second a PERFECT match (the passage truncation would hide). other.ts
@@ -122,7 +122,7 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         await new Known().edit(editStmt(url("other.ts"), "payment unrelated text"), ctx);
         await EntryManifest.maintainDerivations(ctx);
         const idOf = async (p: string): Promise<number> => {
-            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: p });
+            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "known", pathname: p });
             assert.ok(e, `entry ${p} found`);
             return e.id;
         };
@@ -134,7 +134,7 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         await (db.embedding_set as PrepMethod).run({ entry_id: other, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
 
         const r = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string }>({
-            fts_query: "payment", session_id: sessionId, scheme: "known",
+            fts_query: "payment", workspace_id: workspaceId, scheme: "known",
             query_vector: blob([1, 0, 0]), embedding_model: "m", threshold: 0.9, cap: -1,
         });
         assert.deepEqual(r.map((x) => x.pathname), ["/doc.ts"],
@@ -145,9 +145,9 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
 test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store → max-pool rank finds an entry via a deep chunk", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `e2e-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `e2e-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         // Controlled embedder: a small window + word tokenizer to force tiling, and a
         // deterministic vector "near" the query ONLY for the chunk holding the concept.
         // (The fast tier declines the real model; real-model ~query is covered in
@@ -164,13 +164,13 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
             "\nchloroplasts drive photosynthesis in green plants";
         await new Known().edit(editStmt(url("bio.md"), content), ctx);
-        const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: "/bio.md" });
+        const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "known", pathname: "/bio.md" });
         assert.ok(e);
         const { chunks, model } = await EntrySemantic.deriveEmbeddings(embedder, content, [], undefined, undefined);
         assert.ok(chunks.length > 1, `the body tiled into multiple chunks (got ${chunks.length})`);
         await EntrySemantic.indexFts(db, e.id, content);
         await EntrySemantic.indexEmbedding(db, e.id, chunks, model);
-        const r = await EntrySemantic.rankSemantic(db, sessionId, "known", embedder, "photosynthesis chloroplasts", { first: 5, last: null });
+        const r = await EntrySemantic.rankSemantic(db, workspaceId, "known", embedder, "photosynthesis chloroplasts", { first: 5, last: null });
         const hit = r.results.find((x) => x.pathname === "/bio.md");
         assert.ok(hit, "the deep chunk was embedded + stored, and ~query retrieved its entry via max-pool");
         assert.ok(hit.lineStart >= 1 && hit.lineEnd >= hit.lineStart, `the winning chunk's span rides out (got ${hit.lineStart}-${hit.lineEnd})`);
@@ -204,15 +204,15 @@ test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch 
 test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank; <0.x> threshold stays 501", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `fts-fallback-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `fts-fallback-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         // Index the FTS half directly — the fallback never touches entry_embeddings, so no
         // embedder is needed to populate it. "payment" twice in heavy, once in light; auth
         // has none → the keyword narrow excludes it.
         const mk = async (p: string, content: string): Promise<void> => {
             await new Known().edit(editStmt(url(p), content), ctx);
-            const e = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme: "known", pathname: `/${p}` });
+            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "known", pathname: `/${p}` });
             assert.ok(e, `entry ${p} created`);
             await EntrySemantic.indexFts(db, e.id, content);
         };
@@ -223,7 +223,7 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         // No embedder: process() yields no embedding channel → the fallback fires.
         const noEmbedder = { process: async () => ({}), embedderInfo: () => null } as unknown as Mimetypes;
 
-        const topK = await EntrySemantic.rankSemantic(db, sessionId, "known", noEmbedder, "payment", { first: 5, last: null });
+        const topK = await EntrySemantic.rankSemantic(db, workspaceId, "known", noEmbedder, "payment", { first: 5, last: null });
         assert.equal(topK.status, 200, "no embedder no longer 501s the top-K form");
         assert.deepEqual(topK.results.map((x) => x.pathname), ["/heavy.ts", "/light.ts"],
             "BM25 ranks heavy (two hits) above light (one); auth (no keyword) excluded by the narrow");
@@ -231,7 +231,7 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         assert.ok(heavy && heavy.lineStart === 1 && heavy.lineEnd === 2, `whole-entry span, no chunk vectors (got ${heavy?.lineStart}-${heavy?.lineEnd})`);
 
         // The similarity-threshold form needs a cosine score the FTS half can't supply.
-        const thresh = await EntrySemantic.rankSemantic(db, sessionId, "known", noEmbedder, "payment", { first: 0.5, last: null });
+        const thresh = await EntrySemantic.rankSemantic(db, workspaceId, "known", noEmbedder, "payment", { first: 0.5, last: null });
         assert.equal(thresh.status, 501, "the <0.x> threshold form is cosine-intrinsic → 501 without an embedder");
     } finally { db.close(); }
 });

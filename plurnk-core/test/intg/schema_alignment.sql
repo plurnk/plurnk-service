@@ -7,10 +7,10 @@
 SELECT name FROM sqlite_master WHERE type = 'table' AND name = $name;
 
 -- PREP: test_align_cols_sessions
-SELECT name, type FROM pragma_table_info('sessions');
+SELECT name, type FROM pragma_table_info('workspaces');
 
 -- PREP: test_align_cols_runs
-SELECT name, type FROM pragma_table_info('runs');
+SELECT name, type FROM pragma_table_info('workers');
 
 -- PREP: test_align_cols_loops
 SELECT name, type FROM pragma_table_info('loops');

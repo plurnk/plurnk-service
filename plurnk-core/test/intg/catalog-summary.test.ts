@@ -7,7 +7,7 @@ import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import Known from "../../src/schemes/Known.ts";
 import Unknown from "../../src/schemes/Unknown.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}:///${pathname}`, scheme,
@@ -22,14 +22,14 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
 test("[catalog] engine_scheme_catalog_summary tallies distinct entries per scheme", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `catalog-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `catalog-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         await new Known().edit(editStmt(url("known", "a.md"), "alpha beta"), ctx);
         await new Known().edit(editStmt(url("known", "b.md"), "gamma"), ctx);
         await new Unknown().edit(editStmt(url("unknown", "q"), "an open question"), ctx);
 
-        const rows = await (db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ session_id: sessionId });
+        const rows = await (db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ workspace_id: workspaceId });
         const byScheme = new Map(rows.map((r) => [r.scheme, r]));
         assert.equal(byScheme.get("known")?.entries, 2, "two known entries tallied as distinct");
         assert.equal(byScheme.get("unknown")?.entries, 1, "one unknown entry tallied");

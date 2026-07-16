@@ -15,7 +15,7 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     assert.equal(m.defaultChannel, "stdout");
     // The read-only-output default
     assert.equal(m.category, "data");
-    assert.equal(m.scope, "session");
+    assert.equal(m.scope, "workspace");
     assert.deepEqual(m.writableBy, ["plugin"]);
     assert.equal(m.volatile, true);
     assert.equal(m.modelVisible, true);

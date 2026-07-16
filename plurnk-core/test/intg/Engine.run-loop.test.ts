@@ -6,7 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -32,15 +32,15 @@ const response = (ops: PlurnkStatement[]): MockResponse => ({
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "test prompt");
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "test prompt");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    return { db, engine, sessionId, runId, loopId };
+    return { db, engine, workspaceId, workerId, loopId };
 };
 
 test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -51,7 +51,7 @@ test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
             ],
         });
         const result = await engine.runLoop({
-            provider, sessionId, runId, loopId,
+            provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "do three steps" }],
         });
         assert.equal(result.turnIds.length, 3);
@@ -68,7 +68,7 @@ test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
 });
 
 test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns flag", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -77,7 +77,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
             responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), sendStmt(102, "more")])),
         });
         const result = await engine.runLoop({
-            provider, sessionId, runId, loopId, maxTurns: 3,
+            provider, workspaceId, workerId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "never terminate" }],
         });
         assert.equal(result.turnIds.length, 3);
@@ -89,7 +89,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
 });
 
 test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Four non-terminal turns then SEND[200]. A positive cap of 3 would
         // force-terminate at turn 3 (429); -1 = no cap, so the loop runs all
@@ -108,7 +108,7 @@ test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn termin
             ],
         });
         const result = await engine.runLoop({
-            provider, sessionId, runId, loopId, maxTurns: -1,
+            provider, workspaceId, workerId, loopId, maxTurns: -1,
             messages: [{ role: "user", content: "run until I say done" }],
         });
         assert.equal(result.turnIds.length, 5, "ran all five turns — no turn cap");
@@ -118,13 +118,13 @@ test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn termin
 });
 
 test("[§send-idle-turn] Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // A bare SEND[102] is a continue that did no work — an idle turn (§send the terminal contract).
         // It steers the model (a hint) and strikes (silently); a model that keeps idling spins out to
         // the engine's 500, never its own 499.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, () => response([sendStmt(102, "idling")])) });
-        const result = await engine.runLoop({ provider, sessionId, runId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.finalStatus, 500, "idle spin-out is the engine ruling failure, not the model's 499");
         assert.equal(result.turnIds.length, 2, "struck out at maxStrikes:2, well before maxTurns:10");
         // The idle steer is a terse op='error' log row (409 Idle Turn) — its derived LogCoordinate
@@ -140,16 +140,16 @@ test("[§send-idle-turn] Engine.runLoop: idle turn (102, no work op) steers and 
 });
 
 test("[§send-premature-terminate] Engine.runLoop: premature terminate (200 over a live stream) downgrades to a continue + steers", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Seed a live stream the run holds: an open subscription (closed_at NULL) against a real entry.
-        const entryId = await seedEntryWithChannel(db, { sessionId, pathname: "/live-stream" });
-        await (db.open_subscription as PrepMethod).get<{ id: number }>({ run_id: runId, entry_id: entryId, scheme: "exec", handle: "live-1" });
+        const entryId = await seedEntryWithChannel(db, { workspaceId, pathname: "/live-stream" });
+        await (db.open_subscription as PrepMethod).get<{ id: number }>({ worker_id: workerId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [
             response([sendStmt(200, "all done")]),   // turn 1: a live stream makes this premature → downgraded to 102 + steer
             response([sendStmt(499, "abandoning")]),  // turn 2: 499 is the model-decided exit the contract allows over a live stream
         ] });
-        const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.turnIds.length, 2, "the premature 200 was downgraded, not honored — the loop ran on");
         assert.equal(result.finalStatus, 499, "the loop ended on the model's 499, never the premature 200");
         // The premature steer is a terse op='error' log row (409 Premature Termination); its derived
@@ -161,12 +161,12 @@ test("[§send-premature-terminate] Engine.runLoop: premature terminate (200 over
 });
 
 test("Engine.runLoop: terminates immediately if loop.status is already non-102", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         await (db.test_set_loop_status as PrepMethod).run({ status: 200, id: loopId });
         const provider = new Mock({ contextWindow: 100000, responses: [response([sendStmt(200, "")])] });
         const result = await engine.runLoop({
-            provider, sessionId, runId, loopId,
+            provider, workspaceId, workerId, loopId,
             messages: [],
         });
         assert.deepEqual(result.turnIds, []);
@@ -177,14 +177,14 @@ test("Engine.runLoop: terminates immediately if loop.status is already non-102",
 });
 
 test("Engine.runLoop: 499 model-emitted termination", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([sendStmt(102, "thinking")]), response([sendStmt(499, "giving up")])],
         });
         const result = await engine.runLoop({
-            provider, sessionId, runId, loopId,
+            provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "may abort" }],
         });
         assert.equal(result.turnIds.length, 2);
@@ -194,7 +194,7 @@ test("Engine.runLoop: 499 model-emitted termination", async () => {
 });
 
 test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const readStmt = (pathname: string) => ({
             op: "READ" as const, suffix: "", signal: null,
@@ -213,7 +213,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
             ],
         });
         const result = await engine.runLoop({
-            provider, sessionId, runId, loopId,
+            provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "store then retrieve" }],
         });
         assert.equal(result.turnIds.length, 3);
@@ -223,7 +223,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
 });
 
 test("[§provider-guarantees-signal-wired] Engine.runLoop: signal abort between turns throws AbortError", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const controller = new AbortController();
         const provider = new Mock({
@@ -232,14 +232,14 @@ test("[§provider-guarantees-signal-wired] Engine.runLoop: signal abort between 
         });
         controller.abort();
         await assert.rejects(
-            () => engine.runLoop({ provider, sessionId, runId, loopId, messages: [], signal: controller.signal }),
+            () => engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], signal: controller.signal }),
             { name: "AbortError" },
         );
     } finally { await db.close(); }
 });
 
 test("Engine.runLoop: turn sequence numbers monotonic", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -249,7 +249,7 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
                 response([sendStmt(200, "3")]),
             ],
         });
-        await engine.runLoop({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         const seqs = await (db.test_list_turns_in_loop as PrepMethod).all<{ sequence: number }>({ loop_id: loopId });
         assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3]);
     } finally { await db.close(); }

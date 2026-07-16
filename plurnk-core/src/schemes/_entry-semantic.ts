@@ -178,7 +178,7 @@ export default class EntrySemantic {
     // its terms, cosine-rank the narrowed set, top-K. Each result carries its best-matching
     // chunk's line span (the Finding extent). No embedder → the top-K <K> form degrades to an
     // FTS-only keyword rank (whole-entry findings); the <0.x> threshold form stays 501.
-    static async rankSemantic(db: Db, sessionId: number, scheme: string | null, mimetypes: Mimetypes, queryText: string, marker: { first: number; last: number | null }): Promise<{ status: number; results: Array<{ pathname: string; lineStart: number; lineEnd: number }> }> {
+    static async rankSemantic(db: Db, workspaceId: number, scheme: string | null, mimetypes: Mimetypes, queryText: string, marker: { first: number; last: number | null }): Promise<{ status: number; results: Array<{ pathname: string; lineStart: number; lineEnd: number }> }> {
         const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
         if (ftsQuery.length === 0) return { status: 200, results: [] };
         // #209 — the result marker form-dispatches: integer <K> → top-K rank;
@@ -203,20 +203,20 @@ export default class EntrySemantic {
             // based (no bounded BM25 analogue) → it stays 501.
             if (!Number.isInteger(first)) return { status: 501, results: [] };
             const rows = await (db.semantic_rank_fts as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
-                fts_query: ftsQuery, session_id: sessionId, scheme, k: first,
+                fts_query: ftsQuery, workspace_id: workspaceId, scheme, k: first,
             });
             return { status: 200, results: rows.map(toResult) };
         }
         if (Number.isInteger(first)) {
             const rows = await (db.semantic_rank as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
-                fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,
+                fts_query: ftsQuery, workspace_id: workspaceId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,
             });
             return { status: 200, results: rows.map(toResult) };
         }
         if (first <= 0 || first >= 1) return { status: 416, results: [] };
         const cap = (last !== null && Number.isInteger(last) && last > 0) ? last : -1;
         const rows = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
-            fts_query: ftsQuery, session_id: sessionId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, threshold: first, cap,
+            fts_query: ftsQuery, workspace_id: workspaceId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, threshold: first, cap,
         });
         return { status: 200, results: rows.map(toResult) };
     }

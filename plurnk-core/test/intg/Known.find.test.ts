@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `known:///${pathname}`, scheme: "known",
@@ -27,25 +27,25 @@ const regex = (raw: string): MatcherBody => ({ dialect: "regex", raw: `/${raw}/`
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    return { db, sessionId, runId };
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    return { db, workspaceId, workerId };
 };
 
-const seedEntries = async (db: import("../../src/core/Db.ts").Db, sessionId: number, runId: number, entries: Array<[string, string, string[]?]>) => {
+const seedEntries = async (db: import("../../src/core/Db.ts").Db, workspaceId: number, workerId: number, entries: Array<[string, string, string[]?]>) => {
     const k = new Known();
     for (const [pathname, body, tags] of entries) {
-        await k.edit(editStmt(url(pathname), body, tags ?? null), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStmt(url(pathname), body, tags ?? null), makeSchemeCtx({ db, workspaceId, workerId }));
     }
 };
 
 test("[§find-result-catalog-rows] Known.find returns the scheme's catalog rows (JSON), filtered to matches", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [
+        await seedEntries(db, workspaceId, workerId, [
             ["a", "alpha"], ["b", "beta"], ["c", "gamma"],
         ]);
-        const r = await new Known().find(findStmt(url("")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         // FIND is the filtered catalog: a JSON array of catalog rows (path + per-channel
         // {mimetype, tokens, lines}), NOT findings carrying per-match extents.
@@ -63,40 +63,40 @@ test("[§find-result-catalog-rows] Known.find returns the scheme's catalog rows 
 });
 
 test("[§find-scope-prefix-filter] Known.find with scope prefix filters to that subtree", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [
+        await seedEntries(db, workspaceId, workerId, [
             ["plan/step1", "x"], ["plan/step2", "y"], ["other/thing", "z"],
         ]);
-        const r = await new Known().find(findStmt(url("plan/")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url("plan/")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///plan/step1", "known:///plan/step2"]);
     } finally { db.close(); }
 });
 
 test("[§find-glob-filter-on-content] Known.find with glob matcher filters by CONTENT", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // Pathnames are neutral (a/b/c); the matchable token lives in the content.
-        await seedEntries(db, sessionId, runId, [
+        await seedEntries(db, workspaceId, workerId, [
             ["a", "france is the topic"], ["b", "france and germany"], ["c", "italy only"],
         ]);
-        const r = await new Known().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))].toSorted(), ["known:///a", "known:///b"]);
     } finally { db.close(); }
 });
 
 test("[§find-result-catalog-rows] a content match emits one item per match, each carrying its (file, span) (#286)", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // Multi-line content: the match sits on line 3 of a, line 2 of b; c never matches.
-        await seedEntries(db, sessionId, runId, [
+        await seedEntries(db, workspaceId, workerId, [
             ["a", "intro\nbody\nfrance is here\ntail"],
             ["b", "header\nfrance again\nmore"],
             ["c", "italy only\nspain too"],
         ]);
-        const r = await new Known().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         const byPath = new Map(r.results.map((row) => [row.path, row] as const));
         // Each match is a (file, span) item — the span is where the matcher hit (plurnk.md:31).
@@ -107,145 +107,145 @@ test("[§find-result-catalog-rows] a content match emits one item per match, eac
 });
 
 test("[§find-tag-filter-and-semantics] Known.find with tag filter — AND semantics", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [
+        await seedEntries(db, workspaceId, workerId, [
             ["a", "x", ["urgent", "europe"]],
             ["b", "y", ["urgent"]],
             ["c", "z", ["europe"]],
             ["d", "w", ["urgent", "europe", "answer"]],
         ]);
         // Both tags must be present
-        const r = await new Known().find(findStmt(url(""), null, ["urgent", "europe"]), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), null, ["urgent", "europe"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a", "known:///d"]);
     } finally { db.close(); }
 });
 
 test("Known.find combining glob (content) + tag filter", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [
+        await seedEntries(db, workspaceId, workerId, [
             ["s1", "plan alpha", ["urgent"]],
             ["s2", "plan beta", ["later"]],
             ["s3", "other thing", ["urgent"]],
         ]);
         // glob matches content "plan*"; tag narrows to urgent → only s1 satisfies both.
-        const r = await new Known().find(findStmt(url(""), glob("plan*"), ["urgent"]), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), glob("plan*"), ["urgent"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///s1"]);
     } finally { db.close(); }
 });
 
 test("Known.find with regex matcher filters by CONTENT", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["a", "alpha"], ["b", "beta"], ["c", "aardvark"]]);
-        const r = await new Known().find(findStmt(url(""), regex("^a")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        await seedEntries(db, workspaceId, workerId, [["a", "alpha"], ["b", "beta"], ["c", "aardvark"]]);
+        const r = await new Known().find(findStmt(url(""), regex("^a")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))].toSorted(), ["known:///a", "known:///c"]);
     } finally { db.close(); }
 });
 
 test("Known.find regex honors flags — case-insensitive (i) on content", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["a", "Alpha"], ["b", "alpine"], ["c", "beta"]]);
+        await seedEntries(db, workspaceId, workerId, [["a", "Alpha"], ["b", "alpine"], ["c", "beta"]]);
         // `i` must match "Alpha" (capital A) against /^al/ — the flag crosses into
         // the daughter's content regex; without it, `^al` would skip "Alpha".
         const ci: MatcherBody = { dialect: "regex", raw: "/^al/i", pattern: "^al", flags: "i" };
-        const r = await new Known().find(findStmt(url(""), ci), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), ci), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))].toSorted(), ["known:///a", "known:///b"]);
     } finally { db.close(); }
 });
 
 test("Known.find regex accepts `g` flag on content (no throw)", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["a", "foo here"], ["b", "a foo"], ["c", "bar"]]);
+        await seedEntries(db, workspaceId, workerId, [["a", "foo here"], ["b", "a foo"], ["c", "bar"]]);
         // `g` doesn't change hit/no-hit for entry selection; it must not throw.
         const g: MatcherBody = { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" };
-        const r = await new Known().find(findStmt(url(""), g), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), g), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))].toSorted(), ["known:///a", "known:///b"]);
     } finally { db.close(); }
 });
 
 test("Known.find regex `y` (sticky) anchors at content start", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["a", "foobar"], ["b", "a foobar"]]);
+        await seedEntries(db, workspaceId, workerId, [["a", "foobar"], ["b", "a foobar"]]);
         // sticky → match only at position 0 of the content, not anywhere.
         const y: MatcherBody = { dialect: "regex", raw: "/foo/y", pattern: "foo", flags: "y" };
-        const r = await new Known().find(findStmt(url(""), y), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), y), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a"]);
     } finally { db.close(); }
 });
 
 test("Known.find xpath matcher with no structural match → entry excluded (200, empty)", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // xpath runs over the markdown deepXml; `//x` matches no element →
         // no content hit → excluded.
-        await seedEntries(db, sessionId, runId, [["a", "plain text"]]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//x" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        await seedEntries(db, workspaceId, workerId, [["a", "plain text"]]);
+        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//x" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
     } finally { db.close(); }
 });
 
 test("Known.find with <L> paginates results", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["a", "1"], ["b", "2"], ["c", "3"], ["d", "4"]]);
+        await seedEntries(db, workspaceId, workerId, [["a", "1"], ["b", "2"], ["c", "3"], ["d", "4"]]);
         const stmt: ReturnType<typeof findStmt> = { ...findStmt(url(""), null), lineMarker: { marks: [2, 3] } };
-        const r = await new Known().find(stmt, makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(stmt, makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///b", "known:///c"]);
     } finally { db.close(); }
 });
 
 test("Known.find with no matches returns 200 with empty results", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["a", "x"]]);
-        const r = await new Known().find(findStmt(url(""), glob("nope*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        await seedEntries(db, workspaceId, workerId, [["a", "x"]]);
+        const r = await new Known().find(findStmt(url(""), glob("nope*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
         assert.equal(r.content, "[]", "no matches → an empty JSON array");
     } finally { db.close(); }
 });
 
-test("[§find-scoped-isolation] Known.find is scoped to the session (doesn't leak across sessions)", async () => {
-    const { db, sessionId, runId } = await setup();
+test("[§find-scoped-isolation] Known.find is scoped to the workspace (doesn't leak across workspaces)", async () => {
+    const { db, workspaceId, workerId } = await setup();
     try {
-        // Seed in this session
-        await seedEntries(db, sessionId, runId, [["here", "x"]]);
+        // Seed in this workspace
+        await seedEntries(db, workspaceId, workerId, [["here", "x"]]);
 
-        // Create another session and seed there
-        const otherSessionId = await insertSession(db, "other-session");
-        const otherRunId = await insertRun(db, otherSessionId);
+        // Create another workspace and seed there
+        const otherWorkspaceId = await insertWorkspace(db, "other-workspace");
+        const otherWorkerId = await insertWorker(db, otherWorkspaceId);
         const k = new Known();
-        await k.edit(editStmt(url("elsewhere"), "y"), makeSchemeCtx({ db, sessionId: otherSessionId, runId: otherRunId }));
+        await k.edit(editStmt(url("elsewhere"), "y"), makeSchemeCtx({ db, workspaceId: otherWorkspaceId, workerId: otherWorkerId }));
 
-        const r = await k.find(findStmt(url("")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await k.find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///here"], "only entries from this session");
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///here"], "only entries from this workspace");
     } finally { db.close(); }
 });
 
 test("Known.find is scoped to the scheme (doesn't leak across schemes)", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedEntries(db, sessionId, runId, [["here-known", "x"]]);
+        await seedEntries(db, workspaceId, workerId, [["here-known", "x"]]);
 
-        // Seed an unknown entry under the same session
+        // Seed an unknown entry under the same workspace
         const Unknown = (await import("../../src/schemes/Unknown.ts")).default;
-        await new Unknown().edit({ ...editStmt(url("here-unknown"), "y"), target: { ...url("here-unknown"), scheme: "unknown", raw: "unknown:///here-unknown" } }, makeSchemeCtx({ db, sessionId, runId }));
+        await new Unknown().edit({ ...editStmt(url("here-unknown"), "y"), target: { ...url("here-unknown"), scheme: "unknown", raw: "unknown:///here-unknown" } }, makeSchemeCtx({ db, workspaceId, workerId }));
 
-        const r = await new Known().find(findStmt(url("")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///here-known"]);
     } finally { db.close(); }

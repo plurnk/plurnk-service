@@ -11,7 +11,7 @@ export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
 export const discover = Discover.scan;
 
 // Runtime enable/disable policy (SPEC §3.3). `discover()` applies it as the
-// daemon boot layer; the consumer reuses the same parser for the per-session
+// daemon boot layer; the consumer reuses the same parser for the per-workspace
 // client layer — Policy.enabledAcross(tag, [serviceEnv, clientLayer]) — so the
 // cascade is byte-identical at both tiers.
 export { default as Policy } from "./policy.ts";
@@ -27,7 +27,7 @@ export { default as Advertise } from "./advertise.ts";
 // function/constant names re-exported over its statics.
 export const KNOWN_RUNTIMES = Runtime.KNOWN;
 export const isKnownRuntime = Runtime.isKnown;
-export const resolveRuntime = Runtime.resolve;
+export const resolveWorkertime = Runtime.resolve;
 
 // Contract types
 export type {

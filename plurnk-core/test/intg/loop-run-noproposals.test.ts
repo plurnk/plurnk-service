@@ -22,7 +22,7 @@ class ProposingTest {
         channels: {},
         defaultChannel: "body",
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,
@@ -49,7 +49,7 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
         daemon.schemes.register("proposing-test", new ProposingTest());
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "noproposals-resolve" });
+            await rpcCall(ws, 1, "workspace.create", { name: "noproposals-resolve" });
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal", flags: { noProposals: true },
             });
@@ -68,7 +68,7 @@ test("loop.run rejects non-boolean flags.noProposals", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "bad-noproposals" });
+            await rpcCall(ws, 1, "workspace.create", { name: "bad-noproposals" });
             const response = await rpcCall(ws, 2, "loop.run", {
                 prompt: "test", flags: { noProposals: "nope" },
             });

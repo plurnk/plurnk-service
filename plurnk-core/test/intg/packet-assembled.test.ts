@@ -14,7 +14,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel, packetSection, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string }> }> =>
@@ -25,14 +25,14 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `pkt-backbone-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "what do I have?"); // run's first loop → foist fires (#269)
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
+        const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "what do I have?"); // run's first loop → foist fires (#269)
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
         const log = packetSection(packet, "log");
 
@@ -66,14 +66,14 @@ test("assembled packet: the docs foist — FIND(plurnk://docs/**) surfaces mater
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `pkt-docs-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `pkt-docs-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't).
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "plurnk", pathname: "/docs/known.md", channel: "body", content: "# known\nYour persistent memory.", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "plurnk", pathname: "/docs/known.md", channel: "body", content: "# known\nYour persistent memory.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const log = packetSection(await getPacket(db, result.turnId), "log");
 
         // The plurnk catalog is scoped to its docs subtree, and the FIND renders its result —
@@ -99,12 +99,12 @@ test("[§policy-sections] assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVI
         process.env.PLURNK_SERVICE_POLICY = sysPath;
         process.env.PLURNK_SERVICE_PROJECT = projPath;
 
-        const sessionId = await insertSession(db, `pkt-policy-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
         // Policy is the client's foot in the privileged zone — both sections ride the SYSTEM slot
@@ -125,20 +125,20 @@ test("[§policy-sections] assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVI
 test("[§child-orientation] the live things a run holds — child runs — surface as terse pointers in the system slot", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `child-orient-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
-        // A live child run this run holds (parent_run_id = runId; insertLoop's default status 102 = live).
-        const child = await insertRun(db, sessionId, runId, "worker-x");
+        const workspaceId = await insertWorkspace(db, `child-orient-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        // A live child run this run holds (parent_worker_id = workerId; insertLoop's default status 102 = live).
+        const child = await insertWorker(db, workspaceId, workerId, "worker-x");
         await insertLoop(db, child, 1, "working");
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
-        // The live child surfaces as a terse `* <status> run://<name>` pointer — orienting state, not advice.
-        assert.match(packetSection(packet, "child-runs"), /^\* 102 run:\/\/worker-x$/m, "the live child run is a status+path pointer the model READs/KILLs itself");
+        // The live child surfaces as a terse `* <status> worker://<name>` pointer — orienting state, not advice.
+        assert.match(packetSection(packet, "child-runs"), /^\* 102 worker:\/\/worker-x$/m, "the live child run is a status+path pointer the model READs/KILLs itself");
         // Framework status, NOT an injection surface — rides the system slot, above budget-the-law.
         const sys = packet.sections.filter((x) => x.slot === "system").map((x) => x.name);
         assert.ok(sys.includes("child-runs"), "child-runs rides the system slot");
@@ -149,12 +149,12 @@ test("[§child-orientation] the live things a run holds — child runs — surfa
 test("[§child-orientation] no live children or streams → the orientation sections are omitted (like errors)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `child-orient-empty-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `child-orient-empty-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         // Empty content ⇒ the section renders to nothing (renderSlot drops zero-length sections), so the
         // model never sees a bare header — same as the errors section when there are no errors.
         const packet = await getPacket(db, result.turnId);
@@ -166,12 +166,12 @@ test("[§child-orientation] no live children or streams → the orientation sect
 test("assembled packet: the grammar definition reaches the packet + the schemes directory renders well-formed << heredocs", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `pkt-shape-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `pkt-shape-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
         // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.

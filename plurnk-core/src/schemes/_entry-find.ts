@@ -50,7 +50,7 @@ export default class EntryFind {
     // §run-scheme — the owner-prefix glob (`/<owner>/*`) for a run-scope FIND, from the target
     // pathname Run.find already folded (`/<owner>/<rest>`). Bounds the catalog source to one run's
     // scratch — the building run's own (self) or a named sister's.
-    static #runOwnerPrefix(statement: FindStatement): string {
+    static #workerOwnerPrefix(statement: FindStatement): string {
         const path = statement.target?.kind === "url" ? statement.target.pathname : "";
         const owner = path.split("/").filter((s) => s.length > 0)[0];
         return owner === undefined ? "/*" : `/${owner}/*`;
@@ -91,9 +91,9 @@ export default class EntryFind {
         return out;
     }
 
-    // Resolve a FIND to its matched session PATHNAMES — entry-level, unique, in result
+    // Resolve a FIND to its matched workspace PATHNAMES — entry-level, unique, in result
     // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
-    // tags) runs in SQL (find_session_entry_candidates); a content matcher then runs against
+    // tags) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
     // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
     // daughter) and INCLUDES/EXCLUDES the entry — 200 keeps it, 204/415/203 drop it, 400
     // (malformed matcher) fails the whole op. Path-scoping stays in the (target). Returns the
@@ -117,7 +117,7 @@ export default class EntryFind {
             // §semantic-cold-query-full-fidelity — warm the query's own candidate slice inline
             // (bit-identical to a warm corpus; the background pump owes nothing to THIS query).
             await EntryManifest.deriveFtsCandidates(ctx, scheme, EntrySemantic.ftsQueryFor(statement.body.raw), 128);
-            const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.sessionId, scheme, mimetypes, statement.body.raw, LineMarkerOps.firstLast(statement.lineMarker));
+            const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.workspaceId, scheme, mimetypes, statement.body.raw, LineMarkerOps.firstLast(statement.lineMarker));
             if (ranked.status !== 200) return { status: ranked.status, matches: [] };
             return { status: 200, matches: ranked.results.map((x) => ({ pathname: x.pathname, span: { lineStart: x.lineStart, lineEnd: x.lineEnd } })) };
         }
@@ -135,13 +135,13 @@ export default class EntryFind {
         const tags = Array.isArray(statement.signal) ? statement.signal : []; // tag filter, AND semantics — §find-tag-filter-and-semantics
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
-        const { db, sessionId } = ctx;
-        // Candidates are session-scoped — a FIND never reaches across sessions. §find-scoped-isolation.
-        // §run-scheme — a run-scope scheme (manifest.scope==='run', today run://) draws from the run
+        const { db, workspaceId } = ctx;
+        // Candidates are workspace-scoped — a FIND never reaches across workspaces. §find-scoped-isolation.
+        // §run-scheme — a run-scope scheme (manifest.scope==='run', today worker://) draws from the run
         // partition instead; the owner narrowing rides scopeGlob (Run.find folds `/<owner>/*` in).
-        const candidatesQuery = manifest.scope === "run" ? "find_run_entry_candidates" : "find_session_entry_candidates";
+        const candidatesQuery = manifest.scope === "worker" ? "find_worker_entry_candidates" : "find_workspace_entry_candidates";
         let candidates = await (db[candidatesQuery] as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>({
-            session_id: sessionId,
+            workspace_id: workspaceId,
             scheme,
             channel: manifest.defaultChannel,
             scope_pathname: scopeGlob,
@@ -165,10 +165,10 @@ export default class EntryFind {
             matches = candidates.map((c) => ({ pathname: c.pathname, span: null }));
         } else if (statement.body.dialect === "graph") {
             // @graph (plurnk-service#186): body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
-            // the relation across (session, scheme), each as a (file, span); intersect with the
+            // the relation across (workspace, scheme), each as a (file, span); intersect with the
             // in-scope candidates (target glob + tags) for the final set.
             const inScope = new Set(candidates.map((c) => c.pathname));
-            const graph = await EntryGraph.match(ctx.db, ctx.sessionId, scheme, statement.body.raw);
+            const graph = await EntryGraph.match(ctx.db, ctx.workspaceId, scheme, statement.body.raw);
             if (graph.status !== 200) return { status: graph.status, matches: [] };
             matches = graph.matches.filter((m) => inScope.has(m.pathname)).map((m) => ({ pathname: m.pathname, span: { lineStart: m.lineStart, lineEnd: m.lineEnd } }));
         } else {
@@ -193,7 +193,7 @@ export default class EntryFind {
     // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
     // {mimetype, tokens, lines}, tags, seconds) — FIND is the filtered, navigable slice of
     // that catalog, rendered as a JSON array (application/json). §find-result-catalog-rows
-    static async findSessionEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<FindResult> {
+    static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest);
         if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
         const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
@@ -202,9 +202,9 @@ export default class EntryFind {
         // preserved (rank for ~semantic); a match whose entry has no row (e.g. the self-excluded
         // manifest) drops out. Each match becomes ONE result item carrying its span (#286).
         // §run-scheme — a run-scope FIND aligns to the building run's OWN run-scope catalog rows
-        // (the owner prefix the candidate scope already enforced), never the session filesystem.
-        const runOwnerPrefix = manifest.scope === "run" ? EntryFind.#runOwnerPrefix(statement) : undefined;
-        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, runOwnerPrefix)).map((r) => [r.path, r] as const));
+        // (the owner prefix the candidate scope already enforced), never the workspace filesystem.
+        const workerOwnerPrefix = manifest.scope === "worker" ? EntryFind.#workerOwnerPrefix(statement) : undefined;
+        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, workerOwnerPrefix)).map((r) => [r.path, r] as const));
         const results: MatchItem[] = [];
         const matches: Match[] = [];
         const seenPath = new Set<string>();

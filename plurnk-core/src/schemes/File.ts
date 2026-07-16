@@ -22,14 +22,14 @@ type EditResult = { status: number; body?: string; attrs?: object; error?: strin
 type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; span?: string; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
 type ApplyResult = { status: number; outcome?: string; body?: string };
 
-// Workspace root for file ops is sourced from `sessions.project_root`,
-// supplied by the client at session.create (headless is forever; issue
+// Workspace root for file ops is sourced from `workspaces.project_root`,
+// supplied by the client at workspace.create (headless is forever; issue
 // #150 wired the RPC; F.1 added the column). Server doesn't guess —
-// the client owns workspace identity. If a session is headless
+// the client owns workspace identity. If a workspace is headless
 // (project_root=null), file ops fail at 400; the client either supplies
-// a root or the op isn't appropriate for this session.
-const loadSessionRoot = async (db: Db, sessionId: number): Promise<string | null> => {
-    const row = await (db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
+// a root or the op isn't appropriate for this workspace.
+const loadWorkspaceRoot = async (db: Db, workspaceId: number): Promise<string | null> => {
+    const row = await (db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
     return row?.project_root ?? null;
 };
 
@@ -74,7 +74,7 @@ export default class File {
         channels: {},  // dynamic mimetype per file extension
         defaultChannel: "body",
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,
@@ -88,13 +88,13 @@ export default class File {
     // → 404, the same gate Known runs on. Disk is reached only at the materialize
     // and write-back edges (git-membership, applyResolution) — never on a read.
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        const r = await EntryOps.readSessionEntry(statement, ctx, File.manifest);
+        const r = await EntryOps.readWorkspaceEntry(statement, ctx, File.manifest);
         if (r.status !== 404) return r;
         // 404 fallback: the model may have used an absolute disk path (echoed from exec/build
         // output) instead of the relative key it sees. Normalize + retry — an absolute-under-
         // root member then resolves; anything else keeps the 404. No cost on the hit path.
-        const normalized = File.#normalizeFileTarget(statement, await loadSessionRoot(ctx.db, ctx.sessionId));
-        return normalized === statement ? r : EntryOps.readSessionEntry(normalized, ctx, File.manifest);
+        const normalized = File.#normalizeFileTarget(statement, await loadWorkspaceRoot(ctx.db, ctx.workspaceId));
+        return normalized === statement ? r : EntryOps.readWorkspaceEntry(normalized, ctx, File.manifest);
     }
 
     static #normalizeFileTarget<S extends { target: ParsedPath | null }>(statement: S, root: string | null): S {
@@ -132,8 +132,8 @@ export default class File {
         // Normalize the model-typed path to the `/rel` member key BEFORE the candidate
         // glob — the parity READ/EDIT already have (§scheme-address). Without it a bare
         // `notes.md` globs `notes.md*` and misses the canonical-stored `/notes.md`.
-        const normalized = File.#normalizeFileTarget(statement, await loadSessionRoot(ctx.db, ctx.sessionId));
-        return EntryFind.findSessionEntries(normalized, ctx, File.manifest);
+        const normalized = File.#normalizeFileTarget(statement, await loadWorkspaceRoot(ctx.db, ctx.workspaceId));
+        return EntryFind.findWorkspaceEntries(normalized, ctx, File.manifest);
     }
 
     // COPY/MOVE FROM file:/// — read-only, gated by entry-existence (a non-member
@@ -143,7 +143,7 @@ export default class File {
         // §scheme-address — normalize the model-typed path (bare `brief.md`) to its `/rel` member key,
         // the same parity READ/EDIT/deleteEntry have. Without it a COPY/MOVE FROM a bare file path
         // misses the canonical-stored member and 404s a source that plainly exists.
-        const root = await loadSessionRoot(ctx.db, ctx.sessionId);
+        const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         return EntryCrud.readEntry(root === null ? pathname : File.#toMemberKey(pathname, root), ctx, null);
     }
 
@@ -155,8 +155,8 @@ export default class File {
     // and a copy into file:/// are the same disk write under the same review.
     // §membership-edit-membership-gate — membership/containment/read-only/binary gate before any disk write
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
-        const root = await loadSessionRoot(ctx.db, ctx.sessionId);
-        if (root === null) return { ok: false, status: 400, error: "session has no project_root (headless is forever) — file ops need a session created with projectRoot" };
+        const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
+        if (root === null) return { ok: false, status: 400, error: "workspace has no project_root (headless is forever) — file ops need a workspace created with projectRoot" };
         // An absolute disk path the model echoed → its relative key, so EDIT hits the member
         // instead of proposing a wrong CREATE nested under root (the fileExists=false path).
         pathname = toWorkspaceRelative(pathname, root);
@@ -180,16 +180,16 @@ export default class File {
         let original = "";
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         if (fileExists) {
-            const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
+            const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: rel });
             if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
-            const viewGlobs = (await (ctx.db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: ctx.sessionId }))
+            const viewGlobs = (await (ctx.db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
                 .filter((c) => c.effect === "view").map((c) => c.glob);
             if (viewGlobs.some((g) => matchesGlob(relBare, g))) return { ok: false, status: 403, error: "member is read-only" }; // view = read-only member, 403 on edit — §membership-overlay-view
             // The diff base is the entry's snapshot — the body channel the model READ — not a fresh
             // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
             // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
             // run's reconcile can't advance it under the paused proposal. §membership-edit-write-cas
-            const snapshot = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({ session_id: ctx.sessionId, scheme: null, pathname: rel, channel: "body" });
+            const snapshot = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;
         }
@@ -234,7 +234,7 @@ export default class File {
     // COPY/MOVE INTO file:/// — the dest write. Same §membership gate as edit, same 202
     // proposal + applyResolution path: a copy onto disk is a disk write and earns
     // the identical human review. Dispatcher.#copyOrchestration propagates this 202;
-    // ProposalLifecycle.runApply routes the accept back here via the dest scheme;
+    // ProposalLifecycle.workerApply routes the accept back here via the dest scheme;
     // applyResolution() writes the file + registers the entry. The copied content
     // is the source's body channel (full replacement — files are body-only).
     async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
@@ -262,7 +262,7 @@ export default class File {
         // its dest proposal): unlink the host file + deregister the entry on accept. A real unlink
         // failure surfaces as 500, never a silent noop; ENOENT ⇒ file already gone, still deregister.
         if (typeof attrs.deletePath === "string") {
-            const root = await loadSessionRoot(ctx.db, ctx.sessionId);
+            const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
             if (root === null) return { status: 500, outcome: "no project_root" };
             try {
                 await rm(join(root, attrs.deletePath));
@@ -355,10 +355,10 @@ export default class File {
     // §membership — only a MEMBER reaches the proposal; a non-member is invisible (404), so untracked
     // disk is never probed or touched. applyResolution unlinks + deregisters on accept.
     async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
-        const root = await loadSessionRoot(ctx.db, ctx.sessionId);
+        const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) return { status: 400 };
         const rel = File.#toMemberKey(pathname, root);
-        const member = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: rel });
+        const member = await (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: rel });
         if (member === undefined) return { status: 404 };
         return { status: 202, attrs: { deletePath: rel } };
     }

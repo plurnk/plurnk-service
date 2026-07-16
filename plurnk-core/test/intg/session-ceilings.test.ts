@@ -1,4 +1,4 @@
-// #232 — session.create({settings}) ceiling family: tighten-only, most-restrictive-wins
+// #232 — workspace.create({settings}) ceiling family: tighten-only, most-restrictive-wins
 // against the operator env ceiling at each knob's read-site (companion to #231's
 // default-semantics knobs). maxCommands min()s PLURNK_SERVICE_MAX_COMMANDS; git:false ANDs the
 // PLURNK_SERVICE_GIT_ALLOWED service ceiling. A client may narrow, never widen.
@@ -30,28 +30,28 @@ const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
 const entryId = (db: Db, pathname: string) =>
     (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "known", pathname });
 
-test("[§operator-config-session-max-commands] session settings.maxCommands min()s the env op cap — tightens, never widens", async () => {
+test("[§operator-config-workspace-max-commands] workspace settings.maxCommands min()s the env op cap — tightens, never widens", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
-        // TIGHTEN: env 99, session 1 → min 1 → only the first model op dispatches.
+        // TIGHTEN: env 99, workspace 1 → min 1 → only the first model op dispatches.
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
         await withDaemon(twoEdits(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "mc-tighten", settings: { maxCommands: 1 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mc-tighten", settings: { maxCommands: 1 } });
                 await runLoopToTerminal(ws, 2, { prompt: "go" });
                 assert.ok((await entryId(db, "/a.md"))?.id !== undefined, "the first model op dispatched");
-                assert.equal(await entryId(db, "/b.md"), undefined, "the second op was dropped — session maxCommands:1 tightened env 99");
+                assert.equal(await entryId(db, "/b.md"), undefined, "the second op was dropped — workspace maxCommands:1 tightened env 99");
             } finally { ws.close(); }
         });
-        // NO-WIDEN: env 1, session 99 → min 1 → still only the first op; the client can't widen.
+        // NO-WIDEN: env 1, workspace 99 → min 1 → still only the first op; the client can't widen.
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "1";
         await withDaemon(twoEdits(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "mc-nowiden", settings: { maxCommands: 99 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mc-nowiden", settings: { maxCommands: 99 } });
                 await runLoopToTerminal(ws, 2, { prompt: "go" });
-                assert.equal(await entryId(db, "/b.md"), undefined, "session maxCommands:99 cannot widen env 1 — the second op stays dropped");
+                assert.equal(await entryId(db, "/b.md"), undefined, "workspace maxCommands:99 cannot widen env 1 — the second op stays dropped");
             } finally { ws.close(); }
         });
     } finally {
@@ -59,7 +59,7 @@ test("[§operator-config-session-max-commands] session settings.maxCommands min(
     }
 });
 
-test("[§operator-config-session-max-commands-floor] maxCommands:0 admits PLAN + the terminal SEND, drops every action", async () => {
+test("[§operator-config-workspace-max-commands-floor] maxCommands:0 admits PLAN + the terminal SEND, drops every action", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
@@ -73,7 +73,7 @@ test("[§operator-config-session-max-commands-floor] maxCommands:0 admits PLAN +
             const ws = await connect(addr);
             try {
                 const logEntries = subscribeNotifications(ws, "log/entry");
-                await rpcCall(ws, 1, "session.create", { name: "mc-zero", settings: { maxCommands: 0 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mc-zero", settings: { maxCommands: 0 } });
                 await runLoopToTerminal(ws, 2, { prompt: "go" });
                 await flush();
                 const modelOps = logEntries()
@@ -90,7 +90,7 @@ test("[§operator-config-session-max-commands-floor] maxCommands:0 admits PLAN +
     }
 });
 
-test("[§operator-config-session-git] session settings.git:false denies git membership for the session (env AND session)", async () => {
+test("[§operator-config-workspace-git] workspace settings.git:false denies git membership for the workspace (env AND workspace)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-deny-"));
     const db = await openMigrated();
     try {
@@ -101,15 +101,15 @@ test("[§operator-config-session-git] session settings.git:false denies git memb
         await execFileP("git", ["add", "tracked.md"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
-        // A session that opts OUT of git — membership resolves with git:false in effect.
+        // A workspace that opts OUT of git — membership resolves with git:false in effect.
         const denied = await Envelope.createClientEnvelope(db, { name: `git-deny-${crypto.randomUUID()}`, projectRoot: root, settings: JSON.stringify({ git: false }) });
-        const deniedMember = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: denied.sessionId, scheme: null, pathname: "/tracked.md" });
+        const deniedMember = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: denied.workspaceId, scheme: null, pathname: "/tracked.md" });
         assert.equal(deniedMember, undefined, "git:false denies git-ls-files membership — the tracked file is NOT a member");
 
         // Control: no override → the env ALLOWED ceiling admits the tracked file, so the
-        // denial above is the session setting's doing, not an absent repo.
+        // denial above is the workspace setting's doing, not an absent repo.
         const allowed = await Envelope.createClientEnvelope(db, { name: `git-allow-${crypto.randomUUID()}`, projectRoot: root });
-        const allowedMember = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: allowed.sessionId, scheme: null, pathname: "/tracked.md" });
+        const allowedMember = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: allowed.workspaceId, scheme: null, pathname: "/tracked.md" });
         assert.notEqual(allowedMember, undefined, "without the override the tracked file IS a git member — so git:false is what denied it");
     } finally {
         await db.close();
@@ -117,15 +117,15 @@ test("[§operator-config-session-git] session settings.git:false denies git memb
     }
 });
 
-test("session.create rejects malformed ceiling settings — fail hard, no silent accept (#232)", async () => {
+test("workspace.create rejects malformed ceiling settings — fail hard, no silent accept (#232)", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const badMC = await rpcCall(ws, 1, "session.create", { name: "bad-mc", settings: { maxCommands: -1 } });
+            const badMC = await rpcCall(ws, 1, "workspace.create", { name: "bad-mc", settings: { maxCommands: -1 } });
             assert.ok(badMC.error, "maxCommands:-1 (negative) is a JSON-RPC error — 0 is now a valid floor, negatives are not");
             assert.match(badMC.error!.message, /maxCommands must be a non-negative integer/);
-            const badGit = await rpcCall(ws, 2, "session.create", { name: "bad-git", settings: { git: "no" } });
+            const badGit = await rpcCall(ws, 2, "workspace.create", { name: "bad-git", settings: { git: "no" } });
             assert.ok(badGit.error, "a non-boolean git is rejected");
             assert.match(badGit.error!.message, /git must be a boolean/);
         } finally { ws.close(); }

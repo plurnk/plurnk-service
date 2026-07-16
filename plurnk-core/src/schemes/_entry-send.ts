@@ -28,7 +28,7 @@ export default class EntrySend {
         return path.fragment;
     }
 
-    static async sendToSessionEntry(statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<SendResult> {
+    static async sendToWorkspaceEntry(statement: SendStatement, ctx: PlurnkSchemeContext, scheme: string): Promise<SendResult> {
         if (statement.target === null) return { status: 400, error: "directed SEND requires a path" };
 
         const status = statement.signal;
@@ -41,8 +41,8 @@ export default class EntrySend {
             if (pathname === null) return { status: 400 };
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
-                const { db, sessionId } = ctx;
-                const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+                const { db, workspaceId } = ctx;
+                const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
                 if (entry === undefined) return { status: 404 };
                 const deleted = await (db.crud_delete_channel as PrepMethod).get<{ name: string }>({ entry_id: entry.id, name: fragment });
                 return { status: deleted === undefined ? 404 : 200 };
@@ -58,10 +58,10 @@ export default class EntrySend {
         if (status === 499) {
             const pathname = EntrySend.#pathnameOf(statement);
             if (pathname === null) return { status: 400 };
-            const { db, sessionId, runId } = ctx;
-            const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+            const { db, workspaceId, workerId } = ctx;
+            const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
             if (entry === undefined) return { status: 404, error: "no entry at path" };
-            const subscription = await ChannelWrite.findActiveSubscription(db, { runId, entryId: entry.id });
+            const subscription = await ChannelWrite.findActiveSubscription(db, { workerId, entryId: entry.id });
             if (subscription === null) return { status: 404, error: "no active subscription to cancel" };
             return { status: 501, error: `entry scheme does not own subscription cancellation; subscription owned by scheme '${subscription.scheme}'` };
         }

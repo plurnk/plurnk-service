@@ -6,18 +6,18 @@ LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/pl
 
 Grammar ops: `PLAN` reason · `READ`/`EDIT` files · `FIND` search · `EXEC` run shell/code · `SEND` message or conclude · `COPY`/`MOVE`/`KILL` manage · `OPEN`/`FOLD` curate its own context.
 
-Over schemes: `file://` project files · `exec://` command output · `http(s)://` web fetch · `run://` sibling agent runs (spawn / fork / message) · `known://` scratch · `log://` own history.
+Over schemes: `file://` project files · `exec://` command output · `http(s)://` web fetch · `worker://` sibling agent runs (spawn / fork / message) · `known://` scratch · `log://` own history.
 
 ## Loop model
 
-Session = the shared world (one filesystem + membership overlay). Run = one agent's private log. Loop = one `prompt → ops → SEND[terminal]` cycle; every turn leads with `PLAN`. Runs fork and message each other — many clients, many runs, one session.
+Workspace = the shared world (one filesystem + membership overlay). Run = one agent's private log. Loop = one `prompt → ops → SEND[terminal]` cycle; every turn leads with `PLAN`. Runs fork and message each other — many clients, many runs, one workspace.
 
 ## Integration (WebSocket JSON-RPC)
 
-Methods: `session.*` (create / attach / constrain / list…) · `loop.run` / `loop.inject` / `loop.resolve` · `op.*` (read / edit / find / exec / send…) · `log.read` · `run.fork`. Streams: `log/entry` → … → `loop/terminated`, plus `loop/proposal`, `telemetry/event`. Full live catalog: the `discover` RPC.
+Methods: `workspace.*` (create / attach / constrain / list…) · `loop.run` / `loop.inject` / `loop.resolve` · `op.*` (read / edit / find / exec / send…) · `log.read` · `run.fork`. Streams: `log/entry` → … → `loop/terminated`, plus `loop/proposal`, `telemetry/event`. Full live catalog: the `discover` RPC.
 
 ```
-ws connect → session.create({ projectRoot }) → loop.run({ prompt })
+ws connect → workspace.create({ projectRoot }) → loop.run({ prompt })
            → read log/entry notifications until loop/terminated
 ```
 

@@ -21,7 +21,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 // Parse one op the way production does, so a bare path carries its REAL parsed shape
 // (LocalPath {kind:"local"}) — the exact thing the model emits, not a hand-built UrlPath.
@@ -35,24 +35,24 @@ const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
 // content into the entry's body channel under the namespace-absolute key `/${pathname}`.
 const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<void> => {
     if (ctx.mimetypes === undefined) throw new Error("addMember: ctx.mimetypes required");
-    const row = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string }>({ id: ctx.sessionId });
+    const row = await (ctx.db.envelope_get_workspace as PrepMethod).get<{ project_root: string }>({ id: ctx.workspaceId });
     const canonical = join(row?.project_root ?? "", pathname);
     const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
     const content = await readFile(canonical, "utf8");
     await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
 };
 
-const withSessionWorkspace = async (fn: (root: string, ctx: PlurnkSchemeContext, db: Db) => Promise<void>): Promise<void> => {
+const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db: Db) => Promise<void>): Promise<void> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-uri-"));
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `uri-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: root });
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1);
+        const workspaceId = await insertWorkspace(db, `uri-${crypto.randomUUID()}`);
+        await (db.test_set_session_project_root as PrepMethod).run({ id: workspaceId, project_root: root });
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, sessionId, runId, loopId, turnId,
+            db, workspaceId, workerId, loopId, turnId,
             writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(root, ctx, db);
@@ -68,7 +68,7 @@ const withSessionWorkspace = async (fn: (root: string, ctx: PlurnkSchemeContext,
 // `notes.md`. FIND must canonicalize and select the member — exactly as READ does.
 // RED until Stage 2 (File.find delegates raw → scope glob `notes.md*` misses `/notes.md`).
 test("contract: FIND(bare path) resolves the canonical-stored member", async () => {
-    await withSessionWorkspace(async (root, ctx) => {
+    await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<FindStatement>("<<FIND(notes.md)::FIND", "FIND");
@@ -81,7 +81,7 @@ test("contract: FIND(bare path) resolves the canonical-stored member", async () 
 // CONTROL [READ × bare local path]. Same condition, the op that already canonicalizes —
 // proves the harness reproduces the real path and isolates FIND as the drift (this passes today).
 test("contract: READ(bare path) resolves the canonical-stored member (control — already correct)", async () => {
-    await withSessionWorkspace(async (root, ctx) => {
+    await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<ReadStatement>("<<READ(notes.md)::READ", "READ");
@@ -94,7 +94,7 @@ test("contract: READ(bare path) resolves the canonical-stored member (control �
 // CONTROL [EDIT × bare local path]. EDIT already canonicalizes (#resolveTarget) — a bare
 // path resolves to the member and proposes (202). Confirms EDIT is not the drift.
 test("contract: EDIT(bare path) resolves the canonical-stored member and proposes (control)", async () => {
-    await withSessionWorkspace(async (root, ctx) => {
+    await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<EditStatement>("<<EDIT(notes.md):the codename is dragon:EDIT", "EDIT");
@@ -107,7 +107,7 @@ test("contract: EDIT(bare path) resolves the canonical-stored member and propose
 // on `/notes.md` — pinning the defect to the missing leading-slash canonicalization, not
 // FIND's matcher or candidate logic. GREEN today: proves the one-character fix is the fix.
 test("contract: FIND(/leading-slash) resolves the member — isolates the missing canonicalization", async () => {
-    await withSessionWorkspace(async (root, ctx) => {
+    await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<FindStatement>("<<FIND(/notes.md)::FIND", "FIND");
@@ -124,7 +124,7 @@ test("contract: FIND(/leading-slash) resolves the member — isolates the missin
 // lines it occurs in; READ returns the LINE, not the matched substring. Today the matcher
 // renders `<line>:\t<matched-value>` (the token `phoenix`); the contract wants the line.
 test("[§matcher-result-read-returns-lines] a regex READ returns the matching LINE, not the substring", async () => {
-    await withSessionWorkspace(async (root, ctx) => {
+    await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<ReadStatement>("<<READ(notes.md):#phoenix#:READ", "READ");
@@ -136,7 +136,7 @@ test("[§matcher-result-read-returns-lines] a regex READ returns the matching LI
 // COVERAGE — glob already meets the contract (proof the uniform line-return is achievable):
 // it returns whole matching lines with their non-sequential source numbers. GREEN today.
 test("contract: a glob READ returns whole matching lines with non-sequential source numbers (§matcher-result)", async () => {
-    await withSessionWorkspace(async (root, ctx) => {
+    await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
         const stmt = parseOp<ReadStatement>("<<READ(log.md):*target*:READ", "READ");
@@ -153,7 +153,7 @@ test("contract: a glob READ returns whole matching lines with non-sequential sou
 // value, and the structural match carries no source line — so this can't go green until the
 // daughter reports the line span of each jsonpath hit (the coordination the owner flagged).
 test("contract: a jsonpath READ returns the LINE where the path resolves", async () => {
-    await withSessionWorkspace(async (root, ctx) => {
+    await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
         const stmt = parseOp<ReadStatement>("<<READ(config.json):$.host:READ", "READ");
@@ -166,7 +166,7 @@ test("contract: a jsonpath READ returns the LINE where the path resolves", async
 // preview foists (FIND(file:///**)); confirm it lists every member, and that the bare FIND(**)
 // (no scheme → file) is the same view. #287
 test("contract: FIND(file:///**) and bare FIND(**) both list every tracked member", async () => {
-    await withSessionWorkspace(async (root, ctx) => {
+    await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "a.md"), "alpha");
         await mkdir(join(root, "docs"), { recursive: true });
         await writeFile(join(root, "docs/b.md"), "beta");

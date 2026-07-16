@@ -27,7 +27,7 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "exec-stubborn-reap" });
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-stubborn-reap" });
                 const concluded = subscribeNotifications(ws, "stream/concluded");
                 const run = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a stubborn exec then park", flags: { yolo: true } });
                 const loopId = (run.result as { loopId: number }).loopId;

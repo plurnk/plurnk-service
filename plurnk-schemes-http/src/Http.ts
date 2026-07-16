@@ -58,7 +58,7 @@ const documentation = await readFile(new URL("../docs/http.md", import.meta.url)
 
 // What Http needs from the render foundation — narrow, so tests inject a fake.
 interface Renderer {
-    render(url: string, opts: { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult>;
+    render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult>;
 }
 
 export default class Http implements SchemeHandler {
@@ -72,7 +72,7 @@ export default class Http implements SchemeHandler {
         channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain" },
         defaultChannel: BODY,
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client"],
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
@@ -251,7 +251,7 @@ export default class Http implements SchemeHandler {
                 && /^(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType);
             if (isHtml) {
                 await response.body?.cancel();
-                const result = await this.#browser.render(url, { runId: ctx.runId, signal: local.signal, headers });
+                const result = await this.#browser.render(url, { workerId: ctx.workerId, signal: local.signal, headers });
                 await Http.#writeHeader(ctx, result.status, result.statusText, result.headers);
                 await ctx.subscriptions.notifyChunk(BODY, result.html, "text/html");
                 await ctx.subscriptions.close("done", `rendered HTTP ${result.status}; ${result.html.length} chars`);

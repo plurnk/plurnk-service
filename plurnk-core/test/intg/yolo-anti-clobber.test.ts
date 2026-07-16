@@ -37,7 +37,7 @@ test("[§dual-yolo-stale-clobber-reject] YOLO rejects an EDIT to a file that div
         await withDaemon(mock, async (_db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "clobber", projectRoot: root });
+                await rpcCall(ws, 1, "workspace.create", { name: "clobber", projectRoot: root });
                 // loop 1 — first sight materializes doc.md = V1 (no divergence).
                 await runLoopToTerminal(ws, 2, { prompt: "look", flags: { yolo: true } });
 

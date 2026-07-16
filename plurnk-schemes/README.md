@@ -52,7 +52,7 @@ static manifest: SchemeManifest = {
   channels: { body: "text/markdown" },
   defaultChannel: "body",
   category: "data",
-  scope: "session",
+  scope: "workspace",
   writableBy: ["model", "client"],
   volatile: false,
   modelVisible: true,

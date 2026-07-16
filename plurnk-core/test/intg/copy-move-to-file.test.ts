@@ -13,7 +13,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-grammar";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -22,24 +22,24 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-type Ctx = { db: Db; engine: Engine; sessionId: number; runId: number; loopId: number; turnId: number };
+type Ctx = { db: Db; engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number };
 
 const withWorkspace = async (fn: (root: string, ctx: Ctx) => Promise<void>): Promise<void> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-cpmv-"));
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4) });
-        const sessionId = await insertSession(db, `cpmv-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: root });
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "cpmv");
+        const workspaceId = await insertWorkspace(db, `cpmv-${crypto.randomUUID()}`);
+        await (db.test_set_session_project_root as PrepMethod).run({ id: workspaceId, project_root: root });
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "cpmv");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await fn(root, { db, engine, sessionId, runId, loopId, turnId });
+        await fn(root, { db, engine, workspaceId, workerId, loopId, turnId });
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 };
 
 const seedKnown = (ctx: Ctx, pathname: string, content: string) =>
-    new Known().edit(editStmt(urlPath("known", `/${pathname}`), content), makeSchemeCtx({ db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId }));
+    new Known().edit(editStmt(urlPath("known", `/${pathname}`), content), makeSchemeCtx({ db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId }));
 
 const knownEntry = (ctx: Ctx, pathname: string) =>
     (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "known" });
@@ -50,21 +50,21 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
     const abs = join(root, rel);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, content, "utf8");
-    const seeded = await (ctx.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${rel}` });
+    const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${rel}` });
     await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content, mimetype: "text/plain", tokens: 0 });
     const st = await stat(abs);
     await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: seeded?.id, synced_sig: `${st.mtimeMs}:${st.size}` });
 };
 
 const fileMember = (ctx: Ctx, rel: string) =>
-    (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${rel}` });
+    (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${rel}` });
 
 const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 const proposeAndResolve = async (ctx: Ctx, statement: Parameters<Engine["dispatch"]>[0]["statement"], decision: "accept" | "reject") => {
     const id = deferred<number>();
     const dispatchPromise = ctx.engine.dispatch({
-        statement, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+        statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
         sequence: 1, origin: "model", onDispatch: (logId) => id.resolve(logId),
     });
     const logEntryId = await id.promise;
@@ -135,7 +135,7 @@ test("[§membership-edit-membership-gate] EDIT onto an existing NON-member file 
         // A refused create returns 403 outright — it never PROPOSES (no review to accept), so dispatch directly.
         const result = await ctx.engine.dispatch({
             statement: editStmt(urlPath("file", "/AGENTS.md"), "# the model's clobbering content"),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403, "create over an existing non-member is refused outright, never a proposal, never clobbered");
         assert.equal(await readFile(join(root, "AGENTS.md"), "utf8"), "SECRET untracked policy\n", "the untracked file is untouched");
@@ -166,7 +166,7 @@ test("KILL of a NON-member file is 404 — the model can't delete untracked disk
         await writeFile(join(root, "untracked.txt"), "not yours\n", "utf8"); // on disk, NOT a member
         const result = await ctx.engine.dispatch({
             statement: killStmt(localPath("untracked.txt")),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 404, "a non-member KILL is 404 — invisible, never touched");
         assert.equal(await readFile(join(root, "untracked.txt"), "utf8"), "not yours\n", "the untracked file is untouched");

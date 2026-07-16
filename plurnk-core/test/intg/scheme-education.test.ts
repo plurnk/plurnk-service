@@ -13,20 +13,20 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 test("[§schemes-directory] scheme directory: the packet's `schemes` section is a terse directory below tools; the catalogue left the definition", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `scheme-edu-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `scheme-edu-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
 
         const { turnId } = await engine.runTurn({
-            provider, sessionId, runId, loopId,
+            provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "PLURNK_MD" }, { role: "user", content: "go" }],
         });
 

@@ -1,12 +1,12 @@
 -- Entry CRUD primitives (SPEC §crud). Used by entry-bearing schemes
 -- (known/unknown/skill) and the engine for cross-scheme COPY/MOVE/SEND[410].
 
--- PREP: crud_find_session_entry
+-- PREP: crud_find_workspace_entry
 -- Null-aware scheme comparison: the file scheme is the routing internal
 -- for bare/absolute paths; storage normalizes its rows to scheme=NULL
 -- (Engine.#extractTarget). SQL's `=` doesn't match NULL, so use `IS`.
 SELECT id FROM entries
-WHERE scope = 'session' AND session_id = $session_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE scope = 'workspace' AND workspace_id = $workspace_id AND scheme IS $scheme AND pathname = $pathname;
 
 -- PREP: crud_read_channels
 SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;
@@ -14,32 +14,32 @@ SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;
 -- PREP: crud_read_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
--- PREP: crud_insert_session_entry
-INSERT INTO entries (scope, session_id, scheme, pathname)
-VALUES ('session', $session_id, $scheme, $pathname)
+-- PREP: crud_insert_workspace_entry
+INSERT INTO entries (scope, workspace_id, scheme, pathname)
+VALUES ('workspace', $workspace_id, $scheme, $pathname)
 RETURNING id;
 
--- PREP: crud_find_run_entry
--- Run-scope twin of crud_find_session_entry (§run-scheme). A run entry is keyed
--- (scope='run', scheme='run', pathname); the owning run rides the pathname's first
--- segment (the folded run:// authority), so there is no run_id column.
+-- PREP: crud_find_worker_entry
+-- Run-scope twin of crud_find_workspace_entry (§run-scheme). A run entry is keyed
+-- (scope='worker', scheme='worker', pathname); the owning run rides the pathname's first
+-- segment (the folded worker:// authority), so there is no worker_id column.
 SELECT id FROM entries
-WHERE scope = 'run' AND session_id = $session_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE scope = 'worker' AND workspace_id = $workspace_id AND scheme IS $scheme AND pathname = $pathname;
 
--- PREP: crud_insert_run_entry
-INSERT INTO entries (scope, session_id, scheme, pathname)
-VALUES ('run', $session_id, $scheme, $pathname)
+-- PREP: crud_insert_worker_entry
+INSERT INTO entries (scope, workspace_id, scheme, pathname)
+VALUES ('worker', $workspace_id, $scheme, $pathname)
 RETURNING id;
 
--- PREP: crud_register_session_member
+-- PREP: crud_register_workspace_member
 -- Idempotent bare-membership insert (SPEC §membership D4 — git ls-files membership).
--- A git-tracked file is a session member by virtue of being tracked; the row
+-- A git-tracked file is a workspace member by virtue of being tracked; the row
 -- is the membership marker the File read-gate checks and FIND globs by path.
 -- Channel-less by design — disk stays the truth (D3). ON CONFLICT no-ops so
 -- re-resolving membership each turn never duplicates or churns rows.
-INSERT INTO entries (scope, session_id, scheme, pathname, membership_origin)
-VALUES ('session', $session_id, $scheme, $pathname, $membership_origin)
-ON CONFLICT (session_id, scheme, pathname) WHERE scope = 'session'
+INSERT INTO entries (scope, workspace_id, scheme, pathname, membership_origin)
+VALUES ('workspace', $workspace_id, $scheme, $pathname, $membership_origin)
+ON CONFLICT (workspace_id, scheme, pathname) WHERE scope = 'workspace'
 DO NOTHING
 RETURNING id;
 
@@ -48,7 +48,7 @@ RETURNING id;
 -- (mtime:size), read before materializing so an unchanged file short-circuits
 -- before any content read. Null-aware scheme (file members store scheme=NULL).
 SELECT id, synced_sig FROM entries
-WHERE scope = 'session' AND session_id = $session_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE scope = 'workspace' AND workspace_id = $workspace_id AND scheme IS $scheme AND pathname = $pathname;
 
 -- PREP: crud_set_synced_sig
 -- Stamp the disk signature after a member materializes to disk truth; the next
@@ -80,22 +80,22 @@ DELETE FROM entry_tags WHERE entry_id = $entry_id AND tag = $tag;
 DELETE FROM entries WHERE id = $entry_id;
 
 -- PREP: crud_list_reconcilable_members
--- Overlay-owned file members of a session (membership_origin IN git, constraint).
+-- Overlay-owned file members of a workspace (membership_origin IN git, constraint).
 -- The reconciliation set: resolveGitMembership compares this against the desired
 -- ((git ls-files ∪ add) − ignore) and un-registers the difference, so entries ==
 -- members. Model-created ('client') members are excluded — not git's to reclaim.
 SELECT id, pathname FROM entries
-WHERE scope = 'session' AND session_id = $session_id AND scheme IS NULL AND membership_origin IN ('git', 'constraint');
+WHERE scope = 'workspace' AND workspace_id = $workspace_id AND scheme IS NULL AND membership_origin IN ('git', 'constraint');
 
--- PREP: crud_insert_session_constraint
+-- PREP: crud_insert_workspace_constraint
 -- SPEC §membership constraint overlay — the client supersede. Idempotent per
--- (session, effect, glob); effect ∈ {add, ignore, read-only}.
-INSERT OR IGNORE INTO session_constraints (session_id, effect, glob)
-VALUES ($session_id, $effect, $glob);
+-- (workspace, effect, glob); effect ∈ {add, ignore, read-only}.
+INSERT OR IGNORE INTO workspace_constraints (workspace_id, effect, glob)
+VALUES ($workspace_id, $effect, $glob);
 
--- PREP: crud_list_session_constraints
-SELECT effect, glob FROM session_constraints WHERE session_id = $session_id;
+-- PREP: crud_list_workspace_constraints
+SELECT effect, glob FROM workspace_constraints WHERE workspace_id = $workspace_id;
 
--- PREP: crud_delete_session_constraint
+-- PREP: crud_delete_workspace_constraint
 -- "remove" a constraint — deleting the row, not a fourth effect.
-DELETE FROM session_constraints WHERE session_id = $session_id AND effect = $effect AND glob = $glob;
+DELETE FROM workspace_constraints WHERE workspace_id = $workspace_id AND effect = $effect AND glob = $glob;

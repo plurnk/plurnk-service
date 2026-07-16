@@ -103,13 +103,13 @@ export interface Provider {
     // so a constrained consumer is expected to pass it. Policy stays the
     // consumer's; the provider only transports.
     //
-    // `runId` is the REQUIRED, opaque, stable identity of the consumer's work
+    // `workerId` is the REQUIRED, opaque, stable identity of the consumer's work
     // stream (loop/run). Providers MAY key backend affinity on it — e.g.
     // llama-server slot pinning for KV-cache reuse — and MUST NOT interpret
     // its content. The consumer never sees or chooses backend resources
     // (slot integers, connections); the *mechanism* is the provider's (#11).
     //
-    // `attributions` (per-turn, runtime-observed) and `client` (session-stable,
+    // `attributions` (per-turn, runtime-observed) and `client` (workspace-stable,
     // self-identified) are first-party telemetry the consumer hands down: which
     // installed plugin packages dispatched this turn, and which frontend
     // originated the run. They are forwarded ONLY by a provider whose spec opts
@@ -133,13 +133,13 @@ export interface Provider {
     // else. Headers only — the packet NEVER carries strike state (the model must
     // not see engine accounting; it would become a metric to game).
     //
-    // `sessionId`/`loop`/`turn` (#404, per #391) are the turn COORDINATE — the
+    // `workspaceId`/`loop`/`turn` (#404, per #391) are the turn COORDINATE — the
     // daemon-side sequence of the turn being generated, which the endpoint can
-    // never scrape from the wire. Forwarded as `Plurnk-Session-Id`/`Plurnk-Loop`/
+    // never scrape from the wire. Forwarded as `Plurnk-Workspace-Id`/`Plurnk-Loop`/
     // `Plurnk-Turn` ONLY under the same firstPartyMetadata gate; dropped
     // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
     // strikes-style zero exception). Headers only, never the packet.
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sessionId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
+    generate(args: { messages: ChatMessage[]; workerId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
     // The model's context window in tokens. The provider RESOLVES it (operator pin
     // -> live probe -> @plurnk/plurnk-models catalog). A CLOUD provider (no probe)
     // FAILS AT CONSTRUCTION when it can't (#419/#417: never budget against a wrong

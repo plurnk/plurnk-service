@@ -8,14 +8,14 @@ import Known from "../../src/schemes/Known.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, foldStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    return { db, sessionId, runId };
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    return { db, workspaceId, workerId };
 };
 
 // Seed a multi-channel exec entry (stdout + stderr) directly, bypassing the
@@ -24,14 +24,14 @@ const setup = async () => {
 // manifest (defaultChannel="stdout").
 const seedExecEntry = async (
     db: Db,
-    sessionId: number,
-    runId: number,
+    workspaceId: number,
+    workerId: number,
     pathname: string,
     stdout: string,
     stderr: string,
 ): Promise<number> => {
     const entryId = await seedEntryWithChannel(db, {
-        sessionId, runId, scheme: "exec", pathname, channel: "stdout", content: stdout, mimetype: "text/stream",
+        workspaceId, workerId, scheme: "exec", pathname, channel: "stdout", content: stdout, mimetype: "text/stream",
     });
     // Second channel on the SAME entry — the (entry_id, name) keying means a
     // distinct name is a distinct row under the same entry.
@@ -42,19 +42,19 @@ const seedExecEntry = async (
 };
 
 test("[§channel-selection-fragment-selects-named-channel] fragment targets the named channel; fragment-less targets default", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seedExecEntry(db, sessionId, runId, "/run/abc", "OUT-content", "ERR-content");
+        await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
         const exec = new Exec();
 
         // Fragment `#stderr` selects the named (non-default) channel.
-        const frag = await exec.read(readStmt(urlPath("exec", "/run/abc", "stderr")), makeSchemeCtx({ db, sessionId }));
+        const frag = await exec.read(readStmt(urlPath("exec", "/run/abc", "stderr")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(frag.status, 200);
         assert.equal(frag.channel, "stderr");
         assert.equal(frag.content, "ERR-content");
 
         // Fragment-less resolves to the scheme's defaultChannel (stdout).
-        const dflt = await exec.read(readStmt(urlPath("exec", "/run/abc")), makeSchemeCtx({ db, sessionId }));
+        const dflt = await exec.read(readStmt(urlPath("exec", "/run/abc")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(dflt.status, 200);
         assert.equal(dflt.channel, "stdout");
         assert.equal(dflt.content, "OUT-content");
@@ -62,20 +62,20 @@ test("[§channel-selection-fragment-selects-named-channel] fragment targets the 
 });
 
 test("[§channel-selection-fragment-on-nonexistent-404] fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         const k = new Known();
 
         // Explicit fragment on a path with no existing entry → 404 (the
         // fragment-targeted write requires the entry to already exist), even
         // when the fragment names the default channel.
-        const missing = await k.edit(editStmt(urlPath("known", "/ghost", "body"), "x"), makeSchemeCtx({ db, sessionId, runId }));
+        const missing = await k.edit(editStmt(urlPath("known", "/ghost", "body"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(missing.status, 404);
         assert.equal(missing.entryId, null);
         assert.equal(missing.channel, "body");
 
         // Fragment-less EDIT to the same (still absent) path creates the entry.
-        const created = await k.edit(editStmt(urlPath("known", "/ghost"), "made"), makeSchemeCtx({ db, sessionId, runId }));
+        const created = await k.edit(editStmt(urlPath("known", "/ghost"), "made"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(created.status, 201);
         assert.equal(created.channel, "body");
         assert.notEqual(created.entryId, null);
@@ -83,10 +83,10 @@ test("[§channel-selection-fragment-on-nonexistent-404] fragment EDIT on absent 
 });
 
 test("[§channels-channels-append-only] channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // Two distinct channel names on one entry are two rows under the same key space.
-        const entryId = await seedExecEntry(db, sessionId, runId, "run/keys", "first-out", "first-err");
+        const entryId = await seedExecEntry(db, workspaceId, workerId, "run/keys", "first-out", "first-err");
         const channels = await (db.test_list_channels_for_entry as PrepMethod).all<{ name: string; content: string }>({ entry_id: entryId });
         assert.deepEqual(channels.map((c) => c.name), ["stderr", "stdout"], "distinct names coexist under one entry");
 
@@ -103,10 +103,10 @@ test("[§channels-channels-append-only] channels are keyed by (entry_id, name); 
 });
 
 test("[§channel-state-schemes-own-state-transitions] the exec scheme transitions channel state across the connection lifecycle", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         const exec = new Exec();
-        const ctx = makeSchemeCtx({ db, sessionId, runId, writer: "model", executors: await testExecutors() });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, writer: "model", executors: await testExecutors() });
         const pathname = "r-statelife";
 
         // Drive the real applyResolution path: it seeds channels as "active",
@@ -132,19 +132,19 @@ test("[§channel-state-schemes-own-state-transitions] the exec scheme transition
 });
 
 test("[§channel-state-state-is-metadata] channel state does not gate reads — errored/closed channels still return content", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // Seed an entry whose channel is in the 'errored' terminal state with
         // partial content still present.
         await seedEntryWithChannel(db, {
-            sessionId, runId, scheme: "known", pathname: "/partial", channel: "body",
+            workspaceId, workerId, scheme: "known", pathname: "/partial", channel: "body",
             content: "partial-but-readable", mimetype: "text/markdown", state: "errored",
         });
         const k = new Known();
 
         // READ returns the accumulated content regardless of the errored state —
         // state is metadata, not an engine gate.
-        const r = await k.read(readStmt(urlPath("known", "/partial")), makeSchemeCtx({ db, sessionId }));
+        const r = await k.read(readStmt(urlPath("known", "/partial")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200, "errored state does not gate the read");
         assert.equal(r.content, "partial-but-readable");
         assert.equal(r.channel, "body");

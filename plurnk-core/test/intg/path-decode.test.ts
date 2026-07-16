@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import { decodePathParens } from "../../src/core/path-decode.ts";
 import Known from "../../src/schemes/Known.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 test("decodePathParens decodes only %28/%29 — other percent-sequences + literal % pass through", () => {
     assert.equal(decodePathParens("/dir/file%28v1%29.txt"), "/dir/file(v1).txt");
@@ -27,9 +27,9 @@ const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", suffix: "", 
 test("an EDIT with percent-encoded parens resolves to the literal-paren entry (#239 item 4)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `paren-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `paren-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
 
         const w = await new Known().edit(editStmt(enc("doc%28v1%29.md"), "paren body"), ctx);
         assert.ok(w.status === 200 || w.status === 201, "the encoded-paren EDIT lands");

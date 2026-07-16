@@ -7,24 +7,24 @@
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 import type { PlurnkStatement, EditStatement } from "@plurnk/plurnk-grammar";
-import SessionSettings from "../core/session-settings.ts";
+import WorkspaceSettings from "../core/workspace-settings.ts";
 import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
 
 export default class LoopDocs {
-    static async materialize(engine: Engine, db: Db, sessionId: number): Promise<void> {
-        const { mdDocs } = await SessionSettings.read(db, sessionId);
-        const docStmts: EditStatement[] = (await SessionSettings.resolveDocs(mdDocs)).map((doc) => ({
+    static async materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
+        const { mdDocs } = await WorkspaceSettings.read(db, workspaceId);
+        const docStmts: EditStatement[] = (await WorkspaceSettings.resolveDocs(mdDocs)).map((doc) => ({
             op: "EDIT", suffix: "", signal: null,
             target: { kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk", username: null, password: null, hostname: null, port: null, pathname: `/${doc.entryName}`, params: {}, fragment: null },
             lineMarker: null, body: doc.content, position: { line: 1, column: 1 },
         }));
-        for (const { name, content } of await engine.docEntries(sessionId)) {
+        for (const { name, content } of await engine.docEntries(workspaceId)) {
             docStmts.push({
                 op: "EDIT", suffix: "", signal: null,
                 target: { kind: "url", raw: `plurnk://docs/${name}.md`, scheme: "plurnk", username: null, password: null, hostname: "docs", port: null, pathname: `/${name}.md`, params: {}, fragment: null },
                 lineMarker: null, body: content, position: { line: 1, column: 1 },
             });
         }
-        if (docStmts.length > 0) await DispatchAsPlurnk.dispatch(engine, db, sessionId, docStmts as PlurnkStatement[]);
+        if (docStmts.length > 0) await DispatchAsPlurnk.dispatch(engine, db, workspaceId, docStmts as PlurnkStatement[]);
     }
 }

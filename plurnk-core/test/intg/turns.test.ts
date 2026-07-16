@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MIN_PACKET = JSON.stringify({
     tokens: 0,
@@ -16,9 +16,9 @@ const MIN_PACKET = JSON.stringify({
 });
 
 const seedLoop = async (db: Db): Promise<number> => {
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    return insertLoop(db, runId, 1);
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    return insertLoop(db, workerId, 1);
 };
 
 const setup = async () => {
@@ -98,10 +98,10 @@ test("turns: (loop_id, sequence) UNIQUE", async () => {
 test("turns: sequence resets per loop", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-turns-crossloop");
-        const runId = await insertRun(db, sessionId);
-        const loopA = await insertLoop(db, runId, 1);
-        const loopB = await insertLoop(db, runId, 2);
+        const workspaceId = await insertWorkspace(db, "ws-turns-crossloop");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopA = await insertLoop(db, workerId, 1);
+        const loopB = await insertLoop(db, workerId, 2);
         await (db.test_turns_insert as PrepMethod).run({ loop_id: loopA, sequence: 1, status: 200, packet: MIN_PACKET });
         await (db.test_turns_insert as PrepMethod).run({ loop_id: loopB, sequence: 1, status: 200, packet: MIN_PACKET });
         const count = (await (db.test_turns_count_all as PrepMethod).get<{ n: number }>())?.n;
@@ -170,14 +170,14 @@ test("turns: ON DELETE CASCADE via loop", async () => {
     } finally { await db.close(); }
 });
 
-test("turns: CASCADE chain session→runs→loops→turns", async () => {
+test("turns: CASCADE chain workspace→runs→loops→turns", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-turns-fullchain");
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1);
+        const workspaceId = await insertWorkspace(db, "ws-turns-fullchain");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
         await (db.test_turns_insert as PrepMethod).run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
-        await (db.test_sessions_delete as PrepMethod).run({ id: sessionId });
+        await (db.test_sessions_delete as PrepMethod).run({ id: workspaceId });
         const remaining = (await (db.test_turns_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }

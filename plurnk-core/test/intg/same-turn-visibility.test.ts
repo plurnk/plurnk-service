@@ -18,7 +18,7 @@ test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME 
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "probe360" });
+            await rpcCall(ws, 1, "workspace.create", { name: "probe360" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
             assert.equal(finalStatus, 200);
             await flush();

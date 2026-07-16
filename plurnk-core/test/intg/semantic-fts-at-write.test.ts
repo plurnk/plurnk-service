@@ -1,5 +1,5 @@
 // §semantic-fts-at-write — the keyword half of the ~fusion indexes AT THE WRITE, so a
-// cold session's first query narrows over everything ever written (no pump required).
+// cold workspace's first query narrows over everything ever written (no pump required).
 // Default test env: embedder OFF → the ~<K> form is the pure FTS keyword rank, which is
 // exactly the half this anchor pins. Deletion drops the keyword row with the entry.
 
@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, UrlPath, MatcherBody } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `known:///${pathname}`, scheme: "known",
@@ -24,12 +24,12 @@ const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement 
     position: { line: 1, column: 1 },
 });
 
-test("[§semantic-fts-at-write] a cold session's first keyword ~query finds what was just written — no pump ever ran", async () => {
+test("[§semantic-fts-at-write] a cold workspace's first keyword ~query finds what was just written — no pump ever ran", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ftsw-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes: DEFAULT_MIMETYPES });
+        const workspaceId = await insertWorkspace(db, `ftsw-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
         await new Known().edit(editStmt(url("alpha.md"), "the flux capacitor hums quietly"), ctx);
         await new Known().edit(editStmt(url("beta.md"), "an unrelated grocery list"), ctx);
         const r = await new Known().find(semanticStmt(url(""), "flux capacitor", 5), ctx);

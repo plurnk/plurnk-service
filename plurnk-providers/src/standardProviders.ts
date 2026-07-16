@@ -362,7 +362,7 @@ const probeModelsRetrying = async (chatUrl: string, headers: Record<string, stri
 };
 
 // Slot count from llama-server's /props (total_slots) — the valid id_slot
-// range for session pinning. Only queried after the llama-server fingerprint
+// range for workspace pinning. Only queried after the llama-server fingerprint
 // confirms; same best-effort posture as the models probe.
 const probeSlotCount = async (chatUrl: string, headers: Record<string, string>, fetchTimeoutMs: number): Promise<number | null> => {
     const propsUrl = chatUrl.replace(/\/v1\/chat\/completions$/, "/props");

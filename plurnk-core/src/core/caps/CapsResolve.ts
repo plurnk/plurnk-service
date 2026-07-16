@@ -8,8 +8,8 @@ import type { PrepMethod } from "../Db.ts";
 
 export default class CapsResolve {
     static async entryId(ctx: PlurnkSchemeContext, scheme: string | null, pathname: string): Promise<number | null> {
-        const row = await (ctx.db.crud_find_session_entry as PrepMethod).get<{ id: number }>({
-            session_id: ctx.sessionId, scheme, pathname,
+        const row = await (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+            workspace_id: ctx.workspaceId, scheme, pathname,
         });
         return row?.id ?? null;
     }

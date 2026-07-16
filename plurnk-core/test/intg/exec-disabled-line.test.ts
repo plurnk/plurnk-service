@@ -15,7 +15,7 @@ test("ask mode: the capability sheet says EXEC is disabled — positively, not b
     await withDaemon(answer(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "ask-disabled-line" });
+            await rpcCall(ws, 1, "workspace.create", { name: "ask-disabled-line" });
             const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "what is 2+2?", flags: { mode: "ask" } });
             const turn = await (db.test_first_turn_for_loop as PrepMethod).get<{ packet: string }>({ loop_id: loopId });
             assert.match(turn!.packet, /EXEC operations are disabled for this loop/, "the disabled line rides the sheet");
@@ -28,7 +28,7 @@ test("act mode: no disabled line — the runtimes advertise normally", async () 
     await withDaemon(answer(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "act-no-line" });
+            await rpcCall(ws, 1, "workspace.create", { name: "act-no-line" });
             const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "what is 2+2?" });
             const turn = await (db.test_first_turn_for_loop as PrepMethod).get<{ packet: string }>({ loop_id: loopId });
             assert.doesNotMatch(turn!.packet, /EXEC operations are disabled/, "act mode never carries the negative line");

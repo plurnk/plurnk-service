@@ -4,8 +4,8 @@
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-run, 1-based.
-INSERT INTO loops (run_id, sequence, status, prompt)
-VALUES ($run_id, $sequence, 100, $prompt)
+INSERT INTO loops (worker_id, sequence, status, prompt)
+VALUES ($worker_id, $sequence, 100, $prompt)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
@@ -16,19 +16,19 @@ UPDATE loops
 SET status = 102
 WHERE id = (
     SELECT id FROM loops
-    WHERE run_id = $run_id AND status = 100
+    WHERE worker_id = $worker_id AND status = 100
     ORDER BY sequence ASC
     LIMIT 1
 )
 RETURNING id, sequence, prompt, flags;
 
--- PREP: drain_current_loop_for_run
+-- PREP: drain_current_loop_for_worker
 -- The run's current NON-TERMINAL loop — active (102) or parked (202). At most one per run
 -- under drain semantics. Engine.inject uses it to write the prompt entry for the right loop's
 -- next turn; including 202 lets an irc target a PARKED loop's resume turn (#55) instead of
 -- orphaning it with a fresh loop. (102 preferred if both somehow exist.)
 SELECT id, sequence FROM loops
-WHERE run_id = $run_id AND status IN (102, 202)
+WHERE worker_id = $worker_id AND status IN (102, 202)
 ORDER BY (status = 102) DESC, sequence ASC
 LIMIT 1;
 
@@ -37,11 +37,11 @@ LIMIT 1;
 -- the path of the prompt entry it should write (plurnk://prompt/<run>/<loop>/<N>).
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
--- PREP: drain_get_run_session
--- Resolve runId → sessionId. Needed when wake/inject paths only have the
--- runId (e.g., a stream concluded in run X; daemon needs the session
--- context to write entries under the run's session scope).
-SELECT session_id FROM runs WHERE id = $run_id;
+-- PREP: drain_get_worker_workspace
+-- Resolve workerId → workspaceId. Needed when wake/inject paths only have the
+-- workerId (e.g., a stream concluded in run X; daemon needs the workspace
+-- context to write entries under the run's workspace scope).
+SELECT workspace_id FROM workers WHERE id = $worker_id;
 
 -- PREP: drain_get_latest_prompt_body_for_loop
 -- Sources packet.user.prompt at packet-build time. plurnk://prompt/<run>/<loop>/<N>
@@ -99,26 +99,26 @@ LIMIT 1;
 -- PREP: drain_find_slept_loop
 -- A run's parked (slept) loop — SEND[202] suspends it at status 202, resumable by a wake
 -- (§run-lifecycle-wake-liveness). A run parks one at a time; take the most recent.
-SELECT id FROM loops WHERE run_id = $run_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
+SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
 
 -- PREP: drain_resume_slept_loop
 -- Re-queue a slept (202) loop to status 100 so the drain re-claims and CONTINUES it. The
 -- engine's next-turn-sequence is DB-derived, so the resumed loop foists no prompt (seq > 1).
 UPDATE loops SET status = 100 WHERE id = $loop_id AND status = 202;
 
--- PREP: drain_run_min_poll
+-- PREP: drain_worker_min_poll
 -- grammar 0.74.20 EXEC `<T,P>` — the tightest poll cadence (seconds) among a run's OPEN
 -- polled subscriptions. NULL when the run holds no polled stream → no hibernation poll-wake.
 SELECT MIN(poll_seconds) AS poll_seconds
-FROM subscriptions WHERE run_id = $run_id AND closed_at IS NULL AND poll_seconds IS NOT NULL;
+FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL AND poll_seconds IS NOT NULL;
 
--- PREP: run_parent_id
--- A run's parent (run:// spawn / fork set parent_run_id, §lifecycle-terms). NULL = a root run.
+-- PREP: worker_parent_id
+-- A run's parent (worker:// spawn / fork set parent_worker_id, §lifecycle-terms). NULL = a root run.
 -- Used at drain-exit to wake a parent that parked awaiting this child (§run-lifecycle topology join).
-SELECT parent_run_id FROM runs WHERE id = $run_id;
+SELECT parent_worker_id FROM workers WHERE id = $worker_id;
 
 -- PREP: drain_active_loop_flags
 -- #368 — the LIVE loop's persisted flags for the fold-posture guard: an inject carrying flags
 -- that differ from the loop it would fold into is refused, never a silent posture discard.
 -- The run's currently-executing loop is its most recent non-terminal one.
-SELECT id, flags FROM loops WHERE run_id = $run_id AND status IN (100, 102) ORDER BY sequence DESC LIMIT 1;
+SELECT id, flags FROM loops WHERE worker_id = $worker_id AND status IN (100, 102) ORDER BY sequence DESC LIMIT 1;

@@ -8,14 +8,14 @@
 // Run + digest (bin/digest.ts) to analyze the failure together.
 //
 // Driven through the REAL prod loop (loop.run via the daemon). The ceiling is a
-// tasteful .env tuning — set before liveSession boots the daemon so its engine
+// tasteful .env tuning — set before liveWorkspace boots the daemon so its engine
 // captures it at construction; project_root + PLURNK_SERVICE_GIT_AUTO give the fixture's
 // git files as members the production way (no hand-registered catalog).
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop, pinAliasPartition } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -52,7 +52,7 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
     // Rides the active alias's suffix — bare is overridden by the model's own .env window knobs.
     const restore = pinAliasPartition({ CONTEXT_WINDOW: String(CEILING + 8192), REASONING: "0", COMPLETION: "8192", SAFETY: "0" });
     try {
-        const s = await liveSession({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+        const s = await liveWorkspace({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {
             const { finalStatus, turnIds } = await liveLoop(s, 2, { prompt: userPromptText }, { timeoutMs: 240_000 });
 

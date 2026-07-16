@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (command: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: null, target: null,
@@ -39,15 +39,15 @@ test("Engine.dispatch: KILL aborts a running (backgrounded) exec — 200, spawn 
         const registry = new SchemeRegistry();
         const engine = new Engine({ db, schemes: registry });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `exec-kill-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "exec kill test");
+        const workspaceId = await insertWorkspace(db, `exec-kill-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "exec kill test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         // Background a long sleep (host effect → proposes 202; accept → spawns).
         const idD = deferred<number>();
         const execPromise = engine.dispatch({
-            statement: execStmt("sleep 30"), sessionId, runId, loopId, turnId,
+            statement: execStmt("sleep 30"), workspaceId, workerId, loopId, turnId,
             sequence: 1, origin: "model", onDispatch: (id) => idD.resolve(id),
         });
         const execLogId = await idD.promise;
@@ -62,18 +62,18 @@ test("Engine.dispatch: KILL aborts a running (backgrounded) exec — 200, spawn 
 
         // The spawn is registered + in-flight.
         const exec = registry.get("exec") as unknown as Exec;
-        assert.equal(exec.hasActiveSpawns(runId), true, "the sleep must be in-flight before KILL");
+        assert.equal(exec.hasActiveSpawns(workerId), true, "the sleep must be in-flight before KILL");
 
         // KILL it by coordinate.
         const kill = await engine.dispatch({
-            statement: killExec(pathname), sessionId, runId, loopId, turnId,
+            statement: killExec(pathname), workspaceId, workerId, loopId, turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200, "KILL on a running exec returns 200");
 
         // The abort tears the child down; idle() drains the killed spawn.
         await exec.idle();
-        assert.equal(exec.hasActiveSpawns(runId), false, "the killed spawn must be drained");
+        assert.equal(exec.hasActiveSpawns(workerId), false, "the killed spawn must be drained");
     } finally { await db.close(); }
 });
 
@@ -83,15 +83,15 @@ test("Engine.dispatch: KILL on an unknown exec coordinate → 404 (#203 matrix)"
         const registry = new SchemeRegistry();
         const engine = new Engine({ db, schemes: registry });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `exec-kill-404-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "kill 404 test");
+        const workspaceId = await insertWorkspace(db, `exec-kill-404-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "kill 404 test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         // No spawn was ever stamped at this coordinate — exec is model-writable
         // (no 403 confound), so kill() resolves the closed-subscription lookup to 404.
         const r = await engine.dispatch({
-            statement: killExec("/sh/9/9/9"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            statement: killExec("/sh/9/9/9"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 404, "KILL on a coordinate that was never spawned is 404");
     } finally { await db.close(); }

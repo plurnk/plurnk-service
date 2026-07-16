@@ -1,8 +1,8 @@
--- INIT: sessions
+-- INIT: workspaces
 -- project_root: workspace pointer. NULL = headless (no disk side-effects);
 -- non-null = absolute path to the client's source tree, supplied at
--- session.create or session.set_root.
-CREATE TABLE IF NOT EXISTS sessions (
+-- workspace.create or workspace.set_root.
+CREATE TABLE IF NOT EXISTS workspaces (
     id                        INTEGER NOT NULL PRIMARY KEY,
     version                   INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     name                      TEXT    NOT NULL UNIQUE CHECK (length(name) > 0),
@@ -10,35 +10,35 @@ CREATE TABLE IF NOT EXISTS sessions (
     cost_pico                 INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     scheme_registry_additions TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(scheme_registry_additions)),
     project_root              TEXT,
-    -- #231 client-chosen session-open context: { manifestItems?, mdDocs? }, read at turn-0
+    -- #231 client-chosen workspace-open context: { manifestItems?, mdDocs? }, read at turn-0
     -- with precedence over env (manifestItems replaces PLURNK_MANIFEST_ITEMS; mdDocs unions PLURNK_MD_*).
     settings                  TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(settings))
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS sessions_created_at ON sessions (created_at);
+CREATE INDEX IF NOT EXISTS sessions_created_at ON workspaces (created_at);
 
 -- INIT: runs
-CREATE TABLE IF NOT EXISTS runs (
+CREATE TABLE IF NOT EXISTS workers (
     id            INTEGER NOT NULL PRIMARY KEY,
     version       INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-    session_id    INTEGER NOT NULL,
+    workspace_id    INTEGER NOT NULL,
     name          TEXT    NOT NULL CHECK (length(name) > 0),
     created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    -- runs fork via parent_run_id; sessions carry no parent — §machine-processes-no-fork-session
-    parent_run_id INTEGER          CHECK (parent_run_id IS NULL OR parent_run_id != id),
+    -- runs fork via parent_worker_id; workspaces carry no parent — §machine-processes-no-fork-workspace
+    parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     cost_pico     INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     origin        TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
-    FOREIGN KEY (session_id)    REFERENCES sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_run_id) REFERENCES runs(id)     ON DELETE CASCADE
+    FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_worker_id) REFERENCES workers(id)     ON DELETE CASCADE
 ) STRICT;
 
-CREATE        INDEX IF NOT EXISTS runs_session_id_created_at ON runs (session_id, created_at);
-CREATE        INDEX IF NOT EXISTS runs_parent_run_id         ON runs (parent_run_id);
+CREATE        INDEX IF NOT EXISTS workers_workspace_id_created_at ON workers (workspace_id, created_at);
+CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (parent_worker_id);
 -- NOT unique: a name is frozen per run (§machine-processes-run-origin) but RECLAIMABLE across
 -- time — a terminated run keeps its name in permanent history while a fresh spawn reuses it;
--- run_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Run.edit
--- → run_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
-CREATE        INDEX IF NOT EXISTS runs_session_name          ON runs (session_id, name);
+-- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Run.edit
+-- → worker_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
+CREATE        INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
 
 -- INIT: loops
 -- flags: per-loop runtime flags (yolo, noProposals, noWeb, noInteraction,
@@ -48,7 +48,7 @@ CREATE        INDEX IF NOT EXISTS runs_session_name          ON runs (session_id
 CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
-    run_id   INTEGER NOT NULL,
+    worker_id   INTEGER NOT NULL,
     sequence INTEGER NOT NULL             CHECK (sequence >= 1),
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)),
     prompt   TEXT    NOT NULL,
@@ -71,10 +71,10 @@ CREATE TABLE IF NOT EXISTS loops (
     -- COLLECT and the termination delta render it as a marker ALONGSIDE terminal_message — the
     -- model's words are never rewritten; the engine's act is named.
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by IN ('collapse', 'cancel')),
-    FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS loops_run_id_sequence ON loops (run_id, sequence);
+CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
 
 -- §run-scheme: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- runs pull the termination as a folded ambient delta — caught uniformly across every
@@ -128,8 +128,8 @@ CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
-    scope      TEXT    NOT NULL             CHECK (scope IN ('session', 'run')),
-    session_id INTEGER,
+    scope      TEXT    NOT NULL             CHECK (scope IN ('workspace', 'worker')),
+    workspace_id INTEGER,
     scheme     TEXT                         CHECK (scheme IS NULL OR length(scheme) > 0),
     username   TEXT,
     password   TEXT,
@@ -155,16 +155,16 @@ CREATE TABLE IF NOT EXISTS entries (
     -- signature changed; an unchanged member is a no-op. NULL = never synced.
     synced_sig TEXT,
     -- User Note 5 — manifest cache-friendliness. Last-modified stamp, bumped on every
-    -- channel write by entries_touch_on_channel_write; engine_list_session_entries orders
+    -- channel write by entries_touch_on_channel_write; engine_list_workspace_entries orders
     -- the catalog by it ASC so dormant entries hold the stable prompt-cache prefix.
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    CHECK (session_id IS NOT NULL),
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    CHECK (workspace_id IS NOT NULL),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS entries_session_identity ON entries (session_id, scheme, pathname) WHERE scope = 'session';
--- §run-scheme — run-scope entries key (session, scheme='run', pathname='/<owner>/<path>'); the owner rides the pathname (no run_id).
-CREATE UNIQUE INDEX IF NOT EXISTS entries_run_identity ON entries (session_id, scheme, pathname) WHERE scope = 'run';
+CREATE UNIQUE INDEX IF NOT EXISTS entries_workspace_identity ON entries (workspace_id, scheme, pathname) WHERE scope = 'workspace';
+-- §run-scheme — run-scope entries key (workspace, scheme='run', pathname='/<owner>/<path>'); the owner rides the pathname (no worker_id).
+CREATE UNIQUE INDEX IF NOT EXISTS entries_worker_identity ON entries (workspace_id, scheme, pathname) WHERE scope = 'worker';
 
 -- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.
@@ -206,7 +206,7 @@ CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);
 -- `symbols` channel. Qualified path = container ? container || '.' || name : name.
 CREATE TABLE IF NOT EXISTS symbol_defs (
     id         INTEGER NOT NULL PRIMARY KEY,
-    session_id INTEGER NOT NULL,
+    workspace_id INTEGER NOT NULL,
     entry_id   INTEGER NOT NULL,
     name       TEXT    NOT NULL CHECK (length(name) > 0),
     kind       TEXT    NOT NULL,
@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS symbol_defs (
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (session_id, name);
+CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (workspace_id, name);
 
 -- INIT: symbol_refs
 -- @graph EDGES (plurnk-service#186), from mimetypes' `references` channel.
@@ -225,7 +225,7 @@ CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (session_id, name);
 -- type|use (frozen, edge metadata only — traversal is kind-agnostic).
 CREATE TABLE IF NOT EXISTS symbol_refs (
     id         INTEGER NOT NULL PRIMARY KEY,
-    session_id INTEGER NOT NULL,
+    workspace_id INTEGER NOT NULL,
     entry_id   INTEGER NOT NULL,
     name       TEXT    NOT NULL CHECK (length(name) > 0),
     kind       TEXT    NOT NULL,
@@ -235,8 +235,8 @@ CREATE TABLE IF NOT EXISTS symbol_refs (
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (session_id, name);
-CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (session_id, entry_id, container);
+CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (workspace_id, name);
+CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (workspace_id, entry_id, container);
 
 -- INIT: entry_fts (~semantic FTS half — plurnk-service#186)
 -- Keyword/content index over entry body content; the FTS5 rowid IS entries.id.
@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
 
-    run_id          INTEGER NOT NULL,
+    worker_id          INTEGER NOT NULL,
     loop_id         INTEGER NOT NULL,
     turn_id         INTEGER NOT NULL,
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
@@ -331,13 +331,13 @@ CREATE TABLE IF NOT EXISTS log_entries (
 
     expanded         INTEGER NOT NULL DEFAULT 1 CHECK (expanded IN (0, 1)),
 
-    FOREIGN KEY (run_id)  REFERENCES runs(id)  ON DELETE CASCADE,
+    FOREIGN KEY (worker_id)  REFERENCES workers(id)  ON DELETE CASCADE,
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (turn_id, sequence);
-CREATE        INDEX IF NOT EXISTS log_entries_run_id           ON log_entries (run_id);
+CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries (worker_id);
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
 
@@ -358,7 +358,7 @@ CREATE INDEX IF NOT EXISTS log_tags_tag ON log_tags (tag);
 -- outcome, status_rx, rx, expanded.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
-    run_id, loop_id, turn_id, sequence, at, origin, source,
+    worker_id, loop_id, turn_id, sequence, at, origin, source,
     op, suffix, signal,
     scheme, username, password, hostname,
     port, pathname, params, fragment,
@@ -375,7 +375,7 @@ CREATE TABLE IF NOT EXISTS schemes (
     name                 TEXT    NOT NULL PRIMARY KEY CHECK (length(name) > 0),
     model_visible        INTEGER NOT NULL             CHECK (model_visible IN (0, 1)),
     category             TEXT    NOT NULL             CHECK (length(category) > 0),
-    default_scope        TEXT    NOT NULL             CHECK (default_scope IN ('session')),
+    default_scope        TEXT    NOT NULL             CHECK (default_scope IN ('workspace')),
     default_channel      TEXT    NOT NULL             CHECK (length(default_channel) > 0),
     channel_orientations TEXT                         CHECK (channel_orientations IS NULL OR json_valid(channel_orientations)),
     writable_by          TEXT    NOT NULL             CHECK (json_valid(writable_by)),
@@ -397,49 +397,49 @@ CREATE TABLE IF NOT EXISTS providers (
 CREATE INDEX IF NOT EXISTS providers_created_at ON providers (created_at);
 
 -- INIT: cost_rollups
--- Triggers maintaining denormalized cost_pico totals on runs and sessions
+-- Triggers maintaining denormalized cost_pico totals on runs and workspaces
 -- as turns insert/update. Pure denormalization (textbook trigger use);
 -- no branching state-machine logic lives here.
-CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_run
+CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_worker
 AFTER INSERT ON turns
 BEGIN
-    UPDATE runs
+    UPDATE workers
        SET cost_pico = cost_pico + NEW.usage_cost_pico
-     WHERE id = (SELECT run_id FROM loops WHERE id = NEW.loop_id);
+     WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
 
-CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_session
+CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_workspace
 AFTER INSERT ON turns
 BEGIN
-    UPDATE sessions
+    UPDATE workspaces
        SET cost_pico = cost_pico + NEW.usage_cost_pico
      WHERE id = (
-         SELECT r.session_id
-           FROM runs r
-           JOIN loops l ON l.run_id = r.id
+         SELECT r.workspace_id
+           FROM workers r
+           JOIN loops l ON l.worker_id = r.id
           WHERE l.id = NEW.loop_id
      );
 END;
 
-CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_run
+CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_worker
 AFTER UPDATE OF usage_cost_pico ON turns
 WHEN NEW.usage_cost_pico != OLD.usage_cost_pico
 BEGIN
-    UPDATE runs
+    UPDATE workers
        SET cost_pico = cost_pico + NEW.usage_cost_pico - OLD.usage_cost_pico
-     WHERE id = (SELECT run_id FROM loops WHERE id = NEW.loop_id);
+     WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
 
-CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_session
+CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_workspace
 AFTER UPDATE OF usage_cost_pico ON turns
 WHEN NEW.usage_cost_pico != OLD.usage_cost_pico
 BEGIN
-    UPDATE sessions
+    UPDATE workspaces
        SET cost_pico = cost_pico + NEW.usage_cost_pico - OLD.usage_cost_pico
      WHERE id = (
-         SELECT r.session_id
-           FROM runs r
-           JOIN loops l ON l.run_id = r.id
+         SELECT r.workspace_id
+           FROM workers r
+           JOIN loops l ON l.worker_id = r.id
           WHERE l.id = NEW.loop_id
      );
 END;
@@ -452,7 +452,7 @@ END;
 CREATE TABLE IF NOT EXISTS subscriptions (
     id           INTEGER NOT NULL PRIMARY KEY,
     version      INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-    run_id       INTEGER NOT NULL,
+    worker_id       INTEGER NOT NULL,
     entry_id     INTEGER NOT NULL,
     scheme       TEXT    NOT NULL CHECK (length(scheme) > 0),
     handle       TEXT    NOT NULL CHECK (length(handle) > 0),
@@ -467,12 +467,12 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
     CHECK ((closed_at IS NULL AND close_status IS NULL)
         OR (closed_at IS NOT NULL AND close_status IS NOT NULL)),
-    FOREIGN KEY (run_id)   REFERENCES runs(id)    ON DELETE CASCADE,
+    FOREIGN KEY (worker_id)   REFERENCES workers(id)    ON DELETE CASCADE,
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_active_one_per_entry
-    ON subscriptions (run_id, entry_id)
+    ON subscriptions (worker_id, entry_id)
     WHERE closed_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
@@ -481,19 +481,19 @@ CREATE INDEX IF NOT EXISTS subscriptions_scheme_active
 
 CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
--- (run_watermarks removed — §env-delta is now pull-from-log, no per-run snapshot.)
+-- (worker_watermarks removed — §env-delta is now pull-from-log, no per-run snapshot.)
 
--- INIT: session_constraints
+-- INIT: workspace_constraints
 -- SPEC §membership constraint overlay — the client's supersede over git membership.
--- Per (session, effect, glob/target): `pick` (members git misses, resolved by a
+-- Per (workspace, effect, glob/target): `pick` (members git misses, resolved by a
 -- targeted client-dictated scan), `hide` (drop git-tracked matches), `view` (member
 -- for read; File.edit rejects the write), `repo` (declare a git repo whose ls-files
 -- join membership, path-prefixed). git-absent, `pick` rows are the sole substrate
 -- source. Composed at membership resolution; node:path.matchesGlob.
-CREATE TABLE IF NOT EXISTS session_constraints (
-    session_id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS workspace_constraints (
+    workspace_id INTEGER NOT NULL,
     effect     TEXT    NOT NULL CHECK (effect IN ('pick', 'hide', 'view', 'repo')),
     glob       TEXT    NOT NULL,
-    PRIMARY KEY (session_id, effect, glob),
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    PRIMARY KEY (workspace_id, effect, glob),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;

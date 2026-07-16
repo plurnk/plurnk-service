@@ -1,5 +1,5 @@
 // Wake-on-completion daemon decision tree (§run-lifecycle-wake-liveness). When an exec
-// spawn concludes (an OPEN stream-status transition), Daemon.#handleWakeRun picks one of:
+// spawn concludes (an OPEN stream-status transition), Daemon.#handleWakeWorker picks one of:
 //   - "no-op-active-loop" — the run has a live drain; the conclusion folds into its next turn
 //   - "resumed-loop" — the run is parked at a slept (202) loop; that SAME loop resumes in place
 //   - "skipped-aborted" — closeStatus=499 (deliberate cancel) — no resume
@@ -47,7 +47,7 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop res
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "exec-wake-dormant" });
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-dormant" });
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
             const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
 
@@ -56,9 +56,9 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop res
             // conclusion; in general a user reply), so loop.run cannot resolve on it without
             // deadlocking the very client that must send that event. Park, resume, and the
             // true terminal all arrive via events. §run-lifecycle-wake-liveness.
-            const firstRun = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", flags: { yolo: true } });
-            const parkedLoop = (firstRun.result as { loopId: number }).loopId;
-            assert.equal((firstRun.result as { finalStatus: number }).finalStatus, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
+            const firstWorker = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", flags: { yolo: true } });
+            const parkedLoop = (firstWorker.result as { loopId: number }).loopId;
+            assert.equal((firstWorker.result as { finalStatus: number }).finalStatus, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
 
             // echo hi is fast; the conclusion fires after the loop sleeps; the daemon
             // RESUMES the same loop; that resumed turn terminates it. Event-driven —
@@ -125,7 +125,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "exec-wake-active" });
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-active" });
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
             await runLoopToTerminal(ws, 2, { prompt: "stay active during exec", flags: { yolo: true } });
@@ -165,7 +165,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "exec-wake-streaming" });
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-streaming" });
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
             const startedAt = Date.now();
@@ -216,8 +216,8 @@ test("[§run-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-spa
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "session.create", { name: "exec-wake-cancelled" });
-            const sessionId = (created.result as { id: number }).id;
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-cancelled" });
+            const workspaceId = (created.result as { id: number }).id;
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream", flags: { yolo: true } });
@@ -225,7 +225,7 @@ test("[§run-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-spa
             // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
             // to open, not a fixed sleep racing the spawn (the flake this replaces).
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -266,7 +266,7 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "exec-cancel-partial" });
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-cancel-partial" });
             const streamEvents = subscribeNotifications(ws, "stream/event");
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 

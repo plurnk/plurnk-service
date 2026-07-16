@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 import { execStmt } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -31,15 +31,15 @@ test(
             const exec = schemes.get("exec") as Exec;
             const engine = new Engine({ db, schemes });
             engine.setExecutors(await testExecutors());
-            const sessionId = await insertSession(db, `exec-env-${crypto.randomUUID()}`);
-            const runId = await insertRun(db, sessionId);
-            const loopId = await insertLoop(db, runId, 1, "exec env scoping");
+            const workspaceId = await insertWorkspace(db, `exec-env-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "exec env scoping");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
             const idDeferred = deferred<number>();
             const dispatchPromise = engine.dispatch({
                 statement: execStmt("sh", `echo "$${CANARY}"`),  // host runtime → propose
-                sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
             });
             const logEntryId = await idDeferred.promise;

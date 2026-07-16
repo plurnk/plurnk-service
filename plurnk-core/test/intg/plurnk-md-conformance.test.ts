@@ -27,7 +27,7 @@ import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStateme
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 // One plurnk.md example (FIND ~query RAG) asserts REAL vector ranking — re-enable the embedder the
 // fast lane turns off (.env.test PLURNK_SERVICE_EMBED_DISABLE=1); --test-isolation scopes this to this file.
@@ -60,20 +60,20 @@ const regex = (pattern: string, flags = ""): MatcherBody =>
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    return { db, sessionId, runId };
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    return { db, workspaceId, workerId };
 };
 
 const seed = async (
     db: import("../../src/core/Db.ts").Db,
-    sessionId: number,
-    runId: number,
+    workspaceId: number,
+    workerId: number,
     entries: Array<[string, string]>,
 ) => {
     const k = new Known();
     for (const [pathname, content] of entries) {
-        await k.edit(editStmt(url(pathname), content), makeSchemeCtx({ db, sessionId, runId }));
+        await k.edit(editStmt(url(pathname), content), makeSchemeCtx({ db, workspaceId, workerId }));
     }
 };
 
@@ -82,22 +82,22 @@ const seed = async (
 // pathname shares no character with it, so a pathname-matcher returns nothing.
 
 test("[plurnk.md-READ-glob-on-content] READ glob body matches entry CONTENT, not pathname", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // pathname "doc" contains no "TODO"; only the content does.
-        await seed(db, sessionId, runId, [["doc", "alpha\nTODO: ship\nbeta"]]);
-        const r = await new Known().read(readStmt(url("doc"), glob("TODO*")), makeSchemeCtx({ db, sessionId }));
+        await seed(db, workspaceId, workerId, [["doc", "alpha\nTODO: ship\nbeta"]]);
+        const r = await new Known().read(readStmt(url("doc"), glob("TODO*")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "2:\tTODO: ship");
     } finally { db.close(); }
 });
 
 test("[plurnk.md-READ-regex-on-content] READ regex body matches entry CONTENT, not pathname", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // pathname "doc" contains no "timeout"; only the content does.
-        await seed(db, sessionId, runId, [["doc", "alpha timeout beta"]]);
-        const r = await new Known().read(readStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, sessionId }));
+        await seed(db, workspaceId, workerId, [["doc", "alpha timeout beta"]]);
+        const r = await new Known().read(readStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         // READ returns the LINE that matched (plurnk.md:31), not the token `timeout`.
         assert.equal(r.content, "1:\talpha timeout beta");
@@ -108,11 +108,11 @@ test("[plurnk.md-READ-regex-on-content] READ regex body matches entry CONTENT, n
 // slot (NOT the body matcher). Read line 2 of a 3-line entry → just that line.
 // Pins the <L>?:body? slot order — the seam the live READ-<2> mis-slot exposed.
 test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot, not the body", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seed(db, sessionId, runId, [["lines", "alpha\nbeta\ngamma"]]);
+        await seed(db, workspaceId, workerId, [["lines", "alpha\nbeta\ngamma"]]);
         const stmt: ReadStatement = { op: "READ", suffix: "", signal: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
-        const r = await new Known().read(stmt, makeSchemeCtx({ db, sessionId }));
+        const r = await new Known().read(stmt, makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);
         assert.doesNotMatch(r.content ?? "", /alpha|gamma/);
@@ -127,13 +127,13 @@ test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot
 // plurnk.md: <<FIND(log:///**/error):/timeout|deadline exceeded/i:FIND
 //   → select entries whose CONTENT matches the regex.
 test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CONTENT, not pathname", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seed(db, sessionId, runId, [
+        await seed(db, workspaceId, workerId, [
             ["alpha", "timeout occurred"], // content matches /timeout/; pathname does not
             ["timeout", "all clear"],      // pathname matches /timeout/; content does not
         ]);
-        const r = await new Known().find(findStmt(url(""), regex("timeout")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), regex("timeout")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///alpha"]);
     } finally { db.close(); }
@@ -142,13 +142,13 @@ test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CO
 // plurnk.md: <<OPEN[france](known:///countries/**):Paris*:OPEN (glob body) — same
 // dispatch as FIND; glob body selects entries whose CONTENT matches.
 test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONTENT, not pathname", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        await seed(db, sessionId, runId, [
+        await seed(db, workspaceId, workerId, [
             ["france/capital", "Paris is the capital"], // content matches Paris*; pathname does not
             ["Paris/note", "see the capital"],          // pathname matches Paris*; content does not
         ]);
-        const r = await new Known().find(findStmt(url(""), glob("Paris*")), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), glob("Paris*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///france/capital"]);
     } finally { db.close(); }
@@ -160,28 +160,28 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
 // prove they are wired through FIND end-to-end on their native mimetypes (NOT 501).
 
 test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by content structure", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // `.json` suffix → application/json mimetype → daughter's deep-json channel.
-        await seed(db, sessionId, runId, [
+        await seed(db, workspaceId, workerId, [
             ["alice.json", '{"admin":true}'],
             ["bob.json", '{"guest":true}'],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$.admin" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$.admin" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///alice.json"]);
     } finally { db.close(); }
 });
 
 test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content structure", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // `.xml` suffix → application/xml mimetype → daughter's deep-xml channel.
-        await seed(db, sessionId, runId, [
+        await seed(db, workspaceId, workerId, [
             ["a.xml", "<root><user>admin</user></root>"],
             ["b.xml", "<root><group>x</group></root>"],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//user" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//user" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.xml"]);
     } finally { db.close(); }
@@ -193,28 +193,28 @@ test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content
 // jsonpath on an XML doc. Source mimetype is irrelevant to the dialect.
 
 test("[plurnk.md-ex-FIND-xpath-on-json] FIND xpath selects JSON entries by structure (over deepXml)", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // JSON content → process() also yields deepXml (`<root><role>…</role></root>`); xpath runs over it.
-        await seed(db, sessionId, runId, [
+        await seed(db, workspaceId, workerId, [
             ["a.json", '{"role":"admin"}'],
             ["b.json", '{"name":"guest"}'],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//role" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//role" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.json"]);
     } finally { db.close(); }
 });
 
 test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by structure (over deepJson)", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         // XML content → process() also yields deepJson (`…attrs.role`); jsonpath runs over it.
-        await seed(db, sessionId, runId, [
+        await seed(db, workspaceId, workerId, [
             ["a.xml", '<root><user role="admin">x</user></root>'],
             ["b.xml", '<root><user name="guest">x</user></root>'],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$..role" }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0 }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$..role" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.xml"]);
     } finally { db.close(); }
@@ -229,13 +229,13 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
 test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         await new Known().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
         await new Known().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
         await EntryManifest.maintainDerivations(ctx);  // store real embeddings via the daughter
-        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0, mimetypes }));
+        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a"]);
     } finally { db.close(); }

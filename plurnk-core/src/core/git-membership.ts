@@ -1,19 +1,19 @@
 // SPEC §membership D4 — git-ls-files workspace membership. §membership-git-membership
 //
-// When a session's `project_root` is a git working tree, the git-tracked
+// When a workspace's `project_root` is a git working tree, the git-tracked
 // files (`git ls-files`) are workspace MEMBERS without any explicit client
 // `pick`. This module resolves that membership and (when token accounting is
 // available) materializes active members' disk content into a body channel,
 // so they appear in the entry catalog (FIND-served) and are READ-able.
 //
 // Decisions realized here:
-//   D1 — workspace identity lives on the session (project_root).
+//   D1 — workspace identity lives on the workspace (project_root).
 //   D3 — disk co-location: members are channel-less markers until materialized;
 //        disk stays the truth.
 //   D4 — git present → ls-files membership. git absent → no fs-walk (this
 //        module no-ops on a non-git project_root, leaving headless / non-git
-//        sessions completely unaffected). The pick/hide/view constraint
-//        overlay (session_constraints) layers on top: resolveMembership applies
+//        workspaces completely unaffected). The pick/hide/view constraint
+//        overlay (workspace_constraints) layers on top: resolveMembership applies
 //        `(ls-files ∪ pick) − hide`; view is enforced at the File edit gate.
 //   D5 — coverage is exhaustive, work is change-gated: every member is stat'd each
 //        turn, but only one whose mtime:size signature changed is re-read,
@@ -36,7 +36,7 @@ import { MimetypeBinary } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
-import SessionSettings from "./session-settings.ts";
+import WorkspaceSettings from "./workspace-settings.ts";
 
 // §env-delta — an ambient disk divergence captured at pre-turn: the entry's content
 // before the git-membership re-read vs the disk content after. The plurnk run narrates
@@ -56,10 +56,10 @@ const nativeGit = (): boolean => process.env.PLURNK_SERVICE_GIT_NATIVE === "1";
 export default class GitMembership {
     static #execFileP = promisify(execFile);
 
-    // project_root for a session. NULL = headless (no membership). Read once per
+    // project_root for a workspace. NULL = headless (no membership). Read once per
     // resolution; the File scheme reads the same column for its own root.
-    static async #loadSessionRoot(db: Db, sessionId: number): Promise<string | null> {
-        const row = await (db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
+    static async #loadWorkspaceRoot(db: Db, workspaceId: number): Promise<string | null> {
+        const row = await (db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
         return row?.project_root ?? null;
     }
 
@@ -108,7 +108,7 @@ export default class GitMembership {
 
     // The forest (SPEC §membership, §membership-forest): union every declared repo's MEMBERS —
     // tracked files PLUS untracked-but-not-ignored ones (§membership-auto-add) — each
-    // path-prefixed by the repo's location relative to the session root (empty prefix when
+    // path-prefixed by the repo's location relative to the workspace root (empty prefix when
     // the repo IS the root). Repos that don't resolve are skipped.
     static async #forestMembers(root: string, repoDirs: string[], signal: AbortSignal | undefined): Promise<string[]> {
         // Resolve every declared entry to its git toplevel, deduped: a glob (`*`) and an
@@ -185,27 +185,27 @@ export default class GitMembership {
     // (derive per-file effect for clients, #243). Headless (no project_root) → null.
     static async #resolveOverlayInputs(
         db: Db,
-        sessionId: number,
+        workspaceId: number,
         signal: AbortSignal | undefined,
     ): Promise<{ root: string; gitMembers: string[]; picked: string[]; hideGlobs: string[]; viewGlobs: string[] } | null> {
-        const root = await GitMembership.#loadSessionRoot(db, sessionId);
+        const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;   // headless — no disk surface to resolve
 
-        const constraints = await (db.crud_list_session_constraints as PrepMethod).all<{ effect: string; glob: string }>({ session_id: sessionId });
+        const constraints = await (db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
         const hideGlobs = constraints.filter((c) => c.effect === "hide").map((c) => c.glob);
         const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
         const viewGlobs = constraints.filter((c) => c.effect === "view").map((c) => c.glob);
 
-        // git substrate — the union of the session's DECLARED repos' MEMBERS: tracked files
+        // git substrate — the union of the workspace's DECLARED repos' MEMBERS: tracked files
         // plus untracked-but-not-ignored ones (§membership-auto-add). PLURNK_SERVICE_GIT_ALLOWED=0 is
         // the hard ceiling (deny all git membership); PLURNK_SERVICE_GIT_AUTO=1 declares project_root
         // as an implicit repo. Empty when git is denied or no declared repo resolves, so
         // `pick` is then the sole source. No early-return on non-git.
         const repoDirs = constraints.filter((c) => c.effect === "repo").map((c) => c.glob); // a declared repo's ls-files join membership, path-prefixed — §membership-overlay-repo
         if (process.env.PLURNK_SERVICE_GIT_AUTO === "1") repoDirs.push(root); // ALLOWED ceiling gates the AUTO default — §membership-git-flags
-        // #232 — git:false is a session-level tighten of the env ALLOWED ceiling (env AND session).
-        const sessionGit = (await SessionSettings.read(db, sessionId)).git;
-        const gitMembers = process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && sessionGit !== false
+        // #232 — git:false is a workspace-level tighten of the env ALLOWED ceiling (env AND workspace).
+        const workspaceGit = (await WorkspaceSettings.read(db, workspaceId)).git;
+        const gitMembers = process.env.PLURNK_SERVICE_GIT_ALLOWED === "1" && workspaceGit !== false
             ? await GitMembership.#forestMembers(root, repoDirs, signal)
             : [];
 
@@ -215,7 +215,7 @@ export default class GitMembership {
         return { root, gitMembers, picked, hideGlobs, viewGlobs };
     }
 
-    // Resolve a session's file membership: the desired set is (git ls-files ∪ pick
+    // Resolve a workspace's file membership: the desired set is (git ls-files ∪ pick
     // globs) − hide globs (SPEC §membership overlay), reconciled against the registered
     // overlay-owned members so entries == members. Channel-less rows — disk is the
     // truth (D3); the row is the membership marker File.read gates on. Returns the
@@ -225,10 +225,10 @@ export default class GitMembership {
     // (no project_root) yields nothing; a non-git root with pick-globs still resolves.
     static async resolveGitMembership(
         db: Db,
-        sessionId: number,
+        workspaceId: number,
         signal: AbortSignal | undefined,
     ): Promise<string[]> {
-        const inputs = await GitMembership.#resolveOverlayInputs(db, sessionId, signal);
+        const inputs = await GitMembership.#resolveOverlayInputs(db, workspaceId, signal);
         if (inputs === null) return [];   // headless — no disk surface to resolve
         const { gitMembers: members, picked, hideGlobs } = inputs;
 
@@ -249,12 +249,12 @@ export default class GitMembership {
         // or 'constraint') no longer desired — untracked, unmatched, or newly hidden.
         // Model-created ('client') members are never reclaimed.
         for (const pathname of desiredGit) {
-            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: `/${pathname}`, membership_origin: "git" });
+            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, scheme: null, pathname: `/${pathname}`, membership_origin: "git" });
         }
         for (const pathname of desiredPick) {
-            await (db.crud_register_session_member as PrepMethod).get({ session_id: sessionId, scheme: null, pathname: `/${pathname}`, membership_origin: "constraint" });
+            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, scheme: null, pathname: `/${pathname}`, membership_origin: "constraint" });
         }
-        const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ session_id: sessionId });
+        const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
         for (const m of registered) {
             if (!desiredSet.has(m.pathname)) {
                 await (db.crud_delete_entry as PrepMethod).run({ entry_id: m.id });
@@ -272,10 +272,10 @@ export default class GitMembership {
     // the manifest + storage. Headless → empty. {§membership-resolved-effects}
     static async resolveMembershipEffects(
         db: Db,
-        sessionId: number,
+        workspaceId: number,
         signal: AbortSignal | undefined,
     ): Promise<{ members: Array<{ path: string; effect: "member" | "view" }>; hidden: string[] }> {
-        const inputs = await GitMembership.#resolveOverlayInputs(db, sessionId, signal);
+        const inputs = await GitMembership.#resolveOverlayInputs(db, workspaceId, signal);
         if (inputs === null) return { members: [], hidden: [] };   // headless
         const { gitMembers, picked, hideGlobs, viewGlobs } = inputs;
         // Match hide/view against the BARE path (client globs are bare, as the edit gate does),
@@ -349,14 +349,14 @@ export default class GitMembership {
             throw err;
         }
         const known = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({
-            session_id: ctx.sessionId, scheme: null, pathname,
+            workspace_id: ctx.workspaceId, scheme: null, pathname,
         });
         if (known !== undefined && known.synced_sig === sig) return null;  // unchanged — the change-gate
 
         const mimetype = await GitMembership.#detectMimetype(canonical, ctx.mimetypes);
         if (MimetypeBinary.isBinaryMimetype(mimetype)) {
             // Empty body channel stamped with the real binary mimetype — a first-
-            // class entry that READ-415s through readSessionEntry's isBinaryMimetype
+            // class entry that READ-415s through readWorkspaceEntry's isBinaryMimetype
             // gate (#186), not a channel-less row that would read as 404.
             const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, null);
             if (r.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: r.entryId, synced_sig: sig });
@@ -384,7 +384,7 @@ export default class GitMembership {
         // the entry: an existing body channel whose content differs from disk is an
         // ambient divergence (D5). writeEntry then refreshes the entry to disk truth.
         const prior = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({
-            session_id: ctx.sessionId, scheme: null, pathname, channel: "body",
+            workspace_id: ctx.workspaceId, scheme: null, pathname, channel: "body",
         });
         const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
         if (result.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: result.entryId, synced_sig: sig });
@@ -397,11 +397,11 @@ export default class GitMembership {
     // Full membership + materialization pass for a run. Registers git members,
     // then materializes each active (on-disk, non-binary) member as an entry
     // through writeEntry. Called at packet-composition time (Engine.runTurn) per
-    // D5. No-ops on headless / non-git sessions.
+    // D5. No-ops on headless / non-git workspaces.
     static async indexGitMembership(ctx: PlurnkSchemeContext): Promise<FsDivergence[]> {
-        const root = await GitMembership.#loadSessionRoot(ctx.db, ctx.sessionId);
+        const root = await GitMembership.#loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) return [];
-        const tracked = await GitMembership.resolveGitMembership(ctx.db, ctx.sessionId, ctx.signal);
+        const tracked = await GitMembership.resolveGitMembership(ctx.db, ctx.workspaceId, ctx.signal);
         const divergences: FsDivergence[] = [];
         for (const pathname of tracked) {
             const divergence = await GitMembership.#materializeMember(pathname, root, ctx);

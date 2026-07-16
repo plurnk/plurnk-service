@@ -54,7 +54,7 @@ interface Provider {
     readonly constrainsOutput?: boolean;
     readonly requiresMaxTokens?: boolean;
 
-    // Transport. `runId` is REQUIRED: the opaque, stable identity of the
+    // Transport. `workerId` is REQUIRED: the opaque, stable identity of the
     // consumer's work stream — providers may key backend affinity on it and
     // never interpret it. `grammar` is an optional GBNF string for
     // grammar-constrained sampling (§13) — attached verbatim by capable
@@ -79,10 +79,10 @@ interface Provider {
     // (0 = clean, distinct from absent = unreported; contract plurnk-service#313).
     // Forwarded as `Plurnk-Strikes` ONLY under the firstPartyMetadata gate,
     // dropped everywhere else. Headers only — never placed in the packet.
-    // `sessionId`/`loop`/`turn` (#404): the turn coordinate, stamped as
-    // `Plurnk-Session-Id`/`Plurnk-Loop`/`Plurnk-Turn` under the SAME gate.
+    // `workspaceId`/`loop`/`turn` (#404): the turn coordinate, stamped as
+    // `Plurnk-Workspace-Id`/`Plurnk-Loop`/`Plurnk-Turn` under the SAME gate.
     // 1-based; absent/0 emits no header. Headers only, never the packet.
-    generate(args: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sessionId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
+    generate(args: { messages: ChatMessage[]; workerId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
 }
 
 interface ProviderResponse {
@@ -124,7 +124,7 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
 - `generate` **returns for every completed exchange — bytes always present, the conformance verdict attached as an observation.** When a grammar was transported (or validated in filter mode), the returned `content` is checked against it; a non-accept verdict rides `response.telemetry` as a `grammar_unenforced` event (message + divergence `position`) and the response returns normally. The provider transports and observes; it never adjudicates — discard, retry, escalate, or feed-back is consumer policy. This is a grammar-**conformance** check against the grammar the provider already holds — *not* a plurnk-DSL parse (that stays consumer-side, below) — so it remains backend- and DSL-agnostic. `ProviderError` remains reserved for exchanges that did NOT complete (transport failure, abort, boundary violations).
-- **Backend affinity is the provider's internal guarantee, keyed by `runId`.** The consumer says *which run this is*, never *which backend resource serves it* — raw resource identifiers (slot integers, connections) never cross the contract in either direction. On slot-pinning backends (llama-server `--parallel N>1`), the provider keeps each run sticky to one slot and spreads distinct runs across slots, so each concurrent run keeps its KV-cache prefix warm (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Backends without affinity semantics ignore `runId` entirely.
+- **Backend affinity is the provider's internal guarantee, keyed by `workerId`.** The consumer says *which run this is*, never *which backend resource serves it* — raw resource identifiers (slot integers, connections) never cross the contract in either direction. On slot-pinning backends (llama-server `--parallel N>1`), the provider keeps each run sticky to one slot and spreads distinct runs across slots, so each concurrent run keeps its KV-cache prefix warm (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Backends without affinity semantics ignore `workerId` entirely.
 
 ## §3 `fromEnv(env, model, options?)` factory
 
@@ -207,7 +207,7 @@ The framework is **contract-only** -- it does **not** depend on its daughters. F
 ## §6 Engine → provider guarantees (consumer side)
 
 - `messages` is a complete prompt. Consumer has pre-assembled all sections. Provider does not add, reorder, or inject turns — the wire `messages` are exactly what the consumer passed. (The provider injects no `PLAN` turn — `PLAN` is part of the consumer's grammar contract, §4.)
-- Every `generate` carries `runId` — the run's stable, opaque identity. Same run → same string across its turns; distinct runs → distinct strings.
+- Every `generate` carries `workerId` — the run's stable, opaque identity. Same run → same string across its turns; distinct runs → distinct strings.
 - `signal` is wired to the run's AbortController.
 - `generate` is single-call per turn. No parallel calls on the same instance.
 - `assistantRaw` is opaque to the consumer (forensics-only).
@@ -303,7 +303,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
   });
   ```
 
-  The `openai` standard provider sets `grammarStyle: "llamacpp"`, `supportsSlotPinning`, and `slotCount` from the same llama-server fingerprint (`/v1/models` `meta` block + `/props`). The run→slot mapping lives inside `OpenAICompatProvider`: sticky per `runId`, round-robin across new runs, LRU-bounded.
+  The `openai` standard provider sets `grammarStyle: "llamacpp"`, `supportsSlotPinning`, and `slotCount` from the same llama-server fingerprint (`/v1/models` `meta` block + `/props`). The run→slot mapping lives inside `OpenAICompatProvider`: sticky per `workerId`, round-robin across new runs, LRU-bounded.
 
 - **`chatCompletionStream` / `chatCompletion` / `OpenAiHttpError` / `StreamResponse`** — the shared HTTP client (`chatCompletionStream` for SSE, `chatCompletion` for the non-streamed JSON the `streaming: false` path uses). One shared copy.
 - **`normalizeUsage(raw, reasoningText?, contentText?)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles all three reasoning-reporting conventions; the optional text args feed the Fireworks re-split, #425) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
@@ -312,7 +312,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 
 A **bespoke sibling** therefore reduces to a thin class whose `fromEnv` probes whatever it needs (model catalog, pricing, context window), builds the config, and returns `new OpenAICompatProvider(config)`. A **standard provider** (§5 tier 1) needs no sibling at all — it's a frozen entry in `STANDARD_PROVIDERS` describing its key var, base-URL var, reasoning style, and tokenizer; `standardProviderFromEnv(name, env, model)` (async — returns `Promise<Provider | null>`) does the rest. The endpoint's **canonical URL ships as a floored default** in `.env.defaults` (set-if-unset, overridable in the operator's env or per-alias); it is read from the base-URL var (or a `baseUrlFromEnv` deriver) with **no in-code default**, the value living in the shipped floor, never baked into the table. Only the API **key** is required operator config (a secret with no default; fail-hard when unset).
 
-The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the consumer's per-turn `generate()` `attributions` (which installed plugin packages dispatched) and `client` (the originating frontend, e.g. `plurnk.nvim/1.4.0`) as `Plurnk-Attribution` / `Plurnk-Client` headers, and the opaque `runId` as `Plurnk-Run-Id` (#26). The gate lives on the provider, not the call site, so these first-party signals are **structurally incapable** of reaching a third-party backend. Empty values emit no header. It also alone sets **`balanceMetaKey: "balance_pico"`** — the top-level response field the plurnk endpoint reports the running account balance (pico-USD) in. `OpenAICompatProvider` surfaces the backend's extra top-level fields as `ProviderResponse.meta` for **every** provider (passed through), and for a provider that set `balanceMetaKey` it additionally normalizes that field into a validated `meta.balancePico`. So `balancePico` appears only from plurnk; the raw pass-through `meta` is general (#23).
+The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the consumer's per-turn `generate()` `attributions` (which installed plugin packages dispatched) and `client` (the originating frontend, e.g. `plurnk.nvim/1.4.0`) as `Plurnk-Attribution` / `Plurnk-Client` headers, and the opaque `workerId` as `Plurnk-Run-Id` (#26). The gate lives on the provider, not the call site, so these first-party signals are **structurally incapable** of reaching a third-party backend. Empty values emit no header. It also alone sets **`balanceMetaKey: "balance_pico"`** — the top-level response field the plurnk endpoint reports the running account balance (pico-USD) in. `OpenAICompatProvider` surfaces the backend's extra top-level fields as `ProviderResponse.meta` for **every** provider (passed through), and for a provider that set `balanceMetaKey` it additionally normalizes that field into a validated `meta.balancePico`. So `balancePico` appears only from plurnk; the raw pass-through `meta` is general (#23).
 
 A spec may carry a **`modelPrefix`** — a constant model-id segment the backend requires but the operator's alias shouldn't repeat. `fireworks` sets `"accounts/fireworks/models/"`, so `PLURNK_MODEL_fast=fireworks/deepseek-v4-pro` carries only the distinctive tail; `standardProviderFromEnv` prepends it idempotently (an already-prefixed id is untouched) to form the wire id, which is **also** the catalog key (models.dev keys fireworks-ai on the full id). Specs without a `modelPrefix` use the model string verbatim.
 

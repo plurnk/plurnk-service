@@ -53,16 +53,16 @@ test("Engine.dispatch: KILL against known:/// permanently deletes the entry (200
     try {
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/obsolete/note"), body: "stale" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("known", "/obsolete/note") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200);
         const read = await engine.dispatch({
             statement: readStmt({ target: urlPath("known", "/obsolete/note") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
         });
         assert.equal(read.status, 404);
     } finally { await db.close(); }
@@ -74,14 +74,14 @@ test("[§scheme-address-namespace-fold] known://x (authority form) folds to the 
         // create via the path form: known:///config.json => /config.json
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/config.json"), body: "host=db.internal" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         // known://config.json => authority "config.json", empty path; #extractTarget folds it to /config.json,
         // the same entry the path form created. Without the fold the authority drops to "" and this 404s.
         const authForm: UrlPath = { kind: "url", raw: "known://config.json", scheme: "known", username: null, password: null, hostname: "config.json", port: null, pathname: "", params: {}, fragment: null };
         const read = await engine.dispatch({
             statement: readStmt({ target: authForm }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
     } finally { await db.close(); }
@@ -92,7 +92,7 @@ test("Engine.dispatch: KILL on a nonexistent entry returns 404", async () => {
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("known", "/never/existed") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(kill.status, 404);
     } finally { await db.close(); }
@@ -103,7 +103,7 @@ test("Engine.dispatch: the KILL body annotation survives into the log row's tx (
     try {
         await engine.dispatch({
             statement: killStmt({ target: urlPath("known", "/gone"), body: "superseded — see /final" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("KILL log_entry not found");
@@ -118,7 +118,7 @@ test("Engine.dispatch: KILL against a non-running exec:/// returns 404 (nothing 
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("exec", "/sh/1/1/2") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(kill.status, 404);
     } finally { await db.close(); }
@@ -129,7 +129,7 @@ test("Engine.dispatch: KILL against log:/// is allowed (erases the row) — a mi
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/0") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "plurnk",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "plurnk",
         });
         // KILL erases log items (plurnk.md:36, :98) — routed to Log.kill, which 404s a missing
         // coordinate. The old "append-only" 405 is gone (it forbade what the grammar requires;
@@ -147,17 +147,17 @@ test("[§model-entry-log-curation] MODEL-origin KILL(log:///…) clears the writ
         // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
         const plan = await engine.dispatch({
             statement: planStmt({ body: "stale reasoning to curate away" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(plan.status, 200);
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200, "the model's log-KILL clears the gate — never a 403");
         const gone = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
         });
         assert.equal(gone.status, 404, "the row was erased — a re-KILL finds nothing");
     } finally { await db.close(); }
@@ -168,7 +168,7 @@ test("Engine.dispatch: PLAN is a logged no-op (200) whose reasoning body survive
     try {
         const plan = await engine.dispatch({
             statement: planStmt({ body: "capital of France is unknown; FIND before READ" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(plan.status, 200);
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ op: string; tx: string }>({ turn_id: env.turnId });
@@ -191,7 +191,7 @@ test("[§op-methods-op-dispatch] Engine.dispatch: EDIT against known:/// routes 
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/france/capital"), body: "Paris", tags: ["france"] }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
@@ -207,17 +207,17 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
     try {
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/x"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{
-            run_id: number; loop_id: number; turn_id: number; sequence: number;
+            worker_id: number; loop_id: number; turn_id: number; sequence: number;
             origin: string; op: string; suffix: string; signal: string | null;
             scheme: string | null; pathname: string | null;
             tx: string; mimetype_tx: string; rx: string; mimetype_rx: string; status_rx: number;
         }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("log_entry not found");
-        assert.equal(log.run_id, env.runId);
+        assert.equal(log.worker_id, env.workerId);
         assert.equal(log.loop_id, env.loopId);
         assert.equal(log.turn_id, env.turnId);
         assert.equal(log.sequence, 1);
@@ -242,12 +242,12 @@ test("Engine.dispatch: READ against known:/// routes to Known.read", async () =>
     try {
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/r"), body: "value" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const result = await engine.dispatch({
             statement: readStmt({ target: urlPath("known", "/r") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);
@@ -260,7 +260,7 @@ test("Engine.dispatch: unknown scheme returns 501 and still writes log row", asy
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("wiki", "/x"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501);
@@ -279,7 +279,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
         };
         const result = await engine.dispatch({
             statement: stmt,
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
@@ -295,12 +295,12 @@ test("Engine.dispatch: multiple actions in one turn — log_entries sequence UNI
     try {
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/a"), body: "1" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/b"), body: "2" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
         const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ sequence: number; pathname: string }>({ turn_id: env.turnId });
@@ -317,7 +317,7 @@ test("Engine.dispatch: signal serialized to JSON in log", async () => {
     try {
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/tagged"), tags: ["france", "europe"], body: "Paris" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ signal: string }>({ turn_id: env.turnId });
@@ -331,7 +331,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
         for (const [i, origin] of (["model", "client", "plurnk", "plugin"] as const).entries()) {
             await engine.dispatch({
                 statement: editStmt({ target: urlPath("known", `/o${i}`), body: "x" }),
-                sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+                workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
                 sequence: i + 1, origin,
             });
         }
@@ -350,7 +350,7 @@ test("[§scheme-surface-writableby-403] Engine.dispatch: a writer outside writab
         // plurnk origin, so a plurnk-origin EDIT 403s at the gate.
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/x"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "plurnk",
         });
         assert.equal(result.status, 403);
@@ -370,7 +370,7 @@ test("Engine.dispatch: model EDIT log:/// clears the gate but 501s — Log's han
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("log", "/x"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501, "op-level refusal (no edit handler), not the writer gate");
@@ -382,7 +382,7 @@ test("Engine.dispatch: model EDIT plurnk:///prompt/* rejected with 403 (engine/c
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("plurnk", "/prompt/1"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403);
@@ -394,7 +394,7 @@ test("Engine.dispatch: model EDIT plurnk:/// non-prompt path ALSO rejected 403 �
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("plurnk", "/docs/log.md"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403, "the model never writes plurnk:// reference — no scratch sink");
@@ -408,7 +408,7 @@ test("Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side 
         // the writableBy gate did NOT intercept (would have returned 403).
         const result = await engine.dispatch({
             statement: readStmt({ target: urlPath("log", "/x") }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.notEqual(result.status, 403);
@@ -421,7 +421,7 @@ test("Engine.dispatch: system EDIT log:/// is allowed by writableBy", async () =
         // Log has no edit() handler — so this returns 501 (not 403) when allowed.
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("log", "/x"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "plurnk",
         });
         assert.notEqual(result.status, 403);
@@ -433,7 +433,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     try {
         const result = await engine.dispatch({
             statement: { op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
@@ -450,7 +450,7 @@ test("[§scheme-surface-exception-500] Engine.dispatch: scheme handler that thro
     class Boom {
         static manifest = {
             name: "boom", channels: {}, defaultChannel: "",
-            category: "data" as const, scope: "session" as const,
+            category: "data" as const, scope: "workspace" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async edit() { throw new Error("scheme handler deliberately threw"); }
@@ -460,7 +460,7 @@ test("[§scheme-surface-exception-500] Engine.dispatch: scheme handler that thro
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("boom", "/x"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
@@ -482,7 +482,7 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
     class BoomString {
         static manifest = {
             name: "boomstr", channels: {}, defaultChannel: "",
-            category: "data" as const, scope: "session" as const,
+            category: "data" as const, scope: "workspace" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
         async edit(): Promise<never> { throw "raw string thrown"; }
@@ -492,7 +492,7 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("boomstr", "/x"), body: "y" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
@@ -506,7 +506,7 @@ test("Engine.dispatch: model COPY into log:/// destination 501s — no writeEntr
         // Source first: model creates an entry in known:///.
         await engine.dispatch({
             statement: editStmt({ target: urlPath("known", "/src"), body: "v" }),
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         // Attempt copy known:///src → log:///dst — destination scheme rejects.
@@ -518,7 +518,7 @@ test("Engine.dispatch: model COPY into log:/// destination 501s — no writeEntr
                 body: urlPath("log", "/dst").raw,
                 position: { line: 1, column: 1 },
             },
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
         // The gate admits the model (§model-entry-log-curation); the dest handler surface rules —

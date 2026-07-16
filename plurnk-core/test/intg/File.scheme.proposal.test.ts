@@ -15,7 +15,7 @@ import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
 const fileEditStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
@@ -48,20 +48,20 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-// Set up a temp workspace + a session whose project_root points at it.
+// Set up a temp workspace + a workspace whose project_root points at it.
 // F.1 added the column; F.5 made File read it instead of an env var.
 // Returns the temp root for body assertions + a cleanup fn.
-const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: Engine; sessionId: number; runId: number; loopId: number; turnId: number }) => Promise<T>): Promise<T> => {
+const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number }) => Promise<T>): Promise<T> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-test-"));
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const sessionId = await insertSession(db, `file-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: sessionId, project_root: root });
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "file edit test");
+        const workspaceId = await insertWorkspace(db, `file-${crypto.randomUUID()}`);
+        await (db.test_set_session_project_root as PrepMethod).run({ id: workspaceId, project_root: root });
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "file edit test");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        return await fn(root, { db, engine, sessionId, runId, loopId, turnId });
+        return await fn(root, { db, engine, workspaceId, workerId, loopId, turnId });
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -80,7 +80,7 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
         // Materialize the member coherently — entry + body channel (= disk content) + synced_sig —
         // exactly as the production reconcile (#materializeMember) does. EDIT now bases its diff on
         // the body-channel snapshot (so the diff shows -hello), and the write-CAS has a sig to guard.
-        const seeded = await (ctx.db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, scheme: null, pathname: `/${target}` });
+        const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${target}` });
         await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content: "hello\n", mimetype: "text/plain", tokens: 0 });
         const seededStat = await stat(join(root, target));
         await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
@@ -88,7 +88,7 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
         const stmt = fileEditStmt(target, "hello world\n");
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -123,13 +123,13 @@ test("[§proposal-outcome-terse-error] file.edit: rejection leaves file untouche
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
-        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: `/${target}` });
+        await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
         const stmt = fileEditStmt(target, "should-not-land\n");
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -154,7 +154,7 @@ test("file.edit: creates a new file on accept (target doesn't exist)", async () 
 
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -176,7 +176,7 @@ test("file.edit: an accept into a NOT-YET-EXISTING subtree creates the parent di
         const stmt = fileEditStmt(target, "# task\n");
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -193,7 +193,7 @@ test("file.edit: refuses traversal escape", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const stmt = fileEditStmt("../escape.txt", "nope\n");
         const result = await ctx.engine.dispatch({
-            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403);
@@ -204,14 +204,14 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
-        await (ctx.db.crud_insert_session_entry as PrepMethod).get({ session_id: ctx.sessionId, scheme: null, pathname: `/${target}` });
+        await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
         // No file:/// prefix — the form the sysprompt teaches.
         const stmt = bareEditStmt(target, "bare-path edit\n");
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -238,34 +238,34 @@ test("file.read: still works alongside the new edit path", async () => {
         // File.read serves the materialized entry now — materialize the content
         // (production's git-membership pass does this), not just a membership marker.
         const writeCtx: PlurnkSchemeContext = {
-            db: ctx.db, sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             writer: "model", signal: undefined, tokenize: (t: string) => t.length,
         };
         await EntryCrud.writeEntry(`/${target}`, { channels: { body: { content: "content\n", mimetype: "text/markdown" } }, tags: [] }, writeCtx, null);
 
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({
-            statement: stmt, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
     });
 });
 
-test("file.edit: headless session (no project_root) → 400", async () => {
-    // A session with no project_root returns 400 with a clear error naming
-    // the contract: file ops need a session created with projectRoot
+test("file.edit: headless workspace (no project_root) → 400", async () => {
+    // A workspace with no project_root returns 400 with a clear error naming
+    // the contract: file ops need a workspace created with projectRoot
     // (headless is forever).
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `headless-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "headless");
+        const workspaceId = await insertWorkspace(db, `headless-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "headless");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const stmt = bareEditStmt("any.txt", "content\n");
         const result = await engine.dispatch({
-            statement: stmt, sessionId, runId, loopId, turnId,
+            statement: stmt, workspaceId, workerId, loopId, turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);

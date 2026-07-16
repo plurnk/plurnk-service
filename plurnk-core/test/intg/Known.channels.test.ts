@@ -4,14 +4,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, openStmt, foldStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    return { db, sessionId, runId };
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    return { db, workspaceId, workerId };
 };
 
 test("Known declares static channels manifest + defaultChannel", () => {
@@ -20,9 +20,9 @@ test("Known declares static channels manifest + defaultChannel", () => {
 });
 
 test("[§per-entry-channels-edit-writes-only-body] Known.edit writes only the body channel; preview is render-time", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        const r = await new Known().edit(editStmt(urlPath("known", "/x"), "hello"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await new Known().edit(editStmt(urlPath("known", "/x"), "hello"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 201);
         assert.equal(r.channel, "body");
 
@@ -35,20 +35,20 @@ test("[§per-entry-channels-edit-writes-only-body] Known.edit writes only the bo
 });
 
 test("[§channel-selection-unknown-channel-400] Known.edit with unknown channel returns 400", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
-        const r = await new Known().edit(editStmt(urlPath("known", "/x", "not-a-channel"), "x"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await new Known().edit(editStmt(urlPath("known", "/x", "not-a-channel"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 400);
         assert.equal(r.entryId, null);
     } finally { await db.close(); }
 });
 
 test("[§channel-selection-fragmentless-targets-default-channel] Known.read with no fragment returns body channel (default)", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         const k = new Known();
-        await k.edit(editStmt(urlPath("known", "/x"), "body content"), makeSchemeCtx({ db, sessionId, runId }));
-        const r = await k.read(readStmt(urlPath("known", "/x")), makeSchemeCtx({ db, sessionId }));
+        await k.edit(editStmt(urlPath("known", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await k.read(readStmt(urlPath("known", "/x")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "body content");
         assert.equal(r.channel, "body");
@@ -56,11 +56,11 @@ test("[§channel-selection-fragmentless-targets-default-channel] Known.read with
 });
 
 test("Known.read with unknown channel returns 400", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         const k = new Known();
-        await k.edit(editStmt(urlPath("known", "/x"), "body content"), makeSchemeCtx({ db, sessionId, runId }));
-        const r = await k.read(readStmt(urlPath("known", "/x", "not-a-channel")), makeSchemeCtx({ db, sessionId }));
+        await k.edit(editStmt(urlPath("known", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await k.read(readStmt(urlPath("known", "/x", "not-a-channel")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 400);
     } finally { await db.close(); }
 });

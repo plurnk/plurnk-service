@@ -22,7 +22,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
-    insertSession, insertRun, insertLoop, insertTurn, testExecutors,
+    insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors,
 } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, sendStmt, execStmt } from "./_dsl.ts";
@@ -33,7 +33,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-// §subscriptions — The subscription registry maps (sessionId, entryId) → scheme + handle
+// §subscriptions — The subscription registry maps (workspaceId, entryId) → scheme + handle
 // so SEND[499] routes cancellation to the OWNING scheme, which tears down via
 // the stored handle. We register a synthetic streaming scheme that owns its
 // subscription; dispatching SEND[499] through the Engine must reach that
@@ -42,26 +42,26 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] resolves the registry to the owning scheme + stored handle and tears down", async () => {
     const db = await openMigrated();
     try {
-        const { sessionId, runId, loopId, turnId } = await seedEnvelope(db, `sub-route-${crypto.randomUUID()}`);
+        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(db, `sub-route-${crypto.randomUUID()}`);
 
         const HANDLE = "fake-stream-handle-7";
         const teardownByHandle: string[] = [];
         const teardownFns = new Map<string, () => void>([[HANDLE, () => teardownByHandle.push(HANDLE)]]);
 
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "fakestream", pathname: "/feed/x",
+            workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
         });
         if (entry === undefined) throw new Error("seed entry failed");
         const entryId = entry.id;
         await (db.test_seed_channel as PrepMethod).run({
             entry_id: entryId, name: "data", content: "partial", mimetype: "text/plain", state: "active",
         });
-        const subId = await ChannelWrite.openSubscription(db, { runId, entryId, scheme: "fakestream", handle: HANDLE });
+        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "fakestream", handle: HANDLE });
 
         class FakeStream {
             static manifest = {
                 name: "fakestream", channels: { data: "text/plain" }, defaultChannel: "data",
-                category: "data" as const, scope: "session" as const,
+                category: "data" as const, scope: "workspace" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
             async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number }> {
@@ -69,11 +69,11 @@ test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] reso
                 const path = statement.target;
                 if (path === null || path.kind !== "url") return { status: 400 };
                 const e = await (ctx.db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-                    session_id: ctx.sessionId, scheme: path.scheme, pathname: path.pathname,
+                    workspace_id: ctx.workspaceId, scheme: path.scheme, pathname: path.pathname,
                 });
                 if (e === undefined) return { status: 404 };
                 // Registry lookup — the whole point of §subscriptions: route by (run, entry) to scheme+handle.
-                const sub = await ChannelWrite.findActiveSubscription(ctx.db, { runId: ctx.runId, entryId: e.id });
+                const sub = await ChannelWrite.findActiveSubscription(ctx.db, { workerId: ctx.workerId, entryId: e.id });
                 if (sub === null) return { status: 404 };
                 if (sub.scheme !== "fakestream") return { status: 501 };
                 teardownFns.get(sub.handle)?.();
@@ -89,7 +89,7 @@ test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] reso
 
         const result = await engine.dispatch({
             statement: sendStmt(499, urlPath("fakestream", "/feed/x")),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
 
         assert.equal(result.status, 200, "owning scheme accepted the cancel");
@@ -98,7 +98,7 @@ test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] reso
         const sub = await (db.test_get_subscription as PrepMethod).get<{ closed_at: string | null; close_status: number | null }>({ id: subId });
         assert.ok(sub?.closed_at !== null, "subscription registry row marked closed");
         assert.equal(sub?.close_status, 499, "registry row closed at 499");
-        assert.equal(await ChannelWrite.findActiveSubscription(db, { runId, entryId }), null, "no active subscription remains");
+        assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId }), null, "no active subscription remains");
 
         const channel = await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "data" });
         assert.equal(channel?.state, "closed", "channel transitioned active → closed");
@@ -120,15 +120,15 @@ test("[§no-chunk-rows-log-captures-lifecycle-only] multi-chunk exec writes ONE 
             streamEventNotify: (_sid, ev) => chunkEvents.push({ channel: ev.channel, state: ev.state }),
         });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `log-lifecycle-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "lifecycle-only");
+        const workspaceId = await insertWorkspace(db, `log-lifecycle-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "lifecycle-only");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idD = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("sh", "for i in 5 4 3 2 1; do echo $i; sleep 0.2; done"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idD.resolve(id),
         });
         const logEntryId = await idD.promise;
@@ -161,9 +161,9 @@ test("[§no-chunk-rows-log-captures-lifecycle-only] multi-chunk exec writes ONE 
 test("[§stream-constraints-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `cap-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "known", pathname: "/cap",
+            workspace_id: workspaceId, scheme: "known", pathname: "/cap",
         });
         const entryId = entry!.id;
 
@@ -200,10 +200,10 @@ test("[§live-updates-stream-event-fires-on-chunk] daemon fires stream/event per
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "chunk-fire" });
-            const sessionId = (sessionResp.result as { id: number }).id;
+            const workspaceResp = await rpcCall(ws, 1, "workspace.create", { name: "chunk-fire" });
+            const workspaceId = (workspaceResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
-            const entryId = await seedEntryWithChannel(db, { sessionId, content: "", state: "active" });
+            const entryId = await seedEntryWithChannel(db, { workspaceId, content: "", state: "active" });
 
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);
@@ -248,8 +248,8 @@ test("[§stream-no-engine-transaction-abstraction] engine has no connection/tran
         // Channel content is static storage from the engine's view: a scheme
         // grows it by calling appendToChannel directly — the engine is not in
         // the loop, there is no transaction to open/commit.
-        const { sessionId } = await seedEnvelope(db, `no-tx-${crypto.randomUUID()}`);
-        const entryId = await seedEntryWithChannel(db, { sessionId, content: "", state: "active" });
+        const { workspaceId } = await seedEnvelope(db, `no-tx-${crypto.randomUUID()}`);
+        const entryId = await seedEntryWithChannel(db, { workspaceId, content: "", state: "active" });
         await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "chunk-1" });
         await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "chunk-2" });
         const row = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({ entry_id: entryId, name: "body" });
@@ -266,11 +266,11 @@ test("[§notifications-stream-event-on-channel-change] state transition fires me
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "state-change" });
-            const sessionId = (sessionResp.result as { id: number }).id;
+            const workspaceResp = await rpcCall(ws, 1, "workspace.create", { name: "state-change" });
+            const workspaceId = (workspaceResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
             // Pre-existing content so we can assert contentLength is carried, not recomputed-from-chunk.
-            const entryId = await seedEntryWithChannel(db, { sessionId, content: "finished", state: "active" });
+            const entryId = await seedEntryWithChannel(db, { workspaceId, content: "finished", state: "active" });
 
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);
@@ -286,7 +286,7 @@ test("[§notifications-stream-event-on-channel-change] state transition fires me
             assert.equal(evt.contentLength, "finished".length, "carries the existing content length (8)");
             assert.equal(evt.target, "known:///x", "carries the entry's target URI (#179)");
             // Metadata only — never the content body.
-            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "sessionId", "state", "target"], "payload is metadata-only (ids/state/length/mimetype + target URI per #179, + session scope per #191); no content field");
+            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workspaceId"], "payload is metadata-only (ids/state/length/mimetype + target URI per #179, + workspace scope per #191); no content field");
         } finally { ws.close(); }
     });
 });

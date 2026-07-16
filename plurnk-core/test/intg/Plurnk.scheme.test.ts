@@ -7,14 +7,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Plurnk from "../../src/schemes/Plurnk.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    return { db, sessionId, runId };
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    return { db, workspaceId, workerId };
 };
 
 test("plurnk:/// scheme manifest: engine-authored, model-READ-ONLY, body channel, text/markdown", () => {
@@ -27,12 +27,12 @@ test("plurnk:/// scheme manifest: engine-authored, model-READ-ONLY, body channel
 });
 
 test("system EDIT plurnk://prompt/<run>/<loop>/<N> creates the entry", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         const p = new Plurnk();
         const r = await p.edit(
             editStmt(urlPath("plurnk", "/prompt/1"), "what is the capital of france?"),
-            makeSchemeCtx({ db, sessionId, runId, writer: "plurnk" }),
+            makeSchemeCtx({ db, workspaceId, workerId, writer: "plurnk" }),
         );
         assert.equal(r.status, 201);
         const body = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: r.entryId, name: "body" }))?.content;
@@ -41,11 +41,11 @@ test("system EDIT plurnk://prompt/<run>/<loop>/<N> creates the entry", async () 
 });
 
 test("READ plurnk://prompt/<run>/<loop>/<N> returns the prompt body", async () => {
-    const { db, sessionId, runId } = await setup();
+    const { db, workspaceId, workerId } = await setup();
     try {
         const p = new Plurnk();
-        await p.edit(editStmt(urlPath("plurnk", "/prompt/1"), "hello"), makeSchemeCtx({ db, sessionId, runId, writer: "plurnk" }));
-        const r = await p.read(readStmt(urlPath("plurnk", "/prompt/1")), makeSchemeCtx({ db, sessionId, writer: "model" }));
+        await p.edit(editStmt(urlPath("plurnk", "/prompt/1"), "hello"), makeSchemeCtx({ db, workspaceId, workerId, writer: "plurnk" }));
+        const r = await p.read(readStmt(urlPath("plurnk", "/prompt/1")), makeSchemeCtx({ db, workspaceId, writer: "model" }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "hello");
     } finally { await db.close(); }

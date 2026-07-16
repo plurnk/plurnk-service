@@ -68,18 +68,18 @@ test("EDIT with an accept-path span (rx.body from a proposed file edit) renders 
     assert.match(out, /<<:::src\/app\.js\n3:\tapp\.listen\(8080\);\n4:\t\/\/ error handler configured\n:::src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
 });
 
-test("log entry: a run:// spawn renders the worker NAME in the target — authority survives (§run-scheme)", () => {
-    // The spawn-blindness root cause: the run name lives in the URI authority (run://<name>),
-    // not the path. Rendering scheme+path alone collapsed every spawn to a bare `run://`, so the
+test("log entry: a worker:// spawn renders the worker NAME in the target — authority survives (§run-scheme)", () => {
+    // The spawn-blindness root cause: the run name lives in the URI authority (worker://<name>),
+    // not the path. Rendering scheme+path alone collapsed every spawn to a bare `worker://`, so the
     // model could not tell worker_db from worker_pool in its own log and re-spawned. The authority
     // must reach the rendered target.
     const out = PacketWire.renderLog([
-        { coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200, target: { scheme: "run", hostname: "worker_db", pathname: "" } },
-        { coordinate: "1/1/10", origin: "model", op: "EDIT", status: 200, target: { scheme: "run", hostname: "worker_pool", pathname: "" } },
+        { coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", hostname: "worker_db", pathname: "" } },
+        { coordinate: "1/1/10", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", hostname: "worker_pool", pathname: "" } },
     ], tok);
-    assert.match(out, /"target":"run:\/\/worker_db"/, "the spawned worker name reaches the model's log");
-    assert.match(out, /"target":"run:\/\/worker_pool"/, "distinct workers render distinctly — no bare run://");
-    assert.doesNotMatch(out, /"target":"run:\/\/"/, "no nameless run:// rows (the blindness)");
+    assert.match(out, /"target":"worker:\/\/worker_db"/, "the spawned worker name reaches the model's log");
+    assert.match(out, /"target":"worker:\/\/worker_pool"/, "distinct workers render distinctly — no bare worker://");
+    assert.doesNotMatch(out, /"target":"worker:\/\/"/, "no nameless worker:// rows (the blindness)");
 });
 
 test("log entry: a web host survives into the target — http://host/path, not http:///path", () => {

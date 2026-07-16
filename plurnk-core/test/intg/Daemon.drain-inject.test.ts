@@ -17,7 +17,7 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "drain-basic" });
+            await rpcCall(ws, 1, "workspace.create", { name: "drain-basic" });
             // loop.run returns the accept (100 + action); the outcome rides loop/terminated.
             const result = await runLoopToTerminal(ws, 2, { prompt: "say hello" });
             assert.equal(result.accepted, 100, "loop.run accepts immediately");
@@ -51,8 +51,8 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "session.create", { name: "drain-cancel" });
-            const sessionId = (created.result as { id: number }).id;
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "drain-cancel" });
+            const workspaceId = (created.result as { id: number }).id;
             const concluded = subscribeNotifications(ws, "stream/concluded");
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job", flags: { yolo: true } });
             await flush();
@@ -63,7 +63,7 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
             // 499; otherwise it fires into the spawn gap and asserts on a stream that never
             // opened (the flake this replaces — the kill path itself is sound).
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -96,7 +96,7 @@ test("[§methods-loop-cancel] loop.cancel: no active drain → cancelled=false",
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "drain-noop-cancel" });
+            await rpcCall(ws, 1, "workspace.create", { name: "drain-noop-cancel" });
             const resp = await rpcCall(ws, 2, "loop.cancel", {});
             const result = resp.result as { cancelled: boolean };
             assert.equal(result.cancelled, false);
@@ -122,8 +122,8 @@ test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run sta
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "session.create", { name: "drain-restart" });
-            const sessionId = (created.result as { id: number }).id;
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "drain-restart" });
+            const workspaceId = (created.result as { id: number }).id;
             const terminated = subscribeNotifications(ws, "loop/terminated");
 
             const firstPromise = rpcCall(ws, 2, "loop.run", {
@@ -135,7 +135,7 @@ test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run sta
             // running exec, deterministically; otherwise it fires into the spawn gap and the
             // sleep leaks (the failure this replaces).
             await waitForDb(
-                async () => (await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
+                async () => (await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -176,7 +176,7 @@ test("[§run-lifecycle-single-drain] loop.run while a loop is live: second call 
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "drain-inject-active" });
+            await rpcCall(ws, 1, "workspace.create", { name: "drain-inject-active" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
             const terminated = subscribeNotifications(ws, "loop/terminated");
 
@@ -195,7 +195,7 @@ test("[§run-lifecycle-single-drain] loop.run while a loop is live: second call 
                 `injected into a turn slot >1; got ${result2.turnSeq}`);
 
             type EntryRow = { scheme: string; pathname: string };
-            const entries = await (db as unknown as { test_list_entries_by_session_session_pathname: { all<T = unknown>(p?: object): Promise<T[]> } }).test_list_entries_by_session_session_pathname.all<EntryRow>({ session_id: 1 });
+            const entries = await (db as unknown as { test_list_entries_by_workspace_workspace_pathname: { all<T = unknown>(p?: object): Promise<T[]> } }).test_list_entries_by_workspace_workspace_pathname.all<EntryRow>({ workspace_id: 1 });
             const injected = entries.find((e) => e.scheme === "plurnk" && /^\/prompt\/\d+\/\d+\/[2-9]\d*$/.test(e.pathname));
             assert.ok(injected, "injected prompt entry exists in a turn slot >1");
 
@@ -239,7 +239,7 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "reconcile-orphan" });
+            await rpcCall(ws, 1, "workspace.create", { name: "reconcile-orphan" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
             const terminated = subscribeNotifications(ws, "loop/terminated");
 
@@ -283,13 +283,13 @@ test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by t
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "session.create", { name: "reap-registry" });
-            const sessionId = (created.result as { id: number }).id;
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "reap-registry" });
+            const workspaceId = (created.result as { id: number }).id;
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { yolo: true } });
             // The exec is live + registered open.
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 1,
             );
 
@@ -298,10 +298,10 @@ test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by t
 
             // The registry reap closed the subscription — open→0, deterministically.
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 0,
             );
-            const closeStatus = (await (db.test_exec_close_status_by_session as PrepMethod).get<{ close_status: number }>({ session_id: sessionId, scheme: "sh" }))?.close_status;
+            const closeStatus = (await (db.test_exec_close_status_by_session as PrepMethod).get<{ close_status: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.close_status;
             assert.equal(closeStatus, 499, "the reaped exec subscription is closed at 499 in the registry");
         } finally { ws.close(); }
     });
@@ -323,13 +323,13 @@ test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its st
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "session.create", { name: "no-resurrection" });
-            const sessionId = (created.result as { id: number }).id;
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "no-resurrection" });
+            const workspaceId = (created.result as { id: number }).id;
             const concluded = subscribeNotifications(ws, "stream/concluded");
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { yolo: true } });
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 1,
             );
 
@@ -348,8 +348,8 @@ test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its st
             assert.match(wake.wakeAction, /^skipped-/, `the daemon skipped opening a loop; got ${wake.wakeAction}`);
 
             // The run was not resurrected: its only loop is the original model loop.
-            const runId = (await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId }))?.run_id;
-            const loopCount = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: runId }))?.n;
+            const workerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))?.worker_id;
+            const loopCount = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: workerId }))?.n;
             assert.equal(loopCount, 1, "no wake loop was opened in the cancelled run");
         } finally { ws.close(); }
     });

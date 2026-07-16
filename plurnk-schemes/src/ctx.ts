@@ -72,7 +72,7 @@ export interface TagCaps {
 // the next boundary (service SPEC: between-turn notify). `streamEvent` is metadata-only (never
 // content).
 //
-// There is no `wakeRun` here. The run-wake carries subscription-close
+// There is no `wakeWorker` here. The run-wake carries subscription-close
 // context (entryId / subscriptionId / closeStatus / scheme / summary) that
 // only exists at stream completion, so it belongs to `subscriptions.close`,
 // which already composites it (channel state + registry close + run wake).
@@ -143,8 +143,8 @@ export interface CrossSchemeCaps {
 // (SPEC §forbidden). Identity/lifecycle fields carry the engine's per-dispatch
 // coordinates; capability namespaces replace raw `db`.
 export interface SchemeCtx {
-    readonly sessionId: number;
-    readonly runId: number;
+    readonly workspaceId: number;
+    readonly workerId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;

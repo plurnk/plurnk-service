@@ -19,7 +19,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, rootSession } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -52,30 +52,30 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
 test("[§machine-processes-run-is-its-log] a run learns a sibling's edit through its own log — pulled from the shared log, no per-run snapshot", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `xrun-${crypto.randomUUID()}`);
-        const runA = await insertRun(db, sessionId);            // the model's run
-        const loopA = await insertLoop(db, runA, 1, "go");
-        const runB = await insertRun(db, sessionId);            // a sibling run on the same world
-        const loopB = await insertLoop(db, runB, 1);
+        const workspaceId = await insertWorkspace(db, `xrun-${crypto.randomUUID()}`);
+        const workerA = await insertWorker(db, workspaceId);            // the model's run
+        const loopA = await insertLoop(db, workerA, 1, "go");
+        const workerB = await insertWorker(db, workspaceId);            // a sibling run on the same world
+        const loopB = await insertLoop(db, workerB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // A's turn 1 sets its "last looked" boundary; nothing happened before it, so no deltas.
-        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         await sleep(2);  // ms-resolution timestamps — ensure B's edit lands strictly after A's turn 1
 
         // B edits a shared entry — a real EDIT row in B's own log.
-        const edit = await eng.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "from sibling B"), sessionId, runId: runB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
+        const edit = await eng.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         assert.ok(edit.status === 200 || edit.status === 201, "B's edit to the shared entry lands");
 
         // A's turn 2 pulls B's edit from the shared log as a FOLDED delta — A consulted no
         // per-run snapshot; it learned its world moved purely through its own log.
-        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ run_id: runA });
+        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "known" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
-        assert.equal(delta!.source, String(runB), "the delta is attributed to the sibling run that caused it");
+        assert.equal(delta!.source, String(workerB), "the delta is attributed to the sibling run that caused it");
         assert.equal(delta!.expanded, 0, "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
     } finally {
         await db.close();
@@ -87,30 +87,30 @@ test("[§actor-boundary-two-doors] exactly two cross-run channels — state via 
     // and irc through it, resume parked runs in place, #55.) No third channel — by design.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `two-doors-${crypto.randomUUID()}`);
-        const runA = await insertRun(db, sessionId);
-        const loopA = await insertLoop(db, runA, 1, "go");
-        const runB = await insertRun(db, sessionId);
-        const loopB = await insertLoop(db, runB, 1);
+        const workspaceId = await insertWorkspace(db, `two-doors-${crypto.randomUUID()}`);
+        const workerA = await insertWorker(db, workspaceId);
+        const loopA = await insertLoop(db, workerA, 1, "go");
+        const workerB = await insertWorker(db, workspaceId);
+        const loopB = await insertLoop(db, workerB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
-        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         await sleep(2);
 
         // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a FOLDED delta, not a message.
-        await eng.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "from sibling B"), sessionId, runId: runB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
-        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; pathname: string; source: string | null }>({ run_id: runA });
+        await eng.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
+        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; pathname: string; source: string | null }>({ worker_id: workerA });
         assert.ok(
-            rows.some((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === String(runB)),
+            rows.some((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === String(workerB)),
             "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)",
         );
 
         // VOICE DOOR — *message*: an inject delivers a directed message onto A's own loop's next turn.
         await (db.test_set_loop_status as PrepMethod).run({ id: loopA, status: 102 }); // A is the active loop
-        const injected = await eng.inject(runA, "a directed message for A");
+        const injected = await eng.inject(workerA, "a directed message for A");
         assert.notEqual(injected, null, "voice door: the inject found A's loop and delivered");
         assert.equal(injected!.loopId, loopA, "the message landed on A's loop — directed, not ambient");
     } finally {
@@ -129,16 +129,16 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
         await execFileP("git", ["add", "notes.md"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
-        const sessionId = await insertSession(db, `envfs-${crypto.randomUUID()}`);
-        await rootSession(db, sessionId, root);
-        const runA = await insertRun(db, sessionId);
-        const loopA = await insertLoop(db, runA, 1, "go");
+        const workspaceId = await insertWorkspace(db, `envfs-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const workerA = await insertWorker(db, workspaceId);
+        const loopA = await insertLoop(db, workerA, 1, "go");
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // Turn 1 materializes notes.md from disk (first sight — no divergence).
-        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        const afterT1 = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null }>({ run_id: runA });
+        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        const afterT1 = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null }>({ worker_id: workerA });
         assert.ok(!afterT1.some((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file"), "first sight reconciles silently — no fs delta");
         await sleep(2);
 
@@ -146,8 +146,8 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
         await writeFile(join(root, "notes.md"), "line1\nline2\nline3-external\n");
 
         // Turn 2 — the plurnk run logs the divergence as a source=file EDIT; A pulls it.
-        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number }>({ run_id: runA });
+        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "/notes.md", "the delta names the diverged file");
@@ -161,24 +161,24 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
 
 // §run-scheme loop-termination rides the same env-delta rail: when a sibling's loop
 // reaches a terminal status, the observer pulls it at pre-turn as a FOLDED SEND from
-// run://<name> carrying the loop's deliverable — the SEND[200] body or, for an
+// worker://<name> carrying the loop's deliverable — the SEND[200] body or, for an
 // abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,
 // so a graceful 200 and a grinder 499 surface the same way.
 test("[§run-scheme-collect] a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, an abandonment folded", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `loopterm-${crypto.randomUUID()}`);
-        const runA = await insertRun(db, sessionId);                       // the observer
-        const loopA = await insertLoop(db, runA, 1, "go");
-        const worker = await insertRun(db, sessionId, null, "worker");      // finishes gracefully
+        const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);
+        const workerA = await insertWorker(db, workspaceId);                       // the observer
+        const loopA = await insertLoop(db, workerA, 1, "go");
+        const worker = await insertWorker(db, workspaceId, null, "worker");      // finishes gracefully
         const workerLoop = await insertLoop(db, worker, 1, "investigate the bug");
-        const grinder = await insertRun(db, sessionId, null, "grinder");    // gets abandoned
+        const grinder = await insertWorker(db, workspaceId, null, "grinder");    // gets abandoned
         const grinderLoop = await insertLoop(db, grinder, 1, "grind forever");
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // A's turn 1 sets its "last looked" boundary; the siblings are still running.
-        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         await sleep(2);  // ms-resolution — terminations must land strictly after A's turn 1
 
         // worker SENDs[200] its result (its deliverable); grinder is abandoned (budget).
@@ -186,10 +186,10 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces — a 2xx del
         await (db.engine_loop_set_status as PrepMethod).run({ status: 413, loop_id: grinderLoop, message: "budget_overflow" });
 
         // A's turn 2 pulls both terminations from the shared log: the 2xx deliverable born open, the abandonment folded.
-        await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ run_id: runA });
+        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ worker_id: workerA });
 
-        const win = rows.find((r) => r.op === "SEND" && r.scheme === "run" && r.pathname === "/worker");
+        const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a run-delta in A's log");
         assert.equal(win!.origin, "plurnk", "the termination delta is the engine's narration");
         assert.equal(win!.source, String(worker), "attributed to the run that terminated");
@@ -197,7 +197,7 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces — a 2xx del
         assert.equal(win!.rx, "the answer is 42", "the SEND body — the loop's deliverable — rides the delta");
         assert.equal(win!.expanded, 1, "born OPEN — a child's 2xx deliverable reaches the parent open + awakening, not hidden behind a fold");
 
-        const grind = rows.find((r) => r.op === "SEND" && r.scheme === "run" && r.pathname === "/grinder");
+        const grind = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/grinder");
         assert.ok(grind, "the abandoned loop surfaced too — every death-path stamps terminated_at uniformly");
         assert.equal(grind!.status_rx, 413, "budget abandonment is a 413 Content Too Large termination");
         assert.equal(grind!.rx, "budget_overflow", "the abandon reason rides as the terminal message");

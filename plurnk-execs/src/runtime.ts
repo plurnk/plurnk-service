@@ -1,7 +1,7 @@
 // Runtime tag → spawn-args dispatch. Hardcoded v0 multiplexer; plugin
 // discovery (one runtime per `@plurnk/plurnk-execs-*` sibling) is the
 // forward-spec path documented in SPEC.md. The public `KNOWN_RUNTIMES` /
-// `isKnownRuntime` / `resolveRuntime` surface (SPEC §4) is re-exported from
+// `isKnownRuntime` / `resolveWorkertime` surface (SPEC §4) is re-exported from
 // index.ts over these statics; cross-refs use the explicit `Runtime.` binding
 // so a detached re-export stays callable.
 

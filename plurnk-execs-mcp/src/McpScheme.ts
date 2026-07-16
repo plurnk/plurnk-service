@@ -68,7 +68,7 @@ export default class McpScheme implements SchemeHandler {
         channels: { [BODY]: JSON_MIME },
         defaultChannel: BODY,
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client"],
         volatile: true, // server state changes between reads
         modelVisible: true,

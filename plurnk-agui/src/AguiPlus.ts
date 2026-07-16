@@ -60,11 +60,11 @@ export const resolutionFromToolResult = (m: ToolResultMessage): Resolution | nul
 };
 
 // ── §2 — reads → shared STATE ────────────────────────────────────────
-// The client OBSERVES this; no providers.list / session.list round-trips.
+// The client OBSERVES this; no providers.list / workspace.list round-trips.
 export interface AguiPlusState {
     providers?: Array<{ alias: string; model: string; active: boolean; promptBudget: number | null }>;
-    session?: { id: number; name: string; projectRoot?: string | null; budget?: number | null };
-    sessions?: Array<{ id: number; name: string }>;
+    workspace?: { id: number; name: string; projectRoot?: string | null; budget?: number | null };
+    workspaces?: Array<{ id: number; name: string }>;
     constraints?: Array<{ effect: string; glob: string }>;
 }
 export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({ type: "STATE_SNAPSHOT", snapshot: { plurnk: s } });

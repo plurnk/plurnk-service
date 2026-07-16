@@ -12,7 +12,7 @@ const fakeBrowser = (html: string) => {
     const calls: Array<{ url: string; guarded: boolean }> = [];
     return {
         calls,
-        render: async (url: string, opts: { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (u: string) => Promise<boolean> }): Promise<RenderResult> => {
+        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (u: string) => Promise<boolean> }): Promise<RenderResult> => {
             calls.push({ url, guarded: typeof opts.guard === "function" });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },

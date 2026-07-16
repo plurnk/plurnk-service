@@ -6,13 +6,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
-import { openMigrated, insertSession, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, makeSchemeCtx } from "./_helpers.ts";
 
 test("DbEntryCaps: write creates (201) → read round-trips → re-write updates (200) → delete (200→404)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `caps-entries-${crypto.randomUUID()}`);
-        const caps = new DbEntryCaps(makeSchemeCtx({ db, sessionId }), "known");
+        const workspaceId = await insertWorkspace(db, `caps-entries-${crypto.randomUUID()}`);
+        const caps = new DbEntryCaps(makeSchemeCtx({ db, workspaceId }), "known");
 
         // write a new entry → 201 created, real entryId
         const w = await caps.write("/note.md", {

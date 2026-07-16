@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, rootSession } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, rootWorkspace } from "./_helpers.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,21 +39,21 @@ const wire = async () => {
     const executors = await testExecutors();
     engine.setExecutors(executors);
     schemes.registerRuntimeSchemes(executors); // #240 — register per-tag faces so READ <tag>:// resolves (mirrors Daemon boot)
-    const sessionId = await insertSession(db, `effect-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "effect test");
+    const workspaceId = await insertWorkspace(db, `effect-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "effect test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, exec, sessionId, runId, loopId, turnId };
+    return { db, engine, exec, workspaceId, workerId, loopId, turnId };
 };
 
 test("[§exec-readpure-ungated] effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, no in-band body", async () => {
-    const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
+    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         // No target → :memory: → pure → auto. dispatch resolves WITHOUT any
         // external resolveProposal call (the host path would hang here).
         const result = await engine.dispatch({
             statement: execStmt("sqlite", null, "SELECT 1 AS n;"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.notEqual(result.status, 202, "a pure runtime must not leave a pending proposal — it skips the gate");
         assert.ok(result.status < 400, `auto-run resolved cleanly; got ${result.status}`);
@@ -64,18 +64,18 @@ test("[§exec-readpure-ungated] effect-gating: sqlite :memory: (pure) auto-runs 
     } finally { await db.close(); }
 });
 
-// Regression for #216 (execs-sqlite 0.1.4). In a WORKSPACE session the service
+// Regression for #216 (execs-sqlite 0.1.4). In a WORKSPACE workspace the service
 // defaults the exec cwd to project_root, and sqlite uses cwd as its db path — a
 // DIRECTORY there used to 500 the open. The test above runs headless (cwd=null →
 // :memory:) and missed it; this exercises the project_root path that actually breaks.
-test("sqlite EXEC in a workspace session: a project_root cwd no longer 500s the db open (#216)", async () => {
+test("sqlite EXEC in a workspace workspace: a project_root cwd no longer 500s the db open (#216)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-sqlite-ws-"));
-    const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
+    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
-        await rootSession(db, sessionId, root);  // cwd now defaults to this dir
+        await rootWorkspace(db, workspaceId, root);  // cwd now defaults to this dir
         const result = await engine.dispatch({
             statement: execStmt("sqlite", null, "SELECT 'Paris' AS capital;"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.notEqual(result.status, 202, "pure runtime auto-runs ungated, no proposal");
         assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
@@ -86,12 +86,12 @@ test("sqlite EXEC in a workspace session: a project_root cwd no longer 500s the 
 });
 
 test("[§exec-host-proposes] effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
-    const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
+    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("sh", null, "echo hi"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -122,15 +122,15 @@ test("effect is command-aware (#289): the EXEC command body is passed to effect(
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes });
     engine.setExecutors(registry);
-    const sessionId = await insertSession(db, `cmd-effect-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "cmd-effect");
+    const workspaceId = await insertWorkspace(db, `cmd-effect-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "cmd-effect");
     const turnId = await insertTurn(db, loopId, 1, 102);
     try {
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("tool", null, "tools/call name=list_files readOnly=true"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -143,14 +143,14 @@ test("effect is command-aware (#289): the EXEC command body is passed to effect(
 test("[§exec-registry-resolves] fall-through-INELIGIBLE dispatch → 501 — the refusal lane survives §exec-runtime-fallthrough", async () => {
     // #350 changed the unknown-tag contract: with sh available, an unregistered tag falls
     // through to the shell (§exec-runtime-fallthrough, cited in execs-batteries). The 501
-    // remains for the ineligible case: sh itself session-disabled — a client that turned the
+    // remains for the ineligible case: sh itself workspace-disabled — a client that turned the
     // shell off gets the refusal for EVERY shell-shaped path, never a side door.
-    const { db, engine, exec, sessionId, runId, loopId, turnId } = await wire();
+    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
-        await (db.test_set_session_settings as PrepMethod).run({ id: sessionId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
+        await (db.test_set_session_settings as PrepMethod).run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
         const result = await engine.dispatch({
             statement: execStmt("nonesuch", null, "echo hi"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501, "sh disabled → the fall-through is ineligible → 501, not a proposal, not a spawn");
         await exec.idle();

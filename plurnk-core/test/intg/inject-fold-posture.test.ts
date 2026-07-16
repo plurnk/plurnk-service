@@ -18,7 +18,7 @@ test("inject with flags DIFFERING from the live loop's is refused — never a si
     await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "posture-conflict" });
+            await rpcCall(ws, 1, "workspace.create", { name: "posture-conflict" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
             await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { yolo: false } });
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
@@ -35,7 +35,7 @@ test("inject with MATCHING or ABSENT flags folds into the live loop untouched (#
     await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "posture-match" });
+            await rpcCall(ws, 1, "workspace.create", { name: "posture-match" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
             await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { yolo: false } });
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });

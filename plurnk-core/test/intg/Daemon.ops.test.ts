@@ -7,7 +7,7 @@ test("[§methods-op-mirror] op.edit creates an entry via engine.dispatch (origin
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "ops-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "ops-test" });
             const response = await rpcCall(ws, 2, "op.edit", {
                 target: "known:///france/capital", content: "Paris", tags: ["france", "geography"],
             });
@@ -31,8 +31,8 @@ test("op.edit: log/entry notification precedes the RPC response on the wire (#25
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "notify-order" });
-            // Record inbound messages in arrival order, after the session is up — so we capture
+            await rpcCall(ws, 1, "workspace.create", { name: "notify-order" });
+            // Record inbound messages in arrival order, after the workspace is up — so we capture
             // only the op.edit exchange: the log/entry notification must land before response#2.
             const order: string[] = [];
             ws.on("message", (data) => {
@@ -52,7 +52,7 @@ test("op.read fetches an entry's body", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "read-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "read-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "hello" });
             const response = await rpcCall(ws, 3, "op.read", { target: "known:///x" });
             const result = response.result as { status: number; content: string };
@@ -66,7 +66,7 @@ test("op.read on nonexistent entry returns 404", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "404-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "404-test" });
             const response = await rpcCall(ws, 2, "op.read", { target: "known:///nope" });
             assert.equal((response.result as { status: number }).status, 404);
         } finally { ws.close(); }
@@ -77,7 +77,7 @@ test("[§op-look] op.look (#283) resolves a target like op.read but writes NO lo
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "look-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "look-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "secret" });
             const before = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n ?? -1;
             const response = await rpcCall(ws, 3, "op.look", { text: "<<READ(known:///x)::READ" });
@@ -94,7 +94,7 @@ test("op.look rejects a non-READ statement — it is READ-only (#283)", async ()
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "look-readonly" });
+            await rpcCall(ws, 1, "workspace.create", { name: "look-readonly" });
             const response = await rpcCall(ws, 2, "op.look", { text: "<<EDIT(known:///x):nope:EDIT" });
             assert.ok(response.error, "a non-READ LOOK must be rejected");
             assert.match(response.error!.message, /READ only/);
@@ -106,7 +106,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "dispatch-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "dispatch-test" });
             const statement = {
                 op: "EDIT" as const,
                 suffix: "",
@@ -134,7 +134,7 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "parse-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "parse-test" });
             const text = `<<EDIT(known:///a):alpha:EDIT
 <<EDIT(known:///b):beta:EDIT`;
             const response = await rpcCall(ws, 2, "op.parse", { text });
@@ -153,7 +153,7 @@ test("op.parse surfaces a parse failure as a 400 result with its line:col — no
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "parse-err" });
+            await rpcCall(ws, 1, "workspace.create", { name: "parse-err" });
             // A valid statement (line 1) + a malformed one (line 2: non-integer signal 'x').
             const text = `<<EDIT(known:///a):alpha:EDIT\n<<SEND[x]:y:SEND`;
             const response = await rpcCall(ws, 2, "op.parse", { text });
@@ -172,7 +172,7 @@ test("[§notifications-log-entry-notify] op.* fires log/entry notification with 
         const ws = await connect(addr);
         try {
             const notifications = subscribeNotifications(ws, "log/entry");
-            await rpcCall(ws, 1, "session.create", { name: "notif-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "notif-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "test" });
             await flush();
 
@@ -186,7 +186,7 @@ test("[§notifications-log-entry-notify] op.* fires log/entry notification with 
     });
 });
 
-test("log/entry notification is scoped to session", async () => {
+test("log/entry notification is scoped to workspace", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const wsA = await connect(addr);
         const wsB = await connect(addr);
@@ -194,8 +194,8 @@ test("log/entry notification is scoped to session", async () => {
             const aNotifs = subscribeNotifications(wsA, "log/entry");
             const bNotifs = subscribeNotifications(wsB, "log/entry");
 
-            await rpcCall(wsA, 1, "session.create", { name: "session-A" });
-            await rpcCall(wsB, 1, "session.create", { name: "session-B" });
+            await rpcCall(wsA, 1, "workspace.create", { name: "workspace-A" });
+            await rpcCall(wsB, 1, "workspace.create", { name: "workspace-B" });
             await flush();
             aNotifs(); bNotifs();
 
@@ -211,7 +211,7 @@ test("op.find on empty scope returns 200 with empty results", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "find-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "find-test" });
             const response = await rpcCall(ws, 2, "op.find", { scope: "known:///" });
             const result = response.result as { status: number; results: string[]; content: string };
             assert.equal(result.status, 200);
@@ -225,16 +225,16 @@ test("op.send broadcast with terminal status updates loop status", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const session = await rpcCall(ws, 1, "session.create", { name: "send-test" });
-            const sessionId = (session.result as { id: number }).id;
-            const run = await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ session_id: sessionId });
+            const workspace = await rpcCall(ws, 1, "workspace.create", { name: "send-test" });
+            const workspaceId = (workspace.result as { id: number }).id;
+            const run = await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId });
 
             // op.send is the first client op — it lazily creates the
             // client loop. After it runs we can look up that loop.
             const response = await rpcCall(ws, 2, "op.send", { status: 200 });
             assert.equal((response.result as { status: number }).status, 200);
 
-            const clientLoop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ run_id: run?.id });
+            const clientLoop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ worker_id: run?.id });
             const loop = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: clientLoop?.id });
             assert.equal(loop?.status, 200);
         } finally { ws.close(); }

@@ -1,9 +1,9 @@
 -- entry.read RPC queries. SPEC §methods.
 
 -- PREP: entry_read_lookup
-SELECT id, scope, session_id, scheme, pathname
+SELECT id, scope, workspace_id, scheme, pathname
 FROM entries
-WHERE session_id = $session_id AND scheme = $scheme AND pathname = $pathname;
+WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: entry_read_channels
 SELECT name, content, length(content) AS contentLength, mimetype, tokens, state

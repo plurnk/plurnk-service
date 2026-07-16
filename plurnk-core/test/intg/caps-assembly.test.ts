@@ -6,18 +6,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
-import { openMigrated, insertSession, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, makeSchemeCtx } from "./_helpers.ts";
 
 test("SchemeCtxImpl: identity + the five caps wired + crossScheme deferred stub", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `caps-asm-${crypto.randomUUID()}`);
-        const ctx = makeSchemeCtx({ db, sessionId, runId: 7, loopId: 8, turnId: 9, writer: "model" });
+        const workspaceId = await insertWorkspace(db, `caps-asm-${crypto.randomUUID()}`);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId: 7, loopId: 8, turnId: 9, writer: "model" });
         const sctx = new SchemeCtxImpl(ctx, "known");
 
         // identity lifted off the PlurnkSchemeContext
-        assert.equal(sctx.sessionId, sessionId);
-        assert.equal(sctx.runId, 7);
+        assert.equal(sctx.workspaceId, workspaceId);
+        assert.equal(sctx.workerId, 7);
         assert.equal(sctx.loopId, 8);
         assert.equal(sctx.turnId, 9);
         assert.equal(sctx.writer, "model");

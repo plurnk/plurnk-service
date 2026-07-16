@@ -17,7 +17,7 @@ test("[§exec-timeout] EXEC <T> kills the spawn after T seconds and closes the s
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "exec-timeout" });
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-timeout" });
             const concluded = subscribeNotifications(ws, "stream/concluded");
             const t0 = Date.now();
             await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });

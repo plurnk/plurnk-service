@@ -11,7 +11,7 @@ test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcom
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "loop-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "loop-test" });
             // loop.run accepts and returns immediately (100 + loopId); the terminal outcome —
             // finalStatus, turnIds, usage — rides loop/terminated, surfaced here by the helper.
             const result = await runLoopToTerminal(ws, 2, { prompt: "what is the capital of france?" });
@@ -45,12 +45,12 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "loop-inject" });
+            await rpcCall(ws, 1, "workspace.create", { name: "loop-inject" });
 
             // No model run yet → inject has nothing to talk to (loop.run starts one).
-            const noRun = await rpcCall(ws, 2, "loop.inject", { prompt: "too early" });
-            assert.ok(noRun.error !== undefined, "inject before any run errors");
-            assert.match(noRun.error!.message, /no model run/);
+            const noWorker = await rpcCall(ws, 2, "loop.inject", { prompt: "too early" });
+            assert.ok(noWorker.error !== undefined, "inject before any run errors");
+            assert.match(noWorker.error!.message, /no model run/);
 
             // Start a run; SEND[200] ends it, leaving the run idle. Wait for the terminal
             // (loop.run no longer blocks) so the run is genuinely idle before we inject.
@@ -58,10 +58,10 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
 
             // Inject into the idle run → enqueues a fresh loop, returns immediately.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW, the config is TOML" });
-            const result = injected.result as { action: string; loopId: number; modelRunId: number };
+            const result = injected.result as { action: string; loopId: number; modelWorkerId: number };
             assert.equal(result.action, "enqueued_new_loop", "idle run → a fresh enqueued loop");
             assert.ok(typeof result.loopId === "number", "returns the loopId");
-            assert.ok(typeof result.modelRunId === "number", "returns the run it spoke into");
+            assert.ok(typeof result.modelWorkerId === "number", "returns the run it spoke into");
 
             // empty prompt is a contract violation.
             const empty = await rpcCall(ws, 5, "loop.inject", { prompt: "" });
@@ -75,34 +75,34 @@ test("run.fork branches the model run into a new -fork run; names it at instanti
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "fork-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "fork-test" });
 
             // No model run yet → nothing to fork.
-            const noRun = await rpcCall(ws, 2, "run.fork", {});
-            assert.ok(noRun.error, "fork with no model run errors");
-            assert.match(noRun.error!.message, /no model run/);
+            const noWorker = await rpcCall(ws, 2, "run.fork", {});
+            assert.ok(noWorker.error, "fork with no model run errors");
+            assert.match(noWorker.error!.message, /no model run/);
 
             // A loop builds the model run + its log; forking branches it. Wait for the
             // terminal so the log is settled before the fork copies it.
             await runLoopToTerminal(ws, 3, { prompt: "do a thing" });
             const fork = await rpcCall(ws, 4, "run.fork", {});
-            const r = fork.result as { runId: number; runName: string | null; parentRunId: number };
-            assert.ok(typeof r.runId === "number" && typeof r.parentRunId === "number", "returns new + parent run ids");
-            assert.notEqual(r.runId, r.parentRunId, "the fork is a distinct run");
-            assert.match(r.runName ?? "", /-fork-\d+$/, "the fork is named <parent>-fork-<N> by default (unique per fork)");
+            const r = fork.result as { workerId: number; workerName: string | null; parentWorkerId: number };
+            assert.ok(typeof r.workerId === "number" && typeof r.parentWorkerId === "number", "returns new + parent run ids");
+            assert.notEqual(r.workerId, r.parentWorkerId, "the fork is a distinct run");
+            assert.match(r.workerName ?? "", /-fork-\d+$/, "the fork is named <parent>-fork-<N> by default (unique per fork)");
 
             // #248 — an explicit name names the branch at instantiation (immutable after; no rename).
             const named = await rpcCall(ws, 5, "run.fork", { name: "harvest" });
-            assert.equal((named.result as { runName: string | null }).runName, "harvest", "an explicit name names the branch");
+            assert.equal((named.result as { workerName: string | null }).workerName, "harvest", "an explicit name names the branch");
 
-            // Reserved + taken names are refused up front (runs.name is UNIQUE per session) —
-            // mirrors session.attach, never falling through to the insert.
+            // Reserved + taken names are refused up front (workers.name is UNIQUE per workspace) —
+            // mirrors workspace.attach, never falling through to the insert.
             const reserved = await rpcCall(ws, 6, "run.fork", { name: "plurnk" });
             assert.ok(reserved.error, "the reserved name is refused");
             assert.match(reserved.error!.message, /reserved/);
 
             const taken = await rpcCall(ws, 7, "run.fork", { name: "harvest" });
-            assert.ok(taken.error, "a name already in the session is refused — names are immutable");
+            assert.ok(taken.error, "a name already in the workspace is refused — names are immutable");
             assert.match(taken.error!.message, /already exists/);
 
             const empty = await rpcCall(ws, 8, "run.fork", { name: "" });
@@ -120,7 +120,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
         const ws = await connect(addr);
         try {
             const logEntries = subscribeNotifications(ws, "log/entry");
-            await rpcCall(ws, 1, "session.create", { name: "stream-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "stream-test" });
             // loop.run returns immediately; wait for the loop to terminate so all its
             // log/entry notifications have fired before we inspect them.
             await runLoopToTerminal(ws, 2, { prompt: "test" });
@@ -161,7 +161,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
         const ws = await connect(addr);
         try {
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            await rpcCall(ws, 1, "session.create", { name: "term-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "term-test" });
             // loop.run returns immediately (100 accepted); the loop's outcome rides loop/terminated.
             const accept = await rpcCall(ws, 2, "loop.run", { prompt: "test" });
             const ack = accept.result as { finalStatus: number; turnIds: number[] };
@@ -194,7 +194,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
         const ws = await connect(addr);
         try {
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            await rpcCall(ws, 1, "session.create", { name: "errored-loop" });
+            await rpcCall(ws, 1, "workspace.create", { name: "errored-loop" });
             const accept = await rpcCall(ws, 2, "loop.run", { prompt: "go", maxTurns: 5 });
             assert.equal((accept.result as { finalStatus: number }).finalStatus, 100, "loop.run accepts immediately (100)");
 
@@ -221,7 +221,7 @@ test("loop.run without provider returns 501", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "no-provider" });
+            await rpcCall(ws, 1, "workspace.create", { name: "no-provider" });
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "anything" });
             const result = response.result as { status: number; error?: string };
             assert.equal(result.status, 501);
@@ -234,7 +234,7 @@ test("loop.run requires non-empty prompt", async () => {
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "empty-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "empty-test" });
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "" });
             assert.equal(response.error?.code, -32603);
             assert.match(response.error?.message ?? "", /non-empty params\.prompt/);
@@ -253,7 +253,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "maxturns-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "maxturns-test" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "iterate", maxTurns: 3 });
             assert.equal(result.accepted, 100, "loop.run accepts immediately");
             assert.equal(result.hitMaxTurns, true);
@@ -268,8 +268,8 @@ test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", a
         const ws = await connect(addr);
         try {
             const logEntries = subscribeNotifications(ws, "log/entry");
-            await rpcCall(ws, 1, "session.create", { name: "openpaths" });
-            // Headless session: the files needn't exist — what's asserted is that the daemon FOISTS a
+            await rpcCall(ws, 1, "workspace.create", { name: "openpaths" });
+            // Headless workspace: the files needn't exist — what's asserted is that the daemon FOISTS a
             // turn-0 READ for each path (a missing path just surfaces its own 4xx in the log).
             await runLoopToTerminal(ws, 2, { prompt: "look at these", openPaths: ["src/foo.ts", "README.md"] });
             await flush();

@@ -54,7 +54,7 @@ const makeEngine = (cfg: FakeConfig = {}) => {
 test("render: returns status, headers, and the serialized DOM", async () => {
     const { engine } = makeEngine({ html: "<html><body>hi</body></html>" });
     const browser = new Browser(() => Promise.resolve(engine));
-    const r = await browser.render("https://example.com/", { runId: 1 });
+    const r = await browser.render("https://example.com/", { workerId: 1 });
     assert.equal(r.status, 200);
     assert.equal(r.statusText, "OK");
     assert.equal(r.html, "<html><body>hi</body></html>");
@@ -65,7 +65,7 @@ test("render: returns status, headers, and the serialized DOM", async () => {
 test("render: launches locally (no CDP endpoint) and serializes", async () => {
     const { engine, calls } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
-    await browser.render("https://example.com/", { runId: 1 });
+    await browser.render("https://example.com/", { workerId: 1 });
     assert.equal(calls.launch, 1);
     assert.equal(calls.connect, 0);
     await browser.close();
@@ -74,7 +74,7 @@ test("render: launches locally (no CDP endpoint) and serializes", async () => {
 test("salvage: networkidle timeout with substantive body text → returns html, status 200", async () => {
     const { engine } = makeEngine({ goto: async () => { throw timeoutError(); }, bodyLen: 500, html: "<html><body>chatty</body></html>" });
     const browser = new Browser(() => Promise.resolve(engine));
-    const r = await browser.render("https://example.com/", { runId: 1 });
+    const r = await browser.render("https://example.com/", { workerId: 1 });
     assert.equal(r.status, 200);
     assert.equal(r.html, "<html><body>chatty</body></html>");
     assert.deepEqual(r.headers, []); // salvage path has no Response
@@ -84,14 +84,14 @@ test("salvage: networkidle timeout with substantive body text → returns html, 
 test("salvage: timeout below the body-text threshold → throws (skeleton, not a page)", async () => {
     const { engine } = makeEngine({ goto: async () => { throw timeoutError(); }, bodyLen: 10 });
     const browser = new Browser(() => Promise.resolve(engine));
-    await assert.rejects(browser.render("https://example.com/", { runId: 1 }), /Timeout/);
+    await assert.rejects(browser.render("https://example.com/", { workerId: 1 }), /Timeout/);
     await browser.close();
 });
 
 test("non-timeout navigation error re-throws (not salvaged)", async () => {
     const { engine } = makeEngine({ goto: async () => { throw new Error("net::ERR_NAME_NOT_RESOLVED"); } });
     const browser = new Browser(() => Promise.resolve(engine));
-    await assert.rejects(browser.render("https://nope.invalid/", { runId: 1 }), /ERR_NAME_NOT_RESOLVED/);
+    await assert.rejects(browser.render("https://nope.invalid/", { workerId: 1 }), /ERR_NAME_NOT_RESOLVED/);
     await browser.close();
 });
 
@@ -107,7 +107,7 @@ test("abort: aborting the signal closes the page, unblocking an in-flight naviga
         onClose: () => tripClose(),
     });
     const browser = new Browser(() => Promise.resolve(engine));
-    const p = browser.render("https://example.com/", { runId: 1, signal: controller.signal });
+    const p = browser.render("https://example.com/", { workerId: 1, signal: controller.signal });
     await assert.rejects(p, /Target closed/);
     assert.ok(calls.pageClose >= 1, "page was closed on abort");
     await browser.close();
@@ -116,7 +116,7 @@ test("abort: aborting the signal closes the page, unblocking an in-flight naviga
 test("mobile emulation: contexts default to a mobile profile (schemes-http#4)", async () => {
     const { engine, contextOptions } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
-    await browser.render("https://example.com/", { runId: 1 });
+    await browser.render("https://example.com/", { workerId: 1 });
     assert.equal(contextOptions[0]?.isMobile, true);
     assert.match(contextOptions[0]?.userAgent ?? "", /Mobile/);
     await browser.close();
@@ -128,7 +128,7 @@ test("mobile emulation: PLURNK_SCHEMES_HTTP_MOBILE=0 renders desktop (no emulati
     try {
         const { engine, contextOptions } = makeEngine();
         const browser = new Browser(() => Promise.resolve(engine));
-        await browser.render("https://example.com/", { runId: 1 });
+        await browser.render("https://example.com/", { workerId: 1 });
         assert.equal(contextOptions[0], undefined);
         await browser.close();
     } finally {
@@ -143,7 +143,7 @@ test("mobile emulation: unset MOBILE crashes naming the var (floor-set knob, no 
     try {
         const { engine } = makeEngine();
         const browser = new Browser(() => Promise.resolve(engine));
-        await assert.rejects(browser.render("https://example.com/", { runId: 1 }), /PLURNK_SCHEMES_HTTP_MOBILE is unset/);
+        await assert.rejects(browser.render("https://example.com/", { workerId: 1 }), /PLURNK_SCHEMES_HTTP_MOBILE is unset/);
         await browser.close();
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MOBILE;
@@ -154,13 +154,13 @@ test("mobile emulation: unset MOBILE crashes naming the var (floor-set knob, no 
 test("per-run context: reused across renders, dropped by closeContext", async () => {
     const { engine, calls } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
-    await browser.render("https://example.com/a", { runId: 7 });
-    await browser.render("https://example.com/b", { runId: 7 });
+    await browser.render("https://example.com/a", { workerId: 7 });
+    await browser.render("https://example.com/b", { workerId: 7 });
     assert.equal(calls.newContext, 1); // one context for the run, two pages
     assert.equal(calls.newPage, 2);
     browser.closeContext(7);
     assert.equal(calls.contextClose, 1);
-    await browser.render("https://example.com/c", { runId: 7 }); // fresh context after drop
+    await browser.render("https://example.com/c", { workerId: 7 }); // fresh context after drop
     assert.equal(calls.newContext, 2);
     await browser.close();
 });

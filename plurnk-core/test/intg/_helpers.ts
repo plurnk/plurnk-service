@@ -28,8 +28,8 @@ export const DEFAULT_MIMETYPES = new Mimetypes();
 // matcher-using paths don't 500 on missing dispatch capability.
 export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): PlurnkSchemeContext => ({
     db: undefined as unknown as Db,
-    sessionId: 0,
-    runId: 0,
+    workspaceId: 0,
+    workerId: 0,
     loopId: 0,
     turnId: 0,
     writer: "model",
@@ -110,24 +110,24 @@ const _reserves = ["REASONING", "COMPLETION", "SAFETY"].reduce((n, k) => n + Num
 const _viableWindow = Math.ceil((rulerCount(await readFile(Paths.instructionsSystem, "utf8")) + _reserves) * 2);
 export const viableWindow = (): number => _viableWindow;
 
-export const insertSession = async (db: Db, name: string): Promise<number> => {
-    const row = await (db.test_insert_session as PrepMethod).get<{ id: number }>({ name });
-    if (row === undefined) throw new Error("insertSession: insert returned no row");
+export const insertWorkspace = async (db: Db, name: string): Promise<number> => {
+    const row = await (db.test_insert_workspace as PrepMethod).get<{ id: number }>({ name });
+    if (row === undefined) throw new Error("insertWorkspace: insert returned no row");
     return row.id;
 };
 
-let runCounter = 0;
-export const insertRun = async (db: Db, sessionId: number, parentRunId: number | null = null, name?: string): Promise<number> => {
-    const row = await (db.test_insert_run as PrepMethod).get<{ id: number }>({
-        session_id: sessionId, name: name ?? `run-test-${++runCounter}-${Math.random().toString(36).slice(2, 8)}`, parent_run_id: parentRunId,
+let workerCounter = 0;
+export const insertWorker = async (db: Db, workspaceId: number, parentWorkerId: number | null = null, name?: string): Promise<number> => {
+    const row = await (db.test_insert_worker as PrepMethod).get<{ id: number }>({
+        workspace_id: workspaceId, name: name ?? `run-test-${++workerCounter}-${Math.random().toString(36).slice(2, 8)}`, parent_worker_id: parentWorkerId,
     });
-    if (row === undefined) throw new Error("insertRun: insert returned no row");
+    if (row === undefined) throw new Error("insertWorker: insert returned no row");
     return row.id;
 };
 
-export const insertLoop = async (db: Db, runId: number, sequence: number, prompt: string = ""): Promise<number> => {
+export const insertLoop = async (db: Db, workerId: number, sequence: number, prompt: string = ""): Promise<number> => {
     const row = await (db.test_insert_loop as PrepMethod).get<{ id: number }>({
-        run_id: runId, sequence, prompt,
+        worker_id: workerId, sequence, prompt,
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
     return row.id;
@@ -163,11 +163,11 @@ export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
 };
 
 // Fixture root-assignment (headless-is-forever: production sets projectRoot ONLY at
-// session.create; tests that build sessions piecemeal root them here — a direct UPDATE plus the
+// workspace.create; tests that build workspaces piecemeal root them here — a direct UPDATE plus the
 // same creation-time membership resolve createClientEnvelope performs).
-export const rootSession = async (db: Db, sessionId: number, root: string): Promise<void> => {
-    await (db.test_set_session_root as PrepMethod).run({ id: sessionId, project_root: root });
-    await GitMembership.resolveGitMembership(db, sessionId, undefined);
+export const rootWorkspace = async (db: Db, workspaceId: number, root: string): Promise<void> => {
+    await (db.test_set_session_root as PrepMethod).run({ id: workspaceId, project_root: root });
+    await GitMembership.resolveGitMembership(db, workspaceId, undefined);
 };
 
 export const insertTurn = async (db: Db, loopId: number, sequence: number, status: number = 200): Promise<number> => {
@@ -179,13 +179,13 @@ export const insertTurn = async (db: Db, loopId: number, sequence: number, statu
 };
 
 export const seedEnvelope = async (db: Db, label: string): Promise<{
-    sessionId: number; runId: number; loopId: number; turnId: number;
+    workspaceId: number; workerId: number; loopId: number; turnId: number;
 }> => {
-    const sessionId = await insertSession(db, label);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1);
+    const workspaceId = await insertWorkspace(db, label);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1);
     const turnId = await insertTurn(db, loopId, 1);
-    return { sessionId, runId, loopId, turnId };
+    return { workspaceId, workerId, loopId, turnId };
 };
 
 // Seed an entry with one channel + visibility row, bypassing scheme handlers.
@@ -194,8 +194,8 @@ export const seedEnvelope = async (db: Db, label: string): Promise<{
 export const seedEntryWithChannel = async (
     db: Db,
     opts: {
-        sessionId: number;
-        runId?: number;
+        workspaceId: number;
+        workerId?: number;
         scheme?: string;
         pathname?: string;
         channel?: string;
@@ -205,7 +205,7 @@ export const seedEntryWithChannel = async (
     },
 ): Promise<number> => {
     const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-        session_id: opts.sessionId,
+        workspace_id: opts.workspaceId,
         scheme: opts.scheme ?? "known",
         pathname: opts.pathname ?? "/x",
     });

@@ -19,7 +19,7 @@ Built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/p
 <<EXEC[git](./subrepo):log -n 5:EXEC
 ```
 
-`(target)` is the repo directory (default: the session workspace). Commit author comes from the repo's own `user.name`/`user.email` config — never invented; unset fails with `git_no_author`.
+`(target)` is the repo directory (default: the workspace workspace). Commit author comes from the repo's own `user.name`/`user.email` config — never invented; unset fails with `git_no_author`.
 
 ## Availability & gating
 

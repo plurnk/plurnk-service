@@ -6,7 +6,7 @@
 //   notifyChunk(channel, chunk) → FUSED append-to-channel + stream/event.
 //   close(reason, outcome?) → composites every channel's terminal state, the
 //     registry close, and the rich run-wake (the only place with the close
-//     context to populate it — which is why NotifyCaps dropped wakeRun, #180).
+//     context to populate it — which is why NotifyCaps dropped wakeWorker, #180).
 // Stateful: open() binds the entry + subscription that notifyChunk()/close()
 // operate on. Models src/schemes/Exec.ts over the same ChannelWrite primitives.
 
@@ -33,7 +33,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
         if (entryId === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
         const subscriptionId = await ChannelWrite.openSubscription(this.#ctx.db, {
-            runId: this.#ctx.runId, entryId, scheme: this.#scheme ?? "file", handle: pathname,
+            workerId: this.#ctx.workerId, entryId, scheme: this.#scheme ?? "file", handle: pathname,
         });
         // Compose the run signal with a fresh controller; a run abort also
         // force-cancels the sibling's handle.
@@ -75,8 +75,8 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         await ChannelWrite.closeSubscription(this.#ctx.db, { subscriptionId, status: closeStatus });
         this.#unlink();
         const target = this.#scheme === null ? `file://${this.#pathname}` : `${this.#scheme}://${this.#pathname}`;
-        this.#ctx.wakeRunNotify?.({
-            sessionId: this.#ctx.sessionId, runId: this.#ctx.runId,
+        this.#ctx.wakeWorkerNotify?.({
+            workspaceId: this.#ctx.workspaceId, workerId: this.#ctx.workerId,
             entryId, target, subscriptionId, closeStatus,
             scheme: this.#scheme ?? "file", summary: outcome ?? "",
         });

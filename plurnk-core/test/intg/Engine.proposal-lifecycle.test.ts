@@ -12,7 +12,7 @@ import type { ProposalResolution } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import { parseDsl } from "./_rpc.ts";
 
 // Minimal proposing scheme. `edit` returns 202 with attrs the test asserts on.
@@ -22,7 +22,7 @@ class ProposingTest {
         channels: {},
         defaultChannel: "body",
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,
@@ -45,16 +45,16 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
 });
 
 const setupEngine = async (db: Db): Promise<{
-    engine: Engine; sessionId: number; runId: number; loopId: number; turnId: number;
+    engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number;
 }> => {
     const schemes = new SchemeRegistry();
     schemes.register("proposing-test", new ProposingTest());
     const engine = new Engine({ db, schemes });
-    const sessionId = await insertSession(db, `prop-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "proposal test");
+    const workspaceId = await insertWorkspace(db, `prop-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "proposal test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { engine, sessionId, runId, loopId, turnId };
+    return { engine, workspaceId, workerId, loopId, turnId };
 };
 
 // Deferred promise: resolves when onDispatch fires with the log entry id.
@@ -67,12 +67,12 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 };
 
 const dispatchAndResolve = async (engine: Engine, ctx: {
-    sessionId: number; runId: number; loopId: number; turnId: number;
+    workspaceId: number; workerId: number; loopId: number; turnId: number;
 }, resolution: ProposalResolution): Promise<{ status: number; logEntryId: number }> => {
     const idDeferred = deferred<number>();
     const dispatchPromise = engine.dispatch({
         statement: editStmt("/x", "y"),
-        sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+        workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
         sequence: 1, origin: "model",
         onDispatch: (id) => idDeferred.resolve(id),
     });
@@ -154,7 +154,7 @@ test("[§proposal-proposed-hidden] proposal: status=202 + state='proposed' rows 
         const idDeferred = deferred<number>();
         const pending = ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -162,14 +162,14 @@ test("[§proposal-proposed-hidden] proposal: status=202 + state='proposed' rows 
 
         // Render the log — proposed entry should be invisible.
         // engine_render_log is run-scoped per SPEC §packet-terms (runs own log entries).
-        const rendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ run_id: ctx.runId });
+        const rendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
         const proposedVisible = rendered.find((r) => r.status_rx === 202 && r.state === "proposed");
         assert.equal(proposedVisible, undefined, "proposed entries must be invisible to log render");
 
         // Now resolve and re-render — entry should surface.
         ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
         await pending;
-        const rerendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ run_id: ctx.runId });
+        const rerendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
         const resolvedVisible = rerendered.find((r) => r.state === "resolved");
         assert.notEqual(resolvedVisible, undefined, "resolved entries must surface in log render");
         assert.equal(resolvedVisible?.status_rx, 200);
@@ -195,7 +195,7 @@ test("proposal: pendingProposalIds reports waiting entries", async () => {
         const idDeferred = deferred<number>();
         const pending = ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -246,7 +246,7 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({
             statement: sendParked,
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             sequence: 1, origin: "model",
             onDispatch: (id) => parkDeferred.resolve(id),
         });
@@ -267,7 +267,7 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
         const editDeferred = deferred<number>();
         const editPending = ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             sequence: 2, origin: "model",
             onDispatch: (id) => editDeferred.resolve(id),
         });
@@ -292,7 +292,7 @@ test("proposal: YOLO auto-accepts when loops.flags.yolo === true", async () => {
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -322,7 +322,7 @@ test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", a
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -350,7 +350,7 @@ test("[§proposal-timeout-cancels] proposal: timeout fires after PLURNK_SERVICE_
         // through the same applyResolution path as a manual cancel.
         const result = await ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -378,7 +378,7 @@ test("[§proposal-timeout-cancels] the SHIPPED default is INDEFINITE — a stopp
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: editStmt("/x", "y"),
-            sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
             sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });

@@ -13,7 +13,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
 import Known from "../../src/schemes/Known.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
 
@@ -26,8 +26,8 @@ const readStmt = (pathname: string, body: ReadStatement["body"] = null): ReadSta
 test("an AUTHORED html write is verbatim — attribute data survives a default READ (the email regression)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `authored-${crypto.randomUUID()}`);
-        const ctx = makeSchemeCtx({ db, sessionId, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4) });
+        const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
+        const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4) });
 
         const written = await EntryCrud.writeEntry("/roster.html", { channels: { body: { content: ROSTER, mimetype: "text/html" } }, tags: [] }, ctx, "known");
         assert.equal(written.status, 201);
@@ -35,7 +35,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
         assert.equal(rows[0].mimetype, "text/html", "the authored mimetype is preserved");
 
-        const read = await EntryOps.readSessionEntry(readStmt("roster.html"), ctx, Known.manifest);
+        const read = await EntryOps.readWorkspaceEntry(readStmt("roster.html"), ctx, Known.manifest);
         assert.match(read.content ?? "", /alice@x\.com/, "a default READ sees the email — attributes intact");
     } finally { await db.close(); }
 });
@@ -49,7 +49,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
     engine.hotloadRuntime("fetchstub", {
         executor: {
             runtime: "fetchstub", glyph: "?",
-            get manifest() { return { name: "fetchstub", protocol: "fetchstub:", channels: {}, defaultChannel: "results", category: "action", scope: "run", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: "fetchstub", protocol: "fetchstub:", channels: {}, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return {}; },
             effect: () => "pure" as const,
@@ -64,11 +64,11 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         glyph: "?", example: "", documentation: "", available: true, detail: undefined,
     } as never);
     try {
-        const sessionId = await insertSession(db, `fetched-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "fetch test");
+        const workspaceId = await insertWorkspace(db, `fetched-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "fetch test");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await engine.dispatch({ statement: { op: "EXEC", suffix: "", signal: "fetchstub", target: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } } as ExecStatement, sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: { op: "EXEC", suffix: "", signal: "fetchstub", target: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } } as ExecStatement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await quiesceExecs(schemes); // drains the fetch spawn's tail + entry() write — no race with db.close (#432)
 
         const entry = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/news.example/a" });

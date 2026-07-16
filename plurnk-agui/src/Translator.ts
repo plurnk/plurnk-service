@@ -18,20 +18,20 @@ import type { AguiEvent, LogEntryNotification, ProposalNotification, TerminatedN
 
 export default class Translator {
     #threadId: string;
-    #runId: string;
+    #workerId: string;
     #currentTurn: number | null = null;
-    #modelRunId: number | null;
-    #sessionId: number | null;
+    #modelWorkerId: number | null;
+    #workspaceId: number | null;
 
-    constructor(args: { threadId: string; runId: string; modelRunId?: number | null; sessionId?: number | null }) {
+    constructor(args: { threadId: string; workerId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
         this.#threadId = args.threadId;
-        this.#runId = args.runId;
-        this.#modelRunId = args.modelRunId ?? null;
-        this.#sessionId = args.sessionId ?? null;
+        this.#workerId = args.workerId;
+        this.#modelWorkerId = args.modelWorkerId ?? null;
+        this.#workspaceId = args.workspaceId ?? null;
     }
 
     runStarted(snapshot?: unknown): AguiEvent[] {
-        const events: AguiEvent[] = [{ type: "RUN_STARTED", threadId: this.#threadId, runId: this.#runId }];
+        const events: AguiEvent[] = [{ type: "RUN_STARTED", threadId: this.#threadId, workerId: this.#workerId }];
         // Spec flow: SNAPSHOT then DELTAs — the frontend's state gauge starts true, not blank.
         if (snapshot !== undefined) events.push({ type: "STATE_SNAPSHOT", snapshot });
         return events;
@@ -40,16 +40,16 @@ export default class Translator {
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
-        // §agui-topology-scope — the session broadcast carries EVERY run's rows (workers, the
+        // §agui-topology-scope — the workspace broadcast carries EVERY run's rows (workers, the
         // plurnk run, siblings); only the THREAD's model run projects onto the core vocabulary.
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
         // never interleaved into the conversation a generic frontend renders.
-        const runId = (e as { run_id?: number }).run_id;
-        // Lazy binding: session.create returns the CLIENT run's id — the model run is born at
+        const workerId = (e as { worker_id?: number }).worker_id;
+        // Lazy binding: workspace.create returns the CLIENT run's id — the model run is born at
         // loop.run's drain, so a fresh thread adopts its FIRST model-origin row's run as the
-        // model run (workers spawn FROM it later; reattach seeds it from session.runs instead).
-        if (this.#modelRunId === null && e.origin === "model" && typeof runId === "number") this.#modelRunId = runId;
-        const foreign = this.#modelRunId !== null && typeof runId === "number" && runId !== this.#modelRunId;
+        // model run (workers spawn FROM it later; reattach seeds it from workspace.workers instead).
+        if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
+        const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // §agui-row-channel — the FULL wire row rides plurnk.row alongside the core projection:
         // fold state, tags-in-signal, tokens, coordinates — everything the TUI/nvim render that
         // the core vocabulary can't hold. Rich clients render from plurnk.row; generic clients
@@ -132,12 +132,12 @@ export default class Translator {
             ],
         });
         // Family channel — the full terminal truth the core STATE_DELTA can't hold
-        // (loopId, turnIds, costPico, usage meta) PLUS the daemon sessionId, so a
+        // (loopId, turnIds, costPico, usage meta) PLUS the daemon workspaceId, so a
         // plurnk client rebuilds its json record from the stream with ONE schema
         // across transports (WS or bridge) — no second round-trip. Numbers verbatim
         // (§agui-numbers-passthrough). Generic frontends ignore it; the RUN_FINISHED/
         // RUN_ERROR below is their terminal signal.
-        events.push({ type: "CUSTOM", name: "plurnk.terminated", value: { ...n, sessionId: this.#sessionId } });
+        events.push({ type: "CUSTOM", name: "plurnk.terminated", value: { ...n, workspaceId: this.#workspaceId } });
         // The standard RAW channel (§475): the provider's NATIVE completion frame rides
         // usage.meta (finish_reason, model, timings, id, …) — AG-UI's RAW is exactly this,
         // a passthrough of an external system's own event with a source tag. Generic
@@ -146,14 +146,14 @@ export default class Translator {
             events.push({ type: "RAW", event: n.usage.meta, source: "provider" });
         }
         if (n.finalStatus === 200) {
-            events.push({ type: "RUN_FINISHED", threadId: this.#threadId, runId: this.#runId });
+            events.push({ type: "RUN_FINISHED", threadId: this.#threadId, workerId: this.#workerId });
         } else {
             events.push({ type: "RUN_ERROR", message: `loop terminated ${n.finalStatus}${n.hitMaxTurns ? " (maxTurns)" : ""}`, code: String(n.finalStatus) });
         }
         return events;
     }
 
-    // §agui-replay — the session log as AG-UI history: model SENDs become assistant messages
+    // §agui-replay — the workspace log as AG-UI history: model SENDs become assistant messages
     // (the conversation's spine); everything else stays reachable through live plurnk.row
     // rendering, not duplicated into message history. Wire rows arrive as the log.read
     // projection (tx parsed).

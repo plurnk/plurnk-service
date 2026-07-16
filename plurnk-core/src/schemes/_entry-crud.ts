@@ -40,8 +40,8 @@ export interface DeleteEntryResult {
 
 export default class EntryCrud {
     static async readEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string | null): Promise<ReadEntryResult> {
-        const { db, sessionId } = ctx;
-        const entry = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+        const { db, workspaceId } = ctx;
+        const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
         if (entry === undefined) return { status: 404, entry: null };
 
         const channelRows = await (db.crud_read_channels as PrepMethod).all<{ name: string; content: string; mimetype: string }>({ entry_id: entry.id });
@@ -57,14 +57,14 @@ export default class EntryCrud {
     }
 
     static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string | null): Promise<WriteEntryResult> {
-        const { db, sessionId, tokenize } = ctx;
+        const { db, workspaceId, tokenize } = ctx;
         if (tokenize === undefined) throw new Error("writeEntry: ctx.tokenize is required for token accounting");
-        const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+        const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
 
         let entryId: number;
         let created: boolean;
         if (existing === undefined) {
-            const row = await (db.crud_insert_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+            const row = await (db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
             if (row === undefined) throw new Error("writeEntry: insert returned no row");
             entryId = row.id;
             created = true;
@@ -91,7 +91,7 @@ export default class EntryCrud {
             await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
         }
         // §semantic-fts-at-write — the keyword half of the ~fusion indexes AT THE WRITE
-        // (plain string→FTS, no handler): a cold session's very first query narrows over
+        // (plain string→FTS, no handler): a cold workspace's very first query narrows over
         // everything ever written. Only the VECTOR half is derived (background pump +
         // the ~query's inline slice). NB: still NO @graph derivation here — the mimetypes
         // handler is never invoked at write (§mimetype-schemes-do-not-invoke-handlers).
@@ -102,8 +102,8 @@ export default class EntryCrud {
     }
 
     static async deleteEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string | null): Promise<DeleteEntryResult> {
-        const { db, sessionId } = ctx;
-        const existing = await (db.crud_find_session_entry as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+        const { db, workspaceId } = ctx;
+        const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
         if (existing === undefined) return { status: 404 };
         await EntrySemantic.indexFts(db, existing.id, ""); // §semantic-fts-at-write — the keyword row dies with the entry
         await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });

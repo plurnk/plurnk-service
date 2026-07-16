@@ -17,14 +17,14 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockRe
 // Engine.proposal-lifecycle.test.ts. Lets us trigger the lifecycle from a
 // full Daemon RPC roundtrip without depending on the File scheme (whose
 // File scheme used to require PLURNK_WORKSPACE_ROOT but now reads
-// sessions.project_root — out of scope for these YOLO tests anyway).
+// workspaces.project_root — out of scope for these YOLO tests anyway).
 class ProposingTest {
     static manifest: SchemeManifest = {
         name: "proposing-test",
         channels: {},
         defaultChannel: "body",
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,
@@ -45,7 +45,7 @@ test("loop.run with flags.yolo=true persists to loops.flags", async () => {
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "yolo-persist" });
+            await rpcCall(ws, 1, "workspace.create", { name: "yolo-persist" });
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "test", flags: { yolo: true } });
             const result = response.result as { loopId: number };
 
@@ -64,7 +64,7 @@ test("loop.run without flags leaves loops.flags at default ({})", async () => {
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "no-flags" });
+            await rpcCall(ws, 1, "workspace.create", { name: "no-flags" });
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "test" });
             const result = response.result as { loopId: number };
 
@@ -87,7 +87,7 @@ test("[§dual-yolo-server-yolo-auto-accept] loop.run with flags.yolo=true: in-tr
 
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "yolo-resolve" });
+            await rpcCall(ws, 1, "workspace.create", { name: "yolo-resolve" });
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "trigger proposal", flags: { yolo: true },
             });
@@ -121,7 +121,7 @@ test("[§dual-yolo-proposal-carries-flags] loop/proposal notification carries fl
         const ws = await connect(addr);
         try {
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 1, "session.create", { name: "flags-notif" });
+            await rpcCall(ws, 1, "workspace.create", { name: "flags-notif" });
 
             // Race-safe pattern: kick loop.run, capture the first proposal
             // notification, resolve it, then await loop.run.
@@ -158,7 +158,7 @@ test("loop/proposal notification: flags.yolo=true when server YOLO is active", a
         const ws = await connect(addr);
         try {
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 1, "session.create", { name: "flags-yolo-notif" });
+            await rpcCall(ws, 1, "workspace.create", { name: "flags-yolo-notif" });
             await runLoopToTerminal(ws, 2, { prompt: "trigger", flags: { yolo: true } });
             // loop.run returns immediately now; wait for the proposal to broadcast async.
             const captured = await waitFor(() => proposals() as Array<{ flags?: { yolo?: boolean } }>, (p) => p.length > 0);
@@ -173,7 +173,7 @@ test("loop.run rejects non-boolean flags.yolo", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "bad-yolo" });
+            await rpcCall(ws, 1, "workspace.create", { name: "bad-yolo" });
             const response = await rpcCall(ws, 2, "loop.run", {
                 prompt: "test", flags: { yolo: "not-a-boolean" },
             });
@@ -187,7 +187,7 @@ test("loop.run rejects non-object flags", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "bad-flags" });
+            await rpcCall(ws, 1, "workspace.create", { name: "bad-flags" });
             const response = await rpcCall(ws, 2, "loop.run", {
                 prompt: "test", flags: "yolo",
             });

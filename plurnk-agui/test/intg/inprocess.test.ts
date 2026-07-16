@@ -45,7 +45,7 @@ test("[§agui-daemon-client][§agui-run-endpoint][§agui-thread-is-run] in-proce
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
                 threadId: "inproc-smoke",
-                runId: "run-1",
+                workerId: "run-1",
                 messages: [{ role: "user", content: "Reply with exactly one short sentence: say pong." }],
                 forwardedProps: { plurnk: { projectRoot: sandbox, flags: { yolo: true }, maxTurns: 6 } },
             }),

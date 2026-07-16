@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 // #240 — PLURNK_SERVICE_PACKET_INJECT lands as an operator section right after the teaching (schemes),
@@ -20,14 +20,14 @@ test("[§packet-inject] PLURNK_SERVICE_PACKET_INJECT: operator file rides as a s
         await writeFile(join(dir, "ops.md"), "## House style\nPrefer sqlite over node.");
         process.env.PLURNK_SERVICE_PACKET_INJECT = join(dir, "ops.md");
 
-        const sessionId = await insertSession(db, `inject-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `inject-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
 
         const { turnId } = await engine.runTurn({
-            provider, sessionId, runId, loopId,
+            provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "PLURNK_MD" }, { role: "user", content: "go" }],
         });
 

@@ -11,19 +11,19 @@ DELETE FROM symbol_defs WHERE entry_id = $entry_id;
 DELETE FROM symbol_refs WHERE entry_id = $entry_id;
 
 -- PREP: graph_insert_def
-INSERT INTO symbol_defs (session_id, entry_id, name, kind, container, line, end_line)
-VALUES ($session_id, $entry_id, $name, $kind, $container, $line, $end_line);
+INSERT INTO symbol_defs (workspace_id, entry_id, name, kind, container, line, end_line)
+VALUES ($workspace_id, $entry_id, $name, $kind, $container, $line, $end_line);
 
 -- PREP: graph_insert_ref
-INSERT INTO symbol_refs (session_id, entry_id, name, kind, container, line, col)
-VALUES ($session_id, $entry_id, $name, $kind, $container, $line, $col);
+INSERT INTO symbol_refs (workspace_id, entry_id, name, kind, container, line, col)
+VALUES ($workspace_id, $entry_id, $name, $kind, $container, $line, $col);
 
 -- PREP: graph_referrers
 -- @<sym — entries (scheme-scoped) that reference sym, with each reference's line
 -- (#286: a matcher resolves to (file, span) — one item per reference occurrence).
 SELECT DISTINCT e.pathname, r.line AS line, r.line AS end_line
 FROM symbol_refs r JOIN entries e ON e.id = r.entry_id
-WHERE r.session_id = $session_id AND e.scheme IS $scheme AND r.name = $name
+WHERE r.workspace_id = $workspace_id AND e.scheme IS $scheme AND r.name = $name
 ORDER BY e.pathname, r.line;
 
 -- PREP: graph_def_pathnames_by_name
@@ -32,19 +32,19 @@ ORDER BY e.pathname, r.line;
 -- when a def has no end (#286: the symbol's line..end_line is its (file, span)).
 SELECT DISTINCT e.pathname, d.line AS line, COALESCE(d.end_line, d.line) AS end_line
 FROM symbol_defs d JOIN entries e ON e.id = d.entry_id
-WHERE d.session_id = $session_id AND e.scheme IS $scheme AND d.name = $name
+WHERE d.workspace_id = $workspace_id AND e.scheme IS $scheme AND d.name = $name
 ORDER BY e.pathname, d.line;
 
 -- PREP: graph_resolve_def
 -- sym → its def(s): (entry_id, container) to compose the qualified path for @>.
 SELECT entry_id, container FROM symbol_defs
-WHERE session_id = $session_id AND name = $name;
+WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: graph_refs_from_source
 -- @>sym step — the target names sym's def references (its own ref rows, keyed
 -- by the source def's full qualified path = the @> join semantics from #186).
 SELECT DISTINCT name FROM symbol_refs
-WHERE session_id = $session_id AND entry_id = $entry_id AND container IS $container;
+WHERE workspace_id = $workspace_id AND entry_id = $entry_id AND container IS $container;
 
 -- PREP: graph_set_deep_hash
 -- Stamp the body-content hash at the moment an entry's deep channels were

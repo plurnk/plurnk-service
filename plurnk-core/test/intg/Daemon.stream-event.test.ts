@@ -5,21 +5,21 @@ import assert from "node:assert/strict";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { seedEntryWithChannel } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
-test("[§notifications-envelope-carries-sessionid] notifyStreamEvent broadcasts to a session's clients, envelope stamped with the scope", async () => {
+test("[§notifications-envelope-carries-sessionid] notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "stream-test" });
-            const sessionId = (sessionResp.result as { id: number }).id;
+            const workspaceResp = await rpcCall(ws, 1, "workspace.create", { name: "stream-test" });
+            const workspaceId = (workspaceResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
 
-            const entryId = await seedEntryWithChannel(db, { sessionId, content: "hello", state: "active" });
-            daemon.notifyStreamEvent(sessionId, { entryId, channel: "body", state: "active", contentLength: 5 });
+            const entryId = await seedEntryWithChannel(db, { workspaceId, content: "hello", state: "active" });
+            daemon.notifyStreamEvent(workspaceId, { entryId, channel: "body", state: "active", contentLength: 5 });
             await flush();
 
             assert.equal(captured().length, 1);
-            const evt = captured()[0] as { sessionId: number; entryId: number; channel: string; state: string; contentLength: number };
-            assert.equal(evt.sessionId, sessionId, "the envelope carries its session scope so multi-session clients can route it (#191)");
+            const evt = captured()[0] as { workspaceId: number; entryId: number; channel: string; state: string; contentLength: number };
+            assert.equal(evt.workspaceId, workspaceId, "the envelope carries its workspace scope so multi-workspace clients can route it (#191)");
             assert.equal(evt.entryId, entryId);
             assert.equal(evt.channel, "body");
             assert.equal(evt.state, "active");
@@ -32,10 +32,10 @@ test("appendToChannel via the daemon's notify callback fires stream/event end-to
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "append-test" });
-            const sessionId = (sessionResp.result as { id: number }).id;
+            const workspaceResp = await rpcCall(ws, 1, "workspace.create", { name: "append-test" });
+            const workspaceId = (workspaceResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
-            const entryId = await seedEntryWithChannel(db, { sessionId, content: "hi", state: "active" });
+            const entryId = await seedEntryWithChannel(db, { workspaceId, content: "hi", state: "active" });
 
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);
@@ -56,10 +56,10 @@ test("setChannelState end-to-end fires stream/event with state change", async ()
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "state-test" });
-            const sessionId = (sessionResp.result as { id: number }).id;
+            const workspaceResp = await rpcCall(ws, 1, "workspace.create", { name: "state-test" });
+            const workspaceId = (workspaceResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
-            const entryId = await seedEntryWithChannel(db, { sessionId, content: "done", state: "active" });
+            const entryId = await seedEntryWithChannel(db, { workspaceId, content: "done", state: "active" });
 
             await ChannelWrite.setChannelState(db, { entryId, channel: "body", state: "closed", notify: (sid, ev) => daemon.notifyStreamEvent(sid, ev) });
             await flush();
@@ -71,24 +71,24 @@ test("setChannelState end-to-end fires stream/event with state change", async ()
     });
 });
 
-test("stream/event is session-scoped — other sessions don't see it", async () => {
+test("stream/event is workspace-scoped — other workspaces don't see it", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const wsA = await connect(addr);
         const wsB = await connect(addr);
         try {
-            const aResp = await rpcCall(wsA, 1, "session.create", { name: "session-A" });
-            const bResp = await rpcCall(wsB, 1, "session.create", { name: "session-B" });
-            const sessionA = (aResp.result as { id: number }).id;
-            const sessionB = (bResp.result as { id: number }).id;
+            const aResp = await rpcCall(wsA, 1, "workspace.create", { name: "workspace-A" });
+            const bResp = await rpcCall(wsB, 1, "workspace.create", { name: "workspace-B" });
+            const workspaceA = (aResp.result as { id: number }).id;
+            const workspaceB = (bResp.result as { id: number }).id;
 
             const aEvents = subscribeNotifications(wsA, "stream/event");
             const bEvents = subscribeNotifications(wsB, "stream/event");
 
-            const entryIdA = await seedEntryWithChannel(db, { sessionId: sessionA, content: "hi", state: "active" });
-            daemon.notifyStreamEvent(sessionA, { entryId: entryIdA, channel: "body", state: "active", contentLength: 2 });
+            const entryIdA = await seedEntryWithChannel(db, { workspaceId: workspaceA, content: "hi", state: "active" });
+            daemon.notifyStreamEvent(workspaceA, { entryId: entryIdA, channel: "body", state: "active", contentLength: 2 });
 
-            const entryIdB = await seedEntryWithChannel(db, { sessionId: sessionB, content: "yo", state: "active" });
-            daemon.notifyStreamEvent(sessionB, { entryId: entryIdB, channel: "body", state: "active", contentLength: 2 });
+            const entryIdB = await seedEntryWithChannel(db, { workspaceId: workspaceB, content: "yo", state: "active" });
+            daemon.notifyStreamEvent(workspaceB, { entryId: entryIdB, channel: "body", state: "active", contentLength: 2 });
 
             await flush();
 
@@ -107,10 +107,10 @@ test("appendToChannel + setChannelState forward the entry coordinate onto stream
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "coord-test" });
-            const sessionId = (sessionResp.result as { id: number }).id;
+            const workspaceResp = await rpcCall(ws, 1, "workspace.create", { name: "coord-test" });
+            const workspaceId = (workspaceResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
-            const entryId = await seedEntryWithChannel(db, { sessionId, content: "hi", state: "active" });
+            const entryId = await seedEntryWithChannel(db, { workspaceId, content: "hi", state: "active" });
 
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);
@@ -134,11 +134,11 @@ test("appendToChannel with a mimetype retypes the channel + surfaces it on strea
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const sessionResp = await rpcCall(ws, 1, "session.create", { name: "retype-test" });
-            const sessionId = (sessionResp.result as { id: number }).id;
+            const workspaceResp = await rpcCall(ws, 1, "workspace.create", { name: "retype-test" });
+            const workspaceId = (workspaceResp.result as { id: number }).id;
             const captured = subscribeNotifications(ws, "stream/event");
             // Seeded text/markdown (the manifest default); a streaming scheme learns the real type per call.
-            const entryId = await seedEntryWithChannel(db, { sessionId, content: "", mimetype: "text/markdown", state: "active" });
+            const entryId = await seedEntryWithChannel(db, { workspaceId, content: "", mimetype: "text/markdown", state: "active" });
 
             const notify = (sid: number, ev: { entryId: number; channel: string; state: string; contentLength: number }) =>
                 daemon.notifyStreamEvent(sid, ev);

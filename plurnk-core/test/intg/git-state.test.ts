@@ -11,7 +11,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GitState from "../../src/core/git-state.ts";
-import { openMigrated, insertSession, rootSession } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, rootWorkspace } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -29,11 +29,11 @@ test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWE
         await writeFile(join(root, "untracked.txt"), "loose\n");          // 1 untracked
         await writeFile(join(root, "tracked.md"), "# tracked\n\nedit\n");  // 1 unstaged
 
-        const sessionId = await insertSession(db, `gitstate-${crypto.randomUUID()}`);
-        await rootSession(db, sessionId, root);
+        const workspaceId = await insertWorkspace(db, `gitstate-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
 
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
-        const status = await GitState.status(db, sessionId, undefined);
+        const status = await GitState.status(db, workspaceId, undefined);
         assert.notEqual(status, null, "a worktree yields git state");
         assert.equal(status!.untracked, 1, "the loose file is counted untracked");
         assert.equal(status!.unstaged, 1, "the edited tracked file is counted unstaged");
@@ -42,7 +42,7 @@ test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWE
 
         // The hard ceiling flatly disables it.
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
-        assert.equal(await GitState.status(db, sessionId, undefined), null, "PLURNK_SERVICE_GIT_ALLOWED=0 disables git telemetry");
+        assert.equal(await GitState.status(db, workspaceId, undefined), null, "PLURNK_SERVICE_GIT_ALLOWED=0 disables git telemetry");
     } finally {
         if (orig === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED;
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = orig;

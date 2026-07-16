@@ -12,4 +12,4 @@ Whatever the snippet writes to stdout streams to the `stdout` channel (stderr �
 
 ## Working directory
 
-Runs in the session project root by default; `EXEC[node](./dir):…` sets cwd, and relative `import` / `require` / `fs` paths resolve against it.
+Runs in the workspace project root by default; `EXEC[node](./dir):…` sets cwd, and relative `import` / `require` / `fs` paths resolve against it.

@@ -10,7 +10,7 @@ import type { Db, PrepMethod } from "../core/Db.ts";
 // consumers (Record<string, unknown>), which TS grants aliases but not interfaces (#355).
 export type LogEntryWire = {
     id: number;
-    run_id: number;
+    worker_id: number;
     loop_id: number;
     loop_seq: number;
     turn_id: number;
@@ -52,7 +52,7 @@ export default class LogEntry {
         if (row === undefined) throw new Error(`log_entries row ${id} not found`);
         return {
             id: row.id as number,
-            run_id: row.run_id as number,
+            worker_id: row.worker_id as number,
             loop_id: row.loop_id as number,
             loop_seq: row.loop_seq as number,
             turn_id: row.turn_id as number,
