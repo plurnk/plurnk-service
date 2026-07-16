@@ -90,7 +90,9 @@ export default class Http implements SchemeHandler {
     readonly #browser: Renderer;
     // ws/wss ride this handler (core routes all four prefixes to http, #470); a
     // WebSocket is a different protocol, so those targets delegate to the Ws
-    // engine (SPEC §ws) rather than the fetch path.
+    // engine (SPEC §ws) rather than the fetch path. DYING: once core reads
+    // SchemeInfo.exportName and maps ws/wss → wss (#473), dispatch reaches Ws
+    // directly and this delegation (+ #isWs) is removed.
     readonly #ws: Ws;
     constructor(browser: Renderer = new Browser(), ws: Ws = new Ws()) {
         this.#browser = browser;
