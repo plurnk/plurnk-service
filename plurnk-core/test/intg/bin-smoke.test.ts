@@ -49,8 +49,10 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             if (settled) return;
             settled = true;
             child.kill("SIGKILL");
-            rejectPromise(new Error(`bootDaemon timeout after 10s. stdout=${stdoutBuf} stderr=${stderrBuf}`));
-        }, 10_000);
+            // 30s, not 10: concurrent lanes drill on one box now — a saturated CPU makes a healthy
+            // boot legitimately slow, and this smoke asserts BOOTS-AND-ANSWERS, never boots-fast.
+            rejectPromise(new Error(`bootDaemon timeout after 30s. stdout=${stdoutBuf} stderr=${stderrBuf}`));
+        }, 30_000);
 
         child.stdout?.on("data", (chunk: Buffer) => {
             stdoutBuf += chunk.toString("utf8");
