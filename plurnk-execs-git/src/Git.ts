@@ -1,61 +1,145 @@
-import { spawn } from "node:child_process";
-import { SubprocessExecutor } from "@plurnk/plurnk-execs";
-import type { RuntimeAvailability, SpawnArgs } from "@plurnk/plurnk-execs";
+import fs from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+import git from "isomorphic-git";
+import { BaseExecutor } from "@plurnk/plurnk-execs";
+import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 import { tokenizeArgv } from "./tokenizeArgv.ts";
 
-// git + GitHub-CLI executor. Claims the `git` and `gh` tags; the tag IS the
-// binary, so it shells the system `git`/`gh` with the command tokenized into
-// real argv (never a shell line — see tokenizeArgv). No third-party git/gh
-// library: the system binaries are the source of truth.
+// In-process git executor — isomorphic-git, NO subprocess (#460, DIVERGENCES #15).
+// The sandbox-portable versioning surface: a deployment that disables `sh` keeps
+// version control with zero shell-escape surface (no aliases, hooks, pagers —
+// there is no process to escape into). The deliberately limited verb set is the
+// contract; full git rides the sh fallthrough (`EXEC:git …:EXEC`) where the
+// deployment grants a shell. Sandboxes can't do everything (owner ruling, #460).
 //
-// `effect` is `host` for every command (inherited) — proposal-gated. That's not
-// a simplification, it's required: `effect(target)` classifies the TARGET only
-// and must never inspect the command, so `git status` and `git push` are
-// indistinguishable to it. Service owns the proposal/confirm/membership gating
-// (plurnk-execs#5). All run/stream/abort behavior is inherited from
-// SubprocessExecutor.
-export default class Git extends SubprocessExecutor {
-    protected override spawnArgs(runtime: string, command: string, target: string | null = null): SpawnArgs {
-        // runtime is "git" or "gh" — the tag is the executable. With a target the
-        // target IS the invocation (tokenized argv) and the body is its stdin
-        // (plurnk-execs#15) — `EXEC[git](apply --index):<patch>`, `commit -F -`,
-        // `hash-object -w --stdin`. No target → the body is the invocation.
-        if (target !== null) return { cmd: runtime, args: tokenizeArgv(target), useShell: false, stdin: command };
-        return { cmd: runtime, args: tokenizeArgv(command), useShell: false };
+// `(target)` = the repo directory, resolved against cwd; default cwd (the
+// session workspace). Body = `<verb> <args>`, git-ish spelling.
+//
+// `effect` stays the inherited `host` — mutating verbs exist and effect(target)
+// must never inspect the command, so every op proposes.
+export default class Git extends BaseExecutor {
+    get channels(): Readonly<Record<string, ChannelDecl>> {
+        return { results: { mimetype: "application/json" } };
     }
 
-    // Per-tag availability: `git` needs the binary; `gh` needs the binary AND an
-    // authenticated session. (Correct only once the consumer probes per-tag, not
-    // per-package — plurnk-service#185.)
-    override async probe(signal?: AbortSignal): Promise<RuntimeAvailability> {
-        if (this.runtime === "gh") {
-            return runProbe("gh", ["auth", "status"], "gh authenticated",
-                "gh present but not authenticated — run `gh auth login`", "gh not on PATH", signal);
+    // In-process — nothing on PATH to check. Always available: that IS the point.
+    override async probe(): Promise<RuntimeAvailability> {
+        return { available: true, detail: "isomorphic-git (in-process)" };
+    }
+
+    async run({ command, cwd, target, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
+        const dir = target === null
+            ? (cwd ?? process.cwd())
+            : (isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target));
+
+        const fail = (kind: string, message: string, status = 500): ExecResult => {
+            emit({ source: "exec:git", kind, message });
+            setState("results", "errored");
+            return { status };
+        };
+        const ok = (result: unknown): ExecResult => {
+            write("results", JSON.stringify(result));
+            setState("results", "closed");
+            return { status: 200 };
+        };
+
+        if (signal.aborted) {
+            setState("results", "errored");
+            return { status: 499 };
         }
-        return runProbe("git", ["--version"], undefined, "git --version failed", "git not on PATH", signal);
+
+        const argv = tokenizeArgv(command.trim());
+        const [verb, ...args] = argv;
+
+        try {
+            switch (verb) {
+                case "init": {
+                    await git.init({ fs, dir });
+                    return ok({ initialized: dir });
+                }
+                case "status": {
+                    const [branch, matrix] = await Promise.all([
+                        git.currentBranch({ fs, dir, fullname: false }),
+                        git.statusMatrix({ fs, dir }),
+                    ]);
+                    const changes = matrix
+                        .filter(([, head, workdir, stage]) => !(head === 1 && workdir === 1 && stage === 1))
+                        .map(([filepath, head, workdir, stage]) => ({ path: filepath, status: statusWord(head, workdir, stage) }));
+                    return ok({ branch: branch ?? "(detached)", changes });
+                }
+                case "add": {
+                    if (args.length === 0) return fail("git_bad_arguments", "add needs a path — `add .` stages everything", 400);
+                    for (const filepath of args) await git.add({ fs, dir, filepath });
+                    return ok({ staged: args });
+                }
+                case "commit": {
+                    const m = args.indexOf("-m");
+                    const message = m !== -1 ? args[m + 1] : undefined;
+                    if (!message) return fail("git_bad_arguments", 'commit needs a message — `commit -m "why"`', 400);
+                    const author = await authorFrom(dir);
+                    if (author === null) {
+                        return fail("git_no_author", "no user.name/user.email in the repo config — `git config user.name …` (via sh) or ship them in .git/config");
+                    }
+                    const oid = await git.commit({ fs, dir, message, author });
+                    return ok({ oid, message });
+                }
+                case "log": {
+                    const n = args.indexOf("-n");
+                    const depth = n !== -1 ? Number(args[n + 1]) : undefined;
+                    const commits = await git.log({ fs, dir, ...(depth && Number.isFinite(depth) ? { depth } : {}) });
+                    return ok(commits.map(({ oid, commit: c }) => ({
+                        oid,
+                        message: c.message.trim(),
+                        author: c.author.name,
+                        date: new Date(c.author.timestamp * 1000).toISOString(),
+                    })));
+                }
+                case "branch": {
+                    if (args.length === 0) {
+                        const [current, branches] = await Promise.all([
+                            git.currentBranch({ fs, dir, fullname: false }),
+                            git.listBranches({ fs, dir }),
+                        ]);
+                        return ok({ current: current ?? "(detached)", branches });
+                    }
+                    await git.branch({ fs, dir, ref: args[0] });
+                    return ok({ created: args[0] });
+                }
+                case "checkout": {
+                    if (args.length === 0) return fail("git_bad_arguments", "checkout needs a ref — `checkout <branch|oid>`", 400);
+                    await git.checkout({ fs, dir, ref: args[0] });
+                    return ok({ checkedOut: args[0] });
+                }
+                default:
+                    return fail("git_unknown_op",
+                        `unknown op '${verb ?? ""}' — this in-process git speaks: init, status, add, commit, log, branch, checkout. Full git rides the shell: EXEC:git …:EXEC`,
+                        400);
+            }
+        } catch (err) {
+            if (signal.aborted) {
+                setState("results", "errored");
+                return { status: 499 };
+            }
+            return fail("git_error", `${verb}: ${(err as Error).message}`);
+        }
     }
 }
 
-// Spawn a probe command; resolve availability from its exit. Async so the
-// consumer's per-probe timeout can race it (a hung `gh auth status` mustn't
-// wedge boot).
-const runProbe = (
-    bin: string,
-    args: string[],
-    okDetail: string | undefined,
-    nonzeroDetail: string,
-    missingDetail: string,
-    signal?: AbortSignal,
-): Promise<RuntimeAvailability> =>
-    new Promise((resolve) => {
-        if (signal?.aborted) { resolve({ available: false, detail: missingDetail }); return; }
-        let out = "";
-        // Honor the consumer's per-probe signal so a resolved/timed-out probe
-        // reaps the child (plurnk-execs#16); /dev/null stdin+stderr.
-        const child = spawn(bin, args, { signal, stdio: ["ignore", "pipe", "ignore"] });
-        child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
-        child.on("error", () => resolve({ available: false, detail: missingDetail }));
-        child.on("close", (code) => resolve(code === 0
-            ? { available: true, detail: okDetail ?? (out.trim().split("\n")[0] || undefined) }
-            : { available: false, detail: nonzeroDetail }));
-    });
+// statusMatrix row → one word. HEAD/WORKDIR/STAGE each 0|1|2(|3): absent /
+// identical-to-HEAD / different. Deliberately coarse — a chooser digest, not
+// porcelain.
+const statusWord = (head: number, workdir: number, stage: number): string => {
+    if (head === 0 && workdir === 2) return stage === 0 ? "untracked" : "added";
+    if (head === 1 && workdir === 0) return "deleted";
+    if (workdir === 2 && stage === 2) return "staged";
+    return "modified";
+};
+
+// Commit author from the repo's own config — never invented. Both keys or null.
+const authorFrom = async (dir: string): Promise<{ name: string; email: string } | null> => {
+    const [name, email] = await Promise.all([
+        git.getConfig({ fs, dir, path: "user.name" }),
+        git.getConfig({ fs, dir, path: "user.email" }),
+    ]);
+    return name && email ? { name, email } : null;
+};
