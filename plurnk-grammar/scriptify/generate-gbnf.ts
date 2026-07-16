@@ -280,7 +280,7 @@ export const buildModel = (): GModel => {
                 // Signal (unix signal number) is wired but untaught — canon shows bare KILL.
                 opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
             } else if (op === "WORK" || op === "FORK") {
-                // Delegation verbs — target (the run://<name>) REQUIRED plus the task/hint body;
+                // Delegation verbs — target (the worker://<name>) REQUIRED plus the task/hint body;
                 // no signal, no line slot. The child's name lives in the target (a nameless
                 // worker/branch can't be addressed), so the rail requires it.
                 opEntries.push({ literal: open, tails: [[ref("target"), ...body]] });

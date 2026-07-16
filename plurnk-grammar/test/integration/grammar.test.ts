@@ -249,15 +249,15 @@ test("value-add: a malformed signal collapses the per-character lexer cascade to
 
 test("value-add: SPAWN/DELEGATE near-miss steers to `<<WORK` (0.74.54 delegation verbs)", () => {
     for (const word of ["SPAWN", "DELEGATE"]) {
-        const r = PlurnkParser.parse(`<<PLAN:p:PLAN\n<<${word}(run://x):go:${word}\n<<SEND[102]:c:SEND`);
+        const r = PlurnkParser.parse(`<<PLAN:p:PLAN\n<<${word}(worker://x):go:${word}\n<<SEND[102]:c:SEND`);
         const warn = r.items.find((i) => i.kind === "error" && i.error.severity === "warning");
         assert.ok(warn && warn.kind === "error", `${word} should surface a near-miss`);
-        assert.match(warn.error.message, /did you mean `<<WORK\(run:\/\/name\)`/);
+        assert.match(warn.error.message, /did you mean `<<WORK\(worker:\/\/name\)`/);
     }
 });
 
 test("value-add: FORK is a real op now, never flagged as a near-miss", () => {
-    const r = PlurnkParser.parse("<<PLAN:p:PLAN\n<<FORK(run://x):retry:FORK\n<<SEND[102]:c:SEND");
+    const r = PlurnkParser.parse("<<PLAN:p:PLAN\n<<FORK(worker://x):retry:FORK\n<<SEND[102]:c:SEND");
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
     assert.equal(r.items.filter((i) => i.kind === "statement" && i.statement.op === "FORK").length, 1);
 });
@@ -981,8 +981,8 @@ test("COPY body is an opaque raw string (scheme interprets — dest or fork prom
     assert.equal(item.statement.body, "known://archive/2026-05-14/draft");
 });
 
-test("COPY body carries a run-fork prompt verbatim", () => {
-    const result = PlurnkParser.parseStatements("<<COPY(run://.):Re-derive the capital from a primary source.:COPY");
+test("COPY body carries a worker-fork prompt verbatim", () => {
+    const result = PlurnkParser.parseStatements("<<COPY(worker://.):Re-derive the capital from a primary source.:COPY");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
     assert.equal(item.statement.body, "Re-derive the capital from a primary source.");
@@ -1276,7 +1276,7 @@ test("degenerate: all-brackets / mixed delimiters in a body parse clean", () => 
 });
 
 test("degenerate: bracket body on a targeted (terminate-and-report) SEND parses clean", () => {
-    assert.deepEqual(cleanParse("<<SEND[200](run://parent):result ] arr[0]:SEND"), { stmts: 1, errs: 0, tail: false });
+    assert.deepEqual(cleanParse("<<SEND[200](worker://parent):result ] arr[0]:SEND"), { stmts: 1, errs: 0, tail: false });
 });
 
 test("degenerate: bracket immediately before the close tag parses clean", () => {
