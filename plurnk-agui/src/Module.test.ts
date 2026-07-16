@@ -324,3 +324,21 @@ test("a message run forwards forwardedProps.plurnk alias+model into runLoop (#41
         assert.equal(loopRuns[0].model, "fireworks/deepseek-v4", "the client-resolved model forwarded too (daemon applies precedence)");
     } finally { await mod.close(); }
 });
+
+test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a silent SSE death (svc#480)", async () => {
+    const { seam } = mockSeam();
+    seam.listSessions = async () => [{ id: 3, name: "w" }];
+    seam.attachSession = async () => ({ sessionId: 3, sessionName: "w", projectRoot: null, runId: 10, runName: "c", modelRunId: 20, clientLoopId: null });
+    seam.ensureModelRun = async () => 20;
+    seam.runLoop = async () => { throw new Error("runLoop: no provider configured"); };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { session: "w" } } }) });
+        assert.equal(res.status, 200, "the SSE opened before the throw");
+        const frames = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as { type: string; message?: string; code?: string });
+        const err = frames.find((e) => e.type === "RUN_ERROR");
+        assert.ok(err !== undefined, "the throw surfaced as a RUN_ERROR frame, not a silent end");
+        assert.match(err.message ?? "", /no provider configured/);
+        assert.equal(err.code, "501", "the no-model throw maps to 501");
+    } finally { await mod.close(); }
+});
