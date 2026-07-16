@@ -22,7 +22,6 @@ import type { StreamEventNotify, TelemetryEventNotify, WakeRunNotify, InjectRunN
 import { editedSpan } from "../content/index.ts";
 import { promptPathname } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
-import SearchPrefetch from "./search-prefetch.ts";
 import SearchGate from "./search-gate.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -173,7 +172,6 @@ export default class Engine {
     // fitting turn (the model curated; a LATER overflow earns a fresh recovery) and at loop cleanup.
     #hardOverflowRecovery = new Set<number>();
     #packets: PacketBuilder;
-    readonly searchPrefetch: SearchPrefetch;
     readonly searchGate = new SearchGate();
     #proposals: ProposalLifecycle;
     #dispatcher: Dispatcher;
@@ -246,9 +244,6 @@ export default class Engine {
         this.#telemetry = new TelemetryChannel({ db, notify: telemetryEventNotify });
         this.#strikes = new StrikeRail();
         this.#packets = new PacketBuilder({ db, schemes, telemetry: this.#telemetry, executors });
-        // §search-prefetch — the web-member sync pass; the daemon's wake handler drives it,
-        // the hold loop below honors it (holds() = a pass in flight for the run).
-        this.searchPrefetch = new SearchPrefetch({ db: this.#db, schemes: this.#schemes, tokenize: this.#tokenize });
         this.#proposals = new ProposalLifecycle({
             db, schemes, telemetry: this.#telemetry,
             streamEventNotify, wakeRunNotify,
@@ -474,7 +469,7 @@ export default class Engine {
             const holdCapMs = Number(process.env.PLURNK_SERVICE_EXEC_HOLD_MS ?? "300000");
             if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
                 const holdStart = Date.now();
-                while ((execHandler.hasActiveHoldSpawns(runId, holdSet) || this.searchPrefetch.holds(runId)) && Date.now() - holdStart < holdCapMs) {
+                while (execHandler.hasActiveHoldSpawns(runId, holdSet) && Date.now() - holdStart < holdCapMs) {
                     await delay(150, undefined, { signal });
                 }
             }
@@ -1510,23 +1505,6 @@ export default class Engine {
     //
     // Rummy parallel: AgentLoop.inject(). The "active drain → write
     // prompt entry, return immediately" branch.
-    // §search-prefetch — the pass's scheme context: plurnk-written, the same notifier wiring
-    // dispatch uses, bound to the run's current loop for teardown scoping (inject's shape).
-    async prefetchCtx(sessionId: number, runId: number): Promise<PlurnkSchemeContext> {
-        const loop = await (this.#db.drain_current_loop_for_run as PrepMethod).get<{ id: number }>({ run_id: runId });
-        const loopId = loop?.id ?? 0;
-        return {
-            db: this.#db, sessionId, runId, loopId, turnId: 0,
-            writer: "plurnk",
-            signal: this.#loopAborts.get(loopId)?.signal,
-            streamEventNotify: this.#streamEventNotify,
-            wakeRunNotify: this.#wakeRunNotify,
-            tokenize: this.#tokenize,
-            mimetypes: this.#mimetypes,
-            pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
-        };
-    }
-
     async inject(runId: number, prompt: string): Promise<
         { loopId: number; turnSeq: number } | null
     > {

@@ -5,12 +5,12 @@ import assert from "node:assert/strict";
 import SearchGate from "./search-gate.ts";
 
 const withKnobs = (fn: () => void): void => {
-    const pr = process.env.PLURNK_SERVICE_SEARCH_PREFETCH_RUNTIMES;
+    const pr = process.env.PLURNK_SERVICE_SEARCH_RUNTIMES;
     const pc = process.env.PLURNK_SERVICE_SEARCH_MAX_PER_TURN;
-    process.env.PLURNK_SERVICE_SEARCH_PREFETCH_RUNTIMES = "search";
+    process.env.PLURNK_SERVICE_SEARCH_RUNTIMES = "search";
     process.env.PLURNK_SERVICE_SEARCH_MAX_PER_TURN = "2";
     try { fn(); } finally {
-        if (pr === undefined) delete process.env.PLURNK_SERVICE_SEARCH_PREFETCH_RUNTIMES; else process.env.PLURNK_SERVICE_SEARCH_PREFETCH_RUNTIMES = pr;
+        if (pr === undefined) delete process.env.PLURNK_SERVICE_SEARCH_RUNTIMES; else process.env.PLURNK_SERVICE_SEARCH_RUNTIMES = pr;
         if (pc === undefined) delete process.env.PLURNK_SERVICE_SEARCH_MAX_PER_TURN; else process.env.PLURNK_SERVICE_SEARCH_MAX_PER_TURN = pc;
     }
 };
