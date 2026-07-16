@@ -138,6 +138,13 @@ export default class Translator {
         // (§agui-numbers-passthrough). Generic frontends ignore it; the RUN_FINISHED/
         // RUN_ERROR below is their terminal signal.
         events.push({ type: "CUSTOM", name: "plurnk.terminated", value: { ...n, sessionId: this.#sessionId } });
+        // The standard RAW channel (§475): the provider's NATIVE completion frame rides
+        // usage.meta (finish_reason, model, timings, id, …) — AG-UI's RAW is exactly this,
+        // a passthrough of an external system's own event with a source tag. Generic
+        // frontends that want the raw provider truth read it here; empty meta → skip.
+        if (n.usage.meta !== undefined && n.usage.meta !== null && Object.keys(n.usage.meta).length > 0) {
+            events.push({ type: "RAW", event: n.usage.meta, source: "provider" });
+        }
         if (n.finalStatus === 200) {
             events.push({ type: "RUN_FINISHED", threadId: this.#threadId, runId: this.#runId });
         } else {

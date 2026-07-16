@@ -28,6 +28,9 @@ export type AguiEvent =
     | { type: "MESSAGES_SNAPSHOT"; messages: Array<{ id: string; role: string; content: string }> }
     | { type: "STATE_SNAPSHOT"; snapshot: unknown }
     | { type: "STATE_DELTA"; delta: Array<{ op: string; path: string; value?: unknown }> }
+    | { type: "ACTIVITY_SNAPSHOT"; messageId: string; activityType: string; content: unknown; replace?: boolean }
+    | { type: "ACTIVITY_DELTA"; messageId: string; activityType: string; patch: Array<{ op: string; path: string; value?: unknown }> }
+    | { type: "RAW"; event: unknown; source?: string }
     | { type: "CUSTOM"; name: string; value: unknown };
 
 // AG-UI's run input (the POST body). Only the fields this bridge consumes are typed;
