@@ -1,6 +1,6 @@
 # plurnk-schemes-http
 
-`http(s)://` URI scheme handler for the [plurnk](https://github.com/plurnk/plurnk-service) agent runtime. The **first greenfield `@plurnk/plurnk-schemes-*` sibling** — authored entirely against the DB-free capability contract ([`@plurnk/plurnk-schemes`](https://github.com/plurnk/plurnk-schemes) `SchemeCtx`), importing zero plurnk-service internals.
+`http(s)://` URI scheme handler for the [plurnk](https://github.com/plurnk/plurnk-service) agent runtime. The **first greenfield `@plurnk/plurnk-schemes-*` sibling** — authored entirely against the DB-free capability contract ([`@plurnk/plurnk-schemes`](https://github.com/plurnk/plurnk-service/tree/main/plurnk-schemes) `SchemeCtx`), importing zero plurnk-service internals.
 
 ## What it does
 

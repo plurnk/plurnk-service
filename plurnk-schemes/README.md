@@ -37,7 +37,7 @@ export default class Foo implements SchemeHandler {
 }
 ```
 
-Implement only the op methods you support — `read` / `find` / `edit` / `copy` / `move` / `send` / … — all optional; the engine calls `handler[op.toLowerCase()](statement, ctx)` and returns **501** for any op you omit. `implements SchemeHandler` gives you compile-time signature checking. The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are **re-exported from this package**, so you depend on and exact-pin **only `@plurnk/plurnk-schemes`** — grammar rides underneath.
+Implement only the op methods you support — `read` / `find` / `edit` / `copy` / `move` / `send` / … — all optional; the engine calls `handler[op.toLowerCase()](statement, ctx)` and returns **501** for any op you omit. `implements SchemeHandler` gives you compile-time signature checking. The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are **re-exported from this package**, so you depend on and peer (`^1`) **only `@plurnk/plurnk-schemes`** — grammar rides underneath.
 
 ### 3. Declare the manifest — including self-doc
 
@@ -91,7 +91,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - `Results.error` / `.logCoordinate` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` — result builders + guards.
 - `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors for the consumer to register (SPEC §6).
 
-The **capability ctx** (`SchemeCtx`) is the DB-free authoring surface for siblings — interfaces only; plurnk-service injects the db-backed impl (see SPEC §3.bis). The db-backed implementations themselves (CRUD primitives, entry-op handlers, channel writes, subscription registry) stay in plurnk-service.
+The **capability ctx** (`SchemeCtx`) is the DB-free authoring surface for siblings — interfaces only; the consumer (`plurnk-core`) injects the db-backed impl (see SPEC §3.bis). Those implementations themselves (CRUD primitives, entry-op handlers, channel writes, subscription registry) stay in the consumer.
 
 ## Tests
 
