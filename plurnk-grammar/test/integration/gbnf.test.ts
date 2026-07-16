@@ -405,6 +405,13 @@ test("GBNF: a header-bearing http target derives (constrained models can emit au
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200](https://api.dev/items{Authorization: Bearer x}{Content-Type: application/json}):{\"n\":1}:SEND"), true);
 });
 
+test("GBNF: ws:// and wss:// targets derive — the rail'd model can reach the WebSocket handler (#470)", () => {
+    // target-inner is a generic character class (no scheme whitelist), so the schemes-http
+    // package's ws interface (READ = open + stream, SEND = push, KILL = close) needs no GBNF
+    // change. This pins that: the ws op trio derives as a full turn.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(ws://api.example.com/feed)::READ\n<<SEND(wss://api.example.com/feed):hello:SEND\n<<KILL(ws://api.example.com/feed)::KILL\n<<SEND[102]:streaming:SEND"), true);
+});
+
 test("GBNF: op-count bound — K=14 mid-steps derive, 15 do not; exhaustion forces a valid terminal", () => {
     // The corridor-flail rail (probes 2026-07-03): a model denied its premature 200 spams
     // legal mid-steps to the max_tokens wall (reproduced live at seed 7; ×267 in service

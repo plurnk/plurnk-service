@@ -230,3 +230,36 @@ test("parsePath: headers flow through a full parse to the statement target", () 
     if (statement.op !== "READ" || statement.target?.kind !== "url") { assert.fail("expected READ with url target"); return; }
     assert.deepEqual(statement.target.headers, [["Authorization", "Bearer x"], ["Accept", "q"]]);
 });
+
+// grammar#470: ws:// and wss:// must decompose as UrlPath so the schemes-http handler's
+// WebSocket interface is reachable. The grammar is scheme-generic by design (no whitelist
+// at either layer) - this pins the contract the ws routing depends on.
+test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, params) (#470)", () => {
+    const ws = AstBuilder.parsePath("ws://api.example.com/feed");
+    assert.equal(ws?.kind, "url");
+    if (ws?.kind !== "url") return;
+    assert.equal(ws.scheme, "ws");
+    assert.equal(ws.hostname, "api.example.com");
+    assert.equal(ws.pathname, "/feed");
+
+    const wss = AstBuilder.parsePath("wss://api.example.com:8443/feed?room=x");
+    assert.equal(wss?.kind, "url");
+    if (wss?.kind !== "url") return;
+    assert.equal(wss.scheme, "wss");
+    assert.equal(wss.port, 8443);
+    assert.deepEqual(wss.params, { room: "x" });
+});
+
+test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses to url targets (#470)", () => {
+    const src = [
+        "<<READ(ws://api.example.com/feed)::READ",
+        "<<SEND(wss://api.example.com/feed):hello:SEND",
+        "<<KILL(ws://api.example.com/feed)::KILL",
+    ].join("\n");
+    const result = PlurnkParser.parseStatements(src);
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const schemes = result.items
+        .filter((i): i is Extract<typeof i, { kind: "statement" }> => i.kind === "statement")
+        .map((i) => (i.statement.target?.kind === "url" ? i.statement.target.scheme : null));
+    assert.deepEqual(schemes, ["ws", "wss", "ws"]);
+});
