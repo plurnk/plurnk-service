@@ -9,7 +9,7 @@ import type { Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 
 const fakeProvider = (content: string): Provider => ({
-    model: "fake", contextSize: 1000,
+    model: "fake", contextWindow: 1000,
     generate: async () => ({ assistant: { content, reasoning: null, usage: { prompt: 1, completion: 3, reasoning: 0, cached: 0, total: 4 }, finishReason: "stop", model: "fake" }, assistantRaw: null }),
     countTokens: () => 1, costFor: () => 0,
 }) as unknown as Provider;

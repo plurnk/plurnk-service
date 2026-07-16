@@ -321,7 +321,7 @@ export default class Engine {
         return this.#packets.promptBudgetFor(provider);
     }
 
-    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number; contextTokens: number; contextSize: number | null; meta: Record<string, unknown> }> {
+    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number; contextTokens: number; promptBudget: number | null; meta: Record<string, unknown> }> {
         const row = await (this.#db.engine_loop_usage as PrepMethod).get<{ prompt: number; completion: number; cost_pico: number; context: number | null; context_size: number | null; meta: string | null }>({ loop_id: loopId });
         return {
             promptTokens: row?.prompt ?? 0,
@@ -331,7 +331,7 @@ export default class Engine {
             // summed promptTokens above, which overcounts a context that grows across turns.
             contextTokens: row?.context ?? 0,
             // #274 — the last turn's model window (denominator); null when the provider reports none.
-            contextSize: row?.context_size ?? null,
+            promptBudget: row?.context_size ?? null,
             // #252 — the latest turn's opaque provider blob, parsed for the wire. Empty {} when the
             // provider returned no meta. The service forwards it; it never reads a field within.
             meta: JSON.parse(row?.meta ?? "{}") as Record<string, unknown>,
