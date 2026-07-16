@@ -85,6 +85,29 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
     } finally { await db.close(); }
 });
 
+test("[§grinder-errors-exempt] a PLAN row at the newest boundary survives the overflow fold — the checklist steers the recovery (#465)", async () => {
+    const db = await openMigrated();
+    try {
+        const { sessionId, runId, loopId } = await envelope(db);
+        // Turn 1 emits PLAN + SEND under a WIDE ceiling — both land as open (expanded=1) log
+        // rows. Turn 2 under TINY overflows: the grinder folds the boundary's WORK (the SEND)
+        // while the PLAN — the model's orientation surface — stays OPEN, like errors + prompt.
+        const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: { raw: "1. read the doc\n2. answer" }, position: { line: 1, column: 1 } } as unknown as PlurnkStatement;
+        const wide = engineAt(db, WIDE);
+        const tiny = engineAt(db, TINY);
+        const provider = new Mock({ contextSize: 4096, responses: [response([planStmt, sendStmt(200, "ok")]), ...okSends(1)] });
+        await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; op: string; expanded: number }>({ run_id: runId });
+        assert.ok(before.some((r) => r.turn_seq === 1 && r.op === "PLAN" && r.expanded === 1), "turn 1's PLAN landed open");
+        await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; op: string; expanded: number; pathname: string | null }>({ run_id: runId });
+        const plan = after.find((r) => r.turn_seq === 1 && r.op === "PLAN");
+        assert.equal(plan?.expanded, 1, "the PLAN row is grinder-exempt — still OPEN through the fold");
+        const folded = after.filter((r) => r.turn_seq === 1 && r.op !== "PLAN" && r.op !== "error" && !(r.pathname ?? "").startsWith("/prompt/"));
+        assert.ok(folded.length > 0 && folded.every((r) => r.expanded === 0), "the boundary's non-exempt WORK still folds around the surviving plan");
+    } finally { await db.close(); }
+});
+
 test("[§grinder-layer1-rollback] THE DOCTRINE: older history is NEVER grinder-folded — the model alone curates it", async () => {
     // The guard whose absence once let a fold-everything variant run green. Three turns; turn 1's
     // rows are OLD history by turn 3. Overflow at turn 3 folds the newest boundary (turn 2 + turn

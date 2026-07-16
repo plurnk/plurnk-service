@@ -388,11 +388,14 @@ ORDER BY t.sequence, le.sequence;
 -- landing when there is no room: one set-op folds the still-open rows of the newest turn
 -- boundary — the immediately-prior turn's emissions and the current turn's pre-model rows
 -- (foists, wake surfaces). Turn 1 is the same rule (no prior turn; its foists are the newest).
--- Folded, never deleted; op='error' rows are EXEMPT (§grinder-errors-exempt), and so is the
+-- Folded, never deleted; THREE exemptions (§grinder-errors-exempt): op='error' rows, the
 -- user PROMPT (#382 — the task frame the engine foisted is not the model's curatable memory;
--- the engine never reclaims the definition of the task it set).
+-- the engine never reclaims the definition of the task it set), and PLAN rows (#465, owner
+-- ruling — the checklist is the model's orientation surface at exactly the moment the grinder
+-- fires; plans are concise by rule, so exempting them reclaims almost nothing and preserves
+-- the reasoning thread a recovery turn steers by).
 UPDATE log_entries SET expanded = 0
-WHERE loop_id = $loop_id AND expanded = 1 AND op != 'error'
+WHERE loop_id = $loop_id AND expanded = 1 AND op NOT IN ('error', 'PLAN')
   AND NOT (COALESCE(scheme, '') = 'plurnk' AND COALESCE(pathname, '') LIKE '/prompt/%')  -- NULL-safe: a model row's scheme is NULL
   AND (turn_id = $turn_id
        OR turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id));
