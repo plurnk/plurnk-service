@@ -10,7 +10,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 
 test("[§exec-poll] a polled EXEC <T,P> wakes a hibernating (202) loop every P seconds", async () => {
     // 16384: base-packet growth (grammar 0.76.5 + sibling teaching) crested this accumulation's 8192 edge — headroom scaffolding, not a budget probe.
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: background a long spawn with a 1s poll, then hibernate.
         makeMockResponse("<<EXEC[sh]<30,1>:sleep 30:EXEC\n<<SEND[102]<-1>:hibernating; will poll:SEND", 10),
         // Turn 2 only happens if something resumed the parked loop. The spawn is still running at ~1s,

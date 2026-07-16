@@ -13,7 +13,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string; status_rx: number; rx: string };
-const mock = () => new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
 
 test("[§actor-boundary-catalog-preview] PLURNK_SERVICE_FILES_ITEMS foists the catalog at turn 0 — memory FULL, the files cap never truncates it (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -140,7 +140,7 @@ test("[#269] turn-0 run-once foists fire on the run's first loop only, not every
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50), makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50), makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

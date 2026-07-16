@@ -59,7 +59,7 @@ const BROKEN_STMT = "<<SEND[x]:y:SEND";
 const NOTICE_CONTENT = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 = code point 26
 const NOTICE_POS = 26; // → content-offset line 2, column 4
 const noticeProvider = (extraDrains: number) => {
-    const provider = new Mock({ contextSize: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
+    const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
     let did = false;
     provider.generate = async (req) => {
@@ -138,7 +138,7 @@ test("[§telemetry-event-level] a drained TelemetryEvent carries level — defau
     {
         const { db, engine, sessionId, runId, loopId } = await setup();
         try {
-            const provider = new Mock({ contextSize: 100000, responses: [drainTurn] });
+            const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
             const real = provider.generate.bind(provider);
             let did = false;
             provider.generate = async (req) => {
@@ -187,7 +187,7 @@ test("[§turn-never-blank] a thrown ProviderError is an infrastructure failure �
         // fabricate an empty turn (the retired fallback laundered provider adjudications
         // into model-behavior 422s): telemetry the cause and propagate, so the drain
         // writes the loop terminal 500 with the message.
-        const provider = new Mock({ contextSize: 100000, responses: [drainTurn] });
+        const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
         const realGenerate = provider.generate.bind(provider);
         let threw = false;
         provider.generate = async (req) => {
@@ -220,7 +220,7 @@ test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the
         // turn, the old cascade root cause) AND drain the event with a content-offset line:col the
         // model resolves against its own (born-OPEN) emission.
         const FREE = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 is code point 26
-        const provider = new Mock({ contextSize: 100000, responses: [drainTurn] }); // turn 2 drains
+        const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] }); // turn 2 drains
         const realGenerate = provider.generate.bind(provider);
         let did = false;
         provider.generate = async (req) => {
@@ -264,7 +264,7 @@ test("provider error: a terminal kind (network_failure) telemetries live, then e
             db, schemes: new SchemeRegistry(),
             telemetryEventNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; event: Record<string, unknown> } }); },
         });
-        const provider = new Mock({ contextSize: 100000, responses: [] });
+        const provider = new Mock({ contextWindow: 100000, responses: [] });
         provider.generate = async () => { throw new ProviderError("plurnk", "network_failure", "connection refused"); };
 
         // Unlike grammar_unenforced, a terminal infra error propagates out of runTurn to end the loop.
@@ -294,7 +294,7 @@ test("[§turn-lifecycle] engine brackets generate() with turn_awaiting_model →
             db, schemes: new SchemeRegistry(),
             telemetryEventNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; event: Record<string, unknown> } }); },
         });
-        const provider = new Mock({ contextSize: 100000, responses: [drainTurn] });
+        const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         // The two beats bracket the provider call, in order — so a client flips "thinking… → working…"
@@ -313,7 +313,7 @@ test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (o
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 contentResponse(BROKEN_STMT),                 // actionless failure (no op dispatched)
                 drainTurn,
@@ -353,7 +353,7 @@ test("[§model-entry] the model echo is ALWAYS born FOLDED — errored and clean
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 contentResponse(BROKEN_STMT),                  // turn 1: genuine parse error
                 contentResponse("<<SEND[200]:done:SEND"),      // turn 2: clean emission

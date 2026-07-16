@@ -18,7 +18,7 @@ test("[§exec-stream] regression: a model's EXEC result surfaces in the NEXT tur
     // Turn 1: EXEC + SEND[102] (continue). Turn 2: SEND[200] (terminate). The
     // exec result created in turn 1 must appear in turn 2's packet log so the
     // model can READ it — assert the ENGINE put a <runtime>:///<coord> stream link there.
-    const mock = new Mock({ contextSize: 100000, responses: [
+    const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("<<EXEC[sh]:echo plurnk-index-probe:EXEC\n<<SEND[102]:running:SEND", 10),
         makeMockResponse("<<SEND[200]:done:SEND", 10),
     ] });
@@ -58,7 +58,7 @@ test("[§exec-stream] the cursor-terminal race: a one-burst stream fully shown F
     // conclude. Turn 1: EXEC a slow-close command + [102]. Turn 2 (stream active, content
     // complete): the delta shows folded. Turn 3 (closed, nothing new): the terminal marker
     // MUST land, open, carrying the close status — never a silent skip.
-    const mock = new Mock({ contextSize: 100000, responses: [
+    const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("<<EXEC[sh]:echo burst-payload && sleep 2:EXEC\n<<SEND[102]:spawned:SEND", 10),
         makeMockResponse("<<SEND[102]:waiting:SEND", 10),
         makeMockResponse("<<SEND[102]:checking:SEND", 10),

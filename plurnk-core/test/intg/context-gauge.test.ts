@@ -68,7 +68,7 @@ test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextSize: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: "done", position: { line: 1, column: 1 } }] } }] });
+        const provider = new Mock({ contextWindow: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: "done", position: { line: 1, column: 1 } }] } }] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
         const usage = await engine.loopUsage(loopId);
         const expected = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_COMPLETION) - Number(process.env.PLURNK_SERVICE_SAFETY);
@@ -78,7 +78,7 @@ test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client
 
 test("[#274] providers.list advertises the EFFECTIVE prompt budget — one denominator meaning on every surface (#345)", async () => {
     const { rpcCall, connect, withDaemon, makeMockResponse } = await import("./_rpc.ts");
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

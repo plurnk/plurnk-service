@@ -31,7 +31,7 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
         await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
         const log = packetSection(packet, "log");
@@ -72,7 +72,7 @@ test("assembled packet: the docs foist — FIND(plurnk://docs/**) surfaces mater
         // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't).
         await seedEntryWithChannel(db, { sessionId, runId, scheme: "plurnk", pathname: "/docs/known.md", channel: "body", content: "# known\nYour persistent memory.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const log = packetSection(await getPacket(db, result.turnId), "log");
 
@@ -103,7 +103,7 @@ test("[§policy-sections] assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVI
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
@@ -133,7 +133,7 @@ test("[§child-orientation] the live things a run holds — child runs — surfa
         await insertLoop(db, child, 1, "working");
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
@@ -153,7 +153,7 @@ test("[§child-orientation] no live children or streams → the orientation sect
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         // Empty content ⇒ the section renders to nothing (renderSlot drops zero-length sections), so the
         // model never sees a bare header — same as the errors section when there are no errors.
@@ -170,7 +170,7 @@ test("assembled packet: the grammar definition reaches the packet + the schemes 
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 

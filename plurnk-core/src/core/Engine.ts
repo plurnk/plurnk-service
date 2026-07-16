@@ -872,9 +872,9 @@ export default class Engine {
             // overflow terminates 413 — death only after the model was told. Physically
             // unsendable (over the provider's real window too) → 413 immediately; physics
             // doesn't negotiate. The pointer stays at 100% of budget — a margin would mask it.
-            const physicallySendable = provider.contextSize === null
+            const physicallySendable = provider.contextWindow === null
                 ? true
-                : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextSize - this.#packets.decodeBudget(provider);
+                : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextWindow - this.#packets.decodeBudget(provider);
             if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
                 this.#hardOverflowRecovery.add(loopId);
                 await (this.#db.engine_insert_log_entry as PrepMethod).get({

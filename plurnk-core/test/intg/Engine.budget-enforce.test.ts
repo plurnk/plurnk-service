@@ -53,7 +53,7 @@ test("[§grinder-overflow-only] under the ceiling the grinder never fires — no
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: okSends(2) });
+        const provider = new Mock({ contextWindow: 4096, responses: okSends(2) });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         // Under the ceiling the grinder early-returns before pass 1, so turn 1's
@@ -73,7 +73,7 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
         // grinder folds turn 1's open log.
         const wide = engineAt(db, WIDE);
         const tiny = engineAt(db, TINY);
-        const provider = new Mock({ contextSize: 4096, responses: okSends(3) });
+        const provider = new Mock({ contextWindow: 4096, responses: okSends(3) });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ run_id: runId });
         assert.ok(before.some((r) => r.turn_seq === 1 && r.expanded === 1), "turn 1 left an open (expanded=1) log entry");
@@ -95,7 +95,7 @@ test("[§grinder-errors-exempt] a PLAN row at the newest boundary survives the o
         const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: { raw: "1. read the doc\n2. answer" }, position: { line: 1, column: 1 } } as unknown as PlurnkStatement;
         const wide = engineAt(db, WIDE);
         const tiny = engineAt(db, TINY);
-        const provider = new Mock({ contextSize: 4096, responses: [response([planStmt, sendStmt(200, "ok")]), ...okSends(1)] });
+        const provider = new Mock({ contextWindow: 4096, responses: [response([planStmt, sendStmt(200, "ok")]), ...okSends(1)] });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; op: string; expanded: number }>({ run_id: runId });
         assert.ok(before.some((r) => r.turn_seq === 1 && r.op === "PLAN" && r.expanded === 1), "turn 1's PLAN landed open");
@@ -118,7 +118,7 @@ test("[§grinder-layer1-rollback] THE DOCTRINE: older history is NEVER grinder-f
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
-        const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
+        const provider = new Mock({ contextWindow: 4096, responses: okSends(4) });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const openT1before = (await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ run_id: runId }))
@@ -140,7 +140,7 @@ test("[§grinder-hard-413-abort] a DECLINED recovery abandons at 413 (budget_ove
         const engine = engineAt(db, TINY);
         // Sendable within the 4096 window, over the TINY policy ceiling: recovery turn granted;
         // the model continues without curing it; the second hard overflow is the abort.
-        const result = await engine.runLoop({ provider: new Mock({ contextSize: 4096, responses: [response([sendStmt(102, "carrying on")]), response([sendStmt(102, "carrying on")])] }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
+        const result = await engine.runLoop({ provider: new Mock({ contextWindow: 4096, responses: [response([sendStmt(102, "carrying on")]), response([sendStmt(102, "carrying on")])] }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.finalStatus, 413, "hard-stop abandons the loop at 413 Content Too Large");
         assert.equal(result.reason, "budget_overflow", "abandonment reason is the budget, not a strike or max-turns");
     } finally { await db.close(); }
@@ -151,7 +151,7 @@ test("[§grinder-hard-413-recovery] a recovery turn that CONCLUDES is a legitima
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
-        const result = await engine.runLoop({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
+        const result = await engine.runLoop({ provider: new Mock({ contextWindow: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.finalStatus, 200, "the told model wrapped up — over-policy but done beats dead");
     } finally { await db.close(); }
 });
@@ -161,7 +161,7 @@ test("[§grinder-strike-coupling] a grinder fire past the first turn counts towa
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
-        const t2 = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t2 = await engine.runTurn({ provider: new Mock({ contextWindow: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t2.budgetStruck, true, "overflow on turn 2 strikes (model over-subscribed)");
     } finally { await db.close(); }
 });
@@ -171,7 +171,7 @@ test("[§grinder-compaction-strikes] turn-1 overflow folds the turn's own foists
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
-        const t1 = await engine.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const t1 = await engine.runTurn({ provider: new Mock({ contextWindow: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t1.budgetStruck, true, "every compaction strikes — turn 0/1 is NOT exempt (#4): a fold happened, so it counts");
         // §grinder-hard-413-recovery: the first hard overflow is now the RECOVERY turn (sendable
         // within the 4096 window), not a hard stop — the strike above is what this test pins.
@@ -185,7 +185,7 @@ test("[§grinder-overflow-error-row] overflow is a terse op='error' log row (413
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
         const tiny = engineAt(db, TINY);
-        const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
+        const provider = new Mock({ contextWindow: 4096, responses: okSends(4) });
         // Turn 1 under WIDE leaves an open SEND (the foisted prompt is folded by default — §prompt-fold);
         // turn 2 overflows under TINY → the grinder folds that SEND AND mints a terse 'Budget Overflow'
         // op='error' row, re-derived into turn 2's OWN packet (same-turn, not a turn late).
@@ -210,7 +210,7 @@ test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn 
         const { sessionId, runId, loopId } = await envelope(db);
         // Turn 1 — small, real (leaves a tiny open log).
         const wide = engineAt(db, WIDE);
-        await wide.runTurn({ provider: new Mock({ contextSize: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
+        await wide.runTurn({ provider: new Mock({ contextWindow: 4096, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         // Turn 2 — opened manually; a HUGE OPEN engine-origin row lands on it pre-model (the wake surface).
         const turnId = await insertTurn(db, loopId, 2, 102);
         await (db.engine_insert_log_entry as PrepMethod).get({
@@ -225,7 +225,7 @@ test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn 
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
         const telemetry = new TelemetryChannel({ db });
-        const provider = new Mock({ contextSize: 1_000_000, responses: [] });
+        const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
         const buildAt = (ctx: number): InstanceType<typeof PacketBuilder> => {
             const prev = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
             process.env.PLURNK_SERVICE_CONTEXT_WINDOW = String(ctx);
@@ -263,7 +263,7 @@ test("[§tokenomics-agnostic-ruler] the ceiling is the real window partition (wi
         process.env.PLURNK_SERVICE_REASONING = "0"; process.env.PLURNK_SERVICE_COMPLETION = "0"; process.env.PLURNK_SERVICE_SAFETY = "0";
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
         ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].forEach((k, i) => { if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i]; });
-        const provider = new Mock({ contextSize: 1_000_000, responses: [] });
+        const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
         // CONTEXT_WINDOW 10000 caps the effective window; reserves 0 → the ceiling IS the prompt budget.
         // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
         // this real-token ceiling is the conservative bias (§tokenomics-agnostic-ruler).
@@ -280,7 +280,7 @@ test("[§tokenomics-fetch-fits-free] the 413 row states the pressure law — fol
         const { sessionId, runId, loopId } = await envelope(db);
         const wide = engineAt(db, WIDE);
         const tiny = engineAt(db, TINY);
-        const provider = new Mock({ contextSize: 4096, responses: okSends(4) });
+        const provider = new Mock({ contextWindow: 4096, responses: okSends(4) });
         await wide.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const t2 = await tiny.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
@@ -300,7 +300,7 @@ test("[§tokenomics-output-truncated] a finish=length turn's parse errors are le
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, WIDE);
         // A truncated emission: an unterminated FIND (the guillotine's signature) + finish=length.
-        const provider = new Mock({ contextSize: 100000, responses: [{
+        const provider = new Mock({ contextWindow: 100000, responses: [{
             // No pre-parsed ops: the engine parses the (guillotined) content itself; finishReason
             // rides the assistant per the Mock contract.
             assistant: { content: "<<PLAN:big turn:PLAN\n<<FIND(SPEC.md):#grinder", reasoning: null, finishReason: "length", usage: { prompt: 10, completion: 12281, reasoning: 0, cached: 0, total: 12291 } },
@@ -323,7 +323,7 @@ test("[§tokenomics-output-truncated] a finish=length turn that emitted NOTHING 
         // The runaway-reasoning shape (run52 T33/T71): the whole decode pool went to reasoning, content
         // EMPTY, guillotined at the cap. The parser sees empty content → "must begin with PLAN" — a red
         // herring the model must NOT read as a structure mistake; the 413 leads and frames it.
-        const provider = new Mock({ contextSize: 100000, responses: [{
+        const provider = new Mock({ contextWindow: 100000, responses: [{
             assistant: { content: "", reasoning: "ran away reasoning for the whole pool", finishReason: "length", usage: { prompt: 10, completion: 65536, reasoning: 0, cached: 0, total: 65546 } },
         } as never] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
@@ -357,13 +357,13 @@ test("[§tokenomics-window-partition] the partition resolves PER ALIAS — the s
             delete process.env.PLURNK_MODEL; delete process.env.PLURNK_MODEL_rig;
             for (const k of ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}_rig`];
             const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
-            assert.equal(bare.decodeBudget(new Mock({ contextSize: 1_000_000, responses: [] })), 16384 + 49152, "no alias → bare cloud-generous decode envelope");
+            assert.equal(bare.decodeBudget(new Mock({ contextWindow: 1_000_000, responses: [] })), 16384 + 49152, "no alias → bare cloud-generous decode envelope");
             // 'rig' active with a tight measured suffix → the suffix wins.
             process.env.PLURNK_MODEL = "rig"; process.env.PLURNK_MODEL_rig = "openai/local.gguf";
             process.env.PLURNK_SERVICE_CONTEXT_WINDOW_rig = "8192"; process.env.PLURNK_SERVICE_REASONING_rig = "1024";
             process.env.PLURNK_SERVICE_COMPLETION_rig = "2048"; process.env.PLURNK_SERVICE_SAFETY_rig = "64";
             const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
-            const provider = new Mock({ contextSize: 1_000_000, responses: [] });
+            const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
             assert.equal(rig.decodeBudget(provider), 1024 + 2048, "the active alias's suffixed decode envelope wins over bare");
             assert.equal(rig.promptBudgetFor(provider), 8192 - 1024 - 2048 - 64, "the suffixed window drives the prompt budget");
         } finally {
@@ -381,7 +381,7 @@ test("[§grinder-hard-413-recovery] the FIRST hard overflow is a RECOVERY TURN �
         // (TINY=2): the model gets its ONE told-and-heard turn. It CONTINUES (102) without curing
         // the overflow — the second hard overflow then dies honestly. (A recovery turn that
         // CONCLUDES 200 is legitimate — finishing IS a way to stop overflowing.)
-        const mock = new Mock({ contextSize: 200_000, responses: [response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")])] });
+        const mock = new Mock({ contextWindow: 200_000, responses: [response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")])] });
         const result = await engine.runLoop({ provider: mock, sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.finalStatus, 413, "still terminates 413 — the model was told and (structurally) could not comply");
         assert.equal(result.reason, "budget_overflow");
@@ -398,7 +398,7 @@ test("[§grinder-hard-413-recovery] physically unsendable → 413 IMMEDIATELY, n
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, TINY);
         // A 1-token provider window: the packet cannot reach the model at all.
-        const mock = new Mock({ contextSize: 1, responses: okSends(3) });
+        const mock = new Mock({ contextWindow: 1, responses: okSends(3) });
         const result = await engine.runLoop({ provider: mock, sessionId, runId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.finalStatus, 413);
         assert.equal(mock.remaining, 3, "generate never ran — an unsendable packet earns no recovery turn");

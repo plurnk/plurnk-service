@@ -96,7 +96,7 @@ test("[§tokenomics-render-weight-budget] budget headline shows ceiling/usage/fr
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         const budget = packetSection(JSON.parse(row!.packet), "budget");
@@ -117,7 +117,7 @@ test("[§tokenomics-turn-totals] budget groups render-weight by turn, oldest fir
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // A window the floor fits but the fat log pushes past 50% occupancy — the tables render
         // only under pressure now (§tokenomics-pressure-gates-on-occupancy).
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 3000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 3000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
         // Two turns each write to the log → two distinct loop/turn coordinates (1/1, 1/2).
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "a"), "alpha beta gamma delta ".repeat(80)), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "b"), "epsilon zeta eta theta ".repeat(80)), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -140,7 +140,7 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         // A window sized so the fat log lands BETWEEN the 50% occupancy gate and the grinder: too
         // tight and the grinder folds the fixture itself (folded rows collapse occupancy back under
         // the gate — exactly what the 0.74.49 teaching growth exposed at 3000).
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] }); // unfolded ≈4.6k (heavy row 3.6k open) → ~78%: above the gate, under the grinder
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] }); // unfolded ≈4.6k (heavy row 3.6k open) → ~78%: above the gate, under the grinder
         // A heavy edit (seq 1) and a tiny edit (seq 2) in one turn; read the next turn's budget.
         const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(60);
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "big"), heavy), anyEdit(anyUrl("known", "small"), "x"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -165,7 +165,7 @@ test("[§tokenomics-context-percent] budget headline shows usage as a percent of
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((<1|\d+)%\) · Tokens Free (\d+)/);
@@ -201,7 +201,7 @@ test("[§tokenomics-over-budget-floor] the UN-FOLDABLE hard-413 record renders t
         // (turn 1, nothing to roll back) → the un-foldable corner case. The loop hard-413s rather than
         // DELIVER an over-budget packet; the stored record below is engine forensics, NOT a packet the
         // model saw — the grinder never sends a >100% packet (a delivered budget is always ≤100%).
-        const provider = new Mock({ contextSize: 10, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 10, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
         // The STORED failure record renders the overshoot honestly — never clamped to hide the degenerate state.
@@ -224,7 +224,7 @@ test("[§tokenomics-pressure-gates-on-occupancy] a high-headroom window renders 
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "note"), "some content worth logging"), sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");

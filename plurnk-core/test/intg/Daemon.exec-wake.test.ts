@@ -37,7 +37,7 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop res
     // never a fresh loop with a synthetic summary prompt. The resumed loop reads
     // the concluded stream's own state and finishes on its own.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             mockResponse(execDsl("echo hi")),
             mockResponse("<<SEND[200]:saw the wake:SEND"),
@@ -112,7 +112,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
     // wake should see active loop and skip.
     const continueResponse = mockResponse("<<SEND[102]:thinking:SEND");
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             mockResponse(execDsl("echo soon").replace("SEND[102]<-1>", "SEND[102]")),
             continueResponse,
@@ -154,7 +154,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     // "5\n4\n3\n2\n1\n") — proving the streaming continued past the sleep and the
     // conclusion is the final state, not a partial snapshot buffered at sleep-time.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             mockResponse(`<<EXEC[sh]:for i in 5 4 3 2 1; do echo $i; sleep 0.4; done:EXEC\n<<SEND[102]<-1>:fire and forget:SEND`),
             // Wake-opened loop just terminates so the test completes:
@@ -206,7 +206,7 @@ test("[§run-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-spa
     // Slow exec; loop.cancel RPC fires the drain controller; spawn aborts
     // with closeStatus=499; daemon's handler skips opening a wake loop.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             mockResponse(`<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND`),
             mockResponse("<<SEND[200]:never:SEND"),
@@ -256,7 +256,7 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
     // conclusion must STILL report those 4 bytes — partial output captured
     // + retained through an abort, not discarded.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             mockResponse(`<<EXEC[sh]:printf 'a\\nb\\n'; sleep 30:EXEC\n<<SEND[102]:running:SEND`),
             mockResponse("<<SEND[200]:never:SEND"),

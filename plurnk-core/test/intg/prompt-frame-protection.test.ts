@@ -21,7 +21,7 @@ async function seedPromptRun(db: Awaited<ReturnType<typeof openMigrated>>) {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     // turn 1 runs the prompt foist (EDIT + auto-READ of plurnk://prompt/1/1)
     await engine.runTurn({
-        provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
+        provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
         sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
     });
     const curationTurn = await insertTurn(db, loopId, 2, 102); // curation happens on a later turn (run43: turn 4)
@@ -71,7 +71,7 @@ test("[§prompt-run-qualified] sister runs' turn-1 prompts land at DISTINCT addr
     try {
         const sessionId = await insertSession(db, `frame-sisters-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mkProvider = () => new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] });
+        const mkProvider = () => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] });
         const parentRun = await insertRun(db, sessionId);
         const parentLoop = await insertLoop(db, parentRun, 1, "the parent task");
         await engine.runTurn({ provider: mkProvider(), sessionId, runId: parentRun, loopId: parentLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the parent task" }] });

@@ -22,12 +22,12 @@ test("[§tokenomics-window-partition] the prompt ceiling derives from min(CONTEX
     process.env.PLURNK_SERVICE_SAFETY = "500";
     const db = await openMigrated();
     try {
-        const run = async (contextSize: number): Promise<string> => {
+        const run = async (contextWindow: number): Promise<string> => {
             const sessionId = await insertSession(db, `part-${crypto.randomUUID()}`);
             const runId = await insertRun(db, sessionId);
             const loopId = await insertLoop(db, runId, 1, "p");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const provider = new Mock({ contextSize, responses: [response([sendStmt(200, "done")])] });
+            const provider = new Mock({ contextWindow, responses: [response([sendStmt(200, "done")])] });
             const r = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
@@ -59,7 +59,7 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextSize: 4000, responses: [response([sendStmt(200, "done")])] });
+        const provider = new Mock({ contextWindow: 4000, responses: [response([sendStmt(200, "done")])] });
         const result = await engine.runTurn({
             provider, sessionId, runId, loopId,
             messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],

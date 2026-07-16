@@ -62,7 +62,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number) => {
             ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(102, null, "the standard-cycle waiting turn")] } })),
             { assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } },
         ];
-        const provider = new Mock({ contextSize: 100000, responses: responses as never });
+        const provider = new Mock({ contextWindow: 100000, responses: responses as never });
         const t0 = Date.now();
         const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }], maxTurns: 5 });
         const elapsed = Date.now() - t0;

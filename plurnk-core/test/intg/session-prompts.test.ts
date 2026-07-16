@@ -10,7 +10,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 const send = () => makeMockResponse("<<SEND[200]:ok:SEND", 50);
 
 test("session.prompts returns the session's user prompts newest-first, capped by limit (#238)", async () => {
-    const mock = new Mock({ contextSize: 8192, responses: [send(), send()] });
+    const mock = new Mock({ contextWindow: 8192, responses: [send(), send()] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

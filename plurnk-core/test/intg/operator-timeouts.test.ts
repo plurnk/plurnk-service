@@ -30,7 +30,7 @@ test("[§operator-config-loop-timeout] the wall rules a legible 504 loop_timeout
         const loopId = await insertLoop(db, runId, 1, "walled");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // Continue turns forever — only the wall ends this loop.
-        const provider = new Mock({ contextSize: 100000, responses: Array.from({ length: 50 }, (_, i) => ({ assistant: { content: "", reasoning: null, ops: [editStmt(localPath(`/w${i}`), "x"), sendStmt(102)] } })) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 50 }, (_, i) => ({ assistant: { content: "", reasoning: null, ops: [editStmt(localPath(`/w${i}`), "x"), sendStmt(102)] } })) });
         const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [], maxTurns: 50 });
         assert.equal(result.finalStatus, 504, "the wall's terminal is 504, never an outside kill");
         assert.equal(result.reason, "loop_timeout");
@@ -49,7 +49,7 @@ test("[§operator-config-loop-timeout] the default wall never intrudes — a sho
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "quick");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] });
         const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [] });
         assert.equal(result.finalStatus, 200, "the 24h default is invisible to a normal loop");
     } finally { await db.close(); }

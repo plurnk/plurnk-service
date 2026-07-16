@@ -40,7 +40,7 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
     // The model knows WHETHER (400) without learning HOW (the orchestration).
     // §send-200-failed-ops: the rejection is a same-turn unseen failure, so the
     // first [200] is refused; the loop concludes NEXT turn, the 400 weighed.
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND", 50),
         makeMockResponse("<<SEND[200]:the edit was declined; concluding:SEND", 50),
     ] });

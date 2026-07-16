@@ -24,7 +24,7 @@ test("[§actor-boundary-doc-injection] PLURNK_SERVICE_MD_<ALIAS>: doc is materia
     const prev = process.env.PLURNK_SERVICE_MD_AGENTS;
     process.env.PLURNK_SERVICE_MD_AGENTS = docPath;
     try {
-        const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -69,7 +69,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — 
     process.env.PLURNK_SERVICE_MD_POLICY = docPath;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "0"; // catalog preview OFF
     try {
-        const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -103,7 +103,7 @@ test("[§operator-config-session-md-docs] session.create settings.mdDocs UNIONs 
     process.env.PLURNK_SERVICE_MD_POLICY = policyPath; // operator policy doc — the client shadows this one
     process.env.PLURNK_SERVICE_MD_GUIDE = guidePath;   // operator doc the client leaves alone — must survive
     try {
-        const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

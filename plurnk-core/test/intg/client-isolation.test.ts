@@ -18,7 +18,7 @@ import { insertSession, insertRun } from "./_helpers.ts";
 
 test("a client op.* never enters the model's packet — the client writes to its own run (#194)", async () => {
     // The model just terminates; we only care where the client op landed.
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -50,7 +50,7 @@ test("a client op.* never enters the model's packet — the client writes to its
 });
 
 test("[§machine-processes-model-run-readable] a connection reads the model run by id — loop.run returns modelRunId, log.read targets it, ownership-gated", async () => {
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -89,7 +89,7 @@ test("[§machine-processes-model-run-readable] a connection reads the model run 
 });
 
 test("[§machine-processes-run-origin] session.runs tags each run with its actor — the model run is found by origin, not name", async () => {
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

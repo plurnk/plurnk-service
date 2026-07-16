@@ -341,7 +341,7 @@ test("[§membership-emi-divergence-signal] out-of-band change to a member surfac
         // behind the model's back; turn 2 must carry the signal.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [mockResponse([sendStmt(200)]), mockResponse([sendStmt(200)])],
         });
 

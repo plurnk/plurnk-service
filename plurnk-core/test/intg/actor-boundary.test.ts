@@ -103,7 +103,7 @@ test("[§actor-boundary-origin-not-filter] origin is attribution (provenance), n
 // an active loop folds the conclusion into its next turn — is locked in
 // Daemon.exec-wake.test.ts. Together they discharge §actor-boundary-passive-wake's two-trigger contract.
 test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
-    const mock = new Mock({ contextSize: 8192, responses: [
+    const mock = new Mock({ contextWindow: 8192, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),
         makeMockResponse("<<SEND[200]:woke done:SEND", 10),
         makeMockResponse("<<SEND[200]:extra:SEND", 10),
@@ -150,7 +150,7 @@ test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run fi
     const prev = process.env.PLURNK_SERVICE_MD_SELFHOST;
     process.env.PLURNK_SERVICE_MD_SELFHOST = docPath;
     try {
-        const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

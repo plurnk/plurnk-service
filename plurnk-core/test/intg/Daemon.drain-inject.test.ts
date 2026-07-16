@@ -12,7 +12,7 @@ const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
     const dsl = "<<EDIT(known:///x):hello:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: 16384, responses: [sendOnly(dsl)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -40,7 +40,7 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
     // it (execs 0.4.0+ fixed the #4 grandchild leak) — proven by the 499
     // conclusion, not a 30s wall-clock leak.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
@@ -92,7 +92,7 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
 });
 
 test("[§methods-loop-cancel] loop.cancel: no active drain → cancelled=false", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [sendOnly("<<SEND[200]:done:SEND")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("<<SEND[200]:done:SEND")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -110,7 +110,7 @@ test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run sta
     // 16384: the cancel-then-restart drain accumulates the exec entry across turns, cresting at the 8192 edge;
     // grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the drain restart, not a budget probe.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
@@ -166,7 +166,7 @@ test("[§run-lifecycle-single-drain] loop.run while a loop is live: second call 
     // single-drain invariant: a concurrent loop.run injects into the live loop,
     // it never spins up a parallel drain.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             sendOnly("<<EXEC[sh]:true:EXEC"),       // proposal → pause (no yolo, no SEND → continue)
             sendOnly("<<SEND[200]:done:SEND"),      // turn 2 consumes the injected prompt, ends
@@ -227,7 +227,7 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
     // 16384: the inject-then-reconcile path accumulates both loops' rows across turns, cresting at the 8192 edge;
     // grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the reconcile, not a budget probe.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             // The rejected EXEC is a same-turn failure — §send-200-failed-ops refuses a [200] over
             // it, so loop 1 ends turn 1 by ABANDON (499, never gated): the orphan premise holds.
@@ -273,7 +273,7 @@ test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by t
     // it THROUGH the registry — the open row closes at 499 — not merely fire a
     // notification. Asserted against the registry directly: open→0 + close_status=499.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]<-1>:backgrounded:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
@@ -313,7 +313,7 @@ test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its st
     // its single model loop after the conclusion lands (a resurrection would add a
     // wake-opened loop), plus the conclusion's wakeAction being a skip, not opened-loop.
     const mock = new Mock({
-        contextSize: 16384,
+        contextWindow: 16384,
         responses: [
             sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]<-1>:backgrounded:SEND"),
             sendOnly("<<SEND[200]:should never run:SEND"),
