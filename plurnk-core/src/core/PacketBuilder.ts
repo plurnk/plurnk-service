@@ -108,15 +108,21 @@ export default class PacketBuilder {
     // scopeEnvToAlias resolves PLURNK_SERVICE_*_<alias> over the bare fallback with providers' own
     // battle-tested suffix parser. Cached per alias; the boot-global case falls back to the active
     // alias when a provider carries no side-table entry (a test Mock).
-    static #KNOBS = ["PLURNK_SERVICE_CTX", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_ASSISTANT", "PLURNK_SERVICE_SAFETY"] as const;
+    static #KNOBS = ["PLURNK_SERVICE_CONTEXT_WINDOW", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_COMPLETION", "PLURNK_SERVICE_SAFETY"] as const;
     #partitions = new Map<string, { ctx: number; reasoning: number; assistant: number; safety: number }>();
 
     #resolvePartition(alias: string): { ctx: number; reasoning: number; assistant: number; safety: number } {
+        // #472 hard shed (OpenAI lexicon ruling) — the retired llama.cpp-speak names fail LOUD at the
+        // read boundary; a stale operator .env must never silently lose its ceiling to a rename.
+        for (const k of Object.keys(process.env)) {
+            const m = /^PLURNK_SERVICE_(CTX|ASSISTANT)(_.*)?$/.exec(k);
+            if (m !== null) throw new Error(`${k} is retired (#472): the knob is PLURNK_SERVICE_${m[1] === "CTX" ? "CONTEXT_WINDOW" : "COMPLETION"}${m[2] ?? ""}.`);
+        }
         const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
         return {
-            ctx: readPartitionIntFrom(view, "PLURNK_SERVICE_CTX", 1),
+            ctx: readPartitionIntFrom(view, "PLURNK_SERVICE_CONTEXT_WINDOW", 1),
             reasoning: readPartitionIntFrom(view, "PLURNK_SERVICE_REASONING", 0),
-            assistant: readPartitionIntFrom(view, "PLURNK_SERVICE_ASSISTANT", 0),
+            assistant: readPartitionIntFrom(view, "PLURNK_SERVICE_COMPLETION", 0),
             safety: readPartitionIntFrom(view, "PLURNK_SERVICE_SAFETY", 0),
         };
     }
@@ -141,7 +147,7 @@ export default class PacketBuilder {
     // after env/probe/catalog all miss) with NO per-alias knob is genuinely-unknown — nobody chose an
     // envelope. The budget/ceiling short-circuit that window to NO-CAP (#isUnboundedWindow) rather than
     // substitute a stand-in the operator never chose; the bare partition still feeds decodeBudget's
-    // generation reserves, which the backend clamps. A per-alias CTX knob makes the window DELIBERATE
+    // generation reserves, which the backend clamps. A per-alias CONTEXT_WINDOW knob makes the window DELIBERATE
     // and it flows bounded, normally.
     #isUnboundedWindow(provider: Provider): boolean {
         if (provider.contextSize !== null) return false;
@@ -158,7 +164,7 @@ export default class PacketBuilder {
         return part;
     }
 
-    // The generation envelope — REASONING + ASSISTANT, one undifferentiated pool, passed on
+    // The generation envelope — REASONING + COMPLETION, one undifferentiated pool, passed on
     // every generate({maxTokens}): no decode is unbounded (§tokenomics-window-partition). Per
     // alias (#352): gemma's measured envelope; a cloud alias's generous default the backend clamps.
     decodeBudget(provider: Provider): number {
@@ -167,7 +173,7 @@ export default class PacketBuilder {
     }
 
     // §tokenomics-window-partition — the prompt ceiling
-    // is DERIVED, never set: effectiveWindow = min(CTX, provider window; CTX alone when the
+    // is DERIVED, never set: effectiveWindow = min(CONTEXT_WINDOW, provider window; CONTEXT_WINDOW alone when the
     // provider reports none) minus the reserves, divided by the loop's observed real/measured
     // token ratio (usage.prompt is ground truth; a heuristic ruler shipped a 65k-real packet into
     // a 49k window, #311). A fractional ceiling also budgeted the prompt against the window and
@@ -196,7 +202,7 @@ export default class PacketBuilder {
         const promptBudget = effectiveWindow - reasoning - assistant - safety;
         if (promptBudget <= 0) {
             const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
-            throw new Error(`window partition contradiction for alias '${alias}': effective window ${effectiveWindow} <= reserves ${reasoning}+${assistant}+${safety}. A local (llama-server) alias needs its OWN measured envelope — set PLURNK_SERVICE_{CTX,REASONING,ASSISTANT,SAFETY}_${alias || "<alias>"} (the bare defaults are cloud-generous; #352).`);
+            throw new Error(`window partition contradiction for alias '${alias}': effective window ${effectiveWindow} <= reserves ${reasoning}+${assistant}+${safety}. A local (llama-server) alias needs its OWN measured envelope — set PLURNK_SERVICE_{CONTEXT_WINDOW,REASONING,COMPLETION,SAFETY}_${alias || "<alias>"} (the bare defaults are cloud-generous; #352).`);
         }
         return promptBudget;
     }

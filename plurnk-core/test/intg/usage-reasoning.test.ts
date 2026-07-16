@@ -1,5 +1,5 @@
 // #321 — usage.reasoning persists per turn (from providers#28): the reasoning-token count was
-// the one usage field the turn row dropped, so cost/telemetry couldn't see thinking spend.
+// the one usage field the turn row dropped, so cost/telemetry couldn't see reasoning spend.
 
 import test from "node:test";
 import assert from "node:assert/strict";

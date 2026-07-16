@@ -382,7 +382,7 @@ export default class Digest {
                 ...(last.assistant.length > 0 ? [{ role: "assistant" as const, content: last.assistant }] : []),
                 { role: "user", content: REQUIEM_PROMPT },
             ];
-            // Generous budget: a thinking model spends the reasoning channel BEFORE emitting content;
+            // Generous budget: a reasoning model spends the reasoning channel BEFORE emitting content;
             // 4096 total left content empty (finish=length) on ~40% of a real sweep, and 16384 still
             // starved a heavy thinker (#373). One escalation retry doubles the room; a run whose
             // testimony is STILL empty records the reasoning spend honestly instead of a bare shrug.

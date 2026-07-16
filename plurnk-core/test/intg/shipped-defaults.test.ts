@@ -48,7 +48,7 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     // §tokenomics-window-partition (#352) — the BARE partition ships cloud-generous (a large
     // decode envelope the backend self-clamps); the four knobs ship as positive ints, and the
     // local measured envelope rides the commented per-alias template.
-    const part = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => Number(env.get(`PLURNK_SERVICE_${k}`)));
+    const part = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => Number(env.get(`PLURNK_SERVICE_${k}`)));
     assert.ok(part.every((n) => Number.isFinite(n) && n > 0), "all four bare partition numbers ship as positive ints");
     // #352 — the bare partition is cloud-generous: 163840 − 16384 − 49152 − 1024 = 97280 prompt
     // budget with a 65536 decode envelope the backend self-clamps (the local per-alias template

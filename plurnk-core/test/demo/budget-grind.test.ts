@@ -1,5 +1,5 @@
 // Extreme-budget demo — designed to FAIL until the model is taught to curate.
-// The partition CTX is pinned so promptBudget sits just above the fixed sysprompt floor
+// The partition CONTEXT_WINDOW is pinned so promptBudget sits just above the fixed sysprompt floor
 // (plurnk.md ~1313t + persona/requirements), so a couple of file READs push
 // the assembled packet past the wall. With no curation the log accumulates and
 // `peak` blows the ceiling; staying under means the model HID earlier reads as
@@ -50,7 +50,7 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
     const NO_CURATION = Math.round(floor * NO_CURATION_FACTOR);
     // promptBudget = CEILING exactly; a real assistant reserve keeps maxTokens sane for live gemma.
     // Rides the active alias's suffix — bare is overridden by the model's own .env window knobs.
-    const restore = pinAliasPartition({ CTX: String(CEILING + 8192), REASONING: "0", ASSISTANT: "8192", SAFETY: "0" });
+    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(CEILING + 8192), REASONING: "0", COMPLETION: "8192", SAFETY: "0" });
     try {
         const s = await liveSession({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {

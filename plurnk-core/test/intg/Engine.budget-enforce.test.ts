@@ -25,17 +25,17 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const TINY = 2;          // absolute wall far below any real packet → forces overflow
 const WIDE = 1_000_000;  // absolute wall capped to the window → never overflows
 
-// Construct an engine pinned to an exact prompt budget: CTX = the pin, zero reserves —
+// Construct an engine pinned to an exact prompt budget: CONTEXT_WINDOW = the pin, zero reserves —
 // promptBudget IS the pin (§tokenomics-window-partition; the settable ceiling is retired).
 // Set → construct (reads env) → restore is synchronous, so no cross-test race.
 const engineAt = (db: Db, ceiling: number): Engine => {
-    const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
-    process.env.PLURNK_SERVICE_CTX = String(ceiling);
+    const prev = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+    process.env.PLURNK_SERVICE_CONTEXT_WINDOW = String(ceiling);
     process.env.PLURNK_SERVICE_REASONING = "0";
-    process.env.PLURNK_SERVICE_ASSISTANT = "0";
+    process.env.PLURNK_SERVICE_COMPLETION = "0";
     process.env.PLURNK_SERVICE_SAFETY = "0";
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
+    ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].forEach((k, i) => {
         if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i];
     });
     return engine;
@@ -227,11 +227,11 @@ test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn 
         const telemetry = new TelemetryChannel({ db });
         const provider = new Mock({ contextSize: 1_000_000, responses: [] });
         const buildAt = (ctx: number): InstanceType<typeof PacketBuilder> => {
-            const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
-            process.env.PLURNK_SERVICE_CTX = String(ctx);
-            process.env.PLURNK_SERVICE_REASONING = "0"; process.env.PLURNK_SERVICE_ASSISTANT = "0"; process.env.PLURNK_SERVICE_SAFETY = "0";
+            const prev = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+            process.env.PLURNK_SERVICE_CONTEXT_WINDOW = String(ctx);
+            process.env.PLURNK_SERVICE_REASONING = "0"; process.env.PLURNK_SERVICE_COMPLETION = "0"; process.env.PLURNK_SERVICE_SAFETY = "0";
             const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
-            ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => { if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i]; });
+            ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].forEach((k, i) => { if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i]; });
             return b;
         };
         const args = { initialMessages: MESSAGES, requirements: "", sessionId, runId, loopId, currentTurnSeq: 2, provider, gitStatus: null };
@@ -258,16 +258,16 @@ test("[§tokenomics-agnostic-ruler] the ceiling is the real window partition (wi
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
         const telemetry = new TelemetryChannel({ db });
-        const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
-        process.env.PLURNK_SERVICE_CTX = "10000";
-        process.env.PLURNK_SERVICE_REASONING = "0"; process.env.PLURNK_SERVICE_ASSISTANT = "0"; process.env.PLURNK_SERVICE_SAFETY = "0";
+        const prev = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+        process.env.PLURNK_SERVICE_CONTEXT_WINDOW = "10000";
+        process.env.PLURNK_SERVICE_REASONING = "0"; process.env.PLURNK_SERVICE_COMPLETION = "0"; process.env.PLURNK_SERVICE_SAFETY = "0";
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
-        ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => { if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i]; });
+        ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].forEach((k, i) => { if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i]; });
         const provider = new Mock({ contextSize: 1_000_000, responses: [] });
-        // CTX 10000 caps the effective window; reserves 0 → the ceiling IS the prompt budget.
+        // CONTEXT_WINDOW 10000 caps the effective window; reserves 0 → the ceiling IS the prompt budget.
         // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
         // this real-token ceiling is the conservative bias (§tokenomics-agnostic-ruler).
-        assert.equal(b.ceilingFor(provider), 10000, "ceiling = min(CTX, window) − reserves, verbatim");
+        assert.equal(b.ceilingFor(provider), 10000, "ceiling = min(CONTEXT_WINDOW, window) − reserves, verbatim");
     } finally { await db.close(); }
 });
 
@@ -320,11 +320,11 @@ test("[§tokenomics-output-truncated] a finish=length turn that emitted NOTHING 
     try {
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = engineAt(db, WIDE);
-        // The runaway-reasoning shape (run52 T33/T71): the whole decode pool went to thinking, content
+        // The runaway-reasoning shape (run52 T33/T71): the whole decode pool went to reasoning, content
         // EMPTY, guillotined at the cap. The parser sees empty content → "must begin with PLAN" — a red
         // herring the model must NOT read as a structure mistake; the 413 leads and frames it.
         const provider = new Mock({ contextSize: 100000, responses: [{
-            assistant: { content: "", reasoning: "ran away thinking for the whole pool", finishReason: "length", usage: { prompt: 10, completion: 65536, reasoning: 0, cached: 0, total: 65546 } },
+            assistant: { content: "", reasoning: "ran away reasoning for the whole pool", finishReason: "length", usage: { prompt: 10, completion: 65536, reasoning: 0, cached: 0, total: 65546 } },
         } as never] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: MESSAGES, turnNumber: 1 });
         const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
@@ -347,21 +347,21 @@ test("[§tokenomics-window-partition] the partition resolves PER ALIAS — the s
         const { default: TelemetryChannel } = await import("../../src/core/TelemetryChannel.ts");
         const telemetry = new TelemetryChannel({ db });
         const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig",
-            "PLURNK_SERVICE_CTX", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_ASSISTANT", "PLURNK_SERVICE_SAFETY",
-            "PLURNK_SERVICE_CTX_rig", "PLURNK_SERVICE_REASONING_rig", "PLURNK_SERVICE_ASSISTANT_rig", "PLURNK_SERVICE_SAFETY_rig"];
+            "PLURNK_SERVICE_CONTEXT_WINDOW", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_COMPLETION", "PLURNK_SERVICE_SAFETY",
+            "PLURNK_SERVICE_CONTEXT_WINDOW_rig", "PLURNK_SERVICE_REASONING_rig", "PLURNK_SERVICE_COMPLETION_rig", "PLURNK_SERVICE_SAFETY_rig"];
         const prev = keys.map((k) => process.env[k]);
-        process.env.PLURNK_SERVICE_CTX = "163840"; process.env.PLURNK_SERVICE_REASONING = "16384";
-        process.env.PLURNK_SERVICE_ASSISTANT = "49152"; process.env.PLURNK_SERVICE_SAFETY = "1024";
+        process.env.PLURNK_SERVICE_CONTEXT_WINDOW = "163840"; process.env.PLURNK_SERVICE_REASONING = "16384";
+        process.env.PLURNK_SERVICE_COMPLETION = "49152"; process.env.PLURNK_SERVICE_SAFETY = "1024";
         try {
             // No active alias → bare (cloud-generous).
             delete process.env.PLURNK_MODEL; delete process.env.PLURNK_MODEL_rig;
-            for (const k of ["CTX", "REASONING", "ASSISTANT", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}_rig`];
+            for (const k of ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}_rig`];
             const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
             assert.equal(bare.decodeBudget(new Mock({ contextSize: 1_000_000, responses: [] })), 16384 + 49152, "no alias → bare cloud-generous decode envelope");
             // 'rig' active with a tight measured suffix → the suffix wins.
             process.env.PLURNK_MODEL = "rig"; process.env.PLURNK_MODEL_rig = "openai/local.gguf";
-            process.env.PLURNK_SERVICE_CTX_rig = "8192"; process.env.PLURNK_SERVICE_REASONING_rig = "1024";
-            process.env.PLURNK_SERVICE_ASSISTANT_rig = "2048"; process.env.PLURNK_SERVICE_SAFETY_rig = "64";
+            process.env.PLURNK_SERVICE_CONTEXT_WINDOW_rig = "8192"; process.env.PLURNK_SERVICE_REASONING_rig = "1024";
+            process.env.PLURNK_SERVICE_COMPLETION_rig = "2048"; process.env.PLURNK_SERVICE_SAFETY_rig = "64";
             const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
             const provider = new Mock({ contextSize: 1_000_000, responses: [] });
             assert.equal(rig.decodeBudget(provider), 1024 + 2048, "the active alias's suffixed decode envelope wins over bare");

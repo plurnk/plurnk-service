@@ -196,7 +196,7 @@ The diagnosis is always "what is the packet missing?" — the digest *shows* it.
 1. Preconditions: `pgrep -fc 'node.*--test'` ≈ 0 (nothing foreign on the box), llama-server slot idle (`curl -s :11435/slots`).
 2. Chunks, each a foreground Bash call with `--test-concurrency=1`, output `tee`'d to a scratch file (failure detail must survive):
    live: `npm run test:live` · demo: run-topology+budget-grind+budget-meta · then script-and-run+shell-tasks+stories.
-3. The demo env prefix: `PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md PLURNK_SERVICE_REASONING=4096 PLURNK_SERVICE_ASSISTANT=8192 PLURNK_SERVICE_SAFETY=1024` + the env-file cascade.
+3. The demo env prefix: `PLURNK_SERVICE_POLICY=./node_modules/@plurnk/plurnk-docs/PLURNK_PERSONALITY.md PLURNK_SERVICE_REASONING=4096 PLURNK_SERVICE_COMPLETION=8192 PLURNK_SERVICE_SAFETY=1024` + the env-file cascade.
 4. Report REAL totals per tier. A red reruns ISOLATED ×2-3: consistent → R3 capture + root-cause; rerun-green → check for box contention before any other theory.
 5. Known accepted reds are listed in § Parked for Depth — everything else is new signal.
 

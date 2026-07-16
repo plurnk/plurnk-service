@@ -43,7 +43,7 @@ test("[§gbnf-per-alias] PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias
     try {
         process.env.PLURNK_PROVIDERS_GBNF = "";  // bare OFF
         process.env[suffixKey] = "plurnk.gbnf";  // the active alias opts IN
-        // Window must clear the bundled generation-envelope floor (REASONING+ASSISTANT+SAFETY
+        // Window must clear the bundled generation-envelope floor (REASONING+COMPLETION+SAFETY
         // ≈ 66.5k, plurnk-core/.env.defaults). 8192 fell UNDER it, so the budget derivation threw
         // "window partition contradiction" and the turn died before generate — #grammarConstraint
         // never ran, so lastGrammar was undefined regardless of the alias knob (#433). The window

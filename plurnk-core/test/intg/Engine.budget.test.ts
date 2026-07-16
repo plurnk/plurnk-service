@@ -11,14 +11,14 @@ import { openMigrated, insertSession, insertRun, insertLoop, packetSection } fro
 // These pin the TABULAR budget baseline; #440's default is the mermaid form (covered by [§budget-mermaid]).
 process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
 
-test("[§tokenomics-window-partition] the prompt ceiling derives from min(CTX, window) minus reserves — reserves over the window fail hard", async () => {
-    // The partition arithmetic, end to end through a real packet build: CTX 10000, reserves
+test("[§tokenomics-window-partition] the prompt ceiling derives from min(CONTEXT_WINDOW, window) minus reserves — reserves over the window fail hard", async () => {
+    // The partition arithmetic, end to end through a real packet build: CONTEXT_WINDOW 10000, reserves
     // 1000+2000+500 → promptBudget 6500 against a wide window; a 5000 window → min caps →
     // 1500; a 3000 window → reserves exceed it → the build fails hard (config contradiction).
-    const prev = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
-    process.env.PLURNK_SERVICE_CTX = "10000";
+    const prev = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+    process.env.PLURNK_SERVICE_CONTEXT_WINDOW = "10000";
     process.env.PLURNK_SERVICE_REASONING = "1000";
-    process.env.PLURNK_SERVICE_ASSISTANT = "2000";
+    process.env.PLURNK_SERVICE_COMPLETION = "2000";
     process.env.PLURNK_SERVICE_SAFETY = "500";
     const db = await openMigrated();
     try {
@@ -31,11 +31,11 @@ test("[§tokenomics-window-partition] the prompt ceiling derives from min(CTX, w
             const r = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
-        assert.match(await run(100000), /Token Ceiling 6500 /, "wide window → CTX governs: 10000 − 3500 reserves");
-        assert.match(await run(5000), /Token Ceiling 1500 /, "narrow window → min(CTX, window) governs: 5000 − 3500");
+        assert.match(await run(100000), /Token Ceiling 6500 /, "wide window → CONTEXT_WINDOW governs: 10000 − 3500 reserves");
+        assert.match(await run(5000), /Token Ceiling 1500 /, "narrow window → min(CONTEXT_WINDOW, window) governs: 5000 − 3500");
         await assert.rejects(() => run(3000), /partition contradiction/, "reserves exceeding the window fail hard");
     } finally {
-        ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
+        ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].forEach((k, i) => {
             if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i];
         });
         await db.close();
@@ -68,7 +68,7 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { tokens: number; sections: Array<{ tokens: number }> };
         const budget = packetSection(packet, "budget");
-        // partition: min(CTX 78848, window 4000) − test reserves (256+1024+64) = 2656
+        // partition: min(CONTEXT_WINDOW 78848, window 4000) − test reserves (256+1024+64) = 2656
         assert.match(budget, /Token Ceiling 2656 · Token Usage \d+ \(\d+%\) · Tokens Free \d+/, "headline carries the partition-derived ceiling, usage, percent, and free");
         const free = Number(/Tokens Free (\d+)/.exec(budget)?.[1]);
         const total = packet.sections.reduce((n, s) => n + s.tokens, 0); // summed per-section render-weights (the assembled request size, inter-section joins aside)
