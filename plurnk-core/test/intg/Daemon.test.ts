@@ -242,7 +242,7 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 process.env.PLURNK_MODEL = "gemma";
                 const response = await rpcCall(ws, 1, "providers.list");
                 const result = response.result as {
-                    aliases: Array<{ alias: string; provider: string; model: string; active: boolean; contextSize: number | null }>;
+                    aliases: Array<{ alias: string; provider: string; model: string; active: boolean; promptBudget: number | null }>;
                 };
                 const gemma = result.aliases.find((a) => a.alias === "gemma");
                 const opus = result.aliases.find((a) => a.alias === "opus");
@@ -255,8 +255,8 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 // partition reserves — one denominator meaning on every surface, never the raw KV);
                 // an inactive alias is null (provider not instantiated) so the client omits the gauge.
                 const budget = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_COMPLETION) - Number(process.env.PLURNK_SERVICE_SAFETY);
-                assert.equal(gemma?.contextSize, budget, "active alias carries the effective prompt budget, not the raw window");
-                assert.equal(opus?.contextSize, null, "inactive alias has no window → null");
+                assert.equal(gemma?.promptBudget, budget, "active alias carries the effective prompt budget, not the raw window");
+                assert.equal(opus?.promptBudget, null, "inactive alias has no window → null");
             } finally {
                 // Restore env so other tests aren't polluted.
                 for (const k of Object.keys(process.env)) {
@@ -461,7 +461,7 @@ test("the client-interface seam — the metadata reads surface providers, sessio
             const active = providers.aliases.find((a) => a.active);
             assert.ok(active !== undefined, "listProviders reports the active alias");
             assert.equal(active!.alias, "mocktest");
-            assert.equal(typeof active!.contextSize, "number", "the active alias carries the effective prompt budget (#345)");
+            assert.equal(typeof active!.promptBudget, "number", "the active alias carries the effective prompt budget (#345)");
 
             // sessions + runs — the created session and its client run are present.
             const sessions = await daemon.listSessions();

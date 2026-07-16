@@ -558,7 +558,7 @@ export default class PacketBuilder {
         const ceiling = this.ceilingFor(provider);
         const measure = (p: RequestPacket): number => p.tokens;
         // #421 — a null ceiling is an unbounded window: always fit, never fold or strike (the backend
-        // clamps; this mirrors Engine's physicallySendable, which treats a null contextSize as sendable).
+        // clamps; this mirrors Engine's physicallySendable, which treats a null contextWindow as sendable).
         if (ceiling === null || measure(packet) <= ceiling) return { packet, fit: true, struck: false };
 
         // ONE rule, every turn — turn 1 and turn 101 alike (§grinder-layer1-rollback): fold the

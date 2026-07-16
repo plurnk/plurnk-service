@@ -318,16 +318,16 @@ export default class Daemon {
 
     // The metadata-read hooks (#355) — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
-    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; contextSize: number | null }> } {
+    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; promptBudget: number | null }> } {
         const active = resolveActiveAlias();
         return {
             aliases: parseAliasesFromEnv().map((a) => {
                 const isActive = active !== null && active.alias === a.alias;
                 return {
                     alias: a.alias, provider: a.provider, model: a.model, active: isActive,
-                    // contextSize = the EFFECTIVE prompt budget (window minus reserves, #345) — the same
+                    // promptBudget = the EFFECTIVE prompt budget (window minus reserves, #345; named honestly #481) — the same
                     // denominator loop-usage reports; known for the active alias, null elsewhere.
-                    contextSize: isActive && this.#provider !== null ? this.#engine.promptBudgetFor(this.#provider) : null,
+                    promptBudget: isActive && this.#provider !== null ? this.#engine.promptBudgetFor(this.#provider) : null,
                 };
             }),
         };
@@ -840,7 +840,7 @@ export default class Daemon {
                     // is the loop's TERMINAL state (499), delivered via loop/terminated (loop.run no
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     const usage = currentLoopId === null
-                        ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, contextSize: null, meta: {} }
+                        ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: null, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
                     if (currentLoopId !== null) {
                         // #380 (owner ruling) — the cancel is allowed but provenanced: the ROW goes

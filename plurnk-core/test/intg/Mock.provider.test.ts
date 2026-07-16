@@ -19,7 +19,7 @@ const response = (content: string, ops: MockResponse["assistant"]["ops"]): MockR
     assistant: { content, ops, reasoning: null },
 });
 
-test("[§provider-surface-identity] Mock.provider: contextSize exposed", () => {
+test("[§provider-surface-identity] Mock.provider: contextWindow exposed", () => {
     const mock = new Mock({ contextWindow: 200000, responses: [] });
     assert.equal(mock.contextWindow, 200000);
 });
