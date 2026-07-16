@@ -50,25 +50,4 @@ the real `2xx`/`4xx` comes back in `#header`.
 
 Status: `102` streaming · `499` cancelled · `502` upstream/render failure.
 
-## ws(s):// — WebSocket
-
-`ws://` and `wss://` open a **persistent, bidirectional** socket (not request/
-response). Same handler, socket semantics:
-
-- `READ(wss://host/path)` — open the socket; inbound messages stream into
-  `#messages` as they arrive; the READ holds until the socket closes.
-- `SEND[200](wss://host/path):your message:` — push a message onto the
-  already-open socket. READ it first — a SEND with no open socket is a `409`.
-- `SEND[499](wss://host/path)` — cancel: close the open socket.
-- `KILL(wss://host/path)` — close the open socket.
-
-```
-<<READ(wss://echo.websocket.events)::READ
-<<SEND[200](wss://echo.websocket.events):hello:SEND
-<<KILL(wss://echo.websocket.events)::KILL
-```
-
-Channel `#messages` — each inbound frame, `text/plain`. One socket per target
-per session; a later SEND/KILL acts on the socket the READ opened. The target is
-SSRF-guarded (private/loopback/link-local refused → `403`). Day-one: text frames
-only, no auto-reconnect, default handshake identity.
+For a persistent, bidirectional connection, see the `wss://` scheme.

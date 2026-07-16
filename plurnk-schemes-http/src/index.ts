@@ -4,9 +4,9 @@
 export { default } from "./Http.ts";
 export { default as Http } from "./Http.ts";
 
-// The WebSocket engine (#468) — Http delegates ws/wss targets here (core routes
-// all four prefixes to the http handler, #470). schemes owns the WebSocket
-// interface; exported standalone for direct testing.
+// The WebSocket scheme (#468/#473) — this package's second first-class scheme,
+// registered `wss` via package.json plurnk.schemes ({ export: "Ws" }); the `ws`
+// prefix rides it (core's schemeNameOf, mirroring https → http).
 export { default as Ws } from "./Ws.ts";
 
 // Standalone render foundation — exported so a future plurnk browser-

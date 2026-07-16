@@ -95,7 +95,7 @@ new WebFetcher().fetch(url: string, opts?: { signal?: AbortSignal }): Promise<{ 
 
 ## §8 WebSocket {§ws}
 
-`Ws` is the WebSocket engine for the `ws`/`wss` targets of this scheme (#468). WebSocket is a distinct protocol — bidirectional, stateful, full-duplex, its own URI scheme — not an http content-type (that's SSE, §sse). Core routes all four prefixes (`http`/`https`/`ws`/`wss`) to the `http` handler the way `https` rides `http` (#470); `Http` **delegates** a `ws`/`wss` target to the `Ws` engine (`Http.#isWs`) rather than the fetch path, keeping the two protocols in separate files while `Http` stays the single registered scheme. Op → socket lifecycle:
+`Ws` is this package's **second first-class scheme** (#468, #473): registered `wss` via `package.json` `plurnk.schemes` (`{ name: "wss", export: "Ws" }`), with the `ws` prefix riding it in core's `schemeNameOf` exactly as `https` rides `http`. WebSocket is a distinct protocol — bidirectional, stateful, full-duplex, its own URI scheme — not an http content-type (that's SSE, §sse), so it has its own manifest (🔌, `messages` channel, `docs/wss.md`) and its own directory entry the model discovers natively. Op → socket lifecycle:
 
 - **`READ(wss://…)`** — open the socket, guard the target through `Guard.isPublicUrl` (extended to `ws:`/`wss:`), seed + subscribe (create-then-subscribe, http#3), stream each inbound frame into the `messages` channel (`notifyChunk`, text/plain). Returns `102`; the op **holds until the socket closes** (mirrors the streaming lifecycle — the run wakes on close, summary counts messages).
 - **`SEND[200](wss://…):msg:`** — push `msg` onto the open socket. No open socket → `409` (`kind: no_open_socket`) — READ opens the connection SEND rides.

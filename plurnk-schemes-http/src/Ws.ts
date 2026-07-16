@@ -1,10 +1,9 @@
-// WebSocket engine for the ws(s):// targets of the http scheme (#468). Core
-// routes ws/wss to the http handler the way https rides http (#470); Http
-// delegates those targets here rather than inline them, keeping the fetch path
-// and the socket path in separate files (Http stays the registered scheme; this
-// is its owned WebSocket interface). WebSocket IS a distinct protocol —
-// bidirectional, stateful, full-duplex — not an http content-type (that's SSE,
-// Http.#streamEvents), so it gets its own handler surface.
+// ws(s):// scheme handler — this package's second first-class scheme (#468,
+// #473): registered `wss` via package.json plurnk.schemes ({ export: "Ws" });
+// the `ws` prefix rides it (core's schemeNameOf, mirroring https → http).
+// WebSocket IS a distinct protocol — bidirectional, stateful, full-duplex — not
+// an http content-type (that's SSE, Http.#streamEvents), so it's its own
+// scheme, not a branch in the fetch path.
 //
 // Op → socket lifecycle (SPEC §ws):
 //   READ(wss://host/path)     — open the socket; inbound frames stream into the
@@ -68,10 +67,6 @@ const connectGlobal: SocketFactory = (url) =>
     new (globalThis as unknown as { WebSocket: new (u: string) => Socket }).WebSocket(url);
 
 export default class Ws implements SchemeHandler {
-    // Registered as its own first-class scheme once discovery surfaces the
-    // package's second manifest (#473): own 🔌 entry, `messages` channel, ws
-    // example. Until core flips the routing, Http delegates ws/wss here and this
-    // manifest is inert-but-ready (landed ahead to de-risk the flip).
     static manifest: SchemeManifest = {
         name: "wss",
         channels: { [MESSAGES]: "text/plain" },

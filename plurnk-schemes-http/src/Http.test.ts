@@ -23,7 +23,6 @@ import type {
     UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
-import Ws from "./Ws.ts";
 import type { RenderResult } from "./Browser.ts";
 
 // A fake render foundation: returns a canned rendered page, records the call
@@ -89,10 +88,6 @@ const urlTarget = (raw: string, pathname: string, headers?: [string, string][]):
     pathname, params: {}, fragment: null,
     ...(headers === undefined ? {} : { headers }),
 });
-
-// ws(s):// target — scheme taken from the raw prefix (urlTarget only knows
-// http/https). Exercises Http's delegation of ws/wss to the Ws engine.
-const wssTarget = (raw: string, pathname: string): UrlPath => ({ ...urlTarget(raw, pathname), scheme: raw.split("://")[0] });
 
 const readStmt = (target: UrlPath | null): ReadStatement => ({
     op: "READ", suffix: "READ", signal: null, target, lineMarker: null, body: null,
@@ -261,43 +256,6 @@ test("READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
         await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
     });
     assert.deepEqual(sseBody(inspect().chunks), ["crlf\n"]);
-});
-
-// ── ws/wss delegation (#468/#470) ─────────────────────────────────────────
-// Core routes ws/wss to this handler; Http delegates those targets to the Ws
-// engine. A recording stub proves the routing (the engine itself is unit-tested
-// in Ws.test.ts); an http target must NOT delegate.
-const stubWs = (calls: string[]) => ({
-    read: async () => { calls.push("read"); return { shape: "passthrough" as const, status: 102 }; },
-    send: async () => { calls.push("send"); return { shape: "passthrough" as const, status: 200 }; },
-    kill: async () => { calls.push("kill"); return { shape: "passthrough" as const, status: 200 }; },
-} as unknown as Ws);
-
-test("READ/SEND/KILL on a ws(s):// target delegate to the Ws engine", async () => {
-    const calls: string[] = [];
-    const http = new Http(fakeBrowser(""), stubWs(calls));
-    assert.equal((await http.read(readStmt(wssTarget("wss://example.com/s", "/s")), makeCtx().ctx)).status, 102);
-    assert.equal((await http.send(sendStmt(200, wssTarget("wss://example.com/s", "/s"), "hi"), makeCtx().ctx)).status, 200);
-    assert.equal((await http.kill(killStmt(wssTarget("ws://example.com/s", "/s")), makeCtx().ctx)).status, 200);
-    assert.deepEqual(calls, ["read", "send", "kill"]);
-});
-
-test("EDIT on a ws(s):// target is rejected (400), never delegated", async () => {
-    const calls: string[] = [];
-    const http = new Http(fakeBrowser(""), stubWs(calls));
-    const r = await http.edit(editStmt(wssTarget("wss://example.com/s", "/s"), "x"), makeCtx().ctx);
-    assert.equal(r.status, 400);
-    assert.equal(r.error?.kind, "unsupported_op");
-    assert.deepEqual(calls, []);
-});
-
-test("an http:// target does NOT delegate to the Ws engine", async () => {
-    const calls: string[] = [];
-    const http = new Http(fakeBrowser(""), stubWs(calls));
-    await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
-        await http.read(readStmt(urlTarget("http://example.com/x", "/x")), makeCtx().ctx);
-    });
-    assert.deepEqual(calls, []);
 });
 
 test("READ: an HTML page is rendered — body is the final DOM, labelled text/html", async () => {

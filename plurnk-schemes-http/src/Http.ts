@@ -40,7 +40,6 @@ import type {
 import { Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
-import Ws from "./Ws.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
@@ -88,29 +87,17 @@ export default class Http implements SchemeHandler {
     // The render foundation (lazy chromium). Injectable for tests; one warm
     // pool per Http instance, shared across this scheme's fetches.
     readonly #browser: Renderer;
-    // ws/wss ride this handler (core routes all four prefixes to http, #470); a
-    // WebSocket is a different protocol, so those targets delegate to the Ws
-    // engine (SPEC §ws) rather than the fetch path. DYING: once core reads
-    // SchemeInfo.exportName and maps ws/wss → wss (#473), dispatch reaches Ws
-    // directly and this delegation (+ #isWs) is removed.
-    readonly #ws: Ws;
-    constructor(browser: Renderer = new Browser(), ws: Ws = new Ws()) {
+    constructor(browser: Renderer = new Browser()) {
         this.#browser = browser;
-        this.#ws = ws;
     }
 
-    static #isWs(target: UrlPath): boolean {
-        return target.scheme === "ws" || target.scheme === "wss";
-    }
-
-    // READ → fetch; an HTML page is rendered, everything else streams raw. A
-    // ws(s):// target opens a socket instead (delegated). Returns 102 Processing;
-    // the subscription drives the channel content the model sees next turn.
+    // READ → fetch; an HTML page is rendered, everything else streams raw.
+    // Returns 102 Processing; the subscription drives the channel content the
+    // model sees next turn. (ws/wss dispatch to the Ws scheme directly — #473.)
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
-            return Http.#bad(400, "http", "bad_target", "READ requires an http(s):// or ws(s):// URL target");
+            return Http.#bad(400, "http", "bad_target", "READ requires an http(s):// URL target");
         }
-        if (Http.#isWs(statement.target)) return this.#ws.read(statement, ctx);
         return this.#fetchStream(statement.target, ctx, "GET", undefined);
     }
 
@@ -119,9 +106,6 @@ export default class Http implements SchemeHandler {
     async edit(statement: EditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad_target", "EDIT requires an http(s):// URL target");
-        }
-        if (Http.#isWs(statement.target)) {
-            return Http.#bad(400, "http", "unsupported_op", "EDIT is unsupported on ws(s):// — SEND pushes a message");
         }
         if (statement.lineMarker !== null) {
             return Http.#bad(400, "http", "no_line_edit", "EDIT on http PUTs the whole body; <L> line-editing a remote resource is unsupported");
@@ -133,9 +117,8 @@ export default class Http implements SchemeHandler {
     // cached entry): KILL is an HTTP DELETE request to the remote.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
-            return Http.#bad(400, "http", "bad_target", "KILL requires an http(s):// or ws(s):// URL target");
+            return Http.#bad(400, "http", "bad_target", "KILL requires an http(s):// URL target");
         }
-        if (Http.#isWs(statement.target)) return this.#ws.kill(statement, ctx);
         return this.#fetchStream(statement.target, ctx, "DELETE", statement.body ?? undefined);
     }
 
@@ -147,9 +130,8 @@ export default class Http implements SchemeHandler {
     //         scheme-level no-op here is correct — teardown already happened)
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
-            return Http.#bad(400, "http", "bad_target", "SEND requires an http(s):// or ws(s):// URL target");
+            return Http.#bad(400, "http", "bad_target", "SEND requires an http(s):// URL target");
         }
-        if (Http.#isWs(statement.target)) return this.#ws.send(statement, ctx);
         const status = statement.signal;
         if (status === 200) {
             const body = statement.body?.raw ?? "";
