@@ -95,28 +95,51 @@ export const catalog = async (server: string, client: Client, signal?: AbortSign
     const caps = client.getServerCapabilities() ?? {};
     const opts = signal === undefined ? undefined : { signal };
     const [tools, resources, templates, prompts] = await Promise.all([
-        caps.tools === undefined ? null : client.listTools(undefined, opts),
-        caps.resources === undefined ? null : client.listResources(undefined, opts),
+        caps.tools === undefined ? null : allTools(client, opts),
+        caps.resources === undefined ? null : paginate(opts, (p, o) => client.listResources(p, o), (r) => r.resources),
         caps.resources === undefined ? null : templatesOrNone(client, opts),
-        caps.prompts === undefined ? null : client.listPrompts(undefined, opts),
+        caps.prompts === undefined ? null : paginate(opts, (p, o) => client.listPrompts(p, o), (r) => r.prompts),
     ]);
-    if (tools !== null) cacheHints(server, tools.tools);
+    if (tools !== null) cacheHints(server, tools);
     return {
         capabilities: { tools: caps.tools !== undefined, resources: caps.resources !== undefined, prompts: caps.prompts !== undefined },
-        ...(tools === null ? {} : { tools: tools.tools }),
-        ...(resources === null ? {} : { resources: resources.resources }),
-        ...(templates === null ? {} : { resourceTemplates: templates.resourceTemplates }),
-        ...(prompts === null ? {} : { prompts: prompts.prompts }),
+        ...(tools === null ? {} : { tools }),
+        ...(resources === null ? {} : { resources }),
+        ...(templates === null ? {} : { resourceTemplates: templates }),
+        ...(prompts === null ? {} : { prompts }),
     };
 };
+
+// Every list call follows `nextCursor` to exhaustion — a multi-page server must
+// never silently truncate its catalog (MCP pagination; #484). One page is the
+// common case and costs one round-trip either way.
+const paginate = async <R extends { nextCursor?: string }, T>(
+    opts: { signal?: AbortSignal } | undefined,
+    list: (params: { cursor: string } | undefined, opts?: { signal?: AbortSignal }) => Promise<R>,
+    pick: (result: R) => T[],
+): Promise<T[]> => {
+    const out: T[] = [];
+    let cursor: string | undefined;
+    do {
+        const result = await list(cursor === undefined ? undefined : { cursor }, opts);
+        out.push(...pick(result));
+        cursor = result.nextCursor;
+    } while (cursor !== undefined);
+    return out;
+};
+
+// The full tool list (paginated) — probe and the scheme's /tools/<name> route
+// share it with catalog().
+export const allTools = (client: Client, opts?: { signal?: AbortSignal }): Promise<Tool[]> =>
+    paginate(opts, (p, o) => client.listTools(p, o), (r) => r.tools);
 
 // resources/templates/list rides the resources capability, but real servers
 // commonly omit the handler — a JSON-RPC -32601 there is the server saying
 // "none", not a failure worth killing the whole catalog for. Anything else
 // surfaces.
-const templatesOrNone = async (client: Client, opts?: { signal?: AbortSignal }) => {
+const templatesOrNone = async (client: Client, opts?: { signal?: AbortSignal }): Promise<ResourceTemplate[] | null> => {
     try {
-        return await client.listResourceTemplates(undefined, opts);
+        return await paginate(opts, (p, o) => client.listResourceTemplates(p, o), (r) => r.resourceTemplates);
     } catch (err) {
         if ((err as { code?: unknown }).code === -32601) return null;
         throw err;
