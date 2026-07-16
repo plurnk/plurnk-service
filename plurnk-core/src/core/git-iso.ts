@@ -7,7 +7,7 @@
 // (~130ms at 20k files); the status read is pure-JS workdir hashing (statusMatrix, ~55x), the
 // flag's main case on a large repo.
 
-import git, { STAGE } from "isomorphic-git";
+import git, { STAGE, type WalkerEntry } from "isomorphic-git";
 import fs from "node:fs";
 import ignore, { type Ignore } from "ignore";
 import { readdir, readFile } from "node:fs/promises";
@@ -35,7 +35,9 @@ export default class GitIso {
         const gitlinks: string[] = [];
         await git.walk({
             fs, dir: root, cache, trees: [STAGE()],
-            map: async (filepath, [stage]) => {
+            // Explicit param types (#469): a TS7031 fired on a box whose inference didn't flow the
+            // WalkerMap contextual type into the destructured param — annotate, never rely on it.
+            map: async (filepath: string, [stage]: Array<WalkerEntry | null>) => {
                 if (filepath === "." || stage === null) return undefined;
                 const type = await stage.type();
                 if (type === "blob") blobs.push(filepath);
