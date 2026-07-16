@@ -32,12 +32,11 @@ test("renderAddress: known keeps empty-authority :///; url schemes take the auth
     assert.equal(renderAddress("http", "/en.wikipedia.org/wiki/Paris"), "http://en.wikipedia.org/wiki/Paris");
 });
 
-test("schemeNameOf: ws/wss ride the http handler, as https does — one package, four prefixes (#470)", () => {
+test("schemeNameOf: https rides http; ws rides wss — two first-class schemes, one package (#473)", () => {
     assert.equal(schemeNameOf(parsePath("https://example.org/x")), "http");
-    assert.equal(schemeNameOf(parsePath("ws://example.org/socket")), "http");
-    assert.equal(schemeNameOf(parsePath("wss://example.org/socket")), "http");
-    // the http prefix itself, and an unrelated scheme, are untouched
     assert.equal(schemeNameOf(parsePath("http://example.org/x")), "http");
+    assert.equal(schemeNameOf(parsePath("wss://example.org/socket")), "wss");
+    assert.equal(schemeNameOf(parsePath("ws://example.org/socket")), "wss");
     assert.equal(schemeNameOf(parsePath("known:///fact")), "known");
 });
 

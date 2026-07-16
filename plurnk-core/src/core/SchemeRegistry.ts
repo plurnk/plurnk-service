@@ -180,11 +180,16 @@ export default class SchemeRegistry {
         for (const name of skipped) {
             console.warn(`scheme discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
-        for (const { name, packageName } of schemes) {
+        for (const { name, packageName, exportName } of schemes) {
             if (this.#reserved.has(name)) throw new Error(`external scheme '${name}' (${packageName}) collides with a reserved built-in — boot fail-hard (#240)`);
             if (this.has(name)) continue; // idempotent re-scan
-            const mod = await import(packageName) as { default: new () => SchemeHandler };
-            this.register(name, new mod.default());
+            // #473 — a multi-scheme package names each scheme's export (`plurnk.schemes[].export`);
+            // absent = the classic single default export. A declared export that isn't a constructor
+            // fails the boot hard — a manifest naming a missing class is a misdeclaration, not a skip.
+            const mod = await import(packageName) as Record<string, new () => SchemeHandler>;
+            const Handler = mod[exportName ?? "default"];
+            if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor — boot fail-hard (#473)`);
+            this.register(name, new Handler());
             this.#external.add(name);
             this.#attributions.push(...PluginAttribution.read(packageName)); // #249 — fail-hard if it claims @plurnk/
         }

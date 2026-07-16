@@ -19,10 +19,13 @@ import type { ParsedPath } from "@plurnk/plurnk-grammar";
 // file:/// remains an optional explicit form for absolute paths.
 export function schemeNameOf(path: ParsedPath | null): string | null {
     if (path === null) return null;
-    // http + https + ws + wss are one scheme — the http sibling owns all four prefixes
-    // (#195 web; #470 WebSocket lives in the same package, no second plurnk.name).
+    // Prefix aliasing: http + https are one scheme (#195), ws + wss are one scheme (#473 — Ws is
+    // the http package's second first-class scheme, registered `wss` via plurnk.schemes). The
+    // secure prefix names the handler; the plain prefix rides it.
     if (path.kind === "url") {
-        return path.scheme === "https" || path.scheme === "ws" || path.scheme === "wss" ? "http" : path.scheme;
+        if (path.scheme === "https") return "http";
+        if (path.scheme === "ws") return "wss";
+        return path.scheme;
     }
     return "file";  // local (bare) → file
 }
