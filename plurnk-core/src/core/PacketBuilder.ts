@@ -143,7 +143,7 @@ export default class PacketBuilder {
         return false;
     }
 
-    // #421 — §tokenomics-window-unpollable-deliberate: an unpollable window (provider.contextSize null
+    // #421 — §tokenomics-window-unpollable-deliberate: an unpollable window (provider.contextWindow null
     // after env/probe/catalog all miss) with NO per-alias knob is genuinely-unknown — nobody chose an
     // envelope. The budget/ceiling short-circuit that window to NO-CAP (#isUnboundedWindow) rather than
     // substitute a stand-in the operator never chose; the bare partition still feeds decodeBudget's
