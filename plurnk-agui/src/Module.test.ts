@@ -18,13 +18,13 @@ const mockSeam = () => {
         resolveProposal: (logEntryId, resolution) => {
             resolves.push({ logEntryId, resolution });
             // The engine's continued loop terminating — closes the resume stream.
-            setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, contextSize: 1000, meta: {} } })));
+            setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} } })));
         },
         runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}) }); return { action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
         dispatchAsClient: async () => ({ status: 200 }),
         readLog: async () => [{ id: 1, op: "SEND", origin: "model" }],
-        listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, contextSize: 200000 }] }),
+        listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, promptBudget: 200000 }] }),
         createSession: async () => ({ sessionId: 3, sessionName: "agui-t", projectRoot: null, runId: 10, runName: "client-1", modelRunId: null, clientLoopId: null }),
         attachSession: async () => { throw new Error("unexpected attach"); },
         listSessions: async () => [],
@@ -41,7 +41,7 @@ const mockSeam = () => {
         listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
         look: async () => ({ status: 200, content: "looked" }),
     };
-    const finish = (sessionId: number | null) => setImmediate(() => handlers.forEach((h) => h(sessionId, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, contextSize: 1000, meta: {} } })));
+    const finish = (sessionId: number | null) => setImmediate(() => handlers.forEach((h) => h(sessionId, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} } })));
     return { seam, resolves, loopRuns, finish };
 };
 

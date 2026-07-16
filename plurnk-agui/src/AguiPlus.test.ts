@@ -63,7 +63,7 @@ test("§1 resolutionFromToolResult: tolerant of a bare decision, strict on garba
 
 test("§2 reads → STATE: snapshot nests under plurnk; delta passes patches through", () => {
     const snap = stateSnapshot({
-        providers: [{ alias: "opus", model: "anthropic/claude-opus", active: true, contextSize: 200000 }],
+        providers: [{ alias: "opus", model: "anthropic/claude-opus", active: true, promptBudget: 200000 }],
         session: { id: 1, name: "agui-tui", projectRoot: "/w", budget: 200000 },
     });
     assert.equal(snap.type, "STATE_SNAPSHOT");

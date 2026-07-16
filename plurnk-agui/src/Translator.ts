@@ -126,7 +126,7 @@ export default class Translator {
             type: "STATE_DELTA",
             delta: [
                 { op: "replace", path: "/budget/contextTokens", value: n.usage.contextTokens },
-                { op: "replace", path: "/budget/contextSize", value: n.usage.contextSize },
+                { op: "replace", path: "/budget/promptBudget", value: n.usage.promptBudget },
                 { op: "replace", path: "/budget/promptTokens", value: n.usage.promptTokens },
                 { op: "replace", path: "/budget/completionTokens", value: n.usage.completionTokens },
             ],
