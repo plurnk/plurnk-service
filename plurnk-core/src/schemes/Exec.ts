@@ -1,6 +1,7 @@
 import { parsePath } from "@plurnk/plurnk-grammar";
 import type { ExecStatement, FindStatement, ReadStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
+import { WebFetcher } from "@plurnk/plurnk-schemes-http";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import SessionSettings from "../core/session-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
@@ -75,6 +76,11 @@ const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined 
     return { loop_seq, turn_seq, sequence };
 };
 
+// §exec-entry-sink / #455 — the guarded web-fetch the sink calls when the executor hands content:null:
+// schemes-http's WebFetcher (SSRF-guarded fetch+render, dead-as-null). Injectable because the guard
+// refuses localhost — a fake stands in for both the live { body, mimetype } and the null-dead verdict.
+export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<{ body: string; mimetype: string } | null>;
+
 export default class Exec {
     static manifest: SchemeManifest = {
         name: "exec",
@@ -91,6 +97,15 @@ export default class Exec {
             excludedInAsk: true,
         },
     };
+
+    // The web-fetch the entry sink calls on content:null (§exec-entry-sink / #455). Default = schemes-http's
+    // guarded WebFetcher over one warm-Chromium pool shared across this handler's sinks; injectable so tests
+    // substitute the network (the guard blocks localhost, so no local server can exercise the live path).
+    readonly #fetchWeb: WebFetch;
+    constructor(fetchWeb?: WebFetch) {
+        const webFetcher = new WebFetcher();
+        this.#fetchWeb = fetchWeb ?? ((url, opts) => webFetcher.fetch(url, opts));
+    }
 
     #activeAborts = new Map<number, { runId: number; pathname: string; runtime: string; controller: AbortController; unlink: () => void }>();
     #activeSpawns = new Map<number, Promise<number>>();
@@ -389,10 +404,23 @@ export default class Exec {
         // turn per spawn, not per entry.
         let entryChain: Promise<unknown> = Promise.resolve();
         let narration: { runId: number; loopId: number; turnId: number; seq: number } | null = null;
-        const entrySink = (path: string, content: string, opts: { tags: string[]; mimetype: string }): Promise<void> => {
+        const entrySink = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }): Promise<void> => {
+            const parsed = parsePath(path);
+            if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
+            if (content !== null && opts.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
+            // §exec-entry-sink / #455 — content:null ⇒ core fetches the page through schemes-http's guarded
+            // primitive. The fetch STARTS HERE, OFF the write-serialization chain, so concurrent entry() calls
+            // fetch in PARALLEL (owner ruling: search fetches must not freeze the agent); only the entry WRITE
+            // serializes on entryChain (db-write ordering). A null fetch is dead (guard-refused / unreachable /
+            // non-2xx / non-textual / empty) and REJECTS, so the executor prunes that survivor. Non-null content
+            // is the materialize-given-body path — the caller already holds the bytes and states their mimetype.
+            const materialized: Promise<{ body: string; mimetype: string } | null> = content === null
+                ? this.#fetchWeb(path, { signal })
+                : Promise.resolve({ body: content, mimetype: opts.mimetype as string });
             const op = async (): Promise<void> => {
-                const parsed = parsePath(path);
-                if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) throw new Error(`entry(): '${path.slice(0, 80)}' is not a URL`);
+                const fetched = await materialized;
+                if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
+                const { body, mimetype } = fetched;
                 const pathname = foldAuthorityIntoPath(parsed.hostname, parsed.pathname);
                 const prior = await EntryCrud.readEntry(pathname, ctx, parsed.scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
@@ -401,12 +429,12 @@ export default class Exec {
                 // FTS indexes, every price reports) with the raw page under `html` (xpath + archive).
                 // Scoped HERE, not writeEntry: only auto-fetched web content projects; authored files
                 // stay verbatim (a `<user email=…>` roster's attribute data must survive a default READ).
-                let channels: EntryData["channels"] = { body: { content, mimetype: opts.mimetype } };
-                let decisive = content;
-                if (opts.mimetype === "text/html" && ctx.mimetypes !== undefined) {
-                    const projected = (await ctx.mimetypes.process({ content, hint: "text/html" }, { channels: ["content"] })).content;
+                let channels: EntryData["channels"] = { body: { content: body, mimetype } };
+                let decisive = body;
+                if (mimetype === "text/html" && ctx.mimetypes !== undefined) {
+                    const projected = (await ctx.mimetypes.process({ content: body, hint: "text/html" }, { channels: ["content"] })).content;
                     if (typeof projected === "string" && projected.length > 0) {
-                        channels = { body: { content: projected, mimetype: "text/markdown" }, html: { content, mimetype: opts.mimetype } };
+                        channels = { body: { content: projected, mimetype: "text/markdown" }, html: { content: body, mimetype } };
                         decisive = projected;
                     }
                 }
@@ -429,7 +457,7 @@ export default class Exec {
                     origin: "plurnk", source: String(ctx.runId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
                     scheme: parsed.scheme, username: null, password: null, hostname: null, port: null,
                     pathname, params: null, fragment: null, lineMarker: null,
-                    tx: JSON.stringify({ op: "EDIT", body: content }), mimetype_tx: "application/json",
+                    tx: JSON.stringify({ op: "EDIT", body }), mimetype_tx: "application/json",
                     rx: JSON.stringify({
                         status: written.status, entryId: written.entryId, tags,
                         span: decisive.split("\n").map((l, n) => `${n + 1}:\t${l}`).join("\n"),
