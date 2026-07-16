@@ -92,3 +92,14 @@ new WebFetcher().fetch(url: string, opts?: { signal?: AbortSignal }): Promise<{ 
 - **`null`** — dead: SSRF-refused, unreachable, non-2xx, non-textual (binary pruned), or empty. Dead-ness is a **value, not a throw** — the liveness verdict core prunes on.
 - **SSRF guard** (`Guard`): http(s) only, no localhost, every resolved address public (RFC-reserved v4/v6 ranges blocked), with **manual per-hop redirect re-guarding**; the chromium render is guarded too via request interception. Hops capped by `PLURNK_SCHEMES_HTTP_REDIRECTS`. Residual DNS-rebinding sliver (runtime re-resolves after the check) accepted day-one.
 - **Textual set**: `text/*`, `application/{json,xml,xhtml+xml}`, `+json`/`+xml` suffixes.
+
+## §8 WebSocket {§ws}
+
+`Ws` is the WebSocket engine for the `ws`/`wss` targets of this scheme (#468). WebSocket is a distinct protocol — bidirectional, stateful, full-duplex, its own URI scheme — not an http content-type (that's SSE, §sse). Core routes all four prefixes (`http`/`https`/`ws`/`wss`) to the `http` handler the way `https` rides `http` (#470); `Http` **delegates** a `ws`/`wss` target to the `Ws` engine (`Http.#isWs`) rather than the fetch path, keeping the two protocols in separate files while `Http` stays the single registered scheme. Op → socket lifecycle:
+
+- **`READ(wss://…)`** — open the socket, guard the target through `Guard.isPublicUrl` (extended to `ws:`/`wss:`), seed + subscribe (create-then-subscribe, http#3), stream each inbound frame into the `messages` channel (`notifyChunk`, text/plain). Returns `102`; the op **holds until the socket closes** (mirrors the streaming lifecycle — the run wakes on close, summary counts messages).
+- **`SEND[200](wss://…):msg:`** — push `msg` onto the open socket. No open socket → `409` (`kind: no_open_socket`) — READ opens the connection SEND rides.
+- **`SEND[499](wss://…)`** — cancel; engine routes teardown to the READ's handle (which closes the socket), scheme-level `200` no-op.
+- **`KILL(wss://…)`** — close the open socket (`404` if none open).
+
+**Stateless-contract exception:** every other scheme is stateless per schemes SPEC §forbidden ("no state past a handler return"). A live socket IS per-session state, so `Ws` holds open sockets in an **in-instance registry** across op invocations — keyed `session:pathname`, entries present only while the socket is open (every terminal path — close/error/KILL/cancel — removes). This is the ONE sanctioned exception, because that persistence is the whole point of a WebSocket. Day-one limits: text frames only, no reconnection, default handshake identity (custom headers pending) — all #468 follow-ups.

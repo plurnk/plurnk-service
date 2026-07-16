@@ -4,6 +4,11 @@
 export { default } from "./Http.ts";
 export { default as Http } from "./Http.ts";
 
+// The WebSocket engine (#468) — Http delegates ws/wss targets here (core routes
+// all four prefixes to the http handler, #470). schemes owns the WebSocket
+// interface; exported standalone for direct testing.
+export { default as Ws } from "./Ws.ts";
+
 // Standalone render foundation — exported so a future plurnk browser-
 // troubleshooting MCP package can sit on the same warm-Chromium pool.
 export { default as Browser } from "./Browser.ts";
