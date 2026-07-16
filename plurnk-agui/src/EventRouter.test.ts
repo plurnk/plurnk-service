@@ -29,3 +29,31 @@ test("telemetry → plurnk.telemetry custom; loop/proposal deferred to ProposalH
     assert.deepEqual(tel, [{ type: "CUSTOM", name: "plurnk.telemetry", value: { source: "grammar", kind: "parse_error" } }]);
     assert.deepEqual(r.route("loop/proposal", { logEntryId: 42 }), [], "the router yields proposals to ProposalHitl");
 });
+
+test("[§agui-projection] stream events serve the standard ACTIVITY channel AND plurnk.stream (§475 complete-support)", () => {
+    const r = router();
+    const ev = r.route("stream/event", { entryId: 9, target: "search:///1/1/9", scheme: "search", state: "active" });
+    const activity = ev.find((e) => e.type === "ACTIVITY_SNAPSHOT") as { messageId: string; activityType: string; content: unknown; replace?: boolean } | undefined;
+    assert.ok(activity !== undefined, "a stream event emits ACTIVITY_SNAPSHOT");
+    assert.equal(activity.messageId, "stream-9", "keyed to the stream's entry id");
+    assert.equal(activity.activityType, "SEARCH", "activityType is the scheme, uppercased (the protocol discriminator)");
+    assert.equal(activity.replace, true, "a stateless full-view snapshot");
+    assert.ok(ev.some((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.stream"), "the family channel still rides alongside");
+
+    // Conclusion also snapshots (final state), and a scheme-less stream falls back to STREAM.
+    const done = r.route("stream/concluded", { entryId: 9, closeStatus: 200, summary: "done" });
+    const dact = done.find((e) => e.type === "ACTIVITY_SNAPSHOT") as { activityType: string } | undefined;
+    assert.equal(dact?.activityType, "STREAM", "no scheme → STREAM fallback");
+});
+
+test("[§agui-projection] terminated serves the standard RAW channel — the provider's native completion frame (§475)", () => {
+    const meta = { model: "gemma-4-26B.gguf", finish_reason: "stop", timings: { predicted_ms: 900 } };
+    const ev = router().route("loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 5, completionTokens: 6, costPico: 0, contextTokens: 11, contextSize: 200000, meta } });
+    const raw = ev.find((e) => e.type === "RAW") as { event: unknown; source?: string } | undefined;
+    assert.ok(raw !== undefined, "the provider frame rides RAW");
+    assert.deepEqual(raw.event, meta, "the native completion object, verbatim");
+    assert.equal(raw.source, "provider");
+    // Empty meta → no RAW (never an empty passthrough).
+    const bare = router().route("loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 5, completionTokens: 6, costPico: 0, contextTokens: 11, contextSize: 200000, meta: {} } });
+    assert.equal(bare.find((e) => e.type === "RAW"), undefined, "empty meta → no RAW");
+});

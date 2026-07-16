@@ -40,15 +40,15 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 |---|---|
 | `loop.run` accepted | `RUN_STARTED` |
 | `log/entry` turn boundary | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`) |
-| `log/entry` op=PLAN (model) | `THINKING_TEXT_MESSAGE_START/CONTENT/END` |
+| `log/entry` op=PLAN (model) | `REASONING_START` + `REASONING_MESSAGE_START/CONTENT/END` + `REASONING_END` (§475: current AG-UI reasoning; the deprecated THINKING_* is retired) |
 | `log/entry` op=SEND (model) | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | `log/entry` other op (model) | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` op=model (mirror) | nothing — forensic, not speech |
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `loop/proposal` | `CUSTOM plurnk.proposal` |
-| `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` (sessionId, loopId, turnIds, costPico, meta) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
+| `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
 | `telemetry/event` | `CUSTOM plurnk.telemetry` |
-| `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` (payload self-discriminates: event carries `state`, concluded `closeStatus`) |
+| `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475) |
 | `loop/quiesced` | `CUSTOM plurnk.quiesced` |
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
