@@ -210,8 +210,8 @@ test("GBNF: every plurnk.md example derives from statement", () => {
 test("GBNF: PLAN-anchored root — PLAN mandatory & first, SEND-closed", () => {
     // PLAN first, then ops, closed by a terminal SEND.
     assert.equal(derives("root-turn", "<<PLAN:decompose first:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:done:SEND"), true);
-    // minimal: PLAN then the closing SEND.
-    assert.equal(derives("root-turn", "<<PLAN:think:PLAN\n<<SEND[102]:working:SEND"), true);
+    // minimal: PLAN then a closing SEND (a non-102 disposition; see the no-idle test).
+    assert.equal(derives("root-turn", "<<PLAN:think:PLAN\n<<SEND[200]:answer:SEND"), true);
     // op-first (no PLAN) is NOT a turn.
     assert.equal(derives("root-turn", "<<READ(known:///x)::READ\n<<SEND[102]:done:SEND"), false);
     // bare SEND (no PLAN) is NOT a turn.
@@ -220,6 +220,35 @@ test("GBNF: PLAN-anchored root — PLAN mandatory & first, SEND-closed", () => {
     assert.equal(derives("root-turn", "<<PLAN:think:PLAN"), false);
     // no free prose between ops after PLAN.
     assert.equal(derives("root-turn", "<<PLAN:p:PLAN\nstray prose\n<<SEND[200]:x:SEND"), false);
+});
+
+// NO-IDLE RULE (consumer-requested, ratified 2026-07-16): "continue" with zero statements
+// submitted is a spin — the corridor-flail escape valve (blocked premature 200 → idle 102
+// loops, a full uncached packet round-trip per spin for zero state change). tail-0 exits
+// through send-final-first (no [102] tail); after >=1 statement the full set returns. The
+// other four dispositions stay legal bare: the delegation breath's wake turn IS
+// PLAN+SEND[200]; a zero-op [202] is the ENGINE's obligation check (a wait on nothing
+// resolves like 200); 300/499 need no ops by nature. ANTLR stays tolerant (forgiving
+// ingester — old logs, cloud paths, Script); the rail is the strict side, per the split.
+test("GBNF: no idle turns (§no-idle-102) — a zero-op [102] does not derive; one statement restores it", () => {
+    // The idle turn: PLAN straight into a [102] terminal. Not derivable.
+    assert.equal(derives("root-turn", "<<PLAN:think:PLAN\n<<SEND[102]:working:SEND"), false);
+    // Targeted changes nothing — still idle.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[102](run://self):working:SEND"), false);
+    // One real op before it: derives.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[102]:working:SEND"), true);
+    // A mid-comms SEND is a statement too (report-progress-and-continue): derives.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND:progress report:SEND\n<<SEND[102]:working:SEND"), true);
+    // The other four dispositions stay legal with zero ops.
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[200]:done:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]:waiting:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[202]<30>:waiting:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[300]:pick one:SEND"), true);
+    assert.equal(derives("root-turn", "<<PLAN:p:PLAN\n<<SEND[499]:giving up:SEND"), true);
+    // ANTLR (the forgiving ingester) still ACCEPTS the idle turn — rail-only rule.
+    const result = PlurnkParser.parse("<<PLAN:think:PLAN\n<<SEND[102]:working:SEND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
 });
 
 test("GBNF: the ONLY preamble is the harmony channel — strict, zero-gap, no free text (#430)", () => {

@@ -442,6 +442,15 @@ structural:
   `<T,P>` (adds a poll cadence, mirroring EXEC's slot), `<-1>`
   (indefinite; the join's own liveness bounds it). See §7 for the
   GBNF-strict / ANTLR-tolerant split. {§park-202-only}
+- A **zero-statement turn may not conclude `[102]`** — "continue"
+  with nothing submitted is a spin. The GBNF's `tail-0` exits through
+  a terminal trie without the `[102]` tail, so the idle turn (`PLAN`
+  straight into `SEND[102]`) is unemittable; one statement restores
+  the full disposition set. The other four stay legal bare (a zero-op
+  `[202]` is the engine's obligation check). ANTLR stays tolerant
+  (ingest side). A dispatch-emptied turn — ops emitted but failing
+  downstream validation — survives the rail by nature; the engine's
+  idle-turn 409 backstops that class. {§no-idle-102}
 
 SEND with no `(path)` broadcasts to the default control channel — the
 turn's disposition. SEND with `(path)` directs the message at a
