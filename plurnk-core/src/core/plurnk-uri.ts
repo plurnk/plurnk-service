@@ -19,8 +19,11 @@ import type { ParsedPath } from "@plurnk/plurnk-grammar";
 // file:/// remains an optional explicit form for absolute paths.
 export function schemeNameOf(path: ParsedPath | null): string | null {
     if (path === null) return null;
-    // http + https are one scheme — the http sibling owns both prefixes (#195).
-    if (path.kind === "url") return path.scheme === "https" ? "http" : path.scheme;
+    // http + https + ws + wss are one scheme — the http sibling owns all four prefixes
+    // (#195 web; #470 WebSocket lives in the same package, no second plurnk.name).
+    if (path.kind === "url") {
+        return path.scheme === "https" || path.scheme === "ws" || path.scheme === "wss" ? "http" : path.scheme;
+    }
     return "file";  // local (bare) → file
 }
 
@@ -50,6 +53,6 @@ export function renderAddress(scheme: string, pathname: string): string {
     // minting BOTH forms and the model treated them as different addresses. Same for web URLs
     // (run42 sweep: the entry-sink's materialized pages rendered https:///en.wikipedia.org/...).
     // known/unknown/plurnk-single-segment keep :/// — empty authority IS their canonical form.
-    if (scheme === "run" || scheme === "http" || scheme === "https") return `${scheme}://${pathname.replace(/^\//, "")}`;
+    if (scheme === "run" || scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss") return `${scheme}://${pathname.replace(/^\//, "")}`;
     return `${scheme}://${pathname}`;
 }
