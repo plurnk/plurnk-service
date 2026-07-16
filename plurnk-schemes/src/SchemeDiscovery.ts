@@ -26,8 +26,14 @@ import Meta from "@plurnk/plurnk-meta";
 // `schemes` and returned in `skipped` for the consumer's telemetry note.
 
 export interface SchemeInfo {
-    readonly name: string;        // declared plurnk.name — the URI prefix
+    readonly name: string;        // declared scheme name — the URI prefix
     readonly packageName: string; // the npm package to import for the handler
+    // Which export of `packageName` is the handler class. Absent → `"default"`
+    // (the single-scheme `plurnk.name` sugar): the consumer instantiates
+    // `mod[exportName ?? "default"]`. A multi-scheme package (`plurnk.schemes`)
+    // names one export per scheme, so a package may own several names — one class
+    // per name, one NAME still one owner (#473).
+    readonly exportName?: string;
     // Raw `plurnk.attribution` — the human/org credit a scheme package declares
     // for itself (a name, a handle, a list of contributors). Passed through
     // verbatim (string | string[] | undefined): this package neither validates
@@ -55,22 +61,27 @@ export default class SchemeDiscovery {
         const skipped = new Set<string>();
         for (const dir of dirs) {
             signal?.throwIfAborted();
-            const info = await SchemeDiscovery.#readSchemeInfo(dir, signal);
-            if (info === null) continue;
+            const infos = await SchemeDiscovery.#readSchemeInfos(dir, signal);
+            if (infos.length === 0) continue;
             // Host plugin-trust gate: an untrusted third-party package is
-            // discovered but not surfaced for registration — recorded, never crashed on.
-            if (!Meta.isTrusted(info.packageName)) { skipped.add(info.packageName); continue; }
-            const existing = byName.get(info.name);
-            // Two EXTERNAL packages claiming one scheme prefix is an unresolvable
-            // ambiguity — fail-hard, mirroring execs' runtime-collision rule.
-            // (In-tree precedence is the consumer's concern; it sees its own set.)
-            if (existing !== undefined) {
-                throw new Error(
-                    `scheme name collision: '${info.name}' claimed by both `
-                    + `${existing.packageName} and ${info.packageName}`,
-                );
+            // discovered but not surfaced for registration — recorded, never
+            // crashed on. All of a package's schemes share its packageName, so
+            // one trust check gates the whole package.
+            if (!Meta.isTrusted(infos[0].packageName)) { skipped.add(infos[0].packageName); continue; }
+            for (const info of infos) {
+                const existing = byName.get(info.name);
+                // Two packages (or two entries) claiming one scheme prefix is an
+                // unresolvable ambiguity — fail-hard, mirroring execs' runtime-
+                // collision rule. One NAME one owner, even as one PACKAGE owns
+                // several names. (In-tree precedence is the consumer's concern.)
+                if (existing !== undefined) {
+                    throw new Error(
+                        `scheme name collision: '${info.name}' claimed by both `
+                        + `${existing.packageName} and ${info.packageName}`,
+                    );
+                }
+                byName.set(info.name, info);
             }
-            byName.set(info.name, info);
         }
         return { schemes: [...byName.values()], skipped: [...skipped].sort() };
     }
@@ -99,29 +110,48 @@ export default class SchemeDiscovery {
         return err instanceof Error && err.name === "AbortError";
     }
 
-    // One SchemeInfo for a package declaring plurnk.kind:"scheme" + plurnk.name;
-    // null for anything else (non-package dir, non-scheme, invalid declaration).
-    static async #readSchemeInfo(dir: string, signal?: AbortSignal): Promise<SchemeInfo | null> {
+    // The SchemeInfo(s) for a package declaring plurnk.kind:"scheme"; [] for
+    // anything else (non-package dir, non-scheme, no declaration). A package
+    // declares EITHER `plurnk.schemes: [{ name, export }, …]` (canonical, one
+    // entry per scheme it owns) OR `plurnk.name: "<scheme>"` (sugar for exactly
+    // one, default export) — #473. A malformed `plurnk.schemes` is an authoring
+    // contract violation and fails hard (locality of error), not a silent skip.
+    static async #readSchemeInfos(dir: string, signal?: AbortSignal): Promise<SchemeInfo[]> {
         let raw: string;
         try { raw = await fs.readFile(path.join(dir, "package.json"), { encoding: "utf-8", signal }); }
-        catch (err) { if (SchemeDiscovery.#isAbort(err)) throw err; return null; }
+        catch (err) { if (SchemeDiscovery.#isAbort(err)) throw err; return []; }
         let pkg: unknown;
-        try { pkg = JSON.parse(raw); } catch { return null; }
-        if (typeof pkg !== "object" || pkg === null) return null;
+        try { pkg = JSON.parse(raw); } catch { return []; }
+        if (typeof pkg !== "object" || pkg === null) return [];
         const record = pkg as Record<string, unknown>;
         const plurnk = record.plurnk;
-        if (typeof plurnk !== "object" || plurnk === null) return null;
+        if (typeof plurnk !== "object" || plurnk === null) return [];
         const plurnkRec = plurnk as Record<string, unknown>;
-        if (plurnkRec.kind !== "scheme") return null;
-        if (typeof plurnkRec.name !== "string" || plurnkRec.name === "") return null;
-        if (typeof record.name !== "string" || record.name === "") return null;
+        if (plurnkRec.kind !== "scheme") return [];
+        if (typeof record.name !== "string" || record.name === "") return [];
+        const packageName = record.name;
         const attribution = SchemeDiscovery.#attribution(plurnkRec.attribution);
         // Only carry the key when credit is actually present — an absent
-        // attribution leaves the property off entirely (not `undefined`), so a
-        // no-attribution descriptor stays `{ name, packageName }`.
-        return attribution === undefined
-            ? { name: plurnkRec.name, packageName: record.name }
-            : { name: plurnkRec.name, packageName: record.name, attribution };
+        // attribution leaves the property off entirely (not `undefined`).
+        const withAttr = (info: SchemeInfo): SchemeInfo => attribution === undefined ? info : { ...info, attribution };
+
+        const declared = plurnkRec.schemes;
+        if (declared !== undefined) {
+            if (!Array.isArray(declared) || declared.length === 0) {
+                throw new Error(`${packageName}: plurnk.schemes must be a non-empty array of { name, export }`);
+            }
+            return declared.map((entry) => {
+                if (typeof entry !== "object" || entry === null) throw new Error(`${packageName}: each plurnk.schemes entry must be an object`);
+                const e = entry as Record<string, unknown>;
+                if (typeof e.name !== "string" || e.name === "") throw new Error(`${packageName}: a plurnk.schemes entry is missing a non-empty name`);
+                if (typeof e.export !== "string" || e.export === "") throw new Error(`${packageName}: plurnk.schemes entry '${e.name}' is missing a non-empty export`);
+                return withAttr({ name: e.name, packageName, exportName: e.export });
+            });
+        }
+        if (typeof plurnkRec.name === "string" && plurnkRec.name !== "") {
+            return [withAttr({ name: plurnkRec.name, packageName })]; // sugar: single scheme, default export
+        }
+        return [];
     }
 
     // Pass `plurnk.attribution` through verbatim when it's a string or an array

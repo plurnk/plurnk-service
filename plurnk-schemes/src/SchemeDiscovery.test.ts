@@ -53,6 +53,49 @@ test("discover: plurnk.attribution passes through verbatim — string, string[],
     assert.deepEqual(by("bad"), { name: "bad", packageName: "bad-credit" });
 });
 
+// ── multi-scheme packages: plurnk.schemes (#473) ──────────────────────────
+test("discover: plurnk.schemes surfaces one SchemeInfo per named scheme, with exportName", async () => {
+    const cwd = await makeTree([
+        ["@plurnk/plurnk-schemes-http", {
+            name: "@plurnk/plurnk-schemes-http",
+            plurnk: { kind: "scheme", schemes: [{ name: "http", export: "default" }, { name: "wss", export: "Ws" }] },
+        }],
+    ]);
+    const { schemes } = await SchemeDiscovery.discover({ cwd });
+    assert.deepEqual(schemes.map((s) => s.name).sort(), ["http", "wss"]);
+    assert.deepEqual(schemes.find((s) => s.name === "http"), { name: "http", packageName: "@plurnk/plurnk-schemes-http", exportName: "default" });
+    assert.deepEqual(schemes.find((s) => s.name === "wss"), { name: "wss", packageName: "@plurnk/plurnk-schemes-http", exportName: "Ws" });
+});
+
+test("discover: plurnk.name sugar omits exportName (consumer defaults to \"default\")", async () => {
+    const cwd = await makeTree([["solo-pkg", scheme("solo-pkg", "solo")]]);
+    const { schemes } = await SchemeDiscovery.discover({ cwd });
+    assert.equal("exportName" in schemes.find((s) => s.name === "solo")!, false);
+});
+
+test("discover: a package's schemes each carry the package attribution", async () => {
+    const cwd = await makeTree([["p", {
+        name: "p",
+        plurnk: { kind: "scheme", attribution: "Grace", schemes: [{ name: "a", export: "default" }, { name: "b", export: "B" }] },
+    }]]);
+    const { schemes } = await SchemeDiscovery.discover({ cwd });
+    assert.equal(schemes.find((s) => s.name === "a")?.attribution, "Grace");
+    assert.equal(schemes.find((s) => s.name === "b")?.attribution, "Grace");
+});
+
+test("discover: a malformed plurnk.schemes fails hard (never a silent skip)", async () => {
+    for (const bad of [
+        { kind: "scheme", schemes: [] },
+        { kind: "scheme", schemes: "http" },
+        { kind: "scheme", schemes: [{ name: "x" }] },   // missing export
+        { kind: "scheme", schemes: [{ export: "X" }] },  // missing name
+        { kind: "scheme", schemes: [{ name: "x", export: "" }] }, // empty export
+    ]) {
+        const cwd = await makeTree([["bad-pkg", { name: "bad-pkg", plurnk: bad }]]);
+        await assert.rejects(SchemeDiscovery.discover({ cwd }), /plurnk\.schemes/, `${JSON.stringify(bad)} should reject`);
+    }
+});
+
 test("discover: a missing node_modules yields an empty result", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "schemes-empty-"));
     const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
