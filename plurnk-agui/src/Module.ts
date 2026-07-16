@@ -95,8 +95,17 @@ export default class Module {
             res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "POST / (AG-UI run) is the interface" }));
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
-            res.end(JSON.stringify({ error: message }));
+            if (!res.headersSent) {
+                res.writeHead(500, { "content-type": "application/json" });
+                res.end(JSON.stringify({ error: message }));
+                return;
+            }
+            // Post-headers throw (svc#480): the SSE is already open, so a JSON body is
+            // invisible to the event parser — the stream reads as a silent death. Emit a
+            // legible terminal RUN_ERROR frame instead (501 for the no-model case), then end.
+            const code = /no provider configured|no model|unknown alias/i.test(message) ? "501" : "500";
+            res.write(`data: ${JSON.stringify({ type: "RUN_ERROR", message, code })}\n\n`);
+            res.end();
         }
     }
 
