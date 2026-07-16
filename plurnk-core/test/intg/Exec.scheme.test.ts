@@ -11,7 +11,10 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, seedEntryWithChannel, rootSession } from "./_helpers.ts";
+import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const execStmt = (runtime: string | null, cwd: string | null, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -137,6 +140,69 @@ test("EXEC: the (target) slot lands in attrs.target (the data source), NOT attrs
         assert.equal(attrs.command, "length", "the body is the jq program");
         await dispatchPromise; // jq(read) auto-runs inline (no proposal); let it settle
         await ctx.exec.idle();
+    });
+});
+
+test("[§exec-target-routing] file (target) + empty body runs the file, not the old empty-body 400 (#462)", async () => {
+    await withSession(async (ctx) => {
+        const root = await mkdtemp(join(tmpdir(), "exec462-file-"));
+        try {
+            await writeFile(join(root, "greet.sh"), "echo hi\n");
+            await rootSession(ctx.db, ctx.sessionId, root);
+            const idD = deferred<number>();
+            const p = ctx.engine.dispatch({
+                statement: execStmt("sh", "greet.sh", ""),  // EXEC[sh](greet.sh): — empty body, FILE target
+                sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                onDispatch: (id) => idD.resolve(id),
+            });
+            const id = await idD.promise;  // a log row minted ⇒ it dispatched (proposed), never the empty-body 400
+            const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id });
+            const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; command: string };
+            assert.equal(attrs.target, "greet.sh", "a FILE target is the program the executor runs (body = stdin)");
+            assert.equal(attrs.cwd, root, "a file target never moves cwd — it stays the workspace");
+            assert.equal(attrs.command, "", "empty body is legal for a file target — run it, no stdin");
+            ctx.engine.resolveProposal(id, { decision: "reject" });
+            await p.catch(() => {});
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+});
+
+test("[§exec-target-routing] directory (target) overrides cwd; the body is the command run there (#462)", async () => {
+    await withSession(async (ctx) => {
+        const root = await mkdtemp(join(tmpdir(), "exec462-dir-"));
+        try {
+            await mkdir(join(root, "sub"));
+            await rootSession(ctx.db, ctx.sessionId, root);
+            const idD = deferred<number>();
+            const p = ctx.engine.dispatch({
+                statement: execStmt("sh", "sub", "echo hi"),  // EXEC[sh](sub):echo hi — DIRECTORY target
+                sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                onDispatch: (id) => idD.resolve(id),
+            });
+            const id = await idD.promise;
+            const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id });
+            const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; command: string };
+            assert.equal(attrs.cwd, join(root, "sub"), "a DIRECTORY target overrides cwd — the body runs there");
+            assert.equal(attrs.target, null, "a directory is neither program nor data source — target is cleared");
+            assert.equal(attrs.command, "echo hi", "the body is the command");
+            ctx.engine.resolveProposal(id, { decision: "reject" });
+            await p.catch(() => {});
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+});
+
+test("[§exec-target-routing] directory (target) + empty body → 400 — a directory has nothing to run (#462)", async () => {
+    await withSession(async (ctx) => {
+        const root = await mkdtemp(join(tmpdir(), "exec462-diremp-"));
+        try {
+            await mkdir(join(root, "sub"));
+            await rootSession(ctx.db, ctx.sessionId, root);
+            const result = await ctx.engine.dispatch({
+                statement: execStmt("sh", "sub", ""),  // EXEC[sh](sub): — DIRECTORY target, empty body
+                sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            });
+            assert.equal(result.status, 400, "a directory target with empty body has nothing to run");
+        } finally { await rm(root, { recursive: true, force: true }); }
     });
 });
 
