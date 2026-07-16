@@ -19,9 +19,9 @@ const fixture = {
     // Reserves scaled for fake Mock windows: a 8192-token Mock can't fit a real model's ~13312 of
     // reserves, so prompt budget must stay positive. `mocktest` has no per-alias override, so this
     // bare partition is what resolves for it — real models' PLURNK_SERVICE_*_<alias> never apply.
-    PLURNK_SERVICE_CTX: "78848",
+    PLURNK_SERVICE_CONTEXT_WINDOW: "78848",
     PLURNK_SERVICE_REASONING: "256",
-    PLURNK_SERVICE_ASSISTANT: "1024",
+    PLURNK_SERVICE_COMPLETION: "1024",
     PLURNK_SERVICE_SAFETY: "64",
     // Test isolation, tier-wide: no operator doc-foist, no operator system policy, a bounded turn
     // ceiling so a wandering green loop still ends legibly, a scratch DB. Vector-ranking suites

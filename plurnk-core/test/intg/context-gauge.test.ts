@@ -60,7 +60,7 @@ test("[#274] loopUsage.contextSize is null when the provider reports no window",
 });
 
 test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client gauge never overstates room", async () => {
-    // .env.test partition: REASONING=256 ASSISTANT=1024 SAFETY=64. A 8192-window model's stored
+    // .env.test partition: REASONING=256 COMPLETION=1024 SAFETY=64. A 8192-window model's stored
     // denominator = 8192 - 1344 = 6848 — the room the packet actually lives under.
     const db = await openMigrated();
     try {
@@ -71,7 +71,7 @@ test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client
         const provider = new Mock({ contextSize: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: "done", position: { line: 1, column: 1 } }] } }] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
         const usage = await engine.loopUsage(loopId);
-        const expected = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_ASSISTANT) - Number(process.env.PLURNK_SERVICE_SAFETY);
+        const expected = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_COMPLETION) - Number(process.env.PLURNK_SERVICE_SAFETY);
         assert.equal(usage.contextSize, expected, `the stored denominator is the partitioned budget (${expected}), never the raw 8192`);
     } finally { await db.close(); }
 });
@@ -86,7 +86,7 @@ test("[#274] providers.list advertises the EFFECTIVE prompt budget — one denom
             const resp = await rpcCall(ws, 2, "providers.list");
             const result = resp.result as { aliases: Array<{ active: boolean; contextSize: number | null }> };
             const active = result.aliases.find((a) => a.active);
-            const expected = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_ASSISTANT) - Number(process.env.PLURNK_SERVICE_SAFETY);
+            const expected = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_COMPLETION) - Number(process.env.PLURNK_SERVICE_SAFETY);
             assert.equal(active?.contextSize, expected, `the client's gauge denominator is the budget (${expected}), never the raw window (8192) — 'ctx 38%/49k' against a 35k reality was the lie`);
         } finally { ws.close(); }
     });

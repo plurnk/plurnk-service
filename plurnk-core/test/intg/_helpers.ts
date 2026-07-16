@@ -106,7 +106,7 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
 // headroom. Tight relative to a real model's window (the grinder still engages on large content),
 // but never impossible. Use it wherever a test runs a loop to CONCLUSION and just needs the packet
 // to fit — NOT for grinder/overflow tests, which deliberately pick a sub-floor window.
-const _reserves = ["REASONING", "ASSISTANT", "SAFETY"].reduce((n, k) => n + Number(process.env[`PLURNK_SERVICE_${k}`] ?? 0), 0);
+const _reserves = ["REASONING", "COMPLETION", "SAFETY"].reduce((n, k) => n + Number(process.env[`PLURNK_SERVICE_${k}`] ?? 0), 0);
 const _viableWindow = Math.ceil((rulerCount(await readFile(Paths.instructionsSystem, "utf8")) + _reserves) * 2);
 export const viableWindow = (): number => _viableWindow;
 

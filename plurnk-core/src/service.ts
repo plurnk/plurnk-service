@@ -204,12 +204,13 @@ export default class Service {
             process.stderr.write("plurnk-service: remote embedder active but reports no token window — set PLURNK_MIMETYPES_EMBED_MAX_TOKENS to the endpoint's limit or embedding derivations will refuse\n");
         }
         // §tokenomics-window-partition coupling (F7): per-request numeric reasoning budgets are
-        // IGNORED by llama-server — when thinking is on, only the box's --reasoning-budget launch
+        // IGNORED by llama-server — when reasoning is on, only the box's --reasoning-budget launch
         // flag clamps it, and it must equal PLURNK_SERVICE_REASONING. Unverifiable from here, so
-        // say it loudly rather than let the reserve be fiction.
-        const thinking = process.env.PLURNK_PROVIDERS_THINKING ?? "off";
-        if (thinking !== "off") {
-            process.stderr.write(`plurnk-service: native thinking is ${thinking} — llama-server ignores per-request numeric budgets; ensure the serving box launches with --reasoning-budget ${process.env.PLURNK_PROVIDERS_THINKING_CAPACITY ?? "?"} or the capacity is not enforced.\n`);
+        // say it loudly rather than let the reserve be fiction. (#472 — reads the post-#399 knob
+        // names; the shed THINKING names made this advisory dead code that could never fire.)
+        const reasoning = process.env.PLURNK_PROVIDERS_REASONING ?? "off";
+        if (reasoning !== "off") {
+            process.stderr.write(`plurnk-service: reasoning is ${reasoning} — llama-server ignores per-request numeric budgets; ensure the serving box launches with --reasoning-budget ${process.env.PLURNK_PROVIDERS_REASONING_BUDGET ?? "?"} or the budget is not enforced.\n`);
         }
         if (alias === null) {
             process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);

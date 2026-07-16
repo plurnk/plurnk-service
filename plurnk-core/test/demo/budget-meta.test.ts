@@ -1,5 +1,5 @@
 // Budget as a META-SCENARIO (owner's design): the storyline demos, re-run under a
-// tight partition CTX. Budget pressure is a DIMENSION atop a real scenario,
+// tight partition CONTEXT_WINDOW. Budget pressure is a DIMENSION atop a real scenario,
 // not a bespoke fixture — if the same task still completes when the model must curate
 // to fit the window, the grinder works end-to-end with a real model. The intg layer
 // (budget-stories.test.ts) pins the exact mechanics; this pins the behavior, the way
@@ -54,7 +54,7 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
     const ceiling = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
     // promptBudget = ceiling exactly; real assistant reserve keeps maxTokens sane live. Rides the
     // active alias's suffix — bare is overridden by the model's own .env window knobs.
-    const restore = pinAliasPartition({ CTX: String(ceiling + 8192), REASONING: "0", ASSISTANT: "8192", SAFETY: "0" });
+    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(ceiling + 8192), REASONING: "0", COMPLETION: "8192", SAFETY: "0" });
     try {
         const s = await liveSession({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });

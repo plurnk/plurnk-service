@@ -191,9 +191,9 @@ export const lastRx = async (db: Db, modelRunId: number, op: string): Promise<st
 // model's real window (the budget-grind/-meta/floor-probe regression: turboderp's 35840 leaked
 // past a tight pin). Setting the ACTIVE alias's suffix wins over its own .env knobs; alias-agnostic,
 // so it holds when the demo model pivots (turboderp ↔ gbuild). Returns a restore fn.
-export const pinAliasPartition = (part: { CTX: string; REASONING: string; ASSISTANT: string; SAFETY: string }): (() => void) => {
+export const pinAliasPartition = (part: { CONTEXT_WINDOW: string; REASONING: string; COMPLETION: string; SAFETY: string }): (() => void) => {
     const alias = resolveActiveAlias(process.env)?.alias ?? "";
-    const entries = (["CTX", "REASONING", "ASSISTANT", "SAFETY"] as const).map((k) => [`PLURNK_SERVICE_${k}_${alias}`, part[k]] as const);
+    const entries = (["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"] as const).map((k) => [`PLURNK_SERVICE_${k}_${alias}`, part[k]] as const);
     const prev = entries.map(([k]) => [k, process.env[k]] as const);
     for (const [k, v] of entries) process.env[k] = v;
     return () => { for (const [k, v] of prev) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } };

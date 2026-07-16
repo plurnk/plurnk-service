@@ -31,7 +31,7 @@ import { openMigrated, insertSession, insertRun, insertLoop, packetSection } fro
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
-const WINDOW = 100_000; // the model's window — wide enough to hold a fat read OPEN, so WIDE isn't capped below it (the partition gates on min(CTX, window))
+const WINDOW = 100_000; // the model's window — wide enough to hold a fat read OPEN, so WIDE isn't capped below it (the partition gates on min(CONTEXT_WINDOW, window))
 const WIDE = 1_000_000; // absolute wall capped to the window → never overflows
 const TINY = 2;         // absolute wall far below any packet → un-foldable overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
@@ -51,13 +51,13 @@ const fatReads = (chars: number, n = 1): MockResponse[] =>
     Array.from({ length: n }, () => response([editStmt(urlPath("known", "big"), heavy(chars)), readStmt(urlPath("known", "big")), sendStmt(102, null, "ok")]));
 
 const engineAt = (db: Db, ceiling: number): Engine => {
-    // CTX = the pin, zero reserves: promptBudget IS the pin (§tokenomics-window-partition).
-    process.env.PLURNK_SERVICE_CTX = String(ceiling);
+    // CONTEXT_WINDOW = the pin, zero reserves: promptBudget IS the pin (§tokenomics-window-partition).
+    process.env.PLURNK_SERVICE_CONTEXT_WINDOW = String(ceiling);
     process.env.PLURNK_SERVICE_REASONING = "0";
-    process.env.PLURNK_SERVICE_ASSISTANT = "0";
+    process.env.PLURNK_SERVICE_COMPLETION = "0";
     process.env.PLURNK_SERVICE_SAFETY = "0";
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    for (const k of ["CTX", "REASONING", "ASSISTANT", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}`];
+    for (const k of ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}`];
     return engine;
 };
 const envelope = async (db: Db): Promise<{ sessionId: number; runId: number; loopId: number }> => {
@@ -320,24 +320,24 @@ test("budget: the un-foldable hard-413 record reports a positive overshoot hones
     } finally { await db.close(); }
 });
 
-// 11 — the narrow-window arm of the partition: a provider window under CTX governs,
-// minus the reserves ([§tokenomics-window-partition]'s min(CTX, window) via a real build).
-test("budget: a window narrower than CTX governs the partition — ceiling = window − reserves", async () => {
+// 11 — the narrow-window arm of the partition: a provider window under CONTEXT_WINDOW governs,
+// minus the reserves ([§tokenomics-window-partition]'s min(CONTEXT_WINDOW, window) via a real build).
+test("budget: a window narrower than CONTEXT_WINDOW governs the partition — ceiling = window − reserves", async () => {
     const db = await openMigrated();
     try {
-        const prevPart = ["CTX", "REASONING", "ASSISTANT", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
-        process.env.PLURNK_SERVICE_CTX = "1000000";
+        const prevPart = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
+        process.env.PLURNK_SERVICE_CONTEXT_WINDOW = "1000000";
         process.env.PLURNK_SERVICE_REASONING = "0";
-        process.env.PLURNK_SERVICE_ASSISTANT = "0";
+        process.env.PLURNK_SERVICE_COMPLETION = "0";
         process.env.PLURNK_SERVICE_SAFETY = "0";
         const { sessionId, runId, loopId } = await envelope(db);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        ["CTX", "REASONING", "ASSISTANT", "SAFETY"].forEach((k, i) => {
+        ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].forEach((k, i) => {
             if (prevPart[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prevPart[i];
         });
         const t = await engine.runTurn({ provider: new Mock({ contextSize: 12, responses: okSends(1) }), sessionId, runId, loopId, messages: MESSAGES, turnNumber: 2 });
         const { ceiling } = budgetHeadline((await packetOf(db, t.turnId)).packet);
-        assert.equal(ceiling, 12, "window 12 < CTX, zero reserves → promptBudget 12");
+        assert.equal(ceiling, 12, "window 12 < CONTEXT_WINDOW, zero reserves → promptBudget 12");
     } finally { await db.close(); }
 });
 

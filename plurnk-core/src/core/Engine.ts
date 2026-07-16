@@ -916,7 +916,7 @@ export default class Engine {
         // the input under the ceiling); the model's decode — reasoning + emission — is
         // out of band, owned by the provider's own context window. Deriving a maxTokens
         // from our budget conflated the two and guillotined a reasoning model's
-        // out-of-band thinking as the packet filled (`ceiling - packet` → near-zero
+        // out-of-band reasoning as the packet filled (`ceiling - packet` → near-zero
         // decode → finish=length mid-reasoning → no emission → strike spiral). The
         // provider enforces its physical wall on its own.
         let response: ProviderResponse;

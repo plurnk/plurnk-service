@@ -1,4 +1,4 @@
-// #377/#421 — §tokenomics-window-unpollable-deliberate: "CTX stands in for unknown physics" only when
+// #377/#421 — §tokenomics-window-unpollable-deliberate: "CONTEXT_WINDOW stands in for unknown physics" only when
 // deliberate. An unpollable window (provider.contextSize null) with NO per-alias knob is nobody's
 // policy — treated as NO-CAP: the prompt is unbounded, the budget/ceiling are null, and the gauge omits
 // its headline (never a stand-in the operator never chose; a probe blip degrades, never crashes). A
@@ -35,8 +35,8 @@ test("[§tokenomics-window-unpollable-deliberate] null window + no per-alias kno
 });
 
 test("[§tokenomics-window-unpollable-deliberate] a per-alias partition knob makes the stand-in DELIBERATE — the build proceeds", async () => {
-    // The active test alias is 'mocktest' (test/setup.ts); a per-alias CTX marks its envelope chosen.
-    process.env.PLURNK_SERVICE_CTX_mocktest = "8192";
+    // The active test alias is 'mocktest' (test/setup.ts); a per-alias CONTEXT_WINDOW marks its envelope chosen.
+    process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest = "8192";
     const db = await openMigrated();
     try {
         const sessionId = await insertSession(db, `deliberate-${crypto.randomUUID()}`);
@@ -44,9 +44,9 @@ test("[§tokenomics-window-unpollable-deliberate] a per-alias partition knob mak
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const r = await engine.runTurn({ provider: nullWindowMock(), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        assert.ok(r.turnId > 0, "the turn builds — the operator's per-alias CTX stands in deliberately");
+        assert.ok(r.turnId > 0, "the turn builds — the operator's per-alias CONTEXT_WINDOW stands in deliberately");
     } finally {
-        delete process.env.PLURNK_SERVICE_CTX_mocktest;
+        delete process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest;
         await db.close();
     }
 });
