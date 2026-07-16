@@ -67,9 +67,12 @@ interface Provider {
     // `sampling` is an optional bag of standard OpenAI-compat sampling params
     // (temperature, top_p, top_k, min_p, penalties, stop, seed, …) merged into the
     // body UNDER the managed fields — model/messages/grammar/reasoning/max_tokens/
-    // slot always win, and transport/protocol keys (stream, response_format,
-    // grammar, id_slot) are stripped, so it carries sampling intent only and can't
-    // bypass grammar transport (§8). For a PROXY consumer forwarding its own
+    // slot always win, and reserved keys are stripped (#477): transport/protocol
+    // (stream, response_format, grammar, id_slot, logprobs), paradigm breakers
+    // (n, the tools/functions family, modalities/audio, prediction), and the
+    // token caps (max_tokens/max_completion_tokens -- the envelope is the managed
+    // maxTokens, never bypassable). It carries sampling intent + platform knobs
+    // only (§8). For a PROXY consumer forwarding its own
     // caller's sampling knobs (the plurnk endpoint fronting gemma/Fireworks); a
     // direct consumer leaves it unset.
     // `strikes` is the run's CURRENT rail-strike streak at time-of-generate

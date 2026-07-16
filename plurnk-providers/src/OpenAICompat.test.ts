@@ -265,6 +265,31 @@ test("sampling passthrough forwards caller params; managed + reserved keys win",
     assert.equal("id_slot" in body, false); // reserved slot key stripped
 });
 
+test("#477 sampling passthrough guards contract invariants: n/tools/caps stripped, platform knobs pass", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({
+        runId: "r",
+        messages: [{ role: "user", content: "hi" }],
+        maxTokens: 100,
+        sampling: {
+            n: 3,                                                    // breaks choices[0] atomicity -> stripped
+            tools: [{ type: "function" }], tool_choice: "auto",      // tools-in-body doctrine -> stripped
+            modalities: ["text", "audio"], prediction: { type: "content" }, // text-only / decode semantics -> stripped
+            max_tokens: 999999, max_completion_tokens: 999999,       // envelope bypass (#425 cap) -> stripped
+            seed: 42, user: "acct-7", service_tier: "flex",          // platform/sampling intent -> pass
+        },
+    });
+    const body = JSON.parse(calls[0].init.body as string);
+    for (const k of ["n", "tools", "tool_choice", "modalities", "prediction", "max_completion_tokens"]) {
+        assert.equal(k in body, false, `${k} must be stripped`);
+    }
+    assert.equal(body.max_tokens, 100); // the managed envelope, not the smuggled 999999
+    assert.equal(body.seed, 42);
+    assert.equal(body.user, "acct-7");
+    assert.equal(body.service_tier, "flex");
+});
+
 test("reasoningStyle 'template' always emits enable_thinking mirroring budget != 0 — explicit false, never omitted", async () => {
     const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);

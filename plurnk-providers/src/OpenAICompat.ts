@@ -156,9 +156,24 @@ export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
 const heuristicTokens = (text: string): number => (text.length === 0 ? 0 : Math.ceil(text.length / 2));
 
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
-// these, or it could bypass grammar transport, the stream/JSON choice, or slot
-// pinning (SPEC §8: backend-specific fields never cross the contract).
-const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set(["model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot", "logprobs", "top_logprobs"]);
+// these. Two families (#477 audit):
+//   transport/managed — grammar transport, the stream/JSON choice, slot pinning,
+//     data capture (SPEC §8: backend-specific fields never cross the contract);
+//   contract invariants — `n` (atomic single completion: choices[0] is the
+//     response; n>1 = paid, dropped output), the tool-calling family (tools-in-
+//     body doctrine, §2: native tool_calls return null content = a broken turn),
+//     modalities/audio (text-only contract), prediction (decode semantics, not
+//     sampling), and the token caps (the envelope is the managed maxTokens —
+//     sampling must not bypass the consumer's #425 cap).
+// Sampling intent (temperature, top_p, penalties, stop, seed, logit_bias) and
+// platform knobs (user, service_tier, prompt_cache_*, safety_identifier,
+// metadata, store, verbosity) pass through; the managed floors spread UNDER
+// sampling stay deliberately caller-overridable.
+const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set([
+    "model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot", "logprobs", "top_logprobs",
+    "n", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls",
+    "modalities", "audio", "prediction", "max_tokens", "max_completion_tokens",
+]);
 
 // Render a non-accept verdict into a terse, factual grammar_unenforced message
 // (SPEC §12 message policy: no guidance prose). `reject` names the diverging code
