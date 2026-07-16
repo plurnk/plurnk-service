@@ -77,6 +77,20 @@ test("§3.2 discover: surfaces raw plurnk.attribution (string | string[]) on eac
     assert.ok(!("attribution" in (registry.get("bare") as object)), "no attribution key when omitted");
 });
 
+test("§3 discover: a dual-kind package (kind array including 'exec') registers its tags (#483)", async () => {
+    const dualDir = await makePkg({
+        name: "@plurnk/plurnk-execs-mcp",
+        plurnk: { kind: ["exec", "scheme"], runtimes: [{ name: "dual", glyph: "🔌" }] },
+    });
+    const schemeOnlyDir = await makePkg({
+        name: "@acme/acme-schemes-only",
+        plurnk: { kind: ["scheme"], runtimes: [{ name: "phantom" }] },
+    });
+    const { registry } = await Discover.scan({ packageDirs: [dualDir, schemeOnlyDir] });
+    assert.equal(registry.get("dual")?.packageName, "@plurnk/plurnk-execs-mcp", "kind: [\"exec\", \"scheme\"] is an exec package");
+    assert.equal(registry.get("phantom"), undefined, "an array kind WITHOUT 'exec' is not");
+});
+
 // Materialize a package whose tags come from a dynamic runtimes hook
 // (plurnk-execs#10): writes the package.json with `plurnk.runtimesModule` and
 // an .mjs module exporting the given hook source. `hookSrc` is the body of an

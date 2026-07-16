@@ -1,77 +1,13 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import { serverConfig, isInjected, installAllowed, setAuthHeaders, registerServer, deregisterServer, parseTarget, type ServerConfig } from "./config.ts";
+import { serverConfig, isInjected, installAllowed, registerServer, deregisterServer, parseTarget } from "./config.ts";
+import { connect, catalog, cacheHints, readOnlyHint, isAuthRequired, msg } from "./client.ts";
 import { runtimeDecl } from "./runtimes.ts";
 
-const CLIENT_VERSION = "0.1.0";
-
-// MCP connections are long-lived: open one Client per server, lazily, and reuse
-// it across runs (the wasm `wabtPromise` singleton precedent). Keyed by tag
-// name. A failed connection is evicted so the next call reconnects from scratch.
-const clients = new Map<string, Promise<Client>>();
-
-const connect = (name: string, cfg: ServerConfig): Promise<Client> => {
-    const existing = clients.get(name);
-    if (existing) return existing;
-    const pending = open(cfg).catch((err: unknown) => {
-        if (clients.get(name) === pending) clients.delete(name);
-        throw err;
-    });
-    clients.set(name, pending);
-    return pending;
-};
-
-const open = async (cfg: ServerConfig): Promise<Client> => {
-    const transport = cfg.transport === "stdio"
-        ? new StdioClientTransport({ command: cfg.command!, args: cfg.args, env: { ...getDefaultEnvironment(), ...cfg.env } })
-        : new StreamableHTTPClientTransport(new URL(cfg.url!), cfg.headers ? { requestInit: { headers: cfg.headers } } : undefined);
-    const client = new Client({ name: "plurnk-execs-mcp", version: CLIENT_VERSION });
-    await client.connect(transport);
-    return client;
-};
-
-// Disconnect every open MCP server and drop the cache. The consumer calls this
-// on daemon shutdown so child stdio servers don't leak; idempotent and never
-// throws (a close failure on one server doesn't block the rest).
-export async function closeAll(): Promise<void> {
-    const open = [...clients.values()];
-    clients.clear();
-    await Promise.allSettled(open.map(async (p) => { (await p).close(); }));
-}
-
-// Inject the OAuth bearer (from a completed device-grant poll) for a server and evict its cached
-// client so the next connect carries the token (plurnk-execs-mcp#1). This is the
-// correct injection primitive for an env-declared server: it overlays the token
-// on the resolved config (registerServer can't — an env server wins over an
-// injected rival). Any env `_HEADERS` still apply; the token merges over them.
-export function install(server: string, headers: Record<string, string>): void {
-    setAuthHeaders(server, headers);
-    clients.delete(server.toLowerCase());
-}
-
-const msg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
-
-// A connect failure that means "this server wants OAuth". With no authProvider
-// wired (the consumer owns the flow), the SDK surfaces a 401 as an
-// `UnauthorizedError` on the auth-start path OR a `StreamableHTTPError` carrying
-// `code: 401` on a plain request — catch both.
-const isAuthRequired = (err: unknown): boolean =>
-    err instanceof UnauthorizedError || (err as { code?: unknown })?.code === 401;
-
-// Per-tool `readOnlyHint`, cached from `listTools` (probe + catalog). effect()
-// is a sync/cheap/no-I/O hook, so it can't fetch the catalog itself — it reads
-// this cache. With the tool now in the (target) slot (visible to effect), a
-// read-only tool can auto-run and a mutating one propose — the per-tool gating
-// plurnk-execs#13 parked while the tool lived in the body. Keyed server → tool.
-const readOnlyHints = new Map<string, Map<string, boolean>>();
-
-const cacheHints = (server: string, tools: readonly { name: string; annotations?: { readOnlyHint?: boolean } }[]): void => {
-    readOnlyHints.set(server, new Map(tools.map((t) => [t.name, t.annotations?.readOnlyHint === true])));
-};
+// Connection cache, OAuth overlay, readOnlyHint cache, and the capability-aware
+// catalog live in client.ts — shared with the mcp:// scheme face (McpScheme.ts).
+// `closeAll`/`install` are re-exported from the barrel unchanged.
 
 // MCP-bridge executor. Each configured server is one tag (this.runtime). The op
 // is `EXEC[<server>](<tool>):<json-args>` — the tool is the (target) slot, its
@@ -86,18 +22,28 @@ export default class Mcp extends BaseExecutor {
         return { results: { mimetype: "application/json" } };
     }
 
-    // Available iff the server is configured AND reachable, reporting its tool
-    // count — boot answers "is this MCP server up?". A connection failure is a
-    // settled unavailable, not a throw, so one dead server doesn't fail boot.
+    // Available iff the server is configured AND reachable, reporting its
+    // advertised primitives — boot answers "is this MCP server up?". Tools list
+    // only when the tools capability is negotiated (a resources-only server is
+    // available, not a listTools failure). A connection failure is a settled
+    // unavailable, not a throw, so one dead server doesn't fail boot.
     override async probe(): Promise<RuntimeAvailability> {
         const cfg = serverConfig(this.runtime);
         if (cfg === null) {
             return { available: false, detail: `MCP server '${this.runtime}' not configured (set PLURNK_EXECS_MCP_${this.runtime.toUpperCase()}=<url-or-command>)` };
         }
         try {
-            const { tools } = await connect(this.runtime, cfg).then((c) => c.listTools());
-            cacheHints(this.runtime, tools);
-            return { available: true, detail: `${cfg.transport}: ${tools.length} tool${tools.length === 1 ? "" : "s"}` };
+            const client = await connect(this.runtime, cfg);
+            const caps = client.getServerCapabilities() ?? {};
+            const parts: string[] = [];
+            if (caps.tools !== undefined) {
+                const { tools } = await client.listTools();
+                cacheHints(this.runtime, tools);
+                parts.push(`${tools.length} tool${tools.length === 1 ? "" : "s"}`);
+            }
+            if (caps.resources !== undefined) parts.push("resources");
+            if (caps.prompts !== undefined) parts.push("prompts");
+            return { available: true, detail: `${cfg.transport}: ${parts.length > 0 ? parts.join(", ") : "no primitives advertised"}` };
         } catch (err) {
             return { available: false, detail: `MCP '${this.runtime}' unreachable: ${msg(err)}` };
         }
@@ -110,7 +56,7 @@ export default class Mcp extends BaseExecutor {
     // hints come from probe()'s cached `listTools`, so this stays sync + cheap.
     override effect(target: string | null): Effect {
         if (target === null || target === "") return "read";
-        return readOnlyHints.get(this.runtime)?.get(target) === true ? "read" : "host";
+        return readOnlyHint(this.runtime, target) ? "read" : "host";
     }
 
     async run({ runtime, command, target, signal, write, setState, emit }: ExecArgs): Promise<ExecResult> {
@@ -151,17 +97,18 @@ export default class Mcp extends BaseExecutor {
 
         // The tool is the `(target)` slot; its JSON arguments are the body —
         // `EXEC[<server>](<tool>):<json-args>` (plurnk-execs#15). No tool named
-        // (`EXEC[<server>]:` / `?` / `help`) → the live tool catalog.
+        // (`EXEC[<server>]:` / `?` / `help`) → the live capability-aware catalog
+        // (tools + resources + prompts, per what the server advertises — #484),
+        // identical to the mcp://<server>/ index.
         if (target === null || target === "" || body === "?" || body === "help") {
             try {
-                const { tools } = await client.listTools(undefined, { signal });
-                cacheHints(runtime, tools);
-                write("results", JSON.stringify(tools), "application/json");
+                const cat = await catalog(runtime, client, signal);
+                write("results", JSON.stringify(cat), "application/json");
                 setState("results", "closed");
                 return { status: 200 };
             } catch (err) {
                 if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
-                return fail("mcp_list_failed", `listing tools for '${runtime}' failed: ${msg(err)}`);
+                return fail("mcp_list_failed", `catalog for '${runtime}' failed: ${msg(err)}`);
             }
         }
 

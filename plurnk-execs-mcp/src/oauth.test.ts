@@ -1,7 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { authorize, poll } from "./oauth.ts";
-import { install } from "./Mcp.ts";
+import { install } from "./client.ts";
 import { serverConfig } from "./config.ts";
 
 const RESOURCE = "https://mcp.test/mcp";

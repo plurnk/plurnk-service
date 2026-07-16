@@ -111,9 +111,11 @@ export default class Discover {
     }
 
     // Read a package's `package.json` and return its manifest iff it declares
-    // `plurnk.kind === "exec"`. Returns null for non-executor packages, a missing
-    // or malformed `package.json` — discover() silently skips those (they are not
-    // "skipped by trust", just not exec packages).
+    // `plurnk.kind === "exec"` — or an array including it, the dual-kind form for
+    // a package shipping an exec AND a scheme face (#483; plurnk-execs-mcp).
+    // Returns null for non-executor packages, a missing or malformed
+    // `package.json` — discover() silently skips those (they are not "skipped by
+    // trust", just not exec packages).
     static async #readExecManifest(dir: string): Promise<ExecManifest | null> {
         let raw: string;
         try {
@@ -134,7 +136,8 @@ export default class Discover {
         const plurnk = record.plurnk;
         if (typeof plurnk !== "object" || plurnk === null) return null;
         const plurnkRec = plurnk as Record<string, unknown>;
-        if (plurnkRec.kind !== "exec") return null;
+        const kind = plurnkRec.kind;
+        if (kind !== "exec" && !(Array.isArray(kind) && kind.includes("exec"))) return null;
 
         return { packageName: typeof record.name === "string" ? record.name : "", plurnk: plurnkRec };
     }

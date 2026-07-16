@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-execs-mcp",
     "version": "1.0.5",
-    "description": "MCP-bridge runtime executor for plurnk-service's exec scheme — exposes each configured MCP server as its own EXEC tag, its tools called from the body, output contained behind the server's address.",
+    "description": "MCP bridge for plurnk-service — each configured MCP server is its own EXEC tag (tools called via EXEC[<server>](<tool>)) and its server-side state (catalog, resources, prompts) is read via the mcp:// scheme.",
     "keywords": [
         "plurnk",
         "exec",
@@ -10,13 +10,13 @@
         "mcp",
         "model-context-protocol"
     ],
-    "homepage": "https://github.com/plurnk/plurnk-execs-mcp#readme",
+    "homepage": "https://github.com/plurnk/plurnk-service#readme",
     "bugs": {
-        "url": "https://github.com/plurnk/plurnk-execs-mcp/issues"
+        "url": "https://github.com/plurnk/plurnk-service/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/plurnk/plurnk-execs-mcp.git"
+        "url": "git+https://github.com/plurnk/plurnk-service.git"
     },
     "engines": {
         "node": ">=26"
@@ -30,7 +30,13 @@
     "plurnk": {
         "kind": "exec",
         "attribution": "mcp",
-        "runtimesModule": "./runtimes"
+        "runtimesModule": "./runtimes",
+        "schemes": [
+            {
+                "name": "mcp",
+                "export": "McpScheme"
+            }
+        ]
     },
     "exports": {
         ".": {
@@ -48,6 +54,7 @@
     "files": [
         "dist/**/*",
         "README.md",
+        "docs/**/*",
         ".env.defaults"
     ],
     "scripts": {
@@ -62,6 +69,7 @@
         "@modelcontextprotocol/sdk": "^1.29.0"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.0.5"
+        "@plurnk/plurnk-execs": "1.0.5",
+        "@plurnk/plurnk-schemes": "1.0.5"
     }
 }
