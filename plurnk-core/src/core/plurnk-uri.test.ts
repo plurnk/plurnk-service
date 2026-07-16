@@ -4,7 +4,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { foldAuthorityIntoPath, renderAddress } from "./plurnk-uri.ts";
+import { parsePath } from "@plurnk/plurnk-grammar";
+import { foldAuthorityIntoPath, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
 
 test("foldAuthorityIntoPath folds a namespace authority into the canonical path", () => {
     assert.equal(foldAuthorityIntoPath("docs", "/x.md"), "/docs/x.md");
@@ -29,6 +30,20 @@ test("renderAddress: known keeps empty-authority :///; url schemes take the auth
     // A folded-authority web address renders the authority form — the first segment IS the host
     // (the run42 sweep caught https:///en.wikipedia.org minted into packets).
     assert.equal(renderAddress("http", "/en.wikipedia.org/wiki/Paris"), "http://en.wikipedia.org/wiki/Paris");
+});
+
+test("schemeNameOf: ws/wss ride the http handler, as https does — one package, four prefixes (#470)", () => {
+    assert.equal(schemeNameOf(parsePath("https://example.org/x")), "http");
+    assert.equal(schemeNameOf(parsePath("ws://example.org/socket")), "http");
+    assert.equal(schemeNameOf(parsePath("wss://example.org/socket")), "http");
+    // the http prefix itself, and an unrelated scheme, are untouched
+    assert.equal(schemeNameOf(parsePath("http://example.org/x")), "http");
+    assert.equal(schemeNameOf(parsePath("known:///fact")), "known");
+});
+
+test("renderAddress: ws/wss render the authority form like http/https (#470)", () => {
+    assert.equal(renderAddress("ws", "/example.org/socket"), "ws://example.org/socket");
+    assert.equal(renderAddress("wss", "/example.org/socket"), "wss://example.org/socket");
 });
 
 test("fold then render round-trips a model-emitted authority-form address", () => {
