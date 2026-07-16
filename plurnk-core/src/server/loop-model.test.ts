@@ -35,6 +35,6 @@ test("[§methods-loop-run-model] a malformed model spec throws legibly", () => {
     assert.throws(() => resolveLoopAlias(undefined, "/leading", DECLARED), /<provider>\/<model>/);
 });
 
-test("[§methods-loop-run-model] an undeclared alias throws — never a silent wrong-model run", () => {
+test("[§methods-loop-run-model] an undeclared alias throws — never a silent wrong-model worker", () => {
     assert.throws(() => resolveLoopAlias("ghost", undefined, DECLARED), /not declared/);
 });

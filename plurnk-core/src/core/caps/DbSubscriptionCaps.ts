@@ -1,7 +1,7 @@
 // db-backed SubscriptionCaps (@plurnk/plurnk-schemes) — keystone PR-2 seam (#180).
 // The streaming lifecycle a sibling drives:
 //   open(pathname, handle) → registers the subscription and hands back a
-//     run+teardown-composed AbortSignal; a run abort also force-cancels the
+//     run+teardown-composed AbortSignal; a worker abort also force-cancels the
 //     sibling's handle (mirrors the exec scheme's #activeAborts).
 //   notifyChunk(channel, chunk) → FUSED append-to-channel + stream/event.
 //   close(reason, outcome?) → composites every channel's terminal state, the
@@ -35,7 +35,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const subscriptionId = await ChannelWrite.openSubscription(this.#ctx.db, {
             workerId: this.#ctx.workerId, entryId, scheme: this.#scheme ?? "file", handle: pathname,
         });
-        // Compose the run signal with a fresh controller; a run abort also
+        // Compose the worker signal with a fresh controller; a worker abort also
         // force-cancels the sibling's handle.
         const controller = new AbortController();
         const parent = this.#ctx.signal;
@@ -67,7 +67,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const state: ChannelState = reason === "error" ? "errored" : "closed";
         const closeStatus = reason === "error" ? 500 : 200;
         // Every channel of the entry → terminal state, then the registry row
-        // closes, then the run wakes with the scheme's summary.
+        // closes, then the worker wakes with the scheme's summary.
         const channels = await (this.#ctx.db.crud_read_channels as PrepMethod).all<{ name: string }>({ entry_id: entryId });
         for (const { name } of channels) {
             await ChannelWrite.setChannelState(this.#ctx.db, { entryId, channel: name, state, notify: this.#ctx.streamEventNotify });

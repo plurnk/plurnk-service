@@ -4,8 +4,8 @@
 // by reflecting the schema catalog (no sqlite_master, no PRAGMA: that reaches
 // around SqlRite and tests shape instead of conduct). One invariant is true today
 // and asserted for real; the rest are deferred-red conformance targets for the epic
-// this section defines. {§machine-processes-run-is-its-log} is now GREEN — worker_watermarks is
-// gone, and the proof (a run learns a sibling's edit purely through its pulled log, no
+// this section defines. {§machine-processes-worker-is-its-log} is now GREEN — worker_watermarks is
+// gone, and the proof (a worker learns a sibling's edit purely through its pulled log, no
 // shadow) lives in Engine.env-delta.test.ts where the runTurn harness exercises the pull.
 
 import test from "node:test";
@@ -45,13 +45,13 @@ test("[§machine-processes-one-filesystem] the entries are the workspace's — a
         const rb = await engine.dispatch({ statement: editStmt(target, "from run B"), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // A creates the entry (201) in the workspace's one filesystem; B, a different
         // run at the same (scope, scheme, pathname), UPDATES that one entry (200).
-        // A per-run filesystem would have minted a second entry and 201'd again.
+        // A per-worker filesystem would have minted a second entry and 201'd again.
         assert.equal(ra.status, 201, "run A creates the entry in the workspace's filesystem");
-        assert.equal(rb.status, 200, "run B writing the SAME path updates the one shared entry — the filesystem is the workspace's, not the run's");
+        assert.equal(rb.status, 200, "run B writing the SAME path updates the one shared entry — the filesystem is the workspace's, not the worker's");
     } finally { db.close(); }
 });
 
-// [§machine-processes-one-overlay] is a REAL test now in contract-workspace.test.ts (two runs on one
+// [§machine-processes-one-overlay] is a REAL test now in contract-workspace.test.ts (two workers on one
 // workspace resolve the IDENTICAL git-member overlay — membership is workspace-keyed, no worker_id). It lives
 // there for the git-fixture deps (withGitWorkspace); the stub here is retired.
 
@@ -119,7 +119,7 @@ test("[§machine-processes-fork-shares-the-world] a fork shares the workspace's 
     } finally { db.close(); }
 });
 
-test("[§machine-processes-no-fork-workspace] a workspace cannot be forked; the fork is run-scoped", async () => {
+test("[§machine-processes-no-fork-workspace] a workspace cannot be forked; the fork is worker-scoped", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -158,6 +158,6 @@ test("#254 — a fork inherits the log but spends no new money: workspace cost i
         // The fork copied the log (history) but charged nothing — no new generation happened.
         assert.equal(await workspaceCost(), 1000, "workspace cost is NOT double-counted by the fork — true lifetime spend");
         assert.equal(await workerCost(branchWorkerId), 0, "the branch's cost_pico starts at 0 — it accrues only what IT generates");
-        assert.equal(await workerCost(workerId), 1000, "the parent run's cost is untouched");
+        assert.equal(await workerCost(workerId), 1000, "the parent worker's cost is untouched");
     } finally { db.close(); }
 });

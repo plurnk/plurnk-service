@@ -9,7 +9,7 @@ JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_id_by_coordinate
--- Resolve a concrete log:/// coordinate to its row id within the run (shared by
+-- Resolve a concrete log:/// coordinate to its row id within the worker (shared by
 -- OPEN/FOLD's flip and KILL's erase — one resolution, two actions).
 SELECT le.id FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
@@ -17,7 +17,7 @@ JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_match_coordinates
--- Resolve a log:/// path-glob to the matching rows within the run, coordinate-ordered.
+-- Resolve a log:/// path-glob to the matching rows within the worker, coordinate-ordered.
 -- The rendered `loop/turn/seq/op` is GLOB-matched against the target (SQLite GLOB:
 -- `*` spans any chars incl '/', so `**/READ` ≈ `*/READ`). Drives glob/paginated
 -- OPEN/FOLD — the model's primary log-curation move, e.g. FOLD(log:///**/READ)<1>.
@@ -40,7 +40,7 @@ UPDATE log_entries SET expanded = $expanded WHERE id = $id;
 DELETE FROM log_entries WHERE id = $id;
 
 -- PREP: log_find_candidates
--- §find-source-agnostic ÷ §log-coordinate-hierarchy — the run's log rows as FIND candidates,
+-- §find-source-agnostic ÷ §log-coordinate-hierarchy — the worker's log rows as FIND candidates,
 -- coordinate-glob-scoped (the same GLOB semantics log_match_coordinates curates by), each with the
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT

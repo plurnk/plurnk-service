@@ -170,10 +170,10 @@ test("workspace.attach with workerName: reuses existing run when name matches", 
             try {
                 const r2 = await rpcCall(ws2, 1, "workspace.attach", { id: workspace?.id, workerName: "shared-run" });
                 const result2 = r2.result as { workerId: number; workerName: string };
-                assert.equal(result2.workerId, result1.workerId, "second attach to same workerName reuses the run id");
+                assert.equal(result2.workerId, result1.workerId, "second attach to same workerName reuses the worker id");
                 assert.equal(result2.workerName, "shared-run");
                 const workerCount = await (db.test_runs_count as PrepMethod).get<{ n: number }>();
-                assert.equal(workerCount?.n, 1, "still only one run row");
+                assert.equal(workerCount?.n, 1, "still only one worker row");
             } finally { ws2.close(); }
         } finally { /* ws1 already closed */ }
     });
@@ -282,7 +282,7 @@ test("workspace.workers lists runs in the workspace, most-recent first", async (
     });
 });
 
-test("multiple connections attaching to same workspace each get their own run", async () => {
+test("multiple connections attaching to same workspace each get their own worker", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const workspace = await (db.test_insert_workspace as PrepMethod).get<{ id: number }>({ name: "shared" });
 
@@ -378,10 +378,10 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             const events: Array<{ method: string; params: unknown }> = [];
             daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
-            // §machine-processes — loops run in the MODEL run the seam resolves; a client run is
-            // refused loudly (the module's envelope workerId is the client run — never the loop home).
+            // §machine-processes — loops run in the MODEL run the seam resolves; a client worker is
+            // refused loudly (the module's envelope workerId is the client worker — never the loop home).
             const clientWorker = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: created.id }))!;
-            await assert.rejects(() => daemon.runLoop({ workspaceId: created.id, workerId: clientWorker.id, prompt: "go" }), /client run/, "runLoop refuses a client-origin run");
+            await assert.rejects(() => daemon.runLoop({ workspaceId: created.id, workerId: clientWorker.id, prompt: "go" }), /client worker/, "runLoop refuses a client-origin run");
             const modelWorkerId = await daemon.ensureModelWorker(created.id);
             const res = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go" });
             assert.equal(res.action, "enqueued_new_loop", "runLoop enqueued a fresh loop");
@@ -443,7 +443,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
 
             const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-read-other" })).result as { id: number };
             const otherWorker = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: other.id }))!;
-            await assert.rejects(() => daemon.readLog({ workspaceId: created.id, workerId: otherWorker.id }), /not in this workspace/, "readLog refuses a run outside the workspace — core holds its own invariant");
+            await assert.rejects(() => daemon.readLog({ workspaceId: created.id, workerId: otherWorker.id }), /not in this workspace/, "readLog refuses a worker outside the workspace — core holds its own invariant");
         } finally { ws.close(); }
     });
 });
@@ -463,11 +463,11 @@ test("the client-interface seam — the metadata reads surface providers, worksp
             assert.equal(active!.alias, "mocktest");
             assert.equal(typeof active!.promptBudget, "number", "the active alias carries the effective prompt budget (#345)");
 
-            // workspaces + runs — the created workspace and its client run are present.
+            // workspaces + runs — the created workspace and its client worker are present.
             const workspaces = await daemon.listWorkspaces();
             assert.ok(workspaces.some((s) => s.id === created.id), "listWorkspaces includes the created workspace");
             const workers = await daemon.listWorkers(created.id);
-            assert.ok(workers.length >= 1, "listWorkers returns the workspace's client run");
+            assert.ok(workers.length >= 1, "listWorkers returns the workspace's client worker");
 
             // constraints — a fresh workspace carries a clean, empty overlay.
             const constraints = await daemon.listConstraints(created.id);
@@ -492,12 +492,12 @@ test("the client-interface seam — workspace lifecycle: create/attach/rename/se
 
         // create — with a constraint seeded atomically; returns the envelope + emits workspace/created.
         const env = await daemon.createWorkspace({ name: "seam-life", constraints: [{ effect: "hide", glob: "secret/**" }] });
-        assert.ok(env.workspaceId > 0 && env.workerId > 0, "createWorkspace returns the envelope (workspace + client run)");
+        assert.ok(env.workspaceId > 0 && env.workerId > 0, "createWorkspace returns the envelope (workspace + client worker)");
         assert.ok(events.some((e) => e.method === "workspace/created" && (e.params as { id?: number }).id === env.workspaceId), "workspace/created emitted on the event source");
         assert.deepEqual(await daemon.listConstraints(env.workspaceId), [{ effect: "hide", glob: "secret/**" }], "the seeded constraint landed atomically with the workspace");
 
-        // attach — core's namespace invariant refuses a reserved run name; a plain attach returns an envelope.
-        await assert.rejects(() => daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "plurnk" }), /reserved/, "attachWorkspace refuses a reserved run name");
+        // attach — core's namespace invariant refuses a reserved worker name; a plain attach returns an envelope.
+        await assert.rejects(() => daemon.attachWorkspace({ workspaceId: env.workspaceId, workerName: "plurnk" }), /reserved/, "attachWorkspace refuses a reserved worker name");
         assert.equal((await daemon.attachWorkspace({ workspaceId: env.workspaceId })).workspaceId, env.workspaceId, "attachWorkspace returns an envelope on the same workspace");
 
         // rename — mutations return the applied value; a name collision is refused. (No root
@@ -542,7 +542,7 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
     });
 });
 
-test("the client-interface seam — forkWorker branches a run's log, ownership + name invariants held (#355)", async () => {
+test("the client-interface seam — forkWorker branches a worker's log, ownership + name invariants held (#355)", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

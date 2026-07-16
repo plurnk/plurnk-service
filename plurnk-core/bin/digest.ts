@@ -5,7 +5,7 @@
 // thin entry is the dev/test CLI (npm run test:digest). Default DB = the SERVICE's DB
 // (PLURNK_DB_PATH, ~/.plurnk/plurnk.db floor), NOT the repo-local db; exit-1 on a missing DB.
 //
-// --requiem also writes requiem.md: the model's exit interview (each run's final packet + last
+// --requiem also writes requiem.md: the model's exit interview (each worker's final packet + last
 // emission, then asked to itemize the system's faults, unconstrained). Needs an active provider.
 import Digest from "../src/digest/Digest.ts";
 import EnvDefaults from "../src/core/env-defaults.ts";

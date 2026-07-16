@@ -109,7 +109,7 @@ So the feature is contract-free for executors and applies to all of them uniform
 
 ### §2.6 Output addressing — the executor produces, the consumer reads
 
-An executor is a **producer, not a reader.** Its whole output contract is `run()` writing channels (`write` / `setState` / `emit`); the consumer streams those into an ordinary log entry addressed at **`<tag>://<coord>`** (the run's `<runtime>:///<loop>/<turn>/<seq>`), and every READ/FIND over that output is the consumer's uniform entry machinery — identical for `sh`, `search`, `sqlite`, and MCP alike. The executor never reads, slices, summarizes, or orients its own output.
+An executor is a **producer, not a reader.** Its whole output contract is `run()` writing channels (`write` / `setState` / `emit`); the consumer streams those into an ordinary log entry addressed at **`<tag>://<coord>`** (the worker's `<runtime>:///<loop>/<turn>/<seq>`), and every READ/FIND over that output is the consumer's uniform entry machinery — identical for `sh`, `search`, `sqlite`, and MCP alike. The executor never reads, slices, summarizes, or orients its own output.
 
 The executor's only scheme-facing contribution is a **derived manifest** — `OutputScheme.manifestFromRuntime({ name, glyph, channels, defaultChannel })`, built from the runtime declaration, no separate authoring — so the consumer can mint a per-tag output scheme (name = the tag) and the model can address `<tag>://`. `defaultChannel` (first declared channel; subprocess → `stdout`) is where a bare `READ <tag>://<coord>` lands. `discover()` is unchanged (static install/config truth, §3); activation (§3.2) is the consumer's runtime overlay.
 
@@ -269,7 +269,7 @@ Per plurnk-service#174/#181/#182, realized in service `0.9.0`, the exec scheme:
 | Database access |
 | Imports from `@plurnk/plurnk-service/*` |
 | Mutating `ExecArgs` |
-| Holding state across `run` calls beyond construction metadata |
+| Holding state across `worker` calls beyond construction metadata |
 | Reading runtime output via `console.*` |
 | Ignoring `args.signal` |
 | Writing to an undeclared channel |

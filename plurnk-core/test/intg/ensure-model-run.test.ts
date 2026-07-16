@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
 
-test("ensureModelWorker finds first — repeated calls return ONE conversation run (#371)", async () => {
+test("ensureModelWorker finds first — repeated calls return ONE conversation worker (#371)", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -18,7 +18,7 @@ test("ensureModelWorker finds first — repeated calls return ONE conversation r
             const c = await daemon.ensureModelWorker(workspaceId);
             assert.equal(a, b); assert.equal(b, c);
             const runs = await (db.test_runs_by_session as PrepMethod).all<{ id: number; origin: string }>({ workspace_id: workspaceId });
-            assert.equal((runs ?? []).filter((r) => r.origin === "model").length, 1, "exactly one model run minted across three ensures");
+            assert.equal((runs ?? []).filter((r) => r.origin === "model").length, 1, "exactly one model worker minted across three ensures");
             // A fork of the conversation never shadows it — ensure still returns the root.
             const fork = await daemon.forkWorker({ workspaceId, workerId: a, name: "branch" });
             assert.notEqual(fork.workerId, a);

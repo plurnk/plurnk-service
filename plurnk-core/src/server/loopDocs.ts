@@ -1,5 +1,5 @@
 // The pre-loop doc materialization — ONE truth for both loop routes (legacy loop.run and the
-// seam's runLoop). Two sets, both idempotent EDITs through the plurnk run (§actor-boundary):
+// seam's runLoop). Two sets, both idempotent EDITs through the plurnk worker (§actor-boundary):
 //   1. operator/client reference docs (PLURNK_SERVICE_MD_* ∪ settings.mdDocs, client wins on
 //      collision) at plurnk:///<alias>.md — Engine.runTurn foists their READs at turn 0 (#231);
 //   2. the daughter scheme/exec reference docs (#note12) at plurnk://docs/<name>.md — discovered

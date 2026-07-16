@@ -1,7 +1,7 @@
-// Wake-on-completion daemon decision tree (§run-lifecycle-wake-liveness). When an exec
+// Wake-on-completion daemon decision tree (§worker-lifecycle-wake-liveness). When an exec
 // spawn concludes (an OPEN stream-status transition), Daemon.#handleWakeWorker picks one of:
-//   - "no-op-active-loop" — the run has a live drain; the conclusion folds into its next turn
-//   - "resumed-loop" — the run is parked at a slept (202) loop; that SAME loop resumes in place
+//   - "no-op-active-loop" — the worker has a live drain; the conclusion folds into its next turn
+//   - "resumed-loop" — the worker is parked at a slept (202) loop; that SAME loop resumes in place
 //   - "skipped-aborted" — closeStatus=499 (deliberate cancel) — no resume
 //
 // These exercise the daemon end-to-end through real WS calls with a
@@ -30,7 +30,7 @@ const mockResponse = (dsl: string) => {
     };
 };
 
-test("[§run-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
+test("[§worker-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
     // First loop: EXEC echo + SEND[202] (Accepted) — the loop SLEEPS while the
     // spawn runs on. When the spawn concludes (an OPEN stream-status transition,
     // §actor-boundary-passive-wake), the daemon AWAKENS that same loop in place —
@@ -55,7 +55,7 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop res
             // the loop's lifecycle. A parked loop awaits an external event (here the spawn's
             // conclusion; in general a user reply), so loop.run cannot resolve on it without
             // deadlocking the very client that must send that event. Park, resume, and the
-            // true terminal all arrive via events. §run-lifecycle-wake-liveness.
+            // true terminal all arrive via events. §worker-lifecycle-wake-liveness.
             const firstWorker = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", flags: { yolo: true } });
             const parkedLoop = (firstWorker.result as { loopId: number }).loopId;
             assert.equal((firstWorker.result as { finalStatus: number }).finalStatus, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
@@ -98,10 +98,10 @@ test("[§run-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop res
             assert.equal(wake.sequence, Number(seg[2]), "carries sequence");
 
             // The loop's TRUE outcome arrives via loop/terminated — the resumed loop ends 200,
-            // never through loop.run's (already-returned) result.
+            // never through loop.worker's (already-returned) result.
             const terminated = terminatedEvents() as Array<{ loopId: number; finalStatus: number }>;
             assert.ok(terminated.some((t) => t.loopId === parkedLoop && t.finalStatus === 200),
-                "the resumed loop's 200 terminal arrives via events, not loop.run's return");
+                "the resumed loop's 200 terminal arrives via events, not loop.worker's return");
         } finally { ws.close(); }
     });
 });
@@ -202,7 +202,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     });
 });
 
-test("[§run-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
+test("[§worker-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
     // Slow exec; loop.cancel RPC fires the drain controller; spawn aborts
     // with closeStatus=499; daemon's handler skips opening a wake loop.
     const mock = new Mock({

@@ -1,4 +1,4 @@
-// SPEC §actor-boundary — the actor boundary (isolation by run, two doors, self-hosting).
+// SPEC §actor-boundary — the actor boundary (isolation by worker, two doors, self-hosting).
 //
 // The contract landed (Phase 0); this is its rule-C skeleton. One invariant is
 // already true and pinned for real (no-mutex); the rest are deferred-red until
@@ -30,7 +30,7 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("[§actor-boundary-no-mutex] two runs in one workspace both write the same shared entry — no lock", async () => {
+test("[§actor-boundary-no-mutex] two workers in one workspace both write the same shared entry — no lock", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -53,7 +53,7 @@ test("[§actor-boundary-no-mutex] two runs in one workspace both write the same 
     } finally { db.close(); }
 });
 
-test("[§actor-boundary-isolation] a packet renders one run's log; a sibling run's log is absent", async () => {
+test("[§actor-boundary-isolation] a packet renders one worker's log; a sibling worker's log is absent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -84,12 +84,12 @@ test("[§actor-boundary-origin-not-filter] origin is attribution (provenance), n
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
-        // A CLIENT-origin row living IN this run must still render: the renderer
+        // A CLIENT-origin row living IN this worker must still render: the renderer
         // scopes by run, never hides by origin.
         await engine.dispatch({ statement: editStmt(urlPath("known", "/in-run.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
         const packet = await (db.engine_render_log as PrepMethod).all<{ pathname: string; origin: string }>({ worker_id: workerId });
         const row = packet.find((r) => r.pathname.includes("in-run"));
-        assert.ok(row !== undefined, "an in-run row renders regardless of origin");
+        assert.ok(row !== undefined, "an in-worker row renders regardless of origin");
         assert.equal(row!.origin, "client", "origin is carried as attribution, not consumed to hide the row");
     } finally { db.close(); }
 });
@@ -112,21 +112,21 @@ test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), ne
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "passive-wake" });
-            // Run a loop to completion → the model run is now IDLE (one loop).
+            // Run a loop to completion → the model worker is now IDLE (one loop).
             const ran = await runLoopToTerminal(ws, 2, { prompt: "first", flags: { yolo: true } });
             const { loopId } = ran as { loopId: number };
             const modelWorkerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
             const loopsIdle = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
 
             // A DELTA: a client op.edit runs in the connection's OWN (client) run — a
-            // sibling of the model run (§connection-lifecycle) — touching a shared entry.
-            // This is the environment door; it must NOT wake the idle model run.
-            await rpcCall(ws, 3, "op.edit", { target: "known:///shared.md", content: "a sibling edit — ambient, not addressed to the model run" });
+            // sibling of the model worker (§connection-lifecycle) — touching a shared entry.
+            // This is the environment door; it must NOT wake the idle model worker.
+            await rpcCall(ws, 3, "op.edit", { target: "known:///shared.md", content: "a sibling edit — ambient, not addressed to the model worker" });
             const loopsAfterDelta = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
             assert.equal(loopsAfterDelta, loopsIdle, "a delta (sibling shared-entry edit) does NOT wake the idle run — no new loop enqueued");
 
             // The VOICE door: inject a prompt into the same idle run → it wakes, a fresh
-            // loop is enqueued on the model run.
+            // loop is enqueued on the model worker.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW — wake up" });
             assert.equal((injected.result as { action: string }).action, "enqueued_new_loop", "an inject (voice) wakes the idle run");
             const loopsAfterInject = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
@@ -135,12 +135,12 @@ test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), ne
     });
 });
 
-test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run firing ops — the EDIT lands in the plurnk run's log; a sibling reaches the result through the environment door", async () => {
+test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk worker firing ops — the EDIT lands in the plurnk worker's log; a sibling reaches the result through the environment door", async () => {
     // The keystone (dispatchAsPlurnk) is BUILT, and its proven use — materializing a PLURNK_SERVICE_MD_<ALIAS>
     // doc — IS the self-hosting contract: a runtime op runs as the reserved `plurnk` actor, not a
     // privileged engine write. doc-injection.test.ts pins the negatives (the EDIT is absent from the
     // model's log; the model sees only the READ). Here we pin the POSITIVE structure the anchor states:
-    // the EDIT is IN the plurnk run's log (origin=plurnk), and the model run reaches the resulting entry
+    // the EDIT is IN the plurnk worker's log (origin=plurnk), and the model worker reaches the resulting entry
     // through the shared filesystem — the environment door — exactly as it would any sibling actor's edit.
     // (The §env-delta materialization + git auto-add legs repatriate onto this same seam later, gated on
     // the Multi-repo membership change-detector; this proves the seam itself, decoupled from that.)
@@ -158,24 +158,24 @@ test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run fi
                 const { loopId } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number };
                 const modelWorkerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
 
-                // 1. The reserved plurnk run exists, is distinct from the model run, and OWNS the
+                // 1. The reserved plurnk worker exists, is distinct from the model worker, and OWNS the
                 //    materializing EDIT — an ordinary actor doing ops, not the engine writing privileged.
                 const plurnkWorker = (await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" }))!;
-                assert.ok(plurnkWorker !== undefined, "the reserved plurnk run was spawned to do the runtime work");
-                assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk run is a sibling actor, distinct from the model run");
+                assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker was spawned to do the runtime work");
+                assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk worker is a sibling actor, distinct from the model worker");
                 const plurnkLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
                 const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md");
-                assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk run's log — an op, not a privileged engine pathway");
+                assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk worker's log — an op, not a privileged engine pathway");
                 assert.equal(matEdit!.origin, "plurnk", "the op is attributed to the plurnk actor (origin=plurnk)");
 
-                // 2. The model run's log NEVER carries that EDIT — isolation by run holds; nothing privileged leaked in.
+                // 2. The model worker's log NEVER carries that EDIT — isolation by worker holds; nothing privileged leaked in.
                 const modelLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ worker_id: modelWorkerId });
-                assert.ok(!modelLog.some((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md"), "the model run never sees the plurnk actor's EDIT — only the resulting entry, through the env door");
+                assert.ok(!modelLog.some((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md"), "the model worker never sees the plurnk actor's EDIT — only the resulting entry, through the env door");
 
-                // 3. The environment door: the model run reaches the entry the plurnk actor produced (a 200 READ),
+                // 3. The environment door: the model worker reaches the entry the plurnk actor produced (a 200 READ),
                 //    exactly as it reaches any sibling's edit to the shared filesystem. Dogfooding, not a back channel.
                 const docRead = modelLog.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md");
-                assert.ok(docRead !== undefined && docRead.status_rx === 200, "the model run reaches the plurnk actor's entry through the shared filesystem (env door)");
+                assert.ok(docRead !== undefined && docRead.status_rx === 200, "the model worker reaches the plurnk actor's entry through the shared filesystem (env door)");
             } finally { ws.close(); }
         });
     } finally {

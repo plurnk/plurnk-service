@@ -28,7 +28,7 @@ import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches the storyline timeout.
-// Ceilings are FLOOR-RELATIVE: each run probes its own fixture's true turn-1 floor (a
+// Ceilings are FLOOR-RELATIVE: each worker probes its own fixture's true turn-1 floor (a
 // zero-cost pre-generate hard-413, _floor-probe.ts) and pins ceiling = floor × factor —
 // teaching growth re-calibrates the pin instead of breaking it. TIGHT keeps the small
 // fixtures under real curation pressure; jumbo gets the same factor over its own floor.

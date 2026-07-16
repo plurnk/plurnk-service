@@ -1,4 +1,4 @@
-// Topology demos — a REAL model (gemma) composing parent/child run topologies: delegate, fan-out,
+// Topology demos — a REAL model (gemma) composing parent/child worker topologies: delegate, fan-out,
 // pipeline. These exercise worker:// spawn + SEND[202] hibernation + the child-wake + reading the
 // collect-delta on resume. Forensic by intent: a stumble teaches us where the TEACHING is thin
 // (spawn syntax? when to 202 vs 200? noticing the folded collect-delta?), not just pass/fail.
@@ -49,7 +49,7 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
     return { db: s.db as Db, finalStatus, lastContent, turnIds, dump, cleanup: async () => { await s.cleanup(); await fixture.cleanup(); } };
 };
 
-test("topo: delegate a lookup to a child run and report its result", { timeout: TIMEOUT }, async () => {
+test("topo: delegate a lookup to a child worker and report its result", { timeout: TIMEOUT }, async () => {
     // The simplest topology: spawn one worker, hibernate, wake on its conclusion, report what it found.
     const story = await runStory({
         label: "delegate",

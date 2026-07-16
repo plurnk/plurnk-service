@@ -206,7 +206,7 @@ test("§4 KILL[code]: a signal on the abort reason delivers exactly that code, n
 
 test("§4 loop-end housekeeping marker: SIGHUP then SIGKILL after grace reaps a HUP-ignoring process", async () => {
     const controller = new AbortController();
-    // node swallows SIGHUP and stays alive — so the run can only settle because
+    // node swallows SIGHUP and stays alive — so the worker can only settle because
     // the grace-timed SIGKILL fired. A plain KILL (polite, no reap) would leave it.
     const promise = exec("node", "process.on('SIGHUP', () => {}); setInterval(() => {}, 1e9)", { signal: controller.signal });
     await new Promise((r) => setTimeout(r, 200));

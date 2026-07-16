@@ -47,12 +47,12 @@ export interface DaemonSeam {
     // stay core; this is only the resolve. Throws for an unknown/already-resolved id.
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void;
     // Run-split (service SPEC, machine-processes): loops live in the workspace's MODEL run, never the
-    // client run (connection scratch). Resolve it here — created on first use.
+    // client worker (connection scratch). Resolve it here — created on first use.
     ensureModelWorker(workspaceId: number): Promise<number>;
     // Loop-control — drive/steer a loop on the MODEL run (runLoop refuses a client-origin
     // run loudly). Returns immediately; the outcome arrives on the event source.
     runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean }; openPaths?: string[]; alias?: string; model?: string }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
-    // Loop-control — cancel a run's active drain. Returns whether a drain was cancelled.
+    // Loop-control — cancel a worker's active drain. Returns whether a drain was cancelled.
     cancelDrain(workerId: number, reason?: string): boolean;
     // The op keystone — execute one parsed op as a client-origin turn; the emitted
     // log/entry arrives on the event source. Backs the whole op_* family; the module

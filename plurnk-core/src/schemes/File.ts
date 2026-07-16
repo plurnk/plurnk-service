@@ -188,7 +188,7 @@ export default class File {
             // The diff base is the entry's snapshot — the body channel the model READ — not a fresh
             // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
             // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
-            // run's reconcile can't advance it under the paused proposal. §membership-edit-write-cas
+            // worker's reconcile can't advance it under the paused proposal. §membership-edit-write-cas
             const snapshot = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;

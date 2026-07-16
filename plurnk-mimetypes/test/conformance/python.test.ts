@@ -48,7 +48,7 @@ describe("conformance: text/x-python defs + refs (issues #19/#20)", () => {
                 { name: "str", kind: "type", line: 8, container: "Parser.parse" },
                 { name: "Token", kind: "type", line: 8, container: "Parser.parse" },
                 { name: "Helper", kind: "call", line: 9, container: "Parser.parse" },
-                { name: "run", kind: "call", line: 10, container: "Parser.parse" },
+                { name: "worker", kind: "call", line: 10, container: "Parser.parse" },
                 { name: "tokenize", kind: "call", line: 11, container: "Parser.parse" },
                 // Nested attribute chain: only the outermost callee name.
                 { name: "cleanup", kind: "call", line: 15, container: "Helper.run" },

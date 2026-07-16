@@ -30,7 +30,7 @@ const slugify = (query: string): string => query.toLowerCase().replace(/[^a-z0-9
 // NOT merely truthy: a blank/whitespace/malformed value (an env floor easily
 // emits `URL= ` with a trailing space) must read as unconfigured. Truthy-only
 // checks let " " through, and `new URL("/search", " ")` then throws uncaught →
-// the run never resolves nor times out (plurnk-execs-search#3).
+// the worker never resolves nor times out (plurnk-execs-search#3).
 const searxngUrl = (): string | null => {
     const u = (process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL ?? "").trim();
     return u && URL.canParse(u) ? u : null;
@@ -48,7 +48,7 @@ interface SearxngResult {
 // Web search executor (the first non-subprocess runtime). Dispatches a query to
 // a configured SearXNG instance and writes a compact digest of its results
 // (title + url + snippet) to the `results` channel. Stateless: configuration
-// comes from the environment, read per run.
+// comes from the environment, read per worker.
 //
 //   PLURNK_EXECS_SEARCH_SEARXNG_URL   (required)  base URL of the instance
 //   PLURNK_EXECS_SEARCH_LANGUAGE      (optional)  SearXNG's own default if unset
@@ -77,7 +77,7 @@ export default class Search extends BaseExecutor {
 
     // Available iff a SearXNG instance is configured. This is a config check,
     // not a reachability ping — boot answers "is search set up?"; live
-    // reachability is the run path's job (it emits searxng_unreachable).
+    // reachability is the worker path's job (it emits searxng_unreachable).
     override async probe(): Promise<RuntimeAvailability> {
         const url = searxngUrl();
         return url

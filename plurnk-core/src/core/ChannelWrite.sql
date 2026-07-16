@@ -50,7 +50,7 @@ FROM subscriptions
 WHERE worker_id = $worker_id AND entry_id = $entry_id AND closed_at IS NULL;
 
 -- PREP: find_open_subscriptions_for_worker
--- The run's still-open subscriptions — the registry-routed reap (§run-lifecycle-total-reap):
+-- The worker's still-open subscriptions — the registry-routed reap (§worker-lifecycle-total-reap):
 -- loop.cancel / KILL / shutdown iterate these and abort each via the owning scheme, so a
 -- backgrounded exec is reaped independent of any in-process AbortSignal-listener timing.
 SELECT id, scheme
@@ -58,7 +58,7 @@ FROM subscriptions
 WHERE worker_id = $worker_id AND closed_at IS NULL;
 
 -- PREP: find_open_turn_scoped_subscriptions_for_worker
--- The run's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the run's next pre-turn so a
+-- The worker's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the worker's next pre-turn so a
 -- `<0>` stream never survives into the subsequent turn; its terminal output surfaces born-OPEN
 -- through the same conclusion-delta path as any close (§exec-poll, §exec-stream).
 SELECT id, scheme

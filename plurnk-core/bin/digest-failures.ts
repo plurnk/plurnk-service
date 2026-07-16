@@ -1,7 +1,7 @@
 // §archaeology (#410) — digest every PRESERVED failure run that lacks one. The live/demo harness
-// births + KEEPS a failing run in benchmarks/run<N>-<lane>/ (preserve-default; passing runs are
+// births + KEEPS a failing run in benchmarks/run<N>-<lane>/ (preserve-default; passing workers are
 // swept at worker exit). This renders each keeper's digest + requiem so a failure is analysis-ready
-// with no manual step. Idempotent: a run that already has digest/ is skipped, so it's safe to re-run
+// with no manual step. Idempotent: a worker that already has digest/ is skipped, so it's safe to re-run
 // (and safe to chain after a live/demo run regardless of outcome).
 import { readdirSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";

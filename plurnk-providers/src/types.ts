@@ -112,7 +112,7 @@ export interface Provider {
     // `attributions` (per-turn, runtime-observed) and `client` (workspace-stable,
     // self-identified) are first-party telemetry the consumer hands down: which
     // installed plugin packages dispatched this turn, and which frontend
-    // originated the run. They are forwarded ONLY by a provider whose spec opts
+    // originated the worker. They are forwarded ONLY by a provider whose spec opts
     // in (the first-party `plurnk` endpoint, via `Plurnk-Attribution` /
     // `Plurnk-Client` headers); every other provider DROPS them — the gate is
     // structural so first-party metadata can never leak to a third-party backend.
@@ -126,7 +126,7 @@ export interface Provider {
     // plurnk endpoint fronting its own backends) uses it to pass its caller's sampling
     // knobs through; a direct consumer typically leaves it unset.
     //
-    // `strikes` is the run's CURRENT rail-strike streak at time-of-generate
+    // `strikes` is the worker's CURRENT rail-strike streak at time-of-generate
     // (0 = clean; a clean turn zeroes it; every loop starts at 0 — contract:
     // plurnk-service#313). Forwarded as a `Plurnk-Strikes` header ONLY under the
     // same firstPartyMetadata gate as attributions/client; dropped everywhere

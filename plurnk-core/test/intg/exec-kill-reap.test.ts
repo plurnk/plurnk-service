@@ -1,4 +1,4 @@
-// The teardown-reap half of the KILL wire onto @plurnk/plurnk-execs (§run-lifecycle-total-reap).
+// The teardown-reap half of the KILL wire onto @plurnk/plurnk-execs (§worker-lifecycle-total-reap).
 // A background exec that IGNORES the polite signals (HUP/TERM) is endable ONLY by the bounded
 // housekeeping SIGKILL — so this is the positive proof that the service hands the executor
 // `{ housekeeping, graceMs }` on teardown, not a bare abort the executor can't escalate past SIGHUP.
@@ -40,7 +40,7 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
                     { timeoutMs: 5000 },
                 );
 
-                // Cancel fires the run-level total reap. The spawn traps HUP+TERM, so the polite
+                // Cancel fires the worker-level total reap. The spawn traps HUP+TERM, so the polite
                 // signal can't end it; only the housekeeping SIGKILL (after the 50ms grace) does.
                 // Its 499 conclusion is the positive proof the service sent { housekeeping, graceMs }.
                 const cancel = await rpcCall(ws, 3, "loop.cancel", {});

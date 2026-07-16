@@ -51,7 +51,7 @@ describe("conformance: text/x-php defs + refs (issues #19/#20)", () => {
                 { name: "Token", kind: "type", line: 8, container: "App.Parser.token" },
                 { name: "Token", kind: "type", line: 9, container: "App.Parser.parse" },
                 { name: "Helper", kind: "instantiate", line: 10, container: "App.Parser.parse" },
-                { name: "run", kind: "call", line: 11, container: "App.Parser.parse" },
+                { name: "worker", kind: "call", line: 11, container: "App.Parser.parse" },
                 { name: "lookup", kind: "call", line: 12, container: "App.Parser.parse" },
                 { name: "tokenize", kind: "call", line: 13, container: "App.Parser.parse" },
                 { name: "inner", kind: "call", line: 22, container: "App.tokenize" },

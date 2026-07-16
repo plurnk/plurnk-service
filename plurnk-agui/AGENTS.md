@@ -42,7 +42,7 @@ client migration (bridge reaches parity FIRST, then clients move one at a time, 
 WS narrows to bridge-only).
 
 # Worksheet — parity gaps toward the exclusive portal, in order
-- [x] MESSAGES_SNAPSHOT on thread attach — shipped (§agui-replay): the model run's SENDs via
+- [x] MESSAGES_SNAPSHOT on thread attach — shipped (§agui-replay): the model worker's SENDs via
       workspace.workers + log.read; pending proposals re-surface via proposal.list. Live-proven
       across a bridge restart.
 - [x] `POST /plurnk/rpc` — shipped (§agui-management-plane), gated by §agui-auth.

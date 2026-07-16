@@ -42,7 +42,7 @@ export default class Paths {
         return resolve(Paths.#DOCS_ROOT, "requirements.md");
     }
 
-    // Operator reference docs auto-READ into every model run at turn 0.
+    // Operator reference docs auto-READ into every model worker at turn 0.
     // `PLURNK_SERVICE_MD_<ALIAS>=<path>` materializes <path>'s markdown as a
     // `plurnk:///<ALIAS>.md` entry the model READs — an idiomatic, userland way
     // to inject standing context (an ordinary entry + READ op, not a bespoke

@@ -93,7 +93,7 @@ export default class PacketWire {
     }
 
     // The Child Streams / Child Runs sections (§child-orientation) — the OPPOSITE of advice: terse
-    // `* <status> <path>` pointers (same shape as the errors section) to the live things the run holds,
+    // `* <status> <path>` pointers (same shape as the errors section) to the live things the worker holds,
     // so the model SEES its open streams + unconcluded workers each turn and reasons for itself (READ /
     // OPEN / KILL via the path). Orienting state, never an instruction. "" when none → section omitted.
     static renderChildPointers(rows: unknown): string {
@@ -424,7 +424,7 @@ export default class PacketWire {
                 const opBody = typeof b === "string" ? b
                     : b !== null && typeof b === "object" && typeof b.raw === "string" ? b.raw : "";
                 if (opBody.length > 0) body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, opBody, "text/plain");
-                // §run-scheme-collect: an injected SEND (a child run's concluded deliverable surfaced in
+                // §worker-scheme-collect: an injected SEND (a child worker's concluded deliverable surfaced in
                 // the parent) has no authored tx body — its payload is the deliverable in rx (a raw string,
                 // not the {status} envelope a model SEND gets). Surface it so a child's 2xx reaches the
                 // parent OPEN (born-open at the insert), never a bodyless `*` row.
@@ -480,7 +480,7 @@ export default class PacketWire {
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
         if (target === null || target === undefined) return null;
-        // An authority-bearing target (worker://<name> — the run IS the authority, §run-scheme;
+        // An authority-bearing target (worker://<name> — the worker IS the authority, §worker-scheme;
         // a web host http://host/path) keeps its name in `hostname`. Without it a spawn renders
         // as a bare `worker://`, indistinguishable across workers — the model goes blind to what it
         // spawned and re-spawns. Reconstruct the authority form when a hostname is present;

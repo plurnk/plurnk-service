@@ -57,16 +57,16 @@ test("[§agui-thread-is-run] two threads, one world: distinct runs, shared files
         const readResults = (read.result as { results: Array<{ status: number; [k: string]: unknown }> }).results;
         assert.equal(readResults[0]?.status, 200, `thread B READs what thread A wrote: ${JSON.stringify(readResults)}`);
 
-        // The runs are DISTINCT: the workspace holds thread B's own conversation run,
-        // named for it, alongside the model run — histories split, world shared.
+        // The workers are DISTINCT: the workspace holds thread B's own conversation worker,
+        // named for it, alongside the model worker — histories split, world shared.
         const workers = await action(port, "second-look", "shared-world", "workspace.workers");
         assert.equal(workers.ok, true);
         const runList = (workers.result as { workers: Array<{ id: number; name: string }> }).workers;
         const names = runList.map((r) => r.name);
-        assert.ok(names.includes("second-look"), `thread B's conversation run exists by ITS name: ${names.join(", ")}`);
+        assert.ok(names.includes("second-look"), `thread B's conversation worker exists by ITS name: ${names.join(", ")}`);
 
         // #376 isolation — the workerId filter through module HEAD + the REAL seam: the
-        // client ops journaled in each thread's CLIENT run; per-run reads must differ.
+        // client ops journaled in each thread's CLIENT run; per-worker reads must differ.
         // (The service's readlog-run-filter pin exonerates the seam in isolation; this
         // pins the full module→seam path with live params.)
         const perRun = new Map<number, number>();
@@ -77,7 +77,7 @@ test("[§agui-thread-is-run] two threads, one world: distinct runs, shared files
         }
         const counts = [...perRun.values()];
         assert.ok(new Set(counts).size > 1 || counts.every((c) => c === 0) === false,
-            `per-run reads are DISTINGUISHABLE (a uniform answer for every workerId is the #376 signature): ${JSON.stringify([...perRun])}`);
+            `per-worker reads are DISTINGUISHABLE (a uniform answer for every workerId is the #376 signature): ${JSON.stringify([...perRun])}`);
     } finally {
         await (module as Module | null)?.close();
         await daemon.stop();

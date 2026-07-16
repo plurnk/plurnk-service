@@ -269,7 +269,7 @@ export default class ProposalLifecycle {
         const outcome = resolution.outcome ?? defaultOutcome;
         // rx is the model-facing operation result. Status always. Body is normally dropped —
         // the propose preview was an input echo — EXCEPT an inline auto-run (read/pure) carries
-        // its run output AS the body, the "what happened" the model needs this turn. A non-accept
+        // its worker output AS the body, the "what happened" the model needs this turn. A non-accept
         // carries the outcome TOKEN as its terse error (write_failed / rejected / timeout — one
         // word, never prose): a bare {"status":400} left the model blind to a mechanically failed
         // apply and parking on a phantom worker (the fan-out digest).

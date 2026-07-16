@@ -26,19 +26,19 @@ One endpoint: `POST /` with `RunAgentInput` (`threadId`, `workerId`, `messages`,
   Numbers pass through verbatim (`contextSize` = the daemon's effective prompt budget).
 - **HITL, terminate-resume**: a stopped-world proposal (file edit, exec, MCP auth) emits
   a `request_approval` tool-call — a `SEND[300]` operator question emits
-  `request_user_input` — and the run **finishes** while the loop stays paused in-engine.
-  The next run's tool-result message (`toolCallId: "prop:<id>"`, content
+  `request_user_input` — and the worker **finishes** while the loop stays paused in-engine.
+  The next worker's tool-result message (`toolCallId: "prop:<id>"`, content
   `{decision: accept|reject|cancel, body?}`) resolves it; the continued loop streams there.
   Pending proposals re-surface on (re)connect — a days-old question is discoverable.
 - **Reads ride STATE**: providers/aliases/budget/workspace arrive as `STATE_SNAPSHOT` on
   `RUN_STARTED` and `STATE_DELTA` on change — observed, not polled.
 - **The workspace is the WORLD**: `forwardedProps.plurnk.workspace` selects the workspace by
-  name, verbatim (attach-or-create). It is REQUIRED — a run has no existence without a world,
+  name, verbatim (attach-or-create). It is REQUIRED — a worker has no existence without a world,
   so its absence is rejected (500), never forged from the `threadId`. Workspace options ride the workspace's first run:
-  `forwardedProps.plurnk` (`projectRoot`, `constraints`, `settings`); per-run knobs
-  (`maxTurns`, `flags`, `alias`/`model`) every run.
-- **The thread is the CONVERSATION**: a `threadId` binds a run over the selected world —
-  today the workspace's model run (`ensureModelWorker`), so extended context persists across runs;
+  `forwardedProps.plurnk` (`projectRoot`, `constraints`, `settings`); per-worker knobs
+  (`maxTurns`, `flags`, `alias`/`model`) every worker.
+- **The thread is the CONVERSATION**: a `threadId` binds a worker over the selected world —
+  today the workspace's model worker (`ensureModelWorker`), so extended context persists across runs;
   history replays as `MESSAGES_SNAPSHOT` on reattach. Distinct second conversations over one
   world gate on plurnk-service#366. (Machine model: service SPEC §machine-processes.)
 - **Cancel**: dropping the SSE aborts a live loop (hangup is the abort); a

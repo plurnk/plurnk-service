@@ -63,8 +63,8 @@ test("[§grinder-errors-exempt] the grinder never folds the prompt frame — eve
     } finally { await db.close(); }
 });
 
-test("[§prompt-run-qualified] sister runs' turn-1 prompts land at DISTINCT addresses — no clobber (#382 fault-1)", async () => {
-    // run43: exactly two writes hit /prompt/1/1 — the model run's task foist and a WORK-spawned
+test("[§prompt-worker-qualified] sister workers' turn-1 prompts land at DISTINCT addresses — no clobber (#382 fault-1)", async () => {
+    // run43: exactly two writes hit /prompt/1/1 — the model worker's task foist and a WORK-spawned
     // worker's — and the worker's DESTROYED the parent's task. Run-qualified paths keep one
     // filesystem with collision-free coordinates (/proc/<pid>-style).
     const db = await openMigrated();
@@ -82,11 +82,11 @@ test("[§prompt-run-qualified] sister runs' turn-1 prompts land at DISTINCT addr
         const bodyAt = async (workerId: number) => (await (db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${workerId}/1/%` }));
         const parentRows = await bodyAt(parentWorker);
         const workerRows = await bodyAt(childWorker);
-        assert.equal(parentRows.length, 1, "the parent's prompt entry exists at its run-qualified address");
-        assert.equal(workerRows.length, 1, "the worker's prompt entry exists at ITS run-qualified address");
+        assert.equal(parentRows.length, 1, "the parent's prompt entry exists at its worker-qualified address");
+        assert.equal(workerRows.length, 1, "the worker's prompt entry exists at ITS worker-qualified address");
         assert.equal(parentRows[0].content, "the parent task", "the worker's turn-1 foist did not clobber the parent's task");
         assert.equal(workerRows[0].content, "the worker task");
-        assert.notEqual(parentRows[0].pathname, workerRows[0].pathname, "two runs, two addresses — one filesystem, collision-free coordinates");
+        assert.notEqual(parentRows[0].pathname, workerRows[0].pathname, "two workers, two addresses — one filesystem, collision-free coordinates");
     } finally { await db.close(); }
 });
 

@@ -15,17 +15,17 @@ import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillSt
 // follow unrewritten. NULL terminated_by = the model's own terminal — the message IS the result.
 export const markTerminal = (terminatedBy: string | null, message: string | null): string | null => {
     if (terminatedBy === "collapse") return `[ concluded on ∅-collapse — waited on nothing; no result was produced ]${message === null ? "" : ` ${message}`}`;
-    if (terminatedBy === "cancel") return `[ cancelled from outside the run ]${message === null ? "" : ` ${message}`}`;
+    if (terminatedBy === "cancel") return `[ cancelled from outside the worker ]${message === null ? "" : ` ${message}`}`;
     return message;
 };
 
-// worker:// — the run scheme: inter-run CONTROL (irc=SEND; WORK=spawn, FORK=fork is Dispatcher.#handleWorkerControl)
-// AND run-scoped STORAGE (§run-scheme). The run is always the AUTHORITY: worker://<name>/<path> is
+// worker:// — the worker scheme: inter-run CONTROL (irc=SEND; WORK=spawn, FORK=fork is Dispatcher.#handleWorkerControl)
+// AND worker-scoped STORAGE (§worker-scheme). The worker is always the AUTHORITY: worker://<name>/<path> is
 // entry <path> owned by run <name>; `worker://self` is the current run, empty authority is invalid.
-// Worker is excluded from #extractTarget's authority-fold (Engine) so the authority stays the run
+// Worker is excluded from #extractTarget's authority-fold (Engine) so the authority stays the worker
 // name, never folded.
-//   - path present → storage: READ any run's entry by address (cross-run read ok); EDIT self
-//     only (cross-run write → 403 — a run reads a sister's notes, never writes them).
+//   - path present → storage: READ any worker's entry by address (cross-worker read ok); EDIT self
+//     only (cross-worker write → 403 — a worker reads a sister's notes, never writes them).
 //   - path absent  → control on the run-as-actor: WORK spawns / FORK forks (Engine), SEND ircs, READ
 //     collects the deliverable; EDIT on the bare entity is rejected (the entity is not an entry).
 export default class Worker {
@@ -41,14 +41,14 @@ export default class Worker {
         example: "<<EDIT(worker://self/todo.md):- [ ] investigate the timeout:EDIT",
     };
 
-    // The run name from a worker:// target's authority (hostname). "self" = the current run;
+    // The worker name from a worker:// target's authority (hostname). "self" = the current run;
     // "" (empty authority) is invalid; null when the target isn't a worker:// url.
     static #authority(target: ParsedPath | null): string | null {
         if (target === null || target.kind !== "url" || target.scheme !== "worker") return null;
         return target.hostname ?? "";
     }
 
-    // The entry path within the run — the target's pathname; "" / "/" mean no entry (the
+    // The entry path within the worker — the target's pathname; "" / "/" mean no entry (the
     // run-as-actor / control form).
     static #entryPath(target: ParsedPath | null): string {
         if (target === null || target.kind !== "url") return "";
@@ -56,7 +56,7 @@ export default class Worker {
         return p === "/" ? "" : p;
     }
 
-    // The acting run's own name — for self-resolution and the cross-run-write gate.
+    // The acting worker's own name — for self-resolution and the cross-worker-write gate.
     static async #selfName(ctx: PlurnkSchemeContext): Promise<string> {
         const row = await (ctx.db.worker_name_by_id as PrepMethod).get<{ name: string }>({ worker_id: ctx.workerId });
         if (row === undefined) throw new Error("run: acting run has no name");
@@ -73,28 +73,28 @@ export default class Worker {
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult | { status: number; error?: string; body?: string }> {
         const authority = Worker.#authority(statement.target);
-        if (authority === null) return { status: 400, error: "worker:// requires a run target" };
+        if (authority === null) return { status: 400, error: "worker:// requires a worker target" };
         const entryPath = Worker.#entryPath(statement.target);
 
-        // The run ENTITY (path-absent worker://<name>) is not EDITable — EDIT is file/entry only
+        // The worker ENTITY (path-absent worker://<name>) is not EDITable — EDIT is file/entry only
         // (grammar 0.74.55): WORK(worker://<name>) spawns a worker; FORK(worker://<name>) forks a named branch.
         if (entryPath === "") return { status: 400, error: "worker:// entity is not editable — WORK(worker://<name>) to spawn a worker, FORK(worker://<name>) to fork a branch" };
 
-        // Storage: write a run-scope entry. Self only — cross-run write is denied (§run-scheme).
-        if (authority === "") return { status: 400, error: "worker:// requires a run name or 'self' (worker://self/<path>)" };
+        // Storage: write a worker-scope entry. Self only — cross-worker write is denied (§worker-scheme).
+        if (authority === "") return { status: 400, error: "worker:// requires a worker name or 'self' (worker://self/<path>)" };
         const self = await Worker.#selfName(ctx);
         const owner = authority === "self" ? self : authority;
         if (owner !== self) return { status: 403, error: "worker:// write is self-only — read a sister's notes, never write them" };
         return EntryOps.editWorkspaceEntry(Worker.#withOwner(statement, owner), ctx, Worker.manifest);
     }
 
-    // KILL a run-scope scratch ENTRY (path present). Self-only — deleting a sister's notes
-    // is a cross-run write, denied like EDIT (§run-scheme). The path-ABSENT KILL form is run
+    // KILL a worker-scope scratch ENTRY (path present). Self-only — deleting a sister's notes
+    // is a cross-worker write, denied like EDIT (§worker-scheme). The path-ABSENT KILL form is run
     // cancellation, handled in Dispatcher.#handleKill (it routes only entry-path KILLs here).
     async deleteEntry(statement: KillStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
         const authority = Worker.#authority(statement.target);
-        if (authority === null) return { status: 400, error: "worker:// requires a run target" };
-        if (authority === "") return { status: 400, error: "worker:// requires a run name or 'self' (worker://self/<path>)" };
+        if (authority === null) return { status: 400, error: "worker:// requires a worker target" };
+        if (authority === "") return { status: 400, error: "worker:// requires a worker name or 'self' (worker://self/<path>)" };
         const self = await Worker.#selfName(ctx);
         const owner = authority === "self" ? self : authority;
         if (owner !== self) return { status: 403, error: "worker:// kill is self-only — read a sister's notes, never delete them" };
@@ -106,7 +106,7 @@ export default class Worker {
         if (authority === null) return { status: 400, content: null, mimetype: null, channel: null };
         if (authority === "") return { status: 400, content: null, mimetype: null, channel: null };  // empty-authority worker:/// is invalid
         const entryPath = Worker.#entryPath(statement.target);
-        // Path-absent READ(worker://<name>) COLLECTS the run's deliverable (§run-scheme-collect, pull side):
+        // Path-absent READ(worker://<name>) COLLECTS the worker's deliverable (§worker-scheme-collect, pull side):
         // its latest loop's terminal message — the SEND[200] result, or an abandonment reason. A worker
         // still running hasn't delivered yet → 425 steers the model to park until it does (the
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
@@ -120,7 +120,7 @@ export default class Worker {
             if (!Worker.#TERMINAL_LOOP.has(row.status)) return { status: 425, content: `[ worker '${owner}' is still running — parking this turn until it delivers its result ]`, mimetype: "text/markdown", channel: null, awaitWorker: owner };
             return { status: 200, content: markTerminal(row.terminated_by, row.terminal_message) ?? `[ worker '${owner}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
         }
-        // Path-present: cross-run scratch READ — resolve self, fold the owner into the storage path.
+        // Path-present: cross-worker scratch READ — resolve self, fold the owner into the storage path.
         const owner = authority === "self" ? await Worker.#selfName(ctx) : authority;
         return EntryOps.readWorkspaceEntry(Worker.#withOwner(statement, owner), ctx, Worker.manifest);
     }
@@ -128,9 +128,9 @@ export default class Worker {
     // Terminal loop statuses (§lifecycle-terms) — a loop here has DELIVERED; anything else is still running.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
-    // §run-scheme — FIND a run's scratch. `worker://self/**` is self; `worker://<name>/**` a sister
-    // (cross-run READ is allowed, so cross-run FIND is too). Resolve the owner and fold it into
-    // the scope pathname (`/<owner>/<rest>`) so EntryFind draws from that run's partition alone.
+    // §worker-scheme — FIND a worker's scratch. `worker://self/**` is self; `worker://<name>/**` a sister
+    // (cross-worker READ is allowed, so cross-worker FIND is too). Resolve the owner and fold it into
+    // the scope pathname (`/<owner>/<rest>`) so EntryFind draws from that worker's partition alone.
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
         const authority = Worker.#authority(statement.target);
         if (authority === null) return { status: 400, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
@@ -145,8 +145,8 @@ export default class Worker {
 
     async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
         const authority = Worker.#authority(statement.target);
-        if (authority === null) return { status: 400, error: "worker:// irc requires a run (worker://<name>)" };
-        if (authority === "") return { status: 400, error: "worker:// irc requires a run name or 'self' (worker://<name>)" };
+        if (authority === null) return { status: 400, error: "worker:// irc requires a worker (worker://<name>)" };
+        if (authority === "") return { status: 400, error: "worker:// irc requires a worker name or 'self' (worker://<name>)" };
         if (ctx.injectWorker === undefined) throw new Error("run.send: injectWorker capability absent");
         let workerId = ctx.workerId;
         if (authority !== "self") {
@@ -156,7 +156,7 @@ export default class Worker {
         }
         const body = statement.body;
         const prompt = body === null ? "" : typeof body === "string" ? body : body.raw;
-        // §run-delegation-inherits-flags — an irc that RESUMES a parked loop keeps that loop's
+        // §worker-delegation-inherits-flags — an irc that RESUMES a parked loop keeps that loop's
         // own flags (inject ignores these there); a fresh loop raised by the message acts on
         // the sender's behalf and carries the sender's authority.
         const row = await (ctx.db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: ctx.loopId });

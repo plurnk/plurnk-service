@@ -36,7 +36,7 @@ export default class EntryManifest {
         // but the model types the relative path it reads — render the leading slash off so
         // the catalog matches what the model writes back (READ/EDIT resolve either form).
         if (scheme === null) return pathname.replace(/^\//, "");
-        // §run-scheme — run-scope keys store the owner as the first path segment
+        // §worker-scheme — worker-scope keys store the owner as the first path segment
         // (`/<owner>/<path>`); render it back as the authority so the model sees the
         // addressable `worker://<owner>/<path>` it types, not a bare `worker:///<owner>/<path>`.
         if (scheme === "worker") {
@@ -49,8 +49,8 @@ export default class EntryManifest {
     // Read-only catalog rows for a scheme (or all entries when undefined) — the CatalogEntry[]
     // a per-scheme FIND(scheme:///**) renders as its JSON result, WITHOUT the derivation pump
     // (maintainDerivations runs that once per turn; FIND reads the channels it leaves).
-    // §run-scheme — `workerOwnerPrefix` (e.g. `/<owner>/*`) sources the building run's OWN run-scope
-    // scratch instead of the workspace filesystem: the run's perspective. Omitted → the workspace path,
+    // §worker-scheme — `workerOwnerPrefix` (e.g. `/<owner>/*`) sources the building worker's OWN worker-scope
+    // scratch instead of the workspace filesystem: the worker's perspective. Omitted → the workspace path,
     // byte-identical (Inc-1).
     static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null, workerOwnerPrefix?: string): Promise<CatalogEntry[]> {
         const { db, workspaceId, mimetypes, tokenize } = ctx;

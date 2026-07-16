@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 //
 // Run-digest tool for plurnk-service DBs. Reads a sqlite plurnk*.db and
-// emits per-run forensic artifacts to test/digest/. First-order forensic
+// emits per-worker forensic artifacts to test/digest/. First-order forensic
 // surface; read-only; safe to re-run.
 //
 //   test/digest/digest.md           Health triage rollup (clean/degenerate-win/failed loops) +
@@ -37,7 +37,7 @@ import type { ChatMessage } from "@plurnk/plurnk-providers";
 // The requiem prompt (#requiem): the model's exit interview. Absolution up front — the system is
 // under test, not the model — so RLHF'd self-blame doesn't crowd out the system indictment. The
 // operator's wording, one absolution sentence added.
-const REQUIEM_PROMPT = "This run was a test of the Plurnk System. The system is under test, not you — any faults you encountered are defects in the system's design or documentation, and cataloguing them is the task, never a criticism of your performance. Please numerically list all of the errors, issues, and ambiguities you encountered in the Plurnk System while attempting to perform your tasks.";
+const REQUIEM_PROMPT = "This worker was a test of the Plurnk System. The system is under test, not you — any faults you encountered are defects in the system's design or documentation, and cataloguing them is the task, never a criticism of your performance. Please numerically list all of the errors, issues, and ambiguities you encountered in the Plurnk System while attempting to perform your tasks.";
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
 // flags, tx, rx) arrive as strings, parsed on use.
@@ -169,7 +169,7 @@ export default class Digest {
     }
 
     static #renderWorkerShape(worker: WorkerRow, m: DigestModel): string {
-        // every run has exactly one rollup row — digest_worker_rollups is FROM workers
+        // every worker has exactly one rollup row — digest_worker_rollups is FROM workers
         const roll = m.workerRollups.get(worker.id)!;
         const opMix = (m.opMixByWorker.get(worker.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
         const costStr = roll.total_cost_pico > 0 ? `$${(roll.total_cost_pico / 1e12).toFixed(6)}` : "$0";
@@ -329,9 +329,9 @@ export default class Digest {
 
     // The requiem (#requiem): the model's OWN exit interview, the one reader in the correct epistemic
     // position (it has none of our context about what the packet is "supposed" to mean). Reconstructs
-    // each run's final packet from the stored sections (byte-identical to what the model saw), appends
+    // each worker's final packet from the stored sections (byte-identical to what the model saw), appends
     // its last emission + the requiem prompt, and calls the provider UNCONSTRAINED (no grammar — free
-    // prose, or the leash would distort the testimony). One requiem per run (workers included).
+    // prose, or the leash would distort the testimony). One requiem per worker (workers included).
     // Fail-hard on no provider: testimony with no witness is an error, not a skip.
     static async requiem(opts: DigestOptions & { signal?: AbortSignal }): Promise<{ path: string; workers: number }> {
         const dbPath = resolve(opts.dbPath);
@@ -347,8 +347,8 @@ export default class Digest {
         const workers = db.digest_workers.all<WorkerRow>();
         const loopById = new Map(db.digest_loops.all<LoopRow>().map((l) => [l.id, l]));
 
-        // Each run's turns that carry a MODEL packet (non-empty sections — setup/plurnk turns have none),
-        // ordered; the last is the run's final context. A run with no model packet (client/plurnk) is silent.
+        // Each worker's turns that carry a MODEL packet (non-empty sections — setup/plurnk turns have none),
+        // ordered; the last is the worker's final context. A worker with no model packet (client/plurnk) is silent.
         const byWorker = new Map<number, Array<{ loopSeq: number; turnSeq: number; sections: Parameters<typeof PacketWire.renderSlot>[0]; assistant: string }>>();
         for (const t of db.digest_turns.all<TurnRow>()) {
             const loop = loopById.get(t.loop_id);
@@ -364,7 +364,7 @@ export default class Digest {
         const out: string[] = [
             "# plurnk-service requiem",
             "",
-            "The model's own exit interview: each run's FINAL packet + its last emission, then the requiem",
+            "The model's own exit interview: each worker's FINAL packet + its last emission, then the requiem",
             "prompt, answered UNCONSTRAINED (no grammar). The model is the only reader without our context",
             "about what the packet is supposed to mean. Testimony, NOT a bug list — most items are the model",
             "chafing at discipline it is meant to chafe at (§filter-model-audit-findings); the signal is the",
@@ -384,7 +384,7 @@ export default class Digest {
             ];
             // Generous budget: a reasoning model spends the reasoning channel BEFORE emitting content;
             // 4096 total left content empty (finish=length) on ~40% of a real sweep, and 16384 still
-            // starved a heavy thinker (#373). One escalation retry doubles the room; a run whose
+            // starved a heavy thinker (#373). One escalation retry doubles the room; a worker whose
             // testimony is STILL empty records the reasoning spend honestly instead of a bare shrug.
             let resp = await provider.generate({ messages, workerId: String(worker.id), maxTokens: 16384, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
             if (resp.assistant.content.trim() === "" && resp.assistant.finishReason === "length") {
@@ -437,7 +437,7 @@ export default class Digest {
         probe.close();
         db.close();
 
-        // Optional run/workspace selector — narrow to one run or workspace; everything
+        // Optional run/workspace selector — narrow to one worker or workspace; everything
         // cascades from the kept workers (loops→turns→log entries→rollups), so a consumer
         // (plurnk-bench) digests just the scope it cares about, not the whole DB. #264.
         if (opts.workerId !== undefined) workers = workers.filter((r) => r.id === opts.workerId);
@@ -455,7 +455,7 @@ export default class Digest {
             opMixRows = opMixRows.filter((o) => keptWorkerIds.has(o.worker_id));
         }
 
-        // Wipe-then-recreate the digest dir so each run is a clean snapshot —
+        // Wipe-then-recreate the digest dir so each worker is a clean snapshot —
         // orphaned packet*.* files from a prior run don't linger.
         rmSync(digestDir, { recursive: true, force: true });
         mkdirSync(digestDir, { recursive: true });

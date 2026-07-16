@@ -7,14 +7,14 @@ import Envelope from "../../src/server/envelope.ts";
 let nameCounter = 0;
 const n = (suffix: string): string => `run-${suffix}-${++nameCounter}`;
 
-test("[§methods-run-name-reserved] a client cannot create or resume a run named 'plurnk' (runtime impersonation)", async () => {
+test("[§methods-worker-name-reserved] a client cannot create or resume a worker named 'plurnk' (runtime impersonation)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-reserved");
-        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "plurnk" }), /reserved/, "forging a plurnk run is refused");
+        await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "plurnk" }), /reserved/, "forging a plurnk worker is refused");
         await assert.rejects(() => Envelope.attachToWorkspace(db, workspaceId, { workerName: "PLURNK" }), /reserved/, "case variants are refused too");
         const ok = await Envelope.attachToWorkspace(db, workspaceId, { workerName: "my-feature" });
-        assert.equal(ok.workerName, "my-feature", "a normal run name still resolves");
+        assert.equal(ok.workerName, "my-feature", "a normal worker name still resolves");
     } finally { await db.close(); }
 });
 
@@ -172,12 +172,12 @@ test("runs: index workers_parent_worker_id exists", async () => {
     } finally { await db.close(); }
 });
 
-test("runs: a name repeats within a workspace — reclamation across time, NOT store-unique (§machine-processes-run-origin)", async () => {
+test("runs: a name repeats within a workspace — reclamation across time, NOT store-unique (§machine-processes-worker-origin)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-reclaim");
         const first = await (db.test_runs_insert_returning as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
-        // The store PERMITS a second 'worker': a name is frozen per run but reclaimable across time —
+        // The store PERMITS a second 'worker': a name is frozen per worker but reclaimable across time —
         // a terminated run keeps its name in permanent history while a fresh spawn reuses it. A LIVE
         // collision is refused at the spawn gate (Engine.#handleWorkerCopy → worker_live_by_name → 409), never by the
         // store. The dropped UNIQUE index returned a raw 500 the model couldn't read.

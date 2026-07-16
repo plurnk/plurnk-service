@@ -38,7 +38,7 @@ const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T
 
 const connect = (addr: { daemon: Daemon }): Promise<SeamSocket> => Promise.resolve(new SeamSocket(addr.daemon));
 
-test("[§methods-workspace-create] workspace.create returns the auto-created run's identity (workerId + workerName) — #199", async () => {
+test("[§methods-workspace-create] workspace.create returns the auto-created worker's identity (workerId + workerName) — #199", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -46,8 +46,8 @@ test("[§methods-workspace-create] workspace.create returns the auto-created run
             const result = r.result as { id: number; name: string; workerId: number; workerName: string };
             assert.equal(typeof result.id, "number");
             assert.equal(result.name, "create-shape");
-            assert.equal(typeof result.workerId, "number", "create must surface the run id (no pending-dance)");
-            assert.equal(typeof result.workerName, "string", "create must surface the run name");
+            assert.equal(typeof result.workerId, "number", "create must surface the worker id (no pending-dance)");
+            assert.equal(typeof result.workerName, "string", "create must surface the worker name");
         } finally { ws.close(); }
     });
 });

@@ -1,4 +1,4 @@
-# `log://` — your run's event history, and how to manage it
+# `log://` — your worker's event history, and how to manage it
 
 Every operation you emit is recorded as a row at `log:///<loop>/<turn>/<seq>` — your working memory's ledger of what you've done and what came back. READ a row to recover an earlier op's actual result body (chain a matcher to extract a value). The engine writes it; you read and CURATE it.
 

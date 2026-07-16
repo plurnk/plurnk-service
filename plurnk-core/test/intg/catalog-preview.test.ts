@@ -58,7 +58,7 @@ test("[§actor-boundary-catalog-preview] PLURNK_SERVICE_FILES_ITEMS foists the c
 });
 
 // The catalog is FIND-served — there is no plurnk:///manifest.json entry. With the preview
-// off, the run opens with no foisted catalog; the model FINDs each scheme on demand (the
+// off, the worker opens with no foisted catalog; the model FINDs each scheme on demand (the
 // "always a single directory to READ" invariant retired with the manifest.json entry).
 test("no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -132,11 +132,11 @@ test("workspace.create rejects malformed settings — fail hard, no silent accep
     });
 });
 
-// #269 — turn-0 run-once foists (manifest preview, AGENTS, operator docs) fire on the run's FIRST
+// #269 — turn-0 run-once foists (manifest preview, AGENTS, operator docs) fire on the worker's FIRST
 // loop only; later loops in the same run already carry them in the persistent log, so re-foisting
-// each loop spammed the log + burned tokens. Two loops in one run: the manifest READ is in loop 1's
+// each loop spammed the log + burned tokens. Two loops in one worker: the manifest READ is in loop 1's
 // log, absent from loop 2's.
-test("[#269] turn-0 run-once foists fire on the run's first loop only, not every loop", async () => {
+test("[#269] turn-0 run-once foists fire on the worker's first loop only, not every loop", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
@@ -152,8 +152,8 @@ test("[#269] turn-0 run-once foists fire on the run's first loop only, not every
                     const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
                     return rows.find((r) => r.op === "FIND" && r.scheme === "known");
                 };
-                assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "run's first loop foists the catalog preview");
-                assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the run's log (#269)");
+                assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "worker's first loop foists the catalog preview");
+                assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the worker's log (#269)");
             } finally { ws.close(); }
         });
     } finally {
@@ -172,9 +172,9 @@ test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dy
                 await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
                 const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
                 const { modelWorkerId } = resp as { modelWorkerId: number };
-                // The run's first turn opens with the turn-0 `model` exemplar at 1/1/1, born OPEN.
+                // The worker's first turn opens with the turn-0 `model` exemplar at 1/1/1, born OPEN.
                 const row = await (db.log_read_by_coordinate as PrepMethod).get<{ op: string; rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
-                assert.equal(row?.op, "model", "the run's first turn opens with the turn-0 model exemplar");
+                assert.equal(row?.op, "model", "the worker's first turn opens with the turn-0 model exemplar");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic — it carries the FIND the foist ACTUALLY dispatched (known:///**), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.

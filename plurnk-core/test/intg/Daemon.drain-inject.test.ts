@@ -83,7 +83,7 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
 
             // #204 — loop.run already returned its 100 accept; loop.cancel never makes it
             // reject. The cancelled loop's 499 terminal is observed via the stream conclusion
-            // above (and loop/terminated), not loop.run's return.
+            // above (and loop/terminated), not loop.worker's return.
             const loopResp = await loopPromise;
             assert.equal(loopResp.error, undefined, "loop.run accepted and resolved; cancel never rejects it (#204)");
             assert.equal((loopResp.result as { finalStatus: number }).finalStatus, 100, "loop.run returned the 100 accept, not the terminal");
@@ -104,7 +104,7 @@ test("[§methods-loop-cancel] loop.cancel: no active drain → cancelled=false",
     });
 });
 
-test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
+test("[§worker-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     // Generous response queue so neither loop exhausts Mock regardless
     // of how many turns each runs before cancel/termination.
     // 16384: the cancel-then-restart drain accumulates the exec entry across turns, cresting at the 8192 edge;
@@ -144,7 +144,7 @@ test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run sta
             assert.equal((firstResp.result as { finalStatus: number }).finalStatus, 100,
                 "loop.run accepted (100); the cancelled loop's terminal arrives via events");
             // Wait for the cancelled first loop to actually terminate (499 via loop/terminated)
-            // so the run is genuinely idle before the second loop.run.
+            // so the worker is genuinely idle before the second loop.run.
             const firstLoop = (firstResp.result as { loopId: number }).loopId;
             await waitFor(() => terminated() as Array<{ loopId: number }>,
                 (ts) => ts.some((t) => t.loopId === firstLoop), { timeoutMs: 5000 });
@@ -157,7 +157,7 @@ test("[§run-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run sta
     });
 });
 
-test("[§run-lifecycle-single-drain] loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
+test("[§worker-lifecycle-single-drain] loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
     // Deterministic hold (no 50ms race): a non-yolo EXEC proposal pauses
     // dispatch at status=202 BEFORE any subprocess spawns, so loop 1 is
     // provably live at status=102 when the second loop.run lands. We REJECT it
@@ -204,7 +204,7 @@ test("[§run-lifecycle-single-drain] loop.run while a loop is live: second call 
             await rpcCall(ws, 4, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
             await firstPromise;  // resolves at the 100 accept; loop 1 finishes async (turn 2 → SEND[200])
 
-            // Exactly one loop ran for the run: the second call injected, it did not spin up a
+            // Exactly one loop ran for the worker: the second call injected, it did not spin up a
             // parallel drain. Wait for the single termination (loop.run no longer blocks to it).
             const ended = await waitFor(
                 () => terminated() as Array<{ loopId: number; finalStatus: number }>,
@@ -222,7 +222,7 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
     // loop 1 at a proposal (status=102, turn 1), inject a turn-2 prompt, then
     // let turn 1 emit SEND[200] so loop 1 ends and turn 2 never runs. The drain
     // must promote the orphaned prompt to a fresh loop that surfaces it — so two
-    // loops terminate for the run, not one (it would be one if the wake were
+    // loops terminate for the worker, not one (it would be one if the wake were
     // lost; no other op here spawns a loop — the EXEC proposal is rejected).
     // 16384: the inject-then-reconcile path accumulates both loops' rows across turns, cresting at the 8192 edge;
     // grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the reconcile, not a budget probe.
@@ -268,7 +268,7 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
     });
 });
 
-test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by the subscription registry (closed 499)", async () => {
+test("[§worker-lifecycle-total-reap] loop.cancel reaps the worker's open streams by the subscription registry (closed 499)", async () => {
     // A backgrounded sleep registers an OPEN exec subscription; loop.cancel must reap
     // it THROUGH the registry — the open row closes at 499 — not merely fire a
     // notification. Asserted against the registry directly: open→0 + close_status=499.
@@ -307,9 +307,9 @@ test("[§run-lifecycle-total-reap] loop.cancel reaps the run's open streams by t
     });
 });
 
-test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its straggler stream's conclusion", async () => {
+test("[§worker-lifecycle-no-resurrection] a cancelled run is not revived by its straggler stream's conclusion", async () => {
     // After loop.cancel, the backgrounded exec's conclusion must NOT open a fresh loop
-    // in the run — the cancel was deliberate. Proven by the run's loop count staying at
+    // in the worker — the cancel was deliberate. Proven by the worker's loop count staying at
     // its single model loop after the conclusion lands (a resurrection would add a
     // wake-opened loop), plus the conclusion's wakeAction being a skip, not opened-loop.
     const mock = new Mock({
@@ -347,7 +347,7 @@ test("[§run-lifecycle-no-resurrection] a cancelled run is not revived by its st
             assert.ok(wake, "exec stream concluded");
             assert.match(wake.wakeAction, /^skipped-/, `the daemon skipped opening a loop; got ${wake.wakeAction}`);
 
-            // The run was not resurrected: its only loop is the original model loop.
+            // The worker was not resurrected: its only loop is the original model loop.
             const workerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))?.worker_id;
             const loopCount = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: workerId }))?.n;
             assert.equal(loopCount, 1, "no wake loop was opened in the cancelled run");

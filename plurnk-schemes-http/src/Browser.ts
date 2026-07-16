@@ -120,8 +120,8 @@ export default class Browser {
     #factory: ChromiumFactory;
     #browser: PwBrowser | null = null;
     #launching: Promise<PwBrowser> | null = null;
-    // One BrowserContext per run — cookies / cache / storage scoped to the run
-    // that opened it, no cross-run bleed. Closed by closeContext() on run end
+    // One BrowserContext per worker — cookies / cache / storage scoped to the worker
+    // that opened it, no cross-worker bleed. Closed by closeContext() on run end
     // or abort. The browser process stays warm across all of them.
     #contexts = new Map<number, PwContext>();
     #idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -131,7 +131,7 @@ export default class Browser {
         this.#factory = factory;
     }
 
-    // Render a URL to its final serialized DOM. Opens a page in the run's
+    // Render a URL to its final serialized DOM. Opens a page in the worker's
     // context, navigates with the settle+salvage strategy, serializes, closes
     // the page. Throws on navigation failure (the caller maps it to a status).
     async render(
@@ -197,8 +197,8 @@ export default class Browser {
 
     // Get-or-launch the warm chromium. Connects to a remote CDP endpoint via
     // PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS if set (shared / Lightpanda /
-    // browserless), else launches locally. Single browser across all runs;
-    // per-run isolation is at the context layer. Relaunches if chromium dies
+    // browserless), else launches locally. Single browser across all workers;
+    // per-worker isolation is at the context layer. Relaunches if chromium dies
     // (OOM/segfault/WS teardown) leaves the handle stale.
     async #getBrowser(): Promise<PwBrowser> {
         this.#touchIdle();
@@ -225,7 +225,7 @@ export default class Browser {
         return browser;
     }
 
-    // Get-or-create the run's BrowserContext. Mobile-emulated by default (a
+    // Get-or-create the worker's BrowserContext. Mobile-emulated by default (a
     // lighter responsive layout is the better generation hint); desktop when
     // PLURNK_SCHEMES_HTTP_MOBILE=0.
     async #getContext(workerId: number): Promise<PwContext> {
@@ -238,7 +238,7 @@ export default class Browser {
         return context;
     }
 
-    // Drop the run's context (run end or abort). Closing it cascades to any
+    // Drop the worker's context (run end or abort). Closing it cascades to any
     // in-flight page in that context. Fire-and-forget.
     closeContext(workerId: number): void {
         const context = this.#contexts.get(workerId);
@@ -253,7 +253,7 @@ export default class Browser {
         this.#idleTimer.unref?.();
     }
 
-    // Tear everything down: per-run contexts then the browser. In CDP mode
+    // Tear everything down: per-worker contexts then the browser. In CDP mode
     // close() disconnects the local handle without shutting the remote down.
     async close(): Promise<void> {
         if (this.#idleTimer) { clearTimeout(this.#idleTimer); this.#idleTimer = null; }

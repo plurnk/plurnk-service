@@ -25,8 +25,8 @@ export interface SchemeManifest {
     // sister processes/runs and owns no entries (worker://: spawn/fork/irc).
     readonly category: "data" | "logging" | "control";
     // Matches grammar's SchemeRegistration.default_scope enum (0.67: `agent`
-    // dropped — nothing used it — `run` added for per-run scratch backing
-    // `worker://`). New schemes default `workspace`; opt into `run` only for per-run.
+    // dropped — nothing used it — `worker` added for per-worker scratch backing
+    // `worker://`). New schemes default `workspace`; opt into `worker` only for per-worker.
     readonly scope: "workspace" | "worker";
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;

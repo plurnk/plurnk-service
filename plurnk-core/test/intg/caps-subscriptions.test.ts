@@ -50,7 +50,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.equal(wakes[0].summary, "exit 0; 11 bytes");
         assert.equal(wakes[0].target, "exec:///run");
 
-        // a run abort propagates to the subscription signal AND force-cancels the handle
+        // a worker abort propagates to the subscription signal AND force-cancels the handle
         await entries.write("/run2", { channels: { stdout: { content: "", mimetype: "text/plain" } }, tags: [] });
         const signal2 = await subs.open("/run2", { cancel: () => { cancelled = true; } });
         parentAbort.abort();

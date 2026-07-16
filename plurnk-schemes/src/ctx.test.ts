@@ -94,7 +94,7 @@ const makeCtx = () => {
             chunks.push({ channel, chunk, mimetype });
             notify.streamEvent("sub", channel, "active", chunk.length);
         },
-        // close composites the run wake — there is no separate notify.wakeWorker;
+        // close composites the worker wake — there is no separate notify.wakeWorker;
         // the rich, summary-bearing wake lives where the close context is.
         async close(reason, outcome) { closed = { reason, outcome }; woken += 1; },
     };
@@ -172,7 +172,7 @@ test("ctx: subscriptions.close composites state + wake (stream concluded)", asyn
     await ctx.subscriptions.close("done", "exit=0 bytes=42");
     const { closed, woken } = inspect();
     assert.deepEqual(closed, { reason: "done", outcome: "exit=0 bytes=42" });
-    assert.equal(woken, 1); // close fires the run wake
+    assert.equal(woken, 1); // close fires the worker wake
 });
 
 test("ctx: crossScheme is a deferred placeholder, not an active cap", () => {

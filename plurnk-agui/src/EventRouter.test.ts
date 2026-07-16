@@ -20,7 +20,7 @@ test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISH
     assert.equal(call.find((e) => e.type === "TOOL_CALL_START") !== undefined, true, "an op row is a tool call");
     const term = r.route("loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 5, completionTokens: 6, costPico: 0, contextTokens: 11, promptBudget: 200000, meta: {} } });
     assert.ok(term.some((e) => e.type === "STATE_DELTA"), "budget rides STATE");
-    assert.equal(term[term.length - 1].type, "RUN_FINISHED", "200 terminates the run");
+    assert.equal(term[term.length - 1].type, "RUN_FINISHED", "200 terminates the worker");
 });
 
 test("telemetry → plurnk.telemetry custom; loop/proposal deferred to ProposalHitl", () => {

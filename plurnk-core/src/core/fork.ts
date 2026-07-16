@@ -1,11 +1,11 @@
-// Fork a run — branch the log, share the workspace (SPEC §machine-processes).
+// Fork a worker — branch the log, share the workspace (SPEC §machine-processes).
 //
 // A fork is a NEW run in the SAME workspace (`parent_worker_id` records the lineage),
 // holding a deep copy of the parent's log: loops → turns → entries, with their
 // fold-state (`expanded`) and attribution (`origin`/`source`) intact. It copies
 // nothing of the shared WORLD — the workspace's entries and overlay are shared, never
-// copied, because a run never owned them. But it DOES inherit the parent's run-scope
-// SCRATCH (§run-scheme — the run's private workspace, owner-remapped parent → branch):
+// copied, because a worker never owned them. But it DOES inherit the parent's worker-scope
+// SCRATCH (§worker-scheme — the worker's private workspace, owner-remapped parent → branch):
 // "fork = everything-in-common-but-name, then diverges". The §env-delta reconciliation
 // snapshot is not copied; the branch first-sights its world like any fresh run.
 
@@ -21,7 +21,7 @@ export default class Fork {
 
         // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
         // is `<parent>-fork-<N>` (N = next free), so N self-forks of one parent are individually
-        // addressable instead of all colliding on a single `<parent>-fork` (§run-scheme-fork).
+        // addressable instead of all colliding on a single `<parent>-fork` (§worker-scheme-fork).
         let branchName = name;
         if (branchName === undefined) {
             const existing = await (db.fork_count_branches as PrepMethod).get<{ n: number }>({ parent_worker_id: parentWorkerId, name_prefix: `${parent.name}-fork%` });
@@ -37,7 +37,7 @@ export default class Fork {
         // branch's live work (its own loop is enqueued fresh by injectWorker) — so a non-terminal status
         // is clamped to terminal (200). Otherwise a fork taken while the parent's loop is mid-flight (102)
         // would carry a frozen-live loop no drain ever advances, falsely marking the branch forever-live
-        // to any liveness check (§run-scheme-fork, the premature-terminate gate §send-premature-terminate).
+        // to any liveness check (§worker-scheme-fork, the premature-terminate gate §send-premature-terminate).
         const loops = await (db.fork_get_loops as PrepMethod).all<{ id: number; sequence: number; status: number; prompt: string; flags: string }>({ worker_id: parentWorkerId });
         const loopMap = new Map<number, number>();
         for (const l of loops) {
@@ -74,7 +74,7 @@ export default class Fork {
             await (db.fork_copy_log_tags as PrepMethod).run({ old_log_id: oldLogId, new_log_id: ne.id });
         }
 
-        // §run-scheme — inherit the parent's run-scope SCRATCH, owner remapped (parent → branch) in
+        // §worker-scheme — inherit the parent's worker-scope SCRATCH, owner remapped (parent → branch) in
         // the pathname so the branch's private workspace is independent and diverges on its own edits.
         const parentPrefix = `/${parent.name}/`;
         const branchPrefix = `/${branchName}/`;
@@ -86,7 +86,7 @@ export default class Fork {
             const ne = await (db.fork_insert_worker_scope_entry as PrepMethod).get<{ id: number }>(
                 { workspace_id: parent.workspace_id, scheme: s.scheme, pathname: newPathname, deep_hash: s.deep_hash, attributes: s.attributes },
             );
-            if (ne === undefined) throw new Error("fork: run-scope entry copy returned no row");
+            if (ne === undefined) throw new Error("fork: worker-scope entry copy returned no row");
             await (db.fork_copy_entry_channels as PrepMethod).run({ old_entry_id: s.id, new_entry_id: ne.id });
             await (db.fork_copy_entry_tags as PrepMethod).run({ old_entry_id: s.id, new_entry_id: ne.id });
         }

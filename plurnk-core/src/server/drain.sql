@@ -1,15 +1,15 @@
--- Drain queries for the run-level loop queue (SPEC §_run_drain — TBD).
+-- Drain queries for the worker-level loop queue (SPEC §_run_drain — TBD).
 -- Mirrors rummy's AgentLoop drain pattern: enqueue loop at status=100,
 -- claim atomically (100 → 102), execute, repeat.
 
 -- PREP: drain_enqueue_loop
--- Insert a loop at queued state. Sequence is per-run, 1-based.
+-- Insert a loop at queued state. Sequence is per-worker, 1-based.
 INSERT INTO loops (worker_id, sequence, status, prompt)
 VALUES ($worker_id, $sequence, 100, $prompt)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
--- Atomic claim: flip the oldest queued loop in this run from 100 → 102 and
+-- Atomic claim: flip the oldest queued loop in this worker from 100 → 102 and
 -- return it. Returns no row when the queue is empty. The ORDER BY sequence
 -- + LIMIT 1 inside the subquery is the FIFO discipline.
 UPDATE loops
@@ -23,7 +23,7 @@ WHERE id = (
 RETURNING id, sequence, prompt, flags;
 
 -- PREP: drain_current_loop_for_worker
--- The run's current NON-TERMINAL loop — active (102) or parked (202). At most one per run
+-- The worker's current NON-TERMINAL loop — active (102) or parked (202). At most one per worker
 -- under drain semantics. Engine.inject uses it to write the prompt entry for the right loop's
 -- next turn; including 202 lets an irc target a PARKED loop's resume turn (#55) instead of
 -- orphaning it with a fresh loop. (102 preferred if both somehow exist.)
@@ -40,7 +40,7 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- PREP: drain_get_worker_workspace
 -- Resolve workerId → workspaceId. Needed when wake/inject paths only have the
 -- workerId (e.g., a stream concluded in run X; daemon needs the workspace
--- context to write entries under the run's workspace scope).
+-- context to write entries under the worker's workspace scope).
 SELECT workspace_id FROM workers WHERE id = $worker_id;
 
 -- PREP: drain_get_latest_prompt_body_for_loop
@@ -49,7 +49,7 @@ SELECT workspace_id FROM workers WHERE id = $worker_id;
 -- "current" prompt the model sees in user.prompt. Falls back to NULL when
 -- no prompt entry exists for the loop (caller substitutes runLoop's
 -- messages parameter for backward compat with tests that bypass inject).
--- Pattern is built JS-side via promptLoopPrefix (run-qualified `/prompt/<run>/<loop>/%`,
+-- Pattern is built JS-side via promptLoopPrefix (worker-qualified `/prompt/<run>/<loop>/%`,
 -- matching the foist's #pathnameOf and the inject) — SqlRite's parameter
 -- binding doesn't reliably coerce integers for `LIKE` with `||`.
 SELECT c.content, e.pathname
@@ -97,8 +97,8 @@ ORDER BY e.id DESC
 LIMIT 1;
 
 -- PREP: drain_find_slept_loop
--- A run's parked (slept) loop — SEND[202] suspends it at status 202, resumable by a wake
--- (§run-lifecycle-wake-liveness). A run parks one at a time; take the most recent.
+-- A worker's parked (slept) loop — SEND[202] suspends it at status 202, resumable by a wake
+-- (§worker-lifecycle-wake-liveness). A worker parks one at a time; take the most recent.
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
 
 -- PREP: drain_resume_slept_loop
@@ -107,18 +107,18 @@ SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequ
 UPDATE loops SET status = 100 WHERE id = $loop_id AND status = 202;
 
 -- PREP: drain_worker_min_poll
--- grammar 0.74.20 EXEC `<T,P>` — the tightest poll cadence (seconds) among a run's OPEN
--- polled subscriptions. NULL when the run holds no polled stream → no hibernation poll-wake.
+-- grammar 0.74.20 EXEC `<T,P>` — the tightest poll cadence (seconds) among a worker's OPEN
+-- polled subscriptions. NULL when the worker holds no polled stream → no hibernation poll-wake.
 SELECT MIN(poll_seconds) AS poll_seconds
 FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL AND poll_seconds IS NOT NULL;
 
 -- PREP: worker_parent_id
--- A run's parent (worker:// spawn / fork set parent_worker_id, §lifecycle-terms). NULL = a root run.
+-- A worker's parent (worker:// spawn / fork set parent_worker_id, §lifecycle-terms). NULL = a root run.
 -- Used at drain-exit to wake a parent that parked awaiting this child (§run-lifecycle topology join).
 SELECT parent_worker_id FROM workers WHERE id = $worker_id;
 
 -- PREP: drain_active_loop_flags
 -- #368 — the LIVE loop's persisted flags for the fold-posture guard: an inject carrying flags
 -- that differ from the loop it would fold into is refused, never a silent posture discard.
--- The run's currently-executing loop is its most recent non-terminal one.
+-- The worker's currently-executing loop is its most recent non-terminal one.
 SELECT id, flags FROM loops WHERE worker_id = $worker_id AND status IN (100, 102) ORDER BY sequence DESC LIMIT 1;

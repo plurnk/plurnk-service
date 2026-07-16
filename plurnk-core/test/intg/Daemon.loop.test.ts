@@ -47,13 +47,13 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "loop-inject" });
 
-            // No model run yet → inject has nothing to talk to (loop.run starts one).
+            // No model worker yet → inject has nothing to talk to (loop.run starts one).
             const noWorker = await rpcCall(ws, 2, "loop.inject", { prompt: "too early" });
-            assert.ok(noWorker.error !== undefined, "inject before any run errors");
-            assert.match(noWorker.error!.message, /no model run/);
+            assert.ok(noWorker.error !== undefined, "inject before any worker errors");
+            assert.match(noWorker.error!.message, /no model worker/);
 
-            // Start a run; SEND[200] ends it, leaving the run idle. Wait for the terminal
-            // (loop.run no longer blocks) so the run is genuinely idle before we inject.
+            // Start a worker; SEND[200] ends it, leaving the worker idle. Wait for the terminal
+            // (loop.run no longer blocks) so the worker is genuinely idle before we inject.
             await runLoopToTerminal(ws, 3, { prompt: "first", flags: { yolo: true } });
 
             // Inject into the idle run → enqueues a fresh loop, returns immediately.
@@ -61,7 +61,7 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
             const result = injected.result as { action: string; loopId: number; modelWorkerId: number };
             assert.equal(result.action, "enqueued_new_loop", "idle run → a fresh enqueued loop");
             assert.ok(typeof result.loopId === "number", "returns the loopId");
-            assert.ok(typeof result.modelWorkerId === "number", "returns the run it spoke into");
+            assert.ok(typeof result.modelWorkerId === "number", "returns the worker it spoke into");
 
             // empty prompt is a contract violation.
             const empty = await rpcCall(ws, 5, "loop.inject", { prompt: "" });
@@ -70,19 +70,19 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
     });
 });
 
-test("run.fork branches the model run into a new -fork run; names it at instantiation; errors with no run (#228, #248)", async () => {
+test("run.fork branches the model worker into a new -fork run; names it at instantiation; errors with no worker (#228, #248)", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<EDIT(known:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "fork-test" });
 
-            // No model run yet → nothing to fork.
+            // No model worker yet → nothing to fork.
             const noWorker = await rpcCall(ws, 2, "run.fork", {});
-            assert.ok(noWorker.error, "fork with no model run errors");
-            assert.match(noWorker.error!.message, /no model run/);
+            assert.ok(noWorker.error, "fork with no model worker errors");
+            assert.match(noWorker.error!.message, /no model worker/);
 
-            // A loop builds the model run + its log; forking branches it. Wait for the
+            // A loop builds the model worker + its log; forking branches it. Wait for the
             // terminal so the log is settled before the fork copies it.
             await runLoopToTerminal(ws, 3, { prompt: "do a thing" });
             const fork = await rpcCall(ws, 4, "run.fork", {});
@@ -128,7 +128,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
 
             const captured = logEntries();
             // §notifications / #198 — the turn-1 prompt-foist (system-origin EDIT, the
-            // user's words entering the run) broadcasts too, ahead of the model's ops —
+            // user's words entering the worker) broadcasts too, ahead of the model's ops —
             // and so does its auto-READ (§prompt-auto-read).
             assert.equal(captured.length, 5);
             const prompt = captured[0] as { entry: { op: string; origin: string } };

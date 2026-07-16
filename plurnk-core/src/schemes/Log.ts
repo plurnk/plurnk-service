@@ -126,7 +126,7 @@ export default class Log {
         });
     }
 
-    // §log-uniform-query — FIND over the run's log rows, on the SAME source-agnostic primitive
+    // §log-uniform-query — FIND over the worker's log rows, on the SAME source-agnostic primitive
     // every entry scheme runs (Matcher.matchCandidates, §find-source-agnostic): candidates are the
     // coordinate-scoped rows projected exactly as READ shows them (rxProjection), so every content
     // dialect works on log BY CONSTRUCTION and FIND(log)→READ(coordinate) composes like any scheme.

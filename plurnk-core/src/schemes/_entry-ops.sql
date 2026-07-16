@@ -19,7 +19,7 @@ WHERE e.scope = 'workspace'
   AND ec.name = $channel;
 
 -- PREP: ops_read_channel_worker
--- Run-scope twin of ops_read_channel (§run-scheme).
+-- Run-scope twin of ops_read_channel (§worker-scheme).
 SELECT ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id

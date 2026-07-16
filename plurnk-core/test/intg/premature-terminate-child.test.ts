@@ -1,6 +1,6 @@
 // §send-premature-terminate extended to CHILD RUNS — a SEND[200] while a spawned child is still
 // live is premature exactly as a SEND[200] with an open stream is (children and streams are the same
-// kind of "live thing the run holds", §run-lifecycle). Engine-level A/B so it's race-free.
+// kind of "live thing the worker holds", §run-lifecycle). Engine-level A/B so it's race-free.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -35,11 +35,11 @@ test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 40
         assert.equal(clean.status, 200, "with no live child, SEND[200] terminates cleanly");
         assert.equal(clean.steerStruck, false);
 
-        // Spawn a live child run (parent_worker_id = parentWorker, a non-terminal loop — default status 102).
+        // Spawn a live child worker (parent_worker_id = parentWorker, a non-terminal loop — default status 102).
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "child");
 
-        // Now SEND[200] is premature — the child is still a live thing the run holds.
+        // Now SEND[200] is premature — the child is still a live thing the worker holds.
         const premature = await send200();
         assert.equal(premature.status, 102, "the TURN stays a continue (102) — the loop never went terminal");
         assert.equal(premature.steerStruck, true, "and the premature-terminate steer fired");
@@ -148,7 +148,7 @@ test("[§send-premature-terminate] a READ + non-terminal SEND[102] continue does
 });
 
 test("[§send-premature-terminate] a model that won't stop premature-200ing with a live child STRIKES OUT (500)", async () => {
-    // The 200-vs-202 robustness: a confused model that keeps declaring done while its child runs is
+    // The 200-vs-202 robustness: a confused model that keeps declaring done while its child workers is
     // not allowed to falsely complete — each premature 200 strikes, and it abandons at 500. It can't
     // hang the runtime, and it can't lie about being done.
     const db = await openMigrated();

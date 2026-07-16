@@ -3,9 +3,9 @@
 // the AG-UI+ HTTP/SSE listener and owns the client interface from there.
 //
 // This is the SINGLE-INTERFACE surface (AG-UI+), not the legacy bridge dialect:
-//   POST /  — the only endpoint. A run streams SSE. HITL is terminate-resume: a
-//   stopped-world emits a request_approval/request_user_input TOOL_CALL and the run
-//   FINISHES (the loop stays paused in-engine); the resume arrives as the next run's
+//   POST /  — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
+//   stopped-world emits a request_approval/request_user_input TOOL_CALL and the worker
+//   FINISHES (the loop stays paused in-engine); the resume arrives as the next worker's
 //   tool-result message → resolveProposal → the continued loop streams there.
 //   Reads ride STATE_SNAPSHOT on RUN_STARTED; no /plurnk/rpc, no /resolve.
 // An AG-UI threadId IS a plurnk workspace (`<prefix>-<threadId>`); the envelope's
@@ -38,7 +38,7 @@ export default class Module {
     // The control plane vs the world. A RUN lives in a world (a conversation, or an action
     // that reads/writes a workspace's log); a control-plane action (list/create/attach/discover/
     // auth) does NOT — so it must not bind or forge a workspace (operator ruling 2026-07-10:
-    // "every run/thread requires a world, not everything"). Only these kinds bind a workspace.
+    // "every worker/thread requires a world, not everything"). Only these kinds bind a workspace.
     static #WORLD_SCOPED = Object.freeze(new Set([
         "workspace.workers", "log.read", "loop.inject", "loop.cancel", "workspace.prompts", "workspace.rename",
         "workspace.constrain", "workspace.unconstrain", "workspace.constraints", "entry.read",
@@ -104,9 +104,9 @@ export default class Module {
     // verbatim. The SESSION is the WORLD (service SPEC, machine-processes) — selected by name via
     // `forwardedProps.plurnk.workspace`; attach it if it exists, create it with EXACTLY that
     // name if it doesn't. No prefixes, no forged names, no dual lookup. The workspace is
-    // REQUIRED: a run has no existence without a world, so its absence is a contract
+    // REQUIRED: a worker has no existence without a world, so its absence is a contract
     // violation the client must fix — never a workspace forged from the threadId.
-    // The threadId is the CONVERSATION over that world — resolved to a run by
+    // The threadId is the CONVERSATION over that world — resolved to a worker by
     // #conversationRun (svc#366 landed: the three doors are ensureModelWorker, forkWorker,
     // createConversationWorker).
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
@@ -133,8 +133,8 @@ export default class Module {
         return { env, reattached };
     }
 
-    // Resolve the thread's conversation run within its world. Cached per threadId;
-    // run names are immutable so the binding can't rot.
+    // Resolve the thread's conversation worker within its world. Cached per threadId;
+    // worker names are immutable so the binding can't rot.
     async #conversationRun(threadId: string, env: ClientEnvelope): Promise<number> {
         const cached = this.#threadRuns.get(threadId);
         if (cached !== undefined) return cached;
@@ -152,16 +152,16 @@ export default class Module {
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
 
         // Control plane FIRST: a management action that doesn't live in a world (and an
-        // unknown kind, which is no run at all) answers without binding — or forging — a
+        // unknown kind, which is no worker at all) answers without binding — or forging — a
         // workspace. Only world-scoped actions and conversations reach #envelope below.
         const early = parseAction(input.forwardedProps);
         if (early !== null && !Module.#WORLD_SCOPED.has(early.kind)) return await this.#controlRun(early, input, res);
 
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
         const workspaceId = env.workspaceId;
-        // THREAD ↔ RUN (svc#366): the threadId is the CONVERSATION — a run over the
-        // world. threadId == workspace name binds the model run (the default conversation);
-        // a distinct threadId names its own run: found by name, else minted via
+        // THREAD ↔ RUN (svc#366): the threadId is the CONVERSATION — a worker over the
+        // world. threadId == workspace name binds the model worker (the default conversation);
+        // a distinct threadId names its own worker: found by name, else minted via
         // createConversationWorker. The name is the identity at BOTH levels.
         const workerId = await this.#conversationRun(input.threadId, env);
 
@@ -256,7 +256,7 @@ export default class Module {
             ...(typeof forwarded?.alias === "string" && forwarded.alias.length > 0 ? { alias: forwarded.alias } : {}),
             ...(typeof forwarded?.model === "string" && forwarded.model.length > 0 ? { model: forwarded.model } : {}),
         });
-        // A dropped SSE on a LIVE run cancels the loop (hangup is the abort). A run we
+        // A dropped SSE on a LIVE run cancels the loop (hangup is the abort). A worker we
         // finished ourselves — terminal event or proposal-terminate — leaves the engine
         // alone (the paused loop is exactly what the resume run needs).
         req.on("close", () => {
@@ -267,7 +267,7 @@ export default class Module {
     }
 
     // A control-plane run: no world bound. Open the SSE, run the worldless verb, answer on
-    // our own stream. No Portal thread, no model run — nothing to forge (operator ruling:
+    // our own stream. No Portal thread, no model worker — nothing to forge (operator ruling:
     // workspace-plane actions must not spin an ephemeral workspace).
     async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
@@ -340,14 +340,14 @@ export default class Module {
                     return { ok: true, result: await mcpPoll(p.target, { device: p.device as never }) };
                 }
             }
-            // Below this line lives IN a world. An unknown kind is no run at all; a
+            // Below this line lives IN a world. An unknown kind is no worker at all; a
             // world-scoped kind with no bound workspace is a routing bug — both surface plainly.
             if (!Module.#WORLD_SCOPED.has(a.kind)) return { ok: false, error: `unknown action '${a.kind}'` };
             if (env === null) throw new Error(`action '${a.kind}' operates within a workspace, but none is bound`);
             switch (a.kind) {
                 case "workspace.workers": return { ok: true, result: { workers: await this.#seam.listWorkers(typeof p.id === "number" ? p.id : env.workspaceId) } };
                 case "log.read": {
-                    // Default run: the conversation (model run); p.workerId pins another.
+                    // Default run: the conversation (model worker); p.workerId pins another.
                     const readRun = typeof p.workerId === "number" ? p.workerId : convRun ?? await this.#seam.ensureModelWorker(env.workspaceId);
                     const entries = await this.#seam.readLog({ workspaceId: env.workspaceId, workerId: readRun, ...(typeof p.limit === "number" ? { limit: p.limit } : {}), ...(typeof p.sinceId === "number" ? { sinceId: p.sinceId } : {}), ...(typeof p.loopId === "number" ? { loopId: p.loopId } : {}), ...(typeof p.turnId === "number" ? { turnId: p.turnId } : {}), ...(typeof p.loopSeq === "number" ? { loopSeq: p.loopSeq } : {}), ...(typeof p.turnSeq === "number" ? { turnSeq: p.turnSeq } : {}), ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}) });
                     return { ok: true, result: { entries } };
@@ -358,7 +358,7 @@ export default class Module {
                     return { ok: true, result: ack };
                 }
                 // The stop button (TUI /stop + Ctrl-C, nvim :PlurnkStop): abort the model
-                // run's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
+                // worker's active drain. Mirrors the SSE-hangup abort, addressable as a verb.
                 case "loop.cancel": return { ok: true, result: { cancelled: this.#seam.cancelDrain(convRun ?? await this.#seam.ensureModelWorker(env.workspaceId)) } };
                 case "workspace.prompts": return { ok: true, result: { prompts: await this.#seam.listPrompts(env.workspaceId, typeof p.limit === "number" ? p.limit : undefined) } };
                 case "workspace.rename": {
@@ -384,7 +384,7 @@ export default class Module {
                     if (typeof p.command !== "string" || p.command.length === 0) return { ok: false, error: "op.exec requires command" };
                     const statement = { op: "EXEC", suffix: "", signal: null, target: null, lineMarker: null, body: p.command, position: { line: 1, col: 1 } } as unknown as PlurnkStatement;
                     // Client ops journal as client-origin turns in the CLIENT run (run-split:
-                    // only LOOPS live in the model run).
+                    // only LOOPS live in the model worker).
                     return { ok: true, result: await this.#seam.dispatchAsClient({ workspaceId: env.workspaceId, workerId: env.workerId, statement }) };
                 }
                 case "op.parse": {
@@ -394,7 +394,7 @@ export default class Module {
                     if (typeof p.text !== "string" || p.text.length === 0) return { ok: false, error: "op.parse requires text" };
                     const parsed = PlurnkParser.parseClient(p.text);
                     const results: Array<Record<string, unknown>> = [];
-                    const workerId = env.workerId; // client ops ride the client run
+                    const workerId = env.workerId; // client ops ride the client worker
                     for (const item of parsed.items) {
                         if (item.kind === "error") { results.push({ status: 400, error: String(item.error.message ?? item.error) }); continue; }
                         if (item.kind !== "statement") continue; // interstitial text isn't dispatchable

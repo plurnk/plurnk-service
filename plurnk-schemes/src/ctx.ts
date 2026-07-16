@@ -76,7 +76,7 @@ export interface TagCaps {
 // context (entryId / subscriptionId / closeStatus / scheme / summary) that
 // only exists at stream completion, so it belongs to `subscriptions.close`,
 // which already composites it (channel state + registry close + run wake).
-// Only streaming schemes wake a run, and always via close; synchronous entry
+// Only streaming schemes wake a worker, and always via close; synchronous entry
 // schemes return their turn and never wake. (plurnk-service#180.)
 export interface NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void;
@@ -91,7 +91,7 @@ export interface NotifyCaps {
 // substrates.
 export interface SubscriptionCaps {
     // Register the subscription for cancel routing and return the signal the
-    // sibling should await for teardown. The returned AbortSignal is the run
+    // sibling should await for teardown. The returned AbortSignal is the worker
     // signal COMPOSED WITH this subscription's own teardown — it fires on
     // `loop.cancel` OR local teardown (connection drop). Await this, not
     // ctx.signal (which it subsumes). `handle` is the force-cancel hook the
@@ -117,7 +117,7 @@ export interface SubscriptionCaps {
     notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
 
     // Settle the subscription: set channel state (closed/errored), close the
-    // registry row, and fire the run wake ("stream concluded" + summary).
+    // registry row, and fire the worker wake ("stream concluded" + summary).
     // `outcome` carries the scheme's summary (exec: exit-code + byte-counts).
     close(reason: "done" | "error", outcome?: string): Promise<void>;
 }

@@ -427,46 +427,46 @@ export default class Dispatcher {
     }
 
     // Run control is FORK/WORK (grammar 0.74.55), not COPY — its body
-    // is the new run's seed prompt, not a destination path. The COPY gates and #handleCopy
+    // is the new worker's seed prompt, not a destination path. The COPY gates and #handleCopy
     // branch on this so they never parse the prompt as a dst path.
     #isWorkerControl(statement: PlurnkStatement): boolean {
         return statement.op === "FORK" || statement.op === "WORK"; // run control targets worker://<name> (grammar 0.74.55)
     }
 
     // FORK/WORK(worker://<name>):task — run control (grammar 0.74.55):
-    //   • worker://self   → FORK: deep-copy the current run's log into a new sister (Fork), then
+    //   • worker://self   → FORK: deep-copy the current worker's log into a new sister (Fork), then
     //     continue it with the prompt (§machine-processes-fork-copies-the-log).
     //   • worker://<name> → SPAWN: a fresh sister (empty log) named <name>, started on the prompt.
     //     A LIVE sister already holding <name> is a 409 conflict; a free or terminated name is
-    //     reclaimed (§run-scheme-spawn). The self form is fork; only a name spawns.
-    // Both ride the daemon inject and obey the active-runs cap (508, §run-scheme-cap).
+    //     reclaimed (§worker-scheme-spawn). The self form is fork; only a name spawns.
+    // Both ride the daemon inject and obey the active-runs cap (508, §worker-scheme-cap).
     // FORK/WORK — run control (grammar 0.74.55). Both name a NEW run in the target authority
     // (worker://<name>) and carry its seed task in the body. WORK spawns a fresh worker; FORK branches
-    // the current run's log into a named sister. Replaces the COPY(worker://) overload — one verb, one
+    // the current worker's log into a named sister. Replaces the COPY(worker://) overload — one verb, one
     // intent, so the model never conflates the target slot with the body (grammar#52).
     async #handleWorkerControl(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
-        if (target === null) return { status: 400, error: `${statement.op} requires a run target (${statement.op}(worker://<name>))` };
-        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY (worker://<name>), not the path
-        if (name === "") return { status: 400, error: `${statement.op} requires a run name (worker://<name>)` };
+        if (target === null) return { status: 400, error: `${statement.op} requires a worker target (${statement.op}(worker://<name>))` };
+        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §worker-scheme — run is the AUTHORITY (worker://<name>), not the path
+        if (name === "") return { status: 400, error: `${statement.op} requires a worker name (worker://<name>)` };
         if (name === "self") return { status: 400, error: `'self' is the current run — ${statement.op} names a NEW run (worker://<name>)` };
         if (ctx.injectWorker === undefined) throw new Error("run control: injectWorker capability absent");
         const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
         const prompt = typeof statement.body === "string" ? statement.body : "";
 
-        // §run-delegation-inherits-flags — authority flows down the delegation edge: the child's live
+        // §worker-delegation-inherits-flags — authority flows down the delegation edge: the child's live
         // loop runs with ITS DELEGATOR'S flags. A flagless (non-YOLO) child's every side-effecting op
         // proposes into a resolver-less void — 300s auto-cancel per attempt was the fan-out wedge.
         const flags = await this.#loadLoopFlags(ctx.loopId);
 
-        // A name is frozen per run but reclaimable across time (§machine-processes-run-origin): a LIVE
+        // A name is frozen per worker but reclaimable across time (§machine-processes-worker-origin): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
         const live = await (this.#db.worker_live_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
         if (live !== undefined) return { status: 409, error: `worker '${name}' is already running` };
 
         if (statement.op === "FORK") {
-            // Branch the current run's log into a named sister.
+            // Branch the current worker's log into a named sister.
             const branchWorkerId = await Fork.fork(this.#db, ctx.workerId, name);
             await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId: branchWorkerId, prompt, flags });
             return { status: 200, body: name };
@@ -547,19 +547,19 @@ export default class Dispatcher {
             return await killable.kill(pathnameFromPath(path), statement.signal, ctx);
         }
         if (schemeName === "worker") {
-            // Entry-path present → KILL a run-scope scratch ENTRY (delete it), self-only —
+            // Entry-path present → KILL a worker-scope scratch ENTRY (delete it), self-only —
             // NOT run cancellation. The authority (hostname) names the owner, the pathname the
-            // entry; only the path-ABSENT form (worker://<name>) terminates the run-as-actor. §run-scheme
+            // entry; only the path-ABSENT form (worker://<name>) terminates the run-as-actor. §worker-scheme
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
                 const workerHandler = this.#schemes.get("worker") as { deleteEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
                 return await workerHandler.deleteEntry(statement, ctx);
             }
-            // terminate — abort any run by address; whoever holds it may end it.
-            // `worker://self` = self. cancelWorker (→ Daemon.cancelDrain) aborts the run's signal
+            // terminate — abort any worker by address; whoever holds it may end it.
+            // `worker://self` = self. cancelWorker (→ Daemon.cancelDrain) aborts the worker's signal
             // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
-            const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY
-            if (name === "") return { status: 400, error: "worker:// kill requires a run name or 'self' (worker://<name>)" };
+            const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §worker-scheme — run is the AUTHORITY
+            if (name === "") return { status: 400, error: "worker:// kill requires a worker name or 'self' (worker://<name>)" };
             let workerId = ctx.workerId;
             if (name !== "self") {
                 const row = await (this.#db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
@@ -567,7 +567,7 @@ export default class Dispatcher {
                 workerId = row.id;
             }
             if (this.#cancelWorker === undefined) throw new Error("run kill: cancelWorker capability absent");
-            // §op-synchronous — KILL is DECISIVE: flip the run's live loops to 499 NOW so the
+            // §op-synchronous — KILL is DECISIVE: flip the worker's live loops to 499 NOW so the
             // same-turn premature-terminate gate sees it dead (KILL … SEND[200] concludes in ONE
             // turn — the model never reasons about async reap timing). The physical scope reap
             // (drain abort + stream teardown) then rides cancelWorker; a killed loop can't heal back
@@ -798,7 +798,7 @@ export default class Dispatcher {
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
         if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("surviving streams");
         const liveChild = await (this.#db.engine_worker_has_live_child as PrepMethod).get<{ live: number }>({ worker_id: workerId });
-        if (liveChild !== undefined) pending.push("surviving worker runs");
+        if (liveChild !== undefined) pending.push("surviving workers");
         const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
         if (retrievals.length > 0) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
         // §send-undelivered-child-term — a worker that concluded DURING this turn's generation is no
@@ -847,7 +847,7 @@ export default class Dispatcher {
         // §wait-obligation-matrix — the WAIT: SEND[202], and the legacy SEND[102]<T> the terminal
         // redesign spelled the same park with, are one obligation-checked wait (waitpid). A live
         // obligation (a spawned child or open stream, J) BLOCKS the loop until it concludes and
-        // reawakens it (§run-lifecycle-child-wake); a wait on nothing (∅) is already satisfied and
+        // reawakens it (§worker-lifecycle-child-wake); a wait on nothing (∅) is already satisfied and
         // resolves like 200, so <-1>+∅ self-resolves rather than hang the agent; a pending own
         // retrieval (R) just lands next turn, so the wait continues.
         if (status === 202 || (status === 102 && statement.lineMarker !== null)) {
@@ -1078,7 +1078,7 @@ export default class Dispatcher {
         // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
         // the entry (/prompt/<run>/<loop>/<N>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
         // namespace: keep it in hostname. worker:// is the one registered EXCEPTION — its authority IS the
-        // run selector (§run-scheme), and worker://self must stay distinct from worker://name, so Run.ts
+        // run selector (§worker-scheme), and worker://self must stay distinct from worker://name, so Run.ts
         // folds the owner into the storage path itself, never here.
         const foldNs = scheme !== null && scheme !== "worker" && this.#schemes.has(scheme);
         return {

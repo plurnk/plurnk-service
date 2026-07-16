@@ -1,6 +1,6 @@
 // §exec-entry-sink (#340) — the executor's entry() materialization request: the consumer creates
 // the entry (upsert, tags UNIONED), and the AMBIENCE announces it — one EDIT row in the reserved
-// plurnk run's log (the fs-fiction pattern) that env-delta folds into every run's next packet.
+// plurnk worker's log (the fs-fiction pattern) that env-delta folds into every worker's next packet.
 // A stub runtime drives the REAL dispatch path; nothing is mocked below the executor.
 
 import test from "node:test";
@@ -71,7 +71,7 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
     return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
 };
 
-test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIONS tags) and the plurnk run narrates it", async () => {
+test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIONS tags) and the plurnk worker narrates it", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
@@ -89,10 +89,10 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         assert.equal(entry.scheme, "https");
         const tags = await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: entry.id });
         assert.deepEqual(tags.map((t) => t.tag).sort(), ["second_query", "turkeys_query"], "the upsert UNIONED the slug tags across both writes");
-        // The ambience: the reserved plurnk run carries ONE narration row per write (2 here), the
+        // The ambience: the reserved plurnk worker carries ONE narration row per write (2 here), the
         // fs-fiction shape — origin plurnk, source = the calling run, tokens on the meta line.
         const plurnkWorker = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
-        assert.ok(plurnkWorker !== undefined, "the reserved plurnk run exists");
+        assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists");
         const rows = await (db.test_log_entries_by_run_op as PrepMethod).all<{ pathname: string; source: string; tokens: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");

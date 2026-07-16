@@ -39,7 +39,7 @@ export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload)
 
 // Wake-on-completion (rummy parallel: stream/completed wake:true). When a
 // streaming-scheme subscription closes, schemes call this so the daemon
-// can open a fresh loop in the run if no loop is currently active —
+// can open a fresh loop in the worker if no loop is currently active —
 // otherwise the model would never learn that its long-running command
 // finished after it ended the calling loop. Daemon decides whether to
 // actually wake based on engine state; the scheme just announces.
@@ -59,11 +59,11 @@ export interface WakeWorkerPayload {
 
 export type WakeWorkerNotify = (payload: WakeWorkerPayload) => void;
 
-// Start/deliver-to a sister run — the worker:// op family's loop-start primitive
+// Start/deliver-to a sister worker — the worker:// op family's loop-start primitive
 // (spawn/fork/irc; SPEC §machine-processes, §actor-boundary-two-doors voice
 // door). The daemon wires this to Daemon.inject: an active sister folds the
 // prompt into its next turn; an idle sister enqueues a fresh loop and a drain
-// claims it. spawn/fork create/branch the run first, then call this to start
+// claims it. spawn/fork create/branch the worker first, then call this to start
 // it; irc calls it on an existing sister. Returns the delivery action + the
 // loop the prompt landed on. The daemon supplies provider + system prompt; the
 // caller (a scheme handler) carries neither.
@@ -71,7 +71,7 @@ export type InjectWorkerNotify = (args: {
     workspaceId: number;
     workerId: number;
     prompt: string;
-    // §run-delegation-inherits-flags — the SENDING loop's flags. Authority flows down the
+    // §worker-delegation-inherits-flags — the SENDING loop's flags. Authority flows down the
     // delegation edge: a spawned/forked child's live loop runs with its delegator's flags,
     // or a non-YOLO child's every side-effecting op proposes into a resolver-less void
     // (300s auto-cancel per attempt — the fan-out wedge). Resume-in-place ignores this
@@ -79,8 +79,8 @@ export type InjectWorkerNotify = (args: {
     flags?: LoopFlags;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number }>;
 
-// Abort a run's in-flight work by id — the worker:// op family's KILL primitive
-// (terminate). The daemon wires this to Daemon.cancelDrain: aborts the run's
+// Abort a worker's in-flight work by id — the worker:// op family's KILL primitive
+// (terminate). The daemon wires this to Daemon.cancelDrain: aborts the worker's
 // signal, so its active loop closes at 499 and any background streams tear down.
 // Sync; returns whether there was work. KILL routes through Dispatcher.#handleKill
 // (not a scheme handler), so this is an Engine field, never a ctx capability.
@@ -212,8 +212,8 @@ export default class ChannelWrite {
         return row ?? null;
     }
 
-    // The run's still-open subscriptions — the registry-routed reap
-    // (§run-lifecycle-total-reap). A cancel iterates these and aborts each via the
+    // The worker's still-open subscriptions — the registry-routed reap
+    // (§worker-lifecycle-total-reap). A cancel iterates these and aborts each via the
     // owning scheme, so a backgrounded exec is reaped regardless of in-process
     // AbortSignal-listener timing (R1): the registry is the source of truth, the
     // signal an optimization.
@@ -224,7 +224,7 @@ export default class ChannelWrite {
         return ChannelWrite.#openSubsForWorkerStmt(db).all<{ id: number; scheme: string }>({ worker_id: workerId });
     }
 
-    // The run's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the run's next pre-turn so a
+    // The worker's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the worker's next pre-turn so a
     // `<0>` stream never survives into the subsequent turn (§exec-poll). Any open turn-scoped sub at
     // pre-turn is necessarily from a prior turn (the reap runs before this turn's own spawns).
     static async findOpenTurnScopedSubscriptionsForWorker(

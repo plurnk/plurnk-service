@@ -29,7 +29,7 @@ import { seedDemoFixture } from "./_fixture.ts";
 // holds later turns ~3316t; with NO curation the log grows the packet past ~4200t over four turns. 3900
 // sits in that window — ~360t of curation headroom over the floor, well below the no-curation runaway.
 // Bump again when the sysprompt grows.
-// FLOOR-RELATIVE (see _floor-probe.ts): the run probes its fixture's true turn-1 floor and
+// FLOOR-RELATIVE (see _floor-probe.ts): the worker probes its fixture's true turn-1 floor and
 // pins ceiling = floor × GRIND_FACTOR — room to work, pressured within a few turns as the
 // log grows. NO_CURATION_FACTOR bounds the peak: staying under it proves the model folded
 // as it went rather than letting the log run away.

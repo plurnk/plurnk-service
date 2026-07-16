@@ -1,6 +1,6 @@
 // THE go-live smoke (plurnk-agui#2): the in-process transport module, activated
 // through the daemon's boot plug-point (registerModule → the CoreSeam handle), drives
-// a REAL model run through the AG-UI+ single interface — no WebSocket, no bridge
+// a REAL model worker through the AG-UI+ single interface — no WebSocket, no bridge
 // process, no DaemonClient. Gated on a configured model (~/.plurnk/.env via the env
 // the runner loads); skips clean when absent.
 
@@ -70,14 +70,14 @@ test("[§agui-daemon-client][§agui-run-endpoint][§agui-thread-is-run] in-proce
         }
 
         const types = events.map((e) => e.type);
-        assert.equal(types[0], "RUN_STARTED", "the run opens");
+        assert.equal(types[0], "RUN_STARTED", "the worker opens");
         assert.equal(types[1], "STATE_SNAPSHOT", "reads ride STATE on connect (AG-UI+)");
         const snap = events[1] as { snapshot: { plurnk: { providers: Array<{ active: boolean }> } } };
         assert.ok(snap.snapshot.plurnk.providers.some((p) => p.active), "the active provider is in STATE");
         assert.ok(types.includes("TEXT_MESSAGE_CONTENT"), "the model's reply rendered as assistant speech");
         const speech = events.filter((e) => e.type === "TEXT_MESSAGE_CONTENT").map((e) => (e as { delta: string }).delta).join("");
         assert.match(speech, /pong/i, "the reply answers the prompt");
-        assert.equal(types[types.length - 1], "RUN_FINISHED", "the run closes clean");
+        assert.equal(types[types.length - 1], "RUN_FINISHED", "the worker closes clean");
     } finally {
         await (module as Module | null)?.close();
         await daemon.stop();

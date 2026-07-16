@@ -151,12 +151,12 @@ test("mobile emulation: unset MOBILE crashes naming the var (floor-set knob, no 
     }
 });
 
-test("per-run context: reused across renders, dropped by closeContext", async () => {
+test("per-worker context: reused across renders, dropped by closeContext", async () => {
     const { engine, calls } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
     await browser.render("https://example.com/a", { workerId: 7 });
     await browser.render("https://example.com/b", { workerId: 7 });
-    assert.equal(calls.newContext, 1); // one context for the run, two pages
+    assert.equal(calls.newContext, 1); // one context for the worker, two pages
     assert.equal(calls.newPage, 2);
     browser.closeContext(7);
     assert.equal(calls.contextClose, 1);

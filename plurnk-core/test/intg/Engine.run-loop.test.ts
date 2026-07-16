@@ -142,7 +142,7 @@ test("[§send-idle-turn] Engine.runLoop: idle turn (102, no work op) steers and 
 test("[§send-premature-terminate] Engine.runLoop: premature terminate (200 over a live stream) downgrades to a continue + steers", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Seed a live stream the run holds: an open subscription (closed_at NULL) against a real entry.
+        // Seed a live stream the worker holds: an open subscription (closed_at NULL) against a real entry.
         const entryId = await seedEntryWithChannel(db, { workspaceId, pathname: "/live-stream" });
         await (db.open_subscription as PrepMethod).get<{ id: number }>({ worker_id: workerId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [

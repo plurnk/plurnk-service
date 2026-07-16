@@ -15,7 +15,7 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 The EXEC target slot is the database file; with no target it defaults to an ephemeral in-memory db:
 
 ```
-<<EXEC[sqlite]:SELECT * FROM users:EXEC            → :memory: (fresh per run)
+<<EXEC[sqlite]:SELECT * FROM users:EXEC            → :memory: (fresh per worker)
 <<EXEC[sqlite](./app.db):SELECT * FROM users:EXEC  → ./app.db (persistent)
 ```
 

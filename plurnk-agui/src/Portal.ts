@@ -1,5 +1,5 @@
 // The in-process module's orchestration engine (plurnk-agui#2). Composes the seam +
-// the render router + the HITL core into the run flow: subscribe ONCE to the event
+// the render router + the HITL core into the worker flow: subscribe ONCE to the event
 // source, fan each event to the bound thread for its workspace, drive/cancel loops via
 // the seam, and route a resume tool-result to resolveProposal. Transport-agnostic —
 // the HTTP/SSE listener (the outward edge) and workspace establishment (workspace-lifecycle
@@ -66,7 +66,7 @@ export default class Portal {
     // sees RUN_FINISHED / RUN_ERROR (the router's terminal projection) — the engine
     // just fans; the edge owns the socket lifecycle. `workerId` is the DRIVE run (the
     // client envelope's); `modelWorkerId` binds the render (null → the router lazily
-    // adopts the first model-origin row's run — a fresh workspace's model run is born
+    // adopts the first model-origin row's run — a fresh workspace's model worker is born
     // at the drain).
     openThread(args: { workspaceId: number; workerId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string }): unknown {
         const router = new EventRouter({ threadId: args.threadId, workerId: String(args.workerId), modelWorkerId: args.modelWorkerId ?? null, workspaceId: args.workspaceId });
@@ -103,6 +103,6 @@ export default class Portal {
 
     cancel(workerId: number): boolean { return this.#seam.cancelDrain(workerId); }
 
-    // A resume run's tool-result → resolveProposal (true if it resolved a proposal).
+    // A resume worker's tool-result → resolveProposal (true if it resolved a proposal).
     resolve(message: ToolResultMessage): boolean { return this.#hitl.resolve(message); }
 }

@@ -9,7 +9,7 @@
 import type { AguiEvent, ProposalNotification } from "./types.ts";
 
 // ── §1 — stop-the-world → tool-call ──────────────────────────────────
-// toolCallId correlates the TERMINATING run's TOOL_CALL with the RESUME run's
+// toolCallId correlates the TERMINATING worker's TOOL_CALL with the RESUME worker's
 // tool-result → the exact pending proposal. Encodes the logEntryId: `prop:<id>`.
 export const proposalToolCallId = (logEntryId: number): string => `prop:${logEntryId}`;
 export const logEntryIdFromToolCallId = (toolCallId: string): number | null => {
@@ -24,7 +24,7 @@ export const logEntryIdFromToolCallId = (toolCallId: string): number | null => {
 // generic names carry no plurnk vocabulary upward.
 export const proposalToolName = (op: string): string => (op === "SEND" ? "request_user_input" : "request_approval");
 
-// The run's tail when it hits a pause: the tool-call, then the CALLER emits
+// The worker's tail when it hits a pause: the tool-call, then the CALLER emits
 // RUN_FINISHED to terminate. The loop stays paused in-engine — untouched.
 export const proposalToolCall = (p: ProposalNotification): AguiEvent[] => {
     const toolCallId = proposalToolCallId(p.logEntryId);
@@ -35,7 +35,7 @@ export const proposalToolCall = (p: ProposalNotification): AguiEvent[] => {
     ];
 };
 
-// The inverse — a resume run's tool-result → resolveProposal args, or null if the
+// The inverse — a resume worker's tool-result → resolveProposal args, or null if the
 // message isn't a plurnk proposal tool-result. `content` is the decision JSON
 // ({decision, body?}); a bare "accept"/"reject"/"cancel" string is tolerated.
 export interface ToolResultMessage { toolCallId?: string; content?: string; role?: string }
@@ -72,7 +72,7 @@ export const stateDelta = (patches: Array<{ op: string; path: string; value?: un
 
 // ── §3 — management actions: forwardedProps in, CUSTOM out ────────────
 // Reads are STATE (§2); ACTIONS are verbs (rename, set-root, constrain, exec, fork,
-// …), so they ride a run envelope. A family client requests one via
+// …), so they ride a worker envelope. A family client requests one via
 // forwardedProps.plurnk.action; the module executes it through the seam and returns
 // the outcome as a CUSTOM event. AG-UI has no vocabulary for plurnk workspace ops,
 // so this is a legitimate Tier-2 metadata extension (the standard's own

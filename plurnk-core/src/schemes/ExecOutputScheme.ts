@@ -11,7 +11,7 @@ import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
 // read PRIOR output, scoped to the tag's stored entries via the executor's OWN
 // manifest (name = the tag) — fixing the latent mis-scope where the shared `exec`
 // handler read under scheme="exec" while output persists under scheme=<tag>. The
-// face never executes (the run stays on EXEC); process-KILL by coordinate and the
+// face never executes (the worker stays on EXEC); process-KILL by coordinate and the
 // COPY/MOVE source-read are the only cross-cutting bits — KILL delegates to the one
 // Exec handler that owns the spawn-abort state, the source-read is tag-scoped here.
 // Every tag — sh, search, sqlite, MCP — reads through this one uniform path; an executor

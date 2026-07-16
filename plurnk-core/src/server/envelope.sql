@@ -14,15 +14,15 @@ SELECT id, name, project_root FROM workspaces WHERE id = $id;
 SELECT id FROM workspaces WHERE name = $name;
 
 -- PREP: envelope_set_workspace_name
--- Used by workspace.rename. The workspace name is a MUTABLE handle (vs a run's
+-- Used by workspace.rename. The workspace name is a MUTABLE handle (vs a worker's
 -- immutable name, §machine-processes). Returns the updated row to refresh the
 -- caller's ClientEnvelope copy.
 UPDATE workspaces SET name = $name WHERE id = $id
 RETURNING id, name;
 
 -- PREP: envelope_insert_worker
--- origin is the run's actor (§machine-processes): 'model' (the conversation),
--- 'client' (a connection's own run), or 'plurnk' (the runtime self-hosting run).
+-- origin is the worker's actor (§machine-processes): 'model' (the conversation),
+-- 'client' (a connection's own worker), or 'plurnk' (the runtime self-hosting worker).
 INSERT INTO workers (workspace_id, name, origin)
 VALUES ($workspace_id, $name, $origin)
 RETURNING id, name, origin;
@@ -40,8 +40,8 @@ WHERE workspace_id = $workspace_id
 ORDER BY created_at DESC;
 
 -- PREP: envelope_list_workspace_prompts
--- #238 — a workspace's user prompts for client up/down history: the conversation run's
--- non-empty loop seeds, newest-first, capped. The conversation run is origin='model' +
+-- #238 — a workspace's user prompts for client up/down history: the conversation worker's
+-- non-empty loop seeds, newest-first, capped. The conversation worker is origin='model' +
 -- parentless; spawned/forked worker:// sub-runs (parent_worker_id set) are excluded — their
 -- seed prompts are not user input.
 SELECT l.prompt
@@ -55,7 +55,7 @@ ORDER BY l.id DESC
 LIMIT $limit;
 
 -- PREP: envelope_insert_client_loop
--- sequence is auto-computed: 1 + max(existing sequence in this run) so
+-- sequence is auto-computed: 1 + max(existing sequence in this worker) so
 -- multiple client connections attaching to the same run get distinct loops.
 INSERT INTO loops (worker_id, sequence, status, prompt)
 VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '')

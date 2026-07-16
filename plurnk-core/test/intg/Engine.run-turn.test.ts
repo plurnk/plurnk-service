@@ -182,7 +182,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
 });
 
 test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
-    // Turn-as-container model, 1-based. The run's first turn opens with sequence=1
+    // Turn-as-container model, 1-based. The worker's first turn opens with sequence=1
     // reserved for the turn-0 `model` exemplar (§model-entry), the prompt EDIT at 2,
     // its auto-READ at 3 (§prompt-auto-read), then the 3 model ops and the terminal
     // SEND on the running counter.

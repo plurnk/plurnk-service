@@ -154,7 +154,7 @@ EDIT line-marker semantics (single source of authority):
 | FOLD | status; list of log items folded |
 | SEND | status; recipient ack if applicable |
 | EXEC | output stream channels (`#stdout`, `#stderr`), arriving on later turns |
-| WORK | spawn ack; the worker runs concurrently and its deliverable arrives as a log delta on conclusion |
+| WORK | spawn ack; the workers concurrently and its deliverable arrives as a log delta on conclusion |
 | FORK | spawn ack; the branch runs concurrently, inheriting the parent's context |
 | KILL | status; killed path |
 | PLAN | status; logged |

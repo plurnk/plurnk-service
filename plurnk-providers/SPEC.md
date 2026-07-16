@@ -75,7 +75,7 @@ interface Provider {
     // only (§8). For a PROXY consumer forwarding its own
     // caller's sampling knobs (the plurnk endpoint fronting gemma/Fireworks); a
     // direct consumer leaves it unset.
-    // `strikes` is the run's CURRENT rail-strike streak at time-of-generate
+    // `strikes` is the worker's CURRENT rail-strike streak at time-of-generate
     // (0 = clean, distinct from absent = unreported; contract plurnk-service#313).
     // Forwarded as `Plurnk-Strikes` ONLY under the firstPartyMetadata gate,
     // dropped everywhere else. Headers only — never placed in the packet.
@@ -124,7 +124,7 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
 - `generate` **returns for every completed exchange — bytes always present, the conformance verdict attached as an observation.** When a grammar was transported (or validated in filter mode), the returned `content` is checked against it; a non-accept verdict rides `response.telemetry` as a `grammar_unenforced` event (message + divergence `position`) and the response returns normally. The provider transports and observes; it never adjudicates — discard, retry, escalate, or feed-back is consumer policy. This is a grammar-**conformance** check against the grammar the provider already holds — *not* a plurnk-DSL parse (that stays consumer-side, below) — so it remains backend- and DSL-agnostic. `ProviderError` remains reserved for exchanges that did NOT complete (transport failure, abort, boundary violations).
-- **Backend affinity is the provider's internal guarantee, keyed by `workerId`.** The consumer says *which run this is*, never *which backend resource serves it* — raw resource identifiers (slot integers, connections) never cross the contract in either direction. On slot-pinning backends (llama-server `--parallel N>1`), the provider keeps each run sticky to one slot and spreads distinct runs across slots, so each concurrent run keeps its KV-cache prefix warm (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Backends without affinity semantics ignore `workerId` entirely.
+- **Backend affinity is the provider's internal guarantee, keyed by `workerId`.** The consumer says *which run this is*, never *which backend resource serves it* — raw resource identifiers (slot integers, connections) never cross the contract in either direction. On slot-pinning backends (llama-server `--parallel N>1`), the provider keeps each worker sticky to one slot and spreads distinct runs across slots, so each concurrent run keeps its KV-cache prefix warm (un-pinned routing is the server's similarity heuristic — slot hops re-pay full prefills). Backends without affinity semantics ignore `workerId` entirely.
 
 ## §3 `fromEnv(env, model, options?)` factory
 
@@ -207,8 +207,8 @@ The framework is **contract-only** -- it does **not** depend on its daughters. F
 ## §6 Engine → provider guarantees (consumer side)
 
 - `messages` is a complete prompt. Consumer has pre-assembled all sections. Provider does not add, reorder, or inject turns — the wire `messages` are exactly what the consumer passed. (The provider injects no `PLAN` turn — `PLAN` is part of the consumer's grammar contract, §4.)
-- Every `generate` carries `workerId` — the run's stable, opaque identity. Same run → same string across its turns; distinct runs → distinct strings.
-- `signal` is wired to the run's AbortController.
+- Every `generate` carries `workerId` — the worker's stable, opaque identity. Same run → same string across its turns; distinct runs → distinct strings.
+- `signal` is wired to the worker's AbortController.
 - `generate` is single-call per turn. No parallel calls on the same instance.
 - `assistantRaw` is opaque to the consumer (forensics-only).
 - `meta` is the per-turn provider→client metadata bag: the backend's **non-standard top-level response fields passed through verbatim** (every provider), PLUS **validated known keys** the framework holds a contract for — currently `balancePico` (a finite pico-USD number normalized from the plurnk endpoint's balance field, renamed off its raw key; dropped if non-numeric). Absent when the backend reported no extras. The consumer (service) merges `meta` into its Turn metadata and filters what reaches the client; it reads `meta`, never mines `assistantRaw` (#23).
@@ -303,7 +303,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
   });
   ```
 
-  The `openai` standard provider sets `grammarStyle: "llamacpp"`, `supportsSlotPinning`, and `slotCount` from the same llama-server fingerprint (`/v1/models` `meta` block + `/props`). The run→slot mapping lives inside `OpenAICompatProvider`: sticky per `workerId`, round-robin across new runs, LRU-bounded.
+  The `openai` standard provider sets `grammarStyle: "llamacpp"`, `supportsSlotPinning`, and `slotCount` from the same llama-server fingerprint (`/v1/models` `meta` block + `/props`). The worker→slot mapping lives inside `OpenAICompatProvider`: sticky per `workerId`, round-robin across new runs, LRU-bounded.
 
 - **`chatCompletionStream` / `chatCompletion` / `OpenAiHttpError` / `StreamResponse`** — the shared HTTP client (`chatCompletionStream` for SSE, `chatCompletion` for the non-streamed JSON the `streaming: false` path uses). One shared copy.
 - **`normalizeUsage(raw, reasoningText?, contentText?)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles all three reasoning-reporting conventions; the optional text args feed the Fireworks re-split, #425) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.

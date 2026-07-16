@@ -405,7 +405,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     if (staleTokenizer !== undefined && staleTokenizer.length > 0) {
         throw new Error(`${name} provider: ${spec.tokenizerEnvVar} was removed — exact counting moved to the @plurnk/plurnk-mimetypes tokenizer seam (mimetypes#44) and Provider.tokenize(); unset the var (countTokens is a chars/2 upper bound)`);
     }
-    // Once per process per (code, message) — #40: construction-per-run daemons
+    // Once per process per (code, message) — #40: construction-per-worker daemons
     // repeated this until operators tuned warnings out.
     emitWarningOnce(
         `${name} provider: countTokens is a chars/2 upper bound — exact counts come from the mimetypes tokenizer seam or tokenize()`,

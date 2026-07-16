@@ -27,7 +27,7 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
     try {
         const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "what do I have?"); // run's first loop → foist fires (#269)
+        const loopId = await insertLoop(db, workerId, 1, "what do I have?"); // worker's first loop → foist fires (#269)
         await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -122,13 +122,13 @@ test("[§policy-sections] assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVI
     }
 });
 
-test("[§child-orientation] the live things a run holds — child runs — surface as terse pointers in the system slot", async () => {
+test("[§child-orientation] the live things a worker holds — child workers — surface as terse pointers in the system slot", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        // A live child run this run holds (parent_worker_id = workerId; insertLoop's default status 102 = live).
+        // A live child worker this worker holds (parent_worker_id = workerId; insertLoop's default status 102 = live).
         const child = await insertWorker(db, workspaceId, workerId, "worker-x");
         await insertLoop(db, child, 1, "working");
 
@@ -138,11 +138,11 @@ test("[§child-orientation] the live things a run holds — child runs — surfa
         const packet = await getPacket(db, result.turnId);
 
         // The live child surfaces as a terse `* <status> worker://<name>` pointer — orienting state, not advice.
-        assert.match(packetSection(packet, "child-runs"), /^\* 102 worker:\/\/worker-x$/m, "the live child run is a status+path pointer the model READs/KILLs itself");
+        assert.match(packetSection(packet, "child-workers"), /^\* 102 worker:\/\/worker-x$/m, "the live child worker is a status+path pointer the model READs/KILLs itself");
         // Framework status, NOT an injection surface — rides the system slot, above budget-the-law.
         const sys = packet.sections.filter((x) => x.slot === "system").map((x) => x.name);
-        assert.ok(sys.includes("child-runs"), "child-runs rides the system slot");
-        assert.ok(sys.indexOf("child-runs") < sys.indexOf("budget"), "child-runs sits in the volatile-status tail above budget-the-law");
+        assert.ok(sys.includes("child-workers"), "child-runs rides the system slot");
+        assert.ok(sys.indexOf("child-workers") < sys.indexOf("budget"), "child-runs sits in the volatile-status tail above budget-the-law");
     } finally { await db.close(); }
 });
 
@@ -158,7 +158,7 @@ test("[§child-orientation] no live children or streams → the orientation sect
         // Empty content ⇒ the section renders to nothing (renderSlot drops zero-length sections), so the
         // model never sees a bare header — same as the errors section when there are no errors.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "child-runs"), "", "no live child runs → child-runs renders nothing");
+        assert.equal(packetSection(packet, "child-workers"), "", "no live child workers → child-runs renders nothing");
         assert.equal(packetSection(packet, "child-streams"), "", "no open streams → child-streams renders nothing");
     } finally { await db.close(); }
 });

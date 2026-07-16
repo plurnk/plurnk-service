@@ -48,7 +48,7 @@ export type { ProposalDecision, ProposalResolution, ProposalPendingEvent } from 
 
 const DEFAULT_MAX_STRIKES = 3;
 
-// The foisted prompt EDIT/READ target — run-qualified storage (§prompt-auto-read, #382 fault-1)
+// The foisted prompt EDIT/READ target — worker-qualified storage (§prompt-auto-read, #382 fault-1)
 // rendered in the plurnk:// authority form (hostname carries the namespace, plurnk-uri folds it
 // back into the storage key on dispatch).
 const promptTarget = (workerId: number, loopSeq: number, turnSeq: number): UrlPath => {
@@ -429,7 +429,7 @@ export default class Engine {
             if (row.status === 100) {
                 // NOT a terminal — a wake re-queued this loop while its own live drain was
                 // between turns (a child concluded in the gap between our 202 write and this
-                // check, §run-lifecycle-wake-requeue-not-terminal). The wake's intent is KEEP
+                // check, §worker-lifecycle-wake-requeue-not-terminal). The wake's intent is KEEP
                 // RUNNING: re-claim atomically and continue — the injected prompt is already
                 // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
                 // as loop/terminated {finalStatus: 100} — the delegation-flags flake.
@@ -560,8 +560,8 @@ export default class Engine {
         // writes consume low indices; model ops continue from there.
         const seqRow = await (this.#db.engine_next_turn_sequence as PrepMethod).get<{ next: number }>({ loop_id: loopId });
         const seq = (seqRow as { next: number }).next;
-        // #269 — loops.sequence is the loop's ordinal WITHIN the run. Turn-0 foists that belong to the
-        // RUN (manifest preview, AGENTS, operator docs) gate on the run's FIRST loop, not every loop's
+        // #269 — loops.sequence is the loop's ordinal WITHIN the worker. Turn-0 foists that belong to the
+        // RUN (manifest preview, AGENTS, operator docs) gate on the worker's FIRST loop, not every loop's
         // first turn; per-loop foists (the prompt, @file) still fire each loop. Read once, turn-1 only.
         const loopRow = seq === 1
             ? await (this.#db.engine_get_loop_prompt as PrepMethod).get<{ prompt: string; sequence: number }>({ loop_id: loopId })
@@ -585,7 +585,7 @@ export default class Engine {
         // from sequence=2 onward on prompt-foisted turns; 1 onward
         // otherwise.
         let nextActionIndex = 1;
-        // §model-entry — the run's first turn opens with the model's own turn-0, mirrored OPEN: a
+        // §model-entry — the worker's first turn opens with the model's own turn-0, mirrored OPEN: a
         // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND[102]. Built
         // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
         // written at sequence 1, so it reads first as the emission with the foisted results following.
@@ -593,14 +593,14 @@ export default class Engine {
         if (seq === 1) {
             if (runFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
             // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, §actor-boundary-doc-injection). The docs were materialized
-            // as plurnk:///<entry> entries by the plurnk run (loop_run, via the
+            // as plurnk:///<entry> entries by the plurnk worker (loop_run, via the
             // §actor-boundary keystone); foist a READ of each into THIS turn-0 so the model
             // reads them inline. It sees only the READ — the materializing EDIT
-            // lives in the plurnk run's log, never the model's.
+            // lives in the plurnk worker's log, never the model's.
             // #231 — env docs (PLURNK_SERVICE_MD_*) UNION the workspace's client docs; foist a READ of
             // each materialized plurnk:///<alias>.md (loop_run materialized the same set).
             const { mdDocs } = await WorkspaceSettings.read(this.#db, workspaceId);
-            // #269 — operator docs are run-once; foist them only on the run's first loop.
+            // #269 — operator docs are run-once; foist them only on the worker's first loop.
             for (const doc of runFirstLoop ? await WorkspaceSettings.resolveDocs(mdDocs) : []) {
                 const docTarget: UrlPath = {
                     kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk",
@@ -683,7 +683,7 @@ export default class Engine {
         // every entry's deep channels (symbols/refs/embeddings/FTS, deep_hash-gated) so the
         // catalog and FIND read current data. NOT an action: no log entry, no sequence slot,
         // not dispatched. There is no plurnk:///manifest.json entry — the catalog is served
-        // on demand by FIND(scheme:///**), foisted into the run's first turn below.
+        // on demand by FIND(scheme:///**), foisted into the worker's first turn below.
         // #312 — the turn's token gauge: the ACTIVE provider's tokenizer identity + exact counter
         // (mimetypes seam; provider upper bound surfaced as tokenizer_unavailable when inexact).
         // Threaded per turn — never engine state — so concurrent loops on different providers
@@ -712,7 +712,7 @@ export default class Engine {
         this.#queueDerivation(() => EntryManifest.maintainDerivations(systemCtx)); // §derivation-off-hot-path — the turn proceeds; ~queries warm their own slice
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, §actor-boundary-catalog-preview):
-        // one FIND(scheme:///**) per scheme that holds entries, foisted into the run's first
+        // one FIND(scheme:///**) per scheme that holds entries, foisted into the worker's first
         // model turn so it opens with its catalog (the per-scheme arrays that replaced the
         // single manifest.json). -1 → each scheme's whole catalog; N → its first N rows
         // (clamped to the scheme's count so FIND's strict <L> never 416s); off by default.
@@ -773,10 +773,10 @@ export default class Engine {
                     // own survey, mirrored OPEN). The <L> cap rides as `<1,N>`, exactly as the model would type it.
                     turnZeroMoves.push(`<<FIND(${isPlurnk ? "plurnk://docs/**" : isFile ? "**" : `${schemeName}:///**`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
-                // §run-scheme — Manifest(run) = workspace-scope ∪ THIS run's run-scope. Foist the
-                // building run's OWN scratch (worker://self/**, uncapped — a run needs the full view to
+                // §worker-scheme — Manifest(run) = workspace-scope ∪ THIS worker's worker-scope. Foist the
+                // building worker's OWN scratch (worker://self/**, uncapped — a worker needs the full view to
                 // manage its private workspace) so it's catalogued in ITS perspective alone; other
-                // runs reach it only via explicit FIND(worker://<name>/**). A run with no scratch foists nothing.
+                // runs reach it only via explicit FIND(worker://<name>/**). A worker with no scratch foists nothing.
                 const selfWorker = await (this.#db.worker_name_by_id as PrepMethod).get<{ name: string }>({ worker_id: workerId });
                 const scratch = selfWorker === undefined ? 0 : (await (this.#db.engine_worker_scratch_count as PrepMethod).get<{ entries: number }>({ workspace_id: workspaceId, owner_prefix: `/${selfWorker.name}/*` }))?.entries ?? 0;
                 if (scratch > 0) {
@@ -787,7 +787,7 @@ export default class Engine {
                     };
                     await this.dispatch({ statement: runFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                     nextActionIndex++;
-                    turnZeroMoves.push("<<FIND(worker://self/**)::FIND");  // §model-entry — the run-scope survey, into the turn-0 echo
+                    turnZeroMoves.push("<<FIND(worker://self/**)::FIND");  // §model-entry — the worker-scope survey, into the turn-0 echo
                 }
             }
             // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
@@ -821,12 +821,12 @@ export default class Engine {
             }
         }
 
-        // §env-delta — pre-seed the run's ambient observations (what changed since
+        // §env-delta — pre-seed the worker's ambient observations (what changed since
         // it last looked) as foisted rows before the packet composes; advance the action index
         // past them so model ops continue after. Two instances of one machine: env-delta (sibling
         // edits · timestamp cursor · always folded) and exec streams (channel bytes · byte cursor ·
         // terminal delta opens). §env-delta §exec-stream
-        // §exec-poll — EXEC `<0>` is turn-scoped: reap the run's open turn-scoped streams (necessarily
+        // §exec-poll — EXEC `<0>` is turn-scoped: reap the worker's open turn-scoped streams (necessarily
         // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
         // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
@@ -839,7 +839,7 @@ export default class Engine {
         const gitStatus = await GitState.status(this.#db, workspaceId, this.#loopAborts.get(loopId)?.signal);
 
         // Build the spec'd packet (Packet.json) request half. The log build
-        // queries log_entries scoped to the run — the prompt entry just
+        // queries log_entries scoped to the worker — the prompt entry just
         // written (if turn 1) is part of that query result.
         let requestPacket = await this.#packets.buildRequestPacket({
             initialMessages: messages, requirements, workspaceId, workerId, loopId,
@@ -1288,9 +1288,9 @@ export default class Engine {
     }
 
     // §env-delta (§actor-boundary-no-mutex: runs share without locks; a conflict surfaces as a delta, never prevented) — at pre-turn build, surface what changed in the shared world since this
-    // run last looked. No per-run snapshot (§machine-processes "a run is its log"): every
+    // run last looked. No per-worker snapshot (§machine-processes "a worker is its log"): every
     // edit is already a span-carrying log row, so PULL other actors' EDITs on shared
-    // entries since this run's prior turn — real cross-run edits and the plurnk run's
+    // entries since this worker's prior turn — real cross-worker edits and the plurnk worker's
     // fs-sync fictions — and materialize each as a FOLDED delta reusing the row's span +
     // cause. Returns the count so the caller advances nextActionIndex past the deltas.
     async #materializeEnvironmentDeltas(args: {
@@ -1305,7 +1305,7 @@ export default class Engine {
         }>({ workspace_id: workspaceId, worker_id: workerId, since });
         let written = 0;
         for (const r of rows) {
-            // source: the originating run (a real cross-run edit) or 'file' (an fs fiction);
+            // source: the originating run (a real cross-worker edit) or 'file' (an fs fiction);
             // rx reuses the originating row's result span — the edit as it looked then.
             await (this.#db.engine_insert_env_delta as PrepMethod).run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
@@ -1313,7 +1313,7 @@ export default class Engine {
             });
             written++;
         }
-        // §run-scheme — loop-terminations: a sibling's loop reaching terminal surfaces the
+        // §worker-scheme — loop-terminations: a sibling's loop reaching terminal surfaces the
         // same way an entry-change does, carrying its deliverable (the SEND body) or the
         // abandonment reason. Folded, attributed to the terminated run.
         const terms = await (this.#db.engine_pull_loop_terminations as PrepMethod).all<{
@@ -1331,7 +1331,7 @@ export default class Engine {
         return written;
     }
 
-    // §exec-poll — EXEC `<0>` is turn-scoped: abort the run's open turn-scoped streams via their
+    // §exec-poll — EXEC `<0>` is turn-scoped: abort the worker's open turn-scoped streams via their
     // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn
     // before the turn's own spawns, so every open turn-scoped sub here is from a prior turn — it
     // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its
@@ -1399,17 +1399,17 @@ export default class Engine {
     }
 
     // §env-delta — the filesystem as an actor. Ambient disk divergences detected at
-    // pre-turn (git membership re-read) are logged as the plurnk run's source=file EDIT
+    // pre-turn (git membership re-read) are logged as the plurnk worker's source=file EDIT
     // "fictions": no op happened, but EDIT is the only grammar the model has for "your
     // world changed," so the fiction keeps its perspective aligned with what its tooling
-    // would show. The fiction lives in the plurnk run's log; every other run pulls it
+    // would show. The fiction lives in the plurnk worker's log; every other run pulls it
     // through the one delta path, exactly like a sibling's real edit.
-    // §membership-emi-divergence-signal — disk divergences logged as the plurnk run's source=file EDIT fictions
+    // §membership-emi-divergence-signal — disk divergences logged as the plurnk worker's source=file EDIT fictions
     async #logFsFictions(workspaceId: number, divergences: FsDivergence[]): Promise<void> {
         if (divergences.length === 0) return;
         const run = await (this.#db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" })
             ?? await (this.#db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
-        if (run === undefined) throw new Error("logFsFictions: plurnk run resolution returned no row");
+        if (run === undefined) throw new Error("logFsFictions: plurnk worker resolution returned no row");
         const loop = await (this.#db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ worker_id: run.id });
         if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");
         const seq = await (this.#db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: loop.id });
@@ -1499,13 +1499,13 @@ export default class Engine {
         await this.#queueDerivation(() => EntryManifest.maintainDerivations(ctx)); // §derivation-off-hot-path
     }
 
-    // Inject a prompt into the run's currently-executing loop. Writes a
+    // Inject a prompt into the worker's currently-executing loop. Writes a
     // plurnk://prompt/<run>/<loop>/<next-turn> entry whose body becomes the
     // prompt section at the next turn boundary. Last-wins: if two
     // injects target the same next-turn slot, the second overwrites the
     // first.
     //
-    // Returns null when no loop in the run is currently active (status=102).
+    // Returns null when no loop in the worker is currently active (status=102).
     // The daemon-side inject path then enqueues a fresh loop with this
     // prompt; engine doesn't open loops itself.
     //
@@ -1521,7 +1521,7 @@ export default class Engine {
         const turnSeq = turnRow?.next ?? 1;
         const workspaceRow = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: workerId });
         if (workspaceRow === undefined) throw new Error(`Engine.inject: run ${workerId} not found`);
-        const pathname = promptPathname(workerId, loopRow.sequence, turnSeq); // canonical storage form, run-qualified loop-SEQ coordinates matching the turn-1 foist
+        const pathname = promptPathname(workerId, loopRow.sequence, turnSeq); // canonical storage form, worker-qualified loop-SEQ coordinates matching the turn-1 foist
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
@@ -1542,13 +1542,13 @@ export default class Engine {
 
     //  — can this op open a wake edge mid-turn? The grounding scan for a
     // same-turn spawn-then-hibernate: an EXEC (stream conclusion / poll cadence wakes), a COPY to
-    // worker:// (child-conclusion wake, §run-lifecycle-child-wake), a directed SEND to worker:// (irc — the
+    // worker:// (child-conclusion wake, §worker-lifecycle-child-wake), a directed SEND to worker:// (irc — the
     // addressee can act and conclude back), or an http READ (a web fetch streams into a subscription).
     // Conservative on purpose: a false PERMIT risks a dead park only in the spawn-failed corner; a
     // false REFUSE breaks legitimate hibernation.
 
-    // A run "holds a live thing" iff it has an open stream/spawn (subscription registry or an
-    // exec spawn) OR a non-terminal child run — the structured-concurrency invariant a terminal
+    // A worker "holds a live thing" iff it has an open stream/spawn (subscription registry or an
+    // exec spawn) OR a non-terminal child worker — the structured-concurrency invariant a terminal
     // SEND must respect (§send-premature-terminate,  §run-lifecycle:
-    // children and streams are the same kind of live thing a run holds).
+    // children and streams are the same kind of live thing a worker holds).
 }

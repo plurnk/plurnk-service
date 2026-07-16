@@ -1,5 +1,5 @@
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
-// notification in, zero-or-more AG-UI events out, with per-run turn tracking as the only state.
+// notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping (§agui-projection):
 //   log/entry op=PLAN  (model)  → REASONING_MESSAGE triple (the model's stated intent)
 //   log/entry op=SEND  (model)  → TEXT_MESSAGE triple (assistant speech; the signal rides plurnk.send)
@@ -40,14 +40,14 @@ export default class Translator {
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
-        // §agui-topology-scope — the workspace broadcast carries EVERY run's rows (workers, the
-        // plurnk run, siblings); only the THREAD's model run projects onto the core vocabulary.
+        // §agui-topology-scope — the workspace broadcast carries EVERY worker's rows (workers, the
+        // plurnk worker, siblings); only the THREAD's model worker projects onto the core vocabulary.
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
         // never interleaved into the conversation a generic frontend renders.
         const workerId = (e as { worker_id?: number }).worker_id;
-        // Lazy binding: workspace.create returns the CLIENT run's id — the model run is born at
-        // loop.run's drain, so a fresh thread adopts its FIRST model-origin row's run as the
-        // model run (workers spawn FROM it later; reattach seeds it from workspace.workers instead).
+        // Lazy binding: workspace.create returns the CLIENT worker's id — the model worker is born at
+        // loop.worker's drain, so a fresh thread adopts its FIRST model-origin row's run as the
+        // model worker (workers spawn FROM it later; reattach seeds it from workspace.workers instead).
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // §agui-row-channel — the FULL wire row rides plurnk.row alongside the core projection:

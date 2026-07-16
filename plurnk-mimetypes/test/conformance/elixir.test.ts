@@ -41,7 +41,7 @@ describe("conformance: text/x-elixir defs + refs (issues #19/#20)", () => {
                 // sibling def — the service's (container, name) edge.
                 { refName: "tokenize", container: "Reporting.Parser.parse" },
                 // Helper.run(h) joins to def run in the local Helper module.
-                { refName: "run", container: "Reporting.Parser.parse" },
+                { refName: "worker", container: "Reporting.Parser.parse" },
                 // %Helper{} struct literal joins to the local Helper module.
                 { refName: "Helper", container: "Reporting.Parser.parse" },
             ],
@@ -55,7 +55,7 @@ describe("conformance: text/x-elixir defs + refs (issues #19/#20)", () => {
                 { name: "Logger", kind: "import", line: 5, container: "Reporting.Parser" },
                 { name: "Helper", kind: "instantiate", line: 8, container: "Reporting.Parser.parse" },
                 // Remote dot call captures the function identifier.
-                { name: "run", kind: "call", line: 9, container: "Reporting.Parser.parse" },
+                { name: "worker", kind: "call", line: 9, container: "Reporting.Parser.parse" },
                 { name: "tokenize", kind: "call", line: 10, container: "Reporting.Parser.parse" },
                 { name: "info", kind: "call", line: 11, container: "Reporting.Parser.parse" },
                 // Guard call right of `when` in the def header.

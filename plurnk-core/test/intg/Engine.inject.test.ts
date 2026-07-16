@@ -69,7 +69,7 @@ test("engine.inject: returns null when no loop is currently active (status=102)"
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const workspaceId = await insertWorkspace(db, "engine-inject-no-active");
         const workerId = await insertWorker(db, workspaceId);
-        // No loops at all in this run.
+        // No loops at all in this worker.
         const result = await engine.inject(workerId, "orphan prompt");
         assert.equal(result, null, "no active loop → null (caller falls back to enqueue path)");
 

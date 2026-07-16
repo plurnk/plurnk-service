@@ -47,9 +47,9 @@ export interface FindResult {
 }
 
 export default class EntryFind {
-    // §run-scheme — the owner-prefix glob (`/<owner>/*`) for a run-scope FIND, from the target
-    // pathname Run.find already folded (`/<owner>/<rest>`). Bounds the catalog source to one run's
-    // scratch — the building run's own (self) or a named sister's.
+    // §worker-scheme — the owner-prefix glob (`/<owner>/*`) for a worker-scope FIND, from the target
+    // pathname Run.find already folded (`/<owner>/<rest>`). Bounds the catalog source to one worker's
+    // scratch — the building worker's own (self) or a named sister's.
     static #workerOwnerPrefix(statement: FindStatement): string {
         const path = statement.target?.kind === "url" ? statement.target.pathname : "";
         const owner = path.split("/").filter((s) => s.length > 0)[0];
@@ -137,7 +137,7 @@ export default class EntryFind {
 
         const { db, workspaceId } = ctx;
         // Candidates are workspace-scoped — a FIND never reaches across workspaces. §find-scoped-isolation.
-        // §run-scheme — a run-scope scheme (manifest.scope==='run', today worker://) draws from the run
+        // §worker-scheme — a worker-scope scheme (manifest.scope==='run', today worker://) draws from the worker
         // partition instead; the owner narrowing rides scopeGlob (Run.find folds `/<owner>/*` in).
         const candidatesQuery = manifest.scope === "worker" ? "find_worker_entry_candidates" : "find_workspace_entry_candidates";
         let candidates = await (db[candidatesQuery] as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>({
@@ -201,7 +201,7 @@ export default class EntryFind {
         // the same EntryManifest.toPath the catalog uses (single source of truth). Match order is
         // preserved (rank for ~semantic); a match whose entry has no row (e.g. the self-excluded
         // manifest) drops out. Each match becomes ONE result item carrying its span (#286).
-        // §run-scheme — a run-scope FIND aligns to the building run's OWN run-scope catalog rows
+        // §worker-scheme — a worker-scope FIND aligns to the building worker's OWN worker-scope catalog rows
         // (the owner prefix the candidate scope already enforced), never the workspace filesystem.
         const workerOwnerPrefix = manifest.scope === "worker" ? EntryFind.#workerOwnerPrefix(statement) : undefined;
         const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, workerOwnerPrefix)).map((r) => [r.path, r] as const));

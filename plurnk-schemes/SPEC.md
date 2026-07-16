@@ -37,7 +37,7 @@ class Known {
 | `channels` | `Record<channelName, mimetype>`. Channel names lowercase. Empty = dynamic per-call. |
 | `defaultChannel` | Channel name targeted when path has no `#fragment`. Empty when channels is empty. |
 | `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (addresses sister processes/runs, owns no entries — e.g. `worker://`). |
-| `scope` | `"workspace"` \| `"run"` (grammar 0.67 `default_scope`; `run` = per-run scratch backing `worker://`). |
+| `scope` | `"workspace"` \| `"worker"` (grammar 0.67 `default_scope`; `worker` = per-worker scratch backing `worker://`). |
 | `writableBy` | Subset of `["model", "client", "system", "plugin"]`. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
@@ -143,8 +143,8 @@ The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be autho
 - `entries` — CRUD over the scheme's own namespace (`read`/`write`/`delete`).
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `tags` — entry tags (`add`/`remove`/`list`).
-- `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the run-wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a run, always via close.)
-- `subscriptions` — streaming lifecycle: `open(pathname, handle)` returns a run+teardown-composed `AbortSignal` and takes a force-cancel `SubscriptionHandle`; `notifyChunk(channel, chunk, mimetype?)` is **fused** (append + stream/event in one call), with an optional per-call `mimetype` that retypes the channel to the content's actual type (passed statelessly per chunk; the impl writes only on change; the manifest channel mimetype is the pre-fetch seed default — plurnk-service#226); `close(reason, outcome?)` composites channel state + registry close + run wake. Designed against Exec (two-channel, cancel-tested).
+- `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the run-wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
+- `subscriptions` — streaming lifecycle: `open(pathname, handle)` returns a worker+teardown-composed `AbortSignal` and takes a force-cancel `SubscriptionHandle`; `notifyChunk(channel, chunk, mimetype?)` is **fused** (append + stream/event in one call), with an optional per-call `mimetype` that retypes the channel to the content's actual type (passed statelessly per chunk; the impl writes only on change; the manifest channel mimetype is the pre-fetch seed default — plurnk-service#226); `close(reason, outcome?)` composites channel state + registry close + run wake. Designed against Exec (two-channel, cancel-tested).
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in plurnk-service's index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set (plurnk-service#180).
 

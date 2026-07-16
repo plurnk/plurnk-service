@@ -2,7 +2,7 @@
 -- Static query with IS-NULL guards on optional filters. The loops/turns joins
 -- resolve the DISPLAY coordinate (loop_seq/turn_seq/op-sequence) so a client can
 -- target one entry by its `L/T/S` coordinate (plurnk-service#271) instead of
--- fetching a run and matching client-side. INNER JOINs are safe: log_entries
+-- fetching a worker and matching client-side. INNER JOINs are safe: log_entries
 -- carries worker_id/loop_id/turn_id NOT NULL, so no row is dropped; the coordinate
 -- guards are inert when their param is NULL (identical to the id-only filters).
 
