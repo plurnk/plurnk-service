@@ -11,7 +11,7 @@ import type { AguiEvent, LogEntryNotification, TerminatedNotification } from "./
 export default class EventRouter {
     #t: Translator;
 
-    constructor(args: { threadId: string; workerId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
+    constructor(args: { threadId: string; runId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
         this.#t = new Translator(args);
     }
 

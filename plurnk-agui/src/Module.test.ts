@@ -327,18 +327,36 @@ test("a message run forwards forwardedProps.plurnk alias+model into runLoop (#41
 
 test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a silent SSE death (svc#480)", async () => {
     const { seam } = mockSeam();
-    seam.listSessions = async () => [{ id: 3, name: "w" }];
-    seam.attachSession = async () => ({ sessionId: 3, sessionName: "w", projectRoot: null, runId: 10, runName: "c", modelRunId: 20, clientLoopId: null });
-    seam.ensureModelRun = async () => 20;
+    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
+    seam.ensureModelWorker = async () => 20;
     seam.runLoop = async () => { throw new Error("runLoop: no provider configured"); };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { session: "w" } } }) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } }) });
         assert.equal(res.status, 200, "the SSE opened before the throw");
         const frames = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as { type: string; message?: string; code?: string });
         const err = frames.find((e) => e.type === "RUN_ERROR");
         assert.ok(err !== undefined, "the throw surfaced as a RUN_ERROR frame, not a silent end");
         assert.match(err.message ?? "", /no provider configured/);
         assert.equal(err.code, "501", "the no-model throw maps to 501");
+    } finally { await mod.close(); }
+});
+
+test("[§agui-run-endpoint] the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISHED echo RunAgentInput.runId (never plurnk's workerId) — ungated, so a lexicon sweep can't silently break conformance", async () => {
+    const { seam, finish } = mockSeam();
+    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
+    seam.ensureModelWorker = async () => 20;
+    seam.runLoop = async (a) => { finish(a.workspaceId); return { action: "enqueued_new_loop", loopId: 9 }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const events = await post(mod.address().port, { threadId: "w", runId: "agui-run-7", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
+        const started = events.find((e) => e.type === "RUN_STARTED") as { runId?: string; workerId?: unknown };
+        const finished = events.find((e) => e.type === "RUN_FINISHED") as { runId?: string; workerId?: unknown };
+        assert.equal(started?.runId, "agui-run-7", "RUN_STARTED echoes the protocol's runId");
+        assert.equal(finished?.runId, "agui-run-7", "RUN_FINISHED echoes the protocol's runId");
+        assert.equal(started?.workerId, undefined, "plurnk's worker noun NEVER rides the standard face");
+        assert.equal(finished?.workerId, undefined, "plurnk's worker noun NEVER rides the standard face");
     } finally { await mod.close(); }
 });

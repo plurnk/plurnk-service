@@ -8,8 +8,11 @@
 // plurnk-aware frontends render them richly (§agui-custom-namespace).
 
 export type AguiEvent =
-    | { type: "RUN_STARTED"; threadId: string; workerId: string }
-    | { type: "RUN_FINISHED"; threadId: string; workerId: string }
+    // runId is AG-UI's OWN noun — the id of THIS run (one POST /), echoed from
+    // RunAgentInput.runId. NOT plurnk's retired run noun: plurnk workers ride the
+    // plurnk.* customs as workerId. The standard face keeps the protocol's fields.
+    | { type: "RUN_STARTED"; threadId: string; runId: string }
+    | { type: "RUN_FINISHED"; threadId: string; runId: string }
     | { type: "RUN_ERROR"; message: string; code?: string }
     | { type: "STEP_STARTED"; stepName: string }
     | { type: "STEP_FINISHED"; stepName: string }
@@ -37,7 +40,7 @@ export type AguiEvent =
 // the rest pass through untouched (forwardedProps etc. are the frontend's business).
 export interface RunAgentInput {
     threadId: string;
-    workerId: string;
+    runId: string;   // AG-UI's run id (the protocol's field — official clients send this)
     messages?: Array<{ role: string; content?: string }>;
     state?: unknown;
     forwardedProps?: unknown;

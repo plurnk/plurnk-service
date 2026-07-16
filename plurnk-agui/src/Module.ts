@@ -199,14 +199,14 @@ export default class Module {
                 if (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR") finish();
             }
             if (pausedOnProposal && !finished) {
-                res.write(`data: ${JSON.stringify({ type: "RUN_FINISHED", threadId: input.threadId, workerId: input.workerId })}\n\n`);
+                res.write(`data: ${JSON.stringify({ type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId })}\n\n`);
                 finish();
             }
         };
 
-        const boundRun = this.#portal.openThread({ workspaceId, workerId, threadId: input.threadId, emit, modelWorkerId: workerId, inputRunId: input.workerId });
+        const boundRun = this.#portal.openThread({ workspaceId, workerId, threadId: input.threadId, emit, modelWorkerId: workerId, inputRunId: input.runId });
         emit([
-            { type: "RUN_STARTED", threadId: input.threadId, workerId: input.workerId },
+            { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
             stateSnapshot({ providers: this.#seam.listProviders().aliases, workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot } }),
         ]);
         if (finished) return;
@@ -224,7 +224,7 @@ export default class Module {
                 // (results would cross streams). Only a proposal-pause (this stream already
                 // terminated) hands off to the workspace binding, which the resume run rebinds.
                 if (!finished) {
-                    emit([...events, { type: "RUN_FINISHED", threadId: input.threadId, workerId: input.workerId }]);
+                    emit([...events, { type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId }]);
                     return;
                 }
                 this.#portal.finishRun(workspaceId, events);
@@ -281,10 +281,10 @@ export default class Module {
     async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
-        emit({ type: "RUN_STARTED", threadId: input.threadId, workerId: input.workerId });
+        emit({ type: "RUN_STARTED", threadId: input.threadId, runId: input.runId });
         const outcome = await this.#action(action, null).catch((err: unknown): ActionOutcome => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
         emit(actionResult(action.kind, outcome));
-        emit({ type: "RUN_FINISHED", threadId: input.threadId, workerId: input.workerId });
+        emit({ type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId });
         res.end();
     }
 

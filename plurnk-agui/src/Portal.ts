@@ -45,7 +45,7 @@ export default class Portal {
                 if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
                     const deferred = thread.deferredFinish;
                     thread.deferredFinish = null;
-                    thread.emit([...deferred, { type: "RUN_FINISHED", threadId: thread.threadId, workerId: thread.inputRunId }]);
+                    thread.emit([...deferred, { type: "RUN_FINISHED", threadId: thread.threadId, runId: thread.inputRunId }]);
                 }
             }
         });
@@ -69,7 +69,7 @@ export default class Portal {
     // adopts the first model-origin row's run — a fresh workspace's model worker is born
     // at the drain).
     openThread(args: { workspaceId: number; workerId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string }): unknown {
-        const router = new EventRouter({ threadId: args.threadId, workerId: String(args.workerId), modelWorkerId: args.modelWorkerId ?? null, workspaceId: args.workspaceId });
+        const router = new EventRouter({ threadId: args.threadId, runId: args.inputRunId ?? String(args.workerId), modelWorkerId: args.modelWorkerId ?? null, workspaceId: args.workspaceId });
         const t: Thread = { workerId: args.workerId, router, emit: args.emit, threadId: args.threadId, inputRunId: args.inputRunId ?? String(args.workerId), openStreams: new Set(), deferredFinish: null };
         let set = this.#threads.get(args.workspaceId);
         if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }
@@ -86,7 +86,7 @@ export default class Portal {
     finishRun(workspaceId: number, events: AguiEvent[]): void {
         for (const t of this.#threads.get(workspaceId) ?? []) {
             if (t.openStreams.size > 0) { t.deferredFinish = events; continue; } // defer past live streams (event-driven, no timer)
-            t.emit([...events, { type: "RUN_FINISHED", threadId: t.threadId, workerId: t.inputRunId }]);
+            t.emit([...events, { type: "RUN_FINISHED", threadId: t.threadId, runId: t.inputRunId }]);
         }
     }
 
