@@ -131,6 +131,35 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
     const { assistant } = await p.generate({ runId: "r", messages: [] });
     assert.equal(assistant.reasoning, "because");
+    assert.equal("reasoningEncrypted" in assistant, false); // open reasoning only -> field absent (#482)
+});
+
+test("#482 sealed relay reasoning (non-streamed): encrypted reasoning_details surface verbatim, text entries do not", async () => {
+    // The live o4-mini-via-OpenRouter shape: reasoning null, one encrypted entry.
+    installFetchJson({ model: "m", choices: [{ message: {
+        content: "4", reasoning: null,
+        reasoning_details: [
+            { type: "reasoning.encrypted", data: "gAAAAABqBLOB", format: "openai-responses-v1", id: "rs_1", index: 0 },
+            { type: "reasoning.text", text: "never surfaced here" },
+        ],
+    }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const { assistant } = await p.generate({ runId: "r", messages: [] });
+    assert.deepEqual(assistant.reasoningEncrypted, [{ data: "gAAAAABqBLOB", format: "openai-responses-v1" }]);
+    assert.equal(assistant.reasoning, null); // sealed turn: nothing readable
+    assert.equal(assistant.content, "4");
+});
+
+test("#482 sealed relay reasoning (streamed): chunked blob concatenates per entry index", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    installFetch([
+        { choices: [{ delta: { reasoning_details: [{ type: "reasoning.encrypted", data: "gAAAA", format: "openai-responses-v1", index: 0 }] } }] },
+        { choices: [{ delta: { reasoning_details: [{ type: "reasoning.encrypted", data: "BqXYZ", index: 0 }] } }] },
+        { choices: [{ delta: { content: "4" }, finish_reason: "stop" }] },
+    ]);
+    const { assistant } = await p.generate({ runId: "r", messages: [] });
+    assert.deepEqual(assistant.reasoningEncrypted, [{ data: "gAAAABqXYZ", format: "openai-responses-v1" }]);
+    assert.equal(assistant.content, "4");
 });
 
 test("reasoningStyle 'think' gates on budget != 0 (magnitude irrelevant for native)", async () => {

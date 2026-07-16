@@ -598,6 +598,9 @@ export default class OpenAICompatProvider implements Provider {
             assistant: {
                 content: raw.content,
                 reasoning: raw.reasoning_content.length > 0 ? raw.reasoning_content : null,
+                // #482: sealed relay blobs ride only when present — same absence
+                // discipline as logprobs (never synthesized, never empty-array).
+                ...(raw.reasoning_encrypted.length > 0 ? { reasoningEncrypted: raw.reasoning_encrypted } : {}),
                 usage: normalizeUsage(raw.usage, raw.reasoning_content, raw.content),
                 finishReason: normalizeFinishReason(raw.finish_reason),
                 model: raw.model ?? this.#model,
