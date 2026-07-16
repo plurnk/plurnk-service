@@ -106,8 +106,10 @@ export default class PacketWire {
         return git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
     }
 
-    // §jsonplurnk — the Note that leads the Log's fenced block, teaching the one carve-out inline.
-    static #JSONPLURNK_NOTE = "Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when present, is a HEREDOC-style `<<:::tag … :::tag` block.";
+    // §jsonplurnk — the Note that leads the Log's fenced block, teaching the one carve-out inline
+    // plus the token semantics (#466: a model-facing number defines itself where it appears — an
+    // undefined `tokens` beside `itemsTokenTotal` read as 577-vs-6127 unreliability in run59).
+    static #JSONPLURNK_NOTE = "Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when present, is a HEREDOC-style `<<:::tag … :::tag` block. `tokens` prices a row's body in this packet (what OPEN adds, what FOLD saves); a FIND's `itemsTokenTotal` sizes the matched entries themselves (the cost of READing them).";
 
     // The log section's content: the model's curated rows as a fenced `jsonplurnk` array (§jsonplurnk).
     // Empty log → "" (the section is omitted).
@@ -160,7 +162,13 @@ export default class PacketWire {
         const byTurn = new Map<string, number>();
         const perEntry: Array<{ path: string; tokens: number }> = [];
         for (const e of logEntries) {
-            const weight = countTokens(PacketWire.#renderLogEntries([e], countTokens));
+            // Two weights, two purposes (#466 — one labeled semantic per number): the row's FULL
+            // render (meta line + fences + body) composes the turn rollup — what the turn costs in
+            // the packet; the heaviest list carries the row's BODY price — the FOLD unit, the SAME
+            // number the row's own `tokens` shows, so the budget and the log can never disagree
+            // about one row. A bodyless row is no FOLD target and never ranks.
+            const bodyPrice: number[] = [];
+            const weight = countTokens(PacketWire.#renderLogEntries([e], countTokens, bodyPrice));
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
             // Turn = the loop_seq/turn_seq prefix of the coordinate
@@ -170,7 +178,7 @@ export default class PacketWire {
                 byTurn.set(turn, (byTurn.get(turn) ?? 0) + weight);
             }
             const path = PacketWire.#entryPath(coordinate, op);
-            if (path !== null) perEntry.push({ path, tokens: weight });
+            if (path !== null && (bodyPrice[0] ?? 0) > 0) perEntry.push({ path, tokens: bodyPrice[0] });
         }
         return {
             entries: logEntries.length,
@@ -304,7 +312,9 @@ export default class PacketWire {
         return op !== null ? `log:///${coordinate}/${op}` : `log:///${coordinate}`;
     }
 
-    static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens): string {
+    // `collectBodyTokens`, when supplied, receives each row's body price (the rendered meta.tokens)
+    // in order — the FOLD unit measureLogBudget ranks, guaranteed identical to what the row shows.
+    static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens, collectBodyTokens?: number[]): string {
         return entries.map((e) => {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
@@ -447,6 +457,7 @@ export default class PacketWire {
             // 0 for a genuinely empty body — never call countTokens("") (some providers return
             // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
             meta.tokens = body.length > 0 ? countTokens(body) : 0;
+            collectBodyTokens?.push(meta.tokens as number);
             // lines beside tokens on any row with a navigable body — the count of `N:\t`-numbered
             // lines (fences and unnumbered prose don't count), so the model can plan a <start,end>
             // slice before paying for an OPEN. Omitted when the body isn't line-addressable.
