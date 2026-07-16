@@ -58,23 +58,23 @@ test("§3 discover: documentation is sourced from docs/<tag>.md, inline field as
 
 test("§3.2 discover: surfaces raw plurnk.attribution (string | string[]) on each tag (#11)", async () => {
     const strDir = await makePkg({
-        name: "@plurnk/plurnk-execs-git",
-        plurnk: { kind: "exec", attribution: "git", runtimes: [{ name: "git" }, { name: "gh" }] },
+        name: "@acme/acme-execs-multi",
+        plurnk: { kind: "exec", attribution: "acme-multi", runtimes: [{ name: "alpha" }, { name: "beta" }] },
     });
     const arrDir = await makePkg({
         name: "@acme/acme-execs-foo",
         plurnk: { kind: "exec", attribution: ["acme", "foo"], runtimes: [{ name: "foo" }] },
     });
     const noneDir = await makePkg({
-        name: "@plurnk/plurnk-execs-sh",
-        plurnk: { kind: "exec", runtimes: [{ name: "sh" }] },
+        name: "@acme/acme-execs-bare",
+        plurnk: { kind: "exec", runtimes: [{ name: "bare" }] },
     });
     const { registry } = await Discover.scan({ packageDirs: [strDir, arrDir, noneDir] });
-    assert.equal(registry.get("git")?.attribution, "git", "string attribution rides every tag of the package");
-    assert.equal(registry.get("gh")?.attribution, "git");
+    assert.equal(registry.get("alpha")?.attribution, "acme-multi", "string attribution rides every tag of the package");
+    assert.equal(registry.get("beta")?.attribution, "acme-multi");
     assert.deepEqual(registry.get("foo")?.attribution, ["acme", "foo"], "array surfaced raw");
-    assert.equal(registry.get("sh")?.attribution, undefined, "absent → undefined");
-    assert.ok(!("attribution" in (registry.get("sh") as object)), "no attribution key when omitted");
+    assert.equal(registry.get("bare")?.attribution, undefined, "absent → undefined");
+    assert.ok(!("attribution" in (registry.get("bare") as object)), "no attribution key when omitted");
 });
 
 // Materialize a package whose tags come from a dynamic runtimes hook
