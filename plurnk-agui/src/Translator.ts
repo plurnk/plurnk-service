@@ -1,7 +1,7 @@
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-run turn tracking as the only state.
 // The mapping (§agui-projection):
-//   log/entry op=PLAN  (model)  → THINKING_TEXT_MESSAGE triple (the model's stated intent)
+//   log/entry op=PLAN  (model)  → REASONING_MESSAGE triple (the model's stated intent)
 //   log/entry op=SEND  (model)  → TEXT_MESSAGE triple (assistant speech; the signal rides plurnk.send)
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
 //                                 tool call: tx is the args, rx the result, coordinate the id)
@@ -71,14 +71,16 @@ export default class Translator {
         }
         const id = e.coordinate ?? String(e.id);
         if (e.op === "PLAN") {
-            // Spec-verified nesting (@ag-ui/client): the text triple must live inside a
-            // THINKING_START/END step — the official SDK rejects a bare triple.
+            // The model's reasoning (§475: current AG-UI — THINKING_* was deprecated for
+            // REASONING_*, removed at 1.0.0). The message triple lives inside a
+            // REASONING_START/END span; every reasoning event carries a messageId tying
+            // the span together (the coordinate/id of the PLAN row).
             const text = Translator.#txBody(e.tx);
-            events.push({ type: "THINKING_START" });
-            events.push({ type: "THINKING_TEXT_MESSAGE_START" });
-            if (text.length > 0) events.push({ type: "THINKING_TEXT_MESSAGE_CONTENT", delta: text });
-            events.push({ type: "THINKING_TEXT_MESSAGE_END" });
-            events.push({ type: "THINKING_END" });
+            events.push({ type: "REASONING_START", messageId: id });
+            events.push({ type: "REASONING_MESSAGE_START", messageId: id });
+            if (text.length > 0) events.push({ type: "REASONING_MESSAGE_CONTENT", messageId: id, delta: text });
+            events.push({ type: "REASONING_MESSAGE_END", messageId: id });
+            events.push({ type: "REASONING_END", messageId: id });
             return events;
         }
         if (e.op === "SEND") {
