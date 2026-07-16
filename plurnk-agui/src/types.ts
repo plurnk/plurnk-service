@@ -89,7 +89,7 @@ export interface TerminatedNotification {
         completionTokens: number;
         costPico: number;
         contextTokens: number;
-        contextSize: number | null;
+        promptBudget: number | null;
         meta: Record<string, unknown>;
     };
 }

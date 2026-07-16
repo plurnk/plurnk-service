@@ -60,8 +60,8 @@ export interface DaemonSeam {
     dispatchAsClient(args: { sessionId: number; runId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }>;
     // Journal read — the module's primary render input (ownership-verified per session).
     readLog(args: { sessionId: number; runId: number; loopId?: number; turnId?: number; sinceId?: number; limit?: number; loopSeq?: number; turnSeq?: number; sequence?: number }): Promise<LogEntryWire[]>;
-    // Providers + effective prompt budget (contextSize) for the STATE gauge.
-    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; contextSize: number | null }> };
+    // Providers + effective prompt budget (promptBudget) for the STATE gauge.
+    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; promptBudget: number | null }> };
     // Session lifecycle — establish the envelope a thread binds to. createSession
     // returns the full envelope INCLUDING modelRunId (no lazy inference — the WS
     // bridge's adopt-first-model-row dance is dead).
