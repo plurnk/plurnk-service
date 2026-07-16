@@ -17,10 +17,31 @@ type StreamRequest = {
 import type { RawUsage } from "./usage.ts";
 import type { TokenLogprob } from "./types.ts";
 
+// Sealed reasoning (#482). A relay backend (OpenRouter fronting OpenAI o-series)
+// returns the chain-of-thought ENCRYPTED as reasoning_details entries
+// ({ type: "reasoning.encrypted", data, format, index }) while readable text
+// still rides the reasoning/reasoning_content fields (verified live: o4-mini
+// via OpenRouter — reasoning null, one encrypted entry, format
+// "openai-responses-v1"). Blobs are collected verbatim, never decoded.
+export type EncryptedReasoning = { data: string; format: string | null };
+
+const encryptedFromDetails = (details: unknown): EncryptedReasoning[] => {
+    if (!Array.isArray(details)) return [];
+    const out: EncryptedReasoning[] = [];
+    for (const e of details) {
+        const entry = e as { type?: unknown; data?: unknown; format?: unknown };
+        if (entry?.type !== "reasoning.encrypted" || typeof entry.data !== "string") continue;
+        out.push({ data: entry.data, format: typeof entry.format === "string" ? entry.format : null });
+    }
+    return out;
+};
+
 export type StreamResponse = {
     model: string | null;
     content: string;
     reasoning_content: string;
+    // Sealed relay reasoning (#482) — empty for the open-reasoning backends.
+    reasoning_encrypted: EncryptedReasoning[];
     finish_reason: string | null;
     usage: RawUsage | null;
     chunkMetadata: Record<string, unknown>;
@@ -96,6 +117,7 @@ export const chatCompletion = async ({ url, headers, body, signal, captureRawBod
         model: typeof j.model === "string" ? j.model : null,
         content: typeof msg.content === "string" ? msg.content : "",
         reasoning_content: typeof reasoning === "string" ? reasoning : "",
+        reasoning_encrypted: encryptedFromDetails(msg.reasoning_details),
         finish_reason: typeof choice.finish_reason === "string" ? choice.finish_reason : null,
         usage: (j.usage ?? null) as StreamResponse["usage"],
         chunkMetadata,
@@ -134,6 +156,10 @@ export const chatCompletionStream = async ({ url, headers, body, signal, capture
     // #36: logprobs stream as per-chunk choices[0].logprobs.content[] deltas —
     // accumulate the raw entries across chunks, map once at the end.
     const logprobEntries: unknown[] = [];
+    // #482: encrypted reasoning_details entries may stream chunked — concatenate
+    // `data` per entry index; an indexless entry stands alone.
+    const encryptedByKey = new Map<string, EncryptedReasoning>();
+    let encryptedNoIndex = 0;
 
     while (true) {
         const { done, value } = await reader.read();
@@ -174,6 +200,16 @@ export const chatCompletionStream = async ({ url, headers, body, signal, capture
             if (typeof delta.reasoning_content === "string") reasoning_content += delta.reasoning_content;
             if (typeof delta.reasoning === "string") reasoning_content += delta.reasoning;
             if (typeof delta.thinking === "string") reasoning_content += delta.thinking;
+            if (Array.isArray(delta.reasoning_details)) {
+                for (const e of delta.reasoning_details) {
+                    const entry = e as { type?: unknown; data?: unknown; format?: unknown; index?: unknown };
+                    if (entry?.type !== "reasoning.encrypted" || typeof entry.data !== "string") continue;
+                    const key = typeof entry.index === "number" ? `i${entry.index}` : `n${encryptedNoIndex++}`;
+                    const prev = encryptedByKey.get(key);
+                    if (prev !== undefined) prev.data += entry.data;
+                    else encryptedByKey.set(key, { data: entry.data, format: typeof entry.format === "string" ? entry.format : null });
+                }
+            }
         }
     }
 
@@ -184,5 +220,5 @@ export const chatCompletionStream = async ({ url, headers, body, signal, capture
     const rawBody = captureRawBody === true
         ? { ...chunkMetadata, model, usage, choices: [{ index: 0, message: { content, reasoning_content }, finish_reason, logprobs: logprobs !== null ? { content: logprobEntries } : null }] }
         : undefined;
-    return { model, content, reasoning_content, finish_reason, usage, chunkMetadata, logprobs, rawBody };
+    return { model, content, reasoning_content, reasoning_encrypted: [...encryptedByKey.values()], finish_reason, usage, chunkMetadata, logprobs, rawBody };
 };
