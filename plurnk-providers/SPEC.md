@@ -23,7 +23,7 @@ Collision on `(kind: "provider", name)` at discovery: fail-hard.
 ```ts
 interface Provider {
     // Identity (immutable across lifetime)
-    readonly contextSize: number | null;  // context tokens, null if unresolved.
+    readonly contextWindow: number | null;  // context tokens, null if unresolved.
                                           // PER SLOT under llama-server --parallel N
                                           // (the server splits --ctx-size and reports
                                           // the divided value; verified live).
@@ -114,7 +114,7 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 - `countTokens` is **synchronous**, returns a non-negative integer, deterministic for the same input. Without an exact tokenizer family configured it is the **chars/2 UPPER BOUND** — deliberately conservative (real agentic text measures ~2.9–3.2 chars/token on gemma/deepseek, so the former chars/4 silently UNDERcounted 20–27%; a fallback may overcount, never under) — and it is **surfaced at construction** (`process.emitWarning`, code `PLURNK_TOKENIZER_HEURISTIC`), never silent. Exact counting is the tokenizer seam's job (mimetypes family), fed by `tokenize()` where available.
 - `tokenize?` is an **optional async capability**: token ids in the model's real vocabulary, served by the backend itself (llama-server's native root `/tokenize`, surfaced when the §11 probe fingerprints a llama-server and `detectLlamaServer` isn't false). `tokenize === undefined` is the honest "backend can't" signal. Exact-counting consumers prefer it over any client-side tokenizer data — the local model's own vocab needs no bundled `tokenizer.json` at all.
 - `costFor` is **pure**, returns pico-USD non-negative integer. Returns `0` for siblings with no known rates (local Ollama, generic OpenAI-compat shims).
-- `contextSize` resolves to `null` when a PROBING provider (openai/llama-server) can't determine the window (consumer treats null as "no budget info"); a CLOUD provider with no window source FAILS HARD instead (#419, §11).
+- `contextWindow` resolves to `null` when a PROBING provider (openai/llama-server) can't determine the window (consumer treats null as "no budget info"); a CLOUD provider with no window source FAILS HARD instead (#419, §11).
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
 - `generate` **returns for every completed exchange — bytes always present, the conformance verdict attached as an observation.** When a grammar was transported (or validated in filter mode), the returned `content` is checked against it; a non-accept verdict rides `response.telemetry` as a `grammar_unenforced` event (message + divergence `position`) and the response returns normally. The provider transports and observes; it never adjudicates — discard, retry, escalate, or feed-back is consumer policy. This is a grammar-**conformance** check against the grammar the provider already holds — *not* a plurnk-DSL parse (that stays consumer-side, below) — so it remains backend- and DSL-agnostic. `ProviderError` remains reserved for exchanges that did NOT complete (transport failure, abort, boundary violations).
@@ -129,7 +129,7 @@ class OpenAI {
     static fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): OpenAI | Promise<OpenAI> {
         // Read provider-specific env (OPENAI_BASE_URL, OPENAI_API_KEY, ...)
         // plus universal operator knobs (PLURNK_PROVIDERS_REASONING, PLURNK_PROVIDERS_FETCH_TIMEOUT,
-        // PLURNK_PROVIDERS_CONTEXT_SIZE). `options.baseUrl`, when set, is the per-alias
+        // PLURNK_PROVIDERS_CONTEXT_WINDOW). `options.baseUrl`, when set, is the per-alias
         // endpoint override (PLURNK_BASEURL_<alias>, §5) and wins over the env base URL.
         return new OpenAI({ /* ... */ });
     }
@@ -152,7 +152,7 @@ Each provider's `fromEnv` reads these:
 Read via `reasoningFromEnv` and **fail hard when unset**: the budget is required only when `on` and carries no floor default. Configuration lives in the operator's env over the package's `.env.defaults` floor (which declares every var and ships its default); the framework never bakes a knob default into code.
 - **`PLURNK_PROVIDERS_FETCH_TIMEOUT`** — service-wide ms ceiling on any single outbound request (**per attempt**, not shared across retries). Each `fromEnv` reads and passes as `AbortSignal.timeout`. Per-provider override envs are NOT part of the contract.
 - **`PLURNK_PROVIDERS_RETRY_ATTEMPTS`** — REQUIRED non-negative integer (read via `parseRequiredInt`). The transient-failure retry budget: **`0`** surfaces the first failure; **`N`** retries up to `N` times on a *transient* classification only (`rate_limit` / `network_failure` — 429, 5xx, timeout, connection reset). Terminal kinds (`unauthorized`, `quota_exceeded`, `invalid_response`, `model_refused`) are never retried. Backoff is exponential from a `2000ms` base (`base * 2^(attempt-1)`), unless the server sent a `Retry-After` (which wins). The caller's `signal` aborts both the in-flight request and the backoff sleep. Lives in the shared `OpenAICompatProvider` so every provider inherits it uniformly; rides on the existing `classifyProviderError` (#18).
-- **`PLURNK_PROVIDERS_CONTEXT_SIZE`** -- optional positive-integer override (alias-scopable) for the model's context window. Resolution (#419): this env var -> endpoint `n_ctx` probe (probing specs only) -> `@plurnk/plurnk-models` catalog -> then a PROBING provider degrades to `null`, a CLOUD provider (no probe) FAILS HARD (an uncataloged, unpinned cloud model is a config error, not a guessable window). See §11.
+- **`PLURNK_PROVIDERS_CONTEXT_WINDOW`** -- optional positive-integer override (alias-scopable) for the model's context window. Resolution (#419): this env var -> endpoint `n_ctx` probe (probing specs only) -> `@plurnk/plurnk-models` catalog -> then a PROBING provider degrades to `null`, a CLOUD provider (no probe) FAILS HARD (an uncataloged, unpinned cloud model is a config error, not a guessable window). See §11.
 - **`PLURNK_PROVIDERS_TEMPERATURE` / `PLURNK_PROVIDERS_REPEAT_PENALTY` / `PLURNK_PROVIDERS_FREQUENCY_PENALTY`** -- REQUIRED sampling + anti-degeneration floors (read via `parseRequiredFloat`, values from the `.env.defaults` floor). `REPEAT_PENALTY` (canonical `1.15`) is the llama.cpp/Fireworks multiplier; `FREQUENCY_PENALTY` (canonical `0.4`, #426) is the OpenAI-standard guard on the plain cloud path, which has no `repeat_penalty`. Applied to EVERY request, keyed per backend (§13).
 
 ## §5 Alias cascade resolution
@@ -244,7 +244,7 @@ The framework is **contract-only** -- it does **not** depend on its daughters. F
 import { Mock } from "@plurnk/plurnk-providers";
 
 const mock = new Mock({
-    contextSize: 100000,
+    contextWindow: 100000,
     responses: [{ assistant: { content: "<<SEND[200]:hi:SEND", reasoning: null } }],
 });
 const result = await mock.generate({ messages: [] });
@@ -257,7 +257,7 @@ const result = await mock.generate({ messages: [] });
 A sibling package satisfies the contract when:
 
 1. Default export is a class with `static fromEnv(env, model, options?)` factory.
-2. Instance exposes `contextSize: number | null` and `model: string` (non-empty).
+2. Instance exposes `contextWindow: number | null` and `model: string` (non-empty).
 3. Instance exposes `countTokens(text): number` and `costFor(usage): number`.
 4. `countTokens("")` returns `0`; `countTokens("…")` returns a non-negative integer.
 5. `costFor({prompt:0,completion:0,reasoning:0,cached:0,total:0})` returns `0` (or non-negative pico-USD for non-free models).
@@ -284,7 +284,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       model, url,            // fully-resolved chat-completions URL
       fetchTimeoutMs,
       headers,               // fully-resolved request headers (incl. auth)
-      contextSize,           // number | null
+      contextWindow,           // number | null
       reasoning, reasoningStyle,   // {mode,budget} intent + style: "none"|"think"|"include_reasoning"|"effort"|"effort_explicit"|"template"|"anthropic"
       temperature, repeatPenalty, frequencyPenalty,  // sampling + anti-degeneration floor; frequency_penalty guards the plain cloud path (#426)
       countTokens, costFor,  // strategies; default heuristic / free
@@ -310,7 +310,7 @@ The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the
 
 A spec may carry a **`modelPrefix`** — a constant model-id segment the backend requires but the operator's alias shouldn't repeat. `fireworks` sets `"accounts/fireworks/models/"`, so `PLURNK_MODEL_fast=fireworks/deepseek-v4-pro` carries only the distinctive tail; `standardProviderFromEnv` prepends it idempotently (an already-prefixed id is untouched) to form the wire id, which is **also** the catalog key (models.dev keys fireworks-ai on the full id). Specs without a `modelPrefix` use the model string verbatim.
 
-`contextSize` for a standard provider resolves (#419): `PLURNK_PROVIDERS_CONTEXT_SIZE` -> endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models`: llama-server reports its loaded window at `data[].meta.n_ctx`, vLLM top-level; cloud endpoints don't) -> the `@plurnk/plurnk-models` catalog -> **then the hybrid: a PROBING provider degrades to `null`, a CLOUD provider (no probe) FAILS HARD** (uncataloged + unpinned = config error, the #417 kimi case, not a guessed window). The same probe fingerprints llama-server (the `meta` block) to enable grammar transport (§13), and reads the row's `id` as `servedModel` (#37) — the real served name behind a local alias — so it runs even when the env var pins the window. The probe is best-effort: any failure resolves to `null` context / no grammar capability (a legitimate "unknown"), never throws. For a PROBING provider, an underivable window (env, probe, and catalog ALL missed) is surfaced once via a **`PLURNK_CONTEXT_UNKNOWN`** warning naming the model and the remediation (`PLURNK_PROVIDERS_CONTEXT_SIZE`, alias-scopable) -- null stays legitimate but never silent (a CLOUD provider throws here instead, above). Operator-facing warnings (`PLURNK_TOKENIZER_HEURISTIC`, `PLURNK_PROBE_FAILED`, `PLURNK_GRAMMAR_UNVERIFIABLE`, `PLURNK_CONTEXT_UNKNOWN`, `PLURNK_FINISH_REASON_UNKNOWN`) are deduplicated **once per process per (code, message)** (#40) — repeat constructions don't re-fire them, but a *different* provider/model's first surfacing is never suppressed.
+`contextWindow` for a standard provider resolves (#419): `PLURNK_PROVIDERS_CONTEXT_WINDOW` -> endpoint `n_ctx` (for `probeNctx`-flagged specs like `openai`, queried from `GET /v1/models`: llama-server reports its loaded window at `data[].meta.n_ctx`, vLLM top-level; cloud endpoints don't) -> the `@plurnk/plurnk-models` catalog -> **then the hybrid: a PROBING provider degrades to `null`, a CLOUD provider (no probe) FAILS HARD** (uncataloged + unpinned = config error, the #417 kimi case, not a guessed window). The same probe fingerprints llama-server (the `meta` block) to enable grammar transport (§13), and reads the row's `id` as `servedModel` (#37) — the real served name behind a local alias — so it runs even when the env var pins the window. The probe is best-effort: any failure resolves to `null` context / no grammar capability (a legitimate "unknown"), never throws. For a PROBING provider, an underivable window (env, probe, and catalog ALL missed) is surfaced once via a **`PLURNK_CONTEXT_UNKNOWN`** warning naming the model and the remediation (`PLURNK_PROVIDERS_CONTEXT_WINDOW`, alias-scopable) -- null stays legitimate but never silent (a CLOUD provider throws here instead, above). Operator-facing warnings (`PLURNK_TOKENIZER_HEURISTIC`, `PLURNK_PROBE_FAILED`, `PLURNK_GRAMMAR_UNVERIFIABLE`, `PLURNK_CONTEXT_UNKNOWN`, `PLURNK_FINISH_REASON_UNKNOWN`) are deduplicated **once per process per (code, message)** (#40) — repeat constructions don't re-fire them, but a *different* provider/model's first surfacing is never suppressed.
 
 ## §12 Telemetry — provider failures
 

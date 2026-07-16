@@ -4,21 +4,21 @@ import Mock from "./Mock.ts";
 import type { MockResponse } from "./Mock.ts";
 
 const build = (responses: MockResponse[] = [{ assistant: { content: "hi", reasoning: null } }]) =>
-    new Mock({ contextSize: 100000, responses });
+    new Mock({ contextWindow: 100000, responses });
 
 // — Identity (SPEC §10.2, §10.6) —
 
-test("Mock: contextSize and model are stable across reads", () => {
+test("Mock: contextWindow and model are stable across reads", () => {
     const m = build();
-    assert.equal(m.contextSize, 100000);
-    assert.equal(m.contextSize, 100000);
+    assert.equal(m.contextWindow, 100000);
+    assert.equal(m.contextWindow, 100000);
     assert.equal(m.model, "mock");
     assert.equal(m.model, "mock");
 });
 
-test("Mock: contextSize passes null through", () => {
-    const m = new Mock({ contextSize: null, responses: [] });
-    assert.equal(m.contextSize, null);
+test("Mock: contextWindow passes null through", () => {
+    const m = new Mock({ contextWindow: null, responses: [] });
+    assert.equal(m.contextWindow, null);
 });
 
 // — Tokenomics (SPEC §10.3, §10.4, §10.5) —

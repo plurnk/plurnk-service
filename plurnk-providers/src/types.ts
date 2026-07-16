@@ -143,7 +143,7 @@ export interface Provider {
     // consumer must NOT improvise a stand-in from it (#421). NOTE: under llama-server
     // --parallel N, the window is PER SLOT (the server splits --ctx-size across slots
     // and reports the divided value).
-    readonly contextSize: number | null;
+    readonly contextWindow: number | null;
     readonly model: string;
     // OPTIONAL (#37): the backend's SELF-REPORTED served model id, from a
     // /v1/models-shaped probe (llama-server today; any such backend). For a local

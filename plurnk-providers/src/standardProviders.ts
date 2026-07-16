@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, reasoningFromEnv, dataCaptureFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv } from "./env.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
@@ -83,7 +83,7 @@ type StandardProviderSpec = {
     tokenizerEnvVar: string;
     // When true, probe GET /v1/models at construction. Two reads off one call:
     // the endpoint-reported context window (`n_ctx`, used when
-    // PLURNK_PROVIDERS_CONTEXT_SIZE is unset) and the llama-server fingerprint
+    // PLURNK_PROVIDERS_CONTEXT_WINDOW is unset) and the llama-server fingerprint
     // (a `meta` block on the model row) that enables grammar-constrained
     // sampling (SPEC §13). Set for providers that may front a local
     // OpenAI-compat server; cloud endpoints report neither → null / false.
@@ -150,7 +150,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // model-selected or a non-standard param that rides in `extra_body` (the
     // `effort`/`anthropic` styles don't reach it) — same posture as deepseek.
     // None are in the @plurnk/plurnk-models snapshot, so context comes from
-    // PLURNK_PROVIDERS_CONTEXT_SIZE and cost stays unknown until the catalog adds
+    // PLURNK_PROVIDERS_CONTEXT_WINDOW and cost stays unknown until the catalog adds
     // them (a plurnk-models issue, not this repo's).
     moonshot: {
         apiKeyVar: "MOONSHOT_API_KEY", apiKeyRequired: true,
@@ -230,7 +230,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // bearer-authed with a Bedrock API key (SigV4 optional). Region-templated base
     // (see baseUrlFromEnv); model ids are inference profiles like
     // `us.anthropic.claude-sonnet-4-6` (see catalogContextLookup). Cost stays unknown —
-    // bedrock marks up over the native rate, so set PLURNK_PROVIDERS_CONTEXT_SIZE for
+    // bedrock marks up over the native rate, so set PLURNK_PROVIDERS_CONTEXT_WINDOW for
     // a publisher the catalog lacks (#22).
     bedrock: {
         apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK", apiKeyRequired: true,
@@ -415,9 +415,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     const fetchTimeoutMs = parseRequiredInt(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name);
 
     // The probe always runs for probeNctx specs — grammar capability must not
-    // hinge on whether the operator pinned PLURNK_PROVIDERS_CONTEXT_SIZE. For
-    // contextSize itself, explicit env still wins over the probed n_ctx.
-    let contextSize = parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_SIZE, "PLURNK_PROVIDERS_CONTEXT_SIZE", name);
+    // hinge on whether the operator pinned PLURNK_PROVIDERS_CONTEXT_WINDOW. For
+    // contextWindow itself, explicit env still wins over the probed n_ctx.
+    let contextWindow = contextWindowFromEnv(env, name);
     // Grammar shape: a static spec choice (e.g. fireworks → "response_format"),
     // upgraded to "llamacpp" when the probe fingerprints a llama-server. Slot
     // pinning is llama-server-only, so it keys on that same fingerprint. A spec
@@ -441,7 +441,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         const pin = pinRaw === undefined || pinRaw === "" ? null : pinRaw === "1";
         const probeAttempts = parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_ATTEMPTS, "PLURNK_PROVIDERS_PROBE_ATTEMPTS", name);
         const probe = await probeModelsRetrying(url, headers, wireModel, fetchTimeoutMs, probeAttempts, parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_DELAY, "PLURNK_PROVIDERS_PROBE_DELAY", name));
-        contextSize ??= probe.nCtx;
+        contextWindow ??= probe.nCtx;
         // #37: the backend's self-reported served id (from the same probe), so an
         // alias-fronted local model resolves its exact tokenizer. Absent otherwise.
         servedModel = probe.servedModel ?? undefined;
@@ -472,7 +472,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         }
     }
 
-    // Vendored-snapshot FALLBACK (#19) — live always wins. contextSize already
+    // Vendored-snapshot FALLBACK (#19) — live always wins. contextWindow already
     // preferred env then the live probe; the catalog only fills a still-null
     // window for a known cloud model (groq/deepseek/mistral/…, which don't
     // probe). A local llama-server model misses the catalog and keeps its
@@ -482,7 +482,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // underlying model's publisher and carries NO catalog cost (native rate ≠ relay
     // rate, #22); everyone else keys the catalog directly on (name, wireModel).
     const fallback = spec.catalogContextLookup === undefined ? lookup(name, wireModel) : undefined;
-    contextSize ??= (spec.catalogContextLookup !== undefined ? spec.catalogContextLookup(wireModel) : fallback?.contextWindow) ?? null;
+    contextWindow ??= (spec.catalogContextLookup !== undefined ? spec.catalogContextLookup(wireModel) : fallback?.contextWindow) ?? null;
     // Unresolved window (env, probe, catalog ALL missed) - two paths (#419 hybrid).
     // A CLOUD provider (no probe) has no other window source, so an uncataloged,
     // unpinned model is a config error we FAIL-HARD on (the #417 kimi case) rather
@@ -490,14 +490,14 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // DEGRADES to null instead: a probe blip or a box that doesn't report n_ctx must
     // not crash construction (#34 robustness); the consumer treats null as "no cap",
     // never a wrong CTX stand-in. Either way the unknown is SURFACED, never silent.
-    if (contextSize === null) {
+    if (contextWindow === null) {
         if (spec.probeNctx !== true) {
             throw new Error(
-                `${name} provider: context window unresolved for "${wireModel}" - a cloud provider with no probe, absent from the @plurnk/plurnk-models catalog and unpinned. Pin PLURNK_PROVIDERS_CONTEXT_SIZE (alias-scopable as _<alias>) or add the model to the catalog (#419)`,
+                `${name} provider: context window unresolved for "${wireModel}" - a cloud provider with no probe, absent from the @plurnk/plurnk-models catalog and unpinned. Pin PLURNK_PROVIDERS_CONTEXT_WINDOW (alias-scopable as _<alias>) or add the model to the catalog (#419)`,
             );
         }
         emitWarningOnce(
-            `${name} provider: context window underivable for "${wireModel}" (probe returned no n_ctx, catalog miss) - contextSize=null; set PLURNK_PROVIDERS_CONTEXT_SIZE (alias-scopable as _<alias>) so window budgets are deliberate`,
+            `${name} provider: context window underivable for "${wireModel}" (probe returned no n_ctx, catalog miss) - contextWindow=null; set PLURNK_PROVIDERS_CONTEXT_WINDOW (alias-scopable as _<alias>) so window budgets are deliberate`,
             "PLURNK_CONTEXT_UNKNOWN",
         );
     }
@@ -514,7 +514,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         model: wireModel,
         url,
         headers,
-        contextSize,
+        contextWindow,
         fetchTimeoutMs,
         reasoning: reasoningFromEnv(env, name),
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", name, 0),

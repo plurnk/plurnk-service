@@ -48,6 +48,17 @@ export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { top
     };
 };
 
+// The context-window pin (SPEC §4) under its OpenAI-lexicon name (#472) — the
+// industry term is "context window" (OpenAI/Anthropic docs, models.dev
+// contextWindow); CONTEXT_SIZE was home-grown. One reader for base AND
+// daughters, so the shed fires everywhere the knob is honored.
+export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): number | null => {
+    if (env.PLURNK_PROVIDERS_CONTEXT_SIZE !== undefined && env.PLURNK_PROVIDERS_CONTEXT_SIZE.length > 0) {
+        throw new Error(`${label} provider: PLURNK_PROVIDERS_CONTEXT_SIZE was renamed to PLURNK_PROVIDERS_CONTEXT_WINDOW (the industry term, #472); update the env`);
+    }
+    return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
+};
+
 // The side-channel reasoning knobs (SPEC §4, #32/#33) — ACTIVATION and BUDGET
 // are separate vars, so a numeric budget can never silently flip wire flags:
 //   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
@@ -93,7 +104,7 @@ export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoni
 export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_REASONING",
-    "PLURNK_PROVIDERS_CONTEXT_SIZE",
+    "PLURNK_PROVIDERS_CONTEXT_WINDOW",
     "PLURNK_PROVIDERS_RETRY_ATTEMPTS",
     "PLURNK_PROVIDERS_FETCH_TIMEOUT",
     "PLURNK_PROVIDERS_LLAMA_SERVER",
@@ -115,8 +126,8 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // so fromEnv implementations (and daughters) need zero changes.
 //
 // `knobs` (optional) lets a CONSUMER scope its OWN closed knob list with this
-// same parser — e.g. the service's window-partition vars (PLURNK_SERVICE_CTX/
-// REASONING/ASSISTANT/SAFETY), so a 64k cloud envelope and a 12k gemma envelope
+// same parser — e.g. the service's window-partition vars (PLURNK_SERVICE_CONTEXT_WINDOW/
+// REASONING/COMPLETION/SAFETY), so a 64k cloud envelope and a 12k gemma envelope
 // coexist per-alias without the service reimplementing the suffix/collision
 // rules. Default stays the providers-family list; my call sites pass nothing.
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {
@@ -127,7 +138,7 @@ export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: re
             if (value === undefined || value.length === 0) continue;
             if (!key.startsWith(knob + "_")) continue;
             // A bare knob can prefix another bare knob (_REASONING prefixes
-            // _REASONING_BUDGET, _CTX prefixes a hypothetical _CTX_SIZE): a key
+            // _REASONING_BUDGET, _CONTEXT prefixes a hypothetical _CONTEXT_WINDOW): a key
             // that IS a known knob is never a suffixed override, whatever the
             // alias is named.
             if (knobs.includes(key)) continue;

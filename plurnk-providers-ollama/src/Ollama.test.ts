@@ -68,10 +68,10 @@ test("fromEnv: throws when PLURNK_PROVIDERS_REASONING is not a valid mode", asyn
 
 // — /api/show probe —
 
-test("fromEnv: resolves contextSize from /api/show model_info and posts to /api/show", async () => {
+test("fromEnv: resolves contextWindow from /api/show model_info and posts to /api/show", async () => {
     const calls = mockShow({ model_info: { "qwen35.context_length": 262144 } });
     const p = await Ollama.fromEnv({ ...baseEnv, OLLAMA_BASE_URL: "http://192.168.1.17:11434" }, "qwenzel:latest");
-    assert.equal(p.contextSize, 262144);
+    assert.equal(p.contextWindow, 262144);
     assert.equal(p.model, "qwenzel:latest");
     assert.equal(calls[0], "http://192.168.1.17:11434/api/show");
 });
@@ -79,7 +79,7 @@ test("fromEnv: resolves contextSize from /api/show model_info and posts to /api/
 test("fromEnv: scans any family prefix for *.context_length", async () => {
     mockShow({ model_info: { "llama.context_length": 131072, "other.field": "ignored" } });
     const p = await Ollama.fromEnv({ ...baseEnv }, "llama3:latest");
-    assert.equal(p.contextSize, 131072);
+    assert.equal(p.contextWindow, 131072);
 });
 
 test("fromEnv: throws when /api/show has no context_length", async () => {
