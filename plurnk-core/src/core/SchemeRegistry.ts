@@ -1,6 +1,6 @@
 import Plurnk from "../schemes/Plurnk.ts";
 import Log from "../schemes/Log.ts";
-import Exec from "../schemes/Exec.ts";
+import Exec, { type WebFetch } from "../schemes/Exec.ts";
 import Known from "../schemes/Known.ts";
 import Unknown from "../schemes/Unknown.ts";
 import Skill from "../schemes/Skill.ts";
@@ -46,10 +46,12 @@ export default class SchemeRegistry {
     // #240 — built-in scheme names (captured at construction), reserved namespace-wide.
     #reserved: ReadonlySet<string> = new Set();
 
-    constructor() {
+    // `fetchWeb` (§exec-entry-sink / #455) is forwarded to the exec handler's content:null sink; default
+    // = schemes-http's guarded WebFetcher, injectable so tests substitute the network the guard would block.
+    constructor(opts?: { fetchWeb?: WebFetch }) {
         this.register("plurnk",  new Plurnk());
         this.register("log",     new Log());
-        this.register("exec",    new Exec());
+        this.register("exec",    new Exec(opts?.fetchWeb));
         this.register("known",   new Known());
         this.register("unknown", new Unknown());
         this.register("skill",   new Skill());

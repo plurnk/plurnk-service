@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import type { WebFetch } from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
@@ -17,24 +18,41 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-const wire = async () => {
+// #455 — ExecArgs.entry widens to `content: string | null` in the execs lane; core's sink already honors
+// null (fetch-through), so the null-content stub casts args.entry to the widened shape to drive that path.
+type WidenedEntry = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<void>;
+
+const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string }) => {
+    // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
+    // "one name, one owner" (#289) rejects a second hotload of the same tag onto the shared registry.
+    const tag = opts?.tag ?? "stubsearch";
     const db = await openMigrated();
-    const schemes = new SchemeRegistry();
+    const schemes = new SchemeRegistry(opts?.fetchWeb ? { fetchWeb: opts.fetchWeb } : undefined);
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     engine.setExecutors(await testExecutors());
     schemes.registerRuntimeSchemes(await testExecutors());
     // The stub runtime: fetches nothing — materializes two "pages" through the sink, one of
     // which fails (pruned executor-side), then returns clean. Effect 'pure' so no proposal gate.
-    engine.hotloadRuntime("stubsearch", {
+    // With nullContent, it instead hands content:null so core fetches through the sink's WebFetch.
+    engine.hotloadRuntime(tag, {
         executor: {
-            runtime: "stubsearch",
+            runtime: tag,
             glyph: "?",
-            get manifest() { return { name: "stubsearch", protocol: "stubsearch:", channels: {}, defaultChannel: "results", category: "action", scope: "run", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "run", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return {}; },
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args) => {
+                if (opts?.nullContent) {
+                    const entry = args.entry as WidenedEntry | undefined;
+                    await entry?.("https://example.org/live", null, { tags: ["turkeys_query"] });
+                    let pruned = false;
+                    try { await entry?.("https://example.org/dead", null, { tags: ["turkeys_query"] }); } catch { pruned = true; }
+                    args.write("results", JSON.stringify([{ title: "Live", url: "https://example.org/live", pruned }]), "application/json");
+                    args.setState("results", "closed");
+                    return { status: 200, exitCode: 0 };
+                }
                 await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds</p>", { tags: ["turkeys_query"], mimetype: "text/html" });
                 await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds, revised</p>", { tags: ["second_query"], mimetype: "text/html" });
                 let pruned = false;
@@ -50,7 +68,7 @@ const wire = async () => {
     const runId = await insertRun(db, sessionId);
     const loopId = await insertLoop(db, runId, 1, "sink test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, schemes, sessionId, runId, loopId, turnId };
+    return { db, engine, schemes, sessionId, runId, loopId, turnId, tag };
 };
 
 test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIONS tags) and the plurnk run narrates it", async () => {
@@ -112,5 +130,34 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         assert.ok(openLine.includes("1:\twild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
         const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ run_id: plurnkRun.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
+    } finally { await quiesceExecs(schemes); await db.close(); }
+});
+
+test("[§exec-entry-sink] entry(content:null) fetches through the guarded sink — live materializes, dead prunes (#455)", async () => {
+    // The sink's WebFetch is faked: the SSRF guard blocks localhost, so no live server can stand in for
+    // the fetch. A /dead URL resolves null (dead); anything else resolves rendered html bytes.
+    const fetchWeb: WebFetch = async (url) =>
+        url.includes("/dead") ? null : { body: "<p>fetched live turkeys</p>", mimetype: "text/html" };
+    const { db, engine, schemes, sessionId, runId, loopId, turnId, tag } = await wire({ fetchWeb, nullContent: true, tag: "stubsearch2" });
+    try {
+        const result = await engine.dispatch({
+            statement: execStmt(tag, "turkeys"),
+            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(result.status < 400, `the stub spawn resolved; got ${result.status}`);
+        await quiesceExecs(schemes);
+
+        // The LIVE url: content:null drove a fetch through the sink → { body, mimetype } → the entry materialized.
+        const live = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number; scheme: string }>({ pathname: "/example.org/live" });
+        assert.ok(live !== undefined, "content:null triggered the fetch and the live page materialized (authority folded)");
+        assert.equal(live.scheme, "https");
+        // A fetched html page stores its readable projection as the decisive text/markdown body (what READ serves).
+        const body = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
+        assert.equal(body?.mimetype, "text/markdown", "the fetched html projected to the decisive markdown body");
+        assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
+
+        // The DEAD url: the fake returned null → the sink REJECTED → the executor pruned it. No entry, ever.
+        const dead = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/example.org/dead" });
+        assert.equal(dead, undefined, "a null fetch rejects the sink so nothing materializes — the dead row is pruned pre-turn");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
