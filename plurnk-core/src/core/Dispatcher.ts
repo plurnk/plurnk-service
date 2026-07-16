@@ -796,11 +796,11 @@ export default class Dispatcher {
         const pending: string[] = [];
         const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
-        if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true) pending.push("open streams");
+        if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true) pending.push("surviving streams");
         const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
-        if (liveChild !== undefined) pending.push("live worker runs");
+        if (liveChild !== undefined) pending.push("surviving worker runs");
         const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
-        if (retrievals.length > 0) pending.push("results of this turn's READ/FIND/OPEN (they arrive NEXT turn)");
+        if (retrievals.length > 0) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
         // §send-undelivered-child-term — a worker that concluded DURING this turn's generation is no
         // longer "live" but its deliverable hasn't reached any packet yet; concluding discards it.
         const undelivered = await (this.#db.engine_run_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ run_id: runId, turn_id: turnId });
@@ -918,7 +918,7 @@ export default class Dispatcher {
                 // Kind-specific steer (owner wording, xpath/topo forensics): retrievals-only is
                 // gemma's read-and-conclude idiom — no lever to pull, the results simply arrive;
                 // KILL/park advice only muddies it. Streams/children keep the remedy steer.
-                const retrievalsOnly = pending.every((k) => k.startsWith("results of this turn's"));
+                const retrievalsOnly = pending.every((k) => k.startsWith("this turn's retrieval results"));
                 if (retrievalsOnly) {
                     // attrs.retrievalOnly — the strike decoupler (owner ruling): atomic-turn-
                     // pretrained models pair fetch-and-answer by habit; the refusal teaches,
@@ -931,7 +931,7 @@ export default class Dispatcher {
                     // that re-armed this gate four times while she held the correct answer).
                     return { status: 409, error: "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn to receive results for review and reaction. To conclude, only use PLAN and SEND[200] operations.", attrs: { retrievalOnly: true } };
                 }
-                return { status: 409, error: `Attempted [200] termination with pending work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
+                return { status: 409, error: `Attempted [200] termination in a turn that performs retrieval or has surviving work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
             }
             await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: loopId, message: raw === "" ? null : raw });
             return { status: 200 };
