@@ -51,7 +51,7 @@ test("[#274] loopUsage.promptBudget is null when the provider reports no window"
         const sessionId = await insertSession(db, `ctx-null-${crypto.randomUUID()}`);
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
-        // A windowless provider — usage_prompt set, usage_context_size left NULL.
+        // A windowless provider — usage_prompt set, usage_prompt_budget left NULL.
         await (db.test_turns_insert_with_usage_prompt as PrepMethod).run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", val: 100 });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);

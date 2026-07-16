@@ -163,7 +163,7 @@ SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        (SELECT usage_prompt FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context,
        -- #274 — the LAST turn's model window (denominator), so numerator + denominator come from
        -- the same loop/model; NULL when the provider reports no window.
-       (SELECT usage_context_size FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context_size,
+       (SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context_size,
        -- #252 — the opaque provider meta blob from the LATEST turn (e.g. balancePico, a
        -- point-in-time snapshot; latest wins). Service-unenforced passthrough to the client.
        (SELECT meta FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS meta
@@ -200,7 +200,7 @@ UPDATE turns SET
     usage_reasoning = $usage_reasoning,
     usage_cached = $usage_cached,
     usage_cost_pico = $usage_cost_pico,
-    usage_context_size = $usage_context_size,
+    usage_prompt_budget = $usage_prompt_budget,
     finish_reason = $finish_reason,
     model = $model,
     meta = $meta

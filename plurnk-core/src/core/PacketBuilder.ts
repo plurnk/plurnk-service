@@ -109,9 +109,9 @@ export default class PacketBuilder {
     // battle-tested suffix parser. Cached per alias; the boot-global case falls back to the active
     // alias when a provider carries no side-table entry (a test Mock).
     static #KNOBS = ["PLURNK_SERVICE_CONTEXT_WINDOW", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_COMPLETION", "PLURNK_SERVICE_SAFETY"] as const;
-    #partitions = new Map<string, { ctx: number; reasoning: number; assistant: number; safety: number }>();
+    #partitions = new Map<string, { contextWindow: number; reasoning: number; completion: number; safety: number }>();
 
-    #resolvePartition(alias: string): { ctx: number; reasoning: number; assistant: number; safety: number } {
+    #resolvePartition(alias: string): { contextWindow: number; reasoning: number; completion: number; safety: number } {
         // #472 hard shed (OpenAI lexicon ruling) — the retired llama.cpp-speak names fail LOUD at the
         // read boundary; a stale operator .env must never silently lose its ceiling to a rename.
         for (const k of Object.keys(process.env)) {
@@ -120,9 +120,9 @@ export default class PacketBuilder {
         }
         const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
         return {
-            ctx: readPartitionIntFrom(view, "PLURNK_SERVICE_CONTEXT_WINDOW", 1),
+            contextWindow: readPartitionIntFrom(view, "PLURNK_SERVICE_CONTEXT_WINDOW", 1),
             reasoning: readPartitionIntFrom(view, "PLURNK_SERVICE_REASONING", 0),
-            assistant: readPartitionIntFrom(view, "PLURNK_SERVICE_COMPLETION", 0),
+            completion: readPartitionIntFrom(view, "PLURNK_SERVICE_COMPLETION", 0),
             safety: readPartitionIntFrom(view, "PLURNK_SERVICE_SAFETY", 0),
         };
     }
@@ -146,7 +146,7 @@ export default class PacketBuilder {
     // #421 — §tokenomics-window-unpollable-deliberate: an unpollable window (provider.contextWindow null
     // after env/probe/catalog all miss) with NO per-alias knob is genuinely-unknown — nobody chose an
     // envelope. The budget/ceiling short-circuit that window to NO-CAP (#isUnboundedWindow) rather than
-    // substitute a stand-in the operator never chose; the bare partition still feeds decodeBudget's
+    // substitute a stand-in the operator never chose; the bare partition still feeds maxTokensFor's
     // generation reserves, which the backend clamps. A per-alias CONTEXT_WINDOW knob makes the window DELIBERATE
     // and it flows bounded, normally.
     #isUnboundedWindow(provider: Provider): boolean {
@@ -155,7 +155,7 @@ export default class PacketBuilder {
         return !PacketBuilder.#hasAliasKnob(alias);
     }
 
-    #partitionFor(provider: Provider): { ctx: number; reasoning: number; assistant: number; safety: number } {
+    #partitionFor(provider: Provider): { contextWindow: number; reasoning: number; completion: number; safety: number } {
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
         const hit = this.#partitions.get(alias);
         if (hit !== undefined) return hit;
@@ -167,9 +167,9 @@ export default class PacketBuilder {
     // The generation envelope — REASONING + COMPLETION, one undifferentiated pool, passed on
     // every generate({maxTokens}): no decode is unbounded (§tokenomics-window-partition). Per
     // alias (#352): gemma's measured envelope; a cloud alias's generous default the backend clamps.
-    decodeBudget(provider: Provider): number {
-        const { reasoning, assistant } = this.#partitionFor(provider);
-        return reasoning + assistant;
+    maxTokensFor(provider: Provider): number {
+        const { reasoning, completion } = this.#partitionFor(provider);
+        return reasoning + completion;
     }
 
     // §tokenomics-window-partition — the prompt ceiling
@@ -185,9 +185,9 @@ export default class PacketBuilder {
     // has no business here). The raw n_ctx overstates usable room by the reserve total.
     promptBudgetFor(provider: Provider): number | null {
         if (this.#isUnboundedWindow(provider)) return null; // #421 — no cap: an unknown window has no denominator
-        const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
-        const effectiveWindow = provider.contextWindow === null ? ctx : Math.min(ctx, provider.contextWindow);
-        return Math.max(0, effectiveWindow - reasoning - assistant - safety);
+        const { contextWindow, reasoning, completion, safety } = this.#partitionFor(provider);
+        const effectiveWindow = provider.contextWindow === null ? contextWindow : Math.min(contextWindow, provider.contextWindow);
+        return Math.max(0, effectiveWindow - reasoning - completion - safety);
     }
 
     // §tokenomics-agnostic-ruler — the ceiling is the real window partition (window − reserves),
@@ -197,12 +197,12 @@ export default class PacketBuilder {
     // content; the exact provider count guards the pathological tail at the materialization gate.
     ceilingFor(provider: Provider): number | null {
         if (this.#isUnboundedWindow(provider)) return null; // #421 — no cap: the gauge headline is omitted
-        const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
-        const effectiveWindow = provider.contextWindow === null ? ctx : Math.min(ctx, provider.contextWindow);
-        const promptBudget = effectiveWindow - reasoning - assistant - safety;
+        const { contextWindow, reasoning, completion, safety } = this.#partitionFor(provider);
+        const effectiveWindow = provider.contextWindow === null ? contextWindow : Math.min(contextWindow, provider.contextWindow);
+        const promptBudget = effectiveWindow - reasoning - completion - safety;
         if (promptBudget <= 0) {
             const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
-            throw new Error(`window partition contradiction for alias '${alias}': effective window ${effectiveWindow} <= reserves ${reasoning}+${assistant}+${safety}. A local (llama-server) alias needs its OWN measured envelope — set PLURNK_SERVICE_{CONTEXT_WINDOW,REASONING,COMPLETION,SAFETY}_${alias || "<alias>"} (the bare defaults are cloud-generous; #352).`);
+            throw new Error(`window partition contradiction for alias '${alias}': effective window ${effectiveWindow} <= reserves ${reasoning}+${completion}+${safety}. A local (llama-server) alias needs its OWN measured envelope — set PLURNK_SERVICE_{CONTEXT_WINDOW,REASONING,COMPLETION,SAFETY}_${alias || "<alias>"} (the bare defaults are cloud-generous; #352).`);
         }
         return promptBudget;
     }

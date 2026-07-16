@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS turns (
     -- #274 — the context window of the model that RAN this turn (provider.contextSize), so the
     -- gauge denominator matches the loop's actual model under any /model switch. NULL = the
     -- provider can't report a window (the client omits the gauge).
-    usage_context_size INTEGER                  CHECK (usage_context_size IS NULL OR usage_context_size >= 1),
+    usage_prompt_budget INTEGER                  CHECK (usage_prompt_budget IS NULL OR usage_prompt_budget >= 1),
     packet           TEXT    NOT NULL           CHECK (json_valid(packet)),
     finish_reason    TEXT,
     model            TEXT    NOT NULL DEFAULT 'unknown' CHECK (length(model) >= 1),
