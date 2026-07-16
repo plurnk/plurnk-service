@@ -258,6 +258,16 @@ export default class Http implements SchemeHandler {
                 return { shape: "passthrough", status: 102 };
             }
 
+            // SSE: an event stream is parsed into its `data` payloads (SPEC §sse),
+            // one notifyChunk per event with the `data:`/comment framing stripped,
+            // so the model reads event content and not the transport. A long-lived
+            // GET; events land in the body channel as they arrive across turns,
+            // until the origin closes. Only GET — a POST reply is never an SSE READ.
+            if (method === "GET" && /^text\/event-stream\b/i.test(contentType)) {
+                await Http.#writeHeader(ctx, response.status, response.statusText, [...response.headers]);
+                return await Http.#streamEvents(ctx, response);
+            }
+
             // Byte path: stream the body labelled with its real content type.
             await Http.#writeHeader(ctx, response.status, response.statusText, [...response.headers]);
             const bodyMime = contentType.split(";")[0].trim() || "application/octet-stream";
@@ -305,6 +315,46 @@ export default class Http implements SchemeHandler {
         for (const [k, v] of headers) lines.push(`${k}: ${v}`);
         lines.push(`${FETCHED_AT}: ${new Date().toISOString()}`);
         await ctx.subscriptions.notifyChunk(HEADER, lines.join("\n"), "text/plain");
+    }
+
+    // Drain an SSE body, dispatching one BODY chunk per event — the event's
+    // `data` field(s) joined by \n, framing stripped (SPEC §sse). Events split on
+    // a blank line; CRs normalized so \r\n frames parse. Comment lines (`:`) and
+    // non-`data` fields (event/id/retry) drop day-one — payloads, not the wire.
+    // No reconnection day-one (Last-Event-ID is a schemes-http follow-up).
+    static async #streamEvents(ctx: SchemeCtx, response: Response): Promise<PassthroughResult> {
+        if (response.body === null) {
+            await ctx.subscriptions.close("done", "SSE stream; empty body");
+            return { shape: "passthrough", status: 102 };
+        }
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let events = 0;
+        for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
+            buffer += decoder.decode(chunk, { stream: true }).replace(/\r\n?/g, "\n");
+            let sep: number;
+            while ((sep = buffer.indexOf("\n\n")) !== -1) {
+                const data = Http.#eventData(buffer.slice(0, sep));
+                buffer = buffer.slice(sep + 2);
+                if (data === null) continue;
+                events += 1;
+                await ctx.subscriptions.notifyChunk(BODY, `${data}\n`, "text/plain");
+            }
+        }
+        await ctx.subscriptions.close("done", `SSE stream; ${events} events`);
+        return { shape: "passthrough", status: 102 };
+    }
+
+    // One SSE frame → its `data` payload (multiple `data:` lines joined by \n,
+    // one optional leading space after the colon stripped), or null when the
+    // frame carried no `data` field at all.
+    static #eventData(frame: string): string | null {
+        const data: string[] = [];
+        for (const line of frame.split("\n")) {
+            if (!line.startsWith("data:")) continue;
+            data.push(line.slice(5).replace(/^ /, ""));
+        }
+        return data.length > 0 ? data.join("\n") : null;
     }
 
     // Reconstruct the absolute URL from the parsed UrlPath. `raw` is the

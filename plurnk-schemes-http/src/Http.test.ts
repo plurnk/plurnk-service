@@ -207,6 +207,57 @@ test("READ: non-HTML body is labelled with its real content-type", async () => {
     assert.equal(body[0]?.mimetype, "application/json");
 });
 
+// ── SSE (#468) ────────────────────────────────────────────────────────────
+const sseBody = (chunks: Array<{ channel: string; chunk: string }>) =>
+    chunks.filter((c) => c.channel === "body").map((c) => c.chunk);
+
+test("READ SSE: each event's data becomes one body chunk, framing stripped", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["data: hello\n\n", "data: world\n\n"], { "content-type": "text/event-stream" }), async () => {
+        const r = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        assert.equal(r.status, 102);
+    });
+    const { chunks, closed } = inspect();
+    assert.deepEqual(sseBody(chunks), ["hello\n", "world\n"]);
+    assert.ok(chunks.every((c) => c.channel !== "body" || c.mimetype === "text/plain"));
+    assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
+    assert.equal(closed?.outcome, "SSE stream; 2 events");
+});
+
+test("READ SSE: multi-line data joins with \\n into a single event", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["data: a\ndata: b\n\n"], { "content-type": "text/event-stream; charset=utf-8" }), async () => {
+        await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+    });
+    assert.deepEqual(sseBody(inspect().chunks), ["a\nb\n"]);
+});
+
+test("READ SSE: comment and metadata-only frames drop; only data dispatches", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", [": keep-alive\n\n", "event: greet\nid: 7\ndata: payload\n\n"], { "content-type": "text/event-stream" }), async () => {
+        await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+    });
+    const { chunks, closed } = inspect();
+    assert.deepEqual(sseBody(chunks), ["payload\n"]);
+    assert.equal(closed?.outcome, "SSE stream; 1 events");
+});
+
+test("READ SSE: an event split across network chunks reassembles", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["data: par", "tial\n", "\n"], { "content-type": "text/event-stream" }), async () => {
+        await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+    });
+    assert.deepEqual(sseBody(inspect().chunks), ["partial\n"]);
+});
+
+test("READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["data: crlf\r\n\r\n"], { "content-type": "text/event-stream" }), async () => {
+        await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+    });
+    assert.deepEqual(sseBody(inspect().chunks), ["crlf\n"]);
+});
+
 test("READ: an HTML page is rendered — body is the final DOM, labelled text/html", async () => {
     const { ctx, inspect } = makeCtx();
     const browser = fakeBrowser("<html><body>rendered</body></html>");

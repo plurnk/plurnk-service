@@ -39,7 +39,7 @@ All verbs share one streaming core:
 
 1. `ctx.subscriptions.open(pathname, handle)` — registers the subscription for cancel routing; returns the run+teardown-composed `AbortSignal`. The handle's `cancel()` aborts a local `AbortController` wired to the `fetch`/render.
 2. `fetch(url, { signal })` — GET (READ) or POST (SEND[200], body from `SendBody.raw`); read the response `Content-Type`.
-3. **Render gate ({§render-lifecycle}):** a GET whose response is HTML routes to the render path; everything else (POST responses, non-HTML bodies) streams raw.
+3. **Render gate ({§render-lifecycle}):** a GET whose response is HTML routes to the render path; a GET whose response is `text/event-stream` routes to the SSE path ({§sse}); everything else (POST responses, non-HTML bodies) streams raw.
 4. Response status + headers → `notifyChunk("header", …, "text/plain")`.
 5. Body → `notifyChunk("body", chunk, mimetype)` — labelled with its real type (the response Content-Type, or `text/html` rendered). Byte path streams chunks as they arrive; render path writes the serialized DOM in one chunk.
 6. `close("done", …)` on clean end; `close("error", reason)` on failure.
@@ -77,6 +77,8 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 - **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC §operator-config-env-defaults, schemes#31). Required render-path numerics — `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT` — fail hard when unset (no in-code defaults). `MOBILE` is floor-defaulted to `1` and a required read (unset crashes). Absence-is-a-mode knobs: `PLAYWRIGHT_WS`, `NO_SANDBOX`, `CHROMIUM_HEAP_MB`.
 - **Freshness (READ):** {§revalidation} one predicate (`#storedCopyServable`), two phases. Pre-fetch: a stored copy whose materialization stamp (`x-plurnk-fetched-at`, HEADER channel) is inside `PLURNK_SCHEMES_HTTP_TTL_MS` serves with zero round-trips — identical for model READs and lane-1 prefetch (#405); `0` disables the window. The stamp resets only when the origin vouches (fetch or 304), never on a cache serve. Past the window a repeat READ recovers the prior fetch's validators from its own stored entry (`ETag`→`If-None-Match`, `Last-Modified`→`If-Modified-Since`) and revalidates. A `304` re-serves the stored body and **skips the render** — a first-class READ (the model sees an ordinary streaming result, never a cache status; `revalidated 304` rides the close summary). The TTL is the #333 milestone landed at that same one-predicate boundary (blessed by service#341; delivered per #405). `SEND[410]` drops the stored copy, forcing the next READ to full-fetch.
 - **Cancel:** the composed `AbortSignal` / SEND[499] handle aborts the render by closing the page (in-flight `goto` rejects promptly).
+
+- **SSE (READ):** {§sse} a GET whose response is `text/event-stream` is parsed, not streamed raw: events split on a blank line, and each event's `data` field(s) — joined by `\n`, the `data:`/comment framing stripped, `\r\n` normalized — dispatch as one `notifyChunk("body", …, "text/plain")`. The model reads event payloads, not the wire. Comment lines (`:`) and non-`data` fields (`event`/`id`/`retry`) drop day-one; reconnection (`Last-Event-ID`) is a follow-up (#468). A long-lived GET — events land across turns until the origin closes; the close summary counts events.
 
 ## §7 Prefetch primitive {§prefetch}
 
