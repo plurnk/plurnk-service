@@ -2,7 +2,8 @@ import test, { before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
-import Mcp, { closeAll, installServer, type HotloadRegistration } from "./Mcp.ts";
+import Mcp, { installServer, type HotloadRegistration } from "./Mcp.ts";
+import { closeAll } from "./client.ts";
 import { runtimes, runtimeDecl } from "./runtimes.ts";
 import { installAllowed, serverConfig, serverNames, registerServer, deregisterServer, isInjected, parseTarget } from "./config.ts";
 import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
@@ -127,9 +128,9 @@ test("channels: declares a results channel (application/json)", () => {
     });
 });
 
-test("probe: connects to the live server and reports the tool count", async () => {
+test("probe: connects to the live server and reports its advertised primitives", async () => {
     const avail = await new Mcp({ runtime: "echo", glyph: "🪞" }).probe();
-    assert.deepEqual(avail, { available: true, detail: "stdio: 2 tools" });
+    assert.deepEqual(avail, { available: true, detail: "stdio: 2 tools, resources, prompts" });
 });
 
 test("probe: an unconfigured server is unavailable with an actionable detail", async () => {
@@ -154,11 +155,12 @@ test("run: a no-argument tool call (no JSON body) works", async () => {
     assert.equal(JSON.parse(writes[0].chunk).content[0].text, "{}");
 });
 
-test("run: an empty body writes the live tool catalog", async () => {
+test("run: an empty body writes the live capability-aware catalog (#484)", async () => {
     const { result, writes } = await invoke("echo", "");
     assert.equal(result.status, 200);
-    const tools = JSON.parse(writes[0].chunk) as { name: string }[];
-    assert.deepEqual(tools.map((t) => t.name).sort(), ["boom", "echo"]);
+    const cat = JSON.parse(writes[0].chunk) as { capabilities: Record<string, boolean>; tools: { name: string }[] };
+    assert.equal(cat.capabilities.tools, true);
+    assert.deepEqual(cat.tools.map((t) => t.name).sort(), ["boom", "echo"]);
 });
 
 test("run: an isError tool result closes errored with status 500", async () => {
