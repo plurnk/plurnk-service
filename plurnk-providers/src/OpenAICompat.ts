@@ -16,7 +16,7 @@ import { toProviderError, classifyProviderError, ProviderError, type TelemetryEv
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 import { emitWarningOnce } from "./warnings.ts";
 
-// How the thinking intent (PLURNK_PROVIDERS_REASONING: off | adaptive | on, plus
+// How the reasoning intent (PLURNK_PROVIDERS_REASONING: off | adaptive | on, plus
 // REASONING_BUDGET iff on — #32/#33) translates to each backend's wire mechanism
 // (SPEC §4); the per-style mapping lives in #reasoningBody. Non-obvious ones:
 // "template" ALWAYS emits enable_thinking — the explicit false is llama-server's
@@ -67,7 +67,7 @@ export type OpenAICompatConfig = {
     // to the wall) — surfaced as Provider.requiresMaxTokens so consumers can
     // boot-refuse an envelope-less local alias. Default unset (no claim).
     requiresMaxTokens?: boolean;
-    // The side-channel thinking intent — REQUIRED, no in-code default
+    // The side-channel reasoning intent — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_REASONING + _BUDGET, read via reasoningFromEnv):
     // { mode: off|adaptive|on, budget: iff on }. The provider maps it to the
     // backend's mechanism via reasoningStyle; budget is only ever a magnitude,
@@ -93,12 +93,13 @@ export type OpenAICompatConfig = {
     // first failure; N = up to N retries on a transient error (§4, #18).
     retryAttempts: number;
     // Data-capture knobs (#36), OFF by default — the flag IS the isolation, so a
-    // serving turn requests nothing and carries nothing. `logprobs`: when a
+    // serving turn requests nothing and carries nothing. `topLogprobs`: when a
     // non-negative int, request `logprobs:true, top_logprobs:<n>` and surface the
-    // per-token confidence on assistant.logprobs (PLURNK_PROVIDERS_LOGPROB; null =
-    // off). `rawBody`: when true, attach the verbatim wire body to response.rawBody
-    // (PLURNK_PROVIDERS_RAWBODY). Both universal — any backend, gated per-alias.
-    logprobs?: number | null;
+    // per-token confidence on assistant.logprobs (PLURNK_PROVIDERS_TOP_LOGPROBS;
+    // null = off). `rawBody`: when true, attach the verbatim wire body to
+    // response.rawBody (PLURNK_PROVIDERS_RAWBODY). Both universal — any backend,
+    // gated per-alias.
+    topLogprobs?: number | null;
     rawBody?: boolean;
 };
 
@@ -196,7 +197,7 @@ export default class OpenAICompatProvider implements Provider {
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
-    #logprobs: number | null;
+    #topLogprobs: number | null;
     #rawBody: boolean;
     #servedModel: string | undefined;
     #requiresMaxTokens: boolean | undefined;
@@ -236,7 +237,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#balanceMetaKey = config.balanceMetaKey;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
-        this.#logprobs = config.logprobs ?? null;
+        this.#topLogprobs = config.topLogprobs ?? null;
         this.#rawBody = config.rawBody ?? false;
         this.#servedModel = config.servedModel;
         this.#requiresMaxTokens = config.requiresMaxTokens;
@@ -273,7 +274,7 @@ export default class OpenAICompatProvider implements Provider {
     countTokens(text: string): number { return this.#countTokens(text); }
     costFor(usage: ProviderUsage): number { return this.#costFor(usage); }
 
-    // Maps the thinking INTENT (off | adaptive | on+budget, #33) to the
+    // Maps the reasoning INTENT (off | adaptive | on+budget, #33) to the
     // backend's wire mechanism — including under a transported grammar. The #32
     // clamp (force reasoning_effort "none" under response_format) is LIFTED:
     // canary-verified live that fireworks masks ONLY the content channel — the
@@ -517,7 +518,7 @@ export default class OpenAICompatProvider implements Provider {
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
             // #36: request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
-            ...(this.#logprobs !== null ? { logprobs: true, top_logprobs: this.#logprobs } : {}),
+            ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
             ...this.#slotBody(runId),
         };
 

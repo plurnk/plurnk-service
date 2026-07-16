@@ -764,7 +764,7 @@ test("#36 logprobs ON (streamed): requests logprobs+top_logprobs, surfaces raw l
         { token: "no", logprob: -0.1, sampling_logprob: -0.1, top_logprobs: [{ token: "no", logprob: -0.1 }] },
     ] } }] };
     const calls = installFetch([chunk]);
-    const p = new OpenAICompatProvider({ ...captureBase, logprobs: 2 });
+    const p = new OpenAICompatProvider({ ...captureBase, topLogprobs: 2 });
     const res = await p.generate({ runId: "r", messages: [{ role: "user", content: "q" }] });
     const body = JSON.parse((calls[0].init.body as string));
     assert.equal(body.logprobs, true);
@@ -778,7 +778,7 @@ test("#36 logprobs ON (streamed): requests logprobs+top_logprobs, surfaces raw l
 test("#36 rawBody ON (non-streamed): verbatim wire body incl. sampling_logprob preserved", async () => {
     const wire = { model: "m", extra_top_level: "kept", choices: [{ message: { content: "no" }, finish_reason: "stop", logprobs: { content: [{ token: "no", logprob: -0.1, sampling_logprob: -0.1, token_id: 42 }] } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
     installFetchJson(wire);
-    const p = new OpenAICompatProvider({ ...captureBase, streaming: false, logprobs: 0, rawBody: true });
+    const p = new OpenAICompatProvider({ ...captureBase, streaming: false, topLogprobs: 0, rawBody: true });
     const res = await p.generate({ runId: "r", messages: [{ role: "user", content: "q" }] });
     assert.deepEqual(res.rawBody, wire); // verbatim
     assert.equal((res.rawBody as typeof wire).choices[0].logprobs.content[0].sampling_logprob, -0.1);

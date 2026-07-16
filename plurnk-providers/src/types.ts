@@ -12,12 +12,12 @@ export interface ChatMessage {
 // Normalized token accounting. Invariant (enforced by normalizeUsage at the
 // provider boundary): total = prompt + completion + reasoning; cached is a
 // subset of prompt. `completion` is visible output EXCLUDING reasoning; the
-// billable output is `completion + reasoning` (frontier providers bill thinking
+// billable output is `completion + reasoning` (frontier providers bill reasoning
 // tokens at the output rate).
 export interface ProviderUsage {
     readonly prompt: number;       // input tokens (cached ones included)
     readonly completion: number;   // visible output tokens, excluding reasoning
-    readonly reasoning: number;    // reasoning/thinking tokens, billed as output
+    readonly reasoning: number;    // reasoning tokens, billed as output
     readonly cached: number;       // subset of prompt served from cache
     readonly total: number;        // prompt + completion + reasoning
 }
@@ -50,7 +50,7 @@ export interface ProviderAssistant {
     readonly usage: ProviderUsage;
     readonly finishReason: FinishReason;
     readonly model: string;
-    // Per-token logprobs (#36), present ONLY when PLURNK_PROVIDERS_LOGPROB is set
+    // Per-token logprobs (#36), present ONLY when PLURNK_PROVIDERS_TOP_LOGPROBS is set
     // AND the backend returned them. Absent otherwise — NEVER synthesized. Opt-in,
     // per-alias: a scraping alias enables it; serving turns carry nothing.
     readonly logprobs?: readonly TokenLogprob[];
