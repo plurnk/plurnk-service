@@ -53,13 +53,13 @@ export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText =
         // reasoning. Only trust the gap when a total was actually reported.
         reasoning = reportedTotal > 0 ? Math.max(0, reportedTotal - prompt - completionRaw) : 0;
         completion = completionRaw;
-        // Fireworks folds thinking INTO completion_tokens and itemizes no
+        // Fireworks folds reasoning INTO completion_tokens and itemizes no
         // reasoning_tokens, so a turn that shipped only reasoning reads reasoning=0
         // though 300k chars of it arrived (#425). When reasoning TEXT came back but
         // the reported totals leave no gap, re-split the reported completion by the
         // emitted text proportions. Sum-preserving: billable output
         // (completion+reasoning) and cost are byte-identical; only the
-        // visible/reasoning gauge is corrected (pure-thinking turn -> completion 0).
+        // visible/reasoning gauge is corrected (pure-reasoning turn -> completion 0).
         if (reasoning === 0 && reasoningText.length > 0 && reportedTotal > 0 && completionRaw > 0) {
             reasoning = Math.round(completionRaw * reasoningText.length / (reasoningText.length + contentText.length));
             completion = completionRaw - reasoning;

@@ -78,8 +78,8 @@ test("normalizeUsage: fireworks folds reasoning into completion -- re-split by t
     assert.equal(u.prompt + u.completion + u.reasoning, u.total); // invariant
 });
 
-test("normalizeUsage: pure-thinking turn (empty content) attributes all completion to reasoning (#425)", () => {
-    // The run52 runaway shape: 0 visible content, the whole budget spent thinking.
+test("normalizeUsage: pure-reasoning turn (empty content) attributes all completion to reasoning (#425)", () => {
+    // The run52 runaway shape: 0 visible content, the whole budget spent reasoning.
     const u = normalizeUsage(
         { prompt_tokens: 100, completion_tokens: 500, total_tokens: 600 },
         "t".repeat(9000),

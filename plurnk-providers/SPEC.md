@@ -85,7 +85,7 @@ interface Provider {
 interface ProviderResponse {
     assistant: {
         content: string;            // raw model emission; consumer parses
-        reasoning: string | null;   // wire-reported CoT; null if absent
+        reasoning: string | null;   // wire-reported reasoning content; null if absent
         usage: ProviderUsage;       // { prompt, completion, reasoning, cached, total }
         finishReason: "stop" | "length" | "tool_calls" | "content_filter" | null;
         model: string;              // wire-reported (may differ from requested for relay providers)
@@ -97,7 +97,7 @@ interface ProviderResponse {
 interface ProviderUsage {
     prompt: number;       // input tokens (cached ones included)
     completion: number;   // visible output tokens, EXCLUDING reasoning
-    reasoning: number;    // reasoning/thinking tokens, billed as output
+    reasoning: number;    // reasoning tokens, billed as output
     cached: number;       // subset of prompt served from cache
     total: number;        // prompt + completion + reasoning
 }
@@ -292,7 +292,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       gbnfDebug,             // PLURNK_PROVIDERS_GBNF_DEBUG: validate a grammar locally + throw on invalid, but DON'T send it (§13); default false
       streaming,             // SSE transport; default true (false → one non-streamed JSON)
       supportsSlotPinning, slotCount,  // INTERNAL slot-affinity wiring (run→id_slot); never consumer-facing
-      logprobs, rawBody,     // #36 opt-in data capture (PLURNK_PROVIDERS_LOGPROB / _RAWBODY); default off
+      topLogprobs, rawBody,  // #36 opt-in data capture (PLURNK_PROVIDERS_TOP_LOGPROBS / _RAWBODY); default off
       servedModel,           // #37 backend's self-reported served id (from the probe) → Provider.servedModel
   });
   ```
@@ -302,7 +302,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 - **`chatCompletionStream` / `chatCompletion` / `OpenAiHttpError` / `StreamResponse`** — the shared HTTP client (`chatCompletionStream` for SSE, `chatCompletion` for the non-streamed JSON the `streaming: false` path uses). One shared copy.
 - **`normalizeUsage(raw, reasoningText?, contentText?)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles all three reasoning-reporting conventions; the optional text args feed the Fireworks re-split, #425) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
 - **`parseRequiredInt` / `parseOptionalInt` / `requireEnv`** — env helpers; each takes a provider `label` for error prefixing.
-- **`effortFromBudget(budget)`** — the shared thinking-budget → `low|medium|high` breakpoints.
+- **`effortFromBudget(budget)`** — the shared reasoning-budget → `low|medium|high` breakpoints.
 
 A **bespoke sibling** therefore reduces to a thin class whose `fromEnv` probes whatever it needs (model catalog, pricing, context window), builds the config, and returns `new OpenAICompatProvider(config)`. A **standard provider** (§5 tier 1) needs no sibling at all — it's a frozen entry in `STANDARD_PROVIDERS` describing its key var, base-URL var, reasoning style, and tokenizer; `standardProviderFromEnv(name, env, model)` (async — returns `Promise<Provider | null>`) does the rest. The endpoint's **canonical URL ships as a floored default** in `.env.defaults` (set-if-unset, overridable in the operator's env or per-alias); it is read from the base-URL var (or a `baseUrlFromEnv` deriver) with **no in-code default**, the value living in the shipped floor, never baked into the table. Only the API **key** is required operator config (a secret with no default; fail-hard when unset).
 
@@ -363,7 +363,7 @@ Zero grammar dependency (§11) is preserved: the GBNF string arrives per call; t
 
 Two OPT-IN knobs surface the full signal of a paid turn for downstream IQ scoring and model distillation. Both are **OFF by default** and **per-alias-scopable** (`PLURNK_PROVIDERS_<KNOB>_<alias>`): the flag *is* the isolation, so a serving turn requests nothing on the wire and carries nothing on the response — only a dataset-scraping alias opts in. Universal: any provider (standard or daughter), any backend that returns the data.
 
-**`PLURNK_PROVIDERS_LOGPROB`** (non-negative int = `top_logprobs`; unset = off). When set, `generate` requests `logprobs:true, top_logprobs:<n>` and surfaces `response.assistant.logprobs: Array<{ token, logprob, top? }>` plus `assistant.meanLogprob`. These are **managed fields** — reserved from caller `sampling`, so the env flag is the single control (a proxy consumer can't forge them). A backend that returns no logprobs yields an absent field — **never synthesized**.
+**`PLURNK_PROVIDERS_TOP_LOGPROBS`** (non-negative int = the OpenAI `top_logprobs`; unset = off). When set, `generate` requests `logprobs:true, top_logprobs:<n>` and surfaces `response.assistant.logprobs: Array<{ token, logprob, top? }>` plus `assistant.meanLogprob`. These are **managed fields** — reserved from caller `sampling`, so the env flag is the single control (a proxy consumer can't forge them). A backend that returns no logprobs yields an absent field — **never synthesized**.
 
 **The `logprob` vs `sampling_logprob` decision (the honest-confidence call).** Fireworks returns both per token: `logprob` (raw model log-probability) and `sampling_logprob` (post-sampling-transform). The structured `logprob` we surface is the **raw** value — the sampling-transform-invariant measure of the model's native belief, the correct confidence signal AND distillation target. This was settled empirically, not by assumption: under grammar the two measured **identical to full float precision**, including an *adversarial* mask (grammar forcing a token the model assigned ~8%: `logprob` −2.5229365 == `sampling_logprob` −2.5229365). A post-mask renormalization would inflate confidence toward the constraint; the raw value stays honest. Anyone wanting `sampling_logprob` reads it from `rawBody`.
 

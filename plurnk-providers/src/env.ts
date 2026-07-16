@@ -31,14 +31,22 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
 // Data-capture knobs (#36), read identically by every provider (standard AND
 // daughter) so the opt-in surface is one source of truth. Both OFF by default —
 // the flag is the isolation, so serving turns request and carry nothing.
-//   PLURNK_PROVIDERS_LOGPROB   non-negative int = top_logprobs (set → request
-//     per-token logprobs; unset → off). Per-alias-scopable.
+//   PLURNK_PROVIDERS_TOP_LOGPROBS   non-negative int = the OpenAI `top_logprobs`
+//     count (set -> request per-token logprobs; unset -> off). Per-alias-scopable.
 //   PLURNK_PROVIDERS_RAWBODY   truthy (not ""/"0") → attach the verbatim wire
 //     body to response.rawBody. Per-alias-scopable.
-export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { logprobs: number | null; rawBody: boolean } => ({
-    logprobs: parseOptionalInt(env.PLURNK_PROVIDERS_LOGPROB, "PLURNK_PROVIDERS_LOGPROB", label),
-    rawBody: env.PLURNK_PROVIDERS_RAWBODY !== undefined && env.PLURNK_PROVIDERS_RAWBODY !== "" && env.PLURNK_PROVIDERS_RAWBODY !== "0",
-});
+export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { topLogprobs: number | null; rawBody: boolean } => {
+    // Old-name shed (OpenAI-lexicon ruling, same pattern as #399): the knob sets
+    // the wire `top_logprobs`, so it carries that name. A still-set old name
+    // fails hard with the pointer, never silently coexists.
+    if (env.PLURNK_PROVIDERS_LOGPROB !== undefined && env.PLURNK_PROVIDERS_LOGPROB.length > 0) {
+        throw new Error(`${label} provider: PLURNK_PROVIDERS_LOGPROB was renamed to PLURNK_PROVIDERS_TOP_LOGPROBS (the OpenAI wire term); update the env`);
+    }
+    return {
+        topLogprobs: parseOptionalInt(env.PLURNK_PROVIDERS_TOP_LOGPROBS, "PLURNK_PROVIDERS_TOP_LOGPROBS", label),
+        rawBody: env.PLURNK_PROVIDERS_RAWBODY !== undefined && env.PLURNK_PROVIDERS_RAWBODY !== "" && env.PLURNK_PROVIDERS_RAWBODY !== "0",
+    };
+};
 
 // The side-channel reasoning knobs (SPEC §4, #32/#33) — ACTIVATION and BUDGET
 // are separate vars, so a numeric budget can never silently flip wire flags:
@@ -96,7 +104,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_PROBE_ATTEMPTS",
     "PLURNK_PROVIDERS_PROBE_DELAY",
     "PLURNK_PROVIDERS_GBNF_DEBUG",
-    "PLURNK_PROVIDERS_LOGPROB",
+    "PLURNK_PROVIDERS_TOP_LOGPROBS",
     "PLURNK_PROVIDERS_RAWBODY",
 ]);
 

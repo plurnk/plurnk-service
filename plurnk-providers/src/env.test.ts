@@ -75,12 +75,20 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
     assert.equal(scopeEnvToAlias(env, "budget").PLURNK_PROVIDERS_REASONING, "off"); // collision guard
 });
 
-test("#36 dataCaptureFromEnv: both knobs OFF by default, ON when set (LOGPROB = top_logprobs count)", async () => {
+test("#36 dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
     const { dataCaptureFromEnv } = await import("./env.ts");
-    assert.deepEqual(dataCaptureFromEnv({} as NodeJS.ProcessEnv, "x"), { logprobs: null, rawBody: false });
-    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" } as NodeJS.ProcessEnv, "x"), { logprobs: null, rawBody: false });
-    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_LOGPROB: "3", PLURNK_PROVIDERS_RAWBODY: "1" } as NodeJS.ProcessEnv, "x"), { logprobs: 3, rawBody: true });
-    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_LOGPROB: "0" } as NodeJS.ProcessEnv, "x"), { logprobs: 0, rawBody: false }); // set-to-0 = on, chosen-token only
+    assert.deepEqual(dataCaptureFromEnv({} as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" } as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "3", PLURNK_PROVIDERS_RAWBODY: "1" } as NodeJS.ProcessEnv, "x"), { topLogprobs: 3, rawBody: true });
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "0" } as NodeJS.ProcessEnv, "x"), { topLogprobs: 0, rawBody: false }); // set-to-0 = on, chosen-token only
+});
+
+test("OpenAI-lexicon shed: a still-set PLURNK_PROVIDERS_LOGPROB fails hard with the rename pointer", async () => {
+    const { dataCaptureFromEnv } = await import("./env.ts");
+    assert.throws(
+        () => dataCaptureFromEnv({ PLURNK_PROVIDERS_LOGPROB: "3" } as NodeJS.ProcessEnv, "openai"),
+        /PLURNK_PROVIDERS_LOGPROB was renamed to PLURNK_PROVIDERS_TOP_LOGPROBS/,
+    );
 });
 
 test("scopeEnvToAlias: a caller-supplied knob list scopes CONSUMER vars (service window partition)", async () => {
@@ -106,11 +114,11 @@ test("scopeEnvToAlias: a caller-supplied knob list scopes CONSUMER vars (service
 test("#36 capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
     const { scopeEnvToAlias, dataCaptureFromEnv } = await import("./env.ts");
     const env = {
-        PLURNK_PROVIDERS_LOGPROB_fireslow: "3",
+        PLURNK_PROVIDERS_TOP_LOGPROBS_fireslow: "3",
         PLURNK_PROVIDERS_RAWBODY_fireslow: "1",
     } as NodeJS.ProcessEnv;
-    assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "fireslow"), "x"), { logprobs: 3, rawBody: true });
-    assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "grokfast"), "x"), { logprobs: null, rawBody: false });
+    assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "fireslow"), "x"), { topLogprobs: 3, rawBody: true });
+    assert.deepEqual(dataCaptureFromEnv(scopeEnvToAlias(env, "grokfast"), "x"), { topLogprobs: null, rawBody: false });
 });
 
 // Reader-declares (#44 ecosystem standard): every knob the code reads appears in
