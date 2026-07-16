@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./ProviderRegistry.ts";
 
-const fakeProvider = { contextSize: 1, model: "m", countTokens: () => 0, costFor: () => 0, generate: async () => { throw new Error("unused"); } };
+const fakeProvider = { contextWindow: 1, model: "m", countTokens: () => 0, costFor: () => 0, generate: async () => { throw new Error("unused"); } };
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
     async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), attributions: new Map<string, string | string[]>() });
 
@@ -147,17 +147,17 @@ test("instantiateProvider: per-alias knobs scope through to the provider (per-al
         if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
     });
-    const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_SIZE_turbo: "12345", PLURNK_PROVIDERS_LLAMA_SERVER_turbo: "1" };
+    const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW_turbo: "12345", PLURNK_PROVIDERS_LLAMA_SERVER_turbo: "1" };
     const p = await instantiateProvider("openai", env, "m",
         async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() }),
         undefined, "turbo");
-    assert.equal(p.contextSize, 12345); // _turbo CONTEXT_SIZE reached the provider
+    assert.equal(p.contextWindow, 12345); // _turbo CONTEXT_WINDOW reached the provider
     assert.equal(p.constrainsOutput, true); // _turbo LLAMA_SERVER pin reached it too
     // same env, DIFFERENT alias: neither override applies
     const q = await instantiateProvider("openai", env, "m",
         async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() }),
         undefined, "plain");
-    assert.equal(q.contextSize, null);
+    assert.equal(q.contextWindow, null);
     assert.equal(q.constrainsOutput, false);
     mock.restoreAll();
 });

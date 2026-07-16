@@ -35,14 +35,14 @@ export default class Ollama {
         const withScheme = /^https?:\/\//.test(rawBase) ? rawBase : `http://${rawBase}`;
         const normalizedBase = withScheme.replace(/\/$/, "");
 
-        const { contextSize, family } = await fetchModelInfo({ base: normalizedBase, model, fetchTimeoutMs });
+        const { contextWindow, family } = await fetchModelInfo({ base: normalizedBase, model, fetchTimeoutMs });
 
         // Local — no auth header; local models are free so costFor defaults to 0.
         return new OpenAICompatProvider({
             model,
             url: `${normalizedBase}/v1/chat/completions`,
             fetchTimeoutMs,
-            contextSize,
+            contextWindow,
             temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", "ollama", 0),
             repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", "ollama", 0),
             frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", "ollama", 0),
@@ -66,7 +66,7 @@ type ShowResponse = { model_info?: Record<string, unknown>; details?: ShowDetail
 
 const fetchModelInfo = async ({
     base, model, fetchTimeoutMs,
-}: { base: string; model: string; fetchTimeoutMs: number }): Promise<{ contextSize: number; family: string | null }> => {
+}: { base: string; model: string; fetchTimeoutMs: number }): Promise<{ contextWindow: number; family: string | null }> => {
     const res = await fetch(`${base}/api/show`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -79,13 +79,13 @@ const fetchModelInfo = async ({
     }
     const data = (await res.json()) as ShowResponse;
     const info = data.model_info ?? {};
-    let contextSize = 0;
+    let contextWindow = 0;
     for (const [key, value] of Object.entries(info)) {
         if (key.endsWith(".context_length") && typeof value === "number" && value > 0) {
-            contextSize = value;
+            contextWindow = value;
             break;
         }
     }
-    if (contextSize === 0) throw new Error(`Ollama /api/show has no *.context_length key for "${model}"`);
-    return { contextSize, family: data.details?.family ?? null };
+    if (contextWindow === 0) throw new Error(`Ollama /api/show has no *.context_length key for "${model}"`);
+    return { contextWindow, family: data.details?.family ?? null };
 };

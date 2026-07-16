@@ -75,22 +75,22 @@ test("openai: defaults to the chars/2 heuristic upper bound, and SURFACES it", a
 
 // — context-window resolution (issue #6) —
 
-test("openai: derives contextSize from endpoint n_ctx when env unset", async () => {
+test("openai: derives contextWindow from endpoint n_ctx when env unset", async () => {
     mockEndpoint({ nctx: 49152, modelId: "macher.gguf" });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "macher.gguf");
-    assert.equal(p!.contextSize, 49152);
+    assert.equal(p!.contextWindow, 49152);
 });
 
-test("openai: derives contextSize from llama-server's nested meta.n_ctx (issue #7)", async () => {
+test("openai: derives contextWindow from llama-server's nested meta.n_ctx (issue #7)", async () => {
     mockEndpoint({ metaNctx: 49152, modelId: "macher.gguf" });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "macher.gguf");
-    assert.equal(p!.contextSize, 49152);
+    assert.equal(p!.contextWindow, 49152);
 });
 
 test("openai: meta.n_ctx wins over a top-level n_ctx", async () => {
     mockEndpoint({ nctx: 8192, metaNctx: 49152 });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    assert.equal(p!.contextSize, 49152);
+    assert.equal(p!.contextWindow, 49152);
 });
 
 // — served model identity (#37) —
@@ -114,16 +114,16 @@ test("#37: servedModel absent when the probe reads no row (consumer falls back t
     assert.equal(p!.servedModel, undefined);
 });
 
-test("openai: explicit PLURNK_PROVIDERS_CONTEXT_SIZE wins over n_ctx", async () => {
+test("openai: explicit PLURNK_PROVIDERS_CONTEXT_WINDOW wins over n_ctx", async () => {
     mockEndpoint({ nctx: 49152 });
-    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_CONTEXT_SIZE: "400000" }, "m");
-    assert.equal(p!.contextSize, 400000);
+    const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_CONTEXT_WINDOW: "400000" }, "m");
+    assert.equal(p!.contextWindow, 400000);
 });
 
-test("openai: contextSize null when the endpoint reports no n_ctx (e.g. real OpenAI)", async () => {
+test("openai: contextWindow null when the endpoint reports no n_ctx (e.g. real OpenAI)", async () => {
     mockEndpoint({}); // models response without n_ctx
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    assert.equal(p!.contextSize, null);
+    assert.equal(p!.contextWindow, null);
 });
 
 test("underivable context is SURFACED, never silent: PLURNK_CONTEXT_UNKNOWN names model + remediation", async () => {
@@ -134,7 +134,7 @@ test("underivable context is SURFACED, never silent: PLURNK_CONTEXT_UNKNOWN name
     const w = warned.map(String).find((x) => x.includes("context window underivable"));
     assert.ok(w, `expected PLURNK_CONTEXT_UNKNOWN; got: ${warned.join("; ")}`);
     assert.ok(w!.includes('"m"'), "names the model");
-    assert.ok(w!.includes("PLURNK_PROVIDERS_CONTEXT_SIZE"), "names the remediation var");
+    assert.ok(w!.includes("PLURNK_PROVIDERS_CONTEXT_WINDOW"), "names the remediation var");
 });
 
 test("derivable context emits NO context-unknown warning", async () => {
@@ -152,7 +152,7 @@ test("openai: probe failure degrades to null, never throws", async () => {
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    assert.equal(p!.contextSize, null);
+    assert.equal(p!.contextWindow, null);
 });
 
 test("openai: a probe network error (fetch rejects) degrades to null context and no grammar, never throws", async () => {
@@ -162,7 +162,7 @@ test("openai: a probe network error (fetch rejects) degrades to null context and
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    assert.equal(p!.contextSize, null);
+    assert.equal(p!.contextWindow, null);
     await p!.generate({ runId: "r", messages: [] }); // no fingerprint → no grammar capability, generate still works
 });
 
@@ -175,14 +175,14 @@ test("openai: a slot-probe network error (fetch rejects on /props) degrades slot
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    assert.equal(p!.contextSize, 4096); // meta.n_ctx still resolved despite the slot-probe failure
+    assert.equal(p!.contextWindow, 4096); // meta.n_ctx still resolved despite the slot-probe failure
     await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "x"?' }); // grammar still transports; no id_slot (slotCount null)
 });
 
 test("cloud standard providers do not probe (no n_ctx fetch)", async () => {
     const calls = mockEndpoint({ nctx: 99999 });
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
-    assert.equal(p!.contextSize, 8192);           // from the pin, NOT the mocked probe (groq has no probeNctx)
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
+    assert.equal(p!.contextWindow, 8192);           // from the pin, NOT the mocked probe (groq has no probeNctx)
     assert.equal(calls.some((u) => u.endsWith("/models")), false); // never queried /models
 });
 
@@ -205,9 +205,9 @@ test("groq: requires its API key", async () => {
     await assert.rejects(standardProviderFromEnv("groq", { ...baseEnv }, "m"), /GROQ_API_KEY must be set/);
 });
 
-test("groq: applies PLURNK_PROVIDERS_CONTEXT_SIZE", async () => {
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "131072" }, "m");
-    assert.equal(p!.contextSize, 131072);
+test("groq: applies PLURNK_PROVIDERS_CONTEXT_WINDOW", async () => {
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "131072" }, "m");
+    assert.equal(p!.contextWindow, 131072);
 });
 
 // — grammar capability detection (SPEC §13, issue #8) —
@@ -300,9 +300,9 @@ test("openai: a garbage PLURNK_PROVIDERS_LLAMA_SERVER value fails hard", async (
 
 test("constrainsOutput: fireworks (static response_format) reports true; groq reports false", async () => {
     mockEndpoint();
-    const fw = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    const fw = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     assert.equal(fw!.constrainsOutput, true);
-    const gq = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    const gq = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     assert.equal(gq!.constrainsOutput, false);
 });
 
@@ -346,7 +346,7 @@ test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", asyn
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    assert.equal(p!.contextSize, 8192); // window still read
+    assert.equal(p!.contextWindow, 8192); // window still read
     await p!.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
     assert.equal("grammar" in JSON.parse(bodies[0]), false);
 });
@@ -402,7 +402,7 @@ test("openai: probed total_slots drives internal run→slot affinity; never surf
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    assert.equal(p!.contextSize, 16384); // per-slot window, as the server reports it
+    assert.equal(p!.contextWindow, 16384); // per-slot window, as the server reports it
     assert.equal("slotCount" in p!, false); // resource internals never on the surface
     await p!.generate({ runId: "run-A", messages: [] });
     await p!.generate({ runId: "run-B", messages: [] });
@@ -421,10 +421,10 @@ test("openai: env-pinned context size does not disable grammar detection (probe 
     const calls = mockEndpoint({ metaNctx: 49152 });
     const p = await standardProviderFromEnv(
         "openai",
-        { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_CONTEXT_SIZE: "400000" },
+        { ...baseEnv, OPENAI_BASE_URL: "http://local", PLURNK_PROVIDERS_CONTEXT_WINDOW: "400000" },
         "m",
     );
-    assert.equal(p!.contextSize, 400000); // env wins for the window
+    assert.equal(p!.contextWindow, 400000); // env wins for the window
     assert.equal(calls.some((u) => u.endsWith("/models")), true); // probe still fired for capability
 });
 
@@ -439,14 +439,14 @@ test("openai flexBaseStrip: base with trailing /v1 yields a single /v1/chat/comp
 
 test("a provider appends chatPath to its base URL", async () => {
     const calls = mockEndpoint();
-    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://api.deepinfra.com/v1/openai/chat/completions");
 });
 
 test("baseUrlVar supplies the base URL (no in-code default)", async () => {
     const calls = mockEndpoint();
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", GROQ_BASE_URL: "http://proxy/openai/v1", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", GROQ_BASE_URL: "http://proxy/openai/v1", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "http://proxy/openai/v1/chat/completions");
 });
@@ -465,7 +465,7 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
         const spec = STANDARD_PROVIDERS[name];
         // Pin the window: this sweep asserts the chat URL, not budgeting, and the
         // cloud specs fail-hard on an uncataloged model absent a pin (#419).
-        const e: NodeJS.ProcessEnv = { ...baseEnv, PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" };
+        const e: NodeJS.ProcessEnv = { ...baseEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" };
         // Specs whose auth rides headersFromEnv (e.g. plurnk) have no apiKeyVar.
         const keyVar = first(spec.apiKeyVar);
         if (keyVar !== undefined) e[keyVar] = "k";
@@ -490,7 +490,7 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
 
 test("deepinfra: resolves auth via the DEEPINFRA_TOKEN alias (not only DEEPINFRA_API_KEY)", async () => {
     const seen = plurnkMock();
-    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_TOKEN: "di-tok", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_TOKEN: "di-tok", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatHeaders(seen).Authorization, "Bearer di-tok");
     mock.restoreAll();
@@ -513,7 +513,7 @@ test("openai: base URL via the legacy OPENAI_API_BASE alias", async () => {
 
 test("bedrock: derives the base from AWS_REGION (.../openai/v1), no BEDROCK_BASE_URL needed", async () => {
     const calls = mockEndpoint();
-    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1/chat/completions");
     mock.restoreAll();
@@ -521,7 +521,7 @@ test("bedrock: derives the base from AWS_REGION (.../openai/v1), no BEDROCK_BASE
 
 test("bedrock: AWS_DEFAULT_REGION is accepted when AWS_REGION is unset", async () => {
     const calls = mockEndpoint();
-    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_DEFAULT_REGION: "eu-west-1", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_DEFAULT_REGION: "eu-west-1", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions");
     mock.restoreAll();
@@ -529,7 +529,7 @@ test("bedrock: AWS_DEFAULT_REGION is accepted when AWS_REGION is unset", async (
 
 test("bedrock: an explicit BEDROCK_BASE_URL overrides region derivation", async () => {
     const calls = mockEndpoint();
-    const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", BEDROCK_BASE_URL: "https://gw.internal/openai/v1", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" };
+    const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", BEDROCK_BASE_URL: "https://gw.internal/openai/v1", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" };
     const p = await standardProviderFromEnv("bedrock", env, "m");
     await p!.generate({ runId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://gw.internal/openai/v1/chat/completions");
@@ -543,24 +543,24 @@ test("bedrock: neither BEDROCK_BASE_URL nor a region fails hard, naming the regi
     );
 });
 
-test("bedrock: contextSize resolves from the catalog via the inference-profile's publisher (#22)", async () => {
+test("bedrock: contextWindow resolves from the catalog via the inference-profile's publisher (#22)", async () => {
     const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2" };
     const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-5");
     // Resolves a REAL window from the anthropic catalog via publisher-stripping (#22). Assert the
     // MECHANISM (non-null, positive), never the literal - a catalog refresh must not break the build.
-    assert.ok(p!.contextSize !== null && p!.contextSize > 0, `expected a catalog-resolved window, got ${p!.contextSize}`);
+    assert.ok(p!.contextWindow !== null && p!.contextWindow > 0, `expected a catalog-resolved window, got ${p!.contextWindow}`);
     // cost is NOT taken from the native anthropic rate (bedrock marks up) — stays 0
     assert.equal(p!.costFor({ prompt: 1_000_000, completion: 1_000_000, reasoning: 0, cached: 0, total: 2_000_000 }), 0);
 });
 
-test("bedrock: a publisher the catalog lacks (meta) fails hard (cloud, no probe); PLURNK_PROVIDERS_CONTEXT_SIZE still wins", async () => {
+test("bedrock: a publisher the catalog lacks (meta) fails hard (cloud, no probe); PLURNK_PROVIDERS_CONTEXT_WINDOW still wins", async () => {
     const base = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-east-1" };
     await assert.rejects(
         standardProviderFromEnv("bedrock", base, "us.meta.llama-3-70b"),
         /context window unresolved/, // #419: cloud provider, uncataloged publisher, unpinned
     );
-    const pinned = await standardProviderFromEnv("bedrock", { ...base, PLURNK_PROVIDERS_CONTEXT_SIZE: "128000" }, "us.meta.llama-3-70b");
-    assert.equal(pinned!.contextSize, 128000);
+    const pinned = await standardProviderFromEnv("bedrock", { ...base, PLURNK_PROVIDERS_CONTEXT_WINDOW: "128000" }, "us.meta.llama-3-70b");
+    assert.equal(pinned!.contextWindow, 128000);
 });
 
 test("PLURNK_PROVIDERS_GBNF_DEBUG=1 wires through: an invalid grammar throws without a chat call", async () => {
@@ -578,12 +578,12 @@ test("PLURNK_PROVIDERS_GBNF_DEBUG=1 wires through: an invalid grammar throws wit
 
 import { catalogSnapshot } from "@plurnk/plurnk-models";
 
-test("standard provider: a catalog hit fills contextSize + cost when there's no live source", async () => {
+test("standard provider: a catalog hit fills contextWindow + cost when there's no live source", async () => {
     // groq doesn't probe; pick a real model id from the vendored snapshot.
     const [modelId, info] = Object.entries(catalogSnapshot().groq)[0];
     const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k" }, modelId);
     assert.ok(p !== null);
-    assert.equal(p.contextSize, info.contextWindow); // catalog window, no probe needed
+    assert.equal(p.contextWindow, info.contextWindow); // catalog window, no probe needed
     if (info.cost !== undefined) {
         // 1M output tokens → outputPer1M USD, in pico-USD (per-1M ×1e6 per token).
         const c = p.costFor({ prompt: 0, completion: 1_000_000, reasoning: 0, cached: 0, total: 1_000_000 });
@@ -593,12 +593,12 @@ test("standard provider: a catalog hit fills contextSize + cost when there's no 
     }
 });
 
-test("standard provider: a local (non-cataloged) model misses the fallback — probe owns it, contextSize null", async () => {
+test("standard provider: a local (non-cataloged) model misses the fallback — probe owns it, contextWindow null", async () => {
     mock.method(globalThis, "fetch", async (url: string) =>
         String(url).endsWith("/models") ? new Response(JSON.stringify({ data: [] }), { status: 200 }) : new Response("{}", { status: 200 }));
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "macher.gguf");
     assert.ok(p !== null);
-    assert.equal(p.contextSize, null); // empty probe + catalog miss → null; live owns the local case
+    assert.equal(p.contextWindow, null); // empty probe + catalog miss → null; live owns the local case
     mock.restoreAll();
 });
 
@@ -621,7 +621,7 @@ test("anthropic: standard entry sends bearer auth + the thinking param to the co
 test("anthropic: context + cost come from the catalog (no probe)", async () => {
     const [modelId, info] = Object.entries(catalogSnapshot().anthropic)[0];
     const p = await standardProviderFromEnv("anthropic", { ...baseEnv, ANTHROPIC_API_KEY: "k" }, modelId);
-    assert.equal(p!.contextSize, info.contextWindow);
+    assert.equal(p!.contextWindow, info.contextWindow);
 });
 
 // — bedrock standard entry (AWS, bearer API key, #19) —
@@ -643,7 +643,7 @@ test("bedrock: an explicit base is used verbatim and sends the Bedrock API key a
         calls.push({ url: String(url), auth: String((init?.headers as Record<string, string>)?.Authorization ?? "") });
         return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
     });
-    const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" };
+    const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" };
     const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-6");
     await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
     assert.equal(calls[0].url, "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1/chat/completions");
@@ -766,7 +766,7 @@ test("plurnk: normalizes the endpoint's balance_pico into meta.balancePico (#23)
 test("a third-party (non-plurnk) provider never NORMALIZES balancePico — only plurnk holds that contract", async () => {
     mock.method(globalThis, "fetch", async () =>
         new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}],"balance_pico":880000000}\n\ndata: [DONE]')); c.close(); } }), { status: 200 }));
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_SIZE: "8192" }, "m");
+    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     const res = await p!.generate({ runId: "r", messages: [] });
     assert.equal("balancePico" in (res.meta ?? {}), false); // groq has no balanceMetaKey — no normalization
     assert.equal(res.meta?.balance_pico, 880000000);          // but the raw field still passes through (every-provider meta)
@@ -779,7 +779,7 @@ test("plurnk: reads its window from upstream but stays a plain OpenAI client —
     // capability it could otherwise be talked into.
     const seen = plurnkMock();
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
-    assert.equal(p!.contextSize, 49152); // window STILL read from upstream — a 32k→48k change is a server decision
+    assert.equal(p!.contextWindow, 49152); // window STILL read from upstream — a 32k→48k change is a server decision
     await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(seen.find((s) => s.url.endsWith("/chat/completions"))!.body);
     assert.equal("grammar" in body, false);          // never forwards GBNF — the router injects its own

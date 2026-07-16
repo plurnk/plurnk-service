@@ -41,7 +41,7 @@ export type OpenAICompatConfig = {
     url: string;                              // fully-resolved chat-completions URL
     fetchTimeoutMs: number;
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
-    contextSize?: number | null;              // default null; caller resolves-or-fails (#419), narrows to required with the interface
+    contextWindow?: number | null;              // default null; caller resolves-or-fails (#419), narrows to required with the interface
     reasoningStyle?: ReasoningStyle;          // default "none"
     countTokens?: (text: string) => number;   // default chars/2 upper-bound heuristic
     costFor?: (usage: ProviderUsage) => number; // default () => 0
@@ -179,7 +179,7 @@ export default class OpenAICompatProvider implements Provider {
     #url: string;
     #fetchTimeoutMs: number;
     #headers: Record<string, string>;
-    #contextSize: number | null;
+    #contextWindow: number | null;
     #reasoning: Reasoning;
     #temperature: number;
     #repeatPenalty: number;
@@ -213,7 +213,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#url = config.url;
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#headers = config.headers ?? {};
-        this.#contextSize = config.contextSize ?? null;
+        this.#contextWindow = config.contextWindow ?? null;
         this.#reasoning = config.reasoning;
         // Loud guard: an out-of-date consumer (stale daughter dist) omitting the
         // required tuning fields must fail at construction, not silently send
@@ -260,7 +260,7 @@ export default class OpenAICompatProvider implements Provider {
         }
     }
 
-    get contextSize(): number | null { return this.#contextSize; }
+    get contextWindow(): number | null { return this.#contextWindow; }
     get model(): string { return this.#model; }
     // #37: backend's self-reported served id; undefined when unprobed/unknown.
     get servedModel(): string | undefined { return this.#servedModel; }

@@ -19,14 +19,14 @@ test("parseRequiredInt: rejects non-numeric, fractional, and negative values", (
 });
 
 test("parseOptionalInt: absent → null, present → integer", () => {
-    assert.equal(parseOptionalInt(undefined, "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), null);
-    assert.equal(parseOptionalInt("", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), null);
-    assert.equal(parseOptionalInt("131072", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), 131072);
+    assert.equal(parseOptionalInt(undefined, "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), null);
+    assert.equal(parseOptionalInt("", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), null);
+    assert.equal(parseOptionalInt("131072", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), 131072);
 });
 
 test("parseOptionalInt: rejects fractional and negative values", () => {
-    assert.throws(() => parseOptionalInt("3.14", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
-    assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDERS_CONTEXT_SIZE", "openai"), /must be a non-negative integer/);
+    assert.throws(() => parseOptionalInt("3.14", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), /must be a non-negative integer/);
+    assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), /must be a non-negative integer/);
 });
 
 test("reasoningFromEnv: activation modes parse; budget required IFF on; fail-hard on everything else (#33)", () => {
@@ -54,12 +54,12 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
         PLURNK_PROVIDERS_REASONING: "off",
         PLURNK_PROVIDERS_REASONING_turboderp: "on",
         PLURNK_PROVIDERS_REASONING_BUDGET_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
-        PLURNK_PROVIDERS_CONTEXT_SIZE_other: "1",
+        PLURNK_PROVIDERS_CONTEXT_WINDOW_other: "1",
     } as NodeJS.ProcessEnv;
     const scoped = scopeEnvToAlias(env, "turboderp");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING, "on");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_BUDGET, "4096");
-    assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_SIZE, undefined); // other alias's override never bleeds
+    assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, undefined); // other alias's override never bleeds
     assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING, "off"); // fallback intact
 });
 
@@ -91,21 +91,31 @@ test("OpenAI-lexicon shed: a still-set PLURNK_PROVIDERS_LOGPROB fails hard with 
     );
 });
 
+test("#472 contextWindowFromEnv: reads the new name, sheds CONTEXT_SIZE hard, null when unset", async () => {
+    const { contextWindowFromEnv } = await import("./env.ts");
+    assert.equal(contextWindowFromEnv({ PLURNK_PROVIDERS_CONTEXT_WINDOW: "131072" } as NodeJS.ProcessEnv, "openai"), 131072);
+    assert.equal(contextWindowFromEnv({} as NodeJS.ProcessEnv, "openai"), null);
+    assert.throws(
+        () => contextWindowFromEnv({ PLURNK_PROVIDERS_CONTEXT_SIZE: "131072" } as NodeJS.ProcessEnv, "openai"),
+        /PLURNK_PROVIDERS_CONTEXT_SIZE was renamed to PLURNK_PROVIDERS_CONTEXT_WINDOW/,
+    );
+});
+
 test("scopeEnvToAlias: a caller-supplied knob list scopes CONSUMER vars (service window partition)", async () => {
     const { scopeEnvToAlias } = await import("./env.ts");
-    const SERVICE_KNOBS = ["PLURNK_SERVICE_CTX", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_ASSISTANT", "PLURNK_SERVICE_SAFETY"];
+    const SERVICE_KNOBS = ["PLURNK_SERVICE_CONTEXT_WINDOW", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_COMPLETION", "PLURNK_SERVICE_SAFETY"];
     const env = {
-        PLURNK_SERVICE_CTX: "163840", PLURNK_SERVICE_REASONING: "16384", PLURNK_SERVICE_ASSISTANT: "49152", PLURNK_SERVICE_SAFETY: "1024",
-        PLURNK_SERVICE_CTX_turboderp: "78848", PLURNK_SERVICE_REASONING_turboderp: "4096", PLURNK_SERVICE_ASSISTANT_TURBODERP: "8192", // case-folds
+        PLURNK_SERVICE_CONTEXT_WINDOW: "163840", PLURNK_SERVICE_REASONING: "16384", PLURNK_SERVICE_COMPLETION: "49152", PLURNK_SERVICE_SAFETY: "1024",
+        PLURNK_SERVICE_CONTEXT_WINDOW_turboderp: "78848", PLURNK_SERVICE_REASONING_turboderp: "4096", PLURNK_SERVICE_COMPLETION_TURBODERP: "8192", // case-folds
     } as NodeJS.ProcessEnv;
     const gemma = scopeEnvToAlias(env, "turboderp", SERVICE_KNOBS);
-    assert.equal(gemma.PLURNK_SERVICE_CTX, "78848");
+    assert.equal(gemma.PLURNK_SERVICE_CONTEXT_WINDOW, "78848");
     assert.equal(gemma.PLURNK_SERVICE_REASONING, "4096");
-    assert.equal(gemma.PLURNK_SERVICE_ASSISTANT, "8192");
+    assert.equal(gemma.PLURNK_SERVICE_COMPLETION, "8192");
     assert.equal(gemma.PLURNK_SERVICE_SAFETY, "1024"); // bare fallback intact
     const cloud = scopeEnvToAlias(env, "fireslow", SERVICE_KNOBS);
     assert.equal(cloud.PLURNK_SERVICE_REASONING, "16384"); // 64k envelope untouched by gemma overrides
-    assert.equal(cloud.PLURNK_SERVICE_ASSISTANT, "49152");
+    assert.equal(cloud.PLURNK_SERVICE_COMPLETION, "49152");
     // custom list does NOT scope providers-family knobs (closed-list isolation both ways)
     const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_REASONING_turboderp: "on" } as NodeJS.ProcessEnv, "turboderp", SERVICE_KNOBS);
     assert.equal(mixed.PLURNK_PROVIDERS_REASONING, "off");

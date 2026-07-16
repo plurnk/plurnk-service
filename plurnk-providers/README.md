@@ -27,7 +27,7 @@ One package is **one** provider identity — the `<name>` segment of `PLURNK_MOD
 The framework calls `YourClass.fromEnv(env, model, options?)` (sync or async) and expects a `Provider`. `options.baseUrl` is the per-alias endpoint override (`PLURNK_BASEURL_<alias>`) — honor it if you're a self-hosted provider so two aliases can reach two boxes; ignore it otherwise. Two ways in:
 
 - **OpenAI-compatible backends** (the common case): `fromEnv` reads its env (base URL, key), probes whatever it needs (catalog, context window, pricing), and returns **`new OpenAICompatProvider(config)`**. You write a `fromEnv` and a config object — the transport spine (SSE, usage normalization, `finishReason`, grammar transport, slot affinity) is inherited. See `OpenAICompatConfig` / SPEC §11.
-- **Non-OpenAI backends**: `implements Provider` directly — `generate`, `contextSize`, `model`, `countTokens(text)`, `costFor(usage)`.
+- **Non-OpenAI backends**: `implements Provider` directly — `generate`, `contextWindow`, `model`, `countTokens(text)`, `costFor(usage)`.
 
 `fromEnv` **MUST fail fast with a named error** when required env is missing — name the var the operator must set. (Why a factory, not a base-class constructor like execs/mimes: a provider often async-probes at construction — SPEC §3.)
 

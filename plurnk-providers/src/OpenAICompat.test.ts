@@ -71,7 +71,7 @@ test("effortFromBudget: maps budget to tiers", () => {
 test("identity getters and defaults", () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     assert.equal(p.model, "m");
-    assert.equal(p.contextSize, null); // default
+    assert.equal(p.contextWindow, null); // default
     assert.equal(p.countTokens(""), 0);
     assert.equal(p.countTokens("four"), 2); // default heuristic ceil(4/2) upper bound
     assert.equal(p.costFor({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // default free

@@ -32,15 +32,15 @@ export type MockReturnedAssistant = ProviderAssistant & { ops?: unknown[] };
 const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 };
 
 export default class Mock implements Provider {
-    #contextSize: number | null;
+    #contextWindow: number | null;
     #queue: MockResponse[];
 
-    constructor({ contextSize, responses }: { contextSize: number | null; responses: MockResponse[] }) {
-        this.#contextSize = contextSize;
+    constructor({ contextWindow, responses }: { contextWindow: number | null; responses: MockResponse[] }) {
+        this.#contextWindow = contextWindow;
         this.#queue = [...responses];
     }
 
-    get contextSize(): number | null { return this.#contextSize; }
+    get contextWindow(): number | null { return this.#contextWindow; }
     get model(): string { return "mock"; }
 
     // Heuristic tokenizer (chars/2 upper bound, matching the framework's

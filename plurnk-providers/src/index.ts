@@ -34,7 +34,7 @@ export { default as OpenAICompatProvider, effortFromBudget } from "./OpenAICompa
 export type { OpenAICompatConfig, ReasoningStyle, GrammarStyle } from "./OpenAICompat.ts";
 export { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
 export type { StreamResponse } from "./openaiStream.ts";
-export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv } from "./env.ts";
+export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv } from "./env.ts";
 export type { Reasoning, ReasoningMode } from "./env.ts";
 export { normalizeUsage, computeCost } from "./usage.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
