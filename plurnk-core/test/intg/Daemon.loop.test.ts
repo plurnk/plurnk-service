@@ -6,7 +6,7 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockRe
 
 test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "<<EDIT(known:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
-    const mock = new Mock({ contextSize: 16384, responses: [makeMockResponse(dsl, 142)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -36,7 +36,7 @@ test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcom
 });
 
 test("loop.inject speaks into an existing run; errors when there's none (#193)", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),
         makeMockResponse("<<SEND[200]:injected done:SEND", 10),
     ] });
@@ -70,7 +70,7 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
 });
 
 test("run.fork branches the model run into a new -fork run; names it at instantiation; errors with no run (#228, #248)", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [makeMockResponse("<<EDIT(known:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<EDIT(known:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -113,7 +113,7 @@ test("run.fork branches the model run into a new -fork run; names it at instanti
 
 test("loop.run streams log/entry notifications during execution", async () => {
     const dsl = "<<EDIT(known:///x):hello:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: 16384, responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -154,7 +154,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
 
 test("loop.run fires loop/terminated notification on completion", async () => {
     const dsl = "<<EDIT(known:///x):body:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: 16384, responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -187,7 +187,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
     // throws a plain Error, runTurn re-throws (non-ProviderError → throw), it escapes runLoop to the
     // drain. Pre-#265 the drain rejected the already-.catch()'d promise and broadcast nothing → hang.
     const dsl = "<<EDIT(known:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
-    const mock = new Mock({ contextSize: 16384, responses: [makeMockResponse(dsl, 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -229,7 +229,7 @@ test("loop.run without provider returns 501", async () => {
 });
 
 test("loop.run requires non-empty prompt", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [] });
+    const mock = new Mock({ contextWindow: 16384, responses: [] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -247,7 +247,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
     // Generous context: this test isolates the maxTurns ceiling, so the budget must NOT fire first.
     // At 8192 the 3-turn EDIT accumulation + the foisted docs tips into a 413 before turn 3's cap
     // (base-packet size drifts with grammar/scheme doc growth); the headroom keeps the test on-topic.
-    const mock = new Mock({ contextSize: 32768, responses });
+    const mock = new Mock({ contextWindow: 32768, responses });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -262,7 +262,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
     });
 });
 test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

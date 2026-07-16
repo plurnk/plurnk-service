@@ -25,7 +25,7 @@ test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 40
         const parentLoop = await insertLoop(db, parentRun, 1, "parent");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const send200 = () => engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
             sessionId, runId: parentRun, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -72,7 +72,7 @@ test("[§send-premature-terminate] a CONCLUDED child carrying an inherited non-t
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
             sessionId, runId: parentRun, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -93,7 +93,7 @@ test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 —
         await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(200, null, "the host is db.internal")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(200, null, "the host is db.internal")] } }] }),
             sessionId, runId: parentRun, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -119,7 +119,7 @@ test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run self
         // work under it, a wait on nothing is already satisfied and concludes — it cannot hang the agent.
         const wait = { op: "SEND" as const, suffix: "", signal: 102, target: null, lineMarker: { marks: [-1] }, body: "standing by", position: { line: 1, column: 1 } };
         await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -139,7 +139,7 @@ test("[§send-premature-terminate] a READ + non-terminal SEND[102] continue does
         await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(102)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(102)] } }] }),
             sessionId, runId: parentRun, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -160,7 +160,7 @@ test("[§send-premature-terminate] a model that won't stop premature-200ing with
         const childRun = await insertRun(db, sessionId, parentRun);
         await insertLoop(db, childRun, 1, "child");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } })) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } })) });
         const result = await engine.runLoop({ provider, sessionId, runId: parentRun, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
         // The engine rails abandon it: identical repeated premature-200 turns trip CYCLE detection (508)
         // before the plain strike threshold (500) — defense in depth. Either way the model is terminated
@@ -186,7 +186,7 @@ test("[§send-premature-terminate] GUARD: 499 is NEVER gated — abandon-by-inte
         await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(499, null, "abandoning")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(499, null, "abandoning")] } }] }),
             sessionId, runId: parentRun, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -210,7 +210,7 @@ test("[§send-premature-terminate] a retrievals-ONLY refusal states the continua
         await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -235,7 +235,7 @@ test("[§send-premature-terminate] retrieval preemies NEVER strike — repeated 
         await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const readAndConclude = () => ({ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } });
-        const provider = new Mock({ contextSize: 100000, responses: [readAndConclude(), readAndConclude(), readAndConclude(), readAndConclude()] });
+        const provider = new Mock({ contextWindow: 100000, responses: [readAndConclude(), readAndConclude(), readAndConclude(), readAndConclude()] });
         for (let i = 0; i < 4; i++) await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ status_rx: number }>({ run_id: runId });
         assert.equal(refusals.filter((r) => r.status_rx === 409).length, 4, "all four conclude-attempts refused — the gate never weakened");
@@ -259,7 +259,7 @@ test("[§send-premature-terminate] one idle-grace turn after a retrieval-409 —
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: { raw: "waiting", json: null }, position: { line: 1, column: 1 } } as never;
         const idle = () => ({ assistant: { content: "", reasoning: null, ops: [planStmt, sendStmt(102, null, "waiting")] } });
-        const provider = new Mock({ contextSize: 100000, responses: [
+        const provider = new Mock({ contextWindow: 100000, responses: [
             { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "Hi")] } },
             idle(), idle(), idle(), idle(),
         ] });
@@ -288,7 +288,7 @@ test("a parse-emptied turn is FAILED RETRIEVAL, not idle — the root 400 speaks
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [
+        const provider = new Mock({ contextWindow: 100000, responses: [
             // RAW content (no pre-parsed ops) so the real parser judges it: the FIND is malformed.
             { assistant: { content: "<<PLAN:check the doc:PLAN\n<<FIND(((broken:FIND\n<<SEND[102]:fetching:SEND", reasoning: null } },
         ] });
@@ -313,7 +313,7 @@ test("[§log-row-self-explains] a FAILED op row carries its failure message on i
         await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [
+            provider: new Mock({ contextWindow: 100000, responses: [
                 { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } },
                 { assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } },
             ] }),
@@ -322,7 +322,7 @@ test("[§log-row-self-explains] a FAILED op row carries its failure message on i
         });
         // The NEXT packet renders the refused SEND row with its steer ON the meta line.
         const t2 = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });

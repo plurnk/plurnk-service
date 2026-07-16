@@ -9,7 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor } from "./_rpc.ts";
 
 test("Daemon.stop with a PENDING stopped-world proposal terminates — never a shutdown deadlock", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         // A non-yolo host EXEC proposes (202) and stops the world; nobody ever resolves it.
         makeMockResponse("<<PLAN:run:PLAN\n<<EXEC[sh]:echo pending:EXEC\n<<SEND[102]:proposed:SEND", 10),
     ] });

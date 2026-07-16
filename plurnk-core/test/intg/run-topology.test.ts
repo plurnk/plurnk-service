@@ -14,7 +14,7 @@ test("[§run-lifecycle-child-wake] a child run concluding wakes a parent parked 
     // and the child can't run until the parent spawns it — so the Mock queue is deterministic.
     // 16384: the parent's final resume carries the whole child subtree; that accumulation crests at the 8192 edge
     // and grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake topology, not a budget probe.
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a child run, then hibernate awaiting it.
         makeMockResponse("<<WORK(run://worker):compute the thing and finish:WORK\n<<SEND[102]<-1>:spawned worker; waiting on it:SEND", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
@@ -44,7 +44,7 @@ test("[§run-lifecycle-child-wake] a child FAILING (499) also wakes the parent �
     // 16384: the parent's woken turn carries the whole child history + collect delta, cresting at the
     // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
     // budget-edge class as the grammar 0.76.4 bumps above). Headroom for the wake, not a budget probe.
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<WORK(run://flaky):try the risky thing:WORK\n<<SEND[102]<-1>:waiting on flaky:SEND", 10),
         makeMockResponse("<<SEND[499]:flaky gave up:SEND", 10),
         makeMockResponse("<<SEND[200]:flaky is done (failed); concluding:SEND", 10),
@@ -64,7 +64,7 @@ test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent
     // grandchild concludes → wakes child → child concludes → wakes parent → parent concludes.
     // 16384: a 2-deep chain piles grandchild→child→parent results into the parent's final resume, cresting at the
     // 8192 edge; grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake recursion, not a budget probe.
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<WORK(run://child):do subwork:WORK\n<<SEND[102]<-1>:awaiting child:SEND", 10),       // parent t1
         makeMockResponse("<<WORK(run://grandchild):do leaf work:WORK\n<<SEND[102]<-1>:awaiting grandchild:SEND", 10), // child t1
         makeMockResponse("<<SEND[200]:leaf done:SEND", 10),                                                   // grandchild
@@ -84,7 +84,7 @@ test("[§run-lifecycle-child-wake] wake propagates UP a grandchild chain (parent
 test("[§run-lifecycle-child-wake] a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     // 16384: the static packet (tools sheet + docs) grew with execs-search 0.3.0's ten category
     // tags — the same teaching-growth budget-edge the delegation test hit at the FORK/WORK adopt.
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<WORK(run://w1):first job:WORK\n<<SEND[102]<-1>:awaiting w1:SEND", 10), // parent t1
         makeMockResponse("<<SEND[200]:w1 done:SEND", 10),                                       // w1
         makeMockResponse("<<WORK(run://w2):second job:WORK\n<<SEND[102]<-1>:awaiting w2:SEND", 10),// parent t2 (woken by w1)
@@ -106,7 +106,7 @@ test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a CONCLUDED
     // park awaiting voice. So the voice door (a sibling's irc) reawakens it as a NEW loop carrying the
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
-    const mock = new Mock({ contextSize: viableWindow(), responses: [
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("<<SEND[200]:standing by for the entry code:SEND", 10),        // loop 1 — idle actor concludes
         makeMockResponse("<<SEND[200]:received the entry code and confirmed:SEND", 10), // loop 2 — woken by the irc
     ] });
@@ -133,7 +133,7 @@ test("[§actor-boundary-passive-wake] an irc (SEND run://name) wakes a CONCLUDED
 });
 
 test("[§run-lifecycle-idle-is-concluded] an idle run's wait concludes (loop/terminated 200) — it never parks or quiesces", async () => {
-    const mock = new Mock({ contextSize: viableWindow(), responses: [
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // A wait with nothing running under it — an idle subtree. A wait on zero obligations concludes.
         makeMockResponse("<<SEND[202]:nothing running; done for now:SEND", 10),
     ] });
@@ -159,7 +159,7 @@ test("[§run-delegation-inherits-flags] spawn and fork carry the delegating loop
     // section for the spawned + forked runs on top of the base system prompt, so it sits well above a
     // single-run packet. At 8Ki it rode the budget edge (a ~50% 413/200 flake) and grammar 0.74.55's
     // larger delegation teaching tipped it consistently over — the headroom is the fix, not a race.
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
         makeMockResponse("<<WORK(run://worker):edit something and finish:WORK\n<<FORK(run://mirror):edit something and finish:FORK\n<<SEND[102]<-1>:delegated; waiting:SEND", 10),
         // Worker turn 1: a SIDE-EFFECTING op (proposes unless YOLO), then conclude.
@@ -196,7 +196,7 @@ test("[§run-lifecycle-wake-requeue-not-terminal] a wake re-queue (100) mid-drai
     // Under §wait-obligation-matrix a loop blocks at 202 only on a live obligation, so the wake is a
     // REAL child-wake: the parent blocks on a spawned child, the child's conclusion re-queues the parent
     // (202→100) and the drain re-claims it (100→102). Exactly one terminal must fire for the parent, 200.
-    const mock = new Mock({ contextSize: 100000, responses: [
+    const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("<<WORK(run://helper):do a quick thing:WORK\n<<SEND[202]:awaiting helper:SEND", 10), // parent — blocks on its child
         makeMockResponse("<<SEND[200]:helper done:SEND", 10),                    // helper — concludes, waking the parent
         makeMockResponse("<<SEND[200]:helper delivered; concluding:SEND", 10),   // parent — re-queued by the wake, concludes
@@ -226,7 +226,7 @@ test("[§fold-open-meta-operations] OPEN/FOLD are recorded in the DB, suppressed
     // #382 (owner) — the render suppresses a SUCCESSFUL OPEN/FOLD (zero packet cost) but the row
     // is RECORDED: a curation act with no forensic trace is how run43's task-frame fold stayed
     // invisible. A FAILED FOLD still renders — errors are signals.
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EDIT(known://note):some content worth folding:EDIT\n<<SEND[102]:wrote:SEND", 10),
         // The phantom FOLD fails (400) — §send-200-failed-ops refuses the same-turn [200], so the
         // curation turn continues and the loop concludes NEXT turn, failure weighed.

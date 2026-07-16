@@ -10,7 +10,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subs
 
 test("[§exec-timeout] EXEC <T> kills the spawn after T seconds and closes the stream 504", async () => {
     // `sleep 30` under a 1s timeout: the spawn MUST be killed near 1s, never run to completion.
-    const mock = new Mock({ contextSize: viableWindow(), responses: [
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("<<EXEC[sh]<1>:sleep 30:EXEC\n<<SEND[102]:running:SEND", 10),
         makeMockResponse("<<SEND[200]:the spawn timed out; done:SEND", 10),
     ] });

@@ -59,7 +59,7 @@ test("[§machine-processes-run-is-its-log] a run learns a sibling's edit through
         const loopB = await insertLoop(db, runB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
-        const provider = new Mock({ contextSize: 4096, responses: [okSend(), okSend()] });
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // A's turn 1 sets its "last looked" boundary; nothing happened before it, so no deltas.
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
@@ -94,7 +94,7 @@ test("[§actor-boundary-two-doors] exactly two cross-run channels — state via 
         const loopB = await insertLoop(db, runB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
-        const provider = new Mock({ contextSize: 4096, responses: [okSend(), okSend()] });
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         await sleep(2);
@@ -134,7 +134,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
         const runA = await insertRun(db, sessionId);
         const loopA = await insertLoop(db, runA, 1, "go");
         const eng = makeEngine(db);
-        const provider = new Mock({ contextSize: 4096, responses: [okSend(), okSend()] });
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // Turn 1 materializes notes.md from disk (first sight — no divergence).
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
@@ -175,7 +175,7 @@ test("[§run-scheme-collect] a sibling's loop-termination surfaces — a 2xx del
         const grinder = await insertRun(db, sessionId, null, "grinder");    // gets abandoned
         const grinderLoop = await insertLoop(db, grinder, 1, "grind forever");
         const eng = makeEngine(db);
-        const provider = new Mock({ contextSize: 4096, responses: [okSend(), okSend()] });
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // A's turn 1 sets its "last looked" boundary; the siblings are still running.
         await eng.runTurn({ provider, sessionId, runId: runA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });

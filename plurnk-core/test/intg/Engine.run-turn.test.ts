@@ -84,7 +84,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([editStmt("/x", "y"), sendStmt(200, "done")], "content", 42)],
         });
         const result = await engine.runTurn({
@@ -121,7 +121,7 @@ test("Engine.runTurn: recorded turn cost reflects reasoning tokens (costFor bill
     try {
         const usage = { prompt: 100, completion: 50, reasoning: 200, cached: 0, total: 350 };
         const provider = new ReasoningBillingMock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [{ assistant: { content: "", ops: [sendStmt(200, "done")], reasoning: "deliberated at length", usage } }],
         });
         const result = await engine.runTurn({
@@ -158,7 +158,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "");  // empty prompt = no foist
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextSize: 100000, responses: [response([sendStmt(102, "ok")])] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response([sendStmt(102, "ok")])] });
         const result = await engine.runTurn({
             provider, sessionId, runId, loopId,
             messages: [
@@ -189,7 +189,7 @@ test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prom
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([
                 editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
                 sendStmt(200, "done"),
@@ -221,7 +221,7 @@ test("Engine.runTurn: ops-without-SEND turn completes at status 102 (implicit co
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([editStmt("/x", "y")])],
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -236,7 +236,7 @@ test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([])],
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -254,7 +254,7 @@ test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([]),                                          // turn 1: empty ops
                 response([editStmt("/b", "2"), sendStmt(200, "ok")]),  // turn 2: clean
@@ -284,7 +284,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
         const { db, engine, sessionId, runId, loopId } = await setup();
         try {
             const provider = new Mock({
-                contextSize: 100000,
+                contextWindow: 100000,
                 responses: [
                     // Turn 1 emits 5 ops; cap = 3; expect 3 dispatched, 2 dropped.
                     response([
@@ -336,7 +336,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
         const { db, engine, sessionId, runId, loopId } = await setup();
         try {
             const provider = new Mock({
-                contextSize: 100000,
+                contextWindow: 100000,
                 responses: [
                     response([
                         editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
@@ -372,7 +372,7 @@ test("[§loop-terminals] Engine.runLoop: hitting maxTurns terminates the loop at
     try {
         // Every turn continues (SEND[102], never terminal), so the turn ceiling is what stops it.
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => response([editStmt(`/x-${i}`, "v"), sendStmt(102, "more")])),
         });
         const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [], maxTurns: 3 });
@@ -389,7 +389,7 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: Array.from({ length: 6 }, (_, i) => response([editStmt(`/var-${i}`, "v"), sendStmt(102, "go")])),
         });
         const result = await engine.runLoop({
@@ -425,7 +425,7 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => response([denied(i), sendStmt(102, "going")])),
         });
         const result = await engine.runLoop({
@@ -451,7 +451,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
             lineMarker: null, body: null, position: { line: 1, column: 1 },
         });
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([readMissing("a"), sendStmt(102, "1")]),
                 response([readMissing("b"), sendStmt(102, "2")]),
@@ -488,7 +488,7 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
         // After turn 1: streak=1. After turn 2: streak=0 (reset). After
         // turn 3: streak=1. After turn 4: streak=2 → abandon.
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([denied(), sendStmt(102, "1")]),
                 response([goodEdit("/ok"), sendStmt(102, "2")]),
@@ -510,7 +510,7 @@ test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
     try {
         // Two empty-ops turns in a row with maxStrikes=2 → abandon on turn 2.
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([]), response([])],
         });
         const result = await engine.runLoop({
@@ -535,7 +535,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([denied(), sendStmt(102, "1")]),
                 response([denied(), sendStmt(102, "2")]),
@@ -566,7 +566,7 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
         // detectCycle fires on turn 3 (period 1, MIN_CYCLES=3) → turnErrors++
         // → strike. After turn 3: streak=1. After 4 + 5: streak=3 → ABANDON.
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: Array.from({ length: 8 }, () => response([editStmt("/fixed", "v"), sendStmt(102, "go")])),
         });
         const result = await engine.runLoop({
@@ -583,7 +583,7 @@ test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", 
     try {
         // Vary EDIT path each turn → distinct fingerprints → no cycle.
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([editStmt("/a", "1"), sendStmt(102, "1")]),
                 response([editStmt("/b", "2"), sendStmt(102, "2")]),
@@ -609,7 +609,7 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
         const A = (): EditStatement => editStmt("/A", "v");
         const B = (): EditStatement => editStmt("/B", "v");
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([A(), sendStmt(102, "1")]),
                 response([B(), sendStmt(102, "2")]),
@@ -638,7 +638,7 @@ test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: Array.from({ length: 20 }, () => response([editStmt("/x", "v"), sendStmt(102, "go")])),
         });
         const result = await engine.runLoop({
@@ -663,7 +663,7 @@ test("Engine.runLoop: sudden_death never surfaces to model", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             // Non-terminal turns carry a work op so they're real continues, not idle-strikes
             // (§send the terminal contract) — else the two would strike out at maxStrikes:2 before SEND[200].
             responses: [
@@ -697,7 +697,7 @@ test("Engine.runTurn: telemetry buffer drains — failure shows once, then clear
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([denied(), sendStmt(102, "1")]),                // turn 1: 403 action_failure
                 response([editStmt("/b", "2"), sendStmt(102, "go")]),   // turn 2: clean (drains buffer)
@@ -730,7 +730,7 @@ test("Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw"
     try {
         const raw = { vendor: "anthropic", id: "msg_xyz" };
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [{
                 assistant: { content: "", ops: [sendStmt(200, "")], reasoning: null },
                 assistantRaw: raw,
@@ -748,7 +748,7 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([sendStmt(102, "1")]),
                 response([sendStmt(102, "2")]),
@@ -770,7 +770,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([sendStmt(102, "first"), sendStmt(200, "last")])],
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -793,7 +793,7 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([editStmt("/x", "y"), sendStmt(200, "done")])],
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -815,7 +815,7 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([editStmt("/a", "1"), sendStmt(102, "keep going")]),
                 response([editStmt("/b", "2"), sendStmt(200, "done")]),
@@ -844,7 +844,7 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([editStmt("/x", "v"), sendStmt(102, "more")]),
                 response([sendStmt(200, "done")]),
@@ -873,7 +873,7 @@ test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([editStmt("/x", "y"), sendStmt(200, "done")])],
         });
         const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
@@ -893,7 +893,7 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([denied, sendStmt(102, "keep going")]),
                 response([sendStmt(200, "done")]),
@@ -926,7 +926,7 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([denied, sendStmt(102, "t1 had a failure")]),
                 response([editStmt("/ok", "v"), sendStmt(102, "t2 was clean")]),
@@ -949,7 +949,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         // the prose is captured and the SEND[200] after it STILL parses + dispatches, so the
         // turn terminates at 200 — reversing 0.70's strict "prose breaks the op → 422".
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [contentResp("Just thinking out loud here.\n<<SEND[200]:done:SEND", 10)],
         });
         const result = await engine.runTurn({
@@ -965,7 +965,7 @@ test("Engine.runTurn: PLAN dispatches as an ordinary log op — passed through, 
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([planStmt("FIND before READ — the marker reasoning"), sendStmt(200, "done")], "", 10)],
         });
         const result = await engine.runTurn({
@@ -984,7 +984,7 @@ test("Engine.runTurn: a prose-only turn strikes as no-ops (422) — free text dr
     const { db, engine, sessionId, runId, loopId } = await setup();
     try {
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [contentResp("Just rambling, taking no action at all.", 8)],
         });
         const result = await engine.runTurn({

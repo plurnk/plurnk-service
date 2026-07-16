@@ -9,7 +9,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-const mock = (): Mock => new Mock({ contextSize: 100000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 40)] });
 
 type LogRow = { op: string; origin: string; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
 

@@ -232,7 +232,7 @@ test("session.attach with both runId and runName rejects", async () => {
 });
 
 test("providers.list returns parsed aliases with active marker", async () => {
-    await withDaemon(new Mock({ contextSize: 8192, responses: [] }), async (_db, _daemon, addr) => {
+    await withDaemon(new Mock({ contextWindow: 8192, responses: [] }), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const original = { ...process.env };
@@ -370,7 +370,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     // 200, so the full system prompt (law/definition) + the materialized docs must fit the prompt
     // budget. An 8192 mock window left only ~6.8k after reserves — under the packet — so the loop
     // concluded 413, not 200 (#433/#355). This test verifies the seam path, not small-window viability.
-    const mock = new Mock({ contextSize: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -450,7 +450,7 @@ test("the client-interface seam — readLog returns a session's journal, ownersh
 
 test("the client-interface seam — the metadata reads surface providers, sessions, runs, and constraints (#355)", async () => {
     // The render surface beyond the journal: providers+budget, sessions, runs, and the constraint overlay.
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -485,7 +485,7 @@ test("the client-interface seam — the metadata reads surface providers, sessio
 test("the client-interface seam — session lifecycle: create/attach/rename/set-root/constrain (#355)", async () => {
     // Inputs arrive pre-validated at the module's edge; core owns the envelope, the reserved-name +
     // name-uniqueness invariants, membership, and the session/created emit. Driven entirely through the seam.
-    const mock = new Mock({ contextSize: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, daemon, _addr) => {
         const events: Array<{ method: string; params: unknown }> = [];
         daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
@@ -591,7 +591,7 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
     // the WS op.exec path; the stream fires via the engine's global streamEventNotify. Pinned so the
     // per-chunk path can't silently regress. (A streaming stub with a DECLARED channel — the exec seeds
     // the executor's channel topology eagerly, so the write appends and the notify fires.)
-    await withDaemon(new Mock({ contextSize: 8192, responses: [] }), async (db, daemon, addr) => {
+    await withDaemon(new Mock({ contextWindow: 8192, responses: [] }), async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             daemon.hotloadRuntime({
@@ -628,7 +628,7 @@ test("the client-interface seam — the boot plug-point hands a registered modul
     // Hook D: register a module before start(); at boot it receives the curated seam and wires itself.
     // "Here's your handle, open your own listener." Proven by driving the live seam from inside the init.
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider: new Mock({ contextSize: 8192, responses: [] }) });
+    const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 8192, responses: [] }) });
     try {
         let handed: CoreSeam | null = null;
         let createdInInit: number | null = null;

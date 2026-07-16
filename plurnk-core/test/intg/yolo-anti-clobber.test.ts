@@ -30,7 +30,7 @@ test("[§dual-yolo-stale-clobber-reject] YOLO rejects an EDIT to a file that div
         await execFileP("git", ["add", "doc.md"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
-        const mock = new Mock({ contextSize: 8192, responses: [
+        const mock = new Mock({ contextWindow: 8192, responses: [
             makeMockResponse("<<SEND[200]:ok:SEND", 50),                                                  // loop 1: materialize doc.md=V1, terminate
             makeMockResponse("<<EDIT(file:///doc.md):V3 model clobber:EDIT\n<<SEND[200]:done:SEND", 50),  // loop 2: stale EDIT (rejected), then terminate
         ] });

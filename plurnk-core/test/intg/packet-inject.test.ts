@@ -24,7 +24,7 @@ test("[§packet-inject] PLURNK_SERVICE_PACKET_INJECT: operator file rides as a s
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
 
         const { turnId } = await engine.runTurn({
             provider, sessionId, runId, loopId,

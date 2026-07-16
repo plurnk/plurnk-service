@@ -34,7 +34,7 @@ const captureAttributions = async (tags: string[] | null): Promise<string[] | un
         if (tags !== null) schemes.attributions = () => [...tags]; // stand in for the discovered set
         const engine = new Engine({ db, schemes });
 
-        const provider = new Mock({ contextSize: 100000, responses: [turn(sendDone)] });
+        const provider = new Mock({ contextWindow: 100000, responses: [turn(sendDone)] });
         let captured: string[] | undefined;
         let seen = false;
         const real = provider.generate.bind(provider);
@@ -83,7 +83,7 @@ test("#249 — the loop is tagged with its active plugins' attribution tags, sto
         const schemes = new SchemeRegistry();
         schemes.attributions = () => ["npm:jane", "@acme/widgets"]; // the active plugins' declared tags
         const engine = new Engine({ db, schemes });
-        const provider = new Mock({ contextSize: 100000, responses: [turn(sendDone)] });
+        const provider = new Mock({ contextWindow: 100000, responses: [turn(sendDone)] });
 
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 

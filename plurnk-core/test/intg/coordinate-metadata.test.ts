@@ -28,7 +28,7 @@ test("[#391] generate carries the turn coordinate — session id + loop/turn SEQ
         const loopId = await insertLoop(db, runId, 5, "go");
         assert.notEqual(loopId, 5, "the loop's db id and its sequence diverge for this pin");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const mock = new CoordMock({ contextSize: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        const mock = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         await engine.runTurn({ provider: mock, sessionId, runId, loopId, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
         assert.equal(mock.seen.sessionId, String(sessionId), "Plurnk-Session-Id — the session id, stringified");
         assert.equal(mock.seen.loop, 5, "Plurnk-Loop — the loop's SEQUENCE (coordinate), not its db id");

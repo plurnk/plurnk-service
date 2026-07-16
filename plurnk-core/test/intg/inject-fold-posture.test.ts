@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, runLoopToTerminal } from "./_rpc.ts";
 
-const heldLoopMock = () => new Mock({ contextSize: 16384, responses: [
+const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-yolo EXEC proposal holds loop 1 live (paused at the review) while injects arrive.
     makeMockResponse("<<PLAN:hold:PLAN\n<<EXEC[sh]:echo hold:EXEC\n<<SEND[102]:working:SEND", 10),
     makeMockResponse("<<SEND[200]:done:SEND", 10),

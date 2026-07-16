@@ -18,10 +18,10 @@ class MetaProvider implements Provider {
     #base: Mock;
     #meta: Record<string, unknown>;
     constructor(meta: Record<string, unknown>) {
-        this.#base = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        this.#base = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         this.#meta = meta;
     }
-    get contextSize(): number | null { return this.#base.contextSize; }
+    get contextWindow(): number | null { return this.#base.contextWindow; }
     get model(): string { return this.#base.model; }
     countTokens(text: string): number { return this.#base.countTokens(text); }
     costFor(usage: Parameters<Mock["costFor"]>[0]): number { return this.#base.costFor(usage); }
@@ -56,7 +56,7 @@ test("[§meta-passthrough] no provider meta → empty {} (never null, never fabr
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // A plain Mock returns no `meta`.
-        const provider = new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const usage = await engine.loopUsage(loopId);

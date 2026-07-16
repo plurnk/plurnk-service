@@ -8,7 +8,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 test("createConversationRun: fresh named conversation — empty log, runLoop accepts, the stable door unaffected (#366)", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [makeMockResponse("<<SEND[200]:hello from thread-2:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:hello from thread-2:SEND", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {

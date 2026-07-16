@@ -9,7 +9,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
 test("[§send-200-failed-ops] a failed op + SEND[200] same turn → 409; the NEXT turn's [200] concludes", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         // KILL of a nonexistent entry → 404 (a failure that is NOT a retrieval, isolating this gate
         // from the retrievals leg); the same-turn [200] must be refused.
         makeMockResponse("<<PLAN:clean up then conclude:PLAN\n<<KILL(known:///no-such-entry)::KILL\n<<SEND[200]:done:SEND", 10),
@@ -41,7 +41,7 @@ test("[§send-200-failed-ops] this emission's PARSE errors gate the same-turn [2
         assistant: { content, reasoning: null, usage: { prompt: 0, completion: 10, reasoning: 0, cached: 0, total: 10 } },
         assistantRaw: null,
     });
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         rawResponse("<<PLAN:do the thing:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(known:///notes.md):opened but never closed"),
         rawResponse("<<PLAN:the op was malformed — concluding having seen the error:PLAN\n<<SEND[200]:done:SEND"),
     ] });
@@ -61,7 +61,7 @@ test("[§send-200-failed-ops] this emission's PARSE errors gate the same-turn [2
 });
 
 test("[§send-200-failed-ops] SEND[499] over a same-turn failure abandons unimpeded — declaring failure IS weighing it", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<PLAN:abort:PLAN\n<<KILL(known:///no-such-entry)::KILL\n<<SEND[499]:giving up:SEND", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {

@@ -18,7 +18,7 @@ class CapturingMock extends Mock {
 }
 
 test("[§strikes-first-party-metadata] generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
-    const mock = new CapturingMock({ contextSize: 100000, responses: [
+    const mock = new CapturingMock({ contextWindow: 100000, responses: [
         makeMockResponse("<<SEND[102]:working:SEND", 10),   // IDLE — a bare continue with no work op takes the idle steer strike
         makeMockResponse("no ops at all", 10),               // 422 no_ops → struck
         makeMockResponse("<<EDIT(known://note):r:EDIT\n<<SEND[102]:recovered:SEND", 10),  // clean, DISTINCT shape (an A-B-A fingerprint would trip rail #39)
@@ -43,7 +43,7 @@ test("[§strikes-first-party-metadata] generate carries the live streak — 0 ex
 test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404/501)", async () => {
     // Range-probing is the surgical behavior wanted under pressure; striking it prices
     // caution into the exact motion being taught. {404, 416, 501}: one set, evenly applied.
-    const mock = new CapturingMock({ contextSize: 100000, responses: [
+    const mock = new CapturingMock({ contextWindow: 100000, responses: [
         makeMockResponse("<<EDIT(known://short):one line only:EDIT\n<<SEND[102]:wrote:SEND", 10),
         makeMockResponse("<<READ(known://short)<99,100>::READ\n<<SEND[102]:probing:SEND", 10),
         makeMockResponse("<<SEND[200]:done:SEND", 10),

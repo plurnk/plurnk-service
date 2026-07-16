@@ -40,7 +40,7 @@ class ProposingTest {
 
 test("loop.run with flags.yolo=true persists to loops.flags", async () => {
     const dsl = "<<EDIT(known:///x):body:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -59,7 +59,7 @@ test("loop.run with flags.yolo=true persists to loops.flags", async () => {
 
 test("loop.run without flags leaves loops.flags at default ({})", async () => {
     const dsl = "<<EDIT(known:///x):body:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -80,7 +80,7 @@ test("[§dual-yolo-server-yolo-auto-accept] loop.run with flags.yolo=true: in-tr
     // loop completes without any client loop.resolve. Assert: final status
     // is 200 and a proposal/resolved log row exists.
     const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -113,7 +113,7 @@ test("[§dual-yolo-proposal-carries-flags] loop/proposal notification carries fl
     // the broadcast, confirm flags is present and yolo=false, then send
     // loop.resolve to unblock the dispatch so the loop completes cleanly.
     const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -150,7 +150,7 @@ test("[§dual-yolo-proposal-carries-flags] loop/proposal notification carries fl
 
 test("loop/proposal notification: flags.yolo=true when server YOLO is active", async () => {
     const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
-    const mock = new Mock({ contextSize: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());

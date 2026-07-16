@@ -64,7 +64,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-single");
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([editStmt("/france/capital", "Paris", ["france"]), sendStmt(200, "answered")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -94,7 +94,7 @@ test("e2e: three EDITs in one turn — sequence 1/2/3, three entries written", a
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-three");
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([
                 editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
                 sendStmt(102, "more"),
@@ -123,7 +123,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
             position: { line: 1, column: 1 },
         });
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [
                 response([editStmt("/state", "from turn 1"), sendStmt(102, "continuing")]),
                 // The pending set (§send-premature-terminate) forbids READ + [200] in one turn —
@@ -155,7 +155,7 @@ test("e2e: Mock queue exhaustion throws after expected runs", async () => {
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-exhaust");
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [response([editStmt("/only", "x"), sendStmt(200, "")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });

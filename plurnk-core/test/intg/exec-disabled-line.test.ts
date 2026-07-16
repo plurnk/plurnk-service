@@ -9,7 +9,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { packetSection } from "./_helpers.ts";
 
-const answer = () => new Mock({ contextSize: 16384, responses: [makeMockResponse("<<SEND[200]:the answer is 4:SEND", 10)] });
+const answer = () => new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:the answer is 4:SEND", 10)] });
 
 test("ask mode: the capability sheet says EXEC is disabled — positively, not by omission (execs#24)", async () => {
     await withDaemon(answer(), async (db, _daemon, addr) => {

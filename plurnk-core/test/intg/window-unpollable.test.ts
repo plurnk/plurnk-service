@@ -1,5 +1,5 @@
 // #377/#421 — §tokenomics-window-unpollable-deliberate: "CONTEXT_WINDOW stands in for unknown physics" only when
-// deliberate. An unpollable window (provider.contextSize null) with NO per-alias knob is nobody's
+// deliberate. An unpollable window (provider.contextWindow null) with NO per-alias knob is nobody's
 // policy — treated as NO-CAP: the prompt is unbounded, the budget/ceiling are null, and the gauge omits
 // its headline (never a stand-in the operator never chose; a probe blip degrades, never crashes). A
 // per-alias knob makes the window deliberate and the build proceeds bounded.
@@ -12,7 +12,7 @@ import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES }
 import { makeMockResponse } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
-const nullWindowMock = () => new Mock({ contextSize: null, responses: [{ assistant: { content: "", reasoning: null, ops: [] } }] });
+const nullWindowMock = () => new Mock({ contextWindow: null, responses: [{ assistant: { content: "", reasoning: null, ops: [] } }] });
 
 test("[§tokenomics-window-unpollable-deliberate] null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline (#421)", async () => {
     const db = await openMigrated();
@@ -21,7 +21,7 @@ test("[§tokenomics-window-unpollable-deliberate] null window + no per-alias kno
         const runId = await insertRun(db, sessionId);
         const loopId = await insertLoop(db, runId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mock = new Mock({ contextSize: null, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+        const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         // No cap: an unknown window has no denominator — null, not a stand-in improvised from bare numbers.
         assert.equal(engine.promptBudgetFor(mock), null, "the prompt budget is null — genuinely-unknown, uncapped");
         const result = await engine.runTurn({ provider: mock, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });

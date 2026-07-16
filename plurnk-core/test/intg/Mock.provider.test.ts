@@ -20,12 +20,12 @@ const response = (content: string, ops: MockResponse["assistant"]["ops"]): MockR
 });
 
 test("[§provider-surface-identity] Mock.provider: contextSize exposed", () => {
-    const mock = new Mock({ contextSize: 200000, responses: [] });
-    assert.equal(mock.contextSize, 200000);
+    const mock = new Mock({ contextWindow: 200000, responses: [] });
+    assert.equal(mock.contextWindow, 200000);
 });
 
 test("[§provider-surface-counttokens] Mock.provider: countTokens returns a non-negative integer", () => {
-    const mock = new Mock({ contextSize: 200000, responses: [] });
+    const mock = new Mock({ contextWindow: 200000, responses: [] });
     const n = mock.countTokens("alpha beta gamma");
     assert.ok(Number.isInteger(n) && n >= 0, `countTokens returns a non-negative integer; got ${n}`);
 });
@@ -33,7 +33,7 @@ test("[§provider-surface-counttokens] Mock.provider: countTokens returns a non-
 test("[§mock-provider-mock-fixture] Mock.provider: returns queued responses in order", async () => {
     const r1 = response("first", [editStmt("a", "1")]);
     const r2 = response("second", [editStmt("b", "2")]);
-    const mock = new Mock({ contextSize: 100, responses: [r1, r2] });
+    const mock = new Mock({ contextWindow: 100, responses: [r1, r2] });
     const a = await mock.generate({ messages: [{ role: "user", content: "anything" }] });
     const b = await mock.generate({ messages: [{ role: "user", content: "anything" }] });
     assert.equal(a.assistant.content, "first");
@@ -41,7 +41,7 @@ test("[§mock-provider-mock-fixture] Mock.provider: returns queued responses in 
 });
 
 test("Mock.provider: exhausted queue throws", async () => {
-    const mock = new Mock({ contextSize: 100, responses: [response("only", [])] });
+    const mock = new Mock({ contextWindow: 100, responses: [response("only", [])] });
     await mock.generate({ messages: [{ role: "user", content: "x" }] });
     await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
 });
@@ -57,7 +57,7 @@ test("[§provider-surface-generate] Mock.provider: assistant shape carries conte
             model: "mock-bench-v1",
         },
     };
-    const mock = new Mock({ contextSize: 100, responses: [r] });
+    const mock = new Mock({ contextWindow: 100, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
     assert.equal(result.assistant.content, "<<SEND[200]:done:SEND");
     assert.equal(result.assistant.usage.completion, 42);
@@ -72,7 +72,7 @@ test("[§provider-surface-generate] Mock.provider: assistant shape carries conte
 
 test("Mock.provider: defaults fill when test omits usage/finishReason/model", async () => {
     const r: MockResponse = { assistant: { content: "", ops: [], reasoning: null } };
-    const mock = new Mock({ contextSize: 100, responses: [r] });
+    const mock = new Mock({ contextWindow: 100, responses: [r] });
     const result = await mock.generate({ messages: [] });
     assert.deepEqual(result.assistant.usage, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
     assert.equal(result.assistant.finishReason, "stop");
@@ -81,7 +81,7 @@ test("Mock.provider: defaults fill when test omits usage/finishReason/model", as
 
 test("Mock.provider: prompt is ignored — same input doesn't influence output", async () => {
     const mock = new Mock({
-        contextSize: 100,
+        contextWindow: 100,
         responses: [response("alpha", []), response("alpha", [])],
     });
     const a = await mock.generate({ messages: [{ role: "user", content: "completely different" }] });
@@ -93,7 +93,7 @@ test("Mock.provider: prompt is ignored — same input doesn't influence output",
 test("[§provider-guarantees-assistantraw-opaque] Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
     const r1: MockResponse = { assistant: { content: "x", ops: [], reasoning: null } };
     const r2: MockResponse = { assistant: { content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
-    const mock = new Mock({ contextSize: 100, responses: [r1, r2] });
+    const mock = new Mock({ contextWindow: 100, responses: [r1, r2] });
     const a = await mock.generate({ messages: [] });
     const b = await mock.generate({ messages: [] });
     assert.equal(a.assistantRaw, null);
@@ -102,7 +102,7 @@ test("[§provider-guarantees-assistantraw-opaque] Mock.provider: assistantRaw de
 
 test("Mock.provider: remaining count tracks unconsumed responses", async () => {
     const mock = new Mock({
-        contextSize: 100,
+        contextWindow: 100,
         responses: [response("a", []), response("b", []), response("c", [])],
     });
     assert.equal(mock.remaining, 3);
@@ -114,7 +114,7 @@ test("Mock.provider: remaining count tracks unconsumed responses", async () => {
 });
 
 test("Mock.provider: empty ops array is valid (model emitting no operations)", async () => {
-    const mock = new Mock({ contextSize: 100, responses: [response("", [])] });
+    const mock = new Mock({ contextWindow: 100, responses: [response("", [])] });
     const result = await mock.generate({ messages: [] });
     assert.deepEqual(result.assistant.ops, []);
 });
@@ -126,7 +126,7 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
         sendStmt(102, "continuing"),
     ];
     const content = "<<EDIT(known:///a):1:EDIT\n<<EDIT(known:///b):2:EDIT\n<<SEND[102]:continuing:SEND";
-    const mock = new Mock({ contextSize: 100, responses: [response(content, ops)] });
+    const mock = new Mock({ contextWindow: 100, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);
     assert.deepEqual((result.assistant.ops as PlurnkStatement[] | undefined)?.map((o) => o.op), ["EDIT", "EDIT", "SEND"]);

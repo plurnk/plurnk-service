@@ -235,7 +235,7 @@ test("[§mimetype-schemes-do-not-invoke-handlers] write resolves mimetype withou
         // the spy channel through Mimetypes.process → handler.preview fires.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
         const provider = new Mock({
-            contextSize: 100000,
+            contextWindow: 100000,
             responses: [{ assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } }],
         });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });

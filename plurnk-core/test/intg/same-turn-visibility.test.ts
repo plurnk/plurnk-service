@@ -9,7 +9,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
 test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME turn (#360)", async () => {
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; SEND[102] (a same-turn SEND[200] would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
         makeMockResponse("<<PLAN:write then find:PLAN\n<<EDIT[abs](known:///abs/module-loader-spec.md):the spec body:EDIT\n<<FIND(known:///**)::FIND\n<<SEND[102]:wrote and listed:SEND", 10),

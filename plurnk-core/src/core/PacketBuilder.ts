@@ -150,7 +150,7 @@ export default class PacketBuilder {
     // generation reserves, which the backend clamps. A per-alias CONTEXT_WINDOW knob makes the window DELIBERATE
     // and it flows bounded, normally.
     #isUnboundedWindow(provider: Provider): boolean {
-        if (provider.contextSize !== null) return false;
+        if (provider.contextWindow !== null) return false;
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
         return !PacketBuilder.#hasAliasKnob(alias);
     }
@@ -186,7 +186,7 @@ export default class PacketBuilder {
     promptBudgetFor(provider: Provider): number | null {
         if (this.#isUnboundedWindow(provider)) return null; // #421 — no cap: an unknown window has no denominator
         const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
-        const effectiveWindow = provider.contextSize === null ? ctx : Math.min(ctx, provider.contextSize);
+        const effectiveWindow = provider.contextWindow === null ? ctx : Math.min(ctx, provider.contextWindow);
         return Math.max(0, effectiveWindow - reasoning - assistant - safety);
     }
 
@@ -198,7 +198,7 @@ export default class PacketBuilder {
     ceilingFor(provider: Provider): number | null {
         if (this.#isUnboundedWindow(provider)) return null; // #421 — no cap: the gauge headline is omitted
         const { ctx, reasoning, assistant, safety } = this.#partitionFor(provider);
-        const effectiveWindow = provider.contextSize === null ? ctx : Math.min(ctx, provider.contextSize);
+        const effectiveWindow = provider.contextWindow === null ? ctx : Math.min(ctx, provider.contextWindow);
         const promptBudget = effectiveWindow - reasoning - assistant - safety;
         if (promptBudget <= 0) {
             const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";

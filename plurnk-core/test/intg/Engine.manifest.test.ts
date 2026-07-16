@@ -33,7 +33,7 @@ test("[§packet-catalog] the catalog is the complete, unranked directory — eve
         // A real turn runs the derivation pump (maintainDerivations); the catalog is the
         // read-only render FIND serves — there is no manifest.json entry.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [emptyTurn] });
+        const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId, runId })) as CatalogItem[];
@@ -75,7 +75,7 @@ test("manifest build survives a malformed application/json entry — degrades to
         await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/bad.json", channel: "body", content: '{\n  "a": 1\n  "b": 2\n}', mimetype: "application/json" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [emptyTurn] });
+        const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         // The turn's pump survived the malformed entry (no -32603); the catalog renders it degraded.
@@ -105,7 +105,7 @@ test("a JSON entry large enough to tile builds through the live embedder — the
         await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/big.json", channel: "body", content: big, mimetype: "application/json" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextSize: 100000, responses: [emptyTurn] });
+        const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
         await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
 
         // The turn's pump tiled+embedded the large JSON without crashing; the catalog lists it.

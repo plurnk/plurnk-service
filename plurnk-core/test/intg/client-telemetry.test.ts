@@ -12,7 +12,7 @@ import { connect, withDaemon, rpcCall, makeMockResponse, runLoopToTerminal } fro
 // Run a loop against a provider whose generate() is shadowed to capture the `client` arg, with the
 // session created carrying settings.client = clientId (or no client setting when null).
 const captureClient = async (clientId: string | null): Promise<string | undefined> => {
-    const mock = new Mock({ contextSize: 100000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 5)] });
+    const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 5)] });
     let captured: string | undefined;
     let seen = false;
     const real = mock.generate.bind(mock);
@@ -41,7 +41,7 @@ test("#249 — no client setting → generate's client field is omitted (undefin
 });
 
 test("#249 — session.create refuses an empty client id", async () => {
-    const mock = new Mock({ contextSize: 8192, responses: [] });
+    const mock = new Mock({ contextWindow: 8192, responses: [] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

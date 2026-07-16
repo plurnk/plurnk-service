@@ -35,7 +35,7 @@ test("[§send-300-choices] SEND[300] is a PROPOSAL — stop the world; the accep
             });
         });
         const r = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which environment?;production;staging;local")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which environment?;production;staging;local")] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "deploy it" }],
         });
@@ -67,7 +67,7 @@ test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — 
             if (e.op === "SEND") engine.resolveProposal(e.logEntryId, { decision: "accept", body: "v2.1.0" });
         });
         const r = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("What should the deploy tag be?")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("What should the deploy tag be?")] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -87,7 +87,7 @@ test("[§send-300-choices] e2e: the ask stops the world via loop/proposal; loop.
     // {question, choices}, answers via the EXISTING loop.resolve {decision:"accept", body}, the
     // answer lands in the ask's own rx, and the next turn concludes with it.
     const { withDaemon, connect, rpcCall, makeMockResponse, subscribeNotifications, waitFor, flush } = await import("./_rpc.ts");
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<PLAN:ask the operator:PLAN\n<<SEND[300]:Which environment?;production;staging:SEND", 10),
         makeMockResponse("<<PLAN:conclude with the chosen environment:PLAN\n<<SEND[200]:Deploying to staging as instructed.:SEND", 10),
     ] });
@@ -122,7 +122,7 @@ test("[§send-300-choices] not enabled by default — a [300] without the client
         const loopId = await insertLoop(db, runId, 1, "ask");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const r = await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -145,7 +145,7 @@ test("[§send-300-choices] settings.questions=true (the client's affirmative req
             if (e.op === "SEND") engine.resolveProposal(e.logEntryId, { decision: "accept", body: "prod" });
         });
         await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -165,7 +165,7 @@ test("[§send-300-choices] PLURNK_QUESTIONS=0 is a servicewide ceiling — the c
         const loopId = await insertLoop(db, runId, 1, "ask");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
-            provider: new Mock({ contextSize: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [send300("Which env?;prod;staging")] } }] }),
             sessionId, runId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -208,7 +208,7 @@ test("[§proposal-list] a reconnecting client DISCOVERS the stopped world — th
     // The indefinite-wait ruling's companion: the ask stops the world; a SECOND connection
     // (the reconnect) lists the pending proposal cold — no notification needed — and answers.
     const { withDaemon, connect, rpcCall, makeMockResponse, subscribeNotifications, waitFor, flush } = await import("./_rpc.ts");
-    const mock = new Mock({ contextSize: 16384, responses: [
+    const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<PLAN:ask:PLAN\n<<SEND[300]:Which environment?;production;staging:SEND", 10),
         makeMockResponse("<<PLAN:conclude:PLAN\n<<SEND[200]:Deploying to staging.:SEND", 10),
     ] });
