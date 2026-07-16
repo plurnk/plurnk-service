@@ -36,7 +36,7 @@
             {
                 "name": "sh",
                 "glyph": "🐚",
-                "example": "<<EXEC:uname -sr:EXEC\n<<EXEC<-1,300>:npm run test:EXEC"
+                "example": "<<EXEC:uname -sr:EXEC\n<<EXEC[sh](build.sh)::EXEC\n<<EXEC<-1,300>:npm run test:EXEC"
             },
             {
                 "name": "bash",
