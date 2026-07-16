@@ -15,7 +15,7 @@ const ENGINE_ERRORS = Object.freeze({
     // #394 (owner wording) — states the LAW of legal turn shapes, deliberately nothing more:
     // teaching decomposition/drafting of big jobs is a grammar-level concern, never an error
     // message's (owner: "isn't going to fit in an error message").
-    idle_turn: { status: 409, term: "Illegal idle turn - Turns must either perform operations with submit code 102, conclude with submit code 200, or wait with submit code 202." },
+    idle_turn: { status: 409, term: "Illegal idle turn - a [102] turn performs at least one operation. Conclude with [200] or wait with [202]." },
 } as const);
 export type EngineErrorKind = keyof typeof ENGINE_ERRORS;
 

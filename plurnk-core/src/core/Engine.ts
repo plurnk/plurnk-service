@@ -1041,8 +1041,14 @@ export default class Engine {
 
         // Idle turn: an implicit-continue (102) that did no WORK — its ops are only PLAN/SEND, no mid op.
         // The model continued with nothing to do. (Skipped when premature already steered this turn.)
+        // #467 (owner criterion) — a turn whose op ATTEMPTS died at the parser is a FAILED-RETRIEVAL
+        // turn, not an idle one: the model performed an op; the op died. The root parse-400 speaks
+        // alone; stacking the idle-409 on it calls the turn something it factually wasn't (run65's
+        // one malformed FIND minted two error rows for one accident). A dispatched-but-failed op is
+        // already a mid op, so only the parse-emptied class needs the deference. GBNF makes the
+        // emitted-idle shape unemittable (grammar SPEC, no-idle-102); this 409 stays the truly-idle backstop.
         const midOpsCount = packetAssistant.ops.filter((op) => op.op !== "PLAN" && op.op !== "SEND").length;
-        if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0) {
+        if (!steerStruck && turnStatus === TURN_STATUS_IMPLICIT_CONTINUE && midOpsCount === 0 && parseErrors.length === 0) {
             // One grace turn after a retrieval-only 409 (admins specimen): the refusal steer says
             // "continuing in order to receive results" — a model that obediently waits one bare
             // [102] turn is following OUR advice, and the idle rail was executing it for that.
