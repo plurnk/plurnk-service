@@ -357,14 +357,14 @@ test("[§tokenomics-window-partition] the partition resolves PER ALIAS — the s
             delete process.env.PLURNK_MODEL; delete process.env.PLURNK_MODEL_rig;
             for (const k of ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"]) delete process.env[`PLURNK_SERVICE_${k}_rig`];
             const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
-            assert.equal(bare.decodeBudget(new Mock({ contextWindow: 1_000_000, responses: [] })), 16384 + 49152, "no alias → bare cloud-generous decode envelope");
+            assert.equal(bare.maxTokensFor(new Mock({ contextWindow: 1_000_000, responses: [] })), 16384 + 49152, "no alias → bare cloud-generous decode envelope");
             // 'rig' active with a tight measured suffix → the suffix wins.
             process.env.PLURNK_MODEL = "rig"; process.env.PLURNK_MODEL_rig = "openai/local.gguf";
             process.env.PLURNK_SERVICE_CONTEXT_WINDOW_rig = "8192"; process.env.PLURNK_SERVICE_REASONING_rig = "1024";
             process.env.PLURNK_SERVICE_COMPLETION_rig = "2048"; process.env.PLURNK_SERVICE_SAFETY_rig = "64";
             const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), telemetry, executors: () => undefined });
             const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
-            assert.equal(rig.decodeBudget(provider), 1024 + 2048, "the active alias's suffixed decode envelope wins over bare");
+            assert.equal(rig.maxTokensFor(provider), 1024 + 2048, "the active alias's suffixed decode envelope wins over bare");
             assert.equal(rig.promptBudgetFor(provider), 8192 - 1024 - 2048 - 64, "the suffixed window drives the prompt budget");
         } finally {
             keys.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });

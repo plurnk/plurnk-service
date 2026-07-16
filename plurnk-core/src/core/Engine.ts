@@ -874,7 +874,7 @@ export default class Engine {
             // doesn't negotiate. The pointer stays at 100% of budget — a margin would mask it.
             const physicallySendable = provider.contextWindow === null
                 ? true
-                : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextWindow - this.#packets.decodeBudget(provider);
+                : this.#packets.exactPacketTokens(requestPacket, provider) <= provider.contextWindow - this.#packets.maxTokensFor(provider);
             if (physicallySendable && !this.#hardOverflowRecovery.has(loopId)) {
                 this.#hardOverflowRecovery.add(loopId);
                 await (this.#db.engine_insert_log_entry as PrepMethod).get({
@@ -901,7 +901,7 @@ export default class Engine {
             await (this.#db.engine_close_turn as PrepMethod).run({
                 id: turnId, status: 413, packet: JSON.stringify(hardPacket),
                 usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 0,
-                usage_context_size: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves), even on a hard-413 turn: the gauge denominator the packet actually lives under
+                usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves), even on a hard-413 turn: the gauge denominator the packet actually lives under
                 finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
             });
             return { turnId, status: 413, statuses: [], fingerprint: "", budgetStruck: enforced.struck, budgetHardStop: true, steerStruck: false };
@@ -944,7 +944,7 @@ export default class Engine {
             // the value; providers stamps the header (same split as Run-Id, #26). loopSeq (the 1-based
             // coordinate, not the DB id) resolves the same way the prompt-slot path does (§log coords).
             const loopSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(provider), maxTokens: this.#packets.decodeBudget(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, sessionId: String(sessionId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            response = await provider.generate({ messages: modelMessages, runId: String(runId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(provider), maxTokens: this.#packets.maxTokensFor(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, sessionId: String(sessionId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(sessionId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
@@ -1075,7 +1075,7 @@ export default class Engine {
             usage_reasoning: usage.reasoning,
             usage_cached: usage.cached,
             usage_cost_pico: provider.costFor(usage), // §provider-surface-costfor
-            usage_context_size: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves): the raw n_ctx overstated usable room by the reserve total
+            usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves): the raw n_ctx overstated usable room by the reserve total
             finish_reason: finishReason,
             model,
             // #252 — opaque provider→client metadata passthrough (e.g. balancePico the
@@ -1165,7 +1165,7 @@ export default class Engine {
         // rows below STAY (the record never hides); the 413 leads and frames them for what they are.
         const truncatedEmpty = finishReason === "length" && packetAssistant.content.trim().length === 0;
         if (finishReason === "length" && (truncatedEmpty || (parseErrors?.length ?? 0) > 0)) {
-            const cap = this.#packets.decodeBudget(provider);
+            const cap = this.#packets.maxTokensFor(provider);
             const message = truncatedEmpty
                 ? `output truncated at the completion cap (${cap} tokens): nothing was emitted before the pool was consumed — the parse error below is an artifact of the empty emission, not a malformed turn`
                 : `output truncated at the completion cap (${cap} tokens): the emission was cut mid-op — the parse errors below are truncation artifacts`;
