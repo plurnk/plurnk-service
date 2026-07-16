@@ -22,8 +22,8 @@
 //
 // git resolution is in-process by default (GitIso / isomorphic-git, #461) — portable,
 // sandbox-safe, hermetic by construction. PLURNK_SERVICE_GIT_NATIVE=1 routes to system git
-// (subprocess + hermeticGitEnv, AbortSignal-respecting) — the untracked scan is the pure-JS
-// slow class (~55x native at 20k files), so a large-repo host buys the hot path back there.
+// (subprocess + hermeticGitEnv, AbortSignal-respecting) — the in-process membership pass
+// measures ~8x native (~130ms at 20k files), so a large-repo host can buy the hot path back.
 
 import { execFile } from "node:child_process";
 import { hermeticGitEnv } from "./git-env.ts";
@@ -83,9 +83,9 @@ export default class GitMembership {
     }
 
     // Untracked-but-not-ignored files of one repo (SPEC §membership-auto-add) —
-    // GitIso.untrackedFiles (statusMatrix, .gitignore-honoring) or `git ls-files --others
-    // --exclude-standard -z` under the native flag. A model-created file is a repo member the
-    // moment it exists — no git-stage required — while `.gitignore` still filters it out.
+    // GitIso.untrackedFiles (the differential-gated pruning ignore-walk) or `git ls-files
+    // --others --exclude-standard -z` under the native flag. A model-created file is a repo
+    // member the moment it exists — no git-stage required — while `.gitignore` still filters it.
     static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
         if (!nativeGit()) return GitIso.untrackedFiles(root, cache);
         const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024, env: hermeticGitEnv() });
@@ -339,6 +339,10 @@ export default class GitMembership {
         let sig: string;
         try {
             const st = await stat(canonical);
+            // A directory-shaped member — an embedded-repo boundary the untracked scan lists as
+            // `dir/` (native + iso alike) — is a membership marker: disk truth is a directory,
+            // nothing to materialize. Mirrors missing-on-disk: membership stands, no channel.
+            if (st.isDirectory()) return null;
             sig = `${st.mtimeMs}:${st.size}`;
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;

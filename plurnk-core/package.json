@@ -73,6 +73,7 @@
         "@plurnk/plurnk-schemes-http": "1.0.5",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
+        "ignore": "7.0.6",
         "isomorphic-git": "1.38.7",
         "@plurnk/plurnk-mimetypes-embeddings": "1.0.5",
         "@plurnk/plurnk-meta": "1.0.5"

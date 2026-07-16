@@ -145,6 +145,67 @@ test("[§git-portable-default] a linked worktree session root resolves membershi
     }
 });
 
+// The gitignore edge-case corpus (#463) — the differential gate for the pruning-walk untracked
+// scan. Native `ls-files --others --exclude-standard` is the oracle; the walk must reproduce it
+// byte-for-byte across: negations, anchored patterns, dir-vs-glob patterns (`build/**` + re-include
+// vs `node_modules/` prune), NESTED .gitignore precedence, `.git/info/exclude`, a submodule
+// boundary (gitlink — never descended), and an embedded plain repo (its own .git, not a submodule).
+test("[§git-portable-default] untracked scan reproduces native --exclude-standard across the gitignore edge-case corpus (#463)", async () => {
+    const inner = await seedRepo("iso-corpus-sub-");
+    await writeFile(join(inner, "inner.txt"), "i\n"); git(inner, "add", "."); commit(inner, "sub seed");
+    const root = await seedRepo("iso-corpus-");
+    try {
+        await writeFile(join(root, ".gitignore"), "*.tmp\n!keep.tmp\nnode_modules/\n/root-only.log\nbuild/**\n!build/keep.txt\n");
+        await writeFile(join(root, ".git/info/exclude"), "*.secret\n");
+        await mkdir(join(root, "sub"));
+        await writeFile(join(root, "sub/.gitignore"), "*.log\n!important.log\n");
+        await writeFile(join(root, "a.txt"), "a\n");
+        await writeFile(join(root, "sub/s.txt"), "s\n");
+        git(root, "add", ".");
+        git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", inner, "vendored");
+        commit(root, "seed");
+
+        // The untracked working set, expected verdicts per native semantics:
+        await writeFile(join(root, "loose.txt"), "l\n");                    // listed
+        await writeFile(join(root, "x.tmp"), "x\n");                        // ignored (*.tmp)
+        await writeFile(join(root, "keep.tmp"), "k\n");                     // LISTED (negation re-include)
+        await mkdir(join(root, "node_modules/pkg"), { recursive: true });
+        await writeFile(join(root, "node_modules/pkg/m.js"), "m\n");        // ignored (dir pattern — pruned, cannot re-include under)
+        await writeFile(join(root, "root-only.log"), "r\n");                // ignored (anchored at root)
+        await writeFile(join(root, "sub/root-only.log"), "r\n");            // LISTED (anchor does not reach sub/)... unless sub/.gitignore *.log — it DOES: ignored
+        await writeFile(join(root, "sub/app.log"), "a\n");                  // ignored (nested .gitignore *.log)
+        await writeFile(join(root, "sub/important.log"), "i\n");            // LISTED (nested negation)
+        await writeFile(join(root, "sub/plain.txt"), "p\n");                // listed
+        await mkdir(join(root, "build"));
+        await writeFile(join(root, "build/junk.txt"), "j\n");               // ignored (build/**)
+        await writeFile(join(root, "build/keep.txt"), "k\n");               // LISTED (glob pattern leaves the dir itself unignored, so the re-include works)
+        await writeFile(join(root, "hidden.secret"), "h\n");                // ignored (.git/info/exclude)
+        await mkdir(join(root, "newdir/deep"), { recursive: true });
+        await writeFile(join(root, "newdir/deep/y.txt"), "y\n");            // listed (untracked dir descent)
+        await writeFile(join(root, "vendored/untracked-inner.txt"), "u\n"); // NOT listed (submodule boundary)
+        const embedded = join(root, "embedded");
+        await mkdir(embedded);
+        git(embedded, "init", "-q");
+        await writeFile(join(embedded, "e.txt"), "e\n");                    // embedded plain repo — match whatever native does
+
+        const oracle = nativeUntracked(root);
+        const walk = (await GitIso.untrackedFiles(root, {})).sort();
+        assert.deepEqual(walk, oracle, "the untracked scan reproduces native ls-files --others --exclude-standard exactly");
+        // Pin the interesting verdicts explicitly so the oracle itself is validated:
+        assert.ok(oracle.includes("keep.tmp"), "negation re-includes a file");
+        assert.ok(oracle.includes("build/keep.txt"), "re-include works under a glob'd (not dir-excluded) directory");
+        assert.ok(oracle.includes("sub/important.log"), "nested .gitignore negation wins for its subtree");
+        assert.ok(!oracle.includes("sub/app.log"), "nested .gitignore ignores its subtree");
+        assert.ok(!oracle.includes("hidden.secret"), ".git/info/exclude participates");
+        assert.ok(!oracle.includes("root-only.log"), "anchored pattern ignores at root");
+        assert.ok(!oracle.some((p) => p.startsWith("node_modules/")), "dir pattern prunes");
+        assert.ok(!oracle.some((p) => p.startsWith("vendored/")), "submodule contents are never the superproject's untracked");
+    } finally {
+        await rm(root, { recursive: true, force: true });
+        await rm(inner, { recursive: true, force: true });
+    }
+});
+
 test("[§git-native-flag] PLURNK_SERVICE_GIT_NATIVE=1 routes to system git — same membership, same status", async () => {
     const { root } = await seedRich();
     const db = await openMigrated();
