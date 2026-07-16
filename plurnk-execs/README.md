@@ -21,7 +21,7 @@ Ship an executor by publishing a package — **under any scope** (`@acme/whateve
       {
         "name": "cobol",
         "glyph": "🗄",
-        "example": "EXEC[cobol]:DISPLAY 'HI'.:EXEC",
+        "example": "<<EXEC[cobol]:DISPLAY 'HI'.:EXEC",
         "documentation": "# cobol\n\nGnuCOBOL `cobc -xj`. Fixed-format source; the body is one program…"
       }
     ]
@@ -50,14 +50,14 @@ The framework instantiates **one executor per tag**, injecting `{ runtime, glyph
 
 Your tag documents itself to the model at two altitudes — you provide the content, the consumer decides how it reaches the model:
 
-- **`example`** — one line, the always-on form. The model uses it to reach for a simple tag without reading anything more. Store it **bare** (`EXEC[tag]:…:EXEC`). Keep it to a single line — it's surfaced per available tag, so it's token-sensitive.
+- **`example`** — one line, the always-on form. The model uses it to reach for a simple tag without reading anything more. Store it as the **complete `<<`-delimited op** (`<<EXEC[tag]:…:EXEC`) — the consumer renders it verbatim, so an example missing the `<<` opener teaches the model a malformed op. Keep it to a single line — it's surfaced per available tag, so it's token-sensitive.
 - **`documentation`** — full markdown, depth on demand. The flags, modes, and gotchas the one-liner can't carry (sqlite's `:memory:`-vs-file, jq's `$ENV`, git's tokenized argv). Optional — provide it for non-trivial tags; the consumer can still derive a baseline from the rest of your registry entry (example, channels, effect, availability) when you don't.
 
 Declare the two and a third-party tag gets the same self-documenting surface the first-party tags do. **How** the consumer renders the one-liner and serves the docs on demand is plurnk-service's concern, not this contract's — execs owns the two fields, the consumer owns the wiring.
 
 ## Discovery & trust
 
-`discover(options?)` scans **every installed package** under `<cwd>/node_modules` — scope-agnostic — for `plurnk.kind === "exec"`, returning `{ registry, skipped, disabled }`.
+`discover(options?)` scans **every installed package** under the nearest `node_modules` (walking up from `cwd` for workspace hoisting) — scope-agnostic — for `plurnk.kind === "exec"`, returning `{ registry, skipped, disabled }`.
 
 - **Tag collisions are fail-hard.** Two packages claiming the same tag throws at discovery, naming both — deliberately stricter than plurnk-mimetypes' last-wins. A runtime tag is an executable dispatch key, so a third party silently shadowing `python` is exactly the failure we refuse to let ship quietly; the operator resolves it.
 - **Trust gate.** `discover()` honors **`PLURNK_PLUGINS_TRUSTED_ONLY`** (host posture, plurnk-service#229): unset/`""`/`0` → every package registers (default, no regression); any value → `@plurnk/*` always trusted plus a comma-separated allowlist (`1` = first-party only). An untrusted package is discovered but **not** registered and returned in `Discovery.skipped` for the consumer to note — never a crash.
