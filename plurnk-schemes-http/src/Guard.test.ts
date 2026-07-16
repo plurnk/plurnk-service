@@ -27,11 +27,14 @@ test("isPublicAddress: blocks reserved v6, re-checks v4-mapped", () => {
 });
 
 test("isPublicUrl: protocol / localhost / IP-literal, no DNS", async () => {
-    for (const bad of ["ftp://8.8.8.8/", "file:///etc/passwd", "http://localhost/", "http://x.localhost/", "http://127.0.0.1/", "http://169.254.169.254/latest/meta-data/", "not a url"]) {
+    for (const bad of ["ftp://8.8.8.8/", "file:///etc/passwd", "http://localhost/", "http://x.localhost/", "http://127.0.0.1/", "http://169.254.169.254/latest/meta-data/", "ws://127.0.0.1/", "wss://192.168.1.1/", "not a url"]) {
         assert.equal(await Guard.isPublicUrl(bad), false, `${bad} should be refused`);
     }
     assert.equal(await Guard.isPublicUrl("https://8.8.8.8/"), true);
     assert.equal(await Guard.isPublicUrl("http://[2606:4700:4700::1111]/"), true);
+    // ws(s):// ride the same range check (the Ws engine guards its target here).
+    assert.equal(await Guard.isPublicUrl("wss://8.8.8.8/"), true);
+    assert.equal(await Guard.isPublicUrl("ws://93.184.216.34/feed"), true);
 });
 
 test("Guard.fetch: a private target is refused before any fetch", async () => {

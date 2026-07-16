@@ -45,12 +45,14 @@ export default class Guard {
         return true;
     }
 
-    // http(s) only, no localhost, and EVERY resolved address public. An IP
+    // http(s)/ws(s) only, no localhost, and EVERY resolved address public. An IP
     // literal skips DNS; a hostname resolves and every A/AAAA must be public.
+    // ws:/wss: ride the same range check — a WebSocket into private space is the
+    // same SSRF as a fetch (the Ws scheme guards its target through here).
     static async isPublicUrl(raw: string): Promise<boolean> {
         let url: URL;
         try { url = new URL(raw); } catch { return false; }
-        if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+        if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) return false;
         const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
         if (host === "localhost" || host.endsWith(".localhost")) return false;
         if (net.isIP(host)) return Guard.isPublicAddress(host);
