@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import EventRouter from "./EventRouter.ts";
 
-const router = () => new EventRouter({ threadId: "t", workerId: "r", modelWorkerId: 10, workspaceId: 3 });
+const router = () => new EventRouter({ threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3 });
 
 test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
     const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, origin: "model", op: "SEND", coordinate: "1.2.3", tx: { body: "hello" }, turn_id: 1 } });

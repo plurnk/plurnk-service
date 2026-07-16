@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Translator from "./Translator.ts";
 import type { LogEntryNotification, TerminatedNotification } from "./types.ts";
 
-const t = (): Translator => new Translator({ threadId: "th-1", workerId: "run-1" });
+const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => ({
     entry: { id: 7, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
 });
@@ -54,7 +54,7 @@ test("[§agui-projection] turn boundaries are STEPs; termination closes the step
 });
 
 test("[§agui-numbers-passthrough] plurnk.terminated carries the full terminal truth (workspaceId, loopId, turnIds, costPico) for a client's json record", () => {
-    const tr = new Translator({ threadId: "th-1", workerId: "run-1", workspaceId: 512 });
+    const tr = new Translator({ threadId: "th-1", runId: "run-1", workspaceId: 512 });
     const term: TerminatedNotification = { loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3], usage: { promptTokens: 10, completionTokens: 5, costPico: 4200, contextTokens: 10, promptBudget: 6848, meta: { balancePico: 99 } } };
     const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification & { workspaceId: number | null } };
     assert.equal(custom.value.workspaceId, 512, "daemon workspaceId — one json schema across transports");
@@ -95,7 +95,7 @@ test("[§agui-projection] a non-200 termination is RUN_ERROR carrying the status
 });
 
 test("[§agui-topology-scope] a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
-    const tr = new Translator({ threadId: "th", workerId: "r", modelWorkerId: 2 });
+    const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "REASONING_MESSAGE_START"), "the thread's model worker projects");
     const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), ...( { worker_id: 5 } as object) } as never });
@@ -104,7 +104,7 @@ test("[§agui-topology-scope] a FOREIGN worker's rows never enter the core strea
 });
 
 test("[§agui-replay] the workspace log replays as MESSAGES_SNAPSHOT — model SENDs are the conversation spine", () => {
-    const tr = new Translator({ threadId: "th", workerId: "r" });
+    const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
         { id: 1, op: "PLAN", origin: "model", tx: { body: "think" } },
         { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", tx: { body: "The answer is 42." } },

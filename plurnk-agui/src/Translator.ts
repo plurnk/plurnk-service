@@ -18,20 +18,20 @@ import type { AguiEvent, LogEntryNotification, ProposalNotification, TerminatedN
 
 export default class Translator {
     #threadId: string;
-    #workerId: string;
+    #runId: string;   // AG-UI's run id (echoed from RunAgentInput.runId) — the standard face
     #currentTurn: number | null = null;
     #modelWorkerId: number | null;
     #workspaceId: number | null;
 
-    constructor(args: { threadId: string; workerId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
+    constructor(args: { threadId: string; runId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
         this.#threadId = args.threadId;
-        this.#workerId = args.workerId;
+        this.#runId = args.runId;
         this.#modelWorkerId = args.modelWorkerId ?? null;
         this.#workspaceId = args.workspaceId ?? null;
     }
 
     runStarted(snapshot?: unknown): AguiEvent[] {
-        const events: AguiEvent[] = [{ type: "RUN_STARTED", threadId: this.#threadId, workerId: this.#workerId }];
+        const events: AguiEvent[] = [{ type: "RUN_STARTED", threadId: this.#threadId, runId: this.#runId }];
         // Spec flow: SNAPSHOT then DELTAs — the frontend's state gauge starts true, not blank.
         if (snapshot !== undefined) events.push({ type: "STATE_SNAPSHOT", snapshot });
         return events;
@@ -146,7 +146,7 @@ export default class Translator {
             events.push({ type: "RAW", event: n.usage.meta, source: "provider" });
         }
         if (n.finalStatus === 200) {
-            events.push({ type: "RUN_FINISHED", threadId: this.#threadId, workerId: this.#workerId });
+            events.push({ type: "RUN_FINISHED", threadId: this.#threadId, runId: this.#runId });
         } else {
             events.push({ type: "RUN_ERROR", message: `loop terminated ${n.finalStatus}${n.hitMaxTurns ? " (maxTurns)" : ""}`, code: String(n.finalStatus) });
         }
