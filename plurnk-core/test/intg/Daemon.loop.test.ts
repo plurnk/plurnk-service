@@ -28,9 +28,10 @@ test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcom
             // known:///france/capital + plurnk://prompt/<run>/<loop>/<N> (2 base — no manifest.json entry, the
             // catalog is FIND-served), plus 9 docs: the 4 non-excluded in-tree schemes (log/known/unknown/run
             // — plurnk/file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE), the boot-discovered `http`
-            // external, and sh/node/sqlite/git — executor docs the execs family ships (plurnk-execs#12; git
-            // joined with the in-process iso-git executor, #460). 2 + 9 = 11.
-            assert.equal(entryCount, 11);
+            // + `wss` externals (one package, two first-class schemes, #473), and sh/node/sqlite/git —
+            // executor docs the execs family ships (plurnk-execs#12; git joined with the in-process
+            // iso-git executor, #460). 2 + 10 = 12.
+            assert.equal(entryCount, 12);
         } finally { ws.close(); }
     });
 });
