@@ -22,7 +22,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, ""); // the host sets FORCE_COLOR; node colorizes
 
@@ -51,15 +51,15 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         engine.setExecutors(registry);
         const channel = registry.entry(tag)?.executor.defaultChannel ?? "stdout";
         const declaredMimetype = registry.entry(tag)?.executor.channels[channel]?.mimetype;
-        const sessionId = await insertSession(db, `batt-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "batteries");
+        const workspaceId = await insertWorkspace(db, `batt-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "batteries");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(tag, cwd, body),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -212,14 +212,14 @@ test("[§exec-runtime-fallthrough] an unregistered tag falls through to the shel
         const registry = await testExecutors();
         engine.setExecutors(registry);
         assert.ok(!registry.availableRuntimes().includes("echo"), "precondition: echo is NOT a registered runtime");
-        const sessionId = await insertSession(db, `batt-ft-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "ft");
+        const workspaceId = await insertWorkspace(db, `batt-ft-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "ft");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("echo", null, "hello fallthrough"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;

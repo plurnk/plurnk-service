@@ -12,7 +12,7 @@ import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 // This suite asserts REAL vector ranking, so it re-enables the embedder the fast lane turns off
 // (.env.test PLURNK_SERVICE_EMBED_DISABLE=1). --test-isolation=process scopes this to this file's process.
@@ -44,15 +44,15 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
     await mimetypes.ready();
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `e2e-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        const workspaceId = await insertWorkspace(db, `e2e-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         await new Known().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
         await new Known().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
         await new Known().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
         await EntryManifest.maintainDerivations(ctx);  // real embeddings stored via mimetypes-embeddings
 
-        const r = await new Known().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0, mimetypes }));
+        const r = await new Known().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
         // The two connection entries are returned, real-cosine-ranked; cake (no shared
         // keyword) is excluded by the FTS narrow, never reaching cosine.
@@ -67,14 +67,14 @@ test("[#272] the derivation pump emits throttled embed_progress telemetry for a 
     await mimetypes.ready();
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `progress-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const seed = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        const workspaceId = await insertWorkspace(db, `progress-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const seed = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         for (const name of ["a.md", "b.md", "c.md"]) await new Known().edit(editStmt(url(name), `content for ${name} with words to embed`), seed);
 
         type Tel = { source?: string; kind?: string; completed?: number; total?: number };
         const events: Tel[] = [];
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, sessionId, runId, mimetypes, pushTelemetry: (e) => events.push(e as Tel) }));
+        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushTelemetry: (e) => events.push(e as Tel) }));
 
         const progress = events.filter((e) => e.source === "engine:derivation" && e.kind === "embed_progress");
         assert.ok(progress.length > 0, "a 3-entry corpus pass emits progress telemetry (the ingest is visible, not frozen)");
@@ -85,7 +85,7 @@ test("[#272] the derivation pump emits throttled embed_progress telemetry for a 
         // threshold → silent, so steady-state turns carry no per-turn progress noise.
         const events2: Tel[] = [];
         await new Known().edit(editStmt(url("d.md"), "a single new entry changed this turn"), seed);
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, sessionId, runId, mimetypes, pushTelemetry: (e) => events2.push(e as Tel) }));
+        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushTelemetry: (e) => events2.push(e as Tel) }));
         assert.equal(events2.filter((e) => e.kind === "embed_progress").length, 0, "a single-entry pass stays silent");
     } finally { db.close(); }
 });
@@ -95,14 +95,14 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
     await mimetypes.ready();
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `thresh-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        const workspaceId = await insertWorkspace(db, `thresh-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         await new Known().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
         await new Known().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
         await new Known().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
         await EntryManifest.maintainDerivations(ctx);
-        const findCtx = (): ReturnType<typeof makeSchemeCtx> => makeSchemeCtx({ db, sessionId, runId, loopId: 0, turnId: 0, mimetypes });
+        const findCtx = (): ReturnType<typeof makeSchemeCtx> => makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes });
 
         // A low floor admits every FTS-matched candidate (cosine > 0.05) — same set
         // an integer top-K would, proving the decimal routes to the threshold path.
@@ -136,9 +136,9 @@ test("[#47] PLURNK_MIMETYPES_NO_EMBED: a matched entry derives FTS-only — zero
     await mimetypes.ready();
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `noembed-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        const workspaceId = await insertWorkspace(db, `noembed-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         await new Known().edit(editStmt(url("package-lock.json"), '{"name":"x","lockfileVersion":3,"packages":{"":{"deps":{"y":"1.0.0"}}}}'), ctx);
         await new Known().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await EntryManifest.maintainDerivations(ctx);
@@ -166,9 +166,9 @@ test("[#337] the pump derives smallest-first — a fat outlier never clogs the c
     await mimetypes.ready();
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `sort-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId, mimetypes });
+        const workspaceId = await insertWorkspace(db, `sort-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         const whale = Array.from({ length: 120 }, (_, i) => `whale line ${i}: substantial prose about topic ${i} with enough words to chunk`).join("\n");
         await new Known().edit(editStmt(url("whale.md"), whale), ctx);       // written FIRST, biggest
         await new Known().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);

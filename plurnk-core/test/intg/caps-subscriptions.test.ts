@@ -7,22 +7,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbSubscriptionCaps from "../../src/core/caps/DbSubscriptionCaps.ts";
-import type { WakeRunPayload, StreamEventPayload } from "../../src/core/ChannelWrite.ts";
+import type { WakeWorkerPayload, StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, close terminates + wakes", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `caps-sub-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
+        const workspaceId = await insertWorkspace(db, `caps-sub-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
         const streamEvents: StreamEventPayload[] = [];
-        const wakes: WakeRunPayload[] = [];
+        const wakes: WakeWorkerPayload[] = [];
         const parentAbort = new AbortController();
         const ctx = makeSchemeCtx({
-            db, sessionId, runId, signal: parentAbort.signal,
+            db, workspaceId, workerId, signal: parentAbort.signal,
             streamEventNotify: (_s, e) => streamEvents.push(e),
-            wakeRunNotify: (p) => wakes.push(p),
+            wakeWorkerNotify: (p) => wakes.push(p),
         });
         const entries = new DbEntryCaps(ctx, "exec");
         const subs = new DbSubscriptionCaps(ctx, "exec");

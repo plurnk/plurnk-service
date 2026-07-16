@@ -15,7 +15,7 @@ import Known from "../../src/schemes/Known.ts";
 import Log from "../../src/schemes/Log.ts";
 import Matcher from "../../src/content/matcher.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -39,14 +39,14 @@ const rxLineNos = (content: string | null | undefined): number[] =>
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `xpjp-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
+    const workspaceId = await insertWorkspace(db, `xpjp-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
-    return { db, sessionId, runId, mimetypes };
+    return { db, workspaceId, workerId, mimetypes };
 };
 
-const seedJson = async (db: Db, sessionId: number, runId: number, mimetypes: Mimetypes, path: string, content: string): Promise<void> => {
+const seedJson = async (db: Db, workspaceId: number, workerId: number, mimetypes: Mimetypes, path: string, content: string): Promise<void> => {
     await new Known().edit(
         {
             op: "EDIT", suffix: "", signal: null,
@@ -54,19 +54,19 @@ const seedJson = async (db: Db, sessionId: number, runId: number, mimetypes: Mim
             lineMarker: null, body: content,
             position: { line: 1, column: 1 },
         },
-        makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+        makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
     );
 };
 
 // --- jsonpath -------------------------------------------------------
 
 test("jsonpath: $.host returns the SOURCE LINE at the match — not the extracted value", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/config.json", '{\n  "host": "db.internal",\n  "pool": 5\n}');
+        await seedJson(db, workspaceId, workerId, mimetypes, "/config.json", '{\n  "host": "db.internal",\n  "pool": 5\n}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/config.json"), { dialect: "jsonpath", raw: "$.host" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
@@ -78,13 +78,13 @@ test("jsonpath: $.host returns the SOURCE LINE at the match — not the extracte
 });
 
 test("jsonpath: $.users[*].name returns one SOURCE LINE per match", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/team.json",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
             '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" }\n  ]\n}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
@@ -97,13 +97,13 @@ test("jsonpath: $.users[*].name returns one SOURCE LINE per match", async () => 
 });
 
 test("jsonpath: $.users[*] returns each matched object's SOURCE LINE (not a JSON re-encode)", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/team.json",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
             '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" }\n  ]\n}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
@@ -117,13 +117,13 @@ test("jsonpath: $.users[*] returns each matched object's SOURCE LINE (not a JSON
 });
 
 test("jsonpath filter `$.users[?(@.role=='admin')]`: skipped non-matches → NON-SEQUENTIAL line numbers", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/team.json",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
             '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob", "role": "viewer" },\n    { "name": "Carol", "role": "admin" }\n  ]\n}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[?(@.role=='admin')]" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
@@ -136,12 +136,12 @@ test("jsonpath filter `$.users[?(@.role=='admin')]`: skipped non-matches → NON
 });
 
 test("jsonpath: zero matches → 204 with matches:0", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/empty.json", '{"users":[]}');
+        await seedJson(db, workspaceId, workerId, mimetypes, "/empty.json", '{"users":[]}');
         const r = await new Known().read(
             readStmt(urlPath("known", "/empty.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 204);
@@ -150,12 +150,12 @@ test("jsonpath: zero matches → 204 with matches:0", async () => {
 });
 
 test("jsonpath on text/markdown applies against the heading outline (no headings → 204)", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/notes", "not actually json");
+        await seedJson(db, workspaceId, workerId, mimetypes, "/notes", "not actually json");
         const r = await new Known().read(
             readStmt(urlPath("known", "/notes"), { dialect: "jsonpath", raw: "$.field" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(r.status, 204);
         assert.equal(r.matches, 0);
@@ -165,13 +165,13 @@ test("jsonpath on text/markdown applies against the heading outline (no headings
 test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
     // mimetypes 0.10.0: jsonpath dispatches against deepJson — the marked
     // document AST. `$..text` walks the tree, surfacing every text node.
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/doc.md",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/doc.md",
             "# Intro\n\nopening\n\n# Installation\n\nrun npm install\n\n# Usage\n\nhello world\n");
         const r = await new Known().read(
             readStmt(urlPath("known", "/doc.md"), { dialect: "jsonpath", raw: "$..text" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
@@ -185,13 +185,13 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
 // --- xpath ----------------------------------------------------------
 
 test("xpath //h1/text(): returns each heading's SOURCE LINE, non-sequential across the page", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/page.html",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
             "<html>\n<body>\n<h1>Welcome</h1>\n<p>intro</p>\n<h1>About</h1>\n</body>\n</html>");
         const r = await new Known().read(
             readStmt(urlPath("known", "/page.html"), { dialect: "xpath", raw: "//h1/text()" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
@@ -203,13 +203,13 @@ test("xpath //h1/text(): returns each heading's SOURCE LINE, non-sequential acro
 });
 
 test("xpath //user/@email: an attribute match returns its element's SOURCE LINE", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/users.html",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
             '<users>\n  <user email="alice@x.com"/>\n  <user email="bob@x.com"/>\n</users>');
         const r = await new Known().read(
             readStmt(urlPath("known", "/users.html"), { dialect: "xpath", raw: "//user/@email" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
@@ -221,13 +221,13 @@ test("xpath //user/@email: an attribute match returns its element's SOURCE LINE"
 });
 
 test("xpath //user node selection: returns the element's SOURCE LINE, not a re-serialized node", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/page.html",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
             "<root>\n  <user>Alice</user>\n  <user>Bob</user>\n</root>");
         const r = await new Known().read(
             readStmt(urlPath("known", "/page.html"), { dialect: "xpath", raw: "//user" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
@@ -240,13 +240,13 @@ test("xpath //user node selection: returns the element's SOURCE LINE, not a re-s
 });
 
 test("xpath predicate //user[@role='admin']: matching lines returned, viewer line skipped", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/users.html",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/users.html",
             "<root>\n  <user role='admin'>Alice</user>\n  <user role='viewer'>Bob</user>\n  <user role='admin'>Carol</user>\n</root>");
         const r = await new Known().read(
             readStmt(urlPath("known", "/users.html"), { dialect: "xpath", raw: "//user[@role='admin']/text()" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 200);
@@ -258,14 +258,14 @@ test("xpath predicate //user[@role='admin']: matching lines returned, viewer lin
 });
 
 test("xpath on markdown content with no structural match → 204", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        await seedJson(db, sessionId, runId, mimetypes, "/notes", "not html");
+        await seedJson(db, workspaceId, workerId, mimetypes, "/notes", "not html");
         // xpath now runs over the markdown deepXml (any type is queryable); `//h1`
         // matches no heading → zero results, not an unsupported-dialect rejection.
         const r = await new Known().read(
             readStmt(urlPath("known", "/notes"), { dialect: "xpath", raw: "//h1" } as MatcherBody),
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
 
         assert.equal(r.status, 204);
@@ -279,13 +279,13 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
     // through the engine, then <<READ(log:///N/M/K)<2>::READ to pick the 2nd
     // match line. One match per source line is what makes <L> paging work — so
     // the seed is multi-line (single-line JSON would collapse every match to one row).
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        const loopId = await insertLoop(db, runId, 1, "compose-jsonpath");
+        const loopId = await insertLoop(db, workerId, 1, "compose-jsonpath");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
 
-        await seedJson(db, sessionId, runId, mimetypes, "/team.json",
+        await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
             '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
 
         // Dispatch the matcher READ — lands at log:///1/1/1.
@@ -297,14 +297,14 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
                 body: { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody,
                 position: { line: 1, column: 1 },
             },
-            sessionId, runId, loopId, turnId,
+            workspaceId, workerId, loopId, turnId,
             sequence: 1, origin: "model",
         });
 
         // Per-match fan-out: sequence 1 is the FIND selection-summary row
         // (§matcher-selection-signal); the matches follow — the 2nd jsonpath match is log:///1/1/3 (Bob). Read it
         // directly (#286), no <L>-slice of a combined result.
-        const r = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, runId, mimetypes }));
+        const r = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /Bob/, "the 2nd row holds the 2nd match");
         assert.doesNotMatch(r.content ?? "", /Alice|Carol/);
@@ -316,15 +316,15 @@ test("[§matcher-selection-signal] THE REAL PATH: a matcher READ's FIND row carr
     // FIND → per-match body-less READs), asserting on the rx AS STORED, which is what the
     // packet renders. The prior citation proved a direct-call seam dispatch never takes;
     // this one cannot lie about reaching the model.
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        const loopId = await insertLoop(db, runId, 1, "sig");
+        const loopId = await insertLoop(db, workerId, 1, "sig");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await seedJson(db, sessionId, runId, mimetypes, "/team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
+        await seedJson(db, workspaceId, workerId, mimetypes, "/team.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
         const result = await engine.dispatch({
             statement: readStmt(urlPath("known", "/team.json"), { dialect: "jsonpath", raw: "$.users[*].name" } as MatcherBody),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
         const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; rx: string }>({ loop_id: loopId });

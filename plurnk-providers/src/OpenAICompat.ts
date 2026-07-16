@@ -332,25 +332,25 @@ export default class OpenAICompatProvider implements Provider {
     }
 
     // Per-run slot affinity (#11): the consumer passes WHICH run this is; the
-    // provider owns WHICH slot serves it. Sticky per runId, round-robin across
+    // provider owns WHICH slot serves it. Sticky per workerId, round-robin across
     // new runs (distinct runs → distinct slots while slots last), LRU-bounded
     // bookkeeping so a long-lived daemon never grows the map unboundedly —
     // an evicted-and-returning run simply re-pins, worst case one cold prefill.
     #runSlots = new Map<string, number>();
     #nextSlot = 0;
 
-    #slotBody(runId: string): Record<string, unknown> {
+    #slotBody(workerId: string): Record<string, unknown> {
         if (!this.#supportsSlotPinning || this.#slotCount === null || this.#slotCount < 1) return {};
-        let slot = this.#runSlots.get(runId);
+        let slot = this.#runSlots.get(workerId);
         if (slot === undefined) {
             slot = this.#nextSlot++ % this.#slotCount;
             if (this.#runSlots.size >= this.#slotCount * 8) {
                 this.#runSlots.delete(this.#runSlots.keys().next().value as string);
             }
         } else {
-            this.#runSlots.delete(runId); // re-insert to refresh LRU recency
+            this.#runSlots.delete(workerId); // re-insert to refresh LRU recency
         }
-        this.#runSlots.set(runId, slot);
+        this.#runSlots.set(workerId, slot);
         return { id_slot: slot };
     }
 
@@ -397,21 +397,21 @@ export default class OpenAICompatProvider implements Provider {
     // absent (consumer didn't report); contract per plurnk-service#313. Strikes
     // ride HTTP headers only — the packet never carries them (the model must
     // never see strike state; engine accounting is not a metric to game).
-    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, runId: string, sessionId: string | undefined, loop: number | undefined, turn: number | undefined): Record<string, string> {
+    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, workerId: string, workspaceId: string | undefined, loop: number | undefined, turn: number | undefined): Record<string, string> {
         if (!this.#firstPartyMetadata) return {};
         const h: Record<string, string> = {};
         if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
         if (client !== undefined && client.length > 0) h["Plurnk-Client"] = client;
         if (strikes !== undefined && Number.isInteger(strikes) && strikes >= 0) h["Plurnk-Strikes"] = String(strikes);
-        // Run identity (#26): the opaque runId the consumer already supplies,
+        // Run identity (#26): the opaque workerId the consumer already supplies,
         // forwarded so the endpoint can key per-run affinity/telemetry — same
         // gate as every first-party signal.
-        h["Plurnk-Run-Id"] = runId;
-        // Turn coordinate (#404, extends #26 per #391): session/loop/turn, the
+        h["Plurnk-Run-Id"] = workerId;
+        // Turn coordinate (#404, extends #26 per #391): workspace/loop/turn, the
         // daemon-side sequence the endpoint can never scrape from the wire.
         // Coordinates are 1-based — 0 is not a real value, so no strikes-style
         // zero exception; absent/empty/0 emits no header.
-        if (sessionId !== undefined && sessionId.length > 0) h["Plurnk-Session-Id"] = sessionId;
+        if (workspaceId !== undefined && workspaceId.length > 0) h["Plurnk-Workspace-Id"] = workspaceId;
         if (loop !== undefined && Number.isInteger(loop) && loop >= 1) h["Plurnk-Loop"] = String(loop);
         if (turn !== undefined && Number.isInteger(turn) && turn >= 1) h["Plurnk-Turn"] = String(turn);
         return h;
@@ -502,9 +502,9 @@ export default class OpenAICompatProvider implements Provider {
         return out;
     }
 
-    async generate({ messages, runId, signal, grammar, maxTokens, attributions, client, strikes, sessionId, loop, turn, sampling }: { messages: ChatMessage[]; runId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; sessionId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
+    async generate({ messages, workerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling }: { messages: ChatMessage[]; workerId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
         // Boundary validation (SPEC §2): the run identity is required.
-        if (runId === undefined || runId.length === 0) throw new Error("generate: runId is required — the run's stable, opaque identity");
+        if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the run's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
         signal?.throwIfAborted();
 
@@ -534,7 +534,7 @@ export default class OpenAICompatProvider implements Provider {
             // #36: request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
-            ...this.#slotBody(runId),
+            ...this.#slotBody(workerId),
         };
 
         // Transient-failure retry (#18). Each attempt gets a FRESH fetch timeout
@@ -551,7 +551,7 @@ export default class OpenAICompatProvider implements Provider {
         const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
 
         // Per-request headers = static auth/routing + any first-party telemetry.
-        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, runId, sessionId, loop, turn);
+        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, workspaceId, loop, turn);
         const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
         let raw;
         for (let attempt = 0; ; attempt++) {

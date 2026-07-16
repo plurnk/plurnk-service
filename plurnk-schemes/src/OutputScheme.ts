@@ -31,7 +31,7 @@ export default class OutputScheme {
             channels: decl.channels,
             defaultChannel: decl.defaultChannel,
             category: "data",
-            scope: "session",
+            scope: "workspace",
             writableBy: ["plugin"],
             volatile: true,
             modelVisible: true,

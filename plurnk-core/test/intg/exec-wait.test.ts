@@ -24,7 +24,7 @@ test("PLURNK_SERVICE_EXEC_WAIT_MS breathes before the next turn while a spawn is
         await withDaemon(mock, async (_db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "exec-wait" });
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-wait" });
                 const t0 = Date.now();
                 // loop.run returns immediately (Model 3); runLoopToTerminal awaits the
                 // loop/terminated event, so `elapsed` spans the full loop incl. the breath.

@@ -163,7 +163,7 @@ test("openai: a probe network error (fetch rejects) degrades to null context and
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     assert.equal(p!.contextWindow, null);
-    await p!.generate({ runId: "r", messages: [] }); // no fingerprint → no grammar capability, generate still works
+    await p!.generate({ workerId: "r", messages: [] }); // no fingerprint → no grammar capability, generate still works
 });
 
 test("openai: a slot-probe network error (fetch rejects on /props) degrades slotCount to null, never throws", async () => {
@@ -176,7 +176,7 @@ test("openai: a slot-probe network error (fetch rejects on /props) degrades slot
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     assert.equal(p!.contextWindow, 4096); // meta.n_ctx still resolved despite the slot-probe failure
-    await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "x"?' }); // grammar still transports; no id_slot (slotCount null)
+    await p!.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"?' }); // grammar still transports; no id_slot (slotCount null)
 });
 
 test("cloud standard providers do not probe (no n_ctx fetch)", async () => {
@@ -193,7 +193,7 @@ test("standard provider tags failures with provider:<name> telemetry source", as
         return new Response("forbidden", { status: 403 }); // chat/completions fails
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    await assert.rejects(() => p!.generate({ runId: "r", messages: [] }), (err: unknown) => {
+    await assert.rejects(() => p!.generate({ workerId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError);
         assert.equal(err.toTelemetryEvent().source, "provider:openai");
         assert.equal(err.kind, "unauthorized");
@@ -224,7 +224,7 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
-    await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "x"?' });
+    await p!.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"?' });
     const sent = JSON.parse(bodies[0]);
     assert.equal(sent.grammar, 'root ::= "x"?');
     assert.equal(sent.repeat_penalty, 1.15);
@@ -347,7 +347,7 @@ test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", asyn
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     assert.equal(p!.contextWindow, 8192); // window still read
-    await p!.generate({ runId: "r", messages: [], grammar: "root ::= statement" });
+    await p!.generate({ workerId: "r", messages: [], grammar: "root ::= statement" });
     assert.equal("grammar" in JSON.parse(bodies[0]), false);
 });
 
@@ -365,14 +365,14 @@ test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirror
     };
     const off = mk("off");
     const pOff = await standardProviderFromEnv("openai", off.env, "m");
-    await pOff!.generate({ runId: "r", messages: [] });
+    await pOff!.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(off.bodies[0]).chat_template_kwargs, { enable_thinking: false });
     assert.equal("think" in JSON.parse(off.bodies[0]), false); // think→template, never raw think
 
     mock.restoreAll();
     const on = mk("adaptive");
     const pOn = await standardProviderFromEnv("openai", on.env, "m");
-    await pOn!.generate({ runId: "r", messages: [] });
+    await pOn!.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(on.bodies[0]).chat_template_kwargs, { enable_thinking: true });
 });
 
@@ -387,7 +387,7 @@ test("openai: non-llama-server endpoint keeps the 'think' style (no template kwa
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal("chat_template_kwargs" in JSON.parse(bodies[0]), false);
 });
 
@@ -404,16 +404,16 @@ test("openai: probed total_slots drives internal run→slot affinity; never surf
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
     assert.equal(p!.contextWindow, 16384); // per-slot window, as the server reports it
     assert.equal("slotCount" in p!, false); // resource internals never on the surface
-    await p!.generate({ runId: "run-A", messages: [] });
-    await p!.generate({ runId: "run-B", messages: [] });
-    await p!.generate({ runId: "run-A", messages: [] });
+    await p!.generate({ workerId: "run-A", messages: [] });
+    await p!.generate({ workerId: "run-B", messages: [] });
+    await p!.generate({ workerId: "run-A", messages: [] });
     assert.deepEqual(bodies.map((b) => JSON.parse(b).id_slot), [0, 1, 0]);
 
     mock.restoreAll();
     mockEndpoint({ nctx: 8192 }); // top-level n_ctx, no meta → not llama-server
     const vllm = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
     const calls = mockEndpoint({ nctx: 8192 });
-    await vllm!.generate({ runId: "run-A", messages: [] });
+    await vllm!.generate({ workerId: "run-A", messages: [] });
     assert.equal(calls.some((u) => u.endsWith("/props")), false); // no fingerprint → no props probe
 });
 
@@ -433,21 +433,21 @@ test("openai: env-pinned context size does not disable grammar detection (probe 
 test("openai flexBaseStrip: base with trailing /v1 yields a single /v1/chat/completions", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x/v1" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal(chatCall(calls), "http://x/v1/chat/completions");
 });
 
 test("a provider appends chatPath to its base URL", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://api.deepinfra.com/v1/openai/chat/completions");
 });
 
 test("baseUrlVar supplies the base URL (no in-code default)", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", GROQ_BASE_URL: "http://proxy/openai/v1", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal(chatCall(calls), "http://proxy/openai/v1/chat/completions");
 });
 
@@ -478,7 +478,7 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
     for (const name of Object.keys(STANDARD_PROVIDERS)) {
         const calls = mockEndpoint();
         const p = await standardProviderFromEnv(name, envFor(name), "m");
-        await p!.generate({ runId: "r", messages: [] });
+        await p!.generate({ workerId: "r", messages: [] });
         const u = chatCall(calls)!;
         assert.ok(u.endsWith("/chat/completions"), `${name} → ${u}`);
         assert.ok(u.startsWith("http"), `${name} → ${u}`);
@@ -491,7 +491,7 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
 test("deepinfra: resolves auth via the DEEPINFRA_TOKEN alias (not only DEEPINFRA_API_KEY)", async () => {
     const seen = plurnkMock();
     const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_TOKEN: "di-tok", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal(chatHeaders(seen).Authorization, "Bearer di-tok");
     mock.restoreAll();
 });
@@ -506,7 +506,7 @@ test("deepinfra: a required key unset across ALL aliases fails hard, naming each
 test("openai: base URL via the legacy OPENAI_API_BASE alias", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_API_BASE: "http://legacy/v1" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal(chatCall(calls), "http://legacy/v1/chat/completions");
     mock.restoreAll();
 });
@@ -514,7 +514,7 @@ test("openai: base URL via the legacy OPENAI_API_BASE alias", async () => {
 test("bedrock: derives the base from AWS_REGION (.../openai/v1), no BEDROCK_BASE_URL needed", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1/chat/completions");
     mock.restoreAll();
 });
@@ -522,7 +522,7 @@ test("bedrock: derives the base from AWS_REGION (.../openai/v1), no BEDROCK_BASE
 test("bedrock: AWS_DEFAULT_REGION is accepted when AWS_REGION is unset", async () => {
     const calls = mockEndpoint();
     const p = await standardProviderFromEnv("bedrock", { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_DEFAULT_REGION: "eu-west-1", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions");
     mock.restoreAll();
 });
@@ -531,7 +531,7 @@ test("bedrock: an explicit BEDROCK_BASE_URL overrides region derivation", async 
     const calls = mockEndpoint();
     const env = { ...baseEnv, AWS_BEARER_TOKEN_BEDROCK: "tok", AWS_REGION: "us-west-2", BEDROCK_BASE_URL: "https://gw.internal/openai/v1", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" };
     const p = await standardProviderFromEnv("bedrock", env, "m");
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     assert.equal(chatCall(calls), "https://gw.internal/openai/v1/chat/completions");
     mock.restoreAll();
 });
@@ -567,7 +567,7 @@ test("PLURNK_PROVIDERS_GBNF_DEBUG=1 wires through: an invalid grammar throws wit
     const calls = mockEndpoint({ metaNctx: 4096 }); // llama fingerprint → grammarStyle llamacpp
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x", PLURNK_PROVIDERS_GBNF_DEBUG: "1" }, "m");
     await assert.rejects(
-        () => p!.generate({ runId: "r", messages: [], grammar: 'foo ::= "a"' }), // invalid GBNF
+        () => p!.generate({ workerId: "r", messages: [], grammar: 'foo ::= "a"' }), // invalid GBNF
         /PLURNK_PROVIDERS_GBNF_DEBUG/,
     );
     assert.equal(chatCall(calls), undefined); // probes only — the grammar never reached /chat/completions
@@ -613,7 +613,7 @@ test("anthropic: standard entry sends bearer auth + the thinking param to the co
     const env = { ...baseEnv, ANTHROPIC_API_KEY: "sk-ant-xyz", PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "3000" };
     const p = await standardProviderFromEnv("anthropic", env, "claude-opus-4-8");
     assert.ok(p !== null);
-    await p.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    await p.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
     assert.deepEqual(JSON.parse(body).thinking, { type: "enabled", budget_tokens: 3000 });
     mock.restoreAll();
 });
@@ -645,7 +645,7 @@ test("bedrock: an explicit base is used verbatim and sends the Bedrock API key a
     });
     const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" };
     const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-6");
-    await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    await p!.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
     assert.equal(calls[0].url, "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1/chat/completions");
     assert.equal(calls[0].auth, "Bearer bedrock-key");
     mock.restoreAll();
@@ -674,7 +674,7 @@ const chatHeaders = (seen: { url: string; headers: Record<string, string> }[]) =
 test("plurnk: with no PLURNK_API_KEY, no Authorization header is sent (keyless local server)", async () => {
     const seen = plurnkMock();
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // base from PLURNK_BASE_URL, no key
-    await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    await p!.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
     const h = chatHeaders(seen);
     assert.equal("Authorization" in h, false);
     mock.restoreAll();
@@ -684,7 +684,7 @@ test("plurnk: PLURNK_API_KEY sends the bearer; no separate account header (the k
     const seen = plurnkMock();
     const env = { ...baseEnv, PLURNK_API_KEY: "pk-live-123" };
     const p = await standardProviderFromEnv("plurnk", env, "plurnk");
-    await p!.generate({ runId: "r", messages: [{ role: "user", content: "hi" }] });
+    await p!.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
     const h = chatHeaders(seen);
     assert.equal(h.Authorization, "Bearer pk-live-123");
     assert.equal("Plurnk-Account" in h, false); // retired — the key carries account identity
@@ -694,7 +694,7 @@ test("plurnk: PLURNK_API_KEY sends the bearer; no separate account header (the k
 test("plurnk: forwards attributions + client as Plurnk-* telemetry headers (firstPartyMetadata)", async () => {
     const seen = plurnkMock();
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
-    await p!.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0" });
+    await p!.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0" });
     const h = chatHeaders(seen);
     assert.equal(h["Plurnk-Attribution"], '["@acme/x@1.0.0"]');
     assert.equal(h["Plurnk-Client"], "plurnk-tui/0.9.0");
@@ -705,17 +705,17 @@ test("plurnk: forwards attributions + client as Plurnk-* telemetry headers (firs
 test("plurnk: forwards strikes as Plurnk-Strikes — and 0 is a real value, distinct from absent (#313)", async () => {
     let seen = plurnkMock();
     let p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
-    await p!.generate({ runId: "r", messages: [], strikes: 3 });
+    await p!.generate({ workerId: "r", messages: [], strikes: 3 });
     assert.equal(chatHeaders(seen)["Plurnk-Strikes"], "3");
     mock.restoreAll();
     seen = plurnkMock();
     p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
-    await p!.generate({ runId: "r", messages: [], strikes: 0 }); // clean streak reported explicitly
+    await p!.generate({ workerId: "r", messages: [], strikes: 0 }); // clean streak reported explicitly
     assert.equal(chatHeaders(seen)["Plurnk-Strikes"], "0");
     mock.restoreAll();
     seen = plurnkMock();
     p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
-    await p!.generate({ runId: "r", messages: [] }); // not reported → no header
+    await p!.generate({ workerId: "r", messages: [] }); // not reported → no header
     assert.equal("Plurnk-Strikes" in chatHeaders(seen), false);
 });
 
@@ -729,7 +729,7 @@ test("fireworks: does NOT forward attributions/client — first-party telemetry 
         return new Response("{}", { status: 200 });
     });
     const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, "deepseek-v4-flash");
-    await p!.generate({ runId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0", strikes: 2 });
+    await p!.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0", strikes: 2 });
     assert.equal("Plurnk-Attribution" in seenHeaders, false);
     assert.equal("Plurnk-Client" in seenHeaders, false);
     assert.equal("Plurnk-Strikes" in seenHeaders, false); // strikes gated identically
@@ -742,7 +742,7 @@ test("plurnk: a 401 is classified unauthorized — terminal, never retried", asy
     const seen = plurnkMock(401);
     const env = { ...baseEnv, PLURNK_PROVIDERS_RETRY_ATTEMPTS: "3", PLURNK_API_KEY: "expired" };
     const p = await standardProviderFromEnv("plurnk", env, "plurnk");
-    await assert.rejects(() => p!.generate({ runId: "r", messages: [] }), (err: unknown) => {
+    await assert.rejects(() => p!.generate({ workerId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError); assert.equal(err.kind, "unauthorized"); return true;
     });
     assert.equal(seen.filter((s) => s.url.endsWith("/chat/completions")).length, 1); // terminal — never retried
@@ -758,7 +758,7 @@ test("plurnk: normalizes the endpoint's balance_pico into meta.balancePico (#23)
         return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(sse)); c.close(); } }), { status: 200 });
     });
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
-    const res = await p!.generate({ runId: "r", messages: [] });
+    const res = await p!.generate({ workerId: "r", messages: [] });
     assert.equal(res.meta?.balancePico, 880000000);
     mock.restoreAll();
 });
@@ -767,7 +767,7 @@ test("a third-party (non-plurnk) provider never NORMALIZES balancePico — only 
     mock.method(globalThis, "fetch", async () =>
         new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}],"balance_pico":880000000}\n\ndata: [DONE]')); c.close(); } }), { status: 200 }));
     const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
-    const res = await p!.generate({ runId: "r", messages: [] });
+    const res = await p!.generate({ workerId: "r", messages: [] });
     assert.equal("balancePico" in (res.meta ?? {}), false); // groq has no balanceMetaKey — no normalization
     assert.equal(res.meta?.balance_pico, 880000000);          // but the raw field still passes through (every-provider meta)
     mock.restoreAll();
@@ -780,7 +780,7 @@ test("plurnk: reads its window from upstream but stays a plain OpenAI client —
     const seen = plurnkMock();
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
     assert.equal(p!.contextWindow, 49152); // window STILL read from upstream — a 32k→48k change is a server decision
-    await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    await p!.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(seen.find((s) => s.url.endsWith("/chat/completions"))!.body);
     assert.equal("grammar" in body, false);          // never forwards GBNF — the router injects its own
     assert.equal("response_format" in body, false);
@@ -798,7 +798,7 @@ test("fireworks: a grammar transports as response_format.grammar (not the llama.
         return new Response("{}", { status: 200 });
     });
     const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, "accounts/fireworks/models/deepseek-v4-pro");
-    await p!.generate({ runId: "r", messages: [], grammar: 'root ::= "ok"' });
+    await p!.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     const b = JSON.parse(body);
     assert.deepEqual(b.response_format, { type: "grammar", grammar: 'root ::= "ok"' });
     assert.equal("grammar" in b, false);
@@ -814,7 +814,7 @@ const fireworksWireModel = async (alias: string): Promise<string> => {
         return new Response("{}", { status: 200 });
     });
     const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, alias);
-    await p!.generate({ runId: "r", messages: [] });
+    await p!.generate({ workerId: "r", messages: [] });
     mock.restoreAll();
     return JSON.parse(body).model;
 };

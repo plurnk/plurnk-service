@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import LogEntry from "../../src/server/logEntry.ts";
 
 type SqlValue = string | number | bigint | null;
 
-const minimalLog = async (db: Db, ctx: { runId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
+const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
     const params: Record<string, SqlValue> = {
-        run_id: ctx.runId, loop_id: ctx.loopId, turn_id: ctx.turnId,
+        worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId,
         sequence: 1, origin: "model", op: "EDIT", suffix: "",
         signal: JSON.stringify(["philosophy"]),
         scheme: "known", pathname: "/meaning", port: null, params: null,
@@ -26,11 +26,11 @@ const minimalLog = async (db: Db, ctx: { runId: number; loopId: number; turnId: 
 test("[§methods-log-coordinate] fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 3);   // loop ordinal 3
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 3);   // loop ordinal 3
         const turnId = await insertTurn(db, loopId, 2);  // turn ordinal 2
-        const id = await minimalLog(db, { runId, loopId, turnId }, { tx: JSON.stringify("in"), rx: JSON.stringify("out") });
+        const id = await minimalLog(db, { workerId, loopId, turnId }, { tx: JSON.stringify("in"), rx: JSON.stringify("out") });
         const wire = await LogEntry.fetchLogEntry(db, id);
         assert.equal(wire.loop_seq, 3, "loop ordinal on the wire");
         assert.equal(wire.turn_seq, 2, "turn ordinal on the wire");
@@ -51,7 +51,7 @@ test("log_entries: minimal insert — defaults populate", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-defaults");
-        const ins = await (db.test_log_entries_insert_minimal as PrepMethod).get<{ id: number }>({ run_id: ctx.runId, loop_id: ctx.loopId, turn_id: ctx.turnId });
+        const ins = await (db.test_log_entries_insert_minimal as PrepMethod).get<{ id: number }>({ worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId });
         const row = await (db.test_log_entries_get_by_id as PrepMethod).get<{ version: number; at: string; suffix: string; tokens: number; signal: string | null; lineMarker: string | null }>({ id: ins?.id });
         assert.equal(row?.version, 0);
         assert.match(row?.at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -178,13 +178,13 @@ test("log_entries: signal polymorphism", async () => {
     } finally { await db.close(); }
 });
 
-test("log_entries: run_id NOT NULL", async () => {
+test("log_entries: worker_id NOT NULL", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-norun");
         await assert.rejects(
-            () => (db.test_log_entries_insert_no_run_id as PrepMethod).run({ loop_id: ctx.loopId, turn_id: ctx.turnId }),
-            /NOT NULL constraint failed: log_entries\.run_id/,
+            () => (db.test_log_entries_insert_no_worker_id as PrepMethod).run({ loop_id: ctx.loopId, turn_id: ctx.turnId }),
+            /NOT NULL constraint failed: log_entries\.worker_id/,
         );
     } finally { await db.close(); }
 });
@@ -193,7 +193,7 @@ test("log_entries: each FK rejection path", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-fkpaths");
-        await assert.rejects(() => minimalLog(db, ctx, { run_id: 99999 }),  /FOREIGN KEY constraint failed/);
+        await assert.rejects(() => minimalLog(db, ctx, { worker_id: 99999 }),  /FOREIGN KEY constraint failed/);
         await assert.rejects(() => minimalLog(db, ctx, { loop_id: 99999 }), /FOREIGN KEY constraint failed/);
         await assert.rejects(() => minimalLog(db, ctx, { turn_id: 99999 }), /FOREIGN KEY constraint failed/);
     } finally { await db.close(); }
@@ -216,7 +216,7 @@ test("log_entries: full CASCADE chain", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-fullchain");
         await minimalLog(db, ctx);
-        await (db.test_sessions_delete as PrepMethod).run({ id: ctx.sessionId });
+        await (db.test_sessions_delete as PrepMethod).run({ id: ctx.workspaceId });
         const remaining = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }
@@ -271,8 +271,8 @@ test("log_entries: indexes exist", async () => {
         assert.deepEqual(names, [
             "log_entries_at",
             "log_entries_loop_id",
-            "log_entries_run_id",
             "log_entries_turn_id_sequence",
+            "log_entries_worker_id",
         ]);
         const uniq = rows.find((r) => r.name === "log_entries_turn_id_sequence");
         assert.match(uniq?.sql ?? "", /UNIQUE/);

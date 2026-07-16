@@ -1,12 +1,12 @@
 // The entry catalog (§packet-catalog) — the complete, unranked directory of every
-// entry the session holds, served by FIND(scheme:///**), one per-scheme array (there is no
-// plurnk:///manifest.json entry). catalogRowsFor renders engine_list_session_entries' rows,
+// entry the workspace holds, served by FIND(scheme:///**), one per-scheme array (there is no
+// plurnk:///manifest.json entry). catalogRowsFor renders engine_list_workspace_entries' rows,
 // uniformly READable, in no relevance order; the model ranks/filters it itself by querying it
 // (task-aware) — the catalog never ranks for it, or it would be an index again.
 // Each item: { path, seconds?, tags?, channels: { <uri>: { mimetype, tokens, lines } } } — each
 // channel keyed by its addressable URI (default channel → the bare path, non-default → path#channel).
 // `tokens` is the model-agnostic ruler (§tokenomics-agnostic-ruler, chars/2), re-counted at
-// render — one number per content regardless of which of the session's concurrent models reads
+// render — one number per content regardless of which of the workspace's concurrent models reads
 // it; `lines` is the content's extent from mimetypes' process() totalLines.
 //
 // maintainDerivations (the per-turn pump) refreshes the deep channels the rows report; both live
@@ -38,10 +38,10 @@ export default class EntryManifest {
         if (scheme === null) return pathname.replace(/^\//, "");
         // §run-scheme — run-scope keys store the owner as the first path segment
         // (`/<owner>/<path>`); render it back as the authority so the model sees the
-        // addressable `run://<owner>/<path>` it types, not a bare `run:///<owner>/<path>`.
-        if (scheme === "run") {
+        // addressable `worker://<owner>/<path>` it types, not a bare `worker:///<owner>/<path>`.
+        if (scheme === "worker") {
             const m = pathname.match(/^\/([^/]+)(\/.*)?$/);
-            if (m !== null) return `run://${m[1]}${m[2] ?? "/"}`;
+            if (m !== null) return `worker://${m[1]}${m[2] ?? "/"}`;
         }
         return renderAddress(scheme, pathname);
     }
@@ -49,21 +49,21 @@ export default class EntryManifest {
     // Read-only catalog rows for a scheme (or all entries when undefined) — the CatalogEntry[]
     // a per-scheme FIND(scheme:///**) renders as its JSON result, WITHOUT the derivation pump
     // (maintainDerivations runs that once per turn; FIND reads the channels it leaves).
-    // §run-scheme — `runOwnerPrefix` (e.g. `/<owner>/*`) sources the building run's OWN run-scope
-    // scratch instead of the session filesystem: the run's perspective. Omitted → the session path,
+    // §run-scheme — `workerOwnerPrefix` (e.g. `/<owner>/*`) sources the building run's OWN run-scope
+    // scratch instead of the workspace filesystem: the run's perspective. Omitted → the workspace path,
     // byte-identical (Inc-1).
-    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null, runOwnerPrefix?: string): Promise<CatalogEntry[]> {
-        const { db, sessionId, mimetypes, tokenize } = ctx;
+    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null, workerOwnerPrefix?: string): Promise<CatalogEntry[]> {
+        const { db, workspaceId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — the model-agnostic ruler, re-counted at render");
-        const all = runOwnerPrefix === undefined
-            ? await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId })
-            : await (db.engine_list_run_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId, owner_prefix: runOwnerPrefix });
+        const all = workerOwnerPrefix === undefined
+            ? await (db.engine_list_workspace_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId })
+            : await (db.engine_list_worker_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId, owner_prefix: workerOwnerPrefix });
         const rows = schemeFilter === undefined ? all : all.filter((r) => r.scheme === schemeFilter);
         const tagsById = new Map<number, string[]>();
-        const tagRows = runOwnerPrefix === undefined
-            ? await (db.engine_list_session_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ session_id: sessionId })
-            : await (db.engine_list_run_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ session_id: sessionId, owner_prefix: runOwnerPrefix });
+        const tagRows = workerOwnerPrefix === undefined
+            ? await (db.engine_list_workspace_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId })
+            : await (db.engine_list_worker_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId, owner_prefix: workerOwnerPrefix });
         for (const { entry_id, tag } of tagRows) {
             const list = tagsById.get(entry_id);
             if (list === undefined) tagsById.set(entry_id, [tag]); else list.push(tag);
@@ -116,7 +116,7 @@ export default class EntryManifest {
     }
 
     static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
-        const { db, sessionId, mimetypes } = ctx;
+        const { db, workspaceId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         try {
             const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
@@ -124,15 +124,15 @@ export default class EntryManifest {
             if (wantGraph) {
                 try {
                     result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: embedActive ? ["symbols", "references", "embedding", "content"] : ["symbols", "references", "content"] }); // §mimetype-methods-process-entry-point — "content" = the readable projection (mimetypes#48): FTS/embeddings consume it when the handler offers one
-                    await EntryGraph.populateFrom(db, sessionId, r.entry_id, result.symbols ?? [], result.references ?? []);
+                    await EntryGraph.populateFrom(db, workspaceId, r.entry_id, result.symbols ?? [], result.references ?? []);
                 } catch {
                     // A handler predating the references channel throws → metadata-only, clear graph.
                     result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: [] });
-                    await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+                    await EntryGraph.populateFrom(db, workspaceId, r.entry_id, [], []);
                 }
             } else {
                 result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: [] });
-                await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+                await EntryGraph.populateFrom(db, workspaceId, r.entry_id, [], []);
             }
             // The other two deep channels: re-index the body into entry_fts (~semantic's keyword
             // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
@@ -175,7 +175,7 @@ export default class EntryManifest {
                 await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
             }
         } catch {
-            await EntryGraph.populateFrom(db, sessionId, r.entry_id, [], []);
+            await EntryGraph.populateFrom(db, workspaceId, r.entry_id, [], []);
             await EntrySemantic.indexFts(db, r.entry_id, "");
             await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
             await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
@@ -188,12 +188,12 @@ export default class EntryManifest {
     // to a fully-warm corpus — the first turn never runs on degraded search while the
     // background pump sweeps the rest. Bounded by the caller's cap; returns how many derived.
     static async deriveFtsCandidates(ctx: PlurnkSchemeContext, scheme: string | null, ftsQuery: string, cap: number): Promise<number> {
-        const { db, sessionId, mimetypes } = ctx;
+        const { db, workspaceId, mimetypes } = ctx;
         if (mimetypes === undefined) return 0;
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
         if (deepCfgSig === "embed:none") return 0; // FTS-only posture — nothing to derive
         const rows = await (db.semantic_fts_candidates as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string; deep_hash: string | null }>({
-            fts_query: ftsQuery, session_id: sessionId, scheme, cap,
+            fts_query: ftsQuery, workspace_id: workspaceId, scheme, cap,
         });
         let derived = 0;
         for (const r of rows) {
@@ -209,9 +209,9 @@ export default class EntryManifest {
     }
 
     static async maintainDerivations(ctx: PlurnkSchemeContext): Promise<void> {
-        const { db, sessionId, mimetypes } = ctx;
+        const { db, workspaceId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("maintainDerivations: ctx.mimetypes is required to derive entry deep channels");
-        const rows = await (db.engine_list_session_entries as PrepMethod).all<ManifestRow>({ session_id: sessionId });
+        const rows = await (db.engine_list_workspace_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId });
         // The embedding config signature is identical for every entry this pass — compute it
         // once and fold it into each deep_hash (re-derive on model/knob change).
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
@@ -260,7 +260,7 @@ export default class EntryManifest {
         const dups = [...groups.values()].flatMap((g) => g.slice(1));
 
         const concurrency = Math.max(1, Number.parseInt(process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY ?? "1", 10));
-        const runPool = async (work: Array<{ r: ManifestRow; hash: string }>): Promise<void> => {
+        const workerPool = async (work: Array<{ r: ManifestRow; hash: string }>): Promise<void> => {
             let next = 0;
             const worker = async (): Promise<void> => {
                 while (next < work.length) {
@@ -274,8 +274,8 @@ export default class EntryManifest {
         };
         // Reps first (the embeds, parallel), then dups (cheap content_hash-reuse copies — the rep
         // has committed, so tryReuseEmbeddings is a guaranteed hit).
-        await runPool(reps);
-        await runPool(dups);
+        await workerPool(reps);
+        await workerPool(dups);
     }
 
 }

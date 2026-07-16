@@ -5,7 +5,7 @@ import type { EditStatement, ParsedPath, ReadStatement, UrlPath } from "@plurnk/
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -28,23 +28,23 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "test prompt");
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "test prompt");
     const turnId = await insertTurn(db, loopId, 1, 200);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    return { db, engine, sessionId, runId, loopId, turnId };
+    return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
 test("Log.read: EDIT op log entry returns rx JSON (entryId, channel, status)", async () => {
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt("/france", "Paris"),
-            sessionId, runId, loopId, turnId,
+            workspaceId, workerId, loopId, turnId,
             sequence: 1, origin: "model",
         });
-        const result = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, runId }));
+        const result = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "application/json");
         const rx = JSON.parse(result.content ?? "") as { status: number; channel: string };
@@ -54,15 +54,15 @@ test("Log.read: EDIT op log entry returns rx JSON (entryId, channel, status)", a
 });
 
 test("Log.read: each coordinate addresses its own entry's rx", async () => {
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/a", "1"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: editStmt("/b", "2"), sessionId, runId, loopId, turnId, sequence: 2, origin: "model" });
-        await engine.dispatch({ statement: editStmt("/c", "3"), sessionId, runId, loopId, turnId, sequence: 3, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/a", "1"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/b", "2"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/c", "3"), workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model" });
 
-        const r1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, runId }));
-        const r2 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId }));
-        const r3 = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, runId }));
+        const r1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
+        const r2 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workerId }));
+        const r3 = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId }));
         // Each EDIT created a distinct entry; entryId rises monotonically.
         const id1 = JSON.parse(r1.content ?? "").entryId as number;
         const id2 = JSON.parse(r2.content ?? "").entryId as number;
@@ -72,16 +72,16 @@ test("Log.read: each coordinate addresses its own entry's rx", async () => {
 });
 
 test("Log.read: cross-loop coordinates within a run resolve correctly", async () => {
-    const { db, engine, sessionId, runId, loopId: loop1, turnId: turn1 } = await setup();
+    const { db, engine, workspaceId, workerId, loopId: loop1, turnId: turn1 } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), sessionId, runId, loopId: loop1, turnId: turn1, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), workspaceId, workerId, loopId: loop1, turnId: turn1, sequence: 1, origin: "model" });
 
-        const loop2 = await insertLoop(db, runId, 2, "second");
+        const loop2 = await insertLoop(db, workerId, 2, "second");
         const turn2 = await insertTurn(db, loop2, 1, 200);
-        await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), sessionId, runId, loopId: loop2, turnId: turn2, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), workspaceId, workerId, loopId: loop2, turnId: turn2, sequence: 1, origin: "model" });
 
-        const r1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, runId }));
-        const r2 = await new Log().read(readStmt(urlPath("log", "/2/1/1")), makeSchemeCtx({ db, runId }));
+        const r1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
+        const r2 = await new Log().read(readStmt(urlPath("log", "/2/1/1")), makeSchemeCtx({ db, workerId }));
         const id1 = JSON.parse(r1.content ?? "").entryId as number;
         const id2 = JSON.parse(r2.content ?? "").entryId as number;
         assert.ok(id1 !== id2);
@@ -91,7 +91,7 @@ test("Log.read: cross-loop coordinates within a run resolve correctly", async ()
 test("Log.read: 404 on missing coordinates", async () => {
     const { db } = await setup();
     try {
-        const result = await new Log().read(readStmt(urlPath("log", "/99/99/99")), makeSchemeCtx({ db, runId: 1 }));
+        const result = await new Log().read(readStmt(urlPath("log", "/99/99/99")), makeSchemeCtx({ db, workerId: 1 }));
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
     } finally { db.close(); }
@@ -101,7 +101,7 @@ test("Log.read: 400 on malformed coordinates", async () => {
     const { db } = await setup();
     try {
         for (const bad of ["abc", "1/2", "1/2/3/4", "x/y/z"]) {
-            const result = await new Log().read(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, runId: 1 }));
+            const result = await new Log().read(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, workerId: 1 }));
             assert.equal(result.status, 400, `path '${bad}' should return 400`);
         }
     } finally { db.close(); }
@@ -110,7 +110,7 @@ test("Log.read: 400 on malformed coordinates", async () => {
 test("Log.read: 400 on null path", async () => {
     const { db } = await setup();
     try {
-        const result = await new Log().read(readStmt(null), makeSchemeCtx({ db, runId: 1 }));
+        const result = await new Log().read(readStmt(null), makeSchemeCtx({ db, workerId: 1 }));
         assert.equal(result.status, 400);
     } finally { db.close(); }
 });
@@ -120,11 +120,11 @@ test("Log.read: lineMarker <1> on a JSON rx returns first item by insertion orde
     // dispatches on mimetype (application/json), so <1> picks the 1st
     // key-value pair by insertion order, wrapped in an array per the
     // structural-<L> contract.
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/x", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), lineMarker: { marks: [1] } };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         const items = JSON.parse(r.content ?? "") as Array<Record<string, unknown>>;
@@ -135,16 +135,16 @@ test("Log.read: lineMarker <1> on a JSON rx returns first item by insertion orde
 });
 
 test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () => {
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/y", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/y", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         // EDIT rx is JSON like {"status":201,"entryId":N,"channel":"body"}.
         // Match the "status" field key in that JSON.
         const stmt: ReadStatement = {
             ...readStmt(urlPath("log", "/1/1/1")),
             body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" },
         };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
         // READ returns the LINE (plurnk.md:31) — the rx JSON line containing "status", not the token.
@@ -153,19 +153,19 @@ test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () =>
 });
 
 test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/FIND[tag]'s job, §log-region-tagging)", async () => {
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/z", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), signal: ["france"] };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 404);
     } finally { db.close(); }
 });
 
 test("Log.read: <L> + body matcher composes — slice structural item first, match within", async () => {
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/x", "v"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/x", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         // <L> dispatches structural on the JSON rx — <1> picks the first
         // kv pair. Then regex matches against that JSON slice. The slice is
         // `[{"status":201}]`; `\d+` extracts the status code.
@@ -174,7 +174,7 @@ test("Log.read: <L> + body matcher composes — slice structural item first, mat
             lineMarker: { marks: [1, 1] },
             body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" },
         };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, runId }));
+        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         // READ returns the LINE of the structural slice containing the match, not the bare 201.
         assert.match(r.content ?? "", /^\d+:\t.*201/);
@@ -184,12 +184,12 @@ test("Log.read: <L> + body matcher composes — slice structural item first, mat
 test("Log.read: a matcher READ fans out per match — the Nth match is its own row (#286)", async () => {
     // The compose-chain under per-match: a matcher READ writes one row per match, so the N-th
     // match IS log:///<l>/<t>/N — addressed directly, not sliced out of a combined result.
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const Known = (await import("../../src/schemes/Known.ts")).default;
         await new Known().edit(
             { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "known:///notes", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null } },
-            { db, sessionId, runId, loopId, turnId, writer: "model", signal: undefined, tokenize: (t: string) => Math.ceil(t.length / 4) },
+            { db, workspaceId, workerId, loopId, turnId, writer: "model", signal: undefined, tokenize: (t: string) => Math.ceil(t.length / 4) },
         );
         // Dispatch a matcher READ — captures all three lines.
         await engine.dispatch({
@@ -200,11 +200,11 @@ test("Log.read: a matcher READ fans out per match — the Nth match is its own r
                 body: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" },
                 position: { line: 1, column: 1 },
             },
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         // Sequence 1 is the FIND selection-summary row (§matcher-selection-signal); the 2nd match
         // is its own row at log:///1/1/3 — read it directly (#286), no <L>-slice of a blob.
-        const r = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, runId }));
+        const r = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
         assert.match(r.content ?? "", /beta/, "the 2nd row holds the 2nd match");
@@ -213,17 +213,17 @@ test("Log.read: a matcher READ fans out per match — the Nth match is its own r
 });
 
 test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme", async () => {
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt("/known-fact", "knowledge"),
-            sessionId, runId, loopId, turnId,
+            workspaceId, workerId, loopId, turnId,
             sequence: 1, origin: "model",
         });
 
         const result = await engine.dispatch({
             statement: readStmt(urlPath("log", "/1/1/1")),
-            sessionId, runId, loopId, turnId,
+            workspaceId, workerId, loopId, turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);

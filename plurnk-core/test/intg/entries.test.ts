@@ -1,19 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db, PrepMethod, ExecMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession } from "./_helpers.ts";
+import { openMigrated, insertWorkspace } from "./_helpers.ts";
 
-const insertSessionEntry = async (db: Db, sessionId: number, scheme: string | null, pathname: string): Promise<number> => {
-    const row = await (db.test_entries_insert_session as PrepMethod).get<{ id: number }>({ session_id: sessionId, scheme, pathname });
-    if (row === undefined) throw new Error("session entry insert returned no row");
+const insertWorkspaceEntry = async (db: Db, workspaceId: number, scheme: string | null, pathname: string): Promise<number> => {
+    const row = await (db.test_entries_insert_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+    if (row === undefined) throw new Error("workspace entry insert returned no row");
     return row.id;
 };
 
-// Convenience for tests that just need "an entry" — agent-scope (the old sessionless shortcut)
-// is gone, so this gives a session-scope entry on its own fresh session.
+// Convenience for tests that just need "an entry" — agent-scope (the old workspaceless shortcut)
+// is gone, so this gives a workspace-scope entry on its own fresh workspace.
 const insertEntry = async (db: Db, scheme: string | null, pathname: string): Promise<number> => {
-    const sessionId = await insertSession(db, `ws-entry-${crypto.randomUUID()}`);
-    return insertSessionEntry(db, sessionId, scheme, pathname);
+    const workspaceId = await insertWorkspace(db, `ws-entry-${crypto.randomUUID()}`);
+    return insertWorkspaceEntry(db, workspaceId, scheme, pathname);
 };
 
 test("entries: table is STRICT", async () => {
@@ -24,22 +24,22 @@ test("entries: table is STRICT", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: session-scoped insert — session_id required", async () => {
+test("entries: workspace-scoped insert — workspace_id required", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-entries-session");
-        await insertSessionEntry(db, sessionId, "known", "foo");
-        const row = await (db.test_entries_get_first_scope_session as PrepMethod).get<{ scope: string; session_id: number }>();
-        assert.equal(row?.scope, "session");
-        assert.equal(row?.session_id, sessionId);
+        const workspaceId = await insertWorkspace(db, "ws-entries-workspace");
+        await insertWorkspaceEntry(db, workspaceId, "known", "foo");
+        const row = await (db.test_entries_get_first_scope_session as PrepMethod).get<{ scope: string; workspace_id: number }>();
+        assert.equal(row?.scope, "workspace");
+        assert.equal(row?.workspace_id, workspaceId);
     } finally { await db.close(); }
 });
 
-test("entries: scope='session' with null session_id rejected", async () => {
+test("entries: scope='workspace' with null workspace_id rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => (db.test_entries_insert_session_no_session_id as ExecMethod)(),
+            () => (db.test_entries_insert_session_no_workspace_id as ExecMethod)(),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -55,48 +55,48 @@ test("entries: scope value outside enum rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: session-scope identity UNIQUE — duplicate rejected", async () => {
+test("entries: workspace-scope identity UNIQUE — duplicate rejected", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-entries-dupid");
-        await insertSessionEntry(db, sessionId, "known", "france");
+        const workspaceId = await insertWorkspace(db, "ws-entries-dupid");
+        await insertWorkspaceEntry(db, workspaceId, "known", "france");
         await assert.rejects(
-            () => insertSessionEntry(db, sessionId, "known", "france"),
+            () => insertWorkspaceEntry(db, workspaceId, "known", "france"),
             /UNIQUE constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("entries: cross-session same (scheme, pathname) is allowed", async () => {
+test("entries: cross-workspace same (scheme, pathname) is allowed", async () => {
     const db = await openMigrated();
     try {
-        const sessionA = await insertSession(db, "ws-entries-sessA");
-        const sessionB = await insertSession(db, "ws-entries-sessB");
-        await insertSessionEntry(db, sessionA, "known", "france");
-        await insertSessionEntry(db, sessionB, "known", "france");
+        const workspaceA = await insertWorkspace(db, "ws-entries-sessA");
+        const workspaceB = await insertWorkspace(db, "ws-entries-sessB");
+        await insertWorkspaceEntry(db, workspaceA, "known", "france");
+        await insertWorkspaceEntry(db, workspaceB, "known", "france");
         const count = (await (db.test_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(count, 2);
     } finally { await db.close(); }
 });
 
-test("entries: session_id FK — insert with non-existent session rejected", async () => {
+test("entries: workspace_id FK — insert with non-existent workspace rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => (db.test_entries_insert_with_session_id_only as PrepMethod).run({ session_id: 99999, pathname: "/x" }),
+            () => (db.test_entries_insert_with_workspace_id_only as PrepMethod).run({ workspace_id: 99999, pathname: "/x" }),
             /FOREIGN KEY constraint failed/,
         );
     } finally { await db.close(); }
 });
 
-test("entries: ON DELETE CASCADE via session", async () => {
+test("entries: ON DELETE CASCADE via workspace", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-entries-cascade");
-        await insertSessionEntry(db, sessionId, "known", "a");
-        await insertSessionEntry(db, sessionId, "known", "b");
+        const workspaceId = await insertWorkspace(db, "ws-entries-cascade");
+        await insertWorkspaceEntry(db, workspaceId, "known", "a");
+        await insertWorkspaceEntry(db, workspaceId, "known", "b");
         await insertEntry(db, "known", "c");
-        await (db.test_sessions_delete as PrepMethod).run({ id: sessionId });
+        await (db.test_sessions_delete as PrepMethod).run({ id: workspaceId });
         const remaining = (await (db.test_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(remaining, 1);
     } finally { await db.close(); }
@@ -114,7 +114,7 @@ test("entries: scheme can be null", async () => {
 test("entries: empty scheme string rejected", async () => {
     const db = await openMigrated();
     try {
-        await insertSession(db, "ws-empty-scheme");
+        await insertWorkspace(db, "ws-empty-scheme");
         await assert.rejects(
             () => (db.test_entries_insert_empty_scheme as ExecMethod)(),
             /CHECK constraint failed/,
@@ -125,7 +125,7 @@ test("entries: empty scheme string rejected", async () => {
 test("entries: port range CHECK", async () => {
     const db = await openMigrated();
     try {
-        await insertSession(db, "ws-port");
+        await insertWorkspace(db, "ws-port");
         await (db.test_entries_insert_with_port as PrepMethod).run({ scheme: "https", hostname: "example.com", port: 443, pathname: "/x" });
         await (db.test_entries_insert_with_port as PrepMethod).run({ scheme: "https", hostname: "example.com", port: 0, pathname: "/y" });
         await (db.test_entries_insert_with_port as PrepMethod).run({ scheme: "https", hostname: "example.com", port: 65535, pathname: "/z" });
@@ -143,7 +143,7 @@ test("entries: port range CHECK", async () => {
 test("entries: params null/well-formed accepted; invalid JSON rejected", async () => {
     const db = await openMigrated();
     try {
-        await insertSession(db, "ws-params");
+        await insertWorkspace(db, "ws-params");
         await (db.test_entries_insert_with_params as PrepMethod).run({ pathname: "/a", params: null });
         await (db.test_entries_insert_with_params as PrepMethod).run({ pathname: "/b", params: '{"q":["x"],"page":"2"}' });
         await assert.rejects(
@@ -169,7 +169,7 @@ test("entries: attributes defaults to '{}' and rejects invalid JSON", async () =
 test("entries: pathname NOT NULL", async () => {
     const db = await openMigrated();
     try {
-        await insertSession(db, "ws-no-pathname");
+        await insertWorkspace(db, "ws-no-pathname");
         await assert.rejects(
             () => (db.test_entries_insert_no_pathname as ExecMethod)(),
             /NOT NULL constraint failed: entries\.pathname/,
@@ -191,9 +191,9 @@ test("entries: partial indexes exist", async () => {
     try {
         const indexes = await (db.test_entries_partial_indexes as PrepMethod).all<{ name: string; sql: string }>();
         const names = indexes.map((i) => i.name).sort();
-        assert.deepEqual(names, ["entries_run_identity", "entries_session_identity"]);
+        assert.deepEqual(names, ["entries_worker_identity", "entries_workspace_identity"]);
         for (const idx of indexes) {
-            assert.match(idx.sql, /WHERE scope = '(session|run)'/); // the session + run identity partials
+            assert.match(idx.sql, /WHERE scope = '(workspace|worker)'/); // the workspace + run identity partials
             assert.match(idx.sql, /UNIQUE/);
         }
     } finally { await db.close(); }
@@ -325,13 +325,13 @@ test("entry_channels: ON DELETE CASCADE via entry", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: CASCADE chain session→entries→entry_channels", async () => {
+test("entry_channels: CASCADE chain workspace→entries→entry_channels", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, "ws-channels-chain");
-        const entryId = await insertSessionEntry(db, sessionId, "known", "a");
+        const workspaceId = await insertWorkspace(db, "ws-channels-chain");
+        const entryId = await insertWorkspaceEntry(db, workspaceId, "known", "a");
         await (db.test_entry_channels_insert_default as PrepMethod).run({ entry_id: entryId, name: "body", content: "x", mimetype: "text/plain" });
-        await (db.test_sessions_delete as PrepMethod).run({ id: sessionId });
+        await (db.test_sessions_delete as PrepMethod).run({ id: workspaceId });
         const remaining = (await (db.test_entry_channels_count_all as PrepMethod).get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }

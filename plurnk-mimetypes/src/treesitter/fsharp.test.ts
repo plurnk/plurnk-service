@@ -80,8 +80,8 @@ describe("text/x-fsharp — implicit-constructor types (issue #22)", () => {
         const src = "module M\ntype Runnable =\n    abstract member Run: int -> int\ntype Parser() =\n    interface Runnable with\n        member this.Run x = x\n";
         const syms = await h().extractRaw(src);
         assert.equal(syms.find((s) => s.name === "Runnable")?.kind, "class");
-        const runs = syms.filter((s) => s.name === "Run");
-        assert.deepEqual(runs.map((s) => s.container), ["M.Runnable", "M.Parser"]);
-        assert.ok(runs.every((s) => s.kind === "method"));
+        const runSyms = syms.filter((s) => s.name === "Run");
+        assert.deepEqual(runSyms.map((s) => s.container), ["M.Runnable", "M.Parser"]);
+        assert.ok(runSyms.every((s) => s.kind === "method"));
     });
 });

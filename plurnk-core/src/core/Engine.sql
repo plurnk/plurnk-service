@@ -3,23 +3,23 @@
 -- PREP: engine_loop_status
 SELECT status FROM loops WHERE id = $loop_id;
 
--- PREP: engine_run_has_live_child
--- A non-terminal CHILD run (run:// spawn/fork set parent_run_id) — a "live thing the run holds",
+-- PREP: engine_worker_has_live_child
+-- A non-terminal CHILD run (worker:// spawn/fork set parent_worker_id) — a "live thing the run holds",
 -- like an open stream. A SEND[200] while one exists is a premature-terminate (§send-premature-terminate).
 -- Live = a child whose LATEST loop is still pending/running/parked (100/102/202) — the SAME definition
--- engine_child_runs_live uses for the Child Runs orientation, so the 409 gate and the section the model
+-- engine_child_workers_live uses for the Child Runs orientation, so the 409 gate and the section the model
 -- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
 -- (§child-orientation). An inherited/historical loop (a fork copies the parent's loops) is not the
 -- latest, so it never makes a concluded child look forever-live.
-SELECT 1 AS live FROM runs r
-JOIN loops l ON l.id = (SELECT id FROM loops WHERE run_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
-WHERE r.parent_run_id = $run_id AND l.status IN (100, 102, 202) LIMIT 1;
+SELECT 1 AS live FROM workers r
+JOIN loops l ON l.id = (SELECT id FROM loops WHERE worker_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
+WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202) LIMIT 1;
 
--- PREP: engine_count_active_loops_for_run
+-- PREP: engine_count_active_loops_for_worker
 -- Wake-on-completion uses this to decide whether to open a new loop or
 -- let the existing one pick up the channel transition at the next turn
 -- boundary. Status 102 = "in progress" (any non-terminal state).
-SELECT COUNT(*) AS n FROM loops WHERE run_id = $run_id AND status = 102;
+SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id AND status = 102;
 
 -- PREP: engine_get_loop_flags
 -- Loads the loop's persisted flags (json). Default '{}'; YOLO listener and
@@ -80,28 +80,28 @@ UPDATE loops SET terminated_by = $terminated_by WHERE id = $loop_id;
 UPDATE loops SET status = 499, terminal_message = $message, terminated_by = 'cancel'
 WHERE id = $loop_id AND status NOT IN (200, 413, 429, 499, 500, 504, 508);
 
--- PREP: engine_run_cancel_live_loops
+-- PREP: engine_worker_cancel_live_loops
 -- #380, the PARKED case — a 202-blocked loop has no drain to observe the abort (the drain
 -- tears down on 202), so loop.cancel terminalizes the run's live loops itself. 102/202 only:
 -- queued (100) loops stay enqueued per §methods-loop-cancel. RETURNING feeds the
 -- loop/terminated broadcast for exactly the loops this cancel killed.
 UPDATE loops SET status = 499, terminal_message = $message, terminated_by = 'cancel'
-WHERE run_id = $run_id AND status IN (102, 202)
+WHERE worker_id = $worker_id AND status IN (102, 202)
 RETURNING id;
 
--- PREP: engine_terminate_run_live_loops
+-- PREP: engine_terminate_worker_live_loops
 -- §op-synchronous — KILL(run) is a DECISIVE op, not a fork/spawn/stream, so it must complete
 -- before the turn moves on. Synchronously flip every LIVE loop of the run to 499 (killed) so the
--- same-turn premature-terminate gate (engine_run_has_live_child) sees it dead immediately; the
--- physical scope reap (drain abort, stream teardown) then proceeds async via cancelRun. The
+-- same-turn premature-terminate gate (engine_worker_has_live_child) sees it dead immediately; the
+-- physical scope reap (drain abort, stream teardown) then proceeds async via cancelWorker. The
 -- loops_stamp_terminated_at trigger stamps terminated_at on the 499 transition (the §run-scheme delta).
 UPDATE loops SET status = 499, terminal_message = $message
-WHERE run_id = $run_id AND status IN (100, 102, 202);
+WHERE worker_id = $worker_id AND status IN (100, 102, 202);
 
--- PREP: session_get_settings
--- #231 — the session's client-chosen open-context bag ({ manifestItems?, mdDocs? }),
+-- PREP: workspace_get_settings
+-- #231 — the workspace's client-chosen open-context bag ({ manifestItems?, mdDocs? }),
 -- read at turn-0 with precedence over env.
-SELECT settings FROM sessions WHERE id = $session_id;
+SELECT settings FROM workspaces WHERE id = $workspace_id;
 
 -- PREP: engine_target_diverged_this_turn
 -- #note10 — did this entry diverge on disk THIS turn? A source=file env-delta for the
@@ -109,45 +109,45 @@ SELECT settings FROM sessions WHERE id = $session_id;
 -- predates the ambient change — a YOLO auto-accept of a same-turn EDIT would clobber it.
 SELECT 1 AS hit
 FROM log_entries
-WHERE run_id = $run_id AND turn_id = $turn_id
+WHERE worker_id = $worker_id AND turn_id = $turn_id
   AND origin = 'plurnk' AND source = 'file' AND op = 'EDIT'
   AND scheme IS $scheme AND pathname = $pathname
 LIMIT 1;
 
--- PREP: engine_list_session_entry_tags
--- #note13 — every (entry, tag) in the session, for the manifest catalog's tags field.
+-- PREP: engine_list_workspace_entry_tags
+-- #note13 — every (entry, tag) in the workspace, for the manifest catalog's tags field.
 SELECT et.entry_id, et.tag
 FROM entry_tags et
 JOIN entries e ON e.id = et.entry_id
-WHERE e.session_id = $session_id
+WHERE e.workspace_id = $workspace_id
 ORDER BY et.entry_id, et.tag;
 
--- PREP: engine_list_run_entries
+-- PREP: engine_list_worker_entries
 -- §run-scheme — the building run's OWN run-scope entries (catalogRowsFor source for a run-scope
--- FIND/foist). Byte-for-byte engine_list_session_entries but scope='run' + an owner-prefix glob
+-- FIND/foist). Byte-for-byte engine_list_workspace_entries but scope='worker' + an owner-prefix glob
 -- (`/<owner>/*`) so it yields exactly one run's scratch — its perspective, not a sibling's. Additive.
 SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
     CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
-WHERE e.scope = 'run' AND e.session_id = $session_id AND e.pathname GLOB $owner_prefix
+WHERE e.scope = 'worker' AND e.workspace_id = $workspace_id AND e.pathname GLOB $owner_prefix
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
--- PREP: engine_list_run_entry_tags
+-- PREP: engine_list_worker_entry_tags
 -- §run-scheme — (entry, tag) for the building run's own run-scope entries (the run-scope catalog's tags field).
 SELECT et.entry_id, et.tag
 FROM entry_tags et
 JOIN entries e ON e.id = et.entry_id
-WHERE e.session_id = $session_id AND e.scope = 'run' AND e.pathname GLOB $owner_prefix
+WHERE e.workspace_id = $workspace_id AND e.scope = 'worker' AND e.pathname GLOB $owner_prefix
 ORDER BY et.entry_id, et.tag;
 
--- PREP: engine_run_scratch_count
+-- PREP: engine_worker_scratch_count
 -- §run-scheme — distinct run-scope entry count owned by the building run, to decide whether the
--- turn-0 catalog foists a FIND(run:///**) (a run with no scratch foists nothing).
+-- turn-0 catalog foists a FIND(worker:///**) (a run with no scratch foists nothing).
 SELECT COUNT(DISTINCT e.id) AS entries
 FROM entries e
-WHERE e.scope = 'run' AND e.session_id = $session_id AND e.pathname GLOB $owner_prefix;
+WHERE e.scope = 'worker' AND e.workspace_id = $workspace_id AND e.pathname GLOB $owner_prefix;
 
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
@@ -206,10 +206,10 @@ UPDATE turns SET
     meta = $meta
 WHERE id = $id;
 
--- PREP: engine_list_session_entries
--- Every entry of a session — all schemes, all channels — the source behind the entry
+-- PREP: engine_list_workspace_entries
+-- Every entry of a workspace — all schemes, all channels — the source behind the entry
 -- catalog (catalogRowsFor / FIND) and the per-turn derivation pump (maintainDerivations).
--- Session-scoped (persists across runs); FOLD doesn't drop from the catalog.
+-- Workspace-scoped (persists across runs); FOLD doesn't drop from the catalog.
 -- `seconds` is the live age of an active stream: now − the open subscription's
 -- opened_at (closed_at IS NULL). NULL for static entries. unixepoch parses the
 -- stored '...%fZ' timestamp directly; re-evaluated every render like tokens.
@@ -218,8 +218,8 @@ SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, e
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
--- entries are session-scoped, shared across runs — §machine-processes-one-filesystem
-WHERE e.scope = 'session' AND e.session_id = $session_id
+-- entries are workspace-scoped, shared across runs — §machine-processes-one-filesystem
+WHERE e.scope = 'workspace' AND e.workspace_id = $workspace_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
@@ -231,16 +231,16 @@ SELECT e.scheme AS scheme,
     COUNT(DISTINCT e.id) AS entries
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-WHERE e.scope = 'session' AND e.session_id = $session_id
+WHERE e.scope = 'workspace' AND e.workspace_id = $workspace_id
 GROUP BY e.scheme
 ORDER BY e.scheme;
 
--- PREP: engine_run_prior_turn_time
+-- PREP: engine_worker_prior_turn_time
 -- §env-delta — timestamp of this run's most recent turn BEFORE the current one
 -- (the "since I last looked" boundary). NULL on the run's first turn → no deltas.
 SELECT MAX(t.timestamp) AS since
 FROM turns t JOIN loops l ON l.id = t.loop_id
-WHERE l.run_id = $run_id AND t.id != $turn_id;
+WHERE l.worker_id = $worker_id AND t.id != $turn_id;
 
 -- PREP: engine_pull_env_deltas
 -- §env-delta — other actors' resolved EDITs on shared entries since this run last
@@ -248,18 +248,18 @@ WHERE l.run_id = $run_id AND t.id != $turn_id;
 -- (origin=plurnk on the reserved 'plurnk' run); excludes this run's own rows and
 -- other runs' already-materialized deltas (origin=plurnk on a real run). plurnk:///
 -- entries (manifest/prompt/doc) never surface. This is the environment door (§actor-boundary-two-doors); the voice door is inject.
-SELECT le.run_id, le.scheme, le.pathname, le.rx, le.source
+SELECT le.worker_id, le.scheme, le.pathname, le.rx, le.source
 FROM log_entries le
-JOIN runs r ON r.id = le.run_id
-WHERE r.session_id = $session_id
+JOIN workers r ON r.id = le.worker_id
+WHERE r.workspace_id = $workspace_id
   AND le.op = 'EDIT'
   AND le.state = 'resolved'
   AND le.status_rx IN (200, 201)
   AND (le.scheme IS NULL OR le.scheme != 'plurnk')
-  AND le.run_id != $run_id
+  AND le.worker_id != $worker_id
   AND le.at > $since
   AND (le.origin != 'plurnk'
-       OR le.run_id = (SELECT id FROM runs WHERE session_id = $session_id AND name = 'plurnk'))
+       OR le.worker_id = (SELECT id FROM workers WHERE workspace_id = $workspace_id AND name = 'plurnk'))
 ORDER BY le.at;
 
 -- PREP: engine_insert_env_delta
@@ -267,14 +267,14 @@ ORDER BY le.at;
 -- in this run's log. origin=plurnk; source carries the cause (sibling run id or
 -- 'file'); rx reuses the originating row's result span (§edit-result-render).
 INSERT INTO log_entries (
-    run_id, loop_id, turn_id, sequence, origin, source,
+    worker_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded
 ) VALUES (
-    $run_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
+    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
     'EDIT', $scheme, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0
 );
 
--- PREP: engine_run_stream_channels
+-- PREP: engine_worker_stream_channels
 -- §exec-stream — every stream channel the run owns (an EXEC's stdout/stderr live on the
 -- runtime-tag entry), with content + state + coordinate, so the per-turn injector can emit the
 -- channel's unshown byte-delta. Stays listed until its last delta is shown (cursor == content len).
@@ -283,7 +283,7 @@ SELECT s.id AS subscription_id, e.scheme AS runtime, e.pathname AS coord,
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN entry_channels ec ON ec.entry_id = s.entry_id
-WHERE s.run_id = $run_id
+WHERE s.worker_id = $worker_id
 ORDER BY s.id, ec.name;
 
 -- PREP: engine_stream_cursor
@@ -291,7 +291,7 @@ ORDER BY s.id, ec.name;
 -- latest foisted delta (the caller defaults to 0 when none exists yet).
 SELECT attrs
 FROM log_entries
-WHERE run_id = $run_id AND origin = 'plurnk' AND op = 'READ'
+WHERE worker_id = $worker_id AND origin = 'plurnk' AND op = 'READ'
     AND scheme = $scheme AND pathname = $pathname AND fragment = $fragment
 ORDER BY id DESC LIMIT 1;
 
@@ -301,10 +301,10 @@ ORDER BY id DESC LIMIT 1;
 -- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 when the channel has CLOSED
 -- (the terminal delta auto-OPENs), 0 while it streams (ongoing deltas fold). §exec-stream
 INSERT INTO log_entries (
-    run_id, loop_id, turn_id, sequence, origin, source,
+    worker_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded
 ) VALUES (
-    $run_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL,
+    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL,
     'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', 200, $attrs, $expanded
 );
 
@@ -313,41 +313,41 @@ INSERT INTO log_entries (
 -- looked (the loop-termination ambient delta). Carries terminal_message — the SEND[200]
 -- deliverable or the abandonment reason — plus terminated_by so a collapse/cancel renders
 -- its marker (#379). Excludes this run's own loops.
-SELECT l.run_id, r.name AS run_name, l.status, l.prompt, l.terminal_message, l.terminated_by
+SELECT l.worker_id, r.name AS worker_name, l.status, l.prompt, l.terminal_message, l.terminated_by
 FROM loops l
-JOIN runs r ON r.id = l.run_id
-WHERE r.session_id = $session_id
+JOIN workers r ON r.id = l.worker_id
+WHERE r.workspace_id = $workspace_id
   AND l.terminated_at IS NOT NULL
   AND l.terminated_at > $since
-  AND l.run_id != $run_id
+  AND l.worker_id != $worker_id
 ORDER BY l.terminated_at;
 
 -- PREP: engine_insert_loop_termination_delta
 -- §run-scheme — materialize a sibling's loop-termination as a delta: a SEND from
--- run:///<name> carrying the terminal status + message (the deliverable). origin=plurnk,
+-- worker:///<name> carrying the terminal status + message (the deliverable). origin=plurnk,
 -- source=the terminated run — uniform with the env-delta. Born OPEN for a 2xx deliverable
 -- (a child's success must reach the parent open + awakening), folded otherwise.
 INSERT INTO log_entries (
-    run_id, loop_id, turn_id, sequence, origin, source,
+    worker_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded
 ) VALUES (
-    $run_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
-    'SEND', 'run', $pathname, '', 'text/plain', $rx, 'text/markdown', $status,
+    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
+    'SEND', 'worker', $pathname, '', 'text/plain', $rx, 'text/markdown', $status,
     CASE WHEN $status >= 200 AND $status < 300 THEN 1 ELSE 0 END
 );
 
 -- PREP: engine_entry_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
--- PREP: engine_child_runs_live
+-- PREP: engine_child_workers_live
 -- The run's LIVE child runs — latest loop non-terminal (100 pending / 102 processing / 202 parked).
--- Powers the Child Runs orienting section (§child-orientation): terse `* <status> run://<name>`
+-- Powers the Child Runs orienting section (§child-orientation): terse `* <status> worker://<name>`
 -- pointers so the model SEES what it holds live and reasons for itself (READ/KILL), never told to.
 -- Empty → section omitted.
 SELECT r.name, l.status
-FROM runs r
-JOIN loops l ON l.id = (SELECT id FROM loops WHERE run_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
-WHERE r.parent_run_id = $run_id AND l.status IN (100, 102, 202)
+FROM workers r
+JOIN loops l ON l.id = (SELECT id FROM loops WHERE worker_id = r.id ORDER BY sequence DESC, id DESC LIMIT 1)
+WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202)
 ORDER BY r.name;
 
 -- PREP: engine_child_streams_open
@@ -357,7 +357,7 @@ ORDER BY r.name;
 SELECT s.scheme, e.pathname
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
-WHERE s.run_id = $run_id AND s.closed_at IS NULL
+WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
 ORDER BY e.pathname;
 
 -- PREP: engine_render_telemetry_errors
@@ -409,7 +409,7 @@ UPDATE log_entries SET expanded = 0 WHERE id = $id;
 -- PREP: engine_render_log
 -- Render-time log assembly (SPEC §packet packet.system.log).
 -- Yields log_entries for the whole RUN — the conversation's working
--- memory carries across loops within a session's run, not just the
+-- memory carries across loops within a workspace's run, not just the
 -- current loop. Coordinate is log:///<loop_seq>/<turn_seq>/<sequence>/<op>.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- `expanded = 0` rows are FOLDED — listed but collapsed to their coordinate
@@ -436,7 +436,7 @@ JOIN loops l ON l.id = le.loop_id
 -- forensics, suppressed from materialization so a curation receipt rents zero packet space; the
 -- successful fold that hid the task frame in run43 left NO trace, the database dig. A FAILED
 -- OPEN/FOLD still renders — errors are signals, §telemetry-uniform-error-channel).
-WHERE le.run_id = $run_id
+WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (le.op IN ('OPEN', 'FOLD') AND le.status_rx < 400)
 ORDER BY l.sequence, t.sequence, le.sequence;
@@ -447,14 +447,14 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- triggers the proposal lifecycle (engine pauses dispatch; client resolves
 -- via loop/resolve RPC; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
-    run_id, loop_id, turn_id, sequence, origin, source,
+    worker_id, loop_id, turn_id, sequence, origin, source,
     op, suffix, signal,
     scheme, username, password, hostname, port,
     pathname, params, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
     state, outcome, attrs
 ) VALUES (
-    $run_id, $loop_id, $turn_id, $sequence, $origin, $source,
+    $worker_id, $loop_id, $turn_id, $sequence, $origin, $source,
     $op, $suffix, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $params, $fragment, $lineMarker,
@@ -508,15 +508,15 @@ UPDATE turns SET status = $status WHERE id = $id;
 -- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
 SELECT sequence FROM loops WHERE id = $loop_id;
 
--- PREP: engine_run_has_undelivered_child_term
+-- PREP: engine_worker_has_undelivered_child_term
 -- A child run whose loop TERMINATED after the current turn's timestamp — its deliverable
 -- (the §run-scheme collect delta) is queued for the NEXT packet build and has not been seen.
 -- The 1ms-wide fan-out race: workers concluding DURING the parent's generation are not "live"
 -- (the wait's J leg misses them) but their results are pending — concluding or ∅-collapsing
 -- over them silently discards deliverables the model spawned. {§send-undelivered-child-term}
 SELECT 1 AS pending FROM loops l
-JOIN runs r ON r.id = l.run_id
-WHERE r.parent_run_id = $run_id
+JOIN workers r ON r.id = l.worker_id
+WHERE r.parent_worker_id = $worker_id
   AND l.terminated_at IS NOT NULL
   AND l.terminated_at > (SELECT timestamp FROM turns WHERE id = $turn_id)
 LIMIT 1;

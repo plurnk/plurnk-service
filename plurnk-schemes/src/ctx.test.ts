@@ -94,7 +94,7 @@ const makeCtx = () => {
             chunks.push({ channel, chunk, mimetype });
             notify.streamEvent("sub", channel, "active", chunk.length);
         },
-        // close composites the run wake — there is no separate notify.wakeRun;
+        // close composites the run wake — there is no separate notify.wakeWorker;
         // the rich, summary-bearing wake lives where the close context is.
         async close(reason, outcome) { closed = { reason, outcome }; woken += 1; },
     };
@@ -104,7 +104,7 @@ const makeCtx = () => {
     };
 
     const ctx: SchemeCtx = {
-        sessionId: 1, runId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, tags, notify, subscriptions, crossScheme,
     };
 

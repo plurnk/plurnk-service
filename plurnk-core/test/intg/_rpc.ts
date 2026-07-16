@@ -103,12 +103,12 @@ export const runLoopToTerminal = async (
     ws: SeamSocket, id: number, params: object,
     { timeoutMs = 8000 }: { timeoutMs?: number } = {},
 ): Promise<{
-    loopId: number; finalStatus: number; accepted: number; action?: string; modelRunId?: number;
+    loopId: number; finalStatus: number; accepted: number; action?: string; modelWorkerId?: number;
     hitMaxTurns?: boolean; turnIds?: number[]; usage?: { promptTokens: number; completionTokens: number; costPico: number };
 }> => {
     const terminated = subscribeNotifications(ws, "loop/terminated");
     const run = await rpcCall(ws, id, "loop.run", params);
-    const { loopId, finalStatus: accepted, action, modelRunId } = run.result as { loopId: number; finalStatus: number; action?: string; modelRunId?: number };
+    const { loopId, finalStatus: accepted, action, modelWorkerId } = run.result as { loopId: number; finalStatus: number; action?: string; modelWorkerId?: number };
     const seen = await waitFor(
         () => terminated() as Array<{ loopId: number }>,
         (ts) => ts.some((t) => t.loopId === loopId),
@@ -118,7 +118,7 @@ export const runLoopToTerminal = async (
         loopId: number; finalStatus: number; hitMaxTurns?: boolean; turnIds?: number[];
         usage?: { promptTokens: number; completionTokens: number; costPico: number };
     };
-    return { ...term, accepted, action, modelRunId };
+    return { ...term, accepted, action, modelWorkerId };
 };
 
 export const connect = (addr: DaemonAddr): Promise<SeamSocket> =>

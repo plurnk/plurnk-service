@@ -6,7 +6,7 @@ import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } from "../content/index.ts";
 
-// Shared static-method helpers for session-scope entry-bearing schemes
+// Shared static-method helpers for workspace-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
 // extract scheme name + channels + defaultChannel. Channel routing
 // follows SPEC §channel-selection: path.fragment ?? manifest.defaultChannel.
@@ -26,7 +26,7 @@ export type EditResult = { status: number; entryId: number | null; channel: stri
 // distinguishes "0 matches" from "empty content."
 // reason — surfaced on 203 dialect-fallback so the model sees why the
 // structured parse failed and got raw content instead.
-export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string; awaitRun?: string };
+export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string; awaitWorker?: string };
 export type OpenFoldResult = { status: number };
 
 export default class EntryOps {
@@ -57,18 +57,18 @@ export default class EntryOps {
     }
 
     // §run-scheme — pick the scope's CRUD/read statement. A run-scope scheme
-    // (manifest.scope === "run", today only run://) keys its entries in the run
-    // partition; every other scheme resolves the session statement, byte-identical.
+    // (manifest.scope === "worker", today only worker://) keys its entries in the run
+    // partition; every other scheme resolves the workspace statement, byte-identical.
     static #stmt(db: Db, scope: string, base: "crud_find" | "crud_insert" | "ops_read_channel"): PrepMethod {
-        const run = { crud_find: "crud_find_run_entry", crud_insert: "crud_insert_run_entry", ops_read_channel: "ops_read_channel_run" } as const;
-        const session = { crud_find: "crud_find_session_entry", crud_insert: "crud_insert_session_entry", ops_read_channel: "ops_read_channel" } as const;
-        return db[(scope === "run" ? run : session)[base]] as PrepMethod;
+        const run = { crud_find: "crud_find_worker_entry", crud_insert: "crud_insert_worker_entry", ops_read_channel: "ops_read_channel_worker" } as const;
+        const workspace = { crud_find: "crud_find_workspace_entry", crud_insert: "crud_insert_workspace_entry", ops_read_channel: "ops_read_channel" } as const;
+        return db[(scope === "worker" ? run : workspace)[base]] as PrepMethod;
     }
 
-    static async editSessionEntry(statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<EditResult> {
+    static async editWorkspaceEntry(statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<EditResult> {
         if (statement.target === null) return { status: 400, entryId: null, channel: null };
 
-        const { db, sessionId } = ctx;
+        const { db, workspaceId } = ctx;
         const { name: scheme, channels, defaultChannel } = manifest;
 
         const fragment = EntryOps.#fragmentOf(statement);
@@ -76,7 +76,7 @@ export default class EntryOps {
         if (targetChannel === null) return { status: 400, entryId: null, channel: null };
 
         const pathname = EntryOps.#pathnameOf(statement);
-        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
 
         // Non-default channel write requires the entry to exist (§channel-selection-fragment-on-nonexistent-404).
         if (existing === undefined && fragment !== null) {
@@ -93,7 +93,7 @@ export default class EntryOps {
         // 415 on binary entries (SPEC.md §op-invariants).
         if (existing !== undefined) {
             const channel = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ mimetype: string }>({
-                session_id: sessionId, scheme, pathname, channel: targetChannel,
+                workspace_id: workspaceId, scheme, pathname, channel: targetChannel,
             });
             if (channel !== undefined && MimetypeBinary.isBinaryMimetype(channel.mimetype)) {
                 return { status: 415, entryId: existing.id, channel: targetChannel };
@@ -110,7 +110,7 @@ export default class EntryOps {
         let originalContent = "";
         if (existing !== undefined) {
             const channel = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string }>({
-                session_id: sessionId, scheme, pathname, channel: targetChannel,
+                workspace_id: workspaceId, scheme, pathname, channel: targetChannel,
             });
             originalContent = channel?.content ?? "";
         }
@@ -151,8 +151,8 @@ export default class EntryOps {
         let entryId: number;
         let createdNow: boolean;
         if (existing === undefined) {
-            const row = await EntryOps.#stmt(db, manifest.scope, "crud_insert").get<{ id: number }>({ session_id: sessionId, scheme, pathname });
-            if (row === undefined) throw new Error("editSessionEntry: insert returned no row");
+            const row = await EntryOps.#stmt(db, manifest.scope, "crud_insert").get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+            if (row === undefined) throw new Error("editWorkspaceEntry: insert returned no row");
             entryId = row.id;
             createdNow = true;
         } else {
@@ -160,7 +160,7 @@ export default class EntryOps {
             createdNow = false;
         }
 
-        if (ctx.tokenize === undefined) throw new Error("editSessionEntry: ctx.tokenize is required for token accounting");
+        if (ctx.tokenize === undefined) throw new Error("editWorkspaceEntry: ctx.tokenize is required for token accounting");
         await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — §per-entry-channels-edit-writes-only-body
         // §semantic-fts-at-write — the keyword half indexes with the write (body channel only).
         if (targetChannel === "body") await EntrySemantic.indexFts(db, entryId, newContent);
@@ -178,23 +178,23 @@ export default class EntryOps {
         return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, span: editedSpan(originalContent, newContent) };  // §edit-status-201-200
     }
 
-    // Scope-aware entry delete — the KILL counterpart of editSessionEntry. Resolves the
+    // Scope-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves the
     // entry via the scope's crud_find variant (so a run-scope row is found, not just
-    // session), then deletes by id (channels/tags CASCADE). 404 when the entry is absent.
-    static async deleteSessionEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<{ status: number }> {
+    // workspace), then deletes by id (channels/tags CASCADE). 404 when the entry is absent.
+    static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<{ status: number }> {
         if (statement.target === null) return { status: 400 };
-        const { db, sessionId } = ctx;
+        const { db, workspaceId } = ctx;
         const pathname = EntryOps.#pathnameOf(statement);
-        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ session_id: sessionId, scheme: manifest.name, pathname });
+        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ workspace_id: workspaceId, scheme: manifest.name, pathname });
         if (existing === undefined) return { status: 404 };
         await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });
         return { status: 200 };
     }
 
-    static async readSessionEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> {
+    static async readWorkspaceEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> {
         if (statement.target === null) return { status: 400, content: null, mimetype: null, channel: null };
 
-        const { db, sessionId } = ctx;
+        const { db, workspaceId } = ctx;
         const { channels, defaultChannel } = manifest;
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File sets storedScheme=null — its rows persist bare (scheme=NULL).
@@ -210,12 +210,12 @@ export default class EntryOps {
         let readChannel = targetChannel;
         if (fragment === null && statement.body !== null && statement.body.dialect === "xpath") {
             const html = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string }>({
-                session_id: sessionId, scheme, pathname, channel: "html",
+                workspace_id: workspaceId, scheme, pathname, channel: "html",
             });
             if (html !== undefined) readChannel = "html";
         }
         const row = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string; mimetype: string }>({
-            session_id: sessionId, scheme, pathname, channel: readChannel,
+            workspace_id: workspaceId, scheme, pathname, channel: readChannel,
         });
         if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };  // §read-read-404
 
@@ -226,7 +226,7 @@ export default class EntryOps {
         // `[tag]` filter: entry must have ALL requested tags. Mismatch = 404
         // (entry doesn't match the tag-scoped READ).
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            const entry = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ session_id: sessionId, scheme, pathname });
+            const entry = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
             if (entry === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
             const tagRows = await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: entry.id });
             const have = new Set(tagRows.map((r) => r.tag));

@@ -4,7 +4,7 @@
 // src/app.js, data/users.json, package.json) and we assert outcomes:
 // file content after edit, response text after query, etc.
 //
-// Driven through the REAL prod loop — loop.run via the daemon. session.create
+// Driven through the REAL prod loop — loop.run via the daemon. workspace.create
 // pins the fixture as project_root; PLURNK_SERVICE_GIT_AUTO makes its git-committed
 // files members the production way (no hand-registered catalog), and Exec
 // defaults its cwd to project_root. runStory boots the prod Daemon directly
@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches rummy's story timeout.
@@ -48,7 +48,7 @@ interface StoryResult {
 
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveSession({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
     // A liveLoop throw (loop.run rejection, waitFor timeout) happens BEFORE the caller holds the
     // StoryResult, so its finally-cleanup is unreachable — tear down HERE or the orphaned daemon's
     // handles (ws pair, db worker) keep the child process alive after the run and wedge the tier.
@@ -60,7 +60,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
             { timeoutMs: TIMEOUT - 30_000 }, // undercut the test timeout: the inner throw must land while cleanup is still reachable
         );
     } catch (err) {
-        await s.cleanup().catch((e) => console.error(`[story:${opts.label}] session cleanup after failure:`, e));
+        await s.cleanup().catch((e) => console.error(`[story:${opts.label}] workspace cleanup after failure:`, e));
         await fixture.cleanup().catch((e) => console.error(`[story:${opts.label}] fixture cleanup after failure:`, e));
         throw err;
     }
@@ -87,13 +87,13 @@ interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onSte
 interface ChainStep { finalStatus: number; lastContent: string; turnIds: number[]; }
 interface ChainResult { workspace: string; steps: ChainStep[]; cleanup: () => Promise<void>; }
 
-// Multi-prompt story: ONE session, prompts fired in sequence (each its own loop.run), so
-// session state persists — the model works with its OWN prior output across turns (an authored
+// Multi-prompt story: ONE workspace, prompts fired in sequence (each its own loop.run), so
+// workspace state persists — the model works with its OWN prior output across turns (an authored
 // file it must re-READ and revise, a fact it must recall). Same fixture + teardown discipline as
 // runStory: a liveLoop throw lands before the caller holds the result, so tear down here.
 const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveSession({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
     const teardown = async () => { await s.cleanup(); await fixture.cleanup(); };
     const steps: ChainStep[] = [];
     try {
@@ -290,7 +290,7 @@ test("story: report the number of files in a directory", { timeout: TIMEOUT }, a
 });
 
 test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }, async () => {
-    // Authoring → refinement → reorganization in ONE session. The model creates prose (brief.md),
+    // Authoring → refinement → reorganization in ONE workspace. The model creates prose (brief.md),
     // then must re-READ its OWN prior work and EDIT it shorter (the refine turn renders the
     // line-numbered diff of what changed — §edit-result-render), then MOVE it out of the root.
     // Outcome asserts on disk, snapshotting size BEFORE the move. All natural prompts.

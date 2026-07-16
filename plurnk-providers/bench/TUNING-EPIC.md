@@ -85,7 +85,7 @@ the provider's `grammar_unenforced` gate is the backstop either way.
   transfer (→ the real-artifacts rule).
 - F4 (2026-07-02, this repo): flat `{0,16384}` — llama.cpp silently mis-enforces,
   `@plurnk/gbnf` won't parse, fireworks OK. Large flat bounds are hazardous.
-- F5 (prior sessions, bench/): lazy-grammar trigger probes, reasoning×grammar
+- F5 (prior workspaces, bench/): lazy-grammar trigger probes, reasoning×grammar
   sweep w/ objective grading (gemma), thinking-grammar-v2 (free roots + `<<PLAN:`
   prefill), speed-survivors. Single-backend; predates fireworks. To re-read in
   Phase 1 design.
@@ -171,7 +171,7 @@ the provider's `grammar_unenforced` gate is the backstop either way.
 ## F7 — llama.cpp numeric reasoning budget (2026-07-03; user-instigated, stale memory corrected)
 
 - `--reasoning-budget N` (N>0 = token budget for thinking) EXISTS on the current
-  build; prior session memory claimed 0/-1 only — wrong. The local box already
+  build; prior workspace memory claimed 0/-1 only — wrong. The local box already
   launches with `--reasoning-budget 4096 --reasoning-format deepseek`, and F6's
   thinking-on run (3.3k reasoning tokens < 4096) confirms the clamp environment.
 - Per-request budget fields are IGNORED (probed live: `reasoning_budget: 64`,

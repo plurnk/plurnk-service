@@ -41,7 +41,7 @@ test("[§methods-entry-read] entry.read returns full entry shape (channels + tag
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "entry-read-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "entry-read-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///france/capital", content: "Paris", tags: ["france", "europe"] });
 
             const r = await rpcCall(ws, 3, "entry.read", { target: "known:///france/capital" });
@@ -60,7 +60,7 @@ test("entry.read channel+offset returns the incremental slice + full contentLeng
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "entry-read-offset" });
+            await rpcCall(ws, 1, "workspace.create", { name: "entry-read-offset" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///doc", content: "Hello, World", tags: [] });
 
             // Full read now reports contentLength on every channel (the unit offset uses).
@@ -95,7 +95,7 @@ test("entry.read returns 404 for missing entry", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "404-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "404-test" });
             const r = await rpcCall(ws, 2, "entry.read", { target: "known:///does-not-exist" });
             const result = r.result as { status: number; entry: null };
             assert.equal(result.status, 404);
@@ -108,7 +108,7 @@ test("entry.read requires URL-shaped path", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "shape-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "shape-test" });
             const r = await rpcCall(ws, 2, "entry.read", { target: "not-a-url" });
             assert.equal(r.error?.code, -32603);
             assert.match(r.error?.message ?? "", /URL-shaped/);
@@ -123,7 +123,7 @@ test("entry.read with fragment strips fragment (channel selection is per-op conc
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "fragment-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "fragment-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "body content" });
             const r = await rpcCall(ws, 3, "entry.read", { target: "known:///x#anything" });
             if (r.result === undefined) {
@@ -136,11 +136,11 @@ test("entry.read with fragment strips fragment (channel selection is per-op conc
     });
 });
 
-test("[§methods-log-read] log.read returns recent entries from the attached session", async () => {
+test("[§methods-log-read] log.read returns recent entries from the attached workspace", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "log-read-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "log-read-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///a", content: "alpha" });
             await rpcCall(ws, 3, "op.edit", { target: "known:///b", content: "beta" });
 
@@ -158,7 +158,7 @@ test("log.read respects limit", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "limit-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "limit-test" });
             for (let i = 0; i < 5; i++) {
                 await rpcCall(ws, 10 + i, "op.edit", { target: `known:///e${i}`, content: `v${i}` });
             }
@@ -173,7 +173,7 @@ test("log.read filters by sinceId for incremental fetch", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "since-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "since-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///a", content: "first" });
             const firstFetch = await rpcCall(ws, 3, "log.read");
             const firstResult = firstFetch.result as { entries: Array<{ id: number }> };
@@ -193,7 +193,7 @@ test("log.read entries have hydrated JSON columns", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "hydration-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "hydration-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "body", tags: ["a", "b"] });
 
             const r = await rpcCall(ws, 3, "log.read");
@@ -213,7 +213,7 @@ test("[§methods-log-read] log.read by full L/T/S coordinate resolves the single
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "log-coord-test" });
+            await rpcCall(ws, 1, "workspace.create", { name: "log-coord-test" });
             await rpcCall(ws, 2, "op.edit", { target: "known:///a", content: "alpha" });
             await rpcCall(ws, 3, "op.send", { status: 200, body: "Paris" });
 
@@ -235,13 +235,13 @@ test("[§methods-log-read] log.read by full L/T/S coordinate resolves the single
     });
 });
 
-test("log.read is session-scoped — doesn't see other sessions' logs", async () => {
+test("log.read is workspace-scoped — doesn't see other workspaces' logs", async () => {
     await withDaemon(async (_db, addr) => {
         const wsA = await connect(addr);
         const wsB = await connect(addr);
         try {
-            await rpcCall(wsA, 1, "session.create", { name: "session-A" });
-            await rpcCall(wsB, 1, "session.create", { name: "session-B" });
+            await rpcCall(wsA, 1, "workspace.create", { name: "workspace-A" });
+            await rpcCall(wsB, 1, "workspace.create", { name: "workspace-B" });
 
             await rpcCall(wsA, 2, "op.edit", { target: "known:///a", content: "from A" });
             await rpcCall(wsB, 2, "op.edit", { target: "known:///b", content: "from B" });

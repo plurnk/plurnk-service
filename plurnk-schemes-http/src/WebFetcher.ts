@@ -21,7 +21,7 @@ const isHtml = (mimetype: string): boolean =>
 // What the primitive needs from the render foundation — narrow, so tests inject.
 interface Renderer {
     render(url: string, opts: {
-        runId: number;
+        workerId: number;
         signal?: AbortSignal;
         headers?: ReadonlyArray<readonly [string, string]>;
         guard?: (url: string) => Promise<boolean>;
@@ -56,7 +56,7 @@ export default class WebFetcher {
             await response.body?.cancel();
             try {
                 const rendered = await this.#browser.render(url, {
-                    runId: 0,
+                    workerId: 0,
                     signal,
                     headers: [["User-Agent", BROWSER_UA]],
                     guard: Guard.isPublicUrl,

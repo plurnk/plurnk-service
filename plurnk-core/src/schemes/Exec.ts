@@ -3,7 +3,7 @@ import type { ExecStatement, FindStatement, ReadStatement, TelemetryEvent } from
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import { WebFetcher } from "@plurnk/plurnk-schemes-http";
 import type { Executor } from "../core/ExecutorRegistry.ts";
-import SessionSettings from "../core/session-settings.ts";
+import WorkspaceSettings from "../core/workspace-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -26,7 +26,7 @@ type ExecResult = { status: number; body?: string; attrs?: object; error?: strin
 
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
-    cwd: string | null;     // process working directory = the session workspace (project_root), or null (headless). A relative target resolves against it. (execs 0.4.26 §2)
+    cwd: string | null;     // process working directory = the workspace workspace (project_root), or null (headless). A relative target resolves against it. (execs 0.4.26 §2)
     target: string | null;  // the parsed (target) slot — the executor's DATA SOURCE (jq input file / sqlite db / wasm module); null = no source (subprocess ignores it). (#15)
     command: string;        // body of the EXEC op
     pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; entry persists under the RUNTIME TAG scheme — <runtime>:///<pathname> (e.g. sh:///1/1/2), §exec/#240. exec:// is process-control only.
@@ -87,7 +87,7 @@ export default class Exec {
         channels: { stdout: "text/stream", stderr: "text/stream" },
         defaultChannel: "stdout",
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
@@ -107,7 +107,7 @@ export default class Exec {
         this.#fetchWeb = fetchWeb ?? ((url, opts) => webFetcher.fetch(url, opts));
     }
 
-    #activeAborts = new Map<number, { runId: number; pathname: string; runtime: string; controller: AbortController; unlink: () => void }>();
+    #activeAborts = new Map<number, { workerId: number; pathname: string; runtime: string; controller: AbortController; unlink: () => void }>();
     #activeSpawns = new Map<number, Promise<number>>();
 
     async idle(): Promise<void> {
@@ -118,8 +118,8 @@ export default class Exec {
     // reads this only for loop.cancel's cancelled=true/false answer — the
     // teardown itself rides the run's cancellation scope (the spawn's
     // ctx.signal), so even a spawn registering after the cancel self-aborts.
-    hasActiveSpawns(runId: number): boolean {
-        for (const { runId: r } of this.#activeAborts.values()) if (r === runId) return true;
+    hasActiveSpawns(workerId: number): boolean {
+        for (const { workerId: r } of this.#activeAborts.values()) if (r === workerId) return true;
         return false;
     }
 
@@ -127,8 +127,8 @@ export default class Exec {
     // operator's hold set? The turn-hold exception (owner ruling): for streams we know and
     // control (the search family — one final JSON digest, seconds-bounded), the engine holds
     // the next packet until conclusion instead of giving the model a turn it can only waste.
-    hasActiveHoldSpawns(runId: number, holdSet: ReadonlySet<string>): boolean {
-        for (const { runId: r, runtime } of this.#activeAborts.values()) if (r === runId && holdSet.has(runtime)) return true;
+    hasActiveHoldSpawns(workerId: number, holdSet: ReadonlySet<string>): boolean {
+        for (const { workerId: r, runtime } of this.#activeAborts.values()) if (r === workerId && holdSet.has(runtime)) return true;
         return false;
     }
 
@@ -147,7 +147,7 @@ export default class Exec {
             }
         }
         // Not running — settle the outcome from the closed subscription's status.
-        const terminal = await ChannelWrite.execTerminalStatus(ctx.db, { sessionId: ctx.sessionId, pathname });
+        const terminal = await ChannelWrite.execTerminalStatus(ctx.db, { workspaceId: ctx.workspaceId, pathname });
         if (terminal === null) return { status: 404, error: `no exec at exec://${pathname}` };
         if (terminal === 499) return { status: 410, error: `exec://${pathname} was killed earlier` };
         return { status: 304 };
@@ -178,10 +178,10 @@ export default class Exec {
         const schemeTarget = schemeTargetOf(statement.target);
         // #462 — stat-route the local (target): a DIRECTORY overrides cwd (run the body IN it); a FILE is
         // the program/data-source the executor runs (body = stdin). A stat-miss falls to the file arm so the
-        // runtime reports its own not-found, never a dispatch 400. cwd otherwise = the session workspace
+        // runtime reports its own not-found, never a dispatch 400. cwd otherwise = the workspace workspace
         // (project_root) — the directory File writes to, and what a data-source target resolves against.
-        const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
-        const projectRoot = sessionRow?.project_root ?? null;
+        const workspaceRow = await (ctx.db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: ctx.workspaceId });
+        const projectRoot = workspaceRow?.project_root ?? null;
         const localTarget = localPathFromTarget(statement.target);
         let routedTarget = localTarget;
         let cwd: string | null = projectRoot;
@@ -212,13 +212,13 @@ export default class Exec {
             command = command.length > 0 ? `${runtime} ${command}` : runtime;
             runtime = "sh";
         }
-        // #328 — per-session client policy narrows the boot-registered set (subtractive). A tag the
-        // session's client layer disables is ABSENT for this session — refused like an unavailable
-        // runtime. Checked on the EFFECTIVE runtime: a fall-through rides sh's gate, so a session
+        // #328 — per-workspace client policy narrows the boot-registered set (subtractive). A tag the
+        // workspace's client layer disables is ABSENT for this workspace — refused like an unavailable
+        // runtime. Checked on the EFFECTIVE runtime: a fall-through rides sh's gate, so a workspace
         // that disabled sh gets the refusal, never a side door.
-        const sessionExecs = (await SessionSettings.read(ctx.db, ctx.sessionId)).execs;
-        if (sessionExecs !== null && !Policy.isEnabled(runtime, sessionExecs)) {
-            return { status: 501, error: `\`${runtime}\` is disabled for this session by client policy (PLURNK_EXECS_*)` };
+        const workspaceExecs = (await WorkspaceSettings.read(ctx.db, ctx.workspaceId)).execs;
+        if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
+            return { status: 501, error: `\`${runtime}\` is disabled for this workspace by client policy (PLURNK_EXECS_*)` };
         }
         const resolved = ctx.executors.entry(runtime); // registry resolves the runtime tag; unknown/unavailable → 501 — §exec-registry-resolves
         if (resolved === undefined) {
@@ -238,7 +238,7 @@ export default class Exec {
         // Effect classifies by the target only, never by parsing the command (#289): host → propose,
         // read/pure → auto-run inline (plurnk-service#182).
         const policy = EffectPolicy.decide(resolved.executor.effect(target, command));
-        // cwd is the session WORKSPACE (project_root) — the directory File writes to and a relative
+        // cwd is the workspace WORKSPACE (project_root) — the directory File writes to and a relative
         // data-source target resolves against (execs 0.4.26 §2) — UNLESS a #462 directory target overrode
         // it above, in which case the body runs in that directory. A file/data-source target never moves cwd.
         // Pathname is assigned by Dispatcher.#writeLog as <runtime>/<loop_seq>/
@@ -296,7 +296,7 @@ export default class Exec {
             if (command.length === 0) {
                 command = content;
             } else {
-                tempPath = join(tmpdir(), `plurnk-exec-${ctx.sessionId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
+                tempPath = join(tmpdir(), `plurnk-exec-${ctx.workspaceId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
                 await writeFile(tempPath, content, "utf8");
                 target = tempPath;
             }
@@ -327,7 +327,7 @@ export default class Exec {
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
         const subscriptionId = await ChannelWrite.openSubscription(ctx.db, {
-            runId: ctx.runId, entryId, scheme: runtime,
+            workerId: ctx.workerId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${command}` : command,
             pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // §exec-poll — hibernation wake cadence
             turnScoped: attrs.turnScoped === true, // §exec-poll — `<0>` reaped at the next pre-turn
@@ -350,7 +350,7 @@ export default class Exec {
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { runId: ctx.runId, pathname, runtime, controller, unlink });
+        this.#activeAborts.set(subscriptionId, { workerId: ctx.workerId, pathname, runtime, controller, unlink });
 
         const tail = this.#runExecutor({
             executor: resolved.executor,
@@ -417,7 +417,7 @@ export default class Exec {
         // survivor executor-side without breaking the chain. Lazy narration context: one plurnk-run
         // turn per spawn, not per entry.
         let entryChain: Promise<unknown> = Promise.resolve();
-        let narration: { runId: number; loopId: number; turnId: number; seq: number } | null = null;
+        let narration: { workerId: number; loopId: number; turnId: number; seq: number } | null = null;
         const entrySink = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }): Promise<void> => {
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
@@ -454,21 +454,21 @@ export default class Exec {
                 }
                 const written = await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme);
                 if (narration === null) {
-                    const run = await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: "plurnk" })
-                        ?? await (db.envelope_insert_run as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name: "plurnk", origin: "plurnk" });
+                    const run = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
+                        ?? await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk", origin: "plurnk" });
                     if (run === undefined) throw new Error("entry(): plurnk run resolution returned no row");
-                    const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ run_id: run.id });
+                    const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ worker_id: run.id });
                     if (loop === undefined) throw new Error("entry(): loop insert returned no row");
                     const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: loop.id });
                     const turn = await (db.client_turn_insert as PrepMethod).get<{ id: number }>({ loop_id: loop.id, sequence: seqRow?.next ?? 1, packet: "{}" });
                     if (turn === undefined) throw new Error("entry(): turn insert returned no row");
-                    narration = { runId: run.id, loopId: loop.id, turnId: turn.id, seq: 1 };
+                    narration = { workerId: run.id, loopId: loop.id, turnId: turn.id, seq: 1 };
                 }
                 await (db.engine_insert_log_entry as PrepMethod).get({
-                    run_id: narration.runId, loop_id: narration.loopId, turn_id: narration.turnId, sequence: narration.seq++,
+                    worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence: narration.seq++,
                     // signal carries the tags — the SAME slot a model's EDIT[tags] uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
-                    origin: "plurnk", source: String(ctx.runId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
+                    origin: "plurnk", source: String(ctx.workerId), op: "EDIT", suffix: "", signal: JSON.stringify(tags),
                     scheme: parsed.scheme, username: null, password: null, hostname: null, port: null,
                     pathname, params: null, fragment: null, lineMarker: null,
                     tx: JSON.stringify({ op: "EDIT", body }), mimetype_tx: "application/json",
@@ -549,9 +549,9 @@ export default class Exec {
 
             // Every run backgrounds now (§exec-stream) — wake a parked loop on completion so the
             // run resumes to the turn where the stream's terminal delta surfaces.
-            if (ctx.wakeRunNotify !== undefined) {
-                ctx.wakeRunNotify({
-                    sessionId: ctx.sessionId, runId: ctx.runId,
+            if (ctx.wakeWorkerNotify !== undefined) {
+                ctx.wakeWorkerNotify({
+                    workspaceId: ctx.workspaceId, workerId: ctx.workerId,
                     entryId, target: `${runtime}://${pathname}`, subscriptionId, closeStatus,
                     scheme: runtime,
                     summary: `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
@@ -563,11 +563,11 @@ export default class Exec {
     }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        return EntryOps.readSessionEntry(statement, ctx, Exec.manifest);
+        return EntryOps.readWorkspaceEntry(statement, ctx, Exec.manifest);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findSessionEntries(statement, ctx, Exec.manifest);
+        return EntryFind.findWorkspaceEntries(statement, ctx, Exec.manifest);
     }
 
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {

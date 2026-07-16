@@ -11,7 +11,7 @@
 // pull the one fact it needs from inside the folded prompt.
 //
 // Driven through the REAL prod loop (loop.run via the daemon). The ceiling is set
-// before liveSession boots the daemon so its engine captures it at construction
+// before liveWorkspace boots the daemon so its engine captures it at construction
 // (the budget-grind pattern). Stochastic: assert the OUTCOME (the fact surfaces),
 // not a strict terminal — a live test pinning strict 200 is flaky by construction.
 
@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { liveSession, liveLoop, pinAliasPartition } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -45,7 +45,7 @@ interface BudgetRun {
 }
 
 // runStory with a pinned budget ceiling. The daemon's engine reads
-// the partition env at construction (inside liveSession), so set before / restore
+// the partition env at construction (inside liveWorkspace), so set before / restore
 // after — mirrors budget-grind. `projectRoot` overrides the default fixture (the SPEC demo).
 const runUnderBudget = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
@@ -56,7 +56,7 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
     // active alias's suffix — bare is overridden by the model's own .env window knobs.
     const restore = pinAliasPartition({ CONTEXT_WINDOW: String(ceiling + 8192), REASONING: "0", COMPLETION: "8192", SAFETY: "0" });
     try {
-        const s = await liveSession({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
+        const s = await liveWorkspace({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
         const perTurn: number[] = [];
         for (const tid of turnIds) {

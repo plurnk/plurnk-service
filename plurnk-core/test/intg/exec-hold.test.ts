@@ -8,7 +8,7 @@ import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertSession, insertRun, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
@@ -29,7 +29,7 @@ const wire = async (finishAfterMs: number) => {
     engine.hotloadRuntime(tag, {
         executor: {
             runtime: tag, glyph: "?",
-            get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "run", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return {}; },
             effect: () => "pure" as const,
@@ -43,10 +43,10 @@ const wire = async (finishAfterMs: number) => {
         },
         glyph: "?", example: "", documentation: "", available: true, detail: undefined,
     });
-    const sessionId = await insertSession(db, `hold-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "hold test");
-    return { db, engine, sessionId, runId, loopId, tag };
+    const workspaceId = await insertWorkspace(db, `hold-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "hold test");
+    return { db, engine, workspaceId, workerId, loopId, tag };
 };
 
 const streamsSection = (packetJson: string): string => {
@@ -55,7 +55,7 @@ const streamsSection = (packetJson: string): string => {
 };
 
 const driveLoop = async (finishAfterMs: number, midTurns: number) => {
-    const { db, engine, sessionId, runId, loopId, tag } = await wire(finishAfterMs);
+    const { db, engine, workspaceId, workerId, loopId, tag } = await wire(finishAfterMs);
     try {
         const responses = [
             { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), sendStmt(102, null, "searching")] } },
@@ -64,7 +64,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number) => {
         ];
         const provider = new Mock({ contextWindow: 100000, responses: responses as never });
         const t0 = Date.now();
-        const result = await engine.runLoop({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }], maxTurns: 5 });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }], maxTurns: 5 });
         const elapsed = Date.now() - t0;
         const turn2 = await (db.test_get_turn as import("../../src/core/Db.ts").PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
         return { result, elapsed, streams: streamsSection(turn2?.packet ?? "{}"), tag };

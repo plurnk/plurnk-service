@@ -19,13 +19,13 @@ test("[§methods-loop-cancel] cancelling a LIVE loop writes the provenanced 499 
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "session.create", { name: "cancel-prov-live" });
-            const sessionId = (created.result as { id: number }).id;
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-live" });
+            const workspaceId = (created.result as { id: number }).id;
             const terminated = subscribeNotifications(ws, "loop/terminated");
             void rpcCall(ws, 2, "loop.run", { prompt: "slow job", flags: { yolo: true } });
             await flush();
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" }))?.n ?? 0,
+                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
             await rpcCall(ws, 3, "loop.cancel", { reason: "operator redirected the task" });
@@ -58,8 +58,8 @@ test("[§methods-loop-cancel] cancelling a PARKED (202) loop terminalizes it —
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const created = await rpcCall(ws, 1, "session.create", { name: "cancel-prov-parked" });
-            const sessionId = (created.result as { id: number }).id;
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-parked" });
+            const workspaceId = (created.result as { id: number }).id;
             void rpcCall(ws, 2, "loop.run", { prompt: "slow job", flags: { yolo: true } });
             await flush();
             // Parked: the loop row reaches 202 (the drain has exited by then).
@@ -75,8 +75,8 @@ test("[§methods-loop-cancel] cancelling a PARKED (202) loop terminalizes it —
             assert.equal(row!.status, 499, "the parked loop went terminal — never a zombie 202");
             assert.equal(row!.terminated_by, "cancel");
             assert.equal(row!.terminal_message, "shutting down the request");
-            const sh = await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ session_id: sessionId, scheme: "sh" });
-            assert.ok(sh !== undefined, "session still readable"); // the reap itself is pinned elsewhere (§notifications-stream-concluded)
+            const sh = await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" });
+            assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere (§notifications-stream-concluded)
         } finally { ws.close(); }
     });
 });

@@ -8,7 +8,7 @@ Contract for `@plurnk/plurnk-execs-*` sibling packages — runtime executors tha
 
 A runtime executor handles one or more EXEC `runtime` slot values (`sh`, `node`, `python`, `search`, `news`, …). It is a `BaseExecutor` subclass that declares its output channels and implements `run()`; the framework discovers it from its `package.json` `plurnk` block. The consuming scheme owns all I/O and lifecycle machinery (db, channels, subscriptions, AbortController bridging, wake-on-completion) and hands the executor sinks — the executor stays stateless across runs beyond its construction metadata.
 
-The framework ships `SubprocessExecutor` (§4), the concrete `BaseExecutor` for subprocess runtimes (sh/node/python), built on the lower-level `resolveRuntime` / `SpawnArgs` helper. plurnk-service's exec scheme has adopted `SubprocessExecutor`; the discovery-registry + `probe()`/`effect()` consumption is realized in service `0.9.0` (`ExecutorRegistry` boot-discovers and probes siblings; `EffectPolicy` gates the proposal lifecycle).
+The framework ships `SubprocessExecutor` (§4), the concrete `BaseExecutor` for subprocess runtimes (sh/node/python), built on the lower-level `resolveWorkertime` / `SpawnArgs` helper. plurnk-service's exec scheme has adopted `SubprocessExecutor`; the discovery-registry + `probe()`/`effect()` consumption is realized in service `0.9.0` (`ExecutorRegistry` boot-discovers and probes siblings; `EffectPolicy` gates the proposal lifecycle).
 
 ## §2 Executor contract
 
@@ -32,7 +32,7 @@ type ChannelState = "active" | "closed" | "errored";
 interface ExecArgs {
     runtime: string;            // matched tag; multi-tag executors branch on it
     command: string;            // EXEC body: shell line / source / search query
-    cwd: string | null;         // process working dir (session workspace); null for logical runtimes
+    cwd: string | null;         // process working dir (workspace workspace); null for logical runtimes
     target: string | null;      // parsed EXEC (target) slot, interpreted per-runtime (data: input+body=program / executable: program+body=stdin); resolved vs cwd; null if none
     env?: NodeJS.ProcessEnv;    // consumer-scoped child env — drops plurnk's own secrets (plurnk-execs#8); host env inherited when omitted
     signal: AbortSignal;        // cancellation — executors must honor it
@@ -216,7 +216,7 @@ The two compose within a layer (an allowlisted tag can still be individually kil
 **The cascade is an intersection.** A tag is live iff enabled in *every* layer: `enabled(tag) = service ∧ client ∧ …`. Because each layer only subtracts, order is irrelevant and no downstream layer can undo an upstream disable — **the client can never re-enable what the service disabled**, structurally, not by a policed rule.
 
 - `discover()` applies the **daemon boot layer** (`process.env`) at registration, uniformly across every daughter (framework-guaranteed — a daughter cannot escape it, the way `-common`'s old local kill-switch let `sqlite`/`jq`/`git` slip through). Disabled tags are returned in `Discovery.disabled`.
-- The consumer applies the **per-session client layer** with the *same parser* — `Policy.enabledAcross(tag, [serviceEnv, clientLayer])`, or `Policy.isEnabled(tag, clientLayer)` over the already-registered set. The client declares its policy in the identical `PLURNK_EXECS_*` format; the daemon intersects. The client has no enforcement surface of its own — executors run in the daemon — so this is a structural ceiling, not a trust boundary.
+- The consumer applies the **per-workspace client layer** with the *same parser* — `Policy.enabledAcross(tag, [serviceEnv, clientLayer])`, or `Policy.isEnabled(tag, clientLayer)` over the already-registered set. The client declares its policy in the identical `PLURNK_EXECS_*` format; the daemon intersects. The client has no enforcement surface of its own — executors run in the daemon — so this is a structural ceiling, not a trust boundary.
 
 Framework surface: **`Policy.isEnabled(tag, env?)`** (one layer, defaults to `process.env`) and **`Policy.enabledAcross(tag, layers)`** (the intersection). To disable all standard execs except search: `PLURNK_EXECS_ONLY=search`.
 
@@ -232,7 +232,7 @@ Execs owns the notice content and the tally. It does **not** own the mode, the s
 
 ## §4 Subprocess helper (legacy path)
 
-`resolveRuntime(runtime, command) → SpawnArgs` and `isKnownRuntime(runtime)` / `KNOWN_RUNTIMES` translate a subprocess runtime tag into `node:child_process.spawn` arguments:
+`resolveWorkertime(runtime, command) → SpawnArgs` and `isKnownRuntime(runtime)` / `KNOWN_RUNTIMES` translate a subprocess runtime tag into `node:child_process.spawn` arguments:
 
 ```ts
 interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; stdin?: string; }
@@ -245,13 +245,13 @@ interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; stdin?: st
 | `"python"` / `"python3"` | `{ cmd: "python3", args: ["-c", command], useShell: false }` |
 | any other | `{ cmd: runtime, args: ["-c", command], useShell: false }` (conservative fallback) |
 
-`resolveRuntime` never throws; consumers gate unknown runtimes with `isKnownRuntime` and return 501 before invoking.
+`resolveWorkertime` never throws; consumers gate unknown runtimes with `isKnownRuntime` and return 501 before invoking.
 
-**With a `(target)`** — `resolveRuntime(runtime, command, target)` runs the **target as the program** and the **body as its stdin** (plurnk-execs#15): a shell runs `sh -c "<target>"` (the shell tokenizes the target — the framework parses nothing), any other runtime runs `<interpreter> <target>` (a single script-file positional). No target → the body is the inline program (`-c`/`-e`) as in the table. This is family-relative: the *data* runtimes (jq/sqlite/wasm) invert it — `target` is the data, `body` the program — inside their own `run()`. Each daughter maps the two raw strings to its own tool's CLI; the parent hands them down and parses neither.
+**With a `(target)`** — `resolveWorkertime(runtime, command, target)` runs the **target as the program** and the **body as its stdin** (plurnk-execs#15): a shell runs `sh -c "<target>"` (the shell tokenizes the target — the framework parses nothing), any other runtime runs `<interpreter> <target>` (a single script-file positional). No target → the body is the inline program (`-c`/`-e`) as in the table. This is family-relative: the *data* runtimes (jq/sqlite/wasm) invert it — `target` is the data, `body` the program — inside their own `run()`. Each daughter maps the two raw strings to its own tool's CLI; the parent hands them down and parses neither.
 
-**Dispatch note (#448):** the consumer **stat-routes** a subprocess op's `(target)` — a **directory** becomes the `cwd` for the body command; a **file** is the program run here (via `resolveRuntime` above), the body its stdin (empty body is legal — it just runs the file: `<<EXEC[sh](greet.sh)::EXEC`). No target → the body is the command in the project-root cwd. So: directory → run *in* it, file → run *it*.
+**Dispatch note (#448):** the consumer **stat-routes** a subprocess op's `(target)` — a **directory** becomes the `cwd` for the body command; a **file** is the program run here (via `resolveWorkertime` above), the body its stdin (empty body is legal — it just runs the file: `<<EXEC[sh](greet.sh)::EXEC`). No target → the body is the command in the project-root cwd. So: directory → run *in* it, file → run *it*.
 
-The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveRuntime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). Subclasses with their own interpreter table override the **`protected spawnArgs(runtime, command, target) → SpawnArgs`** hook (default delegates to `resolveRuntime`) — and so inherit run()'s streaming + process-group abort handling. `SpawnArgs.stdin?` lets filter-style runtimes feed their program/input via stdin (`bc`, `tclsh`; or `""` for an `awk` BEGIN with EOF). On abort it signals the whole **process group** (`detached` spawn + `process.kill(-pid, …)`) so shell grandchildren can't leak (plurnk-execs#4): the default abort is a polite **SIGHUP**, once, no escalation; a `KILL[code]` reason carrying `{ signal }` delivers exactly that signal, fire-and-forget; only the consumer's loop-end housekeeping reason (`{ housekeeping: true, graceMs }`) escalates SIGHUP→**SIGKILL** after the consumer-sourced grace (never a magic number here). The `plurnk-execs-common` sibling subclasses it — claiming the whole subprocess set (sh/bash/node/python plus detected host interpreters) via a recipe table behind a `spawnArgs()` / `probe()` override. `isKnownRuntime` / `KNOWN_RUNTIMES` are the legacy 501 gate; the discovery registry + `probe()` supersede them once a consumer wires the registry.
+The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveWorkertime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). Subclasses with their own interpreter table override the **`protected spawnArgs(runtime, command, target) → SpawnArgs`** hook (default delegates to `resolveWorkertime`) — and so inherit run()'s streaming + process-group abort handling. `SpawnArgs.stdin?` lets filter-style runtimes feed their program/input via stdin (`bc`, `tclsh`; or `""` for an `awk` BEGIN with EOF). On abort it signals the whole **process group** (`detached` spawn + `process.kill(-pid, …)`) so shell grandchildren can't leak (plurnk-execs#4): the default abort is a polite **SIGHUP**, once, no escalation; a `KILL[code]` reason carrying `{ signal }` delivers exactly that signal, fire-and-forget; only the consumer's loop-end housekeeping reason (`{ housekeeping: true, graceMs }`) escalates SIGHUP→**SIGKILL** after the consumer-sourced grace (never a magic number here). The `plurnk-execs-common` sibling subclasses it — claiming the whole subprocess set (sh/bash/node/python plus detected host interpreters) via a recipe table behind a `spawnArgs()` / `probe()` override. `isKnownRuntime` / `KNOWN_RUNTIMES` are the legacy 501 gate; the discovery registry + `probe()` supersede them once a consumer wires the registry.
 
 ## §5 Consumer surface (plurnk-service)
 

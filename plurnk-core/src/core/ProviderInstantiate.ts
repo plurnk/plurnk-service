@@ -126,7 +126,7 @@ export default class ProviderInstantiate {
         try {
             const res = await provider.generate({
                 messages: [{ role: "user", content: "ok" }],
-                runId: "gbnf-enforcement-verify", grammar: forcing, maxTokens: 16,
+                workerId: "gbnf-enforcement-verify", grammar: forcing, maxTokens: 16,
             });
             // llama-server sometimes renders the end-of-sequence token as literal text after the
             // forced string ("PLURNK-RAILS-LIVE<eos>") — that IS proof of enforcement (the grammar

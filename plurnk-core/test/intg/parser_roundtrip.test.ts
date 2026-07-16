@@ -27,7 +27,7 @@ const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvel
     const statuses: number[] = [];
     for (const [i, statement] of statements.entries()) {
         const result = await engine.dispatch({
-            statement, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: i + 1, origin: "model",
         });
         statuses.push(result.status);
@@ -43,12 +43,12 @@ test("parser roundtrip: <<EDIT[france,europe](known:///countries/france/capital)
         const stmt = parseOne("<<EDIT[france,europe](known:///countries/france/capital):Paris:EDIT") as EditStatement;
         const result = await engine.dispatch({
             statement: stmt,
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
         const entry = await (db.test_parser_entries_first as PrepMethod).get<{ scope: string; scheme: string; pathname: string; hostname: string | null }>();
-        assert.equal(entry?.scope, "session");
+        assert.equal(entry?.scope, "workspace");
         assert.equal(entry?.scheme, "known");
         assert.equal(entry?.pathname, "/countries/france/capital");
         assert.equal(entry?.hostname, null);
@@ -69,7 +69,7 @@ test("parser roundtrip: digit-suffix <<EDIT1…:EDIT1 carries a bare :EDIT token
         assert.equal(stmt.body, "a body with a :EDIT token inside", "the un-suffixed :EDIT is literal body, not a delimiter");
         const result = await engine.dispatch({
             statement: stmt,
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
@@ -106,13 +106,13 @@ test("parser roundtrip: <<EDIT…>> followed by <<READ…>> reads back what was 
 
         await engine.dispatch({
             statement: parseOne("<<EDIT(known:///france):The capital is Paris.:EDIT") as EditStatement,
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
 
         const readResult = await engine.dispatch({
             statement: parseOne("<<READ(known:///france)::READ") as ReadStatement,
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(readResult.status, 200);
@@ -129,7 +129,7 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
         const stmt = parseOne("<<READ(https://en.wikipedia.org/wiki/Paris)::READ") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const log = await (db.test_parser_log_first as PrepMethod).get<{ scheme: string; hostname: string | null; pathname: string }>();
@@ -148,7 +148,7 @@ test("parser roundtrip: real DSL with params + fragment on opaque scheme", async
         const stmt = parseOne("<<READ(known:///france?lang=fr#History)::READ") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
-            sessionId: env.sessionId, runId: env.runId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const log = await (db.test_parser_log_first as PrepMethod).get<{ scheme: string; hostname: string | null; pathname: string; params: string | null; fragment: string | null }>();

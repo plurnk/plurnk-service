@@ -18,7 +18,7 @@ test("[§prompt-fold] the foisted prompt EDIT log row is folded by default; a no
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "prompt-fold" });
+            await rpcCall(ws, 1, "workspace.create", { name: "prompt-fold" });
             const resp = await runLoopToTerminal(ws, 2, { prompt: "hello there" });
             const { loopId } = resp as { loopId: number };
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });

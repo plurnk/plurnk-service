@@ -1,17 +1,17 @@
 // Topology demos — a REAL model (gemma) composing parent/child run topologies: delegate, fan-out,
-// pipeline. These exercise run:// spawn + SEND[202] hibernation + the child-wake + reading the
+// pipeline. These exercise worker:// spawn + SEND[202] hibernation + the child-wake + reading the
 // collect-delta on resume. Forensic by intent: a stumble teaches us where the TEACHING is thin
 // (spawn syntax? when to 202 vs 200? noticing the folded collect-delta?), not just pass/fail.
 //
 // AUTO-PROMPTING NOTE (owner's injection smell): there is none here. The child's prompt is the
 // model's verbatim EDIT body (it authors it); the parent's wake is resume-in-place — the child's
-// result arrives as a FOLDED collect-delta (a SEND from run://<name> [status]: deliverable) the
+// result arrives as a FOLDED collect-delta (a SEND from worker://<name> [status]: deliverable) the
 // parent READS, never a synthetic prompt. The only prompt in a topology is the one the model writes.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 900_000; // 15 min — the op-bound (grammar 0.74.51) segments each actor into more
@@ -20,7 +20,7 @@ const TIMEOUT = 900_000; // 15 min — the op-bound (grammar 0.74.51) segments e
 
 const runStory = async (opts: { label: string; prompt: string; maxTurns?: number }) => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveSession({ name: `topo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+    const s = await liveWorkspace({ name: `topo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
     // The inner deadline UNDERCUTS the test timeout: at a tie the test cancels first, the body
     // dangles awaiting loop/terminated, and cleanup is unreachable — the leaked daemon handles
     // then wedge the whole tier (the process can't exit, the runner waits forever).
@@ -30,16 +30,16 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
             s, 2, { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) }, { timeoutMs: TIMEOUT - 90_000 }, // 90s cleanup headroom: tearing down a fan-out's parent + 3 worker daemons + in-flight execs takes longer than a single run, and a mid-teardown test-timeout wedges the tier
         );
     } catch (err) {
-        await s.cleanup().catch((e) => console.error(`[topo:${opts.label}] session cleanup after failure:`, e));
+        await s.cleanup().catch((e) => console.error(`[topo:${opts.label}] workspace cleanup after failure:`, e));
         await fixture.cleanup().catch((e) => console.error(`[topo:${opts.label}] fixture cleanup after failure:`, e));
         throw err;
     }
     const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
     console.error(`[topo:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
     const dump = async (): Promise<void> => {
-        // All runs in the session — see the children too, not just the parent.
-        const runs = await (s.db.envelope_list_runs_for_session as PrepMethod).all<{ id: number; name: string }>({ session_id: s.sessionId });
-        console.error(`runs: ${runs.map((r) => `${r.id}:${r.name}`).join(", ")}`);
+        // All runs in the workspace — see the children too, not just the parent.
+        const workers = await (s.db.envelope_list_workers_for_workspace as PrepMethod).all<{ id: number; name: string }>({ workspace_id: s.workspaceId });
+        console.error(`workers: ${workers.map((r) => `${r.id}:${r.name}`).join(", ")}`);
         for (const turnId of turnIds) {
             const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };

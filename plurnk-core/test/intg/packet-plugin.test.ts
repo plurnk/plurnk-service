@@ -5,7 +5,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { PacketSection } from "../../src/core/packet-wire.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 // Plugin packet control: a trusted scheme rewrites the engine's default section
@@ -15,9 +15,9 @@ import { sendStmt } from "./_dsl.ts";
 test("[§packet-plugin-transform] plugin packet control: a scheme adds, removes, and reorders packet sections", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `pkt-plugin-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "p");
+        const workspaceId = await insertWorkspace(db, `pkt-plugin-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "p");
         const schemes = new SchemeRegistry();
         // A third-party plugin: prepend its own section, drop the kernel's budget.
         schemes.register("demo", {
@@ -30,7 +30,7 @@ test("[§packet-plugin-transform] plugin packet control: a scheme adds, removes,
         });
         const engine = new Engine({ db, schemes });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const result = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet);
 
         // ADD: the plugin's section is in the packet, carrying its content.

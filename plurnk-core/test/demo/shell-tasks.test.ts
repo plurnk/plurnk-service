@@ -8,7 +8,7 @@
 // contents). Holistic outcome assertions: the model's final reply
 // matches the actual shell output.
 //
-// Driven through the REAL prod loop (loop.run via the daemon — liveSession +
+// Driven through the REAL prod loop (loop.run via the daemon — liveWorkspace +
 // liveLoop), so the demo demonstrates production, not a hand-built engine fork.
 // The daemon wires executors + the system prompt + doc materialization itself.
 
@@ -19,7 +19,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
 interface DemoOpts {
     label: string;
@@ -32,7 +32,7 @@ const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void
     // when blind to its output, redirects them to files); without a project_root they'd
     // default to the daemon's cwd and land in the live repo. §exec-env-scoped
     const sandbox = await mkdtemp(join(tmpdir(), "plurnk-demo-"));
-    const s = await liveSession({ name: `demo-${label}-${crypto.randomUUID()}`, projectRoot: sandbox });
+    const s = await liveWorkspace({ name: `demo-${label}-${crypto.randomUUID()}`, projectRoot: sandbox });
     try {
         const { finalStatus, hitMaxTurns, turnIds, lastContent } = await liveLoop(s, 2, { prompt }, { timeoutMs: 240_000 });
 

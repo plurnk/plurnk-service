@@ -27,7 +27,7 @@ test("schemes: insert minimal known scheme", async () => {
         assert.equal(row?.name, "known");
         assert.equal(row?.model_visible, 1);
         assert.equal(row?.category, "knowledge");
-        assert.equal(row?.default_scope, "session");
+        assert.equal(row?.default_scope, "workspace");
         assert.equal(row?.default_channel, "body");
         assert.equal(row?.channel_orientations, null);
         assert.equal(row?.writable_by, '["model"]');
@@ -52,14 +52,14 @@ test("schemes: model_visible + volatile CHECK 0/1", async () => {
     try {
         await assert.rejects(
             () => (db.test_schemes_insert_full as PrepMethod).run({
-                name: "s_model_visible", model_visible: 2, category: "c", default_scope: "session",
+                name: "s_model_visible", model_visible: 2, category: "c", default_scope: "workspace",
                 default_channel: "body", writable_by: "[]", volatile: 0,
             }),
             /CHECK constraint failed/,
         );
         await assert.rejects(
             () => (db.test_schemes_insert_full as PrepMethod).run({
-                name: "s_volatile", model_visible: 0, category: "c", default_scope: "session",
+                name: "s_volatile", model_visible: 0, category: "c", default_scope: "workspace",
                 default_channel: "body", writable_by: "[]", volatile: 2,
             }),
             /CHECK constraint failed/,
@@ -70,9 +70,9 @@ test("schemes: model_visible + volatile CHECK 0/1", async () => {
 test("schemes: default_scope enum", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_schemes_insert_full as PrepMethod).run({ name: "b", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0 });
+        await (db.test_schemes_insert_full as PrepMethod).run({ name: "b", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0 });
         await assert.rejects(
-            () => (db.test_schemes_insert_full as PrepMethod).run({ name: "c", model_visible: 1, category: "c", default_scope: "run", default_channel: "body", writable_by: "[]", volatile: 0 }),
+            () => (db.test_schemes_insert_full as PrepMethod).run({ name: "c", model_visible: 1, category: "c", default_scope: "worker", default_channel: "body", writable_by: "[]", volatile: 0 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -86,7 +86,7 @@ test("schemes: length CHECK on name, category, default_channel", async () => {
             params[empty] = "";
             await assert.rejects(
                 () => (db.test_schemes_insert_full as PrepMethod).run({
-                    name: params.name, model_visible: 1, category: params.category, default_scope: "session",
+                    name: params.name, model_visible: 1, category: params.category, default_scope: "workspace",
                     default_channel: params.default_channel, writable_by: "[]", volatile: 0,
                 }),
                 /CHECK constraint failed/,
@@ -98,10 +98,10 @@ test("schemes: length CHECK on name, category, default_channel", async () => {
 test("schemes: writable_by JSON validity", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_schemes_insert_full as PrepMethod).run({ name: "s1", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: JSON.stringify(["model", "client", "plugin"]), volatile: 0 });
-        await (db.test_schemes_insert_full as PrepMethod).run({ name: "s2", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0 });
+        await (db.test_schemes_insert_full as PrepMethod).run({ name: "s1", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: JSON.stringify(["model", "client", "plugin"]), volatile: 0 });
+        await (db.test_schemes_insert_full as PrepMethod).run({ name: "s2", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0 });
         await assert.rejects(
-            () => (db.test_schemes_insert_full as PrepMethod).run({ name: "s3", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "{broken", volatile: 0 }),
+            () => (db.test_schemes_insert_full as PrepMethod).run({ name: "s3", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "{broken", volatile: 0 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -110,10 +110,10 @@ test("schemes: writable_by JSON validity", async () => {
 test("schemes: channel_orientations nullable", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "s_null", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, orient: null });
-        await (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "sse", model_visible: 1, category: "streaming", default_scope: "session", default_channel: "event", writable_by: "[]", volatile: 1, orient: JSON.stringify({ event: "tail", data: "tail" }) });
+        await (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "s_null", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0, orient: null });
+        await (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "sse", model_visible: 1, category: "streaming", default_scope: "workspace", default_channel: "event", writable_by: "[]", volatile: 1, orient: JSON.stringify({ event: "tail", data: "tail" }) });
         await assert.rejects(
-            () => (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "s_bad", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, orient: "{broken" }),
+            () => (db.test_schemes_insert_with_orient as PrepMethod).run({ name: "s_bad", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0, orient: "{broken" }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -122,8 +122,8 @@ test("schemes: channel_orientations nullable", async () => {
 test("schemes: handler nullable", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "core", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, handler: null });
-        await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "plug", model_visible: 1, category: "c", default_scope: "session", default_channel: "body", writable_by: "[]", volatile: 0, handler: "plurnk:///handlers/plug" });
+        await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "core", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0, handler: null });
+        await (db.test_schemes_insert_with_handler as PrepMethod).run({ name: "plug", model_visible: 1, category: "c", default_scope: "workspace", default_channel: "body", writable_by: "[]", volatile: 0, handler: "plurnk:///handlers/plug" });
         const handlers = await (db.test_schemes_list_handlers as PrepMethod).all<{ name: string; handler: string | null }>();
         assert.equal(handlers.find((s) => s.name === "core")?.handler, null);
         assert.equal(handlers.find((s) => s.name === "plug")?.handler, "plurnk:///handlers/plug");

@@ -11,7 +11,7 @@ import type { AguiEvent, LogEntryNotification, TerminatedNotification } from "./
 export default class EventRouter {
     #t: Translator;
 
-    constructor(args: { threadId: string; runId: string; modelRunId?: number | null; sessionId?: number | null }) {
+    constructor(args: { threadId: string; workerId: string; modelWorkerId?: number | null; workspaceId?: number | null }) {
         this.#t = new Translator(args);
     }
 
@@ -33,7 +33,7 @@ export default class EventRouter {
                 EventRouter.#activity(params),
             ];
             case "loop/proposal": return []; // ProposalHitl owns HITL (terminate-resume tool-call)
-            default: return []; // session/created + anything unmodeled: the module handles out-of-band
+            default: return []; // workspace/created + anything unmodeled: the module handles out-of-band
         }
     }
 

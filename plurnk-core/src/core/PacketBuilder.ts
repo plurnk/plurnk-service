@@ -8,7 +8,7 @@ import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
 import { docsExcludeSet } from "./teaching.ts";
 import { Policy } from "@plurnk/plurnk-execs";
-import SessionSettings from "./session-settings.ts";
+import WorkspaceSettings from "./workspace-settings.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { LoopFlags } from "./types.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
@@ -212,14 +212,14 @@ export default class PacketBuilder {
     // completed with assistant + assistantRaw after the model responds, so
     // the stored packet and the wire payload share one source of truth.
     async buildRequestPacket({
-        initialMessages, requirements, sessionId, runId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
+        initialMessages, requirements, workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, telemetryErrors: presetTelemetry,
     }: {
         initialMessages: ChatMessage[];
         // Optional requirements override. Empty in practice — callers don't thread it;
         // the engine sources Paths.defaultRequirements itself (a non-empty value wins).
         requirements: string;
         gitStatus: GitStatus | null;
-        sessionId: number; runId: number; loopId: number;
+        workspaceId: number; workerId: number; loopId: number;
         // DB-level turn sequence for "look at the previous turn" queries
         // (e.g. telemetry errors).
         currentTurnSeq: number;
@@ -241,7 +241,7 @@ export default class PacketBuilder {
         // the runLoop caller's messages.user for tests that bypass the
         // foist mechanism entirely.
         const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
-        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `${promptLoopPrefix(runId, loopSeqRow?.sequence ?? loopId)}%` }))
+        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `${promptLoopPrefix(workerId, loopSeqRow?.sequence ?? loopId)}%` }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
         // §prompt-auto-read (owner): the section is a PATHS list (the errors shape — no bodies);
         // each prompt's content reaches the model through its foisted auto-READ in the log, and
@@ -260,14 +260,14 @@ export default class PacketBuilder {
         // leads requirements.md, so a third copy here was pure duplication in the model's packet. PLAN
         // is mandated unconditionally by plurnk.md §Imperatives (grammar 0.70 requires every turn to
         // lead with PLAN), so the service injects no separate plan directive either.
-        const log = await this.#buildLog(runId);
+        const log = await this.#buildLog(workerId);
         const telemetryErrors = presetTelemetry ?? await this.buildTelemetryErrors(loopId, currentTurnSeq);
         const countTokens = rulerCount; // §tokenomics-agnostic-ruler — the ONE model-facing ruler (chars/2), not the provider
-        // #367 — the capability sheet must reflect the LOOP MODE, not just session-enablement: an
+        // #367 — the capability sheet must reflect the LOOP MODE, not just workspace-enablement: an
         // ask-mode loop advertises only what its dispatch gate (resolveForLoop) will accept, so the
         // model is never taught a tag it'll then be 403'd on (the taught→emitted→rejected→508 spiral).
         const activeSchemes = this.#schemes.resolveForLoop(await this.#loadLoopFlags(loopId));
-        const tools = this.#collectTools(await this.#sessionEnabled(sessionId), await SessionSettings.questionsEnabled(this.#db, sessionId), activeSchemes);
+        const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
         // Budget readout (SPEC.md §tokenomics). Two-pass: render the budget from
         // the structured log's subtotals with a {{tokensFree}} placeholder, build
         // the section list, measure the assembled total, resolve free, substitute.
@@ -286,17 +286,17 @@ export default class PacketBuilder {
         // the requirements footer. The budget section carries its {{tokensFree}} placeholders
         // here; they resolve below once the assembled total is known.
         const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
-        const sessionRoot = (await (this.#db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId }))?.project_root ?? null;
+        const workspaceRoot = (await (this.#db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
-        const projectPolicy = await readProjectPolicy(sessionRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
+        const projectPolicy = await readProjectPolicy(workspaceRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
         // Child-orientation (§child-orientation): the live things THIS run holds — open streams +
         // unconcluded child runs — surfaced every turn as terse `* <status> <path>` pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
-        const childStreams = (await (this.#db.engine_child_streams_open as PrepMethod).all<{ scheme: string; pathname: string }>({ run_id: runId }))
+        const childStreams = (await (this.#db.engine_child_streams_open as PrepMethod).all<{ scheme: string; pathname: string }>({ worker_id: workerId }))
             .map((s) => ({ status: "active", path: renderAddress(s.scheme, s.pathname) }));
-        const childRuns = (await (this.#db.engine_child_runs_live as PrepMethod).all<{ name: string; status: number }>({ run_id: runId }))
-            .map((r) => ({ status: r.status, path: `run://${r.name}` }));
+        const childWorkers = (await (this.#db.engine_child_workers_live as PrepMethod).all<{ name: string; status: number }>({ worker_id: workerId }))
+            .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
             { name: "tools", slot: "system", header: null, content: tools, tokens: 0 }, // titleless — the fenced op catalog flows on from plurnk.md (definition) directly above
@@ -313,7 +313,7 @@ export default class PacketBuilder {
             // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
             { name: "child-streams", slot: "system", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
-            { name: "child-runs", slot: "system", header: "Active Child Worker Runs", content: PacketWire.renderChildPointers(childRuns), tokens: 0 },
+            { name: "child-runs", slot: "system", header: "Active Child Worker Runs", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
             { name: "errors", slot: "system", header: "Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
             { name: "git", slot: "system", header: "Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget — LAW (a hard ceiling the model must obey).
@@ -459,11 +459,11 @@ export default class PacketBuilder {
         return [treemap, pie].join("\n\n");
     }
 
-    // #328 — the per-session client execs policy narrows what the packet ADVERTISES, matching what
-    // dispatch refuses: a session-disabled tag is absent from the capability sheet and the doc set,
+    // #328 — the per-workspace client execs policy narrows what the packet ADVERTISES, matching what
+    // dispatch refuses: a workspace-disabled tag is absent from the capability sheet and the doc set,
     // never taught-then-refused. No policy (execs unset) → everything boot-registered shows.
-    async #sessionEnabled(sessionId: number): Promise<(tag: string) => boolean> {
-        const { execs } = await SessionSettings.read(this.#db, sessionId);
+    async #workspaceEnabled(workspaceId: number): Promise<(tag: string) => boolean> {
+        const { execs } = await WorkspaceSettings.read(this.#db, workspaceId);
         if (execs === null) return () => true;
         return (tag: string) => Policy.isEnabled(tag, execs);
     }
@@ -481,7 +481,7 @@ export default class PacketBuilder {
         catch { return DEFAULT_LOOP_FLAGS; }
     }
 
-    #collectTools(sessionEnabled: (tag: string) => boolean, questionsOn = false, activeSchemes?: Set<string>): string {
+    #collectTools(workspaceEnabled: (tag: string) => boolean, questionsOn = false, activeSchemes?: Set<string>): string {
         // §PACKET Tools (#441) — the capability sheet's OP examples ride a `plurnk` fence, matching the
         // Schemes catalog (one packet, one shape for op-example sheets). Prose notices (EXEC-disabled)
         // stay prose beside the fence — a prose line isn't an op for the op-fence gate to validate.
@@ -503,7 +503,7 @@ export default class PacketBuilder {
             } else {
                 for (const tag of runtimes) {
                     if (excluded.has(tag)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
-                    if (!sessionEnabled(tag)) continue; // #328 — session-disabled tags aren't advertised
+                    if (!workspaceEnabled(tag)) continue; // #328 — workspace-disabled tags aren't advertised
                     const entry = executors.entry(tag);
                     // #240 — the example IS the oneliner (a bare op, fenced below); the fuller doc
                     // materializes at plurnk://docs/<tag>.md. No example → no line.
@@ -519,12 +519,12 @@ export default class PacketBuilder {
     // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
     // catalogue's doc-links READ and the manifest carries each doc's token cost.
-    async docEntries(sessionId: number): Promise<Array<{ name: string; content: string }>> {
+    async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
         const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
         // §send-300-choices — the conditional teaching: questions.md (from the docs corpus)
-        // materializes ONLY for enabled sessions — the same conditional-doc mechanism as the EXEC
-        // plugin docs below. An un-enabled session is never taught the op it can't use.
-        if (await SessionSettings.questionsEnabled(this.#db, sessionId)) {
+        // materializes ONLY for enabled workspaces — the same conditional-doc mechanism as the EXEC
+        // plugin docs below. An un-enabled workspace is never taught the op it can't use.
+        if (await WorkspaceSettings.questionsEnabled(this.#db, workspaceId)) {
             try {
                 const q = await readFile(resolvePath(Paths.schemeDocs, "questions.md"), "utf8");
                 if (q.length > 0) out.push({ name: "questions", content: q });
@@ -533,10 +533,10 @@ export default class PacketBuilder {
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
-            const sessionEnabled = await this.#sessionEnabled(sessionId); // #328 — no doc for a disabled tag
+            const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // #328 — no doc for a disabled tag
             for (const tag of executors.availableRuntimes()) {
                 if (excluded.has(tag)) continue; // #240 — exec docs honor the same exclude
-                if (!sessionEnabled(tag)) continue;
+                if (!workspaceEnabled(tag)) continue;
                 const doc = executors.entry(tag)?.documentation;
                 if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });
             }
@@ -550,9 +550,9 @@ export default class PacketBuilder {
     // strike, rebuild, re-measure. Folds (never deletes). The strike it raises and
     // the hard-stop it can signal are returned to runLoop, which owns abandonment.
     // §grinder-overflow-only — fires only on actual overflow, never speculatively
-    async enforceBudget({ packet, provider, runId, loopId, turnId, mintSequence, rebuild }: {
+    async enforceBudget({ packet, provider, workerId, loopId, turnId, mintSequence, rebuild }: {
         packet: RequestPacket; provider: Provider;
-        runId: number; loopId: number; turnId: number; mintSequence: number;
+        workerId: number; loopId: number; turnId: number; mintSequence: number;
         rebuild: () => Promise<RequestPacket>;
     }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean }> {
         const ceiling = this.ceilingFor(provider);
@@ -573,7 +573,7 @@ export default class PacketBuilder {
         // turn late. The row is grinder-exempt, so it stacks into a visible recurrence trail. It
         // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
         // post-generate dispatch rows. §telemetry-uniform-error-channel, §grinder-overflow-error-row
-        await this.#telemetry.mintEngineError("budget_overflow", { runId, loopId, turnId, sequence: mintSequence });
+        await this.#telemetry.mintEngineError("budget_overflow", { workerId, loopId, turnId, sequence: mintSequence });
         await (this.#db.engine_grinder_fold_newest_turn as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
         const current = await rebuild();
         return { packet: current, fit: measure(current) <= ceiling, struck: true };
@@ -630,7 +630,7 @@ export default class PacketBuilder {
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(runId: number): Promise<object[]> {
+    async #buildLog(workerId: number): Promise<object[]> {
         // SPEC §packet-terms: runs own log entries — log is the run's history,
         // not the loop's. Span all loops in the run so the model sees
         // earlier loops' work as conversational memory.
@@ -647,7 +647,7 @@ export default class PacketBuilder {
             params: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
             tx: string; mimetype_tx: string; expanded: number; source: string | null; attrs: string | null;
-        }>({ run_id: runId });
+        }>({ worker_id: workerId });
         return rows.map((r) => ({
             coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
             origin: r.origin,

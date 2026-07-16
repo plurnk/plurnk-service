@@ -5,7 +5,7 @@ import Known from "../schemes/Known.ts";
 import Unknown from "../schemes/Unknown.ts";
 import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
-import Run from "../schemes/Run.ts";
+import Worker from "../schemes/Worker.ts";
 import ResolveForLoop from "./resolveForLoop.ts";
 import type { LoopFlags } from "./types.ts";
 import { SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
@@ -56,7 +56,7 @@ export default class SchemeRegistry {
         this.register("unknown", new Unknown());
         this.register("skill",   new Skill());
         this.register("file",    new File());
-        this.register("run",     new Run());
+        this.register("worker",     new Worker());
         // #240 — the in-tree names are RESERVED across the whole scheme namespace: a
         // discovered executor or external scheme claiming one fails the boot hard, never
         // silently shadowed. (exec stays poisoned-but-registered — the EXEC op + kill state.)

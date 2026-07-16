@@ -11,14 +11,14 @@ Vendor-agnostic, MIT.
 An **in-process module** of the daemon, not an external service: the daemon activates it
 at boot (`daemon.registerModule(Module.init(opts))`), handing it the curated core seam
 (event source, loop-control, op dispatch, journal/metadata reads, proposal HITL,
-session lifecycle — plurnk-service#355). The module opens its own HTTP/SSE listener and
-owns the transport+security line at that edge: bearer auth, per-session authorization,
+workspace lifecycle — plurnk-service#355). The module opens its own HTTP/SSE listener and
+owns the transport+security line at that edge: bearer auth, per-workspace authorization,
 input validation. Below the seam: plurnk terms (loop/turn/proposal). Above: AG-UI terms
 (run/message/tool-call/state). This module is the translation.
 
 ## The interface (AG-UI+)
 
-One endpoint: `POST /` with `RunAgentInput` (`threadId`, `runId`, `messages`,
+One endpoint: `POST /` with `RunAgentInput` (`threadId`, `workerId`, `messages`,
 `forwardedProps`) → `text/event-stream` of AG-UI events.
 
 - **Runs**: turns are `STEP_*`; PLAN is `THINKING_TEXT_MESSAGE_*`; SEND bodies are
@@ -30,15 +30,15 @@ One endpoint: `POST /` with `RunAgentInput` (`threadId`, `runId`, `messages`,
   The next run's tool-result message (`toolCallId: "prop:<id>"`, content
   `{decision: accept|reject|cancel, body?}`) resolves it; the continued loop streams there.
   Pending proposals re-surface on (re)connect — a days-old question is discoverable.
-- **Reads ride STATE**: providers/aliases/budget/session arrive as `STATE_SNAPSHOT` on
+- **Reads ride STATE**: providers/aliases/budget/workspace arrive as `STATE_SNAPSHOT` on
   `RUN_STARTED` and `STATE_DELTA` on change — observed, not polled.
-- **The session is the WORLD**: `forwardedProps.plurnk.session` selects the workspace by
+- **The workspace is the WORLD**: `forwardedProps.plurnk.workspace` selects the workspace by
   name, verbatim (attach-or-create). It is REQUIRED — a run has no existence without a world,
-  so its absence is rejected (500), never forged from the `threadId`. Session options ride the workspace's first run:
+  so its absence is rejected (500), never forged from the `threadId`. Workspace options ride the workspace's first run:
   `forwardedProps.plurnk` (`projectRoot`, `constraints`, `settings`); per-run knobs
   (`maxTurns`, `flags`, `alias`/`model`) every run.
 - **The thread is the CONVERSATION**: a `threadId` binds a run over the selected world —
-  today the session's model run (`ensureModelRun`), so extended context persists across runs;
+  today the workspace's model run (`ensureModelWorker`), so extended context persists across runs;
   history replays as `MESSAGES_SNAPSHOT` on reattach. Distinct second conversations over one
   world gate on plurnk-service#366. (Machine model: service SPEC §machine-processes.)
 - **Cancel**: dropping the SSE aborts a live loop (hangup is the abort); a

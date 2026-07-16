@@ -67,7 +67,7 @@ const makeCtx = () => {
     };
     const crossScheme: CrossSchemeCaps = { _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape" };
     const ctx: SchemeCtx = {
-        sessionId: 1, runId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, tags, notify, subscriptions, crossScheme,
     };
     return { ctx, localAbort, inspect: () => ({ chunks, opened, closed, wrote }) };

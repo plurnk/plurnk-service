@@ -8,7 +8,7 @@ import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertSession, insertRun, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `known:///${pathname}`, scheme: "known",
@@ -22,9 +22,9 @@ const taggedEdit = (target: UrlPath, body: string, tags: string[]): EditStatemen
 test("[§packet-catalog] the manifest catalog surfaces each entry's tags (note 13)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `mtags-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `mtags-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         await new Known().edit(taggedEdit(url("plan.md"), "the plan", ["wip", "draft"]), ctx);
         await new Known().edit(taggedEdit(url("done.md"), "shipped", []), ctx);
 
@@ -39,9 +39,9 @@ test("[§packet-catalog] the manifest catalog surfaces each entry's tags (note 1
 test("manifest catalog: a file member (scheme=null) renders slash-free — matches what the model types (note 1)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `mslash-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const ctx = makeSchemeCtx({ db, sessionId, runId });
+        const workspaceId = await insertWorkspace(db, `mslash-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         // A file member is stored namespace-absolute (`/notes.md`, scheme=null) but the model
         // types the relative path it reads — the catalog must render it slash-free so the two match.
         await EntryCrud.writeEntry("/notes.md", { channels: { body: { content: "hi", mimetype: "text/markdown" } }, tags: [] }, ctx, null);

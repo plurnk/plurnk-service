@@ -41,9 +41,9 @@ const REQUIEM_PROMPT = "This run was a test of the Plurnk System. The system is 
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
 // flags, tx, rx) arrive as strings, parsed on use.
-interface SessionRow { id: number; name: string; cost_pico: number }
-interface RunRow { id: number; session_id: number; name: string; cost_pico: number }
-interface LoopRow { id: number; run_id: number; sequence: number; status: number; prompt: string; flags: string }
+interface WorkspaceRow { id: number; name: string; cost_pico: number }
+interface WorkerRow { id: number; workspace_id: number; name: string; cost_pico: number }
+interface LoopRow { id: number; worker_id: number; sequence: number; status: number; prompt: string; flags: string }
 interface TurnRow {
     id: number; loop_id: number; sequence: number; status: number; packet: string;
     usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_pico: number;
@@ -54,12 +54,12 @@ interface LogRow {
     op: string; scheme: string | null; pathname: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
 }
-interface RunRollupRow {
-    run_id: number; loops: number; turns: number;
+interface WorkerRollupRow {
+    worker_id: number; loops: number; turns: number;
     total_prompt: number; total_completion: number; total_cached: number; total_cost_pico: number;
     last_status: number | null;
 }
-interface OpMixRow { run_id: number; op: string; n: number }
+interface OpMixRow { worker_id: number; op: string; n: number }
 
 // The SqlRiteSync handle's type (sync per-PREP accessors) is declared in
 // src/types/sqlrite.d.ts; digest reads each block through its own accessor.
@@ -69,30 +69,30 @@ interface OpMixRow { run_id: number; op: string; n: number }
 interface DigestModel {
     dbPath: string;
     digestDir: string;
-    sessions: SessionRow[];
-    runs: RunRow[];
+    workspaces: WorkspaceRow[];
+    workers: WorkerRow[];
     loops: LoopRow[];
     turns: TurnRow[];
     logEntries: LogRow[];
-    runsBySession: Map<number, RunRow[]>;
-    loopsByRun: Map<number, LoopRow[]>;
+    workersByWorkspace: Map<number, WorkerRow[]>;
+    loopsByWorker: Map<number, LoopRow[]>;
     turnsByLoop: Map<number, TurnRow[]>;
     logEntriesByTurn: Map<number, LogRow[]>;
     loopsById: Map<number, LoopRow>;
-    runsById: Map<number, RunRow>;
-    runRollups: Map<number, RunRollupRow>;
-    opMixByRun: Map<number, OpMixRow[]>;
+    workersById: Map<number, WorkerRow>;
+    workerRollups: Map<number, WorkerRollupRow>;
+    opMixByWorker: Map<number, OpMixRow[]>;
     embeddings: { entries: number; entries_embedded: number; chunk_rows: number; models: number; token_derivations: number };
 }
 
 // Programmatic entry options (#264 — plurnk-bench reuses Digest without the CLI).
 // dbPath is required; digestDir defaults to the bin's test/digest; an optional
-// runId/sessionId narrows the digest to one scope instead of the whole DB.
+// workerId/workspaceId narrows the digest to one scope instead of the whole DB.
 interface DigestOptions {
     dbPath: string;
     digestDir?: string;
-    runId?: number;
-    sessionId?: number;
+    workerId?: number;
+    workspaceId?: number;
 }
 
 export default class Digest {
@@ -168,17 +168,17 @@ export default class Digest {
         return [head, summary, ...(reasoningLine ? [reasoningLine] : []), ...opLines].join("\n");
     }
 
-    static #renderRunShape(run: RunRow, m: DigestModel): string {
-        // every run has exactly one rollup row — digest_run_rollups is FROM runs
-        const roll = m.runRollups.get(run.id)!;
-        const opMix = (m.opMixByRun.get(run.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
+    static #renderWorkerShape(worker: WorkerRow, m: DigestModel): string {
+        // every run has exactly one rollup row — digest_worker_rollups is FROM workers
+        const roll = m.workerRollups.get(worker.id)!;
+        const opMix = (m.opMixByWorker.get(worker.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
         const costStr = roll.total_cost_pico > 0 ? `$${(roll.total_cost_pico / 1e12).toFixed(6)}` : "$0";
         return [
             `Loops:      ${roll.loops}`,
             `Turns:      ${roll.turns}`,
             `Last turn:  ${roll.last_status !== null ? `status=${roll.last_status}` : "(none)"}`,
             `Tokens:     prompt=${roll.total_prompt} completion=${roll.total_completion} cached=${roll.total_cached}`,
-            `Cost:       ${costStr} (DB rollup runs.cost_pico=${run.cost_pico})`,
+            `Cost:       ${costStr} (DB rollup workers.cost_pico=${worker.cost_pico})`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
         ].join("\n");
     }
@@ -188,7 +188,7 @@ export default class Digest {
         lines.push(`# plurnk-service digest`);
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
-        lines.push(`Sessions: ${m.sessions.length}  Runs: ${m.runs.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Log entries: ${m.logEntries.length}`);
+        lines.push(`Workspaces: ${m.workspaces.length}  Runs: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Log entries: ${m.logEntries.length}`);
         lines.push(`Semantic:  entries=${m.embeddings.entries} embedded=${m.embeddings.entries_embedded} chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         // Triage rollup up top: how many conversations limped vs died vs ran clean, and the total
         // error/strike load. The whole point of the "degenerate win" lens — see it before scrolling.
@@ -199,19 +199,19 @@ export default class Digest {
         const totalErrs = health.reduce((s, h) => s + h.errors, 0);
         const totalItems = health.reduce((s, h) => s + h.errorItems, 0);
         lines.push(`Health:    ${clean} clean · ${degen > 0 ? `⚠ ${degen} degenerate-win` : "0 degenerate-win"} · ${failed} failed  (${m.loops.length} loops; ${totalErrs} error rows, ${totalItems} minted error-items total)`);
-        for (const session of m.sessions) {
+        for (const workspace of m.workspaces) {
             lines.push("");
-            lines.push(`## Session #${session.id} — ${session.name}`);
-            const sessionRuns = m.runsBySession.get(session.id) ?? [];
-            for (const run of sessionRuns) {
+            lines.push(`## Workspace #${workspace.id} — ${workspace.name}`);
+            const workspaceWorkers = m.workersByWorkspace.get(workspace.id) ?? [];
+            for (const worker of workspaceWorkers) {
                 lines.push("");
-                lines.push(`### Run #${run.id} — ${run.name}`);
+                lines.push(`### Worker #${worker.id} — ${worker.name}`);
                 lines.push("");
                 lines.push("```");
-                lines.push(Digest.#renderRunShape(run, m));
+                lines.push(Digest.#renderWorkerShape(worker, m));
                 lines.push("```");
-                const runLoops = m.loopsByRun.get(run.id) ?? [];
-                for (const loop of runLoops) {
+                const workerLoops = m.loopsByWorker.get(worker.id) ?? [];
+                for (const loop of workerLoops) {
                     lines.push("");
                     const h = Digest.#loopHealth(loop, m);
                     const badge = h.verdict === "CLEAN"
@@ -240,11 +240,11 @@ export default class Digest {
         lines.push("Per-turn reasoning_content extracted from turns.packet.assistant.reasoning.");
         for (const t of m.turns) {
             const loop = m.loopsById.get(t.loop_id);
-            const run = loop ? m.runsById.get(loop.run_id) : undefined;
+            const worker = loop ? m.workersById.get(loop.worker_id) : undefined;
             const packet = Digest.#parseJson(t.packet, {}) as { assistant?: { reasoning?: unknown } };
             const reasoning = packet.assistant?.reasoning ?? null;
             lines.push("");
-            lines.push(`## Run ${run?.id ?? "?"} / Loop ${loop?.sequence ?? "?"} / Turn ${t.sequence} (id=${t.id})`);
+            lines.push(`## Worker ${worker?.id ?? "?"} / Loop ${loop?.sequence ?? "?"} / Turn ${t.sequence} (id=${t.id})`);
             lines.push("");
             if (typeof reasoning === "string" && reasoning.length > 0) lines.push(reasoning);
             else lines.push("(no reasoning_content)");
@@ -295,10 +295,10 @@ export default class Digest {
     static #renderJson(m: DigestModel): string {
         return JSON.stringify({
             dbPath: m.dbPath,
-            sessions: m.sessions.map((s) => ({ id: s.id, name: s.name, cost_pico: s.cost_pico })),
-            runs: m.runs.map((r) => ({ id: r.id, session_id: r.session_id, name: r.name, cost_pico: r.cost_pico })),
+            workspaces: m.workspaces.map((s) => ({ id: s.id, name: s.name, cost_pico: s.cost_pico })),
+            workers: m.workers.map((r) => ({ id: r.id, workspace_id: r.workspace_id, name: r.name, cost_pico: r.cost_pico })),
             loops: m.loops.map((l) => ({
-                id: l.id, run_id: l.run_id, sequence: l.sequence, status: l.status,
+                id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt, flags: Digest.#parseJson(l.flags, {}),
             })),
             turns: m.turns.map((t) => ({
@@ -333,7 +333,7 @@ export default class Digest {
     // its last emission + the requiem prompt, and calls the provider UNCONSTRAINED (no grammar — free
     // prose, or the leash would distort the testimony). One requiem per run (workers included).
     // Fail-hard on no provider: testimony with no witness is an error, not a skip.
-    static async requiem(opts: DigestOptions & { signal?: AbortSignal }): Promise<{ path: string; runs: number }> {
+    static async requiem(opts: DigestOptions & { signal?: AbortSignal }): Promise<{ path: string; workers: number }> {
         const dbPath = resolve(opts.dbPath);
         if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
         const digestDir = opts.digestDir ?? join(process.cwd(), "test", "digest");
@@ -344,21 +344,21 @@ export default class Digest {
 
         const moduleDir = dirname(fileURLToPath(import.meta.url));
         const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
-        const runs = db.digest_runs.all<RunRow>();
+        const workers = db.digest_workers.all<WorkerRow>();
         const loopById = new Map(db.digest_loops.all<LoopRow>().map((l) => [l.id, l]));
 
         // Each run's turns that carry a MODEL packet (non-empty sections — setup/plurnk turns have none),
         // ordered; the last is the run's final context. A run with no model packet (client/plurnk) is silent.
-        const byRun = new Map<number, Array<{ loopSeq: number; turnSeq: number; sections: Parameters<typeof PacketWire.renderSlot>[0]; assistant: string }>>();
+        const byWorker = new Map<number, Array<{ loopSeq: number; turnSeq: number; sections: Parameters<typeof PacketWire.renderSlot>[0]; assistant: string }>>();
         for (const t of db.digest_turns.all<TurnRow>()) {
             const loop = loopById.get(t.loop_id);
             if (loop === undefined) continue;
             const packet = Digest.#parseJson(t.packet, {}) as { sections?: unknown; assistant?: { content?: unknown } };
             const sections = (Array.isArray(packet.sections) ? packet.sections : []) as Parameters<typeof PacketWire.renderSlot>[0];
             if (sections.length === 0) continue;
-            const arr = byRun.get(loop.run_id) ?? [];
+            const arr = byWorker.get(loop.worker_id) ?? [];
             arr.push({ loopSeq: loop.sequence, turnSeq: t.sequence, sections, assistant: typeof packet.assistant?.content === "string" ? packet.assistant.content : "" });
-            byRun.set(loop.run_id, arr);
+            byWorker.set(loop.worker_id, arr);
         }
 
         const out: string[] = [
@@ -371,8 +371,8 @@ export default class Digest {
             "recurring, specific complaint across many requiems. Triage adversarially.",
             "",
         ];
-        for (const run of runs) {
-            const entries = byRun.get(run.id);
+        for (const worker of workers) {
+            const entries = byWorker.get(worker.id);
             if (entries === undefined || entries.length === 0) continue;
             entries.sort((a, b) => a.loopSeq - b.loopSeq || a.turnSeq - b.turnSeq);
             const last = entries[entries.length - 1];
@@ -386,18 +386,18 @@ export default class Digest {
             // 4096 total left content empty (finish=length) on ~40% of a real sweep, and 16384 still
             // starved a heavy thinker (#373). One escalation retry doubles the room; a run whose
             // testimony is STILL empty records the reasoning spend honestly instead of a bare shrug.
-            let resp = await provider.generate({ messages, runId: String(run.id), maxTokens: 16384, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
+            let resp = await provider.generate({ messages, workerId: String(worker.id), maxTokens: 16384, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
             if (resp.assistant.content.trim() === "" && resp.assistant.finishReason === "length") {
-                resp = await provider.generate({ messages, runId: String(run.id), maxTokens: 32768, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
+                resp = await provider.generate({ messages, workerId: String(worker.id), maxTokens: 32768, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
             }
             const testimony = resp.assistant.content.trim()
                 || `(no testimony — ${resp.assistant.usage.completion} tokens consumed entirely by reasoning, even after the 32768-token retry)`;
-            out.push(`## Run #${run.id} — ${run.name}`, "", `_(${resp.assistant.finishReason ?? "?"}, ${resp.assistant.usage.completion} tok)_`, "", testimony, "");
+            out.push(`## Worker #${worker.id} — ${worker.name}`, "", `_(${resp.assistant.finishReason ?? "?"}, ${resp.assistant.usage.completion} tok)_`, "", testimony, "");
         }
 
         const path = join(digestDir, "requiem.md");
         writeFileSync(path, out.join("\n"));
-        return { path, runs: byRun.size };
+        return { path, workers: byWorker.size };
     }
 
     static run(opts: DigestOptions): void {
@@ -413,13 +413,13 @@ export default class Digest {
         // mode) inspect cleanly; this tool only reads. The DB is quiescent at
         // digest time, so each PREP reads on its own — no cross-query snapshot.
         const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
-        let sessions = db.digest_sessions.all<SessionRow>();
-        let runs = db.digest_runs.all<RunRow>();
+        let workspaces = db.digest_workspaces.all<WorkspaceRow>();
+        let workers = db.digest_workers.all<WorkerRow>();
         let loops = db.digest_loops.all<LoopRow>();
         let turns = db.digest_turns.all<TurnRow>();
         let logEntries = db.digest_log_entries.all<LogRow>();
-        let runRollupRows = db.digest_run_rollups.all<RunRollupRow>();
-        let opMixRows = db.digest_run_op_mix.all<OpMixRow>();
+        let workerRollupRows = db.digest_worker_rollups.all<WorkerRollupRow>();
+        let opMixRows = db.digest_worker_op_mix.all<OpMixRow>();
         // The semantic-state analytic (owner ask), feature-detected per table: a HISTORICAL
         // specimen may predate token_counts/entry_embeddings — an old db is a fact to read,
         // not a contract violation. Absent tables read as -1. node:sqlite directly (SqlRite's
@@ -437,22 +437,22 @@ export default class Digest {
         probe.close();
         db.close();
 
-        // Optional run/session selector — narrow to one run or session; everything
-        // cascades from the kept runs (loops→turns→log entries→rollups), so a consumer
+        // Optional run/workspace selector — narrow to one run or workspace; everything
+        // cascades from the kept workers (loops→turns→log entries→rollups), so a consumer
         // (plurnk-bench) digests just the scope it cares about, not the whole DB. #264.
-        if (opts.runId !== undefined) runs = runs.filter((r) => r.id === opts.runId);
-        if (opts.sessionId !== undefined) runs = runs.filter((r) => r.session_id === opts.sessionId);
-        if (opts.runId !== undefined || opts.sessionId !== undefined) {
-            const keptRunIds = new Set(runs.map((r) => r.id));
-            const keptSessionIds = new Set(runs.map((r) => r.session_id));
-            sessions = sessions.filter((s) => keptSessionIds.has(s.id));
-            loops = loops.filter((l) => keptRunIds.has(l.run_id));
+        if (opts.workerId !== undefined) workers = workers.filter((r) => r.id === opts.workerId);
+        if (opts.workspaceId !== undefined) workers = workers.filter((r) => r.workspace_id === opts.workspaceId);
+        if (opts.workerId !== undefined || opts.workspaceId !== undefined) {
+            const keptWorkerIds = new Set(workers.map((r) => r.id));
+            const keptWorkspaceIds = new Set(workers.map((r) => r.workspace_id));
+            workspaces = workspaces.filter((s) => keptWorkspaceIds.has(s.id));
+            loops = loops.filter((l) => keptWorkerIds.has(l.worker_id));
             const keptLoopIds = new Set(loops.map((l) => l.id));
             turns = turns.filter((t) => keptLoopIds.has(t.loop_id));
             const keptTurnIds = new Set(turns.map((t) => t.id));
             logEntries = logEntries.filter((le) => keptTurnIds.has(le.turn_id));
-            runRollupRows = runRollupRows.filter((r) => keptRunIds.has(r.run_id));
-            opMixRows = opMixRows.filter((o) => keptRunIds.has(o.run_id));
+            workerRollupRows = workerRollupRows.filter((r) => keptWorkerIds.has(r.worker_id));
+            opMixRows = opMixRows.filter((o) => keptWorkerIds.has(o.worker_id));
         }
 
         // Wipe-then-recreate the digest dir so each run is a clean snapshot —
@@ -460,24 +460,24 @@ export default class Digest {
         rmSync(digestDir, { recursive: true, force: true });
         mkdirSync(digestDir, { recursive: true });
 
-        const runsBySession = new Map<number, RunRow[]>();
-        for (const r of runs) { const arr = runsBySession.get(r.session_id) ?? []; arr.push(r); runsBySession.set(r.session_id, arr); }
-        const loopsByRun = new Map<number, LoopRow[]>();
-        for (const l of loops) { const arr = loopsByRun.get(l.run_id) ?? []; arr.push(l); loopsByRun.set(l.run_id, arr); }
+        const workersByWorkspace = new Map<number, WorkerRow[]>();
+        for (const r of workers) { const arr = workersByWorkspace.get(r.workspace_id) ?? []; arr.push(r); workersByWorkspace.set(r.workspace_id, arr); }
+        const loopsByWorker = new Map<number, LoopRow[]>();
+        for (const l of loops) { const arr = loopsByWorker.get(l.worker_id) ?? []; arr.push(l); loopsByWorker.set(l.worker_id, arr); }
         const turnsByLoop = new Map<number, TurnRow[]>();
         for (const t of turns) { const arr = turnsByLoop.get(t.loop_id) ?? []; arr.push(t); turnsByLoop.set(t.loop_id, arr); }
         const logEntriesByTurn = new Map<number, LogRow[]>();
         for (const le of logEntries) { const arr = logEntriesByTurn.get(le.turn_id) ?? []; arr.push(le); logEntriesByTurn.set(le.turn_id, arr); }
         const loopsById = new Map(loops.map((l) => [l.id, l]));
-        const runsById = new Map(runs.map((r) => [r.id, r]));
-        const runRollups = new Map(runRollupRows.map((r) => [r.run_id, r]));
-        const opMixByRun = new Map<number, OpMixRow[]>();
-        for (const o of opMixRows) { const arr = opMixByRun.get(o.run_id) ?? []; arr.push(o); opMixByRun.set(o.run_id, arr); }
+        const workersById = new Map(workers.map((r) => [r.id, r]));
+        const workerRollups = new Map(workerRollupRows.map((r) => [r.worker_id, r]));
+        const opMixByWorker = new Map<number, OpMixRow[]>();
+        for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
-            dbPath, digestDir, sessions, runs, loops, turns, logEntries,
-            runsBySession, loopsByRun, turnsByLoop, logEntriesByTurn, loopsById, runsById,
-            runRollups, opMixByRun, embeddings,
+            dbPath, digestDir, workspaces, workers, loops, turns, logEntries,
+            workersByWorkspace, loopsByWorker, turnsByLoop, logEntriesByTurn, loopsById, workersById,
+            workerRollups, opMixByWorker, embeddings,
         };
 
         writeFileSync(join(digestDir, "digest.md"), Digest.#renderWaterfall(m));
@@ -488,6 +488,6 @@ export default class Digest {
 
         console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files (${packetIds.join(", ") || "none"})`);
         console.log(`  source: ${dbPath}`);
-        console.log(`  sessions=${sessions.length} runs=${runs.length} loops=${loops.length} turns=${turns.length} log_entries=${logEntries.length}`);
+        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} log_entries=${logEntries.length}`);
     }
 }

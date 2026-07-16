@@ -3,7 +3,7 @@
 // machinery (parser → engine → exec scheme → spawn → channels → wake)
 // against a real provider, not the model's tool-discovery ability.
 //
-// Driven through the REAL prod loop (loop.run via the daemon — liveSession +
+// Driven through the REAL prod loop (loop.run via the daemon — liveWorkspace +
 // liveLoop). The daemon wires the executors itself (Daemon.start), so this no
 // longer hand-builds an ExecutorRegistry; the loop's completion implies the
 // backgrounded spawn finished (the model SENT only after reading its result).
@@ -11,10 +11,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
 test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdout", async () => {
-    const s = await liveSession({ name: `live-exec-${crypto.randomUUID()}` });
+    const s = await liveWorkspace({ name: `live-exec-${crypto.randomUUID()}` });
     try {
         const userPrompt = [
             "Two-turn probe.",
@@ -47,15 +47,15 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         // §exec / #240: EXEC[sh] output persists under the RUNTIME TAG scheme ("sh"),
         // addressed sh:///<loop>/<turn>/<seq> — NOT scheme="exec" (exec:// is process-control only).
         const execEntryCount = (await (s.db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
-            session_id: s.sessionId, scheme: "sh",
+            workspace_id: s.workspaceId, scheme: "sh",
         }))?.n ?? 0;
         assert.ok(execEntryCount >= 1, "at least one sh:/// exec-output entry was created");
 
         // Find the exec-output entry and verify its stdout captured the probe. We don't
-        // know the auto-generated coordinate from outside; list session entries to find
+        // know the auto-generated coordinate from outside; list workspace entries to find
         // any sh:///<coord>.
         type EntryListRow = { scheme: string; pathname: string };
-        const allEntries = await (s.db.test_list_entries_by_session_session_pathname as PrepMethod).all<EntryListRow>({ session_id: s.sessionId });
+        const allEntries = await (s.db.test_list_entries_by_workspace_workspace_pathname as PrepMethod).all<EntryListRow>({ workspace_id: s.workspaceId });
         const execEntries = allEntries.filter((e) => e.scheme === "sh");
         let foundProbe = false;
         for (const e of execEntries) {

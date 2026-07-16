@@ -19,7 +19,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -44,18 +44,18 @@ test("[§chunk-accumulation-chunks-accumulate] streaming exec: chunks land in th
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({
             db, schemes,
-            streamEventNotify: (_sessionId, event) => events.push(event),
+            streamEventNotify: (_workspaceId, event) => events.push(event),
         });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `exec-stream-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "streaming test");
+        const workspaceId = await insertWorkspace(db, `exec-stream-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "streaming test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("sh", "for i in 5 4 3 2 1; do echo $i; sleep 0.5; done"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -128,15 +128,15 @@ test("streaming exec: subscription stays open during emission, closes after exit
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `exec-stream-sub-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "subscription lifecycle");
+        const workspaceId = await insertWorkspace(db, `exec-stream-sub-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "subscription lifecycle");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("sh", "for i in 3 2 1; do echo $i; sleep 0.4; done"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -153,7 +153,7 @@ test("streaming exec: subscription stays open during emission, closes after exit
         await new Promise((r) => setTimeout(r, 600));
         const midSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{
             closed_at: string | null; close_status: number | null;
-        }>({ run_id: runId, entry_id: entryRow!.id });
+        }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.equal(midSub?.closed_at, null, "subscription is alive during emission");
         assert.equal(midSub?.close_status, null);
 
@@ -161,14 +161,14 @@ test("streaming exec: subscription stays open during emission, closes after exit
         await exec.idle();
         const endSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{
             closed_at: string | null; close_status: number | null;
-        }>({ run_id: runId, entry_id: entryRow!.id });
+        }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.ok(endSub?.closed_at, "subscription closed after spawn exit");
         assert.equal(endSub?.close_status, 200, "clean exit closes subscription at 200");
     } finally { await db.close(); }
 });
 
-test("streaming exec: the session catalog picks up partial channel content between samples", async () => {
-    // The session catalog (engine_list_session_entries, its
+test("streaming exec: the workspace catalog picks up partial channel content between samples", async () => {
+    // The workspace catalog (engine_list_workspace_entries, its
     // source) reads channels.content LIVE — so each turn build sees
     // whatever bytes have landed by that moment. This proves the model
     // would observe partial output across turn boundaries (rather than
@@ -179,30 +179,30 @@ test("streaming exec: the session catalog picks up partial channel content betwe
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `exec-stream-idx-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "catalog mid-stream");
+        const workspaceId = await insertWorkspace(db, `exec-stream-idx-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "catalog mid-stream");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("sh", "for i in 4 3 2 1; do echo $i; sleep 0.4; done"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
         await dispatchPromise;
 
         const execStdout = async (): Promise<Array<{ scheme: string | null; pathname: string; content: string }>> => {
-            // Read the exec entry's stdout channel from the session catalog
-            // (engine_list_session_entries, the source behind the catalog):
+            // Read the exec entry's stdout channel from the workspace catalog
+            // (engine_list_workspace_entries, the source behind the catalog):
             // one row per (entry, channel) with the channel's LIVE content.
             // Streaming is a channel property — partial bytes must be observable
             // mid-stream regardless of how they're later rendered.
-            const rows = await (db.engine_list_session_entries as PrepMethod).all<{
+            const rows = await (db.engine_list_workspace_entries as PrepMethod).all<{
                 scheme: string | null; pathname: string;
                 channel: string; content: string;
-            }>({ session_id: sessionId });
+            }>({ workspace_id: workspaceId });
             return rows
                 .filter((r) => r.scheme === "sh" && r.channel === "stdout")
                 .map((r) => ({ scheme: r.scheme, pathname: r.pathname, content: r.content }));

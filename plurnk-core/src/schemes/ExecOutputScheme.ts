@@ -27,11 +27,11 @@ export default class ExecOutputScheme {
     get manifest(): SchemeManifest { return this.#executor.manifest; }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        return EntryOps.readSessionEntry(statement, ctx, this.#executor.manifest);
+        return EntryOps.readWorkspaceEntry(statement, ctx, this.#executor.manifest);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findSessionEntries(statement, ctx, this.#executor.manifest);
+        return EntryFind.findWorkspaceEntries(statement, ctx, this.#executor.manifest);
     }
 
     // COPY/MOVE source — read the output entry by pathname, tag-scoped (not via the

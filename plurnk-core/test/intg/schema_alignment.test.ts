@@ -27,10 +27,10 @@ const decomposed = (...columns: string[]): FieldStorage => ({ kind: "decomposed"
 const joinTable = (table: string): FieldStorage => ({ kind: "joinTable", table });
 
 // grammar 0.65–0.67 scoped the contract to the PROTOCOL (statements, paths, scheme/provider
-// registration, telemetry, channels) and DROPPED the persistence schemas — Entry, Session,
+// registration, telemetry, channels) and DROPPED the persistence schemas — Entry, Workspace,
 // Run, Loop, Turn, LogEntry, Packet, Agent are gone. Those shapes are the SERVICE's now,
 // owned by our migrations + tests, not grammar. So this aligns only the protocol schemas that
-// still map to a table; the persistence tables (sessions/runs/loops/turns/entries/log_entries)
+// still map to a table; the persistence tables (workspaces/runs/loops/turns/entries/log_entries)
 // are ours and validated elsewhere.
 const MAPPING: Record<string, SchemaMapping> = {
     ChannelContent: {
@@ -65,7 +65,7 @@ const MAPPING: Record<string, SchemaMapping> = {
 };
 
 const TABLE_PREP: Record<string, string> = {
-    sessions: "test_align_cols_sessions",
+    workspaces: "test_align_cols_sessions",
     runs: "test_align_cols_runs",
     loops: "test_align_cols_loops",
     turns: "test_align_cols_turns",

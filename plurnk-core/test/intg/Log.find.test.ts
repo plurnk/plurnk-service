@@ -12,7 +12,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { urlPath, findStmt } from "./_dsl.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
@@ -26,24 +26,24 @@ const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): R
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `logfind-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "test prompt");
+    const workspaceId = await insertWorkspace(db, `logfind-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "test prompt");
     const turnId = await insertTurn(db, loopId, 1, 200);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     // Three rows: an EDIT ack (JSON dust), a READ result carrying prose, another EDIT.
-    await engine.dispatch({ statement: editStmt("/notes.md", "the engine hums along"), sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
-    await engine.dispatch({ statement: readStmt(urlPath("known", "/notes.md")), sessionId, runId, loopId, turnId, sequence: 2, origin: "model" });
-    await engine.dispatch({ statement: editStmt("/other.md", "nothing relevant"), sessionId, runId, loopId, turnId, sequence: 3, origin: "model" });
-    return { db, engine, sessionId, runId, loopId, turnId };
+    await engine.dispatch({ statement: editStmt("/notes.md", "the engine hums along"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+    await engine.dispatch({ statement: readStmt(urlPath("known", "/notes.md")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+    await engine.dispatch({ statement: editStmt("/other.md", "nothing relevant"), workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model" });
+    return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
 test("[§log-uniform-query] FIND(log:///**):#regex# matches log rows by CONTENT — the jumbo gesture works", async () => {
-    const { db, runId } = await setup();
+    const { db, workerId } = await setup();
     try {
         const r = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" } as MatcherBody),
-            makeSchemeCtx({ db, runId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(r.status, 200, "no more 501 — log speaks the universal FIND");
         const paths = r.results.map((x) => x.path);
@@ -57,9 +57,9 @@ test("[§log-uniform-query] FIND(log:///**):#regex# matches log rows by CONTENT 
 });
 
 test("[§log-uniform-query] a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is the scope", async () => {
-    const { db, runId } = await setup();
+    const { db, workerId } = await setup();
     try {
-        const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, runId, mimetypes: DEFAULT_MIMETYPES }));
+        const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 3, "the turn's three rows, catalog-shaped");
         assert.ok(r.results.every((x) => /^log:\/\/\/1\/1\/\d+\//.test(x.path)), "each item keyed log:///loop/turn/seq/OP");
@@ -68,11 +68,11 @@ test("[§log-uniform-query] a body-less FIND(log:///1/1) lists the turn's rows �
 });
 
 test("[§log-uniform-query] READ(log:///**):#pattern# fans out — FIND locates, per-row READs deliver, uniform with entries", async () => {
-    const { db, engine, sessionId, runId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const result = await engine.dispatch({
             statement: readStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" } as MatcherBody),
-            sessionId, runId, loopId, turnId, sequence: 4, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
         });
         assert.equal(result.status, 200, "the matcher READ fans out through Log.find");
         const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; rx: string; sequence: number }>({ loop_id: loopId });
@@ -82,16 +82,16 @@ test("[§log-uniform-query] READ(log:///**):#pattern# fans out — FIND locates,
 });
 
 test("[§log-uniform-query] zero content matches → 204; ~semantic → 501 until the pump embeds log rows (S5)", async () => {
-    const { db, runId } = await setup();
+    const { db, workerId } = await setup();
     try {
         const none = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/absent-phrase-xyz/", pattern: "absent-phrase-xyz", flags: "" } as MatcherBody),
-            makeSchemeCtx({ db, runId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(none.status, 204, "a sweep that found nothing steers nothing");
         const sem = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "semantic", raw: "~engine" } as MatcherBody),
-            makeSchemeCtx({ db, runId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(sem.status, 501, "~query on log is an HONEST 501 until log rows are embedded — never a silent wrong answer");
     } finally { await db.close(); }

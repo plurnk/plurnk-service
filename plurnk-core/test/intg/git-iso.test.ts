@@ -14,7 +14,7 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import GitIso from "../../src/core/git-iso.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import GitState from "../../src/core/git-state.ts";
-import { openMigrated, insertSession, rootSession } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, rootWorkspace } from "./_helpers.ts";
 
 const git = (cwd: string, ...args: string[]): string =>
     execFileSync("git", args, { cwd, env: hermeticGitEnv(), maxBuffer: 1 << 26 }).toString();
@@ -84,9 +84,9 @@ test("[§git-portable-default] GitState.status via iso: branch + staged/unstaged
     const { root } = await seedRich();
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `iso-${crypto.randomUUID()}`);
-        await rootSession(db, sessionId, root);
-        const status = await GitState.status(db, sessionId, undefined);
+        const workspaceId = await insertWorkspace(db, `iso-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const status = await GitState.status(db, workspaceId, undefined);
         assert.ok(status !== null, "a git worktree yields telemetry");
         assert.equal(status.branch, git(root, "symbolic-ref", "--short", "HEAD").trim(), "branch matches native");
         assert.equal(status.staged, 1, "staged.txt is the one staged change");
@@ -116,27 +116,27 @@ test("[§git-portable-default] ahead/behind vs the configured upstream — exact
         git(root, "config", `branch.${branch}.remote`, "origin");
         git(root, "config", `branch.${branch}.merge`, `refs/heads/${branch}`);
 
-        const sessionId = await insertSession(db, `iso-ab-${crypto.randomUUID()}`);
-        await rootSession(db, sessionId, root);
-        const status = await GitState.status(db, sessionId, undefined);
+        const workspaceId = await insertWorkspace(db, `iso-ab-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const status = await GitState.status(db, workspaceId, undefined);
         assert.ok(status !== null);
         assert.equal(status.ahead, 2, "two local commits past the merge base");
         assert.equal(status.behind, 1, "one remote-only commit past the merge base");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§git-portable-default] a linked worktree session root resolves membership + status through iso (the gitdir-file shape)", async () => {
+test("[§git-portable-default] a linked worktree workspace root resolves membership + status through iso (the gitdir-file shape)", async () => {
     const main = await seedRepo("iso-wt-main-");
     const db = await openMigrated();
     const linked = join(main, "..", `iso-wt-linked-${crypto.randomUUID()}`);
     try {
         await writeFile(join(main, "tracked.md"), "# t\n"); git(main, "add", "."); commit(main, "seed");
         git(main, "worktree", "add", "-q", linked, "-b", "wt-branch");
-        const sessionId = await insertSession(db, `iso-wt-${crypto.randomUUID()}`);
-        await rootSession(db, sessionId, linked);
-        const members = await GitMembership.resolveGitMembership(db, sessionId, undefined);
+        const workspaceId = await insertWorkspace(db, `iso-wt-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, linked);
+        const members = await GitMembership.resolveGitMembership(db, workspaceId, undefined);
         assert.ok(members.includes("/tracked.md"), "membership resolves through the .git gitdir-file");
-        const status = await GitState.status(db, sessionId, undefined);
+        const status = await GitState.status(db, workspaceId, undefined);
         assert.equal(status?.branch, "wt-branch", "status reads the linked worktree's own HEAD");
     } finally {
         await db.close();
@@ -211,13 +211,13 @@ test("[§git-native-flag] PLURNK_SERVICE_GIT_NATIVE=1 routes to system git — s
     const db = await openMigrated();
     const prior = process.env.PLURNK_SERVICE_GIT_NATIVE;
     try {
-        const sessionId = await insertSession(db, `iso-flag-${crypto.randomUUID()}`);
-        await rootSession(db, sessionId, root);
-        const isoMembers = (await GitMembership.resolveGitMembership(db, sessionId, undefined)).sort();
-        const isoStatus = await GitState.status(db, sessionId, undefined);
+        const workspaceId = await insertWorkspace(db, `iso-flag-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const isoMembers = (await GitMembership.resolveGitMembership(db, workspaceId, undefined)).sort();
+        const isoStatus = await GitState.status(db, workspaceId, undefined);
         process.env.PLURNK_SERVICE_GIT_NATIVE = "1";
-        const nativeMembers = (await GitMembership.resolveGitMembership(db, sessionId, undefined)).sort();
-        const nativeStatus = await GitState.status(db, sessionId, undefined);
+        const nativeMembers = (await GitMembership.resolveGitMembership(db, workspaceId, undefined)).sort();
+        const nativeStatus = await GitState.status(db, workspaceId, undefined);
         assert.deepEqual(nativeMembers, isoMembers, "both backends resolve the identical member set");
         assert.deepEqual(nativeStatus, isoStatus, "both backends report the identical status");
     } finally {

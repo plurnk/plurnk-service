@@ -4,7 +4,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { StreamEventNotify, WakeRunNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
@@ -32,7 +32,7 @@ interface ProposalWaiter {
     timeoutHandle: ReturnType<typeof setTimeout> | null;
 }
 
-// External observers of pending-proposal events. sessionId is included so
+// External observers of pending-proposal events. workspaceId is included so
 // Daemon can scope its WS broadcast. attrs is the scheme-supplied payload
 // (file diff, exec command, etc.) the client needs to render review UI.
 // flags carries the loop's persisted flags so listeners (YOLO auto-accept,
@@ -40,8 +40,8 @@ interface ProposalWaiter {
 // roundtrip — loaded once at dispatch, shared with all listeners.
 export interface ProposalPendingEvent {
     logEntryId: number;
-    sessionId: number;
-    runId: number;
+    workspaceId: number;
+    workerId: number;
     loopId: number;
     turnId: number;
     op: string;
@@ -77,7 +77,7 @@ export default class ProposalLifecycle {
     #schemes: SchemeRegistry;
     #telemetry: TelemetryChannel;
     #streamEventNotify: StreamEventNotify | undefined;
-    #wakeRunNotify: WakeRunNotify | undefined;
+    #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #tokenize: (text: string) => number;
     #mimetypes: Mimetypes | undefined;
     // Boot-discovered runtime executors, late-injected on Engine — thunked.
@@ -96,12 +96,12 @@ export default class ProposalLifecycle {
     // chains come later if a real consumer needs them.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, telemetry, streamEventNotify, wakeRunNotify, tokenize, mimetypes, executors, loopSignal }: {
+    constructor({ db, schemes, telemetry, streamEventNotify, wakeWorkerNotify, tokenize, mimetypes, executors, loopSignal }: {
         db: Db;
         schemes: SchemeRegistry;
         telemetry: TelemetryChannel;
         streamEventNotify?: StreamEventNotify;
-        wakeRunNotify?: WakeRunNotify;
+        wakeWorkerNotify?: WakeWorkerNotify;
         tokenize: (text: string) => number;
         mimetypes?: Mimetypes;
         executors: () => ExecutorRegistry | undefined;
@@ -111,7 +111,7 @@ export default class ProposalLifecycle {
         this.#schemes = schemes;
         this.#telemetry = telemetry;
         this.#streamEventNotify = streamEventNotify;
-        this.#wakeRunNotify = wakeRunNotify;
+        this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#tokenize = tokenize;
         this.#mimetypes = mimetypes;
         this.#executors = executors;
@@ -183,13 +183,13 @@ export default class ProposalLifecycle {
     }
 
     // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. §proposal-accept-applies
-    async runApply(
+    async workerApply(
         statement: PlurnkStatement,
         originalResult: DispatchResult,
         resolution: ProposalResolution,
-        ids: { sessionId: number; runId: number; loopId: number; turnId: number },
+        ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
     ): Promise<ProposalResolution> {
-        const { sessionId, runId, loopId, turnId } = ids;
+        const { workspaceId, workerId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return resolution;
         // EXEC routes to the exec scheme regardless of target (cwd, not
         // a scheme address). All other ops resolve their handler from
@@ -206,17 +206,17 @@ export default class ProposalLifecycle {
         if (handler === undefined || typeof handler.applyResolution !== "function") return resolution;
         try {
             // Build a ctx for the scheme's applyResolution. The proposal
-            // was raised inside a specific (session, run, loop, turn);
+            // was raised inside a specific (workspace, run, loop, turn);
             // the scheme uses ctx to write the entry that makes the
             // operation's artifact visible in the next packet's index.
             const applyCtx: PlurnkSchemeContext = {
-                db: this.#db, sessionId, runId, loopId, turnId,
+                db: this.#db, workspaceId, workerId, loopId, turnId,
                 writer: "model", signal: this.#loopSignal(loopId),
                 streamEventNotify: this.#streamEventNotify,
-                wakeRunNotify: this.#wakeRunNotify,
+                wakeWorkerNotify: this.#wakeWorkerNotify,
                 tokenize: this.#tokenize,
                 mimetypes: this.#mimetypes,
-                pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
+                pushTelemetry: (event) => this.#telemetry.push(workspaceId, loopId, event),
                 executors: this.#executors(),
             };
             const applyResult = await handler.applyResolution({

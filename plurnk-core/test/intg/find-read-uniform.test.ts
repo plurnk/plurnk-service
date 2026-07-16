@@ -17,7 +17,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Known from "../../src/schemes/Known.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 // A ~semantic READ-honors-FIND case (#286) asserts REAL vector ranking — re-enable the embedder the
 // fast lane turns off (.env.test PLURNK_SERVICE_EMBED_DISABLE=1); --test-isolation scopes this to this file.
@@ -33,13 +33,13 @@ const setup = async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `uniform-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "uniform");
+    const workspaceId = await insertWorkspace(db, `uniform-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "uniform");
     const turnId = await insertTurn(db, loopId, 1, 102);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
-    const ctx = makeSchemeCtx({ db, sessionId, runId, loopId, turnId, mimetypes });
-    return { db, engine, mimetypes, sessionId, runId, loopId, turnId, ctx };
+    const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes });
+    return { db, engine, mimetypes, workspaceId, workerId, loopId, turnId, ctx };
 };
 
 // Seed with literal (possibly multiline) content — the EDIT heredoc body can't carry raw
@@ -52,14 +52,14 @@ const seedRaw = async (ctx: ReturnType<typeof makeSchemeCtx>, name: string, cont
 
 // Dispatch an op and collect the per-match log rows' stored rx (content + startLine), in order.
 const dispatchRows = async (
-    db: Db, engine: Engine, ids: { sessionId: number; runId: number; loopId: number; turnId: number },
+    db: Db, engine: Engine, ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
     statement: PlurnkStatement,
 ): Promise<{ result: { status: number; rowsWritten?: number }; rows: Array<{ content?: string; startLine?: number | null; status?: number }> }> => {
     const result = await engine.dispatch({ statement, ...ids, sequence: 1, origin: "model" }) as { status: number; rowsWritten?: number };
     // rows = the DELIVERIES: sequence 1 is the FIND selection-summary row (§matcher-selection-signal).
     const rows: Array<{ content?: string; startLine?: number | null; status?: number }> = [];
     for (let s = 2; s <= (result.rowsWritten ?? 0); s++) {
-        const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ run_id: ids.runId, loop_seq: 1, turn_seq: 1, sequence: s });
+        const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence: s });
         if (row !== undefined) rows.push(JSON.parse(row.rx) as { content?: string; startLine?: number | null; status?: number });
     }
     return { result, rows };
@@ -157,12 +157,12 @@ test("[#286] @graph READ honors FIND — references come back as rows, one per o
 });
 
 test("[#286] @graph FIND emits per-occurrence items carrying spans (uniform with content dialects)", async () => {
-    const { db, sessionId, runId, mimetypes, ctx, loopId, turnId } = await setup();
+    const { db, workspaceId, workerId, mimetypes, ctx, loopId, turnId } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
-        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, sessionId, runId, loopId, turnId, mimetypes }));
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**):@<foo:FIND", "FIND"), makeSchemeCtx({ db, sessionId, runId, mimetypes }));
+        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes }));
+        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**):@<foo:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.ok(r.results.length >= 1, "@graph FIND returns the referencing entries' occurrences");
         assert.ok(r.results.every((x) => x.matchSpan !== undefined), "each @graph item carries a (file, span)");
@@ -172,23 +172,23 @@ test("[#286] @graph FIND emits per-occurrence items carrying spans (uniform with
 // --- The target contract: bare = exact, folder/glob = scope — uniform for FIND and READ ------
 
 test("[#286] FIND(bare entry) is the ONE entry — never a prefix that pulls siblings", async () => {
-    const { db, sessionId, runId, ctx } = await setup();
+    const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "config.md", "the config");
         await seedRaw(ctx, "config.md.bak", "the backup");
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///config.md)::FIND", "FIND"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///config.md)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results.map((x) => x.path), ["known:///config.md"], "bare = exact: config.md.bak is NOT pulled in");
     } finally { await db.close(); }
 });
 
 test("[#286] FIND(folder/) returns the folder's contents; a glob is a scope", async () => {
-    const { db, sessionId, runId, ctx } = await setup();
+    const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "docs/a.md", "alpha");
         await seedRaw(ctx, "docs/b.md", "beta");
         await seedRaw(ctx, "top.md", "top");
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///docs/)::FIND", "FIND"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///docs/)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results.map((x) => x.path).toSorted(), ["known:///docs/a.md", "known:///docs/b.md"], "folder/ = its contents, not top.md");
     } finally { await db.close(); }
@@ -209,10 +209,10 @@ test("[#286] READ(folder/) reads the folder's contents — one row per entry, wh
 // --- FIND emits per-match items carrying their span -----------------------------------------
 
 test("[#286] FIND with a matcher emits one item per match, each carrying its (file, span)", async () => {
-    const { db, sessionId, runId, ctx } = await setup();
+    const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target");
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**):*target*:FIND", "FIND"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**):*target*:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 2, "two matches in one file → two items");
         assert.deepEqual(r.results.map((x) => x.matchSpan), [{ lineStart: 1, lineEnd: 1 }, { lineStart: 3, lineEnd: 3 }], "each item carries the span it matched");
@@ -220,11 +220,11 @@ test("[#286] FIND with a matcher emits one item per match, each carrying its (fi
 });
 
 test("[#286] body-less FIND is the catalog — one item per entry, no span", async () => {
-    const { db, sessionId, runId, ctx } = await setup();
+    const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "a.md", "alpha");
         await seedRaw(ctx, "b.md", "beta");
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**)::FIND", "FIND"), makeSchemeCtx({ db, sessionId, runId }));
+        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.results.length, 2, "two entries → two catalog rows");
         assert.ok(r.results.every((x) => x.matchSpan === undefined), "the catalog carries no match span");
     } finally { await db.close(); }

@@ -6,7 +6,7 @@
 import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, WakeRunNotify, InjectRunNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
 import type { TelemetryEvent } from "./results.ts";
 import type { PacketSection } from "./packet-wire.ts";
@@ -32,9 +32,9 @@ export type SchemeReadResult = {
     reason?: string;
     startLine?: number | null;
     matches?: number | null;
-    // §join-blocking-collect (#354) — a READ(run://running-child) sets this to the worker name it is
+    // §join-blocking-collect (#354) — a READ(worker://running-child) sets this to the worker name it is
     // blocked on; the dispatcher arms a join so the turn's bare SEND[102] parks (the blocking collect).
-    awaitRun?: string;
+    awaitWorker?: string;
 };
 
 // Per-call helper. Engine constructs a fresh ctx for every op invocation.
@@ -55,19 +55,19 @@ export type SchemeReadResult = {
 // cross-scheme COPY/MOVE forces the FROM/TO shape.
 export interface PlurnkSchemeContext {
     readonly db: Db;
-    readonly sessionId: number;
-    readonly runId: number;
+    readonly workspaceId: number;
+    readonly workerId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;
     readonly signal: AbortSignal | undefined;
     readonly streamEventNotify?: StreamEventNotify;
-    readonly wakeRunNotify?: WakeRunNotify;
-    // Start/deliver-to a sister run — the run:// op family's loop-start primitive
+    readonly wakeWorkerNotify?: WakeWorkerNotify;
+    // Start/deliver-to a sister run — the worker:// op family's loop-start primitive
     // (spawn/fork/irc). Engine-populated (daemon-wired to Daemon.inject); absent
     // in bare test fixtures. The run scheme handler fail-hards if absent rather
     // than silently dropping a spawn/irc.
-    readonly injectRun?: InjectRunNotify;
+    readonly injectWorker?: InjectWorkerNotify;
     readonly mimetypes?: Mimetypes;
     // Boot-discovered runtime executors (tag → probe/effect/run). Engine-
     // populated; absent in bare test fixtures. Exec dispatch fail-hards if
@@ -86,7 +86,7 @@ export interface PlurnkSchemeContext {
     // absent → "body" (correct for body-default entries, e.g. test ctxs without exec).
     readonly defaultChannelFor?: (scheme: string | null) => string;
     // Push a TelemetryEvent into the loop's telemetry buffer. Closes over
-    // sessionId + loopId so the scheme just provides the event payload.
+    // workspaceId + loopId so the scheme just provides the event payload.
     // Wired by Engine to #pushTelemetry → fans out to the next packet's
     // user.telemetry.errors[] AND the live `telemetry/event` client
     // notification. SPEC §telemetry.

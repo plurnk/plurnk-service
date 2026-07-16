@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import { openMigrated, insertSession, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, makeSchemeCtx } from "./_helpers.ts";
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 // Wall-clock wait for a condition — the emit's entryId lookup goes through the shared
@@ -25,9 +25,9 @@ const waitUntil = async (cond: () => boolean, timeoutMs = 10000): Promise<void> 
 test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no notifier → no event", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `caps-notify-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `caps-notify-${crypto.randomUUID()}`);
         const captured: Array<{ sid: number; payload: StreamEventPayload }> = [];
-        const ctx = makeSchemeCtx({ db, sessionId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
+        const ctx = makeSchemeCtx({ db, workspaceId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
         const entries = new DbEntryCaps(ctx, "known");
         const notify = new DbNotifyCaps(ctx, "known");
 
@@ -37,7 +37,7 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         notify.streamEvent("/stream.md", "body", "active", 42);
         await waitUntil(() => captured.length >= 1);
         assert.equal(captured.length, 1);
-        assert.equal(captured[0].sid, sessionId);
+        assert.equal(captured[0].sid, workspaceId);
         assert.equal(captured[0].payload.channel, "body");
         assert.equal(captured[0].payload.state, "active");
         assert.equal(captured[0].payload.contentLength, 42);
@@ -49,7 +49,7 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         assert.equal(captured.length, 1);
 
         // no notifier wired → silent sync no-op, never throws, nothing scheduled
-        const noNotifier = new DbNotifyCaps(makeSchemeCtx({ db, sessionId }), "known");
+        const noNotifier = new DbNotifyCaps(makeSchemeCtx({ db, workspaceId }), "known");
         assert.doesNotThrow(() => noNotifier.streamEvent("/stream.md", "body", "active", 1));
         for (let i = 0; i < 5; i++) await tick();
         assert.equal(captured.length, 1);

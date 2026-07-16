@@ -79,7 +79,7 @@ export default class Discover {
                 // layer, applied uniformly to EVERY tag regardless of daughter
                 // (SPEC §3.3). A disabled tag is not registered — absent, not
                 // "Available-off" — and recorded for the consumer. The
-                // per-session client layer is the consumer's to intersect via
+                // per-workspace client layer is the consumer's to intersect via
                 // the exported Policy, same parser.
                 if (!Policy.isEnabled(info.runtime)) {
                     disabled.add(info.runtime);

@@ -16,7 +16,7 @@ import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 // Response from pre-parsed ops (clean turn) — mirrors the production wire
 // where the provider hands the engine already-parsed statements.
@@ -76,11 +76,11 @@ const noticeProvider = (extraDrains: number) => {
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
-    const loopId = await insertLoop(db, runId, 1, "what is the capital of france?");
+    const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "what is the capital of france?");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    return { db, engine, sessionId, runId, loopId };
+    return { db, engine, workspaceId, workerId, loopId };
 };
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) => {
@@ -94,11 +94,11 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
     // A NOTICE points the model at a line in its own emission; the mirror row is ALWAYS folded
     // (§model-entry) — the model READs it at the cited lines. No snippet duplicating the bytes.
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = noticeProvider(1);
-        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         const p2 = await getPacket(db, t2.turnId);
         const notice = p2.telemetryErrors.find((e) => e.kind === "grammar_unenforced");
@@ -125,18 +125,18 @@ test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unen
 test("[§telemetry-event-level] a drained TelemetryEvent carries level — defaulted when the producer omits it, forwarded verbatim when present (#276)", async () => {
     // Case A — a provider event WITHOUT level is defaulted (never dropped; grammar 0.74.29 requires it).
     {
-        const { db, engine, sessionId, runId, loopId } = await setup();
+        const { db, engine, workspaceId, workerId, loopId } = await setup();
         try {
             const provider = noticeProvider(1); // grammar_unenforced, no level
-            await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-            const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+            const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             const notice = (await getPacket(db, t2.turnId)).telemetryErrors.find((e) => e.kind === "grammar_unenforced");
             assert.equal(notice?.level, "warn", "a level-less producer event is defaulted to warn, never dropped");
         } finally { await db.close(); }
     }
     // Case B — a provider event WITH a level has it forwarded verbatim, not overwritten by the default.
     {
-        const { db, engine, sessionId, runId, loopId } = await setup();
+        const { db, engine, workspaceId, workerId, loopId } = await setup();
         try {
             const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
             const real = provider.generate.bind(provider);
@@ -150,8 +150,8 @@ test("[§telemetry-event-level] a drained TelemetryEvent carries level — defau
                     telemetry: [{ source: "provider:mock", kind: "grammar_unenforced", message: "diverged", position: NOTICE_POS, level: "error" }],
                 };
             };
-            await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-            const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+            await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+            const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             const notice = (await getPacket(db, t2.turnId)).telemetryErrors.find((e) => e.kind === "grammar_unenforced");
             assert.equal(notice?.level, "error", "an explicit producer level is forwarded verbatim");
         } finally { await db.close(); }
@@ -160,12 +160,12 @@ test("[§telemetry-event-level] a drained TelemetryEvent carries level — defau
 
 test("[§telemetry-drain-on-read] the NOTICE telemetry buffer drains — a notice appears on exactly one packet, then is gone", async () => {
     // Errors persist (log items); engine NOTICES are ephemeral — drain-on-read, one packet only.
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = noticeProvider(2);
-        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const t3 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         const kindsOf = async (turnId: number) =>
             (await getPacket(db, turnId)).telemetryErrors
@@ -178,7 +178,7 @@ test("[§telemetry-drain-on-read] the NOTICE telemetry buffer drains — a notic
 });
 
 test("[§turn-never-blank] a thrown ProviderError is an infrastructure failure — no turn is fabricated, the loop dies carrying the cause", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Providers 0.32 retired the constrained-path throw: a completed exchange ALWAYS
         // returns (bytes + a conformance OBSERVATION on response.telemetry — the #275 test
@@ -197,13 +197,13 @@ test("[§turn-never-blank] a thrown ProviderError is an infrastructure failure �
         };
 
         await assert.rejects(
-            () => engine.runTurn({ provider, sessionId, runId, loopId, messages: [] }),
+            () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
             (err: Error) => /API key/.test(err.message),
             "the infrastructure failure propagates — no fabricated turn absorbs it",
         );
         // The cause reached telemetry before the throw (the operator/client see it live;
         // a subsequent turn on the loop would drain it to the model — proven by draining).
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         const ev = p2.telemetryErrors.filter((e) => e.kind === "unauthorized");
         assert.equal(ev.length, 1, "the provider failure surfaced as telemetry exactly once");
@@ -212,7 +212,7 @@ test("[§turn-never-blank] a thrown ProviderError is an infrastructure failure �
 });
 
 test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the bytes persist and a telemetry event with the divergence position drains onto the next packet", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // GBNF-filter mode (providers 0.19.0): generate() returns the model's UNCONSTRAINED bytes
         // and attaches a non-fatal grammar_unenforced TelemetryEvent carrying the code-point
@@ -233,8 +233,8 @@ test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the
             };
         };
 
-        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // #24 root-cause fix: the model's bytes SURVIVE — not nulled into an empty turn.
         const p1 = await getPacket(db, t1.turnId) as { assistant?: { content?: string }; assistantRaw?: unknown };
@@ -256,9 +256,9 @@ test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the
 test("provider error: a terminal kind (network_failure) telemetries live, then ends the loop", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const broadcasts: Array<{ payload: { loopId: number; event: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(),
@@ -269,7 +269,7 @@ test("provider error: a terminal kind (network_failure) telemetries live, then e
 
         // Unlike grammar_unenforced, a terminal infra error propagates out of runTurn to end the loop.
         await assert.rejects(
-            engine.runTurn({ provider, sessionId, runId, loopId, messages: [] }),
+            engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
             /connection refused/,
             "a terminal provider error propagates (ends the loop), not recovered as a no-op",
         );
@@ -286,16 +286,16 @@ test("provider error: a terminal kind (network_failure) telemetries live, then e
 test("[§turn-lifecycle] engine brackets generate() with turn_awaiting_model → turn_generated notices (liveness heartbeat)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const broadcasts: Array<{ payload: { loopId: number; event: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(),
             telemetryEventNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; event: Record<string, unknown> } }); },
         });
         const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The two beats bracket the provider call, in order — so a client flips "thinking… → working…"
         // across the one long opaque window (submit → first committed op) instead of a static screen
@@ -310,7 +310,7 @@ test("[§turn-lifecycle] engine brackets generate() with turn_awaiting_model →
 });
 
 test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (op='error', status 400) — queryable + foldable, not a bespoke error:// scheme", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -319,7 +319,7 @@ test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (o
                 drainTurn,
             ],
         });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The failure is a DURABLE log row — op='error', status_rx 400, actionless (no target).
         // It folds/kills/recalls like any log entry (§telemetry — errors are log items), so the
@@ -331,12 +331,12 @@ test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (o
 
         // No `error://` SCHEME namespace — errors live in the LOG (log:///), not a bespoke scheme.
         const errorScheme = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
-            session_id: sessionId, scheme: "error",
+            workspace_id: workspaceId, scheme: "error",
         });
         assert.equal(errorScheme?.n ?? 0, 0, "no error:// scheme entries — errors are log items, queried via log:///");
 
         // The errors section derives a LogCoordinate POINTER (status + coordinate) to the log item.
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         assert.ok(
             p2.telemetryErrors.some((e) => e.status === 400 && (e.position as { type?: string; coordinate?: string } | undefined)?.type === "log-coordinate"
@@ -350,7 +350,7 @@ test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (o
 // exemplar at origin=plurnk) is ALWAYS born FOLDED (auto-OPEN on error is retired; the model READs its
 // malformed emission, line-numbered, to fix it) and FOLDED on a clean turn (budget-neutral).
 test("[§model-entry] the model echo is ALWAYS born FOLDED — errored and clean turns alike (the model READs it when it cares)", async () => {
-    const { db, engine, sessionId, runId, loopId } = await setup();
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -359,8 +359,8 @@ test("[§model-entry] the model echo is ALWAYS born FOLDED — errored and clean
                 contentResponse("<<SEND[200]:done:SEND"),      // turn 2: clean emission
             ],
         });
-        const t1 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         const echo = async (turnId: number) =>
             (await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
@@ -379,28 +379,28 @@ test("[§model-entry] the model echo is ALWAYS born FOLDED — errored and clean
 test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live with the same envelope the model later drains", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "trace the broken xpath");
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "trace the broken xpath");
 
         // Capture the live fan-out: every TelemetryEvent the engine pushes
         // to the loop's buffer also fires this callback the moment it lands.
-        const broadcasts: Array<{ sessionId: number; payload: { loopId: number; event: Record<string, unknown> } }> = [];
+        const broadcasts: Array<{ workspaceId: number; payload: { loopId: number; event: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db,
             schemes: new SchemeRegistry(),
-            telemetryEventNotify: (sid, payload) => { broadcasts.push({ sessionId: sid, payload: payload as { loopId: number; event: Record<string, unknown> } }); },
+            telemetryEventNotify: (sid, payload) => { broadcasts.push({ workspaceId: sid, payload: payload as { loopId: number; event: Record<string, unknown> } }); },
         });
 
         const provider = noticeProvider(1);                   // turn 1: grammar_unenforced NOTICE pushed + broadcast live
         // NOTE: errors are log items (no telemetry/event); the broadcast surface is for engine NOTICES.
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        // Client side: the event broadcast live, scoped to the loop's session,
+        // Client side: the event broadcast live, scoped to the loop's workspace,
         // BEFORE turn 2 ever builds a packet.
         const liveParse = broadcasts.filter((b) => b.payload.event.kind === "grammar_unenforced");
         assert.equal(liveParse.length, 1, "the notice broadcast live exactly once");
-        assert.equal(liveParse[0].sessionId, sessionId, "scoped to the loop's session");
+        assert.equal(liveParse[0].workspaceId, workspaceId, "scoped to the loop's workspace");
         assert.equal(liveParse[0].payload.loopId, loopId);
         const liveEvent = liveParse[0].payload.event;
         assert.equal(liveEvent.source, "provider:mock");
@@ -409,7 +409,7 @@ test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live wi
 
         // Model side: the SAME envelope drains onto the next packet's
         // telemetry.errors[]. Same source/kind/message/position on both sides.
-        const t2 = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         const drained = p2.telemetryErrors.find((e) => e.kind === "grammar_unenforced");
         assert.ok(drained !== undefined, "same event drains onto the model's next packet");

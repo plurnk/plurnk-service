@@ -18,14 +18,14 @@ A2A tasks are plurnk runs wearing a wire format — the delegation breath (spawn
 
 **Inbound (plurnk serves), via the `plurnk-a2a` module:**
 - In-process daemon module (transport belongs to modules), serving the A2A JSON-RPC surface + the well-known card.
-- An inbound task becomes a run in the REGISTERED LISTENER SESSION (owner ruling 3): a session opts in by registering as the a2a listener; no registration = inbound refused. Registration is a session-level RPC in the session.constrain family (core seam - negotiate, do not improvise).
+- An inbound task becomes a run in the REGISTERED LISTENER SESSION (owner ruling 3): a workspace opts in by registering as the a2a listener; no registration = inbound refused. Registration is a workspace-level RPC in the workspace.constrain family (core seam - negotiate, do not improvise).
 - Artifacts = the run's entries/channels, translated outbound by the module.
 - The agent card is GENERATED from the live capability surface (registered schemes, available exec census — the same truth the tools sheet reads), never hand-maintained.
 
 ## Owner rulings (2026-07-13)
 1. Outbound scheme = **`plurnk-schemes-a2a`**, in-bundle (not optional).
 2. Inbound = **`plurnk-a2a`** workspace — a transport peer beside plurnk-agui; folding INTO plurnk-agui stays open as an implementing-lane assessment.
-3. **Session registers as a2a listener; inbound tasks land in that session.** No new session semantics — a registration, not a redefinition.
+3. **Workspace registers as a2a listener; inbound tasks land in that workspace.** No new workspace semantics — a registration, not a redefinition.
 4. Gating: **yolo server = ungated; non-yolo = proposal-gated** via the existing machinery (design below).
 5. **Internal contract vocabulary is never bent toward A2A's.** WORK stays plurnk's WORK. Translation lives in the scheme/module only.
 6. **Slow.** Checkpoints between phases; paradigm tripwires halt.
@@ -35,18 +35,18 @@ A2A tasks are plurnk runs wearing a wire format — the delegation breath (spawn
 
 **Two gates, cleanly separated (the clarity that was missing):**
 - **ADMISSION — who may land a task here at all.** Governed by `PLURNK_A2A_ALLOW`. FAIL-CLOSED: empty allow = inbound refused entirely (the daemon still SERVES its card — discoverable — but accepts zero tasks). No implicit trust, ever.
-- **EFFECT — what an admitted task's ops may do.** Governed by the existing proposal machinery (owner ruling 4): yolo session = auto-accept posture inherited from the daemon; non-yolo = host-effecting ops PROPOSE on the registered session's normal pending surface, where the OPERATOR accepts. The remote peer is never an approver of host effects — it sees `working` throughout; effect-gating is internal policy, not peer business. Hold-timeout knob fails an unattended proposal with a policy-shaped message (structure, never menus).
+- **EFFECT — what an admitted task's ops may do.** Governed by the existing proposal machinery (owner ruling 4): yolo workspace = auto-accept posture inherited from the daemon; non-yolo = host-effecting ops PROPOSE on the registered workspace's normal pending surface, where the OPERATOR accepts. The remote peer is never an approver of host effects — it sees `working` throughout; effect-gating is internal policy, not peer business. Hold-timeout knob fails an unattended proposal with a policy-shaped message (structure, never menus).
 
 **The four trust layers (inbound):**
 1. **Transport auth** — the card's `securitySchemes` declares what credential a peer must present to reach us (bearer / API key / OAuth / mTLS). Operator infra call.
 2. **Identity** — JWS-signed card (RFC 7515 / JCS 8785); the verified issuer domain is the peer's provable identity. UNSIGNED CARDS ARE REFUSED (unsigned = the impersonation hole A2A v1.0 closed).
-3. **Admission** — `PLURNK_A2A_ALLOW`: which verified identities may land tasks, into which registered session, under which effect posture. A decision table (the-knob-is-the-decision-table), reader-declared, operator-editable, one line per trusted peer.
+3. **Admission** — `PLURNK_A2A_ALLOW`: which verified identities may land tasks, into which registered workspace, under which effect posture. A decision table (the-knob-is-the-decision-table), reader-declared, operator-editable, one line per trusted peer.
 4. **Effect** — per the two-gates split above.
 
-Admission keys on the VERIFIED CARD ISSUER, never network origin (IP/host is spoofable; the JWS signature is not). A session registering as an a2a listener (ruling 3) and an allow entry naming that session are two halves of one handshake: a session opts IN to listening, the allow table says WHICH peers reach it.
+Admission keys on the VERIFIED CARD ISSUER, never network origin (IP/host is spoofable; the JWS signature is not). A workspace registering as an a2a listener (ruling 3) and an allow entry naming that workspace are two halves of one handshake: a workspace opts IN to listening, the allow table says WHICH peers reach it.
 
 **Open forks (owner's call — the substance to sort NOW, before phase 1):**
-- **A. Allow entry shape** — bind `(verified-issuer, session, effect-posture)` as one triple per peer, or split into separate knobs? (Lean: the triple — "who may do what where" is one decision.)
+- **A. Allow entry shape** — bind `(verified-issuer, workspace, effect-posture)` as one triple per peer, or split into separate knobs? (Lean: the triple — "who may do what where" is one decision.)
 - **B. Signed-card requirement** — confirm unsigned peers are refused outright. (Lean: yes.)
 - **C. Inbound transport auth we advertise** — bearer token (simplest over the tunnel), or mTLS (peer identity at transport, strongest), or both offered? (Owner infra call.)
 - **D. Outbound egress** — do we allowlist which peers we will DELEGATE to (task content leaves the box), or is that per-call operator discretion? (Genuine open question — the dangerous direction is usually inbound, but egress is real.)
@@ -62,7 +62,7 @@ Admission keys on the VERIFIED CARD ISSUER, never network origin (IP/host is spo
 0. **The admission model** (THIS section, foundation): forks A-E ruled; `PLURNK_A2A_ALLOW` shape settled; JWS verification + the fail-closed default specified as the contract every later phase implements. Nothing wire-facing ships before this is nailed.
 1. **`plurnk-schemes-a2a`, read-only outbound**: card fetch (with JWS verification from day one) + task status/artifact READs against a reference A2A server. Proves the scheme shape and teach doc; conforms to the phase-0 identity model. *(schemes lane — idle now.)*
 2. **Outbound lifecycle**: SEND-create, continue, input-required answering, KILL-cancel, SSE/push wake integration; egress posture per fork D.
-3. **`plurnk-a2a` inbound**: module + generated card + session-registration seam (with core) + `PLURNK_A2A_ALLOW` admission enforced fail-closed + effect-gating per the two-gates split. Trust is BUILT IN here, not bolted on later.
+3. **`plurnk-a2a` inbound**: module + generated card + workspace-registration seam (with core) + `PLURNK_A2A_ALLOW` admission enforced fail-closed + effect-gating per the two-gates split. Trust is BUILT IN here, not bolted on later.
 
 ## Status
 Plan prepared; NOTHING filed to lanes yet — awaiting owner blessing of this document, then phase-1 issue to the schemes lane.

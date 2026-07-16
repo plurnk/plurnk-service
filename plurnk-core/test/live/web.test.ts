@@ -22,7 +22,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import Http from "@plurnk/plurnk-schemes-http";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "../intg/_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "../intg/_helpers.ts";
 
 // A stable NON-HTML URL: text/plain streams via raw fetch (an HTML target routes through the
 // http scheme's lazy Chromium renderer — a heavier dependency, exercised separately).
@@ -42,12 +42,12 @@ test("live web: a discovered http:// READ fetches a real URL into a streamed ent
             const schemes = new SchemeRegistry();
             await schemes.discoverExternal(process.cwd());
             const engine = new Engine({ db, schemes });
-            const sessionId = await insertSession(db, `web-http-${crypto.randomUUID()}`);
-            const runId = await insertRun(db, sessionId);
-            const loopId = await insertLoop(db, runId, 1, "web");
+            const workspaceId = await insertWorkspace(db, `web-http-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "web");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
-            const r = await engine.dispatch({ statement, sessionId, runId, loopId, turnId, sequence: 1, origin: "model" });
+            const r = await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
             assert.equal(r.status, 102, "http READ backgrounds (102) — the body streams in");
 
             // Poll the REAL channel until the fetched bytes land (the stream writes it async).
@@ -77,9 +77,9 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
             const engine = new Engine({ db, schemes });
             engine.setExecutors(executors);
             schemes.registerRuntimeSchemes(executors);   // mint the search:// output scheme
-            const sessionId = await insertSession(db, `web-search-${crypto.randomUUID()}`);
-            const runId = await insertRun(db, sessionId);
-            const loopId = await insertLoop(db, runId, 1, "search");
+            const workspaceId = await insertWorkspace(db, `web-search-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "search");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
             const parsed = PlurnkParser.parse("<<PLAN::PLAN\n<<EXEC[search]:plurnk agent runtime:EXEC");
@@ -88,7 +88,7 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
 
             let logEntryId = -1;
             await engine.dispatch({
-                statement: item.statement, sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+                statement: item.statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
                 onDispatch: (id: number) => { logEntryId = id; },
             });
             await exec.idle();   // the backgrounded search spawn settles

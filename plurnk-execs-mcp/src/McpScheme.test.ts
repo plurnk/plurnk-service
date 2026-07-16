@@ -25,7 +25,7 @@ const makeCtx = () => {
     } = { wrote: null, opened: null, closed: null };
     const localAbort = new AbortController();
     const ctx: SchemeCtx = {
-        sessionId: 1, runId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
+        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries: {
             async read() { return { status: 404, entry: null }; },
             async write(pathname, entry) { state.wrote = { pathname, entry }; return { status: 201, created: true, entryId: 1 }; },

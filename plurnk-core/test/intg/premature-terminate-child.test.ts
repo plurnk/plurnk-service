@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { ParsedPath } from "@plurnk/plurnk-grammar";
 import { sendStmt, readStmt } from "./_dsl.ts";
@@ -20,13 +20,13 @@ const knownPath = (pathname: string): ParsedPath => ({
 test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 409 on the record (no erasure) + steers", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `prem-child-${crypto.randomUUID()}`);
-        const parentRun = await insertRun(db, sessionId);
-        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
+        const workspaceId = await insertWorkspace(db, `prem-child-${crypto.randomUUID()}`);
+        const parentWorker = await insertWorker(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const send200 = () => engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
-            sessionId, runId: parentRun, loopId: parentLoop,
+            workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
 
@@ -35,9 +35,9 @@ test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 40
         assert.equal(clean.status, 200, "with no live child, SEND[200] terminates cleanly");
         assert.equal(clean.steerStruck, false);
 
-        // Spawn a live child run (parent_run_id = parentRun, a non-terminal loop — default status 102).
-        const childRun = await insertRun(db, sessionId, parentRun);
-        await insertLoop(db, childRun, 1, "child");
+        // Spawn a live child run (parent_worker_id = parentWorker, a non-terminal loop — default status 102).
+        const childWorker = await insertWorker(db, workspaceId, parentWorker);
+        await insertLoop(db, childWorker, 1, "child");
 
         // Now SEND[200] is premature — the child is still a live thing the run holds.
         const premature = await send200();
@@ -62,18 +62,18 @@ test("[§send-premature-terminate] a CONCLUDED child carrying an inherited non-t
     // never counts. (Fork.fork also now clamps inherited loops terminal — this asserts the gate itself.)
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `prem-concluded-${crypto.randomUUID()}`);
-        const parentRun = await insertRun(db, sessionId);
-        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
-        const childRun = await insertRun(db, sessionId, parentRun);
-        await insertLoop(db, childRun, 1, "inherited");                       // seq 1 — frozen at 102 (inherited history)
-        const ownLoop = await insertLoop(db, childRun, 2, "own work");        // seq 2 — the child's actual loop
+        const workspaceId = await insertWorkspace(db, `prem-concluded-${crypto.randomUUID()}`);
+        const parentWorker = await insertWorker(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
+        const childWorker = await insertWorker(db, workspaceId, parentWorker);
+        await insertLoop(db, childWorker, 1, "inherited");                       // seq 1 — frozen at 102 (inherited history)
+        const ownLoop = await insertLoop(db, childWorker, 2, "own work");        // seq 2 — the child's actual loop
         await (db.test_set_loop_status as PrepMethod).run({ id: ownLoop, status: 200 }); // it concluded
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] }),
-            sessionId, runId: parentRun, loopId: parentLoop,
+            workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 200, "the child's LATEST loop is terminal → SEND[200] terminates cleanly, no false 409");
@@ -87,14 +87,14 @@ test("[§send-premature-terminate] a CONCLUDED child carrying an inherited non-t
 test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `pend-read-${crypto.randomUUID()}`);
-        const parentRun = await insertRun(db, sessionId);
-        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
-        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        const workspaceId = await insertWorkspace(db, `pend-read-${crypto.randomUUID()}`);
+        const parentWorker = await insertWorker(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(200, null, "the host is db.internal")] } }] }),
-            sessionId, runId: parentRun, loopId: parentLoop,
+            workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
@@ -111,16 +111,16 @@ test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 —
 test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run self-resolves (200) — the void never hangs", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `park-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "wait");
+        const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // The legacy indefinite-park syntax routes through the obligation-checked wait: with no live
         // work under it, a wait on nothing is already satisfied and concludes — it cannot hang the agent.
         const wait = { op: "SEND" as const, suffix: "", signal: 102, target: null, lineMarker: { marks: [-1] }, body: "standing by", position: { line: 1, column: 1 } };
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
-            sessionId, runId, loopId,
+            workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
@@ -133,14 +133,14 @@ test("[§send-premature-terminate] a READ + non-terminal SEND[102] continue does
     // never gated — only a terminal [200] over a live thing is.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `prem-read-ok-${crypto.randomUUID()}`);
-        const parentRun = await insertRun(db, sessionId);
-        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
-        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        const workspaceId = await insertWorkspace(db, `prem-read-ok-${crypto.randomUUID()}`);
+        const parentWorker = await insertWorker(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(102)] } }] }),
-            sessionId, runId: parentRun, loopId: parentLoop,
+            workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.steerStruck, false, "READ + SEND[102] does not strike — the rail gates only terminal [200]");
@@ -153,15 +153,15 @@ test("[§send-premature-terminate] a model that won't stop premature-200ing with
     // hang the runtime, and it can't lie about being done.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `prem-strike-${crypto.randomUUID()}`);
-        const parentRun = await insertRun(db, sessionId);
-        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
+        const workspaceId = await insertWorkspace(db, `prem-strike-${crypto.randomUUID()}`);
+        const parentWorker = await insertWorker(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
         // A persistently live child (its loop stays non-terminal through the parent's whole loop).
-        const childRun = await insertRun(db, sessionId, parentRun);
-        await insertLoop(db, childRun, 1, "child");
+        const childWorker = await insertWorker(db, workspaceId, parentWorker);
+        await insertLoop(db, childWorker, 1, "child");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } })) });
-        const result = await engine.runLoop({ provider, sessionId, runId: parentRun, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
+        const result = await engine.runLoop({ provider, workspaceId, workerId: parentWorker, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
         // The engine rails abandon it: identical repeated premature-200 turns trip CYCLE detection (508)
         // before the plain strike threshold (500) — defense in depth. Either way the model is terminated
         // and never gets a false 200. The robustness guarantee: a confused model can't falsely complete
@@ -178,16 +178,16 @@ test("[§send-premature-terminate] GUARD: 499 is NEVER gated — abandon-by-inte
     // gate; that is a paradigm change and belongs in Parked-for-Depth, not a commit.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `guard-499-${crypto.randomUUID()}`);
-        const parentRun = await insertRun(db, sessionId);
-        const parentLoop = await insertLoop(db, parentRun, 1, "parent");
-        const childRun = await insertRun(db, sessionId, parentRun);
-        await insertLoop(db, childRun, 1, "child"); // live child
-        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
+        const workspaceId = await insertWorkspace(db, `guard-499-${crypto.randomUUID()}`);
+        const parentWorker = await insertWorker(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
+        const childWorker = await insertWorker(db, workspaceId, parentWorker);
+        await insertLoop(db, childWorker, 1, "child"); // live child
+        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(499, null, "abandoning")] } }] }),
-            sessionId, runId: parentRun, loopId: parentLoop,
+            workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 499, "the abandon lands — pending work never gates a 499");
@@ -204,17 +204,17 @@ test("[§send-premature-terminate] a retrievals-ONLY refusal states the continua
     // results simply arrive. The steer now says exactly that. Streams/children keep the menu.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `steer-ret-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
-        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const workspaceId = await insertWorkspace(db, `steer-ret-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } }] }),
-            sessionId, runId, loopId,
+            workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ run_id: runId });
+        const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
         assert.match(refused!.rx, /Last turn both performed retrieval operations and attempted to terminate\. Retrieval operations force an additional turn to receive results for review and reaction\. To conclude, only use PLAN and SEND\[200\] operations\./, "the steer narrates history third-person, states the forced-turn mechanism, and prescribes the concluding emission's shape (#384, owner wording, run48)");
@@ -229,15 +229,15 @@ test("[§send-premature-terminate] retrieval preemies NEVER strike — repeated 
     // keeps its strike (covered by the STRIKES-OUT test above).
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `preemie-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
-        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const workspaceId = await insertWorkspace(db, `preemie-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const readAndConclude = () => ({ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } });
         const provider = new Mock({ contextWindow: 100000, responses: [readAndConclude(), readAndConclude(), readAndConclude(), readAndConclude()] });
-        for (let i = 0; i < 4; i++) await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ status_rx: number }>({ run_id: runId });
+        for (let i = 0; i < 4; i++) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ status_rx: number }>({ worker_id: workerId });
         assert.equal(refusals.filter((r) => r.status_rx === 409).length, 4, "all four conclude-attempts refused — the gate never weakened");
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
         assert.notEqual(loopStatus, 500, "the loop is NOT struck out — retrieval preemies never strike");
@@ -252,10 +252,10 @@ test("[§send-premature-terminate] one idle-grace turn after a retrieval-409 —
     // three more bare idles — the rail resumes and strikes out as ever (grace is ONE turn).
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `grace-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
-        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const workspaceId = await insertWorkspace(db, `grace-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: { raw: "waiting", json: null }, position: { line: 1, column: 1 } } as never;
         const idle = () => ({ assistant: { content: "", reasoning: null, ops: [planStmt, sendStmt(102, null, "waiting")] } });
@@ -265,11 +265,11 @@ test("[§send-premature-terminate] one idle-grace turn after a retrieval-409 —
         ] });
         const statuses: number[] = [];
         for (let i = 0; i < 5; i++) {
-            const r = await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+            const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             statuses.push(r.status);
             if ((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status === 500) break;
         }
-        const errRows = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        const errRows = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
         const idleStrikes = errRows.filter((r) => /idle_turn/.test(r.rx)).length;
         assert.ok(idleStrikes >= 1, "later idles still strike — the rail is intact");
         const graceCovered = 5 - 1 - idleStrikes; // turns minus the refused turn minus struck idles
@@ -284,16 +284,16 @@ test("a parse-emptied turn is FAILED RETRIEVAL, not idle — the root 400 speaks
     // Owner criterion: op attempts that errored → the root error alone; idle only for truly idle.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `pe-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `pe-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [
             // RAW content (no pre-parsed ops) so the real parser judges it: the FIND is malformed.
             { assistant: { content: "<<PLAN:check the doc:PLAN\n<<FIND(((broken:FIND\n<<SEND[102]:fetching:SEND", reasoning: null } },
         ] });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const errRows = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const errRows = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
         assert.ok(errRows.length > 0, "the malformed FIND minted its parse-error row (the root cause, recorded)");
         assert.ok(errRows.every((r) => !/idle_turn|Illegal idle/.test(r.rx)), "no idle-409 stacked on the root error — one accident, one error");
     } finally { await db.close(); }
@@ -307,23 +307,23 @@ test("[§log-row-self-explains] a FAILED op row carries its failure message on i
     // the message renders in EVERY packet; the errors section is a terse pointer at the row.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `steer-meta-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
-        await seedEntryWithChannel(db, { sessionId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        const workspaceId = await insertWorkspace(db, `steer-meta-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [
                 { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } },
                 { assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } },
             ] }),
-            sessionId, runId, loopId,
+            workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         // The NEXT packet renders the refused SEND row with its steer ON the meta line.
         const t2 = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] }),
-            sessionId, runId, loopId,
+            workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
@@ -332,7 +332,7 @@ test("[§log-row-self-explains] a FAILED op row carries its failure message on i
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
         assert.match(metaLine!, /"error":"Last turn both performed retrieval operations and attempted to terminate\./, "the steer rides the META LINE — visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.
-        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ run_id: runId });
+        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");
     } finally { await db.close(); }
 });

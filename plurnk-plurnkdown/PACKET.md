@@ -75,7 +75,7 @@ the *shape* is the contract. How core generates it is core's own — this specif
 
 ### Schemes — reference op examples
 Today a bullet list of bare ops (`* <<READ(log:///…)::READ` …) demonstrating each scheme
-(`log:///`, `known:///`, `unknown:///`, `run://`, `https://`). Target: a ```plurnk fenced
+(`log:///`, `known:///`, `unknown:///`, `worker://`, `https://`). Target: a ```plurnk fenced
 catalog — validatable by the same fence-gate as the doc, not bullets.
 
 ### Policy — persona / config

@@ -1,4 +1,4 @@
-// Measure a session's true turn-1 packet floor with the system's own honest-overshoot
+// Measure a workspace's true turn-1 packet floor with the system's own honest-overshoot
 // instrument: CONTEXT_WINDOW pinned to 1 with zero reserves hard-413s BEFORE any generate — the
 // grinder folds, still overflows, and the loop terminates 413 with the stored record
 // rendering the real total (§tokenomics-over-budget-floor). Zero model cost, zero GPU.
@@ -7,14 +7,14 @@
 // — the razor-pin treadmill (three re-pinnings in one week) ends here.
 
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop, pinAliasPartition } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 
 export const measureFloor = async (opts: { label: string; projectRoot: string; prompt: string }): Promise<number> => {
     // CONTEXT_WINDOW 1 + zero reserves → a pre-generate hard-413 whose stored record renders the real floor.
     // MUST ride the active alias's suffix (bare is overridden by the model's own .env knobs).
     const restore = pinAliasPartition({ CONTEXT_WINDOW: "1", REASONING: "0", COMPLETION: "0", SAFETY: "0" });
     try {
-        const s = await liveSession({ name: `floor-probe-${opts.label}-${crypto.randomUUID()}`, projectRoot: opts.projectRoot });
+        const s = await liveWorkspace({ name: `floor-probe-${opts.label}-${crypto.randomUUID()}`, projectRoot: opts.projectRoot });
         try {
             const { finalStatus, turnIds } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: 60_000 });
             if (finalStatus !== 413) throw new Error(`floor probe expected a pre-generate hard-413, got ${finalStatus}`);

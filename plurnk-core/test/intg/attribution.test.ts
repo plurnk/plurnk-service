@@ -12,7 +12,7 @@ import PluginAttribution from "../../src/core/plugin-attribution.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 import { parseDsl } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
@@ -27,9 +27,9 @@ const turn = (ops: PlurnkStatement[]): MockResponse => ({
 const captureAttributions = async (tags: string[] | null): Promise<string[] | undefined> => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `attr-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `attr-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const schemes = new SchemeRegistry();
         if (tags !== null) schemes.attributions = () => [...tags]; // stand in for the discovered set
         const engine = new Engine({ db, schemes });
@@ -42,7 +42,7 @@ const captureAttributions = async (tags: string[] | null): Promise<string[] | un
         // attributions field), but the engine passes it at runtime — read it through a cast.
         provider.generate = (req) => { captured = (req as { attributions?: string[] }).attributions; seen = true; return real(req); };
 
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.ok(seen, "generate() was called");
         return captured;
     } finally { await db.close(); }
@@ -56,7 +56,7 @@ test("#249 — declared attribution tags are unioned, deduped, sorted, and passe
 
 test("#249 — no declared attribution → the wire field is omitted (undefined), not an empty array", async () => {
     const captured = await captureAttributions(null);
-    assert.equal(captured, undefined, "a session with no attributing plugins sends no attributions field");
+    assert.equal(captured, undefined, "a workspace with no attributing plugins sends no attributions field");
 });
 
 test("[§attribution-plurnk-namespace-reserved] @plurnk/ is reserved to @plurnk/-scoped packages", () => {
@@ -77,15 +77,15 @@ test("[§attribution-plurnk-namespace-reserved] @plurnk/ is reserved to @plurnk/
 test("#249 — the loop is tagged with its active plugins' attribution tags, stored on the loop", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `loop-attr-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `loop-attr-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const schemes = new SchemeRegistry();
         schemes.attributions = () => ["npm:jane", "@acme/widgets"]; // the active plugins' declared tags
         const engine = new Engine({ db, schemes });
         const provider = new Mock({ contextWindow: 100000, responses: [turn(sendDone)] });
 
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         const row = await (db.test_loops_get_attributions as PrepMethod).get<{ attributions: string }>({ loop_id: loopId });
         assert.deepEqual(JSON.parse(row!.attributions), ["@acme/widgets", "npm:jane"], "the activity is tagged with its plugins' tags, deduped + sorted");

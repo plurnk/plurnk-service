@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import type { CopyStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -24,17 +24,17 @@ const copyStmt = (src: UrlPath, dst: UrlPath): CopyStatement => ({
 test("[§channel-mimetype-cross-mimetype-415] COPY a json-bodied source into a markdown-fixed known:/// dst returns 415", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `copy-415-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "copy mismatch");
+        const workspaceId = await insertWorkspace(db, `copy-415-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "copy mismatch");
         const turnId = await insertTurn(db, loopId, 1, 102);
         // Non-markdown source — the seed sidesteps Known's write-time markdown lock.
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/data/blob", channel: "body", content: "{\"k\":1}", mimetype: "application/json" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/data/blob", channel: "body", content: "{\"k\":1}", mimetype: "application/json" });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         const copy = await engine.dispatch({
             statement: copyStmt(urlPath("known", "/data/blob"), urlPath("known", "/data/copy")),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(copy.status, 415, "json body cannot be copied into a markdown-fixed known channel");
         assert.match((copy as { error?: string }).error ?? "", /mimetype mismatch/);

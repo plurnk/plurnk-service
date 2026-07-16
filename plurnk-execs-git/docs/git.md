@@ -19,7 +19,7 @@ Results land as JSON on `#results`. Anything else (push, pull, rebase, …) retu
 
 ## Target
 
-`(target)` is the **repo directory**, resolved against the workspace: `<<EXEC[git](./subrepo):status:EXEC`. No target → the session workspace.
+`(target)` is the **repo directory**, resolved against the workspace: `<<EXEC[git](./subrepo):status:EXEC`. No target → the workspace workspace.
 
 ## Commit author
 

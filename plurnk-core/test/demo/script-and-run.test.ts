@@ -5,7 +5,7 @@
 // User-facing prompt is natural: no `EDIT(...)`, no `EXEC[sh]`, no
 // mention of `exec:///` or file conventions. Pure intent.
 //
-// Driven through the REAL prod loop (loop.run via the daemon). session.create
+// Driven through the REAL prod loop (loop.run via the daemon). workspace.create
 // pins the workspace as project_root, so the model's EDIT writes there and its
 // EXEC runs there (Exec defaults cwd to project_root) — the model finds what it
 // just wrote, with no hand-wired engine.
@@ -16,12 +16,12 @@ import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { liveSession, liveLoop } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
 test("demo: 'write a script that greets me and run it' — script lands in workspace, runs, model reports the greeting", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-demo-script-"));
     try {
-        const s = await liveSession({ name: `demo-script-${crypto.randomUUID()}`, projectRoot: workspace });
+        const s = await liveWorkspace({ name: `demo-script-${crypto.randomUUID()}`, projectRoot: workspace });
         try {
             // Specific marker the script must print so we can verify the model
             // actually ran what it created (vs. hallucinating the output). Natural

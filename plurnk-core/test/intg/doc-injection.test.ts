@@ -28,7 +28,7 @@ test("[§actor-boundary-doc-injection] PLURNK_SERVICE_MD_<ALIAS>: doc is materia
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "md-doc" });
+                await rpcCall(ws, 1, "workspace.create", { name: "md-doc" });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
 
@@ -73,7 +73,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — 
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "md-zero" });
+                await rpcCall(ws, 1, "workspace.create", { name: "md-zero" });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
@@ -89,10 +89,10 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — 
     }
 });
 
-// #231 — a client's session.create settings.mdDocs UNION with the server's PLURNK_SERVICE_MD_*
-// docs: the operator's policy doc rides into every session, the client adds its own on
+// #231 — a client's workspace.create settings.mdDocs UNION with the server's PLURNK_SERVICE_MD_*
+// docs: the operator's policy doc rides into every workspace, the client adds its own on
 // top, and on an alias collision the client deliberately shadows the server's.
-test("[§operator-config-session-md-docs] session.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — env rides, client adds, client wins a collision", async () => {
+test("[§operator-config-workspace-md-docs] workspace.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — env rides, client adds, client wins a collision", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-union-"));
     const policyPath = join(dir, "policy.md");
     const guidePath = join(dir, "guide.md");
@@ -107,7 +107,7 @@ test("[§operator-config-session-md-docs] session.create settings.mdDocs UNIONs 
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "md-union", settings: { mdDocs: [
+                await rpcCall(ws, 1, "workspace.create", { name: "md-union", settings: { mdDocs: [
                     { alias: "REPO", content: "# Repo guide\nlocal.\n" },
                     { alias: "POLICY", content: "# Client policy\noverride.\n" },
                 ] } });

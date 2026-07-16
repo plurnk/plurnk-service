@@ -9,7 +9,7 @@ import { proposalToolCall, proposalToolCallId, proposalToolName, resolutionFromT
 import type { ProposalNotification } from "./types.ts";
 
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
-    logEntryId: 42, sessionId: 1, runId: 2, loopId: 3, turnId: 4,
+    logEntryId: 42, workspaceId: 1, workerId: 2, loopId: 3, turnId: 4,
     op: "EDIT", target: { scheme: "file", pathname: "README.md" },
     body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, flags: {}, staleClobberRisk: false,
     ...over,
@@ -64,7 +64,7 @@ test("§1 resolutionFromToolResult: tolerant of a bare decision, strict on garba
 test("§2 reads → STATE: snapshot nests under plurnk; delta passes patches through", () => {
     const snap = stateSnapshot({
         providers: [{ alias: "opus", model: "anthropic/claude-opus", active: true, promptBudget: 200000 }],
-        session: { id: 1, name: "agui-tui", projectRoot: "/w", budget: 200000 },
+        workspace: { id: 1, name: "agui-tui", projectRoot: "/w", budget: 200000 },
     });
     assert.equal(snap.type, "STATE_SNAPSHOT");
     const snapshot = (snap as { snapshot: { plurnk: { providers: Array<{ active: boolean }> } } }).snapshot;
@@ -75,12 +75,12 @@ test("§2 reads → STATE: snapshot nests under plurnk; delta passes patches thr
 });
 
 test("§3 actions: parse a forwardedProps request, project the outcome", () => {
-    assert.deepEqual(parseAction({ plurnk: { action: { kind: "session.rename", name: "new-name" } } }), { kind: "session.rename", params: { name: "new-name" } });
+    assert.deepEqual(parseAction({ plurnk: { action: { kind: "workspace.rename", name: "new-name" } } }), { kind: "workspace.rename", params: { name: "new-name" } });
     assert.equal(parseAction({ plurnk: {} }), null, "no action → null");
     assert.equal(parseAction({ plurnk: { action: { name: "x" } } }), null, "an action without a kind → null");
     assert.equal(parseAction(undefined), null, "no forwardedProps → null");
-    const ok = actionResult("session.rename", { ok: true, result: { name: "new-name" } });
-    assert.deepEqual(ok, { type: "CUSTOM", name: "plurnk.action.result", value: { kind: "session.rename", ok: true, result: { name: "new-name" } } });
+    const ok = actionResult("workspace.rename", { ok: true, result: { name: "new-name" } });
+    assert.deepEqual(ok, { type: "CUSTOM", name: "plurnk.action.result", value: { kind: "workspace.rename", ok: true, result: { name: "new-name" } } });
     const err = actionResult("op.exec", { ok: false, error: "rejected 403" });
     assert.deepEqual((err as { value: { ok: boolean; error: string } }).value, { kind: "op.exec", ok: false, error: "rejected 403" });
 });

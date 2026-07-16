@@ -24,7 +24,7 @@ test("[§actor-boundary-catalog-preview] PLURNK_SERVICE_FILES_ITEMS foists the c
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "manifest-on" });
+                await rpcCall(ws, 1, "workspace.create", { name: "manifest-on" });
                 await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
                 await rpcCall(ws, 3, "op.edit", { target: "known:///b.md", content: "bravo" });
                 await rpcCall(ws, 4, "op.edit", { target: "known:///c.md", content: "charlie" });
@@ -45,7 +45,7 @@ test("[§actor-boundary-catalog-preview] PLURNK_SERVICE_FILES_ITEMS foists the c
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "manifest-off" });
+                await rpcCall(ws, 1, "workspace.create", { name: "manifest-off" });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
@@ -67,7 +67,7 @@ test("no manifest.json entry — the catalog is FIND-served; preview-off foists 
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "catalog-find-served" });
+                await rpcCall(ws, 1, "workspace.create", { name: "catalog-find-served" });
                 await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
                 const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
@@ -82,34 +82,34 @@ test("no manifest.json entry — the catalog is FIND-served; preview-off foists 
     }
 });
 
-// #231 — a session's client-chosen filesItems REPLACES the env default outright,
+// #231 — a workspace's client-chosen filesItems REPLACES the env default outright,
 // both directions: it can switch the preview off when env says on, and on when off.
-test("[§operator-config-session-files-items] session.create settings.filesItems replaces the env default at turn 0", async () => {
+test("[§operator-config-workspace-files-items] workspace.create settings.filesItems replaces the env default at turn 0", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
-        // env ON (full) but the client's session asks for OFF (0) → no preview foisted.
+        // env ON (full) but the client's workspace asks for OFF (0) → no preview foisted.
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "mi-off", settings: { filesItems: 0 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mi-off", settings: { filesItems: 0 } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "session filesItems:0 replaces env -1 — no catalog FIND foisted");
+                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "workspace filesItems:0 replaces env -1 — no catalog FIND foisted");
             } finally { ws.close(); }
         });
-        // env OFF (0) but the client's session asks for ON (-1) → preview appears.
+        // env OFF (0) but the client's workspace asks for ON (-1) → preview appears.
         process.env.PLURNK_SERVICE_FILES_ITEMS = "0";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "mi-on", settings: { filesItems: -1 } });
+                await rpcCall(ws, 1, "workspace.create", { name: "mi-on", settings: { filesItems: -1 } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
                 const cf = rows.find((r) => r.op === "FIND");
-                assert.ok(cf !== undefined && cf.status_rx === 200, "session filesItems:-1 replaces env 0 — catalog FIND foisted");
+                assert.ok(cf !== undefined && cf.status_rx === 200, "workspace filesItems:-1 replaces env 0 — catalog FIND foisted");
             } finally { ws.close(); }
         });
     } finally {
@@ -118,14 +118,14 @@ test("[§operator-config-session-files-items] session.create settings.filesItems
 });
 
 // #231 — the client surface is narrow + validated; malformed settings fail hard.
-test("session.create rejects malformed settings — fail hard, no silent accept (#231)", async () => {
+test("workspace.create rejects malformed settings — fail hard, no silent accept (#231)", async () => {
     await withDaemon(mock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            const badMI = await rpcCall(ws, 1, "session.create", { name: "bad-mi", settings: { filesItems: 1.5 } });
+            const badMI = await rpcCall(ws, 1, "workspace.create", { name: "bad-mi", settings: { filesItems: 1.5 } });
             assert.ok(badMI.error, "a non-integer filesItems is a JSON-RPC error, not a silent accept");
             assert.match(badMI.error!.message, /filesItems must be an integer/);
-            const badAlias = await rpcCall(ws, 2, "session.create", { name: "bad-alias", settings: { mdDocs: [{ alias: "has/slash", content: "x" }] } });
+            const badAlias = await rpcCall(ws, 2, "workspace.create", { name: "bad-alias", settings: { mdDocs: [{ alias: "has/slash", content: "x" }] } });
             assert.ok(badAlias.error, "a malformed mdDocs alias is a JSON-RPC error");
             assert.match(badAlias.error!.message, /alias must be/);
         } finally { ws.close(); }
@@ -144,7 +144,7 @@ test("[#269] turn-0 run-once foists fire on the run's first loop only, not every
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "foist-once" });
+                await rpcCall(ws, 1, "workspace.create", { name: "foist-once" });
                 await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
                 const r1 = await runLoopToTerminal(ws, 3, { prompt: "first" });
                 const r2 = await runLoopToTerminal(ws, 4, { prompt: "second" });
@@ -168,12 +168,12 @@ test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dy
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "turn0-exemplar" });
+                await rpcCall(ws, 1, "workspace.create", { name: "turn0-exemplar" });
                 await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
                 const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
-                const { modelRunId } = resp as { modelRunId: number };
+                const { modelWorkerId } = resp as { modelWorkerId: number };
                 // The run's first turn opens with the turn-0 `model` exemplar at 1/1/1, born OPEN.
-                const row = await (db.log_read_by_coordinate as PrepMethod).get<{ op: string; rx: string }>({ run_id: modelRunId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+                const row = await (db.log_read_by_coordinate as PrepMethod).get<{ op: string; rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 assert.equal(row?.op, "model", "the run's first turn opens with the turn-0 model exemplar");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic — it carries the FIND the foist ACTUALLY dispatched (known:///**), rendered to
@@ -195,7 +195,7 @@ test("[§actor-boundary-catalog-preview] an EMPTY workspace still foists the bar
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "session.create", { name: "empty-ws-find" }); // headless: zero tracked files
+                await rpcCall(ws, 1, "workspace.create", { name: "empty-ws-find" }); // headless: zero tracked files
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });

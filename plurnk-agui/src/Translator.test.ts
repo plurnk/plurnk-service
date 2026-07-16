@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Translator from "./Translator.ts";
 import type { LogEntryNotification, TerminatedNotification } from "./types.ts";
 
-const t = (): Translator => new Translator({ threadId: "th-1", runId: "run-1" });
+const t = (): Translator => new Translator({ threadId: "th-1", workerId: "run-1" });
 const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotification => ({
     entry: { id: 7, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
 });
@@ -53,11 +53,11 @@ test("[§agui-projection] turn boundaries are STEPs; termination closes the step
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
 });
 
-test("[§agui-numbers-passthrough] plurnk.terminated carries the full terminal truth (sessionId, loopId, turnIds, costPico) for a client's json record", () => {
-    const tr = new Translator({ threadId: "th-1", runId: "run-1", sessionId: 512 });
+test("[§agui-numbers-passthrough] plurnk.terminated carries the full terminal truth (workspaceId, loopId, turnIds, costPico) for a client's json record", () => {
+    const tr = new Translator({ threadId: "th-1", workerId: "run-1", workspaceId: 512 });
     const term: TerminatedNotification = { loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3], usage: { promptTokens: 10, completionTokens: 5, costPico: 4200, contextTokens: 10, promptBudget: 6848, meta: { balancePico: 99 } } };
-    const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification & { sessionId: number | null } };
-    assert.equal(custom.value.sessionId, 512, "daemon sessionId — one json schema across transports");
+    const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification & { workspaceId: number | null } };
+    assert.equal(custom.value.workspaceId, 512, "daemon workspaceId — one json schema across transports");
     assert.equal(custom.value.loopId, 77, "loopId — absent from core events");
     assert.deepEqual(custom.value.turnIds, [1, 2, 3], "turn count for the record");
     assert.equal(custom.value.usage.costPico, 4200, "costPico — dropped by the budget STATE_DELTA");
@@ -75,7 +75,7 @@ test("[§agui-numbers-passthrough] the budget STATE_DELTA carries the daemon's n
 test("[§agui-proposal-resolve] a proposal projects with everything the frontend needs to answer", () => {
     const tr = t();
     const events = tr.proposal({
-        logEntryId: 42, sessionId: 1, runId: 2, loopId: 3, turnId: 4,
+        logEntryId: 42, workspaceId: 1, workerId: 2, loopId: 3, turnId: 4,
         op: "SEND", target: { scheme: null, pathname: null }, body: "",
         attrs: { question: "Which environment?", choices: ["prod", "staging"] }, flags: { yolo: true },
     });
@@ -95,16 +95,16 @@ test("[§agui-projection] a non-200 termination is RUN_ERROR carrying the status
 });
 
 test("[§agui-topology-scope] a FOREIGN run's rows never enter the core stream — plurnk.row/ambient only", () => {
-    const tr = new Translator({ threadId: "th", runId: "r", modelRunId: 2 });
-    const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { run_id: 2 } as object) } as never });
+    const tr = new Translator({ threadId: "th", workerId: "r", modelWorkerId: 2 });
+    const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "REASONING_MESSAGE_START"), "the thread's model run projects");
-    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), ...( { run_id: 5 } as object) } as never });
+    const worker = tr.logEntry({ entry: { id: 9, op: "SEND", origin: "model", turn_id: 7, tx: JSON.stringify({ body: "worker speech" }), ...( { worker_id: 5 } as object) } as never });
     assert.deepEqual(worker.map((e) => e.type), ["CUSTOM", "CUSTOM"], "a worker's rows ride plurnk.row + plurnk.ambient — visible topology, never conversation");
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
 });
 
-test("[§agui-replay] the session log replays as MESSAGES_SNAPSHOT — model SENDs are the conversation spine", () => {
-    const tr = new Translator({ threadId: "th", runId: "r" });
+test("[§agui-replay] the workspace log replays as MESSAGES_SNAPSHOT — model SENDs are the conversation spine", () => {
+    const tr = new Translator({ threadId: "th", workerId: "r" });
     const events = tr.replay([
         { id: 1, op: "PLAN", origin: "model", tx: { body: "think" } },
         { id: 2, op: "SEND", origin: "model", coordinate: "1/1/9/SEND", tx: { body: "The answer is 42." } },

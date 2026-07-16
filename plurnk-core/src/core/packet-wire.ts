@@ -480,9 +480,9 @@ export default class PacketWire {
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
         if (target === null || target === undefined) return null;
-        // An authority-bearing target (run://<name> — the run IS the authority, §run-scheme;
+        // An authority-bearing target (worker://<name> — the run IS the authority, §run-scheme;
         // a web host http://host/path) keeps its name in `hostname`. Without it a spawn renders
-        // as a bare `run://`, indistinguishable across workers — the model goes blind to what it
+        // as a bare `worker://`, indistinguishable across workers — the model goes blind to what it
         // spawned and re-spawns. Reconstruct the authority form when a hostname is present;
         // namespace schemes (plurnk/known) fold their authority into the path and fall through.
         const host = typeof target.hostname === "string" && target.hostname.length > 0 ? target.hostname : null;

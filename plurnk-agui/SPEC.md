@@ -11,17 +11,17 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
   at boot (`registerModule` → the core seam handle); it opens the AG-UI+ listener and owns
   the client interface. No WebSocket, no separate process.
 - **A plurnk SESSION is the world; an AG-UI THREAD is a conversation over it** {§agui-thread-is-run}
-  — plurnk's machine model (service SPEC §machine-processes) splits the WORLD (a session: one
-  curated workspace) from the CONVERSATION (a run: a history over that world). AG-UI's session
-  concept is the workspace, selected by name, VERBATIM, via `forwardedProps.plurnk.session`
+  — plurnk's machine model (service SPEC §machine-processes) splits the WORLD (a workspace: one
+  curated workspace) from the CONVERSATION (a run: a history over that world). AG-UI's workspace
+  concept is the workspace, selected by name, VERBATIM, via `forwardedProps.plurnk.workspace`
   (attach if it exists, create with exactly that name otherwise — no prefix, no forging). The
-  session is REQUIRED: a run has no existence without a world, so its absence is a contract
+  workspace is REQUIRED: a run has no existence without a world, so its absence is a contract
   violation the module rejects (500) — never a workspace forged from the `threadId`. The
   `threadId` is the conversation — a RUN over that world, and the name is the identity at
-  BOTH levels: `threadId` == the session name binds the session's MODEL run (the default
-  conversation, `ensureModelRun` — origin identifies it, never a name parse); a DISTINCT
+  BOTH levels: `threadId` == the workspace name binds the workspace's MODEL run (the default
+  conversation, `ensureModelWorker` — origin identifies it, never a name parse); a DISTINCT
   `threadId` names its own conversation run — found by name if it exists (forks and prior
-  conversations are addressable as threads), minted via `createConversationRun` (svc#366)
+  conversations are addressable as threads), minted via `createConversationWorker` (svc#366)
   if it doesn't. World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
   `run.fork`) operate on the THREAD's conversation, never blindly on the model run.
   Extended context persists across AG-UI runs because the run's log does.
@@ -76,7 +76,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   up IS the abort signal; no run is orphaned unwatched.
 
 - **Reattach replays** {§agui-replay} — a rediscovered thread (the bridge restarted, a second
-  frontend arrived) attaches to its existing session by name→id and opens ORIENTED: the model
+  frontend arrived) attaches to its existing workspace by name→id and opens ORIENTED: the model
   run's SENDs replay as `MESSAGES_SNAPSHOT` (the conversation spine; everything else stays
   reachable via live `plurnk.row`), and every pending stop-the-world proposal re-surfaces
   immediately via the daemon's `proposal.list` — the indefinite-wait ruling's client half: a
@@ -104,7 +104,7 @@ clients' stop controls ride it).
 
 ## Topology scope {§agui-topology-scope}
 
-The session broadcast carries EVERY run's rows (workers, the plurnk run, siblings);
+The workspace broadcast carries EVERY run's rows (workers, the plurnk run, siblings);
 only the thread's model run projects onto the core vocabulary. Foreign-run rows ride
 `plurnk.row`/`plurnk.ambient` — visible to rich clients as topology, never interleaved
 into the conversation a generic frontend renders.

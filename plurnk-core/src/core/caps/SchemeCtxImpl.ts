@@ -20,8 +20,8 @@ const CROSS_SCHEME_STUB: CrossSchemeCaps = {
 };
 
 export default class SchemeCtxImpl implements SchemeCtx {
-    readonly sessionId: number;
-    readonly runId: number;
+    readonly workspaceId: number;
+    readonly workerId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;
@@ -34,8 +34,8 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly crossScheme: CrossSchemeCaps = CROSS_SCHEME_STUB;
 
     constructor(ctx: PlurnkSchemeContext, scheme: string | null) {
-        this.sessionId = ctx.sessionId;
-        this.runId = ctx.runId;
+        this.workspaceId = ctx.workspaceId;
+        this.workerId = ctx.workerId;
         this.loopId = ctx.loopId;
         this.turnId = ctx.turnId;
         this.writer = ctx.writer;

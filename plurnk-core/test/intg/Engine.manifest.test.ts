@@ -1,5 +1,5 @@
 // SPEC §packet — plurnk:///manifest.json is the complete, unranked directory of the
-// session's entries, rewritten every turn by Engine.runTurn. This drives the
+// workspace's entries, rewritten every turn by Engine.runTurn. This drives the
 // LIVE path: a real turn materializes the manifest; we parse its body and assert
 // the directory contract — every entry listed, NO `shown`/relevance field, the
 // catalog never lists itself.
@@ -13,7 +13,7 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const emptyTurn = { assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } };
 
@@ -22,21 +22,21 @@ type CatalogItem = { path: string; shown?: unknown; channels: Record<string, { m
 test("[§packet-catalog] the catalog is the complete, unranked directory — every entry, no `shown`, never itself", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `manifest-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "what's available?");
+        const workspaceId = await insertWorkspace(db, `manifest-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "what's available?");
 
-        // Two session entries the directory must enumerate.
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/france/capital", channel: "body", content: "Paris", mimetype: "text/markdown" });
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/germany/capital", channel: "body", content: "Berlin\nis the capital", mimetype: "text/markdown" });
+        // Two workspace entries the directory must enumerate.
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/france/capital", channel: "body", content: "Paris", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/germany/capital", channel: "body", content: "Berlin\nis the capital", mimetype: "text/markdown" });
 
         // A real turn runs the derivation pump (maintainDerivations); the catalog is the
         // read-only render FIND serves — there is no manifest.json entry.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId, runId })) as CatalogItem[];
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId })) as CatalogItem[];
         const paths = catalog.map((e) => e.path);
 
         // Completeness: every seeded entry is listed.
@@ -62,24 +62,24 @@ test("[§packet-catalog] the catalog is the complete, unranked directory — eve
 test("manifest build survives a malformed application/json entry — degrades to a line count, never crashes the turn (-32603)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `manifest-badjson-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "what's available?");
+        const workspaceId = await insertWorkspace(db, `manifest-badjson-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "what's available?");
 
         // A valid JSON entry plus one whose body is malformed — the kind of imperfect
         // JSON a small model writes. buildManifestBody calls mimetypes.process() per
         // entry for its line count, and process() validates application/json and THROWS
         // SyntaxError on a parse error. Uncaught, that crashed the whole manifest build
         // (and the turn → daemon -32603). One bad entry must not take down everything.
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/good.json", channel: "body", content: '{"ok":true}', mimetype: "application/json" });
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/bad.json", channel: "body", content: '{\n  "a": 1\n  "b": 2\n}', mimetype: "application/json" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/good.json", channel: "body", content: '{"ok":true}', mimetype: "application/json" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/bad.json", channel: "body", content: '{\n  "a": 1\n  "b": 2\n}', mimetype: "application/json" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The turn's pump survived the malformed entry (no -32603); the catalog renders it degraded.
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId, runId })) as CatalogItem[];
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId })) as CatalogItem[];
         const paths = catalog.map((e) => e.path);
         assert.ok(paths.includes("known:///good.json"), `valid entry listed; got ${JSON.stringify(paths)}`);
         assert.ok(paths.includes("known:///bad.json"), "malformed entry still listed (degraded, not crashed)");
@@ -91,9 +91,9 @@ test("manifest build survives a malformed application/json entry — degrades to
 test("a JSON entry large enough to tile builds through the live embedder — the every-run crash, end-to-end", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `manifest-jsontile-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "what's available?");
+        const workspaceId = await insertWorkspace(db, `manifest-jsontile-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "what's available?");
 
         // A VALID JSON document large enough to exceed the embedder window, so it tiles —
         // and each tile is an invalid JSON fragment. With the embedder live in
@@ -102,14 +102,14 @@ test("a JSON entry large enough to tile builds through the live embedder — the
         const big = JSON.stringify(Object.fromEntries(
             Array.from({ length: 80 }, (_, i) => [`key_${i}`, `value number ${i} with several descriptive words here`]),
         ), null, 2);
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/big.json", channel: "body", content: big, mimetype: "application/json" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/big.json", channel: "body", content: big, mimetype: "application/json" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [emptyTurn] });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The turn's pump tiled+embedded the large JSON without crashing; the catalog lists it.
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId, runId })) as CatalogItem[];
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId })) as CatalogItem[];
         assert.ok(catalog.some((e) => e.path === "known:///big.json"), "the large JSON entry is listed in the catalog");
     } finally { await db.close(); }
 });
@@ -117,15 +117,15 @@ test("a JSON entry large enough to tile builds through the live embedder — the
 test("[#21] manifest stamps live seconds= on an active stream, absent for static entries", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `manifest-secs-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
+        const workspaceId = await insertWorkspace(db, `manifest-secs-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
 
         // A static entry (no subscription) + an exec entry with an open stream.
-        await seedEntryWithChannel(db, { sessionId, runId, scheme: "known", pathname: "/static/note", channel: "body", content: "x", mimetype: "text/markdown" });
-        const execId = await seedEntryWithChannel(db, { sessionId, runId, scheme: "sh", pathname: "/1/1/1", channel: "stdout", content: "running...", mimetype: "text/stream" });
-        await ChannelWrite.openSubscription(db, { runId, entryId: execId, scheme: "sh", handle: "sh: sleep 30" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/static/note", channel: "body", content: "x", mimetype: "text/markdown" });
+        const execId = await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "sh", pathname: "/1/1/1", channel: "stdout", content: "running...", mimetype: "text/stream" });
+        await ChannelWrite.openSubscription(db, { workerId, entryId: execId, scheme: "sh", handle: "sh: sleep 30" });
 
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, sessionId })) as Array<{ path: string; seconds?: number; channels: object }>;
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId })) as Array<{ path: string; seconds?: number; channels: object }>;
 
         const stream = catalog.find((e) => e.path === "sh:///1/1/1");
         const stat = catalog.find((e) => e.path === "known:///static/note");
@@ -139,13 +139,13 @@ test("[#21] manifest stamps live seconds= on an active stream, absent for static
 test("[note4] manifest keys channels by addressable URI — default bare, non-default #fragment", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `note4-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
+        const workspaceId = await insertWorkspace(db, `note4-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
         // A multi-channel exec stream entry at sh:///1/1/2 (stdout is the default channel, + stderr).
-        const id = await seedEntryWithChannel(db, { sessionId, runId, scheme: "sh", pathname: "/1/1/2", channel: "stdout", content: "out", mimetype: "text/stream" });
+        const id = await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "sh", pathname: "/1/1/2", channel: "stdout", content: "out", mimetype: "text/stream" });
         await (db.test_seed_channel as PrepMethod).run({ entry_id: id, name: "stderr", content: "err", mimetype: "text/stream", state: "static" });
         // sh's default channel is stdout (the Exec handler) — resolve it so stdout keys bare, stderr by #fragment.
-        const ctx = makeSchemeCtx({ db, sessionId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
+        const ctx = makeSchemeCtx({ db, workspaceId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
         const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<{ path: string; channels: Record<string, unknown> }>;
         const stream = catalog.find((e) => e.path === "sh:///1/1/2");
         assert.ok(stream, "exec stream listed");

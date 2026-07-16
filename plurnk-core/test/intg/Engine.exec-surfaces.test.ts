@@ -26,7 +26,7 @@ test("[§exec-stream] regression: a model's EXEC result surfaces in the NEXT tur
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "exec-surface" });
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-surface" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command", flags: { yolo: true } });
             assert.equal(finalStatus, 200, "loop terminates on the turn-2 SEND[200]");
             assert.ok((turnIds?.length ?? 0) >= 2, `expected at least 2 turns; got ${turnIds?.length}`);
@@ -67,7 +67,7 @@ test("[§exec-stream] the cursor-terminal race: a one-burst stream fully shown F
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "cursor-terminal" });
+            await rpcCall(ws, 1, "workspace.create", { name: "cursor-terminal" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", flags: { yolo: true } });
             assert.equal(finalStatus, 200);
             const last = turnIds![turnIds!.length - 1];

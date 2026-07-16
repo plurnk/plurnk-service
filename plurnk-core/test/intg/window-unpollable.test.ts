@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
@@ -17,14 +17,14 @@ const nullWindowMock = () => new Mock({ contextWindow: null, responses: [{ assis
 test("[§tokenomics-window-unpollable-deliberate] null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline (#421)", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `unpollable-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `unpollable-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
         // No cap: an unknown window has no denominator — null, not a stand-in improvised from bare numbers.
         assert.equal(engine.promptBudgetFor(mock), null, "the prompt budget is null — genuinely-unknown, uncapped");
-        const result = await engine.runTurn({ provider: mock, sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
         // The gauge omits its Token Ceiling headline (no percent to compute) — the FOLD-target lines still ship.
         const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
@@ -39,11 +39,11 @@ test("[§tokenomics-window-unpollable-deliberate] a per-alias partition knob mak
     process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest = "8192";
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `deliberate-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `deliberate-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const r = await engine.runTurn({ provider: nullWindowMock(), sessionId, runId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const r = await engine.runTurn({ provider: nullWindowMock(), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(r.turnId > 0, "the turn builds — the operator's per-alias CONTEXT_WINDOW stands in deliberately");
     } finally {
         delete process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest;

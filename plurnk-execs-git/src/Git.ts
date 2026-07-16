@@ -13,7 +13,7 @@ import { tokenizeArgv } from "./tokenizeArgv.ts";
 // deployment grants a shell. Sandboxes can't do everything (owner ruling, #460).
 //
 // `(target)` = the repo directory, resolved against cwd; default cwd (the
-// session workspace). Body = `<verb> <args>`, git-ish spelling.
+// workspace workspace). Body = `<verb> <args>`, git-ish spelling.
 //
 // `effect` stays the inherited `host` — mutating verbs exist and effect(target)
 // must never inspect the command, so every op proposes.

@@ -14,9 +14,9 @@
 //   KILL(wss://...)           — close the open socket.
 //
 // Stateful exception: every other scheme is stateless per the schemes SPEC
-// §forbidden "no state past a handler return" rule. A live socket IS per-session
+// §forbidden "no state past a handler return" rule. A live socket IS per-workspace
 // state, so this engine holds open sockets in an in-instance registry across op
-// invocations (keyed session+pathname) — the ONE sanctioned exception (SPEC §ws),
+// invocations (keyed workspace+pathname) — the ONE sanctioned exception (SPEC §ws),
 // because that persistence is the whole point of a WebSocket. Entries live only
 // while the socket is open; every terminal path (close/error/KILL/cancel) removes.
 //
@@ -72,7 +72,7 @@ export default class Ws implements SchemeHandler {
         channels: { [MESSAGES]: "text/plain" },
         defaultChannel: MESSAGES,
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
@@ -86,7 +86,7 @@ export default class Ws implements SchemeHandler {
 
     // The socket factory (injectable for tests) and the live-connection registry
     // — the stateless-contract exception (SPEC §ws). One socket per
-    // session+pathname; SEND/KILL find the socket a prior READ opened.
+    // workspace+pathname; SEND/KILL find the socket a prior READ opened.
     readonly #connect: SocketFactory;
     readonly #sockets = new Map<string, Socket>();
     constructor(connect: SocketFactory = connectGlobal) {
@@ -105,7 +105,7 @@ export default class Ws implements SchemeHandler {
         if (!(await Guard.isPublicUrl(url))) {
             return Ws.#bad(403, "ssrf_blocked", `${url} is not a public ws(s):// target`);
         }
-        const key = Ws.#key(ctx.sessionId, pathname);
+        const key = Ws.#key(ctx.workspaceId, pathname);
 
         // Create-then-subscribe (http#3): seed the messages channel, then bind.
         await ctx.entries.write(pathname, Ws.#seedEntry());
@@ -158,7 +158,7 @@ export default class Ws implements SchemeHandler {
         const status = statement.signal;
         if (status === 499) return { shape: "passthrough", status: 200 };
         if (status === 200) {
-            const socket = this.#sockets.get(Ws.#key(ctx.sessionId, statement.target.pathname));
+            const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, statement.target.pathname));
             if (socket === undefined) {
                 return Ws.#bad(409, "no_open_socket", `no open ws for ${statement.target.pathname} — READ it first`);
             }
@@ -174,7 +174,7 @@ export default class Ws implements SchemeHandler {
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad_target", "KILL requires a ws(s):// URL target");
         }
-        const socket = this.#sockets.get(Ws.#key(ctx.sessionId, statement.target.pathname));
+        const socket = this.#sockets.get(Ws.#key(ctx.workspaceId, statement.target.pathname));
         if (socket === undefined) {
             return Ws.#bad(404, "no_open_socket", `no open ws for ${statement.target.pathname}`);
         }
@@ -182,8 +182,8 @@ export default class Ws implements SchemeHandler {
         return { shape: "passthrough", status: 200 };
     }
 
-    static #key(sessionId: number, pathname: string): string {
-        return `${sessionId}:${pathname}`;
+    static #key(workspaceId: number, pathname: string): string {
+        return `${workspaceId}:${pathname}`;
     }
 
     // Seed entry mirroring the manifest channel (empty content + seed mimetype),

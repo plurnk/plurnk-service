@@ -6,7 +6,7 @@ SELECT le.op, le.scheme, le.pathname, le.status_rx, le.rx, le.mimetype_rx
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
+WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_id_by_coordinate
 -- Resolve a concrete log:/// coordinate to its row id within the run (shared by
@@ -14,7 +14,7 @@ WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq A
 SELECT le.id FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.run_id = $run_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
+WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_match_coordinates
 -- Resolve a log:/// path-glob to the matching rows within the run, coordinate-ordered.
@@ -25,7 +25,7 @@ SELECT le.id
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.run_id = $run_id
+WHERE l.worker_id = $worker_id
   AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
 ORDER BY l.sequence, t.sequence, le.sequence;
 
@@ -34,7 +34,7 @@ UPDATE log_entries SET expanded = $expanded WHERE id = $id;
 
 -- PREP: log_delete_by_id
 -- KILL erases a log item (plurnk.md:36, :98) — the model's DB-storage curation lever,
--- the only way to shed accumulated log rows in a long session (FOLD only collapses the
+-- the only way to shed accumulated log rows in a long workspace (FOLD only collapses the
 -- render). A hard delete: the row is gone, freeing storage; the derived errors pointer
 -- for an `op='error'` row vanishes with it.
 DELETE FROM log_entries WHERE id = $id;
@@ -49,7 +49,7 @@ SELECT
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.run_id = $run_id
+WHERE l.worker_id = $worker_id
   AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
 ORDER BY l.sequence, t.sequence, le.sequence;
 
@@ -71,7 +71,7 @@ SELECT le.id
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.run_id = $run_id
+WHERE l.worker_id = $worker_id
   AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
   AND le.id IN (
       SELECT log_entry_id FROM log_tags
@@ -89,7 +89,7 @@ SELECT
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.run_id = $run_id
+WHERE l.worker_id = $worker_id
   AND (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) GLOB $glob
   AND le.id IN (
       SELECT log_entry_id FROM log_tags

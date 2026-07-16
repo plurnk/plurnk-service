@@ -20,7 +20,7 @@ test("[§exec-poll] a polled EXEC <T,P> wakes a hibernating (202) loop every P s
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "exec-poll" });
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-poll" });
             const t0 = Date.now();
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
             const elapsed = Date.now() - t0;

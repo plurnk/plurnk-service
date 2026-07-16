@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertSession, insertRun, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
 // #263 — loopUsage.contextTokens is the gauge's numerator: the LAST turn's prompt tokens (window
@@ -12,9 +12,9 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 test("[#263] loopUsage.contextTokens is the last turn's prompt, not the summed total", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ctx-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `ctx-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         // Two turns, a context that grows: prompts 100 then 250.
         await (db.test_turns_insert_with_usage_prompt as PrepMethod).run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", val: 100 });
         await (db.test_turns_insert_with_usage_prompt as PrepMethod).run({ loop_id: loopId, sequence: 2, status: 200, packet: "{}", val: 250 });
@@ -32,9 +32,9 @@ test("[#263] loopUsage.contextTokens is the last turn's prompt, not the summed t
 test("[#274] loopUsage.promptBudget is the last turn's model window — survives a model switch", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ctx-size-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `ctx-size-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         // Turn 1 ran a 49k-window model; turn 2 switched to a 200k-window model.
         await (db.test_turns_insert_with_prompt_and_context_size as PrepMethod).run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", prompt: 100, context_size: 49152 });
         await (db.test_turns_insert_with_prompt_and_context_size as PrepMethod).run({ loop_id: loopId, sequence: 2, status: 200, packet: "{}", prompt: 250, context_size: 200000 });
@@ -48,9 +48,9 @@ test("[#274] loopUsage.promptBudget is the last turn's model window — survives
 test("[#274] loopUsage.promptBudget is null when the provider reports no window", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ctx-null-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `ctx-null-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         // A windowless provider — usage_prompt set, usage_prompt_budget left NULL.
         await (db.test_turns_insert_with_usage_prompt as PrepMethod).run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", val: 100 });
 
@@ -64,12 +64,12 @@ test("[#274] runTurn stores the PROMPT BUDGET, not the raw window — the client
     // denominator = 8192 - 1344 = 6848 — the room the packet actually lives under.
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ctx-budget-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "go");
+        const workspaceId = await insertWorkspace(db, `ctx-budget-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: "done", position: { line: 1, column: 1 } }] } }] });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
         const usage = await engine.loopUsage(loopId);
         const expected = 8192 - Number(process.env.PLURNK_SERVICE_REASONING) - Number(process.env.PLURNK_SERVICE_COMPLETION) - Number(process.env.PLURNK_SERVICE_SAFETY);
         assert.equal(usage.promptBudget, expected, `the stored denominator is the partitioned budget (${expected}), never the raw 8192`);
@@ -82,7 +82,7 @@ test("[#274] providers.list advertises the EFFECTIVE prompt budget — one denom
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "gauge-345" });
+            await rpcCall(ws, 1, "workspace.create", { name: "gauge-345" });
             const resp = await rpcCall(ws, 2, "providers.list");
             const result = resp.result as { aliases: Array<{ active: boolean; promptBudget: number | null }> };
             const active = result.aliases.find((a) => a.active);

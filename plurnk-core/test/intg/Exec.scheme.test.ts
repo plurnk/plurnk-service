@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn, testExecutors, seedEntryWithChannel, rootSession } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, seedEntryWithChannel, rootWorkspace } from "./_helpers.ts";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,11 +28,11 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-const withSession = async <T>(fn: (ctx: {
+const withWorkspace = async <T>(fn: (ctx: {
     engine: Engine;
     exec: Exec;
     db: Awaited<ReturnType<typeof openMigrated>>;
-    sessionId: number; runId: number; loopId: number; turnId: number;
+    workspaceId: number; workerId: number; loopId: number; turnId: number;
 }) => Promise<T>): Promise<T> => {
     const db = await openMigrated();
     try {
@@ -40,21 +40,21 @@ const withSession = async <T>(fn: (ctx: {
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `exec-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "exec test");
+        const workspaceId = await insertWorkspace(db, `exec-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "exec test");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        return await fn({ engine, exec, db, sessionId, runId, loopId, turnId });
+        return await fn({ engine, exec, db, workspaceId, workerId, loopId, turnId });
     } finally {
         await db.close();
     }
 };
 
 test("EXEC: empty body → 400 (no command)", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt("sh", null, ""),
-            sessionId: ctx.sessionId, runId: ctx.runId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
@@ -62,9 +62,9 @@ test("EXEC: empty body → 400 (no command)", async () => {
 });
 
 test("EXEC[sh](known:///script) empty body → resolves the scheme content as the command (#201)", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         // A stored script lives at known:///script; running it runs its content.
-        await seedEntryWithChannel(ctx.db, { sessionId: ctx.sessionId, scheme: "known", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
+        await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "known", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
 
         const statement: ExecStatement = {
             op: "EXEC", suffix: "", signal: "sh",
@@ -74,7 +74,7 @@ test("EXEC[sh](known:///script) empty body → resolves the scheme content as th
 
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement, sessionId: ctx.sessionId, runId: ctx.runId,
+            statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -94,11 +94,11 @@ test("EXEC[sh](known:///script) empty body → resolves the scheme content as th
 });
 
 test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt("sh", null, "echo hello"),
-            sessionId: ctx.sessionId, runId: ctx.runId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -121,14 +121,14 @@ test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
 });
 
 test("EXEC: the (target) slot lands in attrs.target (the data source), NOT attrs.cwd (execs 0.4.26 #15)", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         // A data-source runtime with a target — EXEC[jq](data/users.json):length. The target is the
         // input file; cwd is the workspace it resolves against. The old contract crammed the target into
         // cwd (so a relative data path resolved against the daemon's cwd → not found). Now they're distinct.
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt("jq", "data/users.json", "length"),
-            sessionId: ctx.sessionId, runId: ctx.runId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -144,15 +144,15 @@ test("EXEC: the (target) slot lands in attrs.target (the data source), NOT attrs
 });
 
 test("[§exec-target-routing] file (target) + empty body runs the file, not the old empty-body 400 (#462)", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec462-file-"));
         try {
             await writeFile(join(root, "greet.sh"), "echo hi\n");
-            await rootSession(ctx.db, ctx.sessionId, root);
+            await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
                 statement: execStmt("sh", "greet.sh", ""),  // EXEC[sh](greet.sh): — empty body, FILE target
-                sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;  // a log row minted ⇒ it dispatched (proposed), never the empty-body 400
@@ -168,15 +168,15 @@ test("[§exec-target-routing] file (target) + empty body runs the file, not the 
 });
 
 test("[§exec-target-routing] directory (target) overrides cwd; the body is the command run there (#462)", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec462-dir-"));
         try {
             await mkdir(join(root, "sub"));
-            await rootSession(ctx.db, ctx.sessionId, root);
+            await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
                 statement: execStmt("sh", "sub", "echo hi"),  // EXEC[sh](sub):echo hi — DIRECTORY target
-                sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;
@@ -192,14 +192,14 @@ test("[§exec-target-routing] directory (target) overrides cwd; the body is the 
 });
 
 test("[§exec-target-routing] directory (target) + empty body → 400 — a directory has nothing to run (#462)", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec462-diremp-"));
         try {
             await mkdir(join(root, "sub"));
-            await rootSession(ctx.db, ctx.sessionId, root);
+            await rootWorkspace(ctx.db, ctx.workspaceId, root);
             const result = await ctx.engine.dispatch({
                 statement: execStmt("sh", "sub", ""),  // EXEC[sh](sub): — DIRECTORY target, empty body
-                sessionId: ctx.sessionId, runId: ctx.runId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             });
             assert.equal(result.status, 400, "a directory target with empty body has nothing to run");
         } finally { await rm(root, { recursive: true, force: true }); }
@@ -212,11 +212,11 @@ test("[§exec-target-routing] directory (target) + empty body → 400 — a dire
 // and on the channel state transitions.
 
 test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscription closed at 200", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt("sh", null, "echo marker"),
-            sessionId: ctx.sessionId, runId: ctx.runId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -241,18 +241,18 @@ test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscr
         assert.equal(stdout?.state, "closed");
 
         const sub = await (ctx.db.test_get_subscription_by_entry as PrepMethod).get<{ close_status: number | null }>({
-            run_id: ctx.runId, entry_id: entryRow.id,
+            worker_id: ctx.workerId, entry_id: entryRow.id,
         });
         assert.equal(sub?.close_status, 200, "spawn's actual exit-0 lands on subscription.close_status");
     });
 });
 
 test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscription closed at 500", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt("sh", null, "echo oops >&2; exit 7"),
-            sessionId: ctx.sessionId, runId: ctx.runId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -275,13 +275,13 @@ test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscriptio
         assert.equal(stderr?.state, "errored");
 
         const sub = await (ctx.db.test_get_subscription_by_entry as PrepMethod).get<{ close_status: number | null }>({
-            run_id: ctx.runId, entry_id: entryRow.id,
+            worker_id: ctx.workerId, entry_id: entryRow.id,
         });
         assert.equal(sub?.close_status, 500, "non-zero exit → subscription closed at 500");
     });
 });
 
-test("EXEC: cwd defaults to session.project_root when statement target is null", async () => {
+test("EXEC: cwd defaults to workspace.project_root when statement target is null", async () => {
     // Writes a file via shell into "$PWD/<marker>", then asserts the file
     // exists at <project_root>/<marker> — proves cwd really was project_root.
     const { mkdtemp, rm, readFile } = await import("node:fs/promises");
@@ -290,14 +290,14 @@ test("EXEC: cwd defaults to session.project_root when statement target is null",
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-cwd-default-"));
     const marker = `cwd-default-${crypto.randomUUID().slice(0, 6)}.txt`;
     try {
-        await withSession(async (ctx) => {
+        await withWorkspace(async (ctx) => {
             await (ctx.db.test_set_session_project_root as PrepMethod).run({
-                id: ctx.sessionId, project_root: workspace,
+                id: ctx.workspaceId, project_root: workspace,
             });
             const idDeferred = deferred<number>();
             const dispatchPromise = ctx.engine.dispatch({
                 statement: execStmt("sh", null, `echo here > ${marker}`),
-                sessionId: ctx.sessionId, runId: ctx.runId,
+                workspaceId: ctx.workspaceId, workerId: ctx.workerId,
                 loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
             });
@@ -308,7 +308,7 @@ test("EXEC: cwd defaults to session.project_root when statement target is null",
             // The file landed in the project_root, not in plurnk-service's cwd.
             const written = await readFile(join(workspace, marker), "utf8").catch(() => null);
             assert.equal(written, "here\n",
-                `EXEC's cwd should have defaulted to session.project_root (${workspace}); file ${marker} should exist there`);
+                `EXEC's cwd should have defaulted to workspace.project_root (${workspace}); file ${marker} should exist there`);
         });
     } finally {
         await rm(workspace, { recursive: true, force: true });
@@ -316,11 +316,11 @@ test("EXEC: cwd defaults to session.project_root when statement target is null",
 });
 
 test("EXEC[node]: runs node code via -e and captures stdout", async () => {
-    await withSession(async (ctx) => {
+    await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt("node", null, "console.log(2 + 3)"),
-            sessionId: ctx.sessionId, runId: ctx.runId,
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -346,7 +346,7 @@ test("EXEC[node]: runs node code via -e and captures stdout", async () => {
 });
 
 test("EXEC: subscription row opens then closes; stream/event fires per chunk + transition", async () => {
-    type Event = { sessionId: number; entryId: number; channel: string; state: string; contentLength: number };
+    type Event = { workspaceId: number; entryId: number; channel: string; state: string; contentLength: number };
     const events: Event[] = [];
     const db = await openMigrated();
     try {
@@ -354,27 +354,27 @@ test("EXEC: subscription row opens then closes; stream/event fires per chunk + t
         const exec = schemes.get("exec") as Exec;
         const engine = new Engine({
             db, schemes,
-            streamEventNotify: (sessionId, event) => events.push({ sessionId, ...event }),
+            streamEventNotify: (workspaceId, event) => events.push({ workspaceId, ...event }),
         });
         engine.setExecutors(await testExecutors());
-        const sessionId = await insertSession(db, `exec-notify-${crypto.randomUUID()}`);
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1, "exec notify test");
+        const workspaceId = await insertWorkspace(db, `exec-notify-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "exec notify test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt("sh", null, "echo one"),
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
         await dispatchPromise;
         await exec.idle();
 
-        const sessionEvents = events.filter((e) => e.sessionId === sessionId);
-        const chunkEvents = sessionEvents.filter((e) => e.state === "active");
-        const closedEvents = sessionEvents.filter((e) => e.state === "closed");
+        const workspaceEvents = events.filter((e) => e.workspaceId === workspaceId);
+        const chunkEvents = workspaceEvents.filter((e) => e.state === "active");
+        const closedEvents = workspaceEvents.filter((e) => e.state === "closed");
         assert.ok(chunkEvents.length >= 1, "at least one chunk event for stdout");
         assert.equal(closedEvents.length, 2, "both stdout and stderr transition to closed");
 
@@ -385,7 +385,7 @@ test("EXEC: subscription row opens then closes; stream/event fires per chunk + t
                 : "",
         });
         const sub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ close_status: number | null }>({
-            run_id: runId, entry_id: entryRow!.id,
+            worker_id: workerId, entry_id: entryRow!.id,
         });
         assert.equal(sub?.close_status, 200);
     } finally { await db.close(); }

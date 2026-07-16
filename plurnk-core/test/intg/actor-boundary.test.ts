@@ -16,7 +16,7 @@ import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertSession, insertRun, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -30,22 +30,22 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("[§actor-boundary-no-mutex] two runs in one session both write the same shared entry — no lock", async () => {
+test("[§actor-boundary-no-mutex] two runs in one workspace both write the same shared entry — no lock", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const spawn = async () => {
-            const runId = await insertRun(db, sessionId);
-            const loopId = await insertLoop(db, runId, 1);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1);
             const turnId = await insertTurn(db, loopId, 1);
-            return { runId, loopId, turnId };
+            return { workerId, loopId, turnId };
         };
         const a = await spawn();
         const b = await spawn();
         const target = urlPath("known", "/shared.md");
-        const ra = await engine.dispatch({ statement: editStmt(target, "from run A"), sessionId, runId: a.runId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
-        const rb = await engine.dispatch({ statement: editStmt(target, "from run B"), sessionId, runId: b.runId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
+        const ra = await engine.dispatch({ statement: editStmt(target, "from run A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
+        const rb = await engine.dispatch({ statement: editStmt(target, "from run B"), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // Wild west = both writers succeed (no lock rejects the second). A creates
         // the shared entry (201), B updates it (200); neither is a 409/lock refusal.
         assert.ok([200, 201].includes(ra.status), `run A's write to the shared entry succeeds (got ${ra.status})`);
@@ -56,21 +56,21 @@ test("[§actor-boundary-no-mutex] two runs in one session both write the same sh
 test("[§actor-boundary-isolation] a packet renders one run's log; a sibling run's log is absent", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const spawn = async () => {
-            const runId = await insertRun(db, sessionId);
-            const loopId = await insertLoop(db, runId, 1);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1);
             const turnId = await insertTurn(db, loopId, 1);
-            return { runId, loopId, turnId };
+            return { workerId, loopId, turnId };
         };
-        // Two sibling runs in one session — e.g. the model's run and a client's.
+        // Two sibling runs in one workspace — e.g. the model's run and a client's.
         const a = await spawn();
         const b = await spawn();
-        await engine.dispatch({ statement: editStmt(urlPath("known", "/from-a.md"), "a"), sessionId, runId: a.runId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: editStmt(urlPath("known", "/from-b.md"), "b"), sessionId, runId: b.runId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/from-a.md"), "a"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/from-b.md"), "b"), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // run A's packet is rendered from run A's log alone.
-        const packetA = await (db.engine_render_log as PrepMethod).all<{ pathname: string }>({ run_id: a.runId });
+        const packetA = await (db.engine_render_log as PrepMethod).all<{ pathname: string }>({ worker_id: a.workerId });
         assert.ok(packetA.some((r) => r.pathname.includes("from-a")), "run A's own log renders in its packet");
         assert.ok(packetA.every((r) => !r.pathname.includes("from-b")), "the sibling run B's log never enters run A's packet — invisibility is by run, no origin filter");
     } finally { db.close(); }
@@ -79,15 +79,15 @@ test("[§actor-boundary-isolation] a packet renders one run's log; a sibling run
 test("[§actor-boundary-origin-not-filter] origin is attribution (provenance), never read to hide a row at render", async () => {
     const db = await openMigrated();
     try {
-        const sessionId = await insertSession(db, `ws-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const runId = await insertRun(db, sessionId);
-        const loopId = await insertLoop(db, runId, 1);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         // A CLIENT-origin row living IN this run must still render: the renderer
         // scopes by run, never hides by origin.
-        await engine.dispatch({ statement: editStmt(urlPath("known", "/in-run.md"), "x"), sessionId, runId, loopId, turnId, sequence: 1, origin: "client" });
-        const packet = await (db.engine_render_log as PrepMethod).all<{ pathname: string; origin: string }>({ run_id: runId });
+        await engine.dispatch({ statement: editStmt(urlPath("known", "/in-run.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
+        const packet = await (db.engine_render_log as PrepMethod).all<{ pathname: string; origin: string }>({ worker_id: workerId });
         const row = packet.find((r) => r.pathname.includes("in-run"));
         assert.ok(row !== undefined, "an in-run row renders regardless of origin");
         assert.equal(row!.origin, "client", "origin is carried as attribution, not consumed to hide the row");
@@ -111,25 +111,25 @@ test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), ne
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "session.create", { name: "passive-wake" });
+            await rpcCall(ws, 1, "workspace.create", { name: "passive-wake" });
             // Run a loop to completion → the model run is now IDLE (one loop).
             const ran = await runLoopToTerminal(ws, 2, { prompt: "first", flags: { yolo: true } });
             const { loopId } = ran as { loopId: number };
-            const modelRunId = (await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId }))!.run_id;
-            const loopsIdle = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }))!.n;
+            const modelWorkerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
+            const loopsIdle = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
 
             // A DELTA: a client op.edit runs in the connection's OWN (client) run — a
             // sibling of the model run (§connection-lifecycle) — touching a shared entry.
             // This is the environment door; it must NOT wake the idle model run.
             await rpcCall(ws, 3, "op.edit", { target: "known:///shared.md", content: "a sibling edit — ambient, not addressed to the model run" });
-            const loopsAfterDelta = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }))!.n;
+            const loopsAfterDelta = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
             assert.equal(loopsAfterDelta, loopsIdle, "a delta (sibling shared-entry edit) does NOT wake the idle run — no new loop enqueued");
 
             // The VOICE door: inject a prompt into the same idle run → it wakes, a fresh
             // loop is enqueued on the model run.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW — wake up" });
             assert.equal((injected.result as { action: string }).action, "enqueued_new_loop", "an inject (voice) wakes the idle run");
-            const loopsAfterInject = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ run_id: modelRunId }))!.n;
+            const loopsAfterInject = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
             assert.equal(loopsAfterInject, loopsIdle + 1, "the inject enqueued exactly one new loop — the wake the delta did not cause");
         } finally { ws.close(); }
     });
@@ -154,22 +154,22 @@ test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk run fi
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                const sessionId = ((await rpcCall(ws, 1, "session.create", { name: "selfhost" })).result as { id: number }).id;
+                const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: "selfhost" })).result as { id: number }).id;
                 const { loopId } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number };
-                const modelRunId = (await (db.test_get_run_id_by_loop as PrepMethod).get<{ run_id: number }>({ loop_id: loopId }))!.run_id;
+                const modelWorkerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
 
                 // 1. The reserved plurnk run exists, is distinct from the model run, and OWNS the
                 //    materializing EDIT — an ordinary actor doing ops, not the engine writing privileged.
-                const plurnkRun = (await (db.envelope_get_run_by_name as PrepMethod).get<{ id: number }>({ session_id: sessionId, name: "plurnk" }))!;
-                assert.ok(plurnkRun !== undefined, "the reserved plurnk run was spawned to do the runtime work");
-                assert.notEqual(plurnkRun.id, modelRunId, "the plurnk run is a sibling actor, distinct from the model run");
-                const plurnkLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; origin: string }>({ run_id: plurnkRun.id });
+                const plurnkWorker = (await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" }))!;
+                assert.ok(plurnkWorker !== undefined, "the reserved plurnk run was spawned to do the runtime work");
+                assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk run is a sibling actor, distinct from the model run");
+                const plurnkLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
                 const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md");
                 assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk run's log — an op, not a privileged engine pathway");
                 assert.equal(matEdit!.origin, "plurnk", "the op is attributed to the plurnk actor (origin=plurnk)");
 
                 // 2. The model run's log NEVER carries that EDIT — isolation by run holds; nothing privileged leaked in.
-                const modelLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ run_id: modelRunId });
+                const modelLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ worker_id: modelWorkerId });
                 assert.ok(!modelLog.some((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/SELFHOST.md"), "the model run never sees the plurnk actor's EDIT — only the resulting entry, through the env door");
 
                 // 3. The environment door: the model run reaches the entry the plurnk actor produced (a 200 READ),

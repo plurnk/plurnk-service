@@ -10,15 +10,15 @@ import type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
-import RunCap from "./run-cap.ts";
+import WorkerCap from "./worker-cap.ts";
 import { decodePathParens } from "./path-decode.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import type { StreamEventNotify, WakeRunNotify, InjectRunNotify, CancelRunNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
-import SessionSettings from "./session-settings.ts";
+import WorkspaceSettings from "./workspace-settings.ts";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -31,8 +31,8 @@ const pathnameFromPath = (path: ParsedPath): string => {
 
 export type DispatchContext = {
     statement: PlurnkStatement;
-    sessionId: number;
-    runId: number;
+    workspaceId: number;
+    workerId: number;
     loopId: number;
     turnId: number;
     sequence: number;
@@ -71,18 +71,18 @@ export default class Dispatcher {
     // Per-loop abort signal, owned by Engine.runLoop — thunked.
     #loopSignal: (loopId: number) => AbortSignal | undefined;
     #streamEventNotify: StreamEventNotify | undefined;
-    #wakeRunNotify: WakeRunNotify | undefined;
-    #injectRun: InjectRunNotify | undefined;
-    #cancelRun: CancelRunNotify | undefined;
+    #wakeWorkerNotify: WakeWorkerNotify | undefined;
+    #injectWorker: InjectWorkerNotify | undefined;
+    #cancelWorker: CancelWorkerNotify | undefined;
     // §send-premature-terminate/[102]<T> — the engine-owned park-deadline registry (loopId → seconds;
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
     readonly #searchGate: import("./search-gate.ts").default | undefined;
-    // §join-blocking-collect (#354) — loops with a READ(run://running-child) armed this turn; a bare
+    // §join-blocking-collect (#354) — loops with a READ(worker://running-child) armed this turn; a bare
     // SEND[102] parks on it (blocking join). Engine-owned, twin of #parkDeadlines.
     #joinTargets: Set<number>;
 
-    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeRunNotify, injectRun, cancelRun, searchGate, parkDeadlines, joinTargets }: {
+    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, searchGate, parkDeadlines, joinTargets }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -92,9 +92,9 @@ export default class Dispatcher {
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
         streamEventNotify?: StreamEventNotify;
-        wakeRunNotify?: WakeRunNotify;
-        injectRun?: InjectRunNotify;
-        cancelRun?: CancelRunNotify;
+        wakeWorkerNotify?: WakeWorkerNotify;
+        injectWorker?: InjectWorkerNotify;
+        cancelWorker?: CancelWorkerNotify;
         parkDeadlines?: Map<number, number>;
         searchGate?: import("./search-gate.ts").default;
         joinTargets?: Set<number>;
@@ -108,17 +108,17 @@ export default class Dispatcher {
         this.#executors = executors;
         this.#loopSignal = loopSignal;
         this.#streamEventNotify = streamEventNotify;
-        this.#wakeRunNotify = wakeRunNotify;
-        this.#injectRun = injectRun;
-        this.#cancelRun = cancelRun;
+        this.#wakeWorkerNotify = wakeWorkerNotify;
+        this.#injectWorker = injectWorker;
+        this.#cancelWorker = cancelWorker;
         this.#parkDeadlines = parkDeadlines ?? new Map();
         this.#searchGate = searchGate;
         this.#joinTargets = joinTargets ?? new Set();
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, turnId, sequence, origin, onDispatch, turnParseErrors } = context;
-        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId, origin });
+        const { statement, workspaceId, workerId, loopId, turnId, sequence, origin, onDispatch, turnParseErrors } = context;
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         let result: DispatchResult;
         let denial = this.#checkWritable(statement, origin);
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
@@ -128,7 +128,7 @@ export default class Dispatcher {
             // READ honors FIND: a glob/folder scope or a matcher fans out to one log row per MATCH
             // (its own writeLogs), returning early. A READ never proposes, so it bypasses the
             // single-row path below. A bare entry, body-less, falls through to the direct read. #286
-            return await this.#handleReadFanout(statement, schemeCtx, { runId, loopId, turnId, sequence, origin, onDispatch });
+            return await this.#handleReadFanout(statement, schemeCtx, { workerId, loopId, turnId, sequence, origin, onDispatch });
         } else {
             // SPEC §scheme-surface + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
             // exceptions become the action-entry's outcome (status 500), not a
@@ -137,9 +137,9 @@ export default class Dispatcher {
             // those are system failures.
             try {
                 if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#handleSendBroadcast(statement, { sessionId, runId, loopId, turnId, turnParseErrors });
+                    result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, turnParseErrors });
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
-                    result = await this.#handleRunControl(statement, schemeCtx);
+                    result = await this.#handleWorkerControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
                     result = await this.#handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
@@ -168,10 +168,10 @@ export default class Dispatcher {
         // recorded (#382 — a curation act with no forensic trace is how run43's task-frame fold
         // stayed invisible), but engine_render_log suppresses them from the packet, so the receipt
         // rents zero model-facing space — the original clutter concern, resolved by hide-not-drop.
-        // §join-blocking-collect (#354) — Run.read on a still-running child returns an awaitRun signal;
+        // §join-blocking-collect (#354) — Run.read on a still-running child returns an awaitWorker signal;
         // arm the join so THIS turn's bare SEND[102] parks (the blocking collect) instead of spinning.
-        if (typeof (result as { awaitRun?: unknown }).awaitRun === "string") this.#joinTargets.add(loopId);
-        const logEntryId = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
+        if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
+        const logEntryId = await this.#writeLog({ statement, result, workerId, loopId, turnId, sequence, origin });
         // §search-gate — register successful searches AFTER #writeLog stamps the runtime
         // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
         if (statement.op === "EXEC" && result.status < 400) {
@@ -193,7 +193,7 @@ export default class Dispatcher {
             // no human gate, no loop/proposal notification. Accept + apply
             // in-process; the model sees the outcome directly, never a review.
             if ((result.attrs as { inline?: boolean } | undefined)?.inline === true) {
-                const effective = await this.#proposals.runApply(statement, result, { decision: "accept" }, { sessionId, runId, loopId, turnId });
+                const effective = await this.#proposals.workerApply(statement, result, { decision: "accept" }, { workspaceId, workerId, loopId, turnId });
                 return this.#proposals.applyResolution(logEntryId, effective);
             }
             // Register the resolution waiter SYNCHRONOUSLY before any await
@@ -209,9 +209,9 @@ export default class Dispatcher {
             const flags = await this.#loadLoopFlags(loopId); // the loop/proposal notification carries flags (yolo) — §dual-yolo-proposal-carries-flags
             // #note10 — if the target diverged on disk this turn, the model's EDIT is based
             // on a stale read; flag it so a YOLO auto-accept rejects instead of clobbering.
-            const diverged = await (this.#db.engine_target_diverged_this_turn as PrepMethod).get<{ hit: number }>({ run_id: runId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
+            const diverged = await (this.#db.engine_target_diverged_this_turn as PrepMethod).get<{ hit: number }>({ worker_id: workerId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
             const event: ProposalPendingEvent = {
-                logEntryId, sessionId, runId, loopId, turnId,
+                logEntryId, workspaceId, workerId, loopId, turnId,
                 op: statement.op,
                 target: { scheme: target.scheme, pathname: target.pathname },
                 body: typeof result.body === "string" ? result.body : "",
@@ -226,7 +226,7 @@ export default class Dispatcher {
             // 4xx/5xx or throws, the resolution is downgraded to a reject
             // with the failure outcome — engine treats it like a client
             // rejection.
-            const effective = await this.#proposals.runApply(statement, result, resolution, { sessionId, runId, loopId, turnId });
+            const effective = await this.#proposals.workerApply(statement, result, resolution, { workspaceId, workerId, loopId, turnId });
             // MOVE into a proposed dest: the deferred source-delete fires ONLY now,
             // after the dest write landed (accept). On reject the source survives.
             if (effective.decision === "accept") {
@@ -254,31 +254,31 @@ export default class Dispatcher {
     // human's inspection is never constrained by a model loop's flags. {§op-look}
     async look(context: {
         statement: PlurnkStatement;
-        sessionId: number; runId: number; loopId: number;
+        workspaceId: number; workerId: number; loopId: number;
         origin?: WriterTier;
     }): Promise<DispatchResult> {
-        const { statement, sessionId, runId, loopId, origin = "client" } = context;
+        const { statement, workspaceId, workerId, loopId, origin = "client" } = context;
         if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
         // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
-        const schemeCtx = this.#buildSchemeCtx({ sessionId, runId, loopId, turnId: 0, origin });
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId: 0, origin });
         const denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) return denial;
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
     }
 
-    #buildSchemeCtx(ids: { sessionId: number; runId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
-        const { sessionId, runId, loopId, turnId, origin } = ids;
+    #buildSchemeCtx(ids: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }): PlurnkSchemeContext {
+        const { workspaceId, workerId, loopId, turnId, origin } = ids;
         return {
             db: this.#db,
-            sessionId, runId, loopId, turnId,
+            workspaceId, workerId, loopId, turnId,
             writer: origin,
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
-            wakeRunNotify: this.#wakeRunNotify,
-            injectRun: this.#injectRun,
+            wakeWorkerNotify: this.#wakeWorkerNotify,
+            injectWorker: this.#injectWorker,
             mimetypes: this.#mimetypes,
             tokenize: this.#tokenize,
-            pushTelemetry: (event) => this.#telemetry.push(sessionId, loopId, event),
+            pushTelemetry: (event) => this.#telemetry.push(workspaceId, loopId, event),
             executors: this.#executors(),
         };
     }
@@ -315,10 +315,10 @@ export default class Dispatcher {
             return this.#denyIfDisallowed("exec", origin);
         }
 
-        // Run control (FORK/WORK → run://<name>, spawn or fork) is gated by run://'s writableBy — its
+        // Run control (FORK/WORK → worker://<name>, spawn or fork) is gated by worker://'s writableBy — its
         // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
         // §machine-processes
-        if (this.#isRunControl(statement)) return this.#denyIfDisallowed("run", origin);
+        if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin);
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dst = statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body;
@@ -419,7 +419,7 @@ export default class Dispatcher {
             return { status: 403, error: `'${scheme}' is unavailable: ${restriction}. Do NOT retry it — it is unavailable, not failing; answer or advise the user directly (an act-mode loop is required to use it).` };
         };
 
-        if (this.#isRunControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
+        if (this.#isWorkerControl(statement)) return check(statement.target); // body is a spawn/fork task, not a dst path
         if (statement.op === "COPY" || statement.op === "MOVE") {
             return check(statement.target) ?? check(statement.op === "COPY" ? (statement.body === null ? null : parsePath(statement.body)) : statement.body);
         }
@@ -429,29 +429,29 @@ export default class Dispatcher {
     // Run control is FORK/WORK (grammar 0.74.55), not COPY — its body
     // is the new run's seed prompt, not a destination path. The COPY gates and #handleCopy
     // branch on this so they never parse the prompt as a dst path.
-    #isRunControl(statement: PlurnkStatement): boolean {
-        return statement.op === "FORK" || statement.op === "WORK"; // run control targets run://<name> (grammar 0.74.55)
+    #isWorkerControl(statement: PlurnkStatement): boolean {
+        return statement.op === "FORK" || statement.op === "WORK"; // run control targets worker://<name> (grammar 0.74.55)
     }
 
-    // FORK/WORK(run://<name>):task — run control (grammar 0.74.55):
-    //   • run://self   → FORK: deep-copy the current run's log into a new sister (Fork), then
+    // FORK/WORK(worker://<name>):task — run control (grammar 0.74.55):
+    //   • worker://self   → FORK: deep-copy the current run's log into a new sister (Fork), then
     //     continue it with the prompt (§machine-processes-fork-copies-the-log).
-    //   • run://<name> → SPAWN: a fresh sister (empty log) named <name>, started on the prompt.
+    //   • worker://<name> → SPAWN: a fresh sister (empty log) named <name>, started on the prompt.
     //     A LIVE sister already holding <name> is a 409 conflict; a free or terminated name is
     //     reclaimed (§run-scheme-spawn). The self form is fork; only a name spawns.
     // Both ride the daemon inject and obey the active-runs cap (508, §run-scheme-cap).
     // FORK/WORK — run control (grammar 0.74.55). Both name a NEW run in the target authority
-    // (run://<name>) and carry its seed task in the body. WORK spawns a fresh worker; FORK branches
-    // the current run's log into a named sister. Replaces the COPY(run://) overload — one verb, one
+    // (worker://<name>) and carry its seed task in the body. WORK spawns a fresh worker; FORK branches
+    // the current run's log into a named sister. Replaces the COPY(worker://) overload — one verb, one
     // intent, so the model never conflates the target slot with the body (grammar#52).
-    async #handleRunControl(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+    async #handleWorkerControl(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const target = statement.target;
-        if (target === null) return { status: 400, error: `${statement.op} requires a run target (${statement.op}(run://<name>))` };
-        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY (run://<name>), not the path
-        if (name === "") return { status: 400, error: `${statement.op} requires a run name (run://<name>)` };
-        if (name === "self") return { status: 400, error: `'self' is the current run — ${statement.op} names a NEW run (run://<name>)` };
-        if (ctx.injectRun === undefined) throw new Error("run control: injectRun capability absent");
-        const denied = await RunCap.deny(this.#db, ctx.sessionId);
+        if (target === null) return { status: 400, error: `${statement.op} requires a run target (${statement.op}(worker://<name>))` };
+        const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY (worker://<name>), not the path
+        if (name === "") return { status: 400, error: `${statement.op} requires a run name (worker://<name>)` };
+        if (name === "self") return { status: 400, error: `'self' is the current run — ${statement.op} names a NEW run (worker://<name>)` };
+        if (ctx.injectWorker === undefined) throw new Error("run control: injectWorker capability absent");
+        const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
         const prompt = typeof statement.body === "string" ? statement.body : "";
 
@@ -462,21 +462,21 @@ export default class Dispatcher {
 
         // A name is frozen per run but reclaimable across time (§machine-processes-run-origin): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
-        const live = await (this.#db.run_live_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
-        if (live !== undefined) return { status: 409, error: `run '${name}' is already running` };
+        const live = await (this.#db.worker_live_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
+        if (live !== undefined) return { status: 409, error: `worker '${name}' is already running` };
 
         if (statement.op === "FORK") {
             // Branch the current run's log into a named sister.
-            const branchRunId = await Fork.fork(this.#db, ctx.runId, name);
-            await ctx.injectRun({ sessionId: ctx.sessionId, runId: branchRunId, prompt, flags });
+            const branchWorkerId = await Fork.fork(this.#db, ctx.workerId, name);
+            await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId: branchWorkerId, prompt, flags });
             return { status: 200, body: name };
         }
         // WORK — a fresh worker sister named <name>.
-        const row = await (this.#db.fork_insert_run as PrepMethod).get<{ id: number }>({
-            session_id: ctx.sessionId, name, parent_run_id: ctx.runId, origin: ctx.writer,
+        const row = await (this.#db.fork_insert_worker as PrepMethod).get<{ id: number }>({
+            workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin: ctx.writer,
         });
         if (row === undefined) throw new Error("run spawn: run insert returned no row");
-        await ctx.injectRun({ sessionId: ctx.sessionId, runId: row.id, prompt, flags });
+        await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId: row.id, prompt, flags });
         return { status: 200, body: name };
     }
 
@@ -546,34 +546,34 @@ export default class Dispatcher {
         if (killable !== undefined && typeof killable.kill === "function") {
             return await killable.kill(pathnameFromPath(path), statement.signal, ctx);
         }
-        if (schemeName === "run") {
+        if (schemeName === "worker") {
             // Entry-path present → KILL a run-scope scratch ENTRY (delete it), self-only —
             // NOT run cancellation. The authority (hostname) names the owner, the pathname the
-            // entry; only the path-ABSENT form (run://<name>) terminates the run-as-actor. §run-scheme
+            // entry; only the path-ABSENT form (worker://<name>) terminates the run-as-actor. §run-scheme
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
-                const runHandler = this.#schemes.get("run") as { deleteEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
-                return await runHandler.deleteEntry(statement, ctx);
+                const workerHandler = this.#schemes.get("worker") as { deleteEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
+                return await workerHandler.deleteEntry(statement, ctx);
             }
             // terminate — abort any run by address; whoever holds it may end it.
-            // `run://self` = self. cancelRun (→ Daemon.cancelDrain) aborts the run's signal
+            // `worker://self` = self. cancelWorker (→ Daemon.cancelDrain) aborts the run's signal
             // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
             const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §run-scheme — run is the AUTHORITY
-            if (name === "") return { status: 400, error: "run:// kill requires a run name or 'self' (run://<name>)" };
-            let runId = ctx.runId;
+            if (name === "") return { status: 400, error: "worker:// kill requires a run name or 'self' (worker://<name>)" };
+            let workerId = ctx.workerId;
             if (name !== "self") {
-                const row = await (this.#db.run_resolve_by_name as PrepMethod).get<{ id: number }>({ session_id: ctx.sessionId, name });
-                if (row === undefined) return { status: 404, error: `run://${name} not found in this session` };
-                runId = row.id;
+                const row = await (this.#db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
+                if (row === undefined) return { status: 404, error: `worker://${name} not found in this workspace` };
+                workerId = row.id;
             }
-            if (this.#cancelRun === undefined) throw new Error("run kill: cancelRun capability absent");
+            if (this.#cancelWorker === undefined) throw new Error("run kill: cancelWorker capability absent");
             // §op-synchronous — KILL is DECISIVE: flip the run's live loops to 499 NOW so the
             // same-turn premature-terminate gate sees it dead (KILL … SEND[200] concludes in ONE
             // turn — the model never reasons about async reap timing). The physical scope reap
-            // (drain abort + stream teardown) then rides cancelRun; a killed loop can't heal back
-            // because cancelRun aborts its drain's signal.
-            await (this.#db.engine_terminate_run_live_loops as PrepMethod).run({ run_id: runId, message: "killed via run:// KILL" });
-            this.#cancelRun(runId);
+            // (drain abort + stream teardown) then rides cancelWorker; a killed loop can't heal back
+            // because cancelWorker aborts its drain's signal.
+            await (this.#db.engine_terminate_worker_live_loops as PrepMethod).run({ worker_id: workerId, message: "killed via worker:// KILL" });
+            this.#cancelWorker(workerId);
             return { status: 200 };
         }
         const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
@@ -616,9 +616,9 @@ export default class Dispatcher {
     async #handleReadFanout(
         statement: PlurnkStatement,
         ctx: PlurnkSchemeContext,
-        ids: { runId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier; onDispatch?: (id: number) => void },
+        ids: { workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier; onDispatch?: (id: number) => void },
     ): Promise<DispatchResult> {
-        const { runId, loopId, turnId, sequence, origin, onDispatch } = ids;
+        const { workerId, loopId, turnId, sequence, origin, onDispatch } = ids;
         const schemeName = schemeNameOf(statement.target);
         const found = await this.#run(schemeName, { ...statement, op: "FIND" } as PlurnkStatement, ctx);
         const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number } | null }> | undefined) ?? [];
@@ -626,7 +626,7 @@ export default class Dispatcher {
         // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
         if (found.status !== 200 || matches.length === 0) {
             const result: DispatchResult = { status: found.status === 200 ? 204 : found.status };
-            const id = await this.#writeLog({ statement, result, runId, loopId, turnId, sequence, origin });
+            const id = await this.#writeLog({ statement, result, workerId, loopId, turnId, sequence, origin });
             onDispatch?.(id);
             return { ...result, rowsWritten: 1 };
         }
@@ -640,7 +640,7 @@ export default class Dispatcher {
         // had FINDed then READ. On a degenerate single-line document the N delivery rows are
         // identical whole-file lines; the summary row is what tells the model its query hit N
         // times and WHERE (run30: two hits indistinguishable from failure; 17 retries, 508).
-        const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, runId, loopId, turnId, sequence, origin });
+        const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, workerId, loopId, turnId, sequence, origin });
         onDispatch?.(findRowId);
         const wholeByPath = new Map<string, DispatchResult>();
         const fannedStatuses: number[] = [];
@@ -652,7 +652,7 @@ export default class Dispatcher {
                 wholeByPath.set(m.pathname, whole);
             }
             const result = Dispatcher.#sliceMatch(whole, m.span);
-            const id = await this.#writeLog({ statement: Dispatcher.#retargetRead(statement, m.pathname, m.span), result, runId, loopId, turnId, sequence: sequence + written, origin });
+            const id = await this.#writeLog({ statement: Dispatcher.#retargetRead(statement, m.pathname, m.span), result, workerId, loopId, turnId, sequence: sequence + written, origin });
             onDispatch?.(id);
             fannedStatuses.push(result.status);
             written++;
@@ -674,11 +674,11 @@ export default class Dispatcher {
     // the model can finally SEE its own prior output (and reason through its own syntax errors).
     // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
     // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
-    async writeModelEntry({ verbatim, runId, loopId, turnId, sequence, folded, origin = "model" }: {
-        verbatim: string; runId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
+    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, origin = "model" }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
     }): Promise<number> {
         const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
-            run_id: runId, loop_id: loopId, turn_id: turnId, sequence,
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin, source: null, op: "model", suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, params: null, fragment: null, lineMarker: null,
@@ -792,36 +792,36 @@ export default class Dispatcher {
     // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/OPEN, results unseen
     // until next packet). One rule, one steer, one repair family: nothing pending may be silently
     // discarded; 499 discards BY STATED INTENT and is never gated.
-    async #pendingSet(runId: number, turnId: number): Promise<string[]> {
+    async #pendingSet(workerId: number, turnId: number): Promise<string[]> {
         const pending: string[] = [];
-        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
-        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
-        if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(runId) === true) pending.push("surviving streams");
-        const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
+        const openSubs = await (this.#db.find_open_subscriptions_for_worker as PrepMethod).all<{ id: number }>({ worker_id: workerId });
+        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
+        if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("surviving streams");
+        const liveChild = await (this.#db.engine_worker_has_live_child as PrepMethod).get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("surviving worker runs");
         const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
         if (retrievals.length > 0) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
         // §send-undelivered-child-term — a worker that concluded DURING this turn's generation is no
         // longer "live" but its deliverable hasn't reached any packet yet; concluding discards it.
-        const undelivered = await (this.#db.engine_run_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ run_id: runId, turn_id: turnId });
+        const undelivered = await (this.#db.engine_worker_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ worker_id: workerId, turn_id: turnId });
         if (undelivered !== undefined) pending.push("worker results that arrived during this turn (they land NEXT turn)");
         return pending;
     }
 
     // J — a live obligation to WAIT on: a spawned child or an open stream (NOT retrievals, which land
     // next turn regardless). The wait-side twin of #pendingSet's stream+child legs (§wait-obligation-matrix).
-    async #hasLiveWork(runId: number): Promise<boolean> {
-        const openSubs = await (this.#db.find_open_subscriptions_for_run as PrepMethod).all<{ id: number }>({ run_id: runId });
+    async #hasLiveWork(workerId: number): Promise<boolean> {
+        const openSubs = await (this.#db.find_open_subscriptions_for_worker as PrepMethod).all<{ id: number }>({ worker_id: workerId });
         if (openSubs.length > 0) return true;
-        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (runId: number) => boolean } | undefined;
-        if (execHandler?.hasActiveSpawns?.(runId) === true) return true;
-        const liveChild = await (this.#db.engine_run_has_live_child as PrepMethod).get<{ live: number }>({ run_id: runId });
+        const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
+        if (execHandler?.hasActiveSpawns?.(workerId) === true) return true;
+        const liveChild = await (this.#db.engine_worker_has_live_child as PrepMethod).get<{ live: number }>({ worker_id: workerId });
         return liveChild !== undefined;
     }
 
-    async #handleSendBroadcast(statement: PlurnkStatement, ctx: { sessionId: number; runId: number; loopId: number; turnId: number; turnParseErrors?: number }): Promise<DispatchResult> {
+    async #handleSendBroadcast(statement: PlurnkStatement, ctx: { workspaceId: number; workerId: number; loopId: number; turnId: number; turnParseErrors?: number }): Promise<DispatchResult> {
         if (statement.op !== "SEND") throw new Error("unreachable");
-        const { runId, loopId, turnId } = ctx;
+        const { workerId, loopId, turnId } = ctx;
         const status = statement.signal;
         if (status === null) return { status: 400 };
         const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
@@ -832,7 +832,7 @@ export default class Dispatcher {
         // indefinitely (the butler/worker pattern — owner-ruled ungated; the instrumentation renders
         // it legibly). Internally the parked state remains loops.status=202: the model-facing SIGNAL
         // retired, the engine's park state did not.
-        // §join-blocking-collect (#354) — a READ(run://running-child) this turn armed a join. A BARE
+        // §join-blocking-collect (#354) — a READ(worker://running-child) this turn armed a join. A BARE
         // continue becomes an indefinite PARK: the blocking collect, on the same park machinery <-1>
         // uses. The armed READ said "I want this result"; parking IS the collect (the model never had
         // to know the park syntax — the engine holds the join). Any SEND clears the per-turn arm; a
@@ -853,7 +853,7 @@ export default class Dispatcher {
         if (status === 202 || (status === 102 && statement.lineMarker !== null)) {
             const marks = statement.lineMarker?.marks[0];
             const seconds = typeof marks === "number" ? marks : -1; // bare 202 / absent T = indefinite, bounded by the join
-            if (await this.#hasLiveWork(runId)) {
+            if (await this.#hasLiveWork(workerId)) {
                 await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw.length > 0 ? raw : "waiting on live work" });
                 this.#parkDeadlines.set(loopId, seconds);
                 return { status: 202, attrs: { waiting: seconds } };
@@ -865,7 +865,7 @@ export default class Dispatcher {
             // NEXT build. The wait is NOT on nothing — the results are on the doorstep. Parking
             // would hang (the wake edges already fired into an unparked run); R semantics: continue,
             // the deltas land next turn, the model weighs them and concludes.
-            const undelivered = await (this.#db.engine_run_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ run_id: runId, turn_id: turnId });
+            const undelivered = await (this.#db.engine_worker_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ worker_id: workerId, turn_id: turnId });
             if (undelivered !== undefined) return { status: 102 };
             // ∅ — a wait on zero obligations is already satisfied; conclude like 200 (incl. <-1>+∅).
             // #379 (owner ruling): the ENGINE concluded this loop, not the model — mark it as state
@@ -879,12 +879,12 @@ export default class Dispatcher {
         // §send-300-choices — ask the operator and park (the answer returns via loop.inject).
         // The three-state cascade (owner design): PLURNK_QUESTIONS unset = ALLOWED (not enabled);
         // =0 = DENIED servicewide (a ceiling the client cannot override); ENABLED requires the
-        // client to affirmatively pass it per session (settings.questions — the interactive client
-        // with a human enables its own sessions; headless/bench never asks). Enabled sessions ALSO
+        // client to affirmatively pass it per workspace (settings.questions — the interactive client
+        // with a human enables its own workspaces; headless/bench never asks). Enabled workspaces ALSO
         // get the questions.md teaching injected (docEntries) — capability and teaching gate as one.
         // Disabled → refused with a self-decide steer, never a park into the void.
         if (status === 300) {
-            if (!(await SessionSettings.questionsEnabled(this.#db, ctx.sessionId))) {
+            if (!(await WorkspaceSettings.questionsEnabled(this.#db, ctx.workspaceId))) {
                 return { status: 409, error: "Operator asks ([300]) are not enabled in this environment — no one is watching to answer. Decide yourself and proceed: SEND[102] to continue, or [200] to conclude." };
             }
             // Owner ruling (#346): the question rides the SAME proposal system as file edits and
@@ -913,7 +913,7 @@ export default class Dispatcher {
             if (failCount > 0) {
                 return { status: 409, error: `Termination attempted despite ${failCount} failed operation(s) this turn. The errors land in your log next turn — weigh them, then conclude (or SEND[499] to abandon).` };
             }
-            const pending = await this.#pendingSet(runId, turnId);
+            const pending = await this.#pendingSet(workerId, turnId);
             if (pending.length > 0) {
                 // Kind-specific steer (owner wording, xpath/topo forensics): retrievals-only is
                 // gemma's read-and-conclude idiom — no lever to pull, the results simply arrive;
@@ -981,10 +981,10 @@ export default class Dispatcher {
     }
 
     async #writeLog({
-        statement, result, runId, loopId, turnId, sequence, origin,
+        statement, result, workerId, loopId, turnId, sequence, origin,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
-        runId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
+        workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
     }): Promise<number> {
         const target = this.#extractTarget(statement.target);
         const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
@@ -1017,7 +1017,7 @@ export default class Dispatcher {
             attrsObj.stream = `${runtime}://${coordPathname}`;
             // Mutate the in-memory result.attrs too: the dispatch path
             // hands originalResult.attrs to handler.applyResolution after
-            // proposal accept (see ProposalLifecycle.runApply). Both views —
+            // proposal accept (see ProposalLifecycle.workerApply). Both views —
             // the stored row AND the in-memory proposal — need the same
             // pathname so applyResolution writes the entry at the same URI.
             if (result.attrs !== undefined && result.attrs !== null) {
@@ -1028,7 +1028,7 @@ export default class Dispatcher {
         const txJson = JSON.stringify(statement);
         const rxJson = JSON.stringify(result);
         const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
-            run_id: runId,
+            worker_id: workerId,
             loop_id: loopId,
             turn_id: turnId,
             sequence: sequence,
@@ -1077,10 +1077,10 @@ export default class Dispatcher {
         // Every registered (plurnk-namespace) scheme uses its authority as a namespace segment — fold
         // it into the canonical pathname so known://x ≡ known:///x ≡ /x and the log keys identically to
         // the entry (/prompt/<run>/<loop>/<N>, /docs/x.md). A foreign web host (http://, unregistered) is NOT a
-        // namespace: keep it in hostname. run:// is the one registered EXCEPTION — its authority IS the
-        // run selector (§run-scheme), and run://self must stay distinct from run://name, so Run.ts
+        // namespace: keep it in hostname. worker:// is the one registered EXCEPTION — its authority IS the
+        // run selector (§run-scheme), and worker://self must stay distinct from worker://name, so Run.ts
         // folds the owner into the storage path itself, never here.
-        const foldNs = scheme !== null && scheme !== "run" && this.#schemes.has(scheme);
+        const foldNs = scheme !== null && scheme !== "worker" && this.#schemes.has(scheme);
         return {
             scheme, username: path.username, password: path.password,
             hostname: foldNs ? null : path.hostname, port: path.port,

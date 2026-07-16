@@ -12,8 +12,8 @@ Rules of this repo:
   events out; anything the core vocabulary can't hold rides `CUSTOM plurnk.*` — never dropped,
   never masquerading as a core event. Numbers pass through verbatim (the daemon's gauge is
   the gauge).
-- **The bridge holds no state the daemon doesn't.** threadId → session-name mapping is
-  reconstructible (`session.attach` by name); a bridge restart loses nothing.
+- **The bridge holds no state the daemon doesn't.** threadId → workspace-name mapping is
+  reconstructible (`workspace.attach` by name); a bridge restart loses nothing.
 - **SPEC.md is the contract** — every `{§}` anchor cited by a `[§]` test (service-style
   lockstep, enforced by review until a lockstep test lands: see the worksheet).
 - Zero runtime deps is a standing decision, not an accident (§agui-zero-dep) — revisit only
@@ -28,11 +28,11 @@ frontends, the community carries the rest. Two planes, ruled:
 
 - **The RUN plane is AG-UI** — runs, messages, tool calls, steps, state, proposals. Fully
   standard; rich fidelity rides `plurnk.row` and the `plurnk.*` customs (§agui-row-channel).
-- **The MANAGEMENT plane is one escape hatch** — sessions (projectRoot, constraints, settings),
+- **The MANAGEMENT plane is one escape hatch** — workspaces (projectRoot, constraints, settings),
   entry CRUD (op.edit/op.read for nvim's direct known:// editing), providers/model switching,
   auth flows. AG-UI does not model a workspace; these ride ONE passthrough endpoint
   (`POST /plurnk/rpc`, JSON-RPC over HTTP to the daemon) — boring, thin, documented, and the
-  ONLY non-standard client surface. First-run session options may also ride
+  ONLY non-standard client surface. First-run workspace options may also ride
   `RunAgentInput.forwardedProps.plurnk` (the spec's sanctioned side-channel).
 
 Accepted costs, stated so nobody relitigates them silently: turn-granular streaming (plurnk
@@ -43,7 +43,7 @@ WS narrows to bridge-only).
 
 # Worksheet — parity gaps toward the exclusive portal, in order
 - [x] MESSAGES_SNAPSHOT on thread attach — shipped (§agui-replay): the model run's SENDs via
-      session.runs + log.read; pending proposals re-surface via proposal.list. Live-proven
+      workspace.workers + log.read; pending proposals re-surface via proposal.list. Live-proven
       across a bridge restart.
 - [x] `POST /plurnk/rpc` — shipped (§agui-management-plane), gated by §agui-auth.
 - [x] `forwardedProps.plurnk` → shipped (§agui-forwarded-props): projectRoot, constraints,

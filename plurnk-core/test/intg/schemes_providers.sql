@@ -3,7 +3,7 @@ SELECT sql FROM sqlite_master WHERE name = $name;
 
 -- PREP: test_schemes_register
 INSERT INTO schemes (name, model_visible, category, default_scope, default_channel, writable_by, volatile, handler)
-VALUES ($name, 1, 'knowledge', 'session', 'body', $writable_by, 0, NULL);
+VALUES ($name, 1, 'knowledge', 'workspace', 'body', $writable_by, 0, NULL);
 
 -- PREP: test_schemes_get
 SELECT name, model_visible, category, default_scope, default_channel, channel_orientations, writable_by, volatile, handler

@@ -8,8 +8,8 @@
 // plurnk-aware frontends render them richly (§agui-custom-namespace).
 
 export type AguiEvent =
-    | { type: "RUN_STARTED"; threadId: string; runId: string }
-    | { type: "RUN_FINISHED"; threadId: string; runId: string }
+    | { type: "RUN_STARTED"; threadId: string; workerId: string }
+    | { type: "RUN_FINISHED"; threadId: string; workerId: string }
     | { type: "RUN_ERROR"; message: string; code?: string }
     | { type: "STEP_STARTED"; stepName: string }
     | { type: "STEP_FINISHED"; stepName: string }
@@ -37,7 +37,7 @@ export type AguiEvent =
 // the rest pass through untouched (forwardedProps etc. are the frontend's business).
 export interface RunAgentInput {
     threadId: string;
-    runId: string;
+    workerId: string;
     messages?: Array<{ role: string; content?: string }>;
     state?: unknown;
     forwardedProps?: unknown;
@@ -67,8 +67,8 @@ export interface LogEntryNotification {
 
 export interface ProposalNotification {
     logEntryId: number;
-    sessionId: number;
-    runId: number;
+    workspaceId: number;
+    workerId: number;
     loopId: number;
     turnId: number;
     op: string;

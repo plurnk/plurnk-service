@@ -18,18 +18,18 @@ export default class Skill {
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        scope: "session",
+        scope: "workspace",
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
     };
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
-        return EntryOps.editSessionEntry(statement, ctx, Skill.manifest);
+        return EntryOps.editWorkspaceEntry(statement, ctx, Skill.manifest);
     }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        return EntryOps.readSessionEntry(statement, ctx, Skill.manifest);
+        return EntryOps.readWorkspaceEntry(statement, ctx, Skill.manifest);
     }
 
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
@@ -45,10 +45,10 @@ export default class Skill {
     }
 
     async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<SendResult> {
-        return EntrySend.sendToSessionEntry(statement, ctx, Skill.manifest.name);
+        return EntrySend.sendToWorkspaceEntry(statement, ctx, Skill.manifest.name);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findSessionEntries(statement, ctx, Skill.manifest);
+        return EntryFind.findWorkspaceEntries(statement, ctx, Skill.manifest);
     }
 }

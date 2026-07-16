@@ -136,10 +136,10 @@ export default class Browser {
     // the page. Throws on navigation failure (the caller maps it to a status).
     async render(
         url: string,
-        { runId, signal, headers, guard, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
-            { runId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean>; timeout?: number },
+        { workerId, signal, headers, guard, timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT") }:
+            { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (url: string) => Promise<boolean>; timeout?: number },
     ): Promise<RenderResult> {
-        const context = await this.#getContext(runId);
+        const context = await this.#getContext(workerId);
         const page = await context.newPage();
         // SSRF interception (WebFetcher, #454): re-guard every navigation AND
         // subresource — a rendered public page must not reach private space.
@@ -228,22 +228,22 @@ export default class Browser {
     // Get-or-create the run's BrowserContext. Mobile-emulated by default (a
     // lighter responsive layout is the better generation hint); desktop when
     // PLURNK_SCHEMES_HTTP_MOBILE=0.
-    async #getContext(runId: number): Promise<PwContext> {
+    async #getContext(workerId: number): Promise<PwContext> {
         this.#touchIdle();
-        const existing = this.#contexts.get(runId);
+        const existing = this.#contexts.get(workerId);
         if (existing) return existing;
         const browser = await this.#getBrowser();
         const context = await browser.newContext(mobileEmulation());
-        this.#contexts.set(runId, context);
+        this.#contexts.set(workerId, context);
         return context;
     }
 
     // Drop the run's context (run end or abort). Closing it cascades to any
     // in-flight page in that context. Fire-and-forget.
-    closeContext(runId: number): void {
-        const context = this.#contexts.get(runId);
+    closeContext(workerId: number): void {
+        const context = this.#contexts.get(workerId);
         if (!context) return;
-        this.#contexts.delete(runId);
+        this.#contexts.delete(workerId);
         context.close().catch(() => {});
     }
 

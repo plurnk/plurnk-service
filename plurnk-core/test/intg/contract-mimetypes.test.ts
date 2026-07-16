@@ -7,7 +7,7 @@
 // Vehicles are the real production paths:
 //   - §matcher-dispatch / §slice-semantics — Known.read matcher dispatch (Matcher.matchAgainstContent → 203)
 //                     + Log.read structural <L> compose over the matcher result.
-//   - §send-dispatch — _entry-send.sendToSessionEntry 410-with-fragment over Engine.dispatch.
+//   - §send-dispatch — _entry-send.sendToWorkspaceEntry 410-with-fragment over Engine.dispatch.
 //   - §mimetype-methods / §mimetype — Mimetypes.process shape + a spy handler proving write (detect)
 //                 never fires preview, but render (manifest build → process) does.
 
@@ -30,18 +30,18 @@ import File from "../../src/schemes/File.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
-    openMigrated, insertSession, insertRun, insertLoop, insertTurn,
+    openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn,
     seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES,
 } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
-    const sessionId = await insertSession(db, `cm-${crypto.randomUUID()}`);
-    const runId = await insertRun(db, sessionId);
+    const workspaceId = await insertWorkspace(db, `cm-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
-    return { db, sessionId, runId, mimetypes };
+    return { db, workspaceId, workerId, mimetypes };
 };
 
 // --- §matcher-dispatch matcher 203 soft-fallback ---------------------------------------
@@ -50,20 +50,20 @@ const setup = async () => {
 // maps to 203, returning the RAW bytes as the text primitive plus `reason`.
 
 test("[§matcher-dispatch-203-soft-fallback] jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const k = new Known();
         const broken = '{"host": "db.internal", "pool":}';  // trailing-colon: not valid JSON
-        await k.edit(editStmt(urlPath("known", "/config.json"), broken), makeSchemeCtx({ db, sessionId, runId, mimetypes }));
+        await k.edit(editStmt(urlPath("known", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
 
         const r = await k.read(
             readStmt(urlPath("known", "/config.json")) as ReadStatement & { body: MatcherBody },
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         // read() above has no body matcher; re-issue WITH the jsonpath body.
         const matched = await k.read(
             { ...readStmt(urlPath("known", "/config.json")), body: { dialect: "jsonpath", raw: "$.host" } as MatcherBody },
-            makeSchemeCtx({ db, sessionId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(r.status, 200, "plain READ of the entry still works");
 
@@ -84,15 +84,15 @@ test("[§matcher-dispatch-203-soft-fallback] jsonpath on malformed-JSON entry re
 // picks the P-th match — matcher rx is application/json, <L> selects the item.
 
 test("[§slice-semantics-compose-pattern] a matcher READ fans out per match — the Nth match is log:///<l>/<t>/N, addressed directly (#286)", async () => {
-    const { db, sessionId, runId, mimetypes } = await setup();
+    const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        const loopId = await insertLoop(db, runId, 1, "compose");
+        const loopId = await insertLoop(db, workerId, 1, "compose");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
 
         await new Known().edit(
             editStmt(urlPath("known", "/log.txt"), "error: alpha\nok: beta\nerror: gamma"),
-            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
 
         // Matcher READ through the engine → fans out one row per match (#286).
@@ -101,15 +101,15 @@ test("[§slice-semantics-compose-pattern] a matcher READ fans out per match — 
                 ...readStmt(urlPath("known", "/log.txt")),
                 body: { dialect: "regex", raw: "/error: (\\w+)/g", pattern: "error: (\\w+)", flags: "g" } as MatcherBody,
             },
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.rowsWritten, 3, "the FIND selection-summary row + two error matches, not one combined blob");
 
         // The compose pattern under per-match: the Nth match IS log:///<l>/<t>/N — its own
         // addressable row. No <P>-slice of a combined result (there is no combined result). Each
         // row carries its matching LINE (regex SELECTS, never extracts — plurnk.md:31).
-        const m1 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, runId, mimetypes }));
-        const m2 = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, runId, mimetypes }));
+        const m1 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workerId, mimetypes }));
+        const m2 = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId, mimetypes }));
         assert.match(m1.content ?? "", /error: alpha/, "the 1st match is its own row");
         assert.match(m2.content ?? "", /error: gamma/, "the 2nd match is the 2nd row");
         assert.doesNotMatch(m2.content ?? "", /alpha/, "each row holds exactly its own match");
@@ -124,13 +124,13 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-410-${crypto.randomUUID()}`);
-        const { sessionId, runId, loopId, turnId } = env;
+        const { workspaceId, workerId, loopId, turnId } = env;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         // Seed a two-channel entry directly (production Known is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            session_id: sessionId, scheme: "known", pathname: "/multi",
+            workspace_id: workspaceId, scheme: "known", pathname: "/multi",
         });
         const entryId = entry!.id;
         await (db.test_seed_channel as PrepMethod).run({ entry_id: entryId, name: "body", content: "keep me", mimetype: "text/plain", state: "static" });
@@ -138,7 +138,7 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
 
         const r = await engine.dispatch({
             statement: sendStmt(410, urlPath("known", "/multi", "summary")) as SendStatement,
-            sessionId, runId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(r.status, 200, "410 on an existing channel succeeds");
 
@@ -185,7 +185,7 @@ test("[§mimetype-schemes-do-not-invoke-handlers] write resolves mimetype withou
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-fire-${crypto.randomUUID()}`);
-        const { sessionId, runId, loopId } = env;
+        const { workspaceId, workerId, loopId } = env;
 
         const previewCalls: string[] = [];
         const queryCalls: string[] = [];
@@ -222,7 +222,7 @@ test("[§mimetype-schemes-do-not-invoke-handlers] write resolves mimetype withou
         // detect; must not touch preview/query.
         const edited = await new Known().edit(
             editStmt(urlPath("known", "/notes.spy"), "alpha\nbeta\ngamma"),
-            makeSchemeCtx({ db, sessionId, runId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(edited.status, 201, "write succeeded");
         // Confirm the write resolved the spy mimetype (detect ran, not the handler).
@@ -238,7 +238,7 @@ test("[§mimetype-schemes-do-not-invoke-handlers] write resolves mimetype withou
             contextWindow: 100000,
             responses: [{ assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } }],
         });
-        await engine.runTurn({ provider, sessionId, runId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.ok(previewCalls.length > 0, "§mimetype: render-time manifest build DID invoke the handler's preview");
         assert.ok(previewCalls.includes("alpha\nbeta\ngamma"), "handler saw the stored channel content at render time");
     } finally { await db.close(); }

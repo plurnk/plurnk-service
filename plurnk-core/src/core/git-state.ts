@@ -3,7 +3,7 @@ import { hermeticGitEnv } from "./git-env.ts";
 import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import type { Db, PrepMethod } from "./Db.ts";
-import SessionSettings from "./session-settings.ts";
+import WorkspaceSettings from "./workspace-settings.ts";
 
 export interface GitStatus {
     branch: string;
@@ -31,10 +31,10 @@ export default class GitState {
         return process.env.PLURNK_SERVICE_GIT_ALLOWED === "1";
     }
 
-    static async status(db: Db, sessionId: number, signal: AbortSignal | undefined): Promise<GitStatus | null> {
-        // #232 — git:false denies git telemetry for the session (env AND session ceiling).
-        if (!GitState.enabled() || (await SessionSettings.read(db, sessionId)).git === false) return null;
-        const row = await (db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
+    static async status(db: Db, workspaceId: number, signal: AbortSignal | undefined): Promise<GitStatus | null> {
+        // #232 — git:false denies git telemetry for the workspace (env AND workspace ceiling).
+        if (!GitState.enabled() || (await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
+        const row = await (db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;
         if (root === null) return null;
         if (process.env.PLURNK_SERVICE_GIT_NATIVE !== "1") {
