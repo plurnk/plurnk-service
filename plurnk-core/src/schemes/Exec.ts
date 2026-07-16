@@ -18,9 +18,9 @@ import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import ExecEnv from "./exec-env.ts";
 import ExecAbort from "./exec-abort.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
-import { writeFile, unlink } from "node:fs/promises";
+import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 type ExecResult = { status: number; body?: string; attrs?: object; error?: string };
 
@@ -41,10 +41,10 @@ interface ExecAttrs {
 // the scheme through ctx.executors (plurnk-service#181). Each runtime tag
 // resolves to its sibling executor; the scheme itself stays runtime-agnostic.
 
-// Per plurnk.md, EXEC's target slot is `cwd`. ParsedPath there means a
-// bare local path or file:/// URL — both decode to a filesystem directory.
-// Anything else is rejected at proposal time.
-const cwdFromTarget = (target: ExecStatement["target"]): string | null => {
+// The local path a subprocess EXEC's `(target)` slot names — a bare local path or a file:/// URL (both
+// decode to a filesystem path). Stat-routed at dispatch (#462): a directory becomes cwd, a file is the
+// program/data-source. A plurnk-scheme target is NOT local — schemeTargetOf handles that.
+const localPathFromTarget = (target: ExecStatement["target"]): string | null => {
     if (target === null) return null;
     if (target.kind === "local") return target.raw;
     if (target.kind === "url" && (target.scheme === null || target.scheme === "file")) {
@@ -54,7 +54,7 @@ const cwdFromTarget = (target: ExecStatement["target"]): string | null => {
 };
 
 // #201 — a plurnk-scheme target (known/exec/log/…), distinct from file/local
-// (which cwdFromTarget handles as a path). Its content is resolved at apply-time;
+// (which localPathFromTarget handles as a path). Its content is resolved at apply-time;
 // executors stay scheme-blind (SPEC §5), so the scheme — not the executor — reads it.
 const schemeTargetOf = (target: ExecStatement["target"]): { scheme: string; pathname: string; fragment: string | null } | null => {
     if (target === null || target.kind !== "url") return null;
@@ -176,7 +176,23 @@ export default class Exec {
         // #201 — a plurnk-scheme target carries content the scheme resolves at
         // apply-time; an empty body is then legal (the target IS the script).
         const schemeTarget = schemeTargetOf(statement.target);
-        if (command.length === 0 && schemeTarget === null) {
+        // #462 — stat-route the local (target): a DIRECTORY overrides cwd (run the body IN it); a FILE is
+        // the program/data-source the executor runs (body = stdin). A stat-miss falls to the file arm so the
+        // runtime reports its own not-found, never a dispatch 400. cwd otherwise = the session workspace
+        // (project_root) — the directory File writes to, and what a data-source target resolves against.
+        const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
+        const projectRoot = sessionRow?.project_root ?? null;
+        const localTarget = localPathFromTarget(statement.target);
+        let routedTarget = localTarget;
+        let cwd: string | null = projectRoot;
+        if (localTarget !== null) {
+            const abs = projectRoot !== null ? resolve(projectRoot, localTarget) : localTarget;
+            try { if ((await stat(abs)).isDirectory()) { cwd = abs; routedTarget = null; } } catch { /* stat-miss → file arm; the runtime reports its own not-found */ }
+        }
+        // Empty body is legal when the target IS the program: a #201 scheme target (the target is the
+        // script) or a #462 FILE target (run it, no stdin). Empty body with a directory target (nothing
+        // to run) or no target at all → 400.
+        if (command.length === 0 && schemeTarget === null && routedTarget === null) {
             return { status: 400, error: "EXEC requires a command body (or a scheme target to run)" };
         }
 
@@ -215,18 +231,16 @@ export default class Exec {
             const why = resolved.detail === undefined ? "" : `: ${resolved.detail}`;
             return { status: 501, error: `\`${runtime}\` is unavailable${why}` };
         }
-        // The parsed (target) slot — the executor's DATA SOURCE (jq input file / sqlite db / wasm
-        // module; ignored by subprocess). execs 0.4.26 (#15) carries it distinct from cwd.
-        const target = cwdFromTarget(statement.target);
+        // The (target) slot the executor receives — its DATA SOURCE / program (jq input, sqlite db, or a
+        // subprocess program run with the body as stdin; #15). A #462 directory target routed to cwd above
+        // leaves this null (the body is the command, run in that directory).
+        const target = routedTarget;
         // Effect classifies by the target only, never by parsing the command (#289): host → propose,
         // read/pure → auto-run inline (plurnk-service#182).
         const policy = EffectPolicy.decide(resolved.executor.effect(target, command));
-        // cwd is ALWAYS the session WORKSPACE (project_root) — the process working directory a relative
-        // target resolves against (execs 0.4.26 §2). The old overload (target-as-cwd) is gone: EXEC runs
-        // in the same directory the File scheme writes to, and a data-source runtime resolves its target
-        // against it (so EXEC[jq](data/x.json) finds the workspace file, not one at the daemon's cwd).
-        const sessionRow = await (ctx.db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: ctx.sessionId });
-        const cwd: string | null = sessionRow?.project_root ?? null;
+        // cwd is the session WORKSPACE (project_root) — the directory File writes to and a relative
+        // data-source target resolves against (execs 0.4.26 §2) — UNLESS a #462 directory target overrode
+        // it above, in which case the body runs in that directory. A file/data-source target never moves cwd.
         // Pathname is assigned by Dispatcher.#writeLog as <runtime>/<loop_seq>/
         // <turn_seq>/<sequence> (executor-domain + coordinate, e.g. sh/1/1/2).
         // `pathname` is stamped into attrs at log-write time; applyResolution
