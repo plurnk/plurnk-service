@@ -20,11 +20,14 @@
 //        re-tokenized, and rewritten; an unchanged member is a no-op, and the EMI
 //        divergence rides that same pass. {§membership-change-gated-sync}
 //
-// git resolution shells out via node:child_process (the same surface the
-// File scheme's tests and the demo fixture use) and respects AbortSignal.
+// git resolution is in-process by default (GitIso / isomorphic-git, #461) — portable,
+// sandbox-safe, hermetic by construction. PLURNK_SERVICE_GIT_NATIVE=1 routes to system git
+// (subprocess + hermeticGitEnv, AbortSignal-respecting) — the untracked scan is the pure-JS
+// slow class (~55x native at 20k files), so a large-repo host buys the hot path back there.
 
 import { execFile } from "node:child_process";
 import { hermeticGitEnv } from "./git-env.ts";
+import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
 import { resolve, relative, join, matchesGlob } from "node:path";
@@ -47,6 +50,9 @@ export interface FsDivergence {
     after: string;
 }
 
+// Feature-flag convention: `=== "1"` exactly. Default (unset/0) = the in-process GitIso backend.
+const nativeGit = (): boolean => process.env.PLURNK_SERVICE_GIT_NATIVE === "1";
+
 export default class GitMembership {
     static #execFileP = promisify(execFile);
 
@@ -57,12 +63,13 @@ export default class GitMembership {
         return row?.project_root ?? null;
     }
 
-    // Tracked files of one repo, workspace-relative, via `git ls-files --stage -z`.
-    // NUL-delimited so paths with spaces/newlines survive; gitlinks filtered. Empty → [].
-    static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
-        // --stage exposes the mode so submodule gitlinks (mode 160000 — a commit
-        // pointer, a directory on disk, not a file) are filtered: a submodule is a
-        // separate declared repo, never a member of its superproject.
+    // Tracked files of one repo, workspace-relative — GitIso.trackedFiles (walk STAGE, blob
+    // entries only) or `git ls-files --stage -z` under the native flag. Either way gitlinks
+    // are filtered: a submodule (mode 160000, a commit pointer — a directory on disk, not a
+    // file) is a separate declared repo, never a member of its superproject. Empty → [].
+    static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
+        if (!nativeGit()) return GitIso.trackedFiles(root, cache);
+        // NUL-delimited so paths with spaces/newlines survive.
         const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024, env: hermeticGitEnv() });
         const files: string[] = [];
         for (const entry of stdout.split("\0")) {
@@ -75,20 +82,22 @@ export default class GitMembership {
         return files;
     }
 
-    // Untracked-but-not-ignored files of one repo (SPEC §membership-auto-add): `git
-    // ls-files --others --exclude-standard -z`. A model-created file is a repo member the
-    // moment it exists — no git-stage required — while `.gitignore` still filters it out
-    // (--exclude-standard). NUL-delimited so paths with spaces/newlines survive; untracked
-    // rows carry no mode, so (unlike --stage) there's no gitlink to filter.
-    static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
+    // Untracked-but-not-ignored files of one repo (SPEC §membership-auto-add) —
+    // GitIso.untrackedFiles (statusMatrix, .gitignore-honoring) or `git ls-files --others
+    // --exclude-standard -z` under the native flag. A model-created file is a repo member the
+    // moment it exists — no git-stage required — while `.gitignore` still filters it out.
+    static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
+        if (!nativeGit()) return GitIso.untrackedFiles(root, cache);
         const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: 64 * 1024 * 1024, env: hermeticGitEnv() });
         return stdout.split("\0").filter((e) => e.length > 0);
     }
 
-    // Resolve a declared repo folder to its git toplevel (the repo root containing
-    // it), or null if it isn't inside a git tree. `rev-parse --show-toplevel` handles
-    // plain repos, linked worktrees (`.git` is a gitdir: file), and submodules alike.
+    // Resolve a declared repo folder to its git toplevel (the repo root containing it), or
+    // null if it isn't inside a git tree. GitIso.repoToplevel (findRoot) or `rev-parse
+    // --show-toplevel` under the native flag — both handle plain repos, linked worktrees
+    // (`.git` is a gitdir: file), and submodules alike.
     static async #repoToplevel(dir: string, signal: AbortSignal | undefined): Promise<string | null> {
+        if (!nativeGit()) return GitIso.repoToplevel(dir);
         try {
             const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv() });
             return stdout.trim();
@@ -113,14 +122,18 @@ export default class GitMembership {
             }
         }
         const members = new Set<string>();
+        // One iso-git cache per PASS: pack/index parses are reused across this resolve's repos
+        // and reads, then discarded — never carried across turns, so a rewritten index or
+        // repacked store can't serve stale.
+        const cache = {};
         for (const repoRoot of repoRoots) {
             // project_root is no boundary — only the relative-address base. EVERY member is
             // addressed relative to the root, a repo outside it included (a `..`-prefixed
             // path) — so the universal `join(root, pathname)` disk-resolver works unchanged;
             // an absolute pathname would nest UNDER root and never materialize. {§membership-overlay-repo}
             const prefix = relative(root, repoRoot);
-            const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal);
-            const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal);
+            const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal, cache);
+            const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal, cache);
             for (const f of [...tracked, ...untracked]) {
                 members.add(join(prefix, f));
             }

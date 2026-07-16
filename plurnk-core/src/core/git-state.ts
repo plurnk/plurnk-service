@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { hermeticGitEnv } from "./git-env.ts";
+import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import type { Db, PrepMethod } from "./Db.ts";
 import SessionSettings from "./session-settings.ts";
@@ -14,12 +15,13 @@ export interface GitStatus {
 }
 
 // SPEC §telemetry — git working-tree state for the telemetry section: the model's
-// ambient "where am I, what have I touched" without running a command. A
-// service-side shell-out (git is local + cheap, the same surface git membership
-// uses), gated by `PLURNK_SERVICE_GIT_ALLOWED` (the hard service ceiling) + a git
-// worktree. Returns null when git is disabled, headless, or non-git — the
-// telemetry block is then omitted entirely. This is the *state* read; the
-// model's arbitrary git *operations* go through the (daughter) EXEC[git].
+// ambient "where am I, what have I touched" without running a command. In-process
+// by default (GitIso / isomorphic-git, #461 — portable, sandbox-safe, hermetic by
+// construction); PLURNK_SERVICE_GIT_NATIVE=1 shells out to system git instead (the
+// same surface git membership routes). Gated by `PLURNK_SERVICE_GIT_ALLOWED` (the
+// hard service ceiling) + a git worktree. Returns null when git is disabled,
+// headless, or non-git — the telemetry block is then omitted entirely. This is the
+// *state* read; the model's arbitrary git *operations* go through EXEC[git].
 export default class GitState {
     static #execFileP = promisify(execFile);
 
@@ -35,6 +37,13 @@ export default class GitState {
         const row = await (db.envelope_get_session as PrepMethod).get<{ project_root: string | null }>({ id: sessionId });
         const root = row?.project_root ?? null;
         if (root === null) return null;
+        if (process.env.PLURNK_SERVICE_GIT_NATIVE !== "1") {
+            try {
+                return await GitIso.status(root);
+            } catch {
+                return null;  // not a git worktree (or unborn HEAD) — fail closed, no telemetry
+            }
+        }
         let stdout: string;
         try {
             ({ stdout } = await GitState.#execFileP("git", ["status", "--porcelain", "--branch"], { cwd: root, signal, maxBuffer: 16 * 1024 * 1024, env: hermeticGitEnv() }));

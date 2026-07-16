@@ -1,0 +1,166 @@
+// [§git-portable-default] / [§git-native-flag] (#461) — core's git reads are in-process by
+// default (GitIso / isomorphic-git): membership (tracked ∪ untracked-not-ignored, gitlinks
+// filtered) and status telemetry, hermetic by construction. Fixtures are seeded with NATIVE
+// git and read through the iso backend, so every assertion is a native-write/iso-read
+// cross-validation; the differential test compares the two backends' output on the SAME repo.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
+import GitIso from "../../src/core/git-iso.ts";
+import GitMembership from "../../src/core/git-membership.ts";
+import GitState from "../../src/core/git-state.ts";
+import { openMigrated, insertSession, rootSession } from "./_helpers.ts";
+
+const git = (cwd: string, ...args: string[]): string =>
+    execFileSync("git", args, { cwd, env: hermeticGitEnv(), maxBuffer: 1 << 26 }).toString();
+
+const seedRepo = async (prefix: string): Promise<string> => {
+    const root = await mkdtemp(join(tmpdir(), prefix));
+    git(root, "init", "-q");
+    git(root, "config", "user.email", "t@t.t");
+    git(root, "config", "user.name", "t");
+    return root;
+};
+const commit = (root: string, msg: string): void => { git(root, "-c", "commit.gpgsign=false", "commit", "-q", "--no-verify", "-m", msg); };
+
+// A rich working tree: tracked (subdir + space-in-name), staged-only, unstaged edit,
+// untracked (incl. an untracked DIRECTORY that must descend to its files), gitignored,
+// and a submodule gitlink (never a member of the superproject).
+const seedRich = async (): Promise<{ root: string }> => {
+    const sub = await seedRepo("iso-submod-");
+    await writeFile(join(sub, "inner.txt"), "inner\n");
+    git(sub, "add", ".");
+    commit(sub, "sub seed");
+
+    const root = await seedRepo("iso-rich-");
+    await mkdir(join(root, "src/deep"), { recursive: true });
+    await writeFile(join(root, "a.txt"), "a\n");
+    await writeFile(join(root, "sp ace.txt"), "s\n");
+    await writeFile(join(root, "src/deep/b.txt"), "b\n");
+    await writeFile(join(root, ".gitignore"), "*.tmp\nignored-dir/\n");
+    git(root, "add", ".");
+    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "vendored");
+    commit(root, "seed");
+    await writeFile(join(root, "a.txt"), "a edited\n");                       // unstaged M
+    await writeFile(join(root, "staged.txt"), "st\n"); git(root, "add", "staged.txt");  // staged A
+    await writeFile(join(root, "loose.txt"), "l\n");                          // untracked
+    await mkdir(join(root, "newdir/deep"), { recursive: true });
+    await writeFile(join(root, "newdir/deep/x.txt"), "x\n");                  // untracked, in an untracked dir
+    await writeFile(join(root, "z.tmp"), "z\n");                              // ignored
+    await mkdir(join(root, "ignored-dir"));
+    await writeFile(join(root, "ignored-dir/y.txt"), "y\n");                  // ignored dir
+    await rm(sub, { recursive: true, force: true });
+    return { root };
+};
+
+// Native truth for the same repo: ls-files --stage (gitlinks filtered) + --others --exclude-standard.
+const nativeTracked = (root: string): string[] =>
+    git(root, "ls-files", "--stage", "-z").split("\0").filter((e) => e.length > 0)
+        .filter((e) => e.slice(0, e.indexOf(" ")) !== "160000").map((e) => e.slice(e.indexOf("\t") + 1)).sort();
+const nativeUntracked = (root: string): string[] =>
+    git(root, "ls-files", "--others", "--exclude-standard", "-z").split("\0").filter((e) => e.length > 0).sort();
+
+test("[§git-portable-default] iso tracked/untracked match native ls-files on the same repo — gitlinks filtered, gitignore honored, untracked dirs descended", async () => {
+    const { root } = await seedRich();
+    try {
+        const cache = {};
+        const isoTracked = (await GitIso.trackedFiles(root, cache)).sort();
+        const isoUntracked = (await GitIso.untrackedFiles(root, cache)).sort();
+        assert.deepEqual(isoTracked, nativeTracked(root), "tracked sets are identical (submodule gitlink excluded from both)");
+        assert.deepEqual(isoUntracked, nativeUntracked(root), "untracked sets are identical (ignored pruned, untracked dir descended)");
+        assert.ok(!isoTracked.includes("vendored"), "the submodule gitlink is not a member");
+        assert.ok(isoTracked.includes("sp ace.txt"), "a space-in-name path survives");
+        assert.ok(isoUntracked.includes("newdir/deep/x.txt"), "a file inside an untracked directory is enumerated");
+        assert.ok(!isoUntracked.includes("z.tmp") && !isoUntracked.includes("ignored-dir/y.txt"), "gitignore filters both file and dir patterns");
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("[§git-portable-default] GitState.status via iso: branch + staged/unstaged/untracked counts match the working tree", async () => {
+    const { root } = await seedRich();
+    const db = await openMigrated();
+    try {
+        const sessionId = await insertSession(db, `iso-${crypto.randomUUID()}`);
+        await rootSession(db, sessionId, root);
+        const status = await GitState.status(db, sessionId, undefined);
+        assert.ok(status !== null, "a git worktree yields telemetry");
+        assert.equal(status.branch, git(root, "symbolic-ref", "--short", "HEAD").trim(), "branch matches native");
+        assert.equal(status.staged, 1, "staged.txt is the one staged change");
+        assert.equal(status.unstaged, 1, "a.txt's edit is the one unstaged change");
+        assert.equal(status.untracked, 2, "loose.txt + newdir/deep/x.txt (ignored files never count)");
+        assert.equal(status.ahead, 0);
+        assert.equal(status.behind, 0);
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("[§git-portable-default] ahead/behind vs the configured upstream — exact counts via merge-base walk", async () => {
+    const root = await seedRepo("iso-ab-");
+    const db = await openMigrated();
+    try {
+        await writeFile(join(root, "f.txt"), "1\n"); git(root, "add", "."); commit(root, "c1");
+        const c1 = git(root, "rev-parse", "HEAD").trim();
+        // The "remote" diverges: one commit from c1 on a side branch becomes origin's tip (behind=1).
+        const branch = git(root, "symbolic-ref", "--short", "HEAD").trim();
+        git(root, "checkout", "-q", "-b", "side", c1);
+        await writeFile(join(root, "r.txt"), "r\n"); git(root, "add", "."); commit(root, "remote-only");
+        const remoteTip = git(root, "rev-parse", "HEAD").trim();
+        git(root, "checkout", "-q", branch);
+        // Local advances two commits past c1 (ahead=2).
+        await writeFile(join(root, "f.txt"), "2\n"); git(root, "add", "."); commit(root, "c2");
+        await writeFile(join(root, "f.txt"), "3\n"); git(root, "add", "."); commit(root, "c3");
+        git(root, "update-ref", `refs/remotes/origin/${branch}`, remoteTip);
+        git(root, "config", `branch.${branch}.remote`, "origin");
+        git(root, "config", `branch.${branch}.merge`, `refs/heads/${branch}`);
+
+        const sessionId = await insertSession(db, `iso-ab-${crypto.randomUUID()}`);
+        await rootSession(db, sessionId, root);
+        const status = await GitState.status(db, sessionId, undefined);
+        assert.ok(status !== null);
+        assert.equal(status.ahead, 2, "two local commits past the merge base");
+        assert.equal(status.behind, 1, "one remote-only commit past the merge base");
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("[§git-portable-default] a linked worktree session root resolves membership + status through iso (the gitdir-file shape)", async () => {
+    const main = await seedRepo("iso-wt-main-");
+    const db = await openMigrated();
+    const linked = join(main, "..", `iso-wt-linked-${crypto.randomUUID()}`);
+    try {
+        await writeFile(join(main, "tracked.md"), "# t\n"); git(main, "add", "."); commit(main, "seed");
+        git(main, "worktree", "add", "-q", linked, "-b", "wt-branch");
+        const sessionId = await insertSession(db, `iso-wt-${crypto.randomUUID()}`);
+        await rootSession(db, sessionId, linked);
+        const members = await GitMembership.resolveGitMembership(db, sessionId, undefined);
+        assert.ok(members.includes("/tracked.md"), "membership resolves through the .git gitdir-file");
+        const status = await GitState.status(db, sessionId, undefined);
+        assert.equal(status?.branch, "wt-branch", "status reads the linked worktree's own HEAD");
+    } finally {
+        await db.close();
+        await rm(linked, { recursive: true, force: true });
+        await rm(main, { recursive: true, force: true });
+    }
+});
+
+test("[§git-native-flag] PLURNK_SERVICE_GIT_NATIVE=1 routes to system git — same membership, same status", async () => {
+    const { root } = await seedRich();
+    const db = await openMigrated();
+    const prior = process.env.PLURNK_SERVICE_GIT_NATIVE;
+    try {
+        const sessionId = await insertSession(db, `iso-flag-${crypto.randomUUID()}`);
+        await rootSession(db, sessionId, root);
+        const isoMembers = (await GitMembership.resolveGitMembership(db, sessionId, undefined)).sort();
+        const isoStatus = await GitState.status(db, sessionId, undefined);
+        process.env.PLURNK_SERVICE_GIT_NATIVE = "1";
+        const nativeMembers = (await GitMembership.resolveGitMembership(db, sessionId, undefined)).sort();
+        const nativeStatus = await GitState.status(db, sessionId, undefined);
+        assert.deepEqual(nativeMembers, isoMembers, "both backends resolve the identical member set");
+        assert.deepEqual(nativeStatus, isoStatus, "both backends report the identical status");
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_GIT_NATIVE; else process.env.PLURNK_SERVICE_GIT_NATIVE = prior;
+        await db.close(); await rm(root, { recursive: true, force: true });
+    }
+});
