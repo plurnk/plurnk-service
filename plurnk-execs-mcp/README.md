@@ -4,7 +4,7 @@ MCP-bridge runtime executor for [plurnk-service](https://github.com/plurnk/plurn
 
 Built on the [plurnk-execs](https://github.com/plurnk/plurnk-execs) framework, using the official [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk).
 
-> **Opt-in.** Unlike the other siblings, this one is **not** in the `@plurnk/plurnk-execs-all` bundle: it pulls the MCP SDK's dependency tree and is inert until you configure a server, so install it explicitly when you want MCP.
+> **Heavy + inert until configured.** This sibling pulls the MCP SDK's full dependency tree and does nothing until you configure a server — no tags register and no code runs until a `PLURNK_EXECS_MCP_<server>` exists.
 
 ## Why a bridge, not a special case
 
