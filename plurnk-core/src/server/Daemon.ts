@@ -132,8 +132,8 @@ export default class Daemon {
         // in-repo tests. discover() takes a cwd and joins node_modules, so derive the parent.
         this.#nodeModulesPath = nodeModulesPath ?? resolve(process.cwd(), "node_modules");
         this.#discoveryCwd = dirname(this.#nodeModulesPath);
-        // Mimetypes owns discovery + detection; we inject the tokenize fn (from the provider's
-        // countTokens) and default to text/markdown.
+        // Mimetypes owns discovery + detection; default mimetype text/markdown. (Token counting
+        // is NOT wired here — the engine's ruler below is §tokenomics-agnostic-ruler.)
         this.#mimetypes = mimetypes ?? new Mimetypes({
             defaultMimetype: "text/markdown",
             discoverOptions: { cwd: this.#discoveryCwd },

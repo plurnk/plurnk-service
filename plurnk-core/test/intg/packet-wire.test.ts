@@ -215,8 +215,8 @@ test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from th
     assert.equal(empty.tokens, 0, "no log entries → zero tokens");
     assert.deepEqual(empty.byTurn, []);
     assert.deepEqual(empty.largest, []);
-    // One entry: tokens are the headed-log render-weight; byTurn keys on loop/turn;
-    // largest names the entry by its log:/// handle.
+    // One BODYLESS entry: it weighs on the turn rollup (its meta line ships), but it is no FOLD
+    // target — nothing to save — so `largest` never lists it (#466).
     const one = PacketWire.measureLogBudget(
         [{ coordinate: "1/1/1", op: "EDIT", origin: "model", status: 200, target: { scheme: null, pathname: "/x" } }],
         tk,
@@ -224,7 +224,15 @@ test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from th
     assert.equal(one.entries, 1);
     assert.ok(one.tokens > 0, "a log entry has render-weight");
     assert.equal(one.byTurn[0].turn, "1/1");
-    assert.equal(one.largest[0].path, "log:///1/1/1/EDIT");
+    assert.deepEqual(one.largest, [], "a bodyless row is no FOLD target — largest omits it");
+    // A BODIED entry ranks, and its `largest` figure IS the row's own rendered `tokens` (the FOLD
+    // price) — the budget and the log can never disagree about one row (#466: 577-vs-6127).
+    const bodied = [{ coordinate: "1/1/2", op: "READ", origin: "model", status: 200, target: { scheme: "known", pathname: "/x" }, rx: { status: 200, content: "alpha\nbeta\ngamma", mimetype: "text/plain" } }];
+    const two = PacketWire.measureLogBudget(bodied, tk);
+    assert.equal(two.largest[0].path, "log:///1/1/2/READ");
+    const rendered = PacketWire.renderLog(bodied, tk);
+    const rowTokens = Number(/"tokens":(\d+)/.exec(rendered)?.[1]);
+    assert.equal(two.largest[0].tokens, rowTokens, "largest carries the SAME number the row's own meta shows");
 });
 
 test("telemetry render: a content-offset error → a single meta line carrying line:col, no snippet fence", () => {
