@@ -170,6 +170,16 @@ export interface Provider {
     // = no claim. Introspectable so a consumer can refuse AT BOOT a local alias
     // with no declared envelope, instead of dying mid-turn in partition math.
     readonly requiresMaxTokens?: boolean;
+    // OPTIONAL generation-envelope reserves (#507, owner-ruled) — the amounts OF
+    // the DETECTED window reserved for reasoning and completion: floor
+    // percentages of `contextWindow`, or absolute per-alias pins that win
+    // outright. The consumer's prompt budget is `contextWindow - reasoningReserve
+    // - completionReserve - <its own packing-safety margin>`; the generation cap
+    // is the two pooled. `null` = underivable (window unknown, no absolute pin) →
+    // the consumer's no-cap path. Absent = a bare sibling makes NO claim (treated
+    // as null). All first-party providers claim, so null means genuinely-unknown.
+    readonly reasoningReserve?: number | null;
+    readonly completionReserve?: number | null;
     // Provider-owned tokenizer. Synchronous, non-negative integer. Without an
     // exact family configured this is the chars/2 UPPER BOUND (surfaced at
     // construction, never silent) — safe for refusal math, not an exact count.

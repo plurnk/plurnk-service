@@ -6,6 +6,7 @@
 // hatch — that's an intg-only convenience.
 
 import type { ChatMessage, FinishReason, Provider, ProviderAssistant, ProviderUsage } from "./types.ts";
+import { resolveEnvelopeFromEnv } from "./env.ts";
 
 export type MockAssistant = {
     content: string;
@@ -33,14 +34,28 @@ const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, c
 
 export default class Mock implements Provider {
     #contextWindow: number | null;
+    #reasoningReserve: number | null;
+    #completionReserve: number | null;
     #queue: MockResponse[];
 
+    // #507: reserves resolve the SAME way a real provider's do — the TOLERANT env
+    // read (the service's partition/budget suite sets PLURNK_PROVIDERS_*_RESERVE
+    // and Mock reflects it, resolved against contextWindow). Tolerant, NOT the
+    // fail-hard envelopeFromEnv: Mock is the universal fixture, constructed
+    // without the reserves in most base tests, so absent env → null → the
+    // consumer's no-cap path, and the ~100 `new Mock({ contextWindow, responses })`
+    // sites stay untouched. Mock has no alias identity, so it reads the BARE knobs.
     constructor({ contextWindow, responses }: { contextWindow: number | null; responses: MockResponse[] }) {
         this.#contextWindow = contextWindow;
+        const env = resolveEnvelopeFromEnv(process.env, contextWindow);
+        this.#reasoningReserve = env.reasoningReserve;
+        this.#completionReserve = env.completionReserve;
         this.#queue = [...responses];
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
+    get reasoningReserve(): number | null { return this.#reasoningReserve; }
+    get completionReserve(): number | null { return this.#completionReserve; }
     get model(): string { return "mock"; }
 
     // Heuristic tokenizer (chars/2 upper bound, matching the framework's
