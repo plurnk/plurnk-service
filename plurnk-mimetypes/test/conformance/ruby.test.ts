@@ -48,7 +48,7 @@ describe("conformance: text/x-ruby defs + refs (issues #19/#20)", () => {
                 { name: "Base", kind: "inherit", line: 5, container: "Reporting.Parser" },
                 { name: "Comparable", kind: "inherit", line: 6, container: "Reporting.Parser" },
                 { name: "Helper", kind: "instantiate", line: 9, container: "Reporting.Parser.parse" },
-                { name: "worker", kind: "call", line: 10, container: "Reporting.Parser.parse" },
+                { name: "run", kind: "call", line: 10, container: "Reporting.Parser.parse" },
                 { name: "tokenize", kind: "call", line: 11, container: "Reporting.Parser.parse" },
                 // Scope-qualified receiver: only the trailing constant.
                 { name: "Cache", kind: "instantiate", line: 12, container: "Reporting.Parser.parse" },

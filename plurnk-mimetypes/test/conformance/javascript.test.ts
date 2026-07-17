@@ -38,7 +38,7 @@ describe("conformance: text/javascript defs + refs (issues #19/#20)", () => {
                 { name: "Default", kind: "import", line: 2 },
                 { name: "Base", kind: "inherit", line: 4 },
                 { name: "Helper", kind: "instantiate", line: 6, container: "Parser.parse" },
-                { name: "worker", kind: "call", line: 7, container: "Parser.parse" },
+                { name: "run", kind: "call", line: 7, container: "Parser.parse" },
                 { name: "tokenize", kind: "call", line: 8, container: "Parser.parse" },
                 { name: "decoyFree", kind: "call", line: 12, container: "Helper.run" },
                 { name: "inner", kind: "call", line: 14, container: "tokenize" },
