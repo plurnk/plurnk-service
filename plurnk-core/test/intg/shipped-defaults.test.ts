@@ -45,16 +45,13 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_HOST$|PLURNK_PORT$|PLURNK_QUESTIONS$|PLURNK_PLUGINS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
-    // §tokenomics-window-partition (#352) — the BARE partition ships cloud-generous (a large
-    // decode envelope the backend self-clamps); the four knobs ship as positive ints, and the
-    // local measured envelope rides the commented per-alias template.
-    const part = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => Number(env.get(`PLURNK_SERVICE_${k}`)));
-    assert.ok(part.every((n) => Number.isFinite(n) && n > 0), "all four bare partition numbers ship as positive ints");
+    // §tokenomics-window-partition (#507) — the envelope is provider-owned; core ships ONE
+    // partition knob: SAFETY, the ruler's packing margin, a positive int.
+    const safety = Number(env.get("PLURNK_SERVICE_SAFETY"));
+    assert.ok(Number.isFinite(safety) && safety > 0, "SAFETY ships as a positive int — core's one partition knob");
     // #352 — the bare partition is cloud-generous: 163840 − 16384 − 49152 − 1024 = 97280 prompt
     // budget with a 65536 decode envelope the backend self-clamps (the local per-alias template
     // is the 64Ki-prompt gemma envelope). Prompt budget stays well above the decode envelope.
-    const promptBudget = part[0] - part[1] - part[2] - part[3];
-    assert.ok(promptBudget > part[1] + part[2], `the bare prompt budget (${promptBudget}) exceeds the decode envelope — a healthy cloud partition`);
 });
 
 test("[§operator-config-shipped-defaults] under the shipped policy wiring, the personality renders in the packet exactly once", async () => {

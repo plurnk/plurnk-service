@@ -197,7 +197,13 @@ export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise
 // so it holds when the demo model pivots (turboderp ↔ gbuild). Returns a restore fn.
 export const pinAliasPartition = (part: { CONTEXT_WINDOW: string; REASONING: string; COMPLETION: string; SAFETY: string }): (() => void) => {
     const alias = resolveActiveAlias(process.env)?.alias ?? "";
-    const entries = (["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"] as const).map((k) => [`PLURNK_SERVICE_${k}_${alias}`, part[k]] as const);
+    // #507 — window + reserves pin PROVIDER-tier (the envelope moved); SAFETY stays core's.
+    const entries: Array<readonly [string, string]> = [
+        [`PLURNK_PROVIDERS_CONTEXT_WINDOW_${alias}`, part.CONTEXT_WINDOW],
+        [`PLURNK_PROVIDERS_REASONING_RESERVE_${alias}`, part.REASONING],
+        [`PLURNK_PROVIDERS_COMPLETION_RESERVE_${alias}`, part.COMPLETION],
+        [`PLURNK_SERVICE_SAFETY_${alias}`, part.SAFETY],
+    ];
     const prev = entries.map(([k]) => [k, process.env[k]] as const);
     for (const [k, v] of entries) process.env[k] = v;
     return () => { for (const [k, v] of prev) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } };

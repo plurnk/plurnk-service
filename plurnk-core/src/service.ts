@@ -221,7 +221,7 @@ export default class Service {
         }
         // §tokenomics-window-partition coupling (F7): per-request numeric reasoning budgets are
         // IGNORED by llama-server — when reasoning is on, only the box's --reasoning-budget launch
-        // flag clamps it, and it must equal PLURNK_SERVICE_REASONING. Unverifiable from here, so
+        // flag clamps it, and it must equal the alias's resolved reasoning reserve. Unverifiable here, so
         // say it loudly rather than let the reserve be fiction. (#472 — reads the post-#399 knob
         // names; the shed THINKING names made this advisory dead code that could never fire.)
         const reasoning = process.env.PLURNK_PROVIDERS_REASONING ?? "off";

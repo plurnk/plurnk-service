@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 
 // The four partition flags are read via a `PLURNK_SERVICE_${k}` template literal, and MD_* via a
 // startsWith prefix — a literal-token scan can't see them, so they're declared-dynamic here.
-const DYNAMIC_READS = new Set(["PLURNK_SERVICE_CONTEXT_WINDOW", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_COMPLETION", "PLURNK_SERVICE_SAFETY"]);
+const DYNAMIC_READS = new Set(["PLURNK_SERVICE_SAFETY"]); // #507 — the envelope knobs moved to the provider tier
 const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_MD_", "PLURNK_SERVICE_SQLITE_"]; // MD_<alias> + sqlite knobs iterated by prefix
 
 test("[§operator-config-flag-parity] every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa", () => {
