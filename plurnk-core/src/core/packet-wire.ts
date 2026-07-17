@@ -314,6 +314,19 @@ export default class PacketWire {
 
     // `collectBodyTokens`, when supplied, receives each row's body price (the rendered meta.tokens)
     // in order — the FOLD unit measureLogBudget ranks, guaranteed identical to what the row shows.
+    // §arrival-law (#499) — the pushed-lane bound: another actor's text rides OPEN only up to
+    // the preview (N lines AND 80×N chars — the char cap guards single-line bombs); over, the
+    // head rides with the cut stated and the address for a deliberate pull. run111 entry 56:
+    // a child's ratified 19,363-token deliverable landed whole in its parent and cascaded.
+    static #arrivalPreview(text: string): { text: string; cut: boolean } {
+        const maxLines = Number(process.env.PLURNK_SERVICE_ARRIVAL_PREVIEW_LINES ?? "16");
+        const maxChars = 80 * maxLines;
+        const lines = text.split("\n");
+        if (lines.length <= maxLines && text.length <= maxChars) return { text, cut: false };
+        const head = lines.slice(0, maxLines).join("\n").slice(0, maxChars);
+        return { text: head, cut: true };
+    }
+
     static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens, collectBodyTokens?: number[]): string {
         return entries.map((e) => {
             const meta: Record<string, unknown> = {};
@@ -429,7 +442,10 @@ export default class PacketWire {
                 // not the {status} envelope a model SEND gets). Surface it so a child's 2xx reaches the
                 // parent OPEN (born-open at the insert), never a bodyless `*` row.
                 else if (op === "SEND" && opBody.length === 0 && typeof e.rx === "string" && e.rx.length > 0) {
-                    body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, e.rx, "text/plain");
+                    // §arrival-law — the deliverable is PUSHED content: preview-bounded, never whole-by-default.
+                    const arrival = PacketWire.#arrivalPreview(e.rx);
+                    body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, arrival.text, "text/plain");
+                    if (arrival.cut) body += `\n… arrival preview — the full deliverable is ${e.rx.split("\n").length} lines: READ worker://${(e.target && typeof e.target === "object" && "pathname" in e.target ? String((e.target as { pathname?: string }).pathname ?? "") : "").replace(/^\//, "")}`;
                 }
             } else if (op === "error") {
                 // §telemetry — a parse-error row is a LOG ITEM; its body is the parser message, which
