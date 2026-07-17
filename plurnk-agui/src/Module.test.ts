@@ -42,7 +42,8 @@ const mockSeam = () => {
         look: async () => ({ status: 200, content: "looked" }),
     };
     const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} } })));
-    return { seam, resolves, loopRuns, finish };
+    const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
+    return { seam, resolves, loopRuns, finish, emit };
 };
 
 const post = async (port: number, body: object): Promise<AguiEvent[]> => {
@@ -51,6 +52,39 @@ const post = async (port: number, body: object): Promise<AguiEvent[]> => {
     const text = await res.text();
     return text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
 };
+
+// A streaming reader that stays OPEN, collecting events until the connection ends —
+// lets a test hold two concurrent runs on one workspace and observe fan-out live.
+const openStream = (port: number, body: object): Promise<AguiEvent[]> =>
+    fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+        .then((res) => res.text())
+        .then((text) => text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent));
+
+test("[§agui-broadcast-fan] a workspace's stream events FAN to every open run (never last-binder-wins) — svc#504", async () => {
+    const { seam, emit } = mockSeam();
+    seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
+    seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
+    seam.listWorkers = async () => [{ id: 20, name: "model-1" }];
+    seam.createConversationWorker = async (a) => ({ workerId: a.name === "chat-a" ? 77 : 78, workerName: a.name ?? "x" });
+    // runLoop does NOT finish here: both streams stay open so the injected stream event
+    // races them exactly as concurrent nvim action runs do against a resumed exec.
+    seam.runLoop = async () => ({ action: "enqueued_new_loop" as const, loopId: 9 });
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const port = mod.address().port;
+        const a = openStream(port, { threadId: "chat-a", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
+        const b = openStream(port, { threadId: "chat-b", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
+        // Let both runs bind their threads to workspace 3 before the event races them.
+        await new Promise((r) => setTimeout(r, 60));
+        emit(3, "stream/event", { entryId: 5, scheme: "exec", content: "alpha" });
+        emit(3, "stream/concluded", { entryId: 5, closeStatus: 200 });
+        emit(3, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} } });
+        const [ea, eb] = await Promise.all([a, b]);
+        const hasExecActivity = (evs: AguiEvent[]) => evs.some((e) => e.type === "ACTIVITY_SNAPSHOT" && (e as { messageId?: string }).messageId === "stream-5");
+        assert.ok(hasExecActivity(ea), "run A received the exec stream activity");
+        assert.ok(hasExecActivity(eb), "run B received it TOO — the fan is a broadcast, not a single binding");
+    } finally { await mod.close(); }
+});
 
 test("[§agui-management-plane] an action run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
     const { seam } = mockSeam();
