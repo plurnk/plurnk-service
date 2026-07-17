@@ -1,6 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Mock from "./Mock.ts";
+import type { Provider } from "./types.ts";
 import type { MockResponse } from "./Mock.ts";
 
 const build = (responses: MockResponse[] = [{ assistant: { content: "hi", reasoning: null } }]) =>
@@ -103,4 +104,39 @@ test("Mock: remaining decrements as responses are consumed", async () => {
 test("Mock: exhausted queue throws a specific error", async () => {
     const m = build([]);
     await assert.rejects(() => m.generate({ messages: [] }), /exhausted/);
+});
+
+// -- #507: the reserve surface lives on the Provider CONTRACT, and Mock drives core's partition suite --
+
+test("#507 the reserve getters are on the Provider interface (not just the concrete class)", () => {
+    // Typing against the CONTRACT is the check a getter-only-on-OpenAICompat surface fails.
+    const prevR = process.env.PLURNK_PROVIDERS_REASONING_RESERVE;
+    try {
+        process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "10%";
+        const p: Provider = new Mock({ contextWindow: 49152, responses: [] });
+        assert.equal(p.reasoningReserve, 4915); // 10% of 49152, read through the interface type
+    } finally {
+        if (prevR === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_RESERVE; else process.env.PLURNK_PROVIDERS_REASONING_RESERVE = prevR;
+    }
+});
+
+test("#507 Mock resolves reserves from PLURNK_PROVIDERS_*_RESERVE against its window (the service partition path)", () => {
+    const prevR = process.env.PLURNK_PROVIDERS_REASONING_RESERVE;
+    const prevC = process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE;
+    try {
+        process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "10%";
+        process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "8192"; // mixed pct + absolute
+        const m = new Mock({ contextWindow: 49152, responses: [] });
+        assert.equal(m.reasoningReserve, 4915);  // 10% of 49152
+        assert.equal(m.completionReserve, 8192); // absolute stands
+    } finally {
+        if (prevR === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_RESERVE; else process.env.PLURNK_PROVIDERS_REASONING_RESERVE = prevR;
+        if (prevC === undefined) delete process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE; else process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = prevC;
+    }
+});
+
+test("#507 no reserve env → null (the #421 no-cap path; the ~100 bare Mocks unaffected)", () => {
+    const m = new Mock({ contextWindow: 49152, responses: [] });
+    assert.equal(m.reasoningReserve, null);
+    assert.equal(m.completionReserve, null);
 });

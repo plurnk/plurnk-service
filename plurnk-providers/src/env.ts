@@ -91,6 +91,26 @@ export const envelopeFromEnv = (env: NodeJS.ProcessEnv, label: string): { reason
     completionReserve: parseReserve(env.PLURNK_PROVIDERS_COMPLETION_RESERVE, "PLURNK_PROVIDERS_COMPLETION_RESERVE", label),
 });
 
+// Resolve a ReserveSpec against a known window: absolutes stand alone; a
+// percentage needs the window (null when unknown — the underivable/no-cap case).
+export const resolveReserve = (spec: ReserveSpec, window: number | null): number | null =>
+    "tokens" in spec ? spec.tokens : window === null ? null : Math.round(spec.percent * window);
+
+// TOLERANT envelope read for fixtures + consumers that resolve reserves against
+// a known window and treat ABSENCE as "no claim" (null), never fail-hard —
+// unlike envelopeFromEnv (the REQUIRED provider path, fed by the shipped floor).
+// Mock uses this so the service's partition/budget suite drives the SAME
+// env→reserve resolution a real provider does, without the floor. An invalid
+// value still throws (a malformed reserve is an error, not an absence).
+export const resolveEnvelopeFromEnv = (env: NodeJS.ProcessEnv, window: number | null): { reasoningReserve: number | null; completionReserve: number | null } => {
+    const one = (raw: string | undefined, name: string): number | null =>
+        raw === undefined || raw.length === 0 ? null : resolveReserve(parseReserve(raw, name, "mock"), window);
+    return {
+        reasoningReserve: one(env.PLURNK_PROVIDERS_REASONING_RESERVE, "PLURNK_PROVIDERS_REASONING_RESERVE"),
+        completionReserve: one(env.PLURNK_PROVIDERS_COMPLETION_RESERVE, "PLURNK_PROVIDERS_COMPLETION_RESERVE"),
+    };
+};
+
 // The side-channel reasoning knobs (SPEC §4, #32/#33) — ACTIVATION and BUDGET
 // are separate vars, so a numeric budget can never silently flip wire flags:
 //   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
