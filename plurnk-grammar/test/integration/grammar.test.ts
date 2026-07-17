@@ -584,6 +584,24 @@ test("invented closer: a never-closed body with NO imposter tag keeps the plain 
     assert.doesNotMatch(result.unparsedTail!.reason, /which is body text/);
 });
 
+// #502 (§plan-body-op-advisory): the ingest-side twin of the GBNF `<<`-exclusion. An omitted
+// `:PLAN` swallows the turn's ops into the plan body and the parse SUCCEEDS (run113) — the
+// advisory makes the silent swallow visible on unrailed paths.
+test("plan-body advisory (§plan-body-op-advisory): op-shaped text in a parsed PLAN body warns", () => {
+    // The run113 shape: :PLAN omitted, body swallows to the second plan's closer.
+    const emission = "<<PLAN:Execute hostname.\n<<EXEC:hostname::EXEC\n<<SEND[102]:executing:SEND\n<<PLAN:Awaiting.:PLAN\n<<SEND[202]:waiting:SEND";
+    const result = PlurnkParser.parse(emission);
+    const warn = result.items.find((i) => i.kind === "error" && i.error.severity === "warning");
+    assert.ok(warn && warn.kind === "error", "the swallow must surface a warning");
+    assert.match(warn.error.message, /PLAN body contains op-shaped text \(`<<EXEC`\)/);
+    assert.match(warn.error.message, /did you omit `:PLAN`\?/);
+});
+
+test("plan-body advisory: a clean plan mentioning an op BY NAME does not warn", () => {
+    const result = PlurnkParser.parse("<<PLAN:Run hostname via EXEC, read stdout next turn.:PLAN\n<<EXEC:hostname::EXEC\n<<SEND[102]:executing:SEND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+});
+
 
 test("glob body (no special prefix) skips regex validation", () => {
     const result = PlurnkParser.parseStatements("<<FIND(known://**):Paris*:FIND");

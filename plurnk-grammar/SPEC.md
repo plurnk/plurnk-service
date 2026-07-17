@@ -705,7 +705,11 @@ interface ForkStatement extends StatementBase<never> { op: "FORK"; body: string 
 // KILL — signal is a unix signal number; body is an opaque annotation. Raw.
 interface KillStatement extends StatementBase<number> { op: "KILL"; body: string | null; }
 
-// PLAN — body is reasoning text, recorded to the log. Raw.
+// PLAN — body is reasoning text, recorded to the log. Raw. On the GBNF rail the body
+// additionally excludes the literal `<<` (#502): PLAN is suffix-less, so no op-quoting
+// device exists for it — the plan ends where the acting begins, and an omitted `:PLAN`
+// is auto-corrected by the mask instead of swallowing the turn's ops. A single `<`
+// stays legal. ANTLR stays tolerant; see the §13 advisory. {§plan-body-no-openers}
 interface PlanStatement extends StatementBase<string[]> { op: "PLAN"; body: string | null; }
 ```
 
@@ -755,7 +759,7 @@ The three sources distinguish:
 - **`"parser"`** — structural failures at parse-tree level (missing close tag, wrong token order, etc.).
 - **`"visitor"`** — semantic failures during AST construction (SEND signal not an integer, EXEC signal with multiple values, etc.).
 
-`severity` distinguishes a hard error from a non-fatal advisory. The parser is the sole and complete owner of syntax-error messaging (it holds the parse state, lexer mode, and expected-token set that no consumer has), so it produces the final model-ready message plus value-adds: deduped expected-token lists, turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and `warning`-severity near-miss advisories when the forgiving parser swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion (`<<CLOSE` → did you mean `<<FOLD`), plus the invented-closer diagnostic on a never-closed body: when the swallowed text carries a `:ALLCAPS` tag that is not the op's closer, the unparsedTail reason names it (`found \`:COMPARISON_TASK\`, which is body text - the closer echoes the op's name`) so a cap-cut runaway's recovery turn learns what happened, not just that something did. {§invented-closer-advisory} `severity: "warning"` maps to TelemetryEvent `level: "warn"`. Consumers transmit the message to the model unaltered.
+`severity` distinguishes a hard error from a non-fatal advisory. The parser is the sole and complete owner of syntax-error messaging (it holds the parse state, lexer mode, and expected-token set that no consumer has), so it produces the final model-ready message plus value-adds: deduped expected-token lists, turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and `warning`-severity near-miss advisories when the forgiving parser swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion (`<<CLOSE` → did you mean `<<FOLD`), plus the invented-closer diagnostic on a never-closed body: when the swallowed text carries a `:ALLCAPS` tag that is not the op's closer, the unparsedTail reason names it (`found \`:COMPARISON_TASK\`, which is body text - the closer echoes the op's name`) so a cap-cut runaway's recovery turn learns what happened, not just that something did. {§invented-closer-advisory} A sibling advisory fires when a parsed PLAN body contains op-shaped text (`<<EXEC`…): PLAN owns no suffix, so that text has no sanctioned reading — it is almost always an omitted `:PLAN` whose body swallowed the turn's ops (`ops belong after the plan closes; did you omit \`:PLAN\`?`). {§plan-body-op-advisory} `severity: "warning"` maps to TelemetryEvent `level: "warn"`. Consumers transmit the message to the model unaltered.
 
 Serialization convention for transmission to the model (the agent
 runtime constructs this; the parser provides the fields):
