@@ -754,10 +754,12 @@ export default class Daemon {
                     }
                     currentLoopId = loopRow.id;
                     const onDispatch = (logEntryId: number): void => {
+                        // #506 — a rejection here was a silent process-death vector (unhandled in a
+                        // fire-and-forget void); a log-broadcast failure must never crash the drain.
                         void (async () => {
                             const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                             this.#broadcast({ workspaceId }, "log/entry", { entry });
-                        })();
+                        })().catch((e: unknown) => console.error("log/entry broadcast failed:", e instanceof Error ? e.message : String(e)));
                     };
                     const result = await this.#engine.runLoop({
                         provider, workspaceId, workerId, loopId: loopRow.id, maxTurns,
@@ -863,7 +865,14 @@ export default class Daemon {
                     // acked finalStatus:100, so loop/terminated is the sole outcome channel; the rejection
                     // alone reaches no one (firstLoopPromise/drainPromise are .catch()'d). Broadcast 500
                     // (failed) — distinct from an abort's 499 — for every error, not just the pre-first one.
+                    // #506 — the WHY must reach every forensic channel, not one. The old handler
+                    // fed only the loop row + broadcast; run54 died with the daemon log silent, zero
+                    // error telemetry, and a bare 500 — the cause (a stack) reachable nowhere. The
+                    // daemon-log line + the error telemetry event fire even when currentLoopId is null
+                    // or the row-write itself is what failed, so a death is never traceless again.
+                    console.error(`drain error (workspace ${workspaceId}, worker ${workerId}, loop ${currentLoopId ?? "?"}):`, err);
                     if (currentLoopId !== null) {
+                        this.notifyTelemetryEvent(workspaceId, { loopId: currentLoopId, event: { source: "daemon:drain", kind: "loop_error", level: "error", message: err instanceof Error ? err.message : String(err) } });
                         // #311 — the failure must be first-class on BOTH surfaces: the loop row goes
                         // terminal 500 carrying the cause (a dead loop must never read as live 102 —
                         // the premature-terminate gate counts live loops), and the broadcast carries
