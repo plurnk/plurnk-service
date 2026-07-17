@@ -28,7 +28,13 @@ describe("TreeSitter registry", () => {
             assert.ok(entry.mimetype.length > 0, `mimetype empty: ${JSON.stringify(entry)}`);
             assert.ok(entry.glyph.length > 0, `glyph empty: ${entry.mimetype}`);
             assert.ok(entry.slug.length > 0, `slug empty: ${entry.mimetype}`);
-            assert.ok(entry.extensions.length > 0, `extensions empty: ${entry.mimetype}`);
+            // Hint-only convention aliases (SPEC §22.2, #490) carry empty
+            // extensions on purpose — extension detection stays with the
+            // canonical entry for the same slug, which must exist and own them.
+            if (entry.extensions.length === 0) {
+                const canonical = TREE_SITTER_REGISTRY.find((e) => e.slug === entry.slug && e.extensions.length > 0);
+                assert.ok(canonical, `alias without an extension-bearing canonical entry: ${entry.mimetype}`);
+            }
             assert.equal(typeof entry.importMapping, "function");
             // wasmPackage / wasmFile are optional legacy fallback fields;
             // either both are populated or both are null (matched-pair invariant).
