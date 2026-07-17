@@ -10,7 +10,7 @@ The command runs with a **scoped** environment: the host daemon's own secrets �
 
 `EXEC[sh](./dir):…` runs in `./dir`. With no target the command runs in the workspace's project root — the same place the `file` scheme writes — so it finds files a prior `EDIT` just created, rather than the daemon's cwd.
 
-`(target)` is polymorphic on the filesystem: a **directory** is the cwd (above); a **file** is a **script to run**. `<<EXEC[sh](greet.sh)::EXEC` runs `greet.sh` — an empty body just runs it (note the `::` — empty body); a body becomes its stdin (`<<EXEC[sh](greet.sh):input line:EXEC`). Directory → run *in* it; file → run *it*.
+`(target)` is polymorphic on the filesystem: a **directory** is the cwd (above); a **file** is a **script to run**. `<<EXEC[sh](greet.sh)::EXEC` runs `greet.sh` — an empty body just runs it (note the `::` — empty body); a body becomes its stdin (`<<EXEC[sh](greet.sh):input line:EXEC`). Directory → run *in* it; file → run *it*. The interpreter **reads** the file — no `+x` needed, and none is ever set (transient exec, #500); a `./script.sh` typed in a *body* still meets the kernel's own exec-bit check, so prefer the `(target)` form for scripts you just wrote.
 
 ## Channels
 
