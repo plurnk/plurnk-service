@@ -298,7 +298,7 @@ export default class OpenAICompatProvider implements Provider {
     // failures (low→cycles, high→spirals) were pre-max_tokens-cap; with a bounded
     // cap the matrix ACCEPTs across efforts (reasoning-rails matrix, TUNING-EPIC
     // F9). Clamping was the root of the plan-less regression (service#331).
-    #reasoningBody(railsLive: boolean): Record<string, unknown> {
+    #reasoningBody(): Record<string, unknown> {
         const { mode, budget } = this.#reasoning;
         const on = mode !== "off";
         switch (this.#reasoningStyle) {
@@ -307,24 +307,18 @@ export default class OpenAICompatProvider implements Provider {
             // (§13). Activation only; budget is enforced by the box's
             // --reasoning-budget launch flag (per-request numerics ignored, F7).
             //
-            // #488: rails WIN the channel. On llama-server a live native thinking
-            // channel under a transported grammar auto-gates enforcement past the
-            // think block and the content channel LEAKS (unconstrained prose,
-            // fabrication — §13, reproduced live: grammar-shaped prefix, then
-            // "thought\n" bleeding). The two are measured-incompatible here, so a
-            // transported grammar forces enable_thinking:false for THAT request —
-            // deterministic, per-request, no operator pairing required. In-DSL
-            // PLAN carries the reasoning under rails. (Fireworks/response_format
-            // is untouched — its clamp was deliberately lifted, F9/service#331.)
-            case "template": {
-                if (railsLive && on) {
-                    emitWarningOnce(
-                        `${this.#source}: native reasoning (${mode}) suppressed under a transported grammar on the llama-server path — the two cannot coexist (leaky enforcement, #488); reasoning rides in-DSL PLAN`,
-                        "PLURNK_REASONING_SUPPRESSED_UNDER_GRAMMAR",
-                    );
-                }
-                return { chat_template_kwargs: { enable_thinking: railsLive ? false : on } };
-            }
+            // #488 postmortem: intent maps IDENTICALLY under a transported
+            // grammar. The brief rails-win-the-channel clamp (enable_thinking
+            // forced false under a grammar) is REVERTED — specimens proved the
+            // SANCTIONED think block is the protection, not the hazard: the
+            // server auto-gates the grammar around it and content decodes
+            // constrained (26-run baseline green; zero grammar rejects across
+            // the #488 "railless" specimens). Closing the channel starved a
+            // reasoning-tuned model into ESCAPING mid-content into the raw
+            // thought channel — discarded server-side, decode unconstrained,
+            // 12,288 tokens billed for 1,033 visible chars. The escape is
+            // surfaced instead (vanished-token telemetry + meta rail state).
+            case "template": return { chat_template_kwargs: { enable_thinking: on } };
             case "think": return on ? { think: true } : {};
             case "include_reasoning": return on ? { include_reasoning: true } : {};
             // effort tiers from the budget; off/adaptive omit the field (the
@@ -461,22 +455,6 @@ export default class OpenAICompatProvider implements Provider {
         }
     }
 
-    // Conformance observation (SPEC §13). A COMPLETED exchange always returns —
-    // the model's bytes flow in `assistant` no matter what — and a non-accept
-    // verdict rides `response.telemetry` as a grammar_unenforced OBSERVATION
-    // carrying the divergence position. One check, both paths (grammar
-    // transported OR withheld under PLURNK_PROVIDERS_GBNF_DEBUG); whether to discard,
-    // retry, escalate, or feed the divergence back is CONSUMER policy — the
-    // provider transports and observes, it never adjudicates. (Every measured
-    // "failure" in the field was a legal prefix; throwing destroyed billed
-    // bytes the consumer wanted — #31's error payload, now subsumed by the
-    // response itself.) null when the output conforms or the verify gap fired.
-    #grammarConflictEvent(grammar: string, content: string): TelemetryEvent | null {
-        const verdict = this.#grammarVerdict(grammar, content);
-        if (verdict === null || verdict.status === "accept") return null;
-        return { source: this.#source, kind: "grammar_unenforced", message: describeUnenforced(verdict), position: verdict.pos };
-    }
-
     // PLURNK_PROVIDERS_GBNF_DEBUG (SPEC §13): validate the supplied GBNF locally and fail
     // hard if it's malformed, BEFORE any wire call — and the grammar is NOT
     // transported, so the request runs unconstrained. A debug aid to catch invalid
@@ -546,7 +524,7 @@ export default class OpenAICompatProvider implements Provider {
             ...this.#samplingBody(sampling),
             model: this.#model,
             messages,
-            ...this.#reasoningBody(sendGrammar !== undefined),
+            ...this.#reasoningBody(),
             ...this.#grammarBody(sendGrammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
             // #36: request per-token logprobs only when enabled (managed field —
@@ -596,13 +574,38 @@ export default class OpenAICompatProvider implements Provider {
         // (message + divergence position) and the response returns normally.
         // Discard/retry/escalate/self-correct is the consumer's policy.
         let telemetry: TelemetryEvent[] | undefined;
+        let railsMeta: Record<string, unknown> | undefined;
+        const usage = normalizeUsage(raw.usage, raw.reasoning_content, raw.content);
         const observedGrammar = sendGrammar ?? (wantGrammar && this.#gbnfDebug ? grammar : undefined);
         if (observedGrammar !== undefined) {
-            const event = this.#grammarConflictEvent(observedGrammar, raw.content);
-            if (event !== null) telemetry = [event];
+            const verdict = this.#grammarVerdict(observedGrammar, raw.content);
+            if (verdict !== null && verdict.status !== "accept") {
+                telemetry = [{ source: this.#source, kind: "grammar_unenforced", message: describeUnenforced(verdict), position: verdict.pos }];
+            }
+            // #488 per-request loud state: rail attachment + conformance verdict
+            // ride `meta` into the consumer's turn row, so a drill reads rail
+            // presence PER TURN from the run db instead of inferring it from
+            // output shape (the #488 misdiagnosis, twice).
+            railsMeta = { railsAttached: sendGrammar !== undefined, railsVerdict: verdict?.status ?? "unverifiable" };
+            // #488 channel-escape detector (the run105 class): completion tokens
+            // billed far beyond every visible channel mean the decode ESCAPED into
+            // a server-discarded reasoning block mid-emission — unconstrained,
+            // invisible, billed (12,288 billed vs 1,033 chars visible, live).
+            // countTokens OVERCOUNTS text (chars/2 upper bound), so billed
+            // exceeding visible-plus-slack is real vanishing, not estimator noise.
+            const visible = this.#countTokens(raw.content) + this.#countTokens(raw.reasoning_content);
+            if (sendGrammar !== undefined && usage.completion > visible + 64) {
+                (telemetry ??= []).push({
+                    source: this.#source,
+                    kind: "grammar_unenforced",
+                    message: `decode escaped the grammar: ${usage.completion} completion tokens billed but only ~${visible} visible across content+reasoning — the balance ran unconstrained in a discarded reasoning channel`,
+                    position: [...raw.content].length,
+                });
+            }
         }
 
-        const meta = this.#buildMeta(raw.chunkMetadata);
+        const builtMeta = this.#buildMeta(raw.chunkMetadata);
+        const meta = railsMeta !== undefined ? { ...builtMeta, ...railsMeta } : builtMeta;
 
         // #36: surface per-token logprobs + their mean when the backend returned
         // them (only possible when the flag requested them). Absent otherwise —
@@ -619,7 +622,7 @@ export default class OpenAICompatProvider implements Provider {
                 // #482: sealed relay blobs ride only when present — same absence
                 // discipline as logprobs (never synthesized, never empty-array).
                 ...(raw.reasoning_encrypted.length > 0 ? { reasoningEncrypted: raw.reasoning_encrypted } : {}),
-                usage: normalizeUsage(raw.usage, raw.reasoning_content, raw.content),
+                usage,
                 finishReason: normalizeFinishReason(raw.finish_reason),
                 model: raw.model ?? this.#model,
                 ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
