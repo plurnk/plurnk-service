@@ -162,3 +162,53 @@ test("discoverPlugins skips packages with unparseable package.json", async () =>
         assert.equal(plugins[0].packageName, "@plurnk/plurnk-good");
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+// #514 — the stepchild covenant: plurnk.builtAgainst verified BEFORE import. A skewed artifact
+// refuses LEGIBLY naming both versions (never #512's mid-import SyntaxError on a removed export);
+// an absent field is a legacy artifact — warn once, proceed.
+test("[§plugin-built-against] a version-skewed stepchild refuses legibly BEFORE import — both versions named (#514)", async () => {
+    const head = await PluginLoader.headVersion();
+    const skewed: DiscoveredPlugin = {
+        packageName: "@plurnk/plurnk-providers-nonexistent-skewed",  // unimportable — the throw MUST precede import
+        packagePath: "/tmp/fake/skewed",
+        manifest: { kind: "provider", name: "skewed", builtAgainst: "1.0.5" },
+    };
+    await assert.rejects(
+        () => PluginLoader.loadPlugin(skewed),
+        (e: Error) => {
+            assert.match(e.message, /built against 1\.0\.5; loaded /, "the skew names the artifact's version");
+            assert.ok(e.message.includes(head), "the skew names the loaded head");
+            assert.match(e.message, /republish pending/, "the cure is stated");
+            assert.doesNotMatch(e.message, /Cannot find|does not provide an export/, "refused BEFORE import — never the #512 detonation");
+            return true;
+        },
+    );
+});
+
+test("[§plugin-built-against] an absent builtAgainst is a legacy artifact — one warning, load proceeds to the import (#514)", async () => {
+    const logged: string[] = [];
+    const realWrite = process.stderr.write.bind(process.stderr);
+    (process.stderr as { write: unknown }).write = (s: string | Uint8Array) => { logged.push(String(s)); return realWrite(s); };
+    try {
+        const legacy: DiscoveredPlugin = {
+            packageName: "@plurnk/plurnk-providers-nonexistent-legacy",
+            packagePath: "/tmp/fake/legacy",
+            manifest: { kind: "provider", name: "legacy" },  // no builtAgainst
+        };
+        // Proceeds PAST the covenant check to the import (which fails on the fake package —
+        // an import-shaped error here proves the boundary let the legacy artifact through).
+        await assert.rejects(() => PluginLoader.loadPlugin(legacy), /Cannot find|Failed to load|not found/i);
+        await assert.rejects(() => PluginLoader.loadPlugin(legacy), /Cannot find|Failed to load|not found/i);
+        assert.equal(logged.filter((l) => l.includes("declares no plurnk.builtAgainst")).length, 1, "warned exactly ONCE across repeat loads");
+    } finally { (process.stderr as { write: unknown }).write = realWrite; }
+});
+
+test("[§plugin-built-against] discoverPlugins extracts builtAgainst from the manifest (#514)", async () => {
+    const dir = await makeTempNodeModules();
+    try {
+        await seedPackage(dir, "plurnk-providers-stamped", { kind: "provider", name: "stamped", builtAgainst: "1.0.7" } as never);
+        const plugins = await PluginLoader.discoverPlugins(dir);
+        assert.equal(plugins.length, 1);
+        assert.equal(plugins[0].manifest.builtAgainst, "1.0.7", "the covenant field rides discovery");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+});

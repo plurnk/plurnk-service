@@ -760,6 +760,8 @@ When SQL becomes onerous for a specific case, retreat for that case and document
 
 ## §plugin-discovery Plugin Discovery
 
+**The stepchild covenant is verified at the boundary.** {§plugin-built-against} A stepchild manifest declares `plurnk.builtAgainst` — the exact family-head version the artifact was built against, stamped at publish. The loader verifies it BEFORE import: skew refuses legibly naming both versions and the cure ("<pkg> built against 1.0.5; loaded 1.0.7 — republish pending."), never a mid-import SyntaxError on a removed export (#512's detonation class). An absent field is a legacy artifact: one warning, load proceeds — the field becomes required once the stepchild phase has stamped the fleet (#514).
+
 Scoped-package scan with manifest field:
 
 1. Each package declares its kind:
