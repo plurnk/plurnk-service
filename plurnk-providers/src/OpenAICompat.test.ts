@@ -319,6 +319,30 @@ test("#477 sampling passthrough guards contract invariants: n/tools/caps strippe
     assert.equal(body.service_tier, "flex");
 });
 
+test("#488 rails win the channel: a transported grammar forces enable_thinking:false on the template style", async () => {
+    // adaptive intent + grammar -> channel closed for THIS request (leaky enforcement otherwise, §13)
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    let body = JSON.parse(calls[0].init.body as string);
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
+    assert.equal(typeof body.grammar, "string"); // the grammar rode — rails on, channel off
+    mock.restoreAll();
+
+    // same provider, grammarless call -> intent maps normally (adaptive = on)
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "r", messages: [] });
+    body = JSON.parse(calls[0].init.body as string);
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
+    mock.restoreAll();
+
+    // explicit on + grammar -> still clamped (rails win)
+    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "on", budget: 4096 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await on.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    assert.deepEqual(JSON.parse(calls[0].init.body as string).chat_template_kwargs, { enable_thinking: false });
+});
+
 test("reasoningStyle 'template' always emits enable_thinking mirroring budget != 0 — explicit false, never omitted", async () => {
     const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
