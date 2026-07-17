@@ -867,13 +867,11 @@ export default class Dispatcher {
             // the deltas land next turn, the model weighs them and concludes.
             const undelivered = await (this.#db.engine_worker_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ worker_id: workerId, turn_id: turnId });
             if (undelivered !== undefined) return { status: 102 };
-            // ∅ — a wait on zero obligations is already satisfied; conclude like 200 (incl. <-1>+∅).
-            // #379 (owner ruling): the ENGINE concluded this loop, not the model — mark it as state
-            // so the COLLECT/delta render the act instead of presenting the park text as a result.
-            // The model's words (terminal_message) are never rewritten.
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: loopId, message: raw === "" ? null : raw });
-            await (this.#db.engine_loop_mark_terminated_by as PrepMethod).run({ terminated_by: "collapse", loop_id: loopId });
-            return { status: 200 };
+            // ∅ — a wait on nothing is a contradiction, the mirror of premature-terminate (owner
+            // ruling, #502 run113): concluding it silently laundered the one signal that something
+            // was structurally off (the model believed work was pending; nothing was). 409 gives
+            // the turn back with the fact — the recovery rail this exact confusion needs.
+            return { status: 409, error: "Attempted [202] wait with nothing pending: no surviving streams, no worker runs, no unretrieved results." };
         }
 
         // §send-300-choices — ask the operator and park (the answer returns via loop.inject).

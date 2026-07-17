@@ -497,7 +497,7 @@ test("[§op-synchronous] KILL(run) is decisive — a same-turn KILL then SEND[20
     } finally { await db.close(); }
 });
 
-test("[§wait-obligation-matrix] SEND[202]: a live obligation BLOCKS, no obligation resolves like 200, and <-1>+∅ self-resolves rather than hang", async () => {
+test("[§wait-obligation-matrix] SEND[202]: a live obligation BLOCKS; ∅ (bare or <-1>) is the 409 contradiction — never a hang, never a silent conclude", async () => {
     const db = await openMigrated();
     try {
         // 202 + J (a live child) → the loop BLOCKS at 202, to be reawakened when the child concludes.
@@ -512,17 +512,17 @@ test("[§wait-obligation-matrix] SEND[202]: a live obligation BLOCKS, no obligat
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
 
-        // 202 + ∅ (no live work) → resolves like 200 — a wait on zero obligations is already satisfied.
+        // 202 + ∅ (no live work) → 409: the wait-side contradiction (owner ruling, #502 run113).
         const s2 = await insertWorkspace(db, `wait-void-${crypto.randomUUID()}`);
         const run = await insertWorker(db, s2);
         const loop = await insertLoop(db, run, 1, "solo");
         const turn = await insertTurn(db, loop, 1, 200);
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
         const satisfied = await eng2.dispatch({ statement: sendStmt(202, null, "standing by"), workspaceId: s2, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
-        assert.equal(satisfied.status, 200, "202 on nothing resolves like 200");
-        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 200, "the loop concluded, never hung");
+        assert.equal(satisfied.status, 409, "202 on nothing is the contradiction, returned to the model");
+        assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 202, "no held-open 202 — the turn is back with the model");
 
-        // 202<-1> + ∅ — the old degenerate hang (indefinite wait on nothing) — folds to done, not honored.
+        // 202<-1> + ∅ — the degenerate indefinite wait on nothing: the same 409, never a hang.
         const s3 = await insertWorkspace(db, `wait-hang-${crypto.randomUUID()}`);
         const run3 = await insertWorker(db, s3);
         const loop3 = await insertLoop(db, run3, 1, "solo");
@@ -530,14 +530,15 @@ test("[§wait-obligation-matrix] SEND[202]: a live obligation BLOCKS, no obligat
         const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
         const indef = { ...sendStmt(202, null, "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
         const noHang = await eng3.dispatch({ statement: indef, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
-        assert.equal(noHang.status, 200, "202<-1> on nothing self-resolves — a bid to hang, refused by completing");
-        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop3 }))?.status, 200, "the degenerate hang concluded instead");
+        assert.equal(noHang.status, 409, "202<-1> on nothing is the same contradiction — refused with the fact, never hung");
+        assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop3 }))?.status, 202, "no held-open 202");
     } finally { await db.close(); }
 });
 
-test("[§wait-collapse-marked] a ∅-collapsed park is state-marked; the COLLECT renders the act + the unrewritten park text (#379)", async () => {
-    // run42: a worker parked on nothing, the collapse concluded it, and the parent COLLECTed
-    // 'Standing by for user input' as a status-200 stage result — nine blind re-spawns.
+test("[§wait-collapse-marked] a ∅ wait is 409 — the contradiction returns to the model; a historical collapse row still renders both truth layers (#379, #502)", async () => {
+    // run113: a worker waited on an EXEC that never dispatched; the old ∅-collapse concluded it
+    // CLEAN and the confusion vanished. The flip: dispatch 409s the ∅ wait (the recovery rail);
+    // the collapse MARKER render survives for rows history already carries (run42's class).
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `collapse-mark-${crypto.randomUUID()}`);
@@ -545,15 +546,15 @@ test("[§wait-collapse-marked] a ∅-collapsed park is state-marked; the COLLECT
         const wLoop = await insertLoop(db, worker, 1, "test the module");
         const wTurn = await insertTurn(db, wLoop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const parked = await engine.dispatch({ statement: sendStmt(202, null, "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
-        assert.equal(parked.status, 200, "∅ — the wait on nothing concluded");
+        const waited = await engine.dispatch({ statement: sendStmt(202, null, "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
+        assert.equal(waited.status, 409, "∅ — a wait on nothing is the contradiction, returned to the model");
+        assert.match(String(waited.error), /Attempted \[202\] wait with nothing pending: no surviving streams, no worker runs, no unretrieved results\./, "the canon text states the fact");
+        assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: wLoop }))?.status, 200, "the loop did NOT conclude — the turn returns to the model");
 
-        // The act is STATE on the terminal record; the model's words are untouched.
-        const row = await (db.worker_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: workspaceId, name: "req-test" });
-        assert.equal(row?.terminated_by, "collapse", "the engine's conclude is recorded as terminated_by='collapse'");
-        assert.equal(row?.terminal_message, "Standing by for user input", "terminal_message keeps the model's own words — never rewritten");
-
-        // The parent's COLLECT sees both truth layers: the named act, then the park text.
+        // The RENDER contract survives for history: a row already carrying terminated_by='collapse'
+        // (real DBs hold them) still names the act before the model's unrewritten words.
+        await (db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: wLoop, message: "Standing by for user input" });
+        await (db.engine_loop_mark_terminated_by as PrepMethod).run({ terminated_by: "collapse", loop_id: wLoop });
         const reader = await insertWorker(db, workspaceId);
         const collected = await new Worker().read(readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 200);
@@ -562,7 +563,7 @@ test("[§wait-collapse-marked] a ∅-collapsed park is state-marked; the COLLECT
     } finally { await db.close(); }
 });
 
-test("[§worker-lifecycle-idle-is-concluded] an idle worker's wait concludes (200) — it does not park into a held-open 202", async () => {
+test("[§worker-lifecycle-idle-is-concluded] an idle wait is 409; the worker concludes by SAYING so next turn — never a held-open 202, never a silent conclude", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `idle-concludes-${crypto.randomUUID()}`);
@@ -571,7 +572,13 @@ test("[§worker-lifecycle-idle-is-concluded] an idle worker's wait concludes (20
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const r = await engine.dispatch({ statement: sendStmt(202, null, "idle"), workspaceId, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
-        assert.equal(r.status, 200, "an idle run with nothing in flight concludes, not parks");
+        assert.equal(r.status, 409, "an idle wait is the ∅ contradiction — returned, never silently concluded");
+        const done = await engine.dispatch({ statement: sendStmt(200, null, "done — nothing to do"), workspaceId, workerId: run, loopId: loop, turnId: turn, sequence: 2, origin: "model" });
+        assert.equal(done.status, 409, "same-turn conclude after the 409 is held — the error lands NEXT turn (errors are weighed before concluding)");
+        // the real recovery shape: next turn, the model has SEEN the 409 and concludes deliberately
+        const turn2 = await insertTurn(db, loop, 2, 102);
+        const concluded = await engine.dispatch({ statement: sendStmt(200, null, "done — nothing to do"), workspaceId, workerId: run, loopId: loop, turnId: turn2, sequence: 1, origin: "model" });
+        assert.equal(concluded.status, 200, "the idle worker concludes by SAYING so — SEND[200], one turn later");
         assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 202, "no held-open 202 — the loop reached a real terminal");
     } finally { await db.close(); }
 });
