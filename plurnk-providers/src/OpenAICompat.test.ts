@@ -319,28 +319,45 @@ test("#477 sampling passthrough guards contract invariants: n/tools/caps strippe
     assert.equal(body.service_tier, "flex");
 });
 
-test("#488 rails win the channel: a transported grammar forces enable_thinking:false on the template style", async () => {
-    // adaptive intent + grammar -> channel closed for THIS request (leaky enforcement otherwise, §13)
+test("#488 postmortem: intent maps IDENTICALLY under a transported grammar — sanctioned channel coexists with rails", async () => {
+    // The brief rails-win-the-channel clamp is REVERTED: closing the channel starved a
+    // reasoning-tuned model into escaping mid-content (unconstrained, discarded, billed).
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
-    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
-    let body = JSON.parse(calls[0].init.body as string);
-    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
-    assert.equal(typeof body.grammar, "string"); // the grammar rode — rails on, channel off
-    mock.restoreAll();
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true }); // channel stays sanctioned under the grammar
+    assert.equal(typeof body.grammar, "string"); // rails ride beside it
+    // #488 per-request loud state: rail attachment + verdict on meta, drill-readable per turn
+    assert.equal(res.meta?.railsAttached, true);
+    assert.equal(res.meta?.railsVerdict, "accept");
+});
 
-    // same provider, grammarless call -> intent maps normally (adaptive = on)
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
-    body = JSON.parse(calls[0].init.body as string);
-    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
-    mock.restoreAll();
+test("#488 channel-escape detector: billed completion tokens vastly beyond visible channels attach grammar_unenforced", async () => {
+    // The run105 shape: tiny visible content, no reasoning, thousands billed — the decode
+    // escaped into a discarded reasoning block, unconstrained.
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    installFetch([
+        { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },
+        { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
+    ]);
+    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    assert.equal(res.meta?.railsVerdict, "accept"); // the visible fragment conforms...
+    const escape = res.telemetry?.find((e) => e.message?.includes("escaped the grammar") === true);
+    assert.ok(escape, "escape telemetry attached");
+    assert.equal(escape!.kind, "grammar_unenforced");
+    assert.match(escape!.message ?? "", /5000 completion tokens billed/);
+});
 
-    // explicit on + grammar -> still clamped (rails win)
-    const on = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "on", budget: 4096 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await on.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
-    assert.deepEqual(JSON.parse(calls[0].init.body as string).chat_template_kwargs, { enable_thinking: false });
+test("#488 loud state absent on grammarless calls; no escape event without a transported grammar", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    installFetch([
+        { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },
+        { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
+    ]);
+    const res = await p.generate({ workerId: "r", messages: [] }); // no grammar arg
+    assert.equal(res.meta?.railsAttached, undefined);
+    assert.equal(res.telemetry, undefined);
 });
 
 test("reasoningStyle 'template' always emits enable_thinking mirroring budget != 0 — explicit false, never omitted", async () => {
