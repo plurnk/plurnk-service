@@ -62,6 +62,10 @@ const armSweep = (): void => {
     _sweepArmed = true;
     process.on("exit", () => {
         if (process.exitCode) return; // a failure occurred — preserve every worker this file created
+        // #488 — a drill is a FORENSIC context: run78 passed its assertions on a FABRICATED answer,
+        // so delete-on-pass swept the one specimen that mattered (a green file is not a clean file
+        // when the rail is in question). PRESERVE_WORKERS=1 keeps everything; the drill sets it.
+        if (process.env.PLURNK_SERVICE_PRESERVE_WORKERS === "1") return;
         for (const dir of createdRuns) { try { rmSync(dir, { recursive: true, force: true }); } catch { /* leave it — clutter beats loss */ } }
     });
 };
