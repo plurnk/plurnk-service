@@ -75,7 +75,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 |--------|----------|-----------------------------|------------------|
 | `#`    | regex    | #pattern#[igmsu]*           | ECMAScript       |
 | `//`   | xpath    | //selector                  | XPath 1.0        |
-| `$`    | jsonpath | $.field                     | jsonpath-plus    |
+| `$`    | jsonpath | $.field                     | RFC 9535         |
 | `~`    | semantic | ~phrase                     | keyword + cosine |
 | `@`    | graph    | @<symbol, @>symbol, @symbol | symbol index     |
 | none   | glob     | pattern                     | shell glob       |

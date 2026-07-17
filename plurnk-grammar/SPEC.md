@@ -267,11 +267,12 @@ body fields; the lexer is unaware):
   calls `xpath.parse()` from the `xpath` npm package (XPath 1.0
   parser-only, no DOM execution). Failure is a `"visitor"` error.
 - **JsonPath body** (matcher-body OPs only, leading `$`): the Visitor
-  calls `JSONPath({ path: body, json: {} })` from the `jsonpath-plus`
-  npm package. The empty `{}` ensures syntax parsing happens without
-  document evaluation. Failure is a `"visitor"` error — note
-  `jsonpath-plus` is lenient (it accepts `$HOME` and `$.users[`), so
-  this claim rarely fires in practice.
+  compiles the path with `json-p3` (RFC 9535) — compile-only, no
+  document evaluation — the same engine the runtime dispatches
+  (#494/#490), so the flag layer and the engine agree by construction.
+  Failure is a `"visitor"` error, and RFC strictness means it fires on
+  real malformations (`$HOME`, `$.users[`) that the retired
+  `jsonpath-plus` check let through leniently.
 
 Errors here are per-statement: sibling statements in the same turn
 still build, so a consumer executes the rest of the turn and relays the
@@ -300,7 +301,7 @@ parser accepts multiline pattern bodies (forgiving ingester;
 
 **Why not ANTLR sub-grammars for any of these?** Node's `new URL()`
 and `new RegExp()` are authoritative, well-tested, and zero-cost to
-invoke; `xpath` and `jsonpath-plus` are the de facto Node parsers for
+invoke; `xpath` and `json-p3` (RFC 9535) are the Node parsers for
 their respective dialects. ANTLR sub-grammars for any of these would
 add hundreds of lines of generated parser code with no validation
 benefit over the native or library facilities.
