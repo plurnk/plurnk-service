@@ -19,7 +19,10 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, rootWorkspace } from "./_helpers.ts";
+import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,
@@ -220,4 +223,44 @@ test("streaming exec: the workspace catalog picks up partial channel content bet
         const end = await execStdout();
         assert.equal(end[0].content, "4\n3\n2\n1\n");
     } finally { await db.close(); }
+});
+
+// #500 — the accept-half of the #462 stat-route: an EMPTY body with a LOCAL FILE target is the
+// "run this script" form (transient exec, owner ruling — the interpreter reads the file, no exec
+// bit consulted or set). run112: EXEC[sh](demo_greet.sh)::EXEC died 500 missing_command at ACCEPT
+// while the propose-half had already legalized it — every empty-body file target, bare and tagged.
+test("[#500] EXEC[sh](script-file) with an empty body runs the file through accept — a 0o644 EDIT-shaped script, mode untouched", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "exec500-"));
+    const db = await openMigrated();
+    try {
+        await writeFile(join(dir, "demo_greet.sh"), "echo greetings-from-500\n", { mode: 0o644 });
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes });
+        engine.setExecutors(await testExecutors());
+        const workspaceId = await insertWorkspace(db, `exec500-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, dir);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "run the script");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const idDeferred = deferred<number>();
+        const dispatchPromise = engine.dispatch({
+            statement: { op: "EXEC", suffix: "", signal: "sh", target: { kind: "local", raw: "demo_greet.sh" }, lineMarker: null, body: "", position: { line: 1, column: 1 } },
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
+        const result = await dispatchPromise;
+        assert.ok(result.status < 400, `the empty-body file target survives accept (got ${result.status} ${JSON.stringify(result)})`);
+
+        const exec = schemes.get("exec") as Exec;
+        await exec.idle();
+        // the exec entry lives at the l/t/s coordinate (/1/1/1) under the runtime scheme — fail-hard
+        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
+        assert.ok(entryRow, "the sh exec entry exists at /1/1/1");
+        const ch = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
+        assert.match(ch?.content ?? "", /greetings-from-500/, "the script RAN — its stdout arrived");
+        const mode = (await stat(join(dir, "demo_greet.sh"))).mode & 0o777;
+        assert.equal(mode, 0o644, "transient exec: the mode is untouched — no chmod magic");
+    } finally { await db.close(); await rm(dir, { recursive: true, force: true }); }
 });

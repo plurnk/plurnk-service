@@ -301,7 +301,11 @@ export default class Exec {
                 target = tempPath;
             }
         }
-        if (command.length === 0) {
+        // #500 — the accept-half mirrors the propose-half's #462 stat-route: an empty body with a
+        // LOCAL FILE target is legal (the target IS the program — the executor runs it as its script
+        // positional, transient exec per the owner ruling). Empty body with no target of any kind
+        // remains the contradiction.
+        if (command.length === 0 && target === null) {
             return { status: 500, outcome: "missing_command" };
         }
 
