@@ -91,19 +91,7 @@ export default class Translator {
             events.push({ type: "CUSTOM", name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: e.coordinate } });
             return events;
         }
-        if (e.op === "model") {
-            // The verbatim mirror row is forensic, not renderable speech — EXCEPT sealed
-            // reasoning (§482): a provider's ENCRYPTED reasoning rides attrs.reasoningEncrypted
-            // ([{ data, format }], core's sealed-reasoning carrier, service SPEC). Project each blob as the
-            // conformant REASONING_ENCRYPTED_VALUE — subtype "message" (our sealed COT is the
-            // model's turn reasoning, not a tool-call's), entityId = the row id, encryptedValue
-            // = the blob verbatim. `format` has no slot on the standard event; it rides the
-            // full row on plurnk.row (already emitted above) for lossless round-trip.
-            for (const blob of Translator.#sealedReasoning(e.attrs)) {
-                events.push({ type: "REASONING_ENCRYPTED_VALUE", subtype: "message", entityId: id, encryptedValue: blob.data });
-            }
-            return events;
-        }
+        if (e.op === "model") return events; // the verbatim mirror row is forensic, not renderable speech
         events.push({ type: "TOOL_CALL_START", toolCallId: id, toolCallName: e.op });
         events.push({ type: "TOOL_CALL_ARGS", toolCallId: id, delta: Translator.#argsFor(e) });
         events.push({ type: "TOOL_CALL_END", toolCallId: id });
@@ -182,16 +170,6 @@ export default class Translator {
 
     telemetry(event: unknown): AguiEvent[] {
         return [{ type: "CUSTOM", name: "plurnk.telemetry", value: event }];
-    }
-
-    // Sealed-reasoning blobs off the mirror row's attrs (a JSON string on the wire; an
-    // object tolerated). Absent/malformed → none — a row without sealed reasoning (the
-    // common case) projects nothing.
-    static #sealedReasoning(attrs: unknown): Array<{ data: string }> {
-        const parsed = typeof attrs === "string" ? (() => { try { return JSON.parse(attrs); } catch { return null; } })() : attrs;
-        const arr = (parsed as { reasoningEncrypted?: unknown } | null)?.reasoningEncrypted;
-        if (!Array.isArray(arr)) return [];
-        return arr.filter((b): b is { data: string } => typeof (b as { data?: unknown })?.data === "string" && (b as { data: string }).data.length > 0);
     }
 
     // The model-facing statement body out of the tx — SEND/PLAN carry their text here. The real
