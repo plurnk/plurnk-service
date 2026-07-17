@@ -5,6 +5,7 @@ import AstBuilder from "./AstBuilder.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
+import { PLURNK_OPS } from "./types.ts";
 import type { ClientStatement, ParseItem, ParseResult, PlurnkStatement, Position } from "./types.ts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
@@ -40,6 +41,7 @@ export default class PlurnkParser {
         // near-miss op advisories on swallowed prose, then turn-shape imperatives. Both only
         // refine the model-facing message set; neither changes what parsed.
         PlurnkParser.#flagNearMissOps(result.items);
+        PlurnkParser.#flagOpsInPlanBody(result.items);
         PlurnkParser.#imperativeTurnShape(result.items);
         PlurnkParser.#imperativeMidTermination(result.items);
         return result;
@@ -262,6 +264,37 @@ export default class PlurnkParser {
         }
 
         return { items, unparsedTail };
+    }
+
+    // Op-shaped text inside a PLAN body (#502, the run113 class): PLAN owns no suffix, so the
+    // op-quoting device does not exist for it - `<<OP` inside a plan has no sanctioned reading
+    // and is almost always an omitted `:PLAN` whose body swallowed the turn's ops to the NEXT
+    // plan's closer, silently (run113: PLAN=1, SEND=1, the essential EXEC vanished, zero
+    // errors). The GBNF rail makes this unsampleable (planBodyRules); this is the ingest-side
+    // twin for unrailed paths. A WARNING - the parse succeeded; the steer makes it visible.
+    static #flagOpsInPlanBody(items: ParseItem<any>[]): void {
+        const additions: { at: number; item: ParseItem<any> }[] = [];
+        const opener = new RegExp(`<<(${PLURNK_OPS.join("|")})\\b`);
+        items.forEach((item, idx) => {
+            if (item.kind !== "statement" || item.statement.op !== "PLAN") return;
+            const body: string = (item.statement as any).body ?? "";
+            const m = opener.exec(body);
+            if (!m) return;
+            additions.push({
+                at: idx,
+                item: {
+                    kind: "error",
+                    error: new PlurnkParseError(
+                        item.statement.position.line,
+                        item.statement.position.column,
+                        "parser",
+                        `PLAN body contains op-shaped text (\`<<${m[1]}\`) - ops belong after the plan closes; did you omit \`:PLAN\`?`,
+                        "warning",
+                    ),
+                },
+            });
+        });
+        for (const { at, item } of additions.reverse()) items.splice(at + 1, 0, item);
     }
 
     // The invented-closer advisory (#497, the run111 class): a model under load falls back to

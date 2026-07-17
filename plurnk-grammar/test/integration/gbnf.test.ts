@@ -589,6 +589,23 @@ test("GBNF: PLAN has no numeric suffix — the malformed <<PLAN1 is not derivabl
     assert.equal(derives("statement", "<<PLAN1:nested thought:PLAN1"), false);
 });
 
+// #502 (§plan-body-no-openers): PLAN's body excludes `<<` — the plan ends where the acting
+// begins. run113: an omitted `:PLAN` let the body swallow EXEC+SEND to the NEXT plan's closer,
+// silently and in-rail. With `<<` unsampleable in-body, the mask denies the trap at one token
+// and the shortest legal path to the intended op is emitting `:PLAN` first.
+test("GBNF: PLAN body excludes `<<` (§plan-body-no-openers) — the run113 capture is underivable", () => {
+    // An op opener inside the plan body: NOT derivable.
+    assert.equal(derives("root-turn", "<<PLAN:plan text\n<<READ(known:///x)::READ more plan:PLAN\n<<SEND[200]:x:SEND"), false);
+    // The run113 shape itself (omitted :PLAN, ops swallowed to the second plan's closer): NOT derivable.
+    assert.equal(derives("root-turn", "<<PLAN:Execute hostname.\n<<EXEC:hostname::EXEC\n<<SEND[102]:executing:SEND\n<<PLAN:Awaiting.:PLAN\n<<SEND[202]:waiting:SEND"), false);
+    // The corrected form (plan closed, then the ops): derives.
+    assert.equal(derives("root-turn", "<<PLAN:Execute hostname.:PLAN\n<<EXEC:hostname::EXEC\n<<SEND[102]:executing:SEND"), true);
+    // A single `<` in a plan body stays legal (comparisons, arrows).
+    assert.equal(derives("root-turn", "<<PLAN:check 3 < 5 and a -> b:PLAN\n<<SEND[200]:yes:SEND"), true);
+    // Even a lone `<` at body end is legal; only the double is unsampleable.
+    assert.equal(derives("root-turn", "<<PLAN:compare a <:PLAN\n<<SEND[200]:x:SEND"), true);
+});
+
 test("GBNF: PLAN body is required non-empty — no blank statement of intent", () => {
     assert.equal(derives("root-turn", "<<PLAN::PLAN\n<<SEND[200]:done:SEND"), false);   // blank plan rejected
     assert.equal(derives("root-turn", "<<PLAN:go:PLAN\n<<SEND[200]:done:SEND"), true);

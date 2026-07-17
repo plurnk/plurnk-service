@@ -99,6 +99,41 @@ const bodyRulesNonEmpty = (model: GModel, name: string, close: string): void => 
     model.set(`${name}-b0ne`, alts);
 };
 
+// PLAN body: complement over BOTH the closer `:PLAN` and the op-opener `<<` (#502). PLAN is
+// suffix-less by design, so the op-quoting device does not exist for it — a literal `<<` in a
+// plan body has zero sanctioned use, and admitting it is the run113 trap: an omitted `:PLAN`
+// lets the body swallow the turn's ops to the NEXT `:PLAN` occurrence, silently and in-rail
+// (PLAN=1, SEND=1, the essential op vanished, rails=accept). Excluding `<<` force-closes the
+// plan where the acting begins: at the omitted closer the mask denies the second `<`, and the
+// shortest legal path to the intended op is emitting `:PLAN` first — the rail auto-corrects
+// the omission at one-token cost (the quicksand-fix mechanics). A single `<` stays legal
+// (comparisons, arrows); only the double is unsampleable.
+const planBodyRules = (model: GModel, name: string, close: string): void => {
+    // Closer-prefix states (k = chars of `close` matched), each `<`-aware.
+    for (let k = 0; k < close.length; k++) {
+        const expected = close[k];
+        const alts: GRule = [];
+        if (k + 1 < close.length) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
+        if (k > 0) alts.push([lit(":"), ref(`${name}-b1`)]);
+        alts.push([lit("<"), ref(`${name}-lt`)]);
+        alts.push([bodyOther((k === 0 ? ":" : `:${expected}`) + "<"), ref(`${name}-b0`)]);
+        alts.push([]);
+        model.set(`${name}-b${k}`, alts);
+    }
+    // One `<` consumed: a second `<` has no transition — `<<` is unsampleable in-body.
+    model.set(`${name}-lt`, [
+        [lit(":"), ref(`${name}-b1`)],
+        [bodyOther(":<"), ref(`${name}-b0`)],
+        [],
+    ]);
+    // Non-empty entry (no blank statement of intent), same doors minus the entry epsilon.
+    model.set(`${name}-b0ne`, [
+        [lit(close[0]), ref(`${name}-b1`)],
+        [lit("<"), ref(`${name}-lt`)],
+        [bodyOther(":<"), ref(`${name}-b0`)],
+    ]);
+};
+
 // General single-literal complement automaton: any text containing no occurrence of
 // `literal`. Same shape as bodyRules but parameterized on the restart char (the literal's
 // first char). Valid when that first char does not recur inside the literal and the literal
@@ -272,8 +307,10 @@ export const buildModel = (): GModel => {
                 // Slotless bare reasoning body, REQUIRED non-empty (no blank statement of
                 // intent). PLAN is the MANDATORY turn anchor and the FIRST op only — root-turn
                 // references the standalone `plan` rule and PLAN is NOT in the op-statement
-                // trie, so a second PLAN cannot appear mid-batch.
-                bodyRulesNonEmpty(model, name, close);
+                // trie, so a second PLAN cannot appear mid-batch. The body additionally
+                // excludes `<<` (#502, planBodyRules — overrides the generic automaton): the
+                // plan ends where the acting begins.
+                planBodyRules(model, name, close);
                 const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
                 model.set("plan", [[lit(open), ...bodyNE]]);
             } else if (op === "KILL") {
