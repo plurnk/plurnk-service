@@ -49,10 +49,11 @@ export interface ProviderAssistant {
     readonly reasoning: string | null;
     // Sealed reasoning (#482): a relay backend (OpenRouter fronting OpenAI
     // o-series) returns the chain-of-thought ENCRYPTED — surfaced verbatim as
-    // { data, format } blobs, never decoded, never synthesized. Readable text
+    // items { id, subtype, encrypted: [{data, format}] } (id from the wire,
+    // subtype from wire position), never decoded, never synthesized. Readable text
     // stays on `reasoning`. Absent when the turn produced none; consumers (agui)
     // project it as REASONING_ENCRYPTED_VALUE.
-    readonly reasoningEncrypted?: ReadonlyArray<{ data: string; format: string | null }>;
+    readonly reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
     readonly usage: ProviderUsage;
     readonly finishReason: FinishReason;
     readonly model: string;

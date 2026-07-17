@@ -96,9 +96,11 @@ interface ProviderResponse {
     assistant: {
         content: string;            // raw model emission; consumer parses
         reasoning: string | null;   // wire-reported reasoning content; null if absent
-        // sealed relay reasoning (#482): { data, format } blobs verbatim, never
-        // decoded; absent when none. agui projects REASONING_ENCRYPTED_VALUE.
-        reasoningEncrypted?: Array<{ data: string; format: string | null }>;
+        // sealed relay reasoning (#482): items { id, subtype, encrypted:
+        // [{data, format}] } verbatim, never decoded; `id` from the wire,
+        // `subtype` from wire position (message-attached; plurnk is tools-in-body
+        // so it is constant). Absent when none. agui projects REASONING_ENCRYPTED_VALUE.
+        reasoningEncrypted?: Array<{ id: string | null; subtype: string; encrypted: Array<{ data: string; format: string | null }> }>;
         usage: ProviderUsage;       // { prompt, completion, reasoning, cached, total }
         finishReason: "stop" | "length" | "tool_calls" | "content_filter" | null;
         model: string;              // wire-reported (may differ from requested for relay providers)
