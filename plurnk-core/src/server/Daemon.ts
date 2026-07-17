@@ -1216,18 +1216,28 @@ export default class Daemon {
         await this.#wakeParkedWorker(workspaceId, parent.parent_worker_id, provider, systemPrompt);
     }
 
+    // #506 — a SUBSCRIBER throw must never propagate into engine control flow: a transport
+    // module's bad socket rethrowing through the emitter was the run54/55 death class (an
+    // unhandled rejection in the one then-uncaught dispatch void). The transport's failure is
+    // its own — logged loudly per event, never the engine's crash.
+    #emitTo(workspaceId: number | null, method: string, params?: unknown): void {
+        for (const sub of this.#eventSubscribers) {
+            try { sub(workspaceId, method, params); }
+            catch (e) { console.error(`seam subscriber failed on ${method}:`, e instanceof Error ? e.message : String(e)); }
+        }
+    }
+
     #broadcast(target: NotifyTarget, method: string, params?: unknown): void {
         if (target === "all") {
             // A global engine event (e.g. workspace/created) — emitted to the seam with workspaceId null (#355).
-            for (const sub of this.#eventSubscribers) sub(null, method, params);
+            this.#emitTo(null, method, params);
             return;
         }
-        const workspaceId = target.workspaceId;
         // Publish the raw event to the in-process source first (#355) — transport modules subscribe
         // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
-        for (const sub of this.#eventSubscribers) sub(workspaceId, method, params);
         // Scope-stamping onto the notification envelope (§notifications-envelope-carries-workspaceid)
         // is each subscriber's edge concern now — the seam hands (workspaceId, method, params) raw.
+        this.#emitTo(target.workspaceId, method, params);
     }
 }
 
