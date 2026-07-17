@@ -1,6 +1,8 @@
 # sqlite
 
-Runs one SQL statement in-process via `node:sqlite` and writes the result to the `results` channel as `application/json` — ready for a jsonpath body-matcher.
+Runs **one SQL statement** in-process via `node:sqlite` and writes the result to the `results` channel as `application/json` — ready for a jsonpath body-matcher.
+
+One statement per op is **enforced**: a `sqlite3`-style multi-statement script fails with `sqlite_multi_statement` (400) naming the dropped tail — SQLite compiles only the first statement, and partial execution must never pass as success (#493). Split scripts into one op per statement. Trailing semicolons and comments are fine. Dot-commands (`.tables`, `.schema`) are sqlite3-shell features, not SQL — use their SQL equivalents (`SELECT name FROM sqlite_master`).
 
 ## Database target
 

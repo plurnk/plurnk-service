@@ -18,6 +18,11 @@ const dbPath = (cwd: string | null, target: string | null): string => {
 const jsonReplacer = (_key: string, value: unknown): unknown =>
     (typeof value === "bigint" ? value.toString() : value);
 
+// SQL line (`-- …`) and block (`/* … */`) comments, for judging whether a
+// post-statement tail holds real SQL or just trivia.
+const stripComments = (sql: string): string =>
+    sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+
 // In-process SQLite executor (a logical runtime, not subprocess). Runs one SQL
 // statement via node:sqlite against the EXEC target db — defaulting to an
 // ephemeral `:memory:` when no target is given — and writes the result to the
@@ -56,10 +61,10 @@ export default class Sqlite extends BaseExecutor {
         if (signal.aborted) { setState("results", "errored"); return { status: 499 }; }
         const path = dbPath(cwd, target);
         const sql = command.trim();
-        const fail = (kind: string, message: string): ExecResult => {
+        const fail = (kind: string, message: string, status = 500): ExecResult => {
             emit({ source: "exec:sqlite", kind, message });
             setState("results", "errored");
-            return { status: 500 };
+            return { status };
         };
 
         let db: DatabaseSync;
@@ -70,6 +75,18 @@ export default class Sqlite extends BaseExecutor {
         }
         try {
             const stmt = db.prepare(sql);
+            // One statement per op is the contract (the results channel is one JSON
+            // doc) — but SQLite's prepare compiles only the FIRST statement and
+            // silently ignores the rest, so a sqlite3-CLI-style script would
+            // partially execute under a 200 (#493). sourceSQL is the compiled
+            // statement's own text: any real SQL left after it is a dropped tail —
+            // fail-hard, never truncate silently. Trailing whitespace/comments pass.
+            const tail = stripComments(sql.slice(stmt.sourceSQL.length)).trim();
+            if (tail !== "") {
+                return fail("sqlite_multi_statement",
+                    `one SQL statement per op — the tail '${tail.slice(0, 60)}' would be silently dropped; split into one op per statement`,
+                    400);
+            }
             // Non-empty columns ⇒ a row-returning statement; empty ⇒ a mutation.
             const output: unknown = stmt.columns().length > 0 ? stmt.all() : stmt.run();
             write("results", JSON.stringify(output, jsonReplacer));
