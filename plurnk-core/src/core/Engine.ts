@@ -211,6 +211,7 @@ export default class Engine {
 
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
     #gbnfCache = new Map<string, string>();  // variant name -> GBNF text (per-alias selection, #353)
+    #railAnnounced = new Set<string>();  // #488 — one rail-state line per alias, positive drill-visible signal
 
     constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, telemetryEventNotify, tokenize }: {
         db: Db;
@@ -297,16 +298,35 @@ export default class Engine {
         // that constrain sampling (llama-server, response_format backends); a cloud model that IGNORES the grammar
         // gets a filter-mode divergence event every turn for nothing. So the bare default is OFF
         // and the GBNF-capable aliases opt IN via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
-        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        // #488 — the rail must be VERIFIABLE, never silently off. Two guards:
+        // (1) the alias fallback is only trusted when NO per-alias GBNF opt-ins exist: an
+        //     unregistered provider in a process that configured suffixed rails could fall back
+        //     to a DIFFERENT active alias, miss the suffix, and run unconstrained — the silent
+        //     severance class run78 demonstrated (free decode, fabricated logs, CLEAN telemetry).
+        // (2) every resolution states itself ONCE on stderr — "grammar rail: <alias> → <variant>/OFF" —
+        //     so any drill capture positively shows rail state; absence of the line is greppable.
+        const registered = ProviderInstantiate.aliasOf(provider);
+        const fallback = registered === undefined ? resolveActiveAlias(process.env)?.alias : undefined;
+        if (registered === undefined && fallback === undefined && Object.keys(process.env).some((k) => k.startsWith("PLURNK_PROVIDERS_GBNF_"))) {
+            throw new Error("grammar rail: provider has no registered alias and no active alias resolves, while per-alias PLURNK_PROVIDERS_GBNF_* rails are configured — refusing to run unconstrained (#488).");
+        }
+        const alias = registered ?? fallback ?? "";
         const variant = scopeEnvToAlias(process.env, alias, ["PLURNK_PROVIDERS_GBNF"]).PLURNK_PROVIDERS_GBNF;
-        if (variant === undefined || variant === "" || variant === "0") return undefined;
+        if (variant === undefined || variant === "" || variant === "0") {
+            if (!this.#railAnnounced.has(alias)) {
+                this.#railAnnounced.add(alias);
+                process.stderr.write(`plurnk-engine: grammar rail: ${alias || "(bare)"} → OFF (no PLURNK_PROVIDERS_GBNF for this alias)\n`);
+            }
+            return undefined;
+        }
         const hit = this.#gbnfCache.get(variant);
         if (hit !== undefined) return hit;
         const path = variant.startsWith("/") || variant.startsWith(".")
             ? variant
             : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`));
-        const text = await readFile(path, "utf8");
+        const text = await readFile(path, "utf8");  // unresolvable/unreadable throws — a configured rail never silently degrades
         this.#gbnfCache.set(variant, text);
+        process.stderr.write(`plurnk-engine: grammar rail: ${alias || "(bare)"} → ${variant} (${text.length} chars)\n`);
         return text;
     }
 

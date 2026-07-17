@@ -27,6 +27,13 @@ export default class ProviderInstantiate {
         return ProviderInstantiate.#aliasByProvider.get(provider);
     }
 
+    // #488 — register a hand-built provider (a recording Mock) under an alias, so tests can
+    // drive the per-alias grammar-rail resolution through the REAL chain instead of the
+    // boot-global fallback the silent-severance guard now refuses.
+    static registerAlias(provider: Provider, alias: string): void {
+        ProviderInstantiate.#aliasByProvider.set(provider, alias);
+    }
+
     static async instantiateProvider(alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> {
         if (env === process.env) {
             const key = `${alias.provider}|${alias.model}|${alias.baseUrl ?? ""}`;
