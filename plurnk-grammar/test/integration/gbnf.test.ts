@@ -170,6 +170,16 @@ const sample = (entry: string, rng: () => number): string => {
 // -------------------------------------------------------------------------
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+// ARTIFACT FRESHNESS GATE (#488): dist/plurnk.gbnf is the SERVED rail — consumers load the
+// file, not the model — and it is committed so a pull carries the current rail. This test
+// pins committed bytes ≡ current source; a stale artifact was how the #464 no-idle trie
+// silently never reached a live drill. If this fails: `npm run build:gbnf`, commit the diff.
+test("GBNF: committed dist/plurnk.gbnf is byte-identical to the generated grammar (#488)", () => {
+    const committed = readFileSync(join(repoRoot, "dist", "plurnk.gbnf"), "utf8");
+    const generated = serializeGbnf(model, "root-turn");
+    assert.equal(committed, generated, "dist/plurnk.gbnf is STALE — run `npm run build:gbnf` and commit the regenerated artifact");
+});
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 
 // The root encodes the turn shape — the `*:PLAN:OPS:SEND[N]` sandwich: a free reasoning
