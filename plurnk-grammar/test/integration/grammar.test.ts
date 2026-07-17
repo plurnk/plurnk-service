@@ -564,6 +564,26 @@ test("#494: RFC 9535 bare filter form ($[?@.role==\"admin\"]) is accepted", () =
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
+// #497 (§invented-closer-advisory): the run111 class — a model closes an op with a tag of its
+// own invention (bash-heredoc prior); the body legally swallows it and the emission runs to
+// the cap. The cut tail's unparsedTail reason must name the imposter so the recovery turn
+// learns WHAT happened, not just that something did.
+test("invented closer (§invented-closer-advisory): unparsedTail names the imposter tag", () => {
+    const cut = "<<PLAN:p:PLAN\n<<WORK(worker://compare):Is 3 > 2? Return 'yes' or 'no':COMPARISON_TASK\nfabricated narration continues until the cap";
+    const result = PlurnkParser.parse(cut);
+    assert.ok(result.unparsedTail, "the unclosed WORK must surface as unparsedTail");
+    assert.match(result.unparsedTail!.reason, /never closed - add `:WORK` to terminate/);
+    assert.match(result.unparsedTail!.reason, /found `:COMPARISON_TASK`, which is body text - the closer echoes the op's name/);
+});
+
+test("invented closer: a never-closed body with NO imposter tag keeps the plain reason", () => {
+    const cut = "<<PLAN:p:PLAN\n<<WORK(worker://compare):a task that just got cut off mid";
+    const result = PlurnkParser.parse(cut);
+    assert.ok(result.unparsedTail);
+    assert.match(result.unparsedTail!.reason, /never closed - add `:WORK` to terminate/);
+    assert.doesNotMatch(result.unparsedTail!.reason, /which is body text/);
+});
+
 
 test("glob body (no special prefix) skips regex validation", () => {
     const result = PlurnkParser.parseStatements("<<FIND(known://**):Paris*:FIND");

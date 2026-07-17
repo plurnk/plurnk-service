@@ -252,7 +252,7 @@ export default class PlurnkParser {
             const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
             const modeName = lexer.modeNames[lexer.mode] ?? "";
             const reason = modeName === "BODY"
-                ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`:${openTag}\` to terminate`
+                ? `body of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`:${openTag}\` to terminate${PlurnkParser.#inventedCloser(input, from, openTag)}`
                 : modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
                     ? `signal slot of \`<<${openTag}\` opened at line ${from.line} but never closed - add \`]\` to terminate the signal`
                     : modeName === "TARGET"
@@ -262,6 +262,21 @@ export default class PlurnkParser {
         }
 
         return { items, unparsedTail };
+    }
+
+    // The invented-closer advisory (#497, the run111 class): a model under load falls back to
+    // bash-heredoc semantics and closes an op with a tag of its own invention (`:COMPARISON_TASK`
+    // for `<<WORK`), which the body legally swallows - the op never closes and the emission runs
+    // to the cap. When the cut tail parses here, name the imposter so the recovery turn learns
+    // WHAT happened, not just that something did. Fires only in the never-closed error state, so
+    // a coincidental `:ALLCAPS` in a healthy body is never flagged.
+    static #inventedCloser(input: string, from: { line: number; column: number }, openTag: string): string {
+        const lines = input.split("\n");
+        const offset = lines.slice(0, from.line - 1).reduce((sum, l) => sum + l.length + 1, 0) + from.column;
+        const body = input.slice(offset);
+        const m = /:([A-Z][A-Z0-9_]{2,})\b/.exec(body);
+        if (!m || m[1] === openTag.toUpperCase()) return "";
+        return ` (found \`:${m[1]}\`, which is body text - the closer echoes the op's name)`;
     }
 
     // Walk a parse tree, appending statement/error/text items in source order. Statement rules

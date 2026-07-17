@@ -19,6 +19,8 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|W
 <<OPsuffix[signal]?(path)?<scope>?:body?:OPsuffix
 ```
 
+The closer echoes the op's name: a WORK op closes with `:WORK`, never with a delimiter of your invention.
+
 ### OPs
 
 A `?` marks an optional field, as in the Syntax line; unmarked fields are required.

@@ -261,6 +261,25 @@ test("GBNF: no idle turns (§no-idle-102) — a zero-op [102] does not derive; o
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
 });
 
+// MID-BATCH CHANNEL (#497): think → act → think → act has a legal home. One optional channel
+// rides with each step; a standalone channel step does not exist, so think-spam (the run104
+// draft-loop) cannot become rail-legal. Nothing follows the terminal SEND but EOS, unchanged.
+test("GBNF: mid-batch channel (§mid-batch-channel, #497) — one think per step derives; think-loops and post-terminal thought do not", () => {
+    const CH = (t: string) => `<|channel>thought\n${t}<channel|>`;
+    // think between ops.
+    assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n${CH("the result lands next turn")}<<SEND[102]:waiting:SEND`), true);
+    // think before the terminal (conclude deliberately).
+    assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n${CH("answer is in the log")}<<SEND[200]:Paris.:SEND`), true);
+    // pre-PLAN channel AND mid-batch channel in one turn.
+    assert.equal(derives("root-turn", `${CH("plan it")}<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n${CH("ok")}<<SEND[102]:w:SEND`), true);
+    // TWO consecutive channels at one step: NOT derivable (no standalone channel step).
+    assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n${CH("a")}${CH("b")}<<SEND[200]:x:SEND`), false);
+    // a channel AFTER the terminal SEND: NOT derivable (EOS discipline — run104's disease).
+    assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n<<SEND[200]:x:SEND\n${CH("hmm")}`), false);
+    // the channel is not a statement: a channel-only "step" cannot satisfy the no-idle rule.
+    assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n${CH("thinking")}<<SEND[102]:w:SEND`), false);
+});
+
 test("GBNF: the ONLY preamble is the harmony channel — strict, zero-gap, no free text (#430)", () => {
     const CH = "<|channel>thought\n";
     // channel with reasoning, then ZERO-GAP into PLAN
