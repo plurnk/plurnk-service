@@ -13,6 +13,8 @@ import {
     requireEnv,
     type Provider,
     type ProviderOptions,
+    contextWindowFromEnv,
+    envelopeFromEnv,
 } from "@plurnk/plurnk-providers";
 
 // Tokenizer dispatch. Ollama exposes the model family via /api/show
@@ -35,7 +37,11 @@ export default class Ollama {
         const withScheme = /^https?:\/\//.test(rawBase) ? rawBase : `http://${rawBase}`;
         const normalizedBase = withScheme.replace(/\/$/, "");
 
-        const { contextWindow, family } = await fetchModelInfo({ base: normalizedBase, model, fetchTimeoutMs });
+        // #507: the operator's window pin wins over the probe (pin-wins-everywhere;
+        // previously ollama had NO override path). Probe still runs for `family`.
+        const probed = await fetchModelInfo({ base: normalizedBase, model, fetchTimeoutMs });
+        const contextWindow = contextWindowFromEnv(env, "ollama") ?? probed.contextWindow;
+        const family = probed.family;
 
         // Local — no auth header; local models are free so costFor defaults to 0.
         return new OpenAICompatProvider({
@@ -46,6 +52,8 @@ export default class Ollama {
             temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", "ollama", 0),
             repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", "ollama", 0),
             frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", "ollama", 0),
+            // #507: envelope reserves (window-fraction floor, absolute overrides).
+            ...envelopeFromEnv(env, "ollama"),
             retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", "ollama"),
             reasoning: reasoningFromEnv(env, "ollama"),
             retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", "ollama"),

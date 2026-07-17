@@ -924,3 +924,26 @@ test("#404: coordinates are 1-based — 0/absent/empty emit no header (no strike
     assert.equal("Plurnk-Turn" in h, false);
     assert.equal(typeof h["Plurnk-Strikes"], "undefined"); // and absent strikes stays absent
 });
+
+// -- #507: envelope surface + router-owned tuning --
+
+test("#507 reserves derive from the detected window; absolutes stand alone; null window + percent = no claim", () => {
+    const base = { model: "m", url: "http://x", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null } as const, retryAttempts: 0 };
+    const derived = new OpenAICompatProvider({ ...base, contextWindow: 49152, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 } });
+    assert.equal(derived.reasoningReserve, 4915);   // jennifer/turboderp: 10% of 49152
+    assert.equal(derived.completionReserve, 12288); // 25% of 49152
+    const pinned = new OpenAICompatProvider({ ...base, contextWindow: null, reasoningReserve: { tokens: 4096 }, completionReserve: { percent: 0.25 } });
+    assert.equal(pinned.reasoningReserve, 4096);    // absolute pin needs no window
+    assert.equal(pinned.completionReserve, null);   // percent without a window = underivable
+    const legacy = new OpenAICompatProvider({ ...base, contextWindow: 49152 });
+    assert.equal(legacy.reasoningReserve, null);    // out-of-date sibling: no claim
+});
+
+test("#507 router-owned tuning: tuningFloors:false drops the temperature/penalty floors, caller sampling still rides", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, tuningFloors: false });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "r", messages: [], sampling: { temperature: 0.9 } });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.temperature, 0.9);           // caller intent passes verbatim
+    assert.equal("frequency_penalty" in body, false); // the floor is suppressed (router owns tuning, SPEC §5)
+});

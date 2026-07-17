@@ -59,6 +59,38 @@ export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): num
     return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
 };
 
+// The generation-envelope reserves (#507, owner-ruled migration): how much of a
+// DETECTED context window is reserved for reasoning and for completion — the
+// remainder (minus the consumer's own packing-safety margin) is the prompt
+// budget. Provider-owned: the window is a provider fact and these are amounts OF
+// it; the former PLURNK_SERVICE_{CONTEXT_WINDOW,REASONING,COMPLETION} knobs were
+// provider quantities wearing a service prefix (born as #352 packet parameters
+// before this surface existed). Each knob accepts a percentage of the window
+// ("10%") or an absolute token count ("4096"); the floor ships percentages so
+// every window-advertising endpoint (llama-server n_ctx, the plurnk.ai router,
+// a cataloged cloud model) arrives at sane defaults with ZERO operator tuning.
+// Per-alias suffixes override for measured envelopes; absolutes win over the
+// window derivation entirely.
+export type ReserveSpec = { percent: number } | { tokens: number };
+
+const parseReserve = (raw: string | undefined, name: string, label: string): ReserveSpec => {
+    if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (a percentage of the window like "10%", or an absolute token count)`);
+    const pct = /^([0-9]+(?:\.[0-9]+)?)%$/.exec(raw);
+    if (pct !== null) {
+        const p = Number(pct[1]);
+        if (!Number.isFinite(p) || p <= 0 || p >= 100) throw new Error(`${label} provider: ${name} percentage must be in (0, 100) (got "${raw}")`);
+        return { percent: p / 100 };
+    }
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) throw new Error(`${label} provider: ${name} must be "<pct>%" or a positive integer token count (got "${raw}")`);
+    return { tokens: n };
+};
+
+export const envelopeFromEnv = (env: NodeJS.ProcessEnv, label: string): { reasoningReserve: ReserveSpec; completionReserve: ReserveSpec } => ({
+    reasoningReserve: parseReserve(env.PLURNK_PROVIDERS_REASONING_RESERVE, "PLURNK_PROVIDERS_REASONING_RESERVE", label),
+    completionReserve: parseReserve(env.PLURNK_PROVIDERS_COMPLETION_RESERVE, "PLURNK_PROVIDERS_COMPLETION_RESERVE", label),
+});
+
 // The side-channel reasoning knobs (SPEC §4, #32/#33) — ACTIVATION and BUDGET
 // are separate vars, so a numeric budget can never silently flip wire flags:
 //   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
@@ -102,6 +134,8 @@ export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoni
 // facts (API keys, canonical endpoints) remain vendor-named; the per-alias
 // endpoint override stays PLURNK_BASEURL_<alias> (its existing precedent).
 export const PROVIDERS_KNOBS = Object.freeze([
+    "PLURNK_PROVIDERS_REASONING_RESERVE",
+    "PLURNK_PROVIDERS_COMPLETION_RESERVE",
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_REASONING",
     "PLURNK_PROVIDERS_CONTEXT_WINDOW",
@@ -127,7 +161,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
 //
 // `knobs` (optional) lets a CONSUMER scope its OWN closed knob list with this
 // same parser — e.g. the service's window-partition vars (PLURNK_SERVICE_CONTEXT_WINDOW/
-// REASONING/COMPLETION/SAFETY), so a 64k cloud envelope and a 12k gemma envelope
+// MAX_TURNS/...), so a 64k cloud envelope and a 12k gemma envelope
 // coexist per-alias without the service reimplementing the suffix/collision
 // rules. Default stays the providers-family list; my call sites pass nothing.
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {
