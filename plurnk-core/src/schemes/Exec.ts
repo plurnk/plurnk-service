@@ -5,6 +5,7 @@ import { WebFetcher } from "@plurnk/plurnk-schemes-http";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
+import type { Effect } from "@plurnk/plurnk-execs";
 import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
@@ -107,7 +108,7 @@ export default class Exec {
         this.#fetchWeb = fetchWeb ?? ((url, opts) => webFetcher.fetch(url, opts));
     }
 
-    #activeAborts = new Map<number, { workerId: number; pathname: string; runtime: string; controller: AbortController; unlink: () => void }>();
+    #activeAborts = new Map<number, { workerId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void }>();
     #activeSpawns = new Map<number, Promise<number>>();
 
     async idle(): Promise<void> {
@@ -128,7 +129,7 @@ export default class Exec {
     // control (the search family — one final JSON digest, seconds-bounded), the engine holds
     // the next packet until conclusion instead of giving the model a turn it can only waste.
     hasActiveHoldSpawns(workerId: number, holdSet: ReadonlySet<string>): boolean {
-        for (const { workerId: r, runtime } of this.#activeAborts.values()) if (r === workerId && holdSet.has(runtime)) return true;
+        for (const { workerId: r, runtime, effect } of this.#activeAborts.values()) if (r === workerId && (holdSet.has(runtime) || holdSet.has(`${runtime}:${effect}`))) return true;
         return false;
     }
 
@@ -316,6 +317,9 @@ export default class Exec {
         if (ctx.executors === undefined) return { status: 500, outcome: "no_executor_registry" };
         const resolved = ctx.executors.entry(runtime);
         if (resolved === undefined) return { status: 500, outcome: "no_executor" };
+        // #485 — the per-tool effect (execs Effect: read/host/pure) rides the hold predicate so a
+        // suffixed PLURNK_SERVICE_EXEC_HOLD entry (`github:read`) can hold one tool-class and not another.
+        const effect = resolved.executor.effect(target, command);
         const seedChannels: EntryData["channels"] = {};
         for (const [name, decl] of Object.entries(resolved.executor.channels)) {
             seedChannels[name] = {
@@ -354,7 +358,7 @@ export default class Exec {
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { workerId: ctx.workerId, pathname, runtime, controller, unlink });
+        this.#activeAborts.set(subscriptionId, { workerId: ctx.workerId, pathname, runtime, effect, controller, unlink });
 
         const tail = this.#runExecutor({
             executor: resolved.executor,

@@ -17,7 +17,7 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 });
 
 let wireN = 0;
-const wire = async (finishAfterMs: number) => {
+const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "pure") => {
     // unique tag per wiring: testExecutors() is a shared cached registry — a duplicate
     // hotload tag throws and leaks the just-opened db, wedging the file run.
     const tag = `holdstub${++wireN}`;
@@ -32,7 +32,7 @@ const wire = async (finishAfterMs: number) => {
             get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
             get channels() { return {}; },
-            effect: () => "pure" as const,
+            effect: () => effect,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args) => {
                 await new Promise((r) => setTimeout(r, finishAfterMs));
@@ -54,8 +54,10 @@ const streamsSection = (packetJson: string): string => {
     return p.sections?.find((s) => s.name === "child-streams")?.content ?? "";
 };
 
-const driveLoop = async (finishAfterMs: number, midTurns: number) => {
-    const { db, engine, workspaceId, workerId, loopId, tag } = await wire(finishAfterMs);
+const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read" | "host" | "pure" = "pure", holdSuffix?: string) => {
+    const { db, engine, workspaceId, workerId, loopId, tag } = await wire(finishAfterMs, effect);
+    // #485 — when a suffix is given, set the hold env from the ACTUAL tag (no ordering guess).
+    if (holdSuffix !== undefined) process.env.PLURNK_SERVICE_EXEC_HOLD = `${tag}${holdSuffix}`;
     try {
         const responses = [
             { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), sendStmt(102, null, "searching")] } },
@@ -96,4 +98,24 @@ test("[§exec-hold-until-concluded] a runtime OUTSIDE the hold set keeps the sta
     } finally {
         if (prevHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prevHold;
     }
+});
+
+// §exec-hold-until-concluded per-tool refinement (#485) — a suffixed hold entry `<runtime>:<effect>`
+// holds only that effect-class. An MCP server is one runtime whose tools split (a read `get_issue`
+// vs a host `run_migration`); the operator opts the read-class in without parking on the mutation.
+test("[§exec-hold-until-concluded] a `:read` suffix holds a read-effect spawn — the effect-class opt-in (#485)", async () => {
+    const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
+    try {
+        const { elapsed, streams } = await driveLoop(400, 0, "read", ":read");
+        assert.ok(!/holdstub/.test(streams), "turn 2 woke to a finished world — the read-effect spawn was held by its :read suffix");
+        assert.ok(elapsed >= 350, "the cycle actually paused for the stream (held, not raced)");
+    } finally { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prior; }
+});
+
+test("[§exec-hold-until-concluded] a `:host` suffix does NOT hold a read-effect spawn — the class must match (#485)", async () => {
+    const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
+    try {
+        const { streams } = await driveLoop(2000, 1, "read", ":host");
+        assert.ok(/holdstub/.test(streams), "turn 2 saw the LIVE stream — a read spawn is not held by a :host suffix");
+    } finally { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prior; }
 });
