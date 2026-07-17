@@ -109,3 +109,17 @@ Not specced here. The invariants above bind whatever it becomes.
 
 **Net:** only `Schemes` (fence the ops) and `Policy` (bulletize) change shape; the rest is
 drop-the-prefix. The core-facing ask stays small.
+
+## Divergences (#492, doctrine #408)
+
+The lane register: every plurnkdown deviation from its governing standard carries a written
+exception or converges. Ecosystem-wide rows live in `plurnk-meta/DIVERGENCES.md`.
+
+| # | Practice | Industry standard | Plurnkdown position | Ruling |
+|---|---|---|---|---|
+| 1 | Markdown flavor | CommonMark/GFM | Strict GFM subset + written house constraints (fenced ops, bare H2 scheme, Recap footer, atomic sentences) | **CONVERGED-plus** — every plurnkdown document is valid GFM by construction (ATX headings, bullets, GFM tables, fenced code with info strings). Each constraint beyond GFM is a written rule in this file, enforced by the linter (`op-fence` / `op-syntax` / `run-on`). No linter rule exists without a written rule here. |
+| 2 | Mermaid chart types | Stable core diagram types; beta types churn | Budget emits `treemap-beta` + `xychart-beta`; the canon doc uses stable `stateDiagram-v2` / `sequenceDiagram` / `pie` | **EXCEPTION + CONVERGENCE SCHEDULED** (#440, owner-ruled on-by-default) — budget-scaled salience visuals, GitHub-render-validated. Converge when mermaid graduates them: drop `-beta`, re-verify syntax. |
+| 3 | Log fence name | NDJSON, or a pure JSON array in a ` ```json ` fence (multi-line bodies as escaped strings) | ` ```jsonplurnk `: a JSON array where an `open` entry's `body` is a verbatim HEREDOC — the one non-JSON value | **EXCEPTION — grammar-owned (#437)** — JSON-escaping bodies would destroy char-perfect semantics (`N:	` line addressing, EDIT literality). The custom fence name honestly signals "not parseable as pure JSON"; a ` ```json ` label would lie to parsers. Corpus-checked (grammar strip-parser, 184 entries). |
+
+Retired plurnkisms hold no residue: Gherkin (#435) and the 280-char prose cap are gone from
+the package surface and the linter alike (#492).
