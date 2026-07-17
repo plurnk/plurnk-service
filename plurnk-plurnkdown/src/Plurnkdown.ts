@@ -2,21 +2,18 @@ import { Lexer, type Token, type Tokens } from "marked";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { Diagnostic } from "./types.ts";
 
-const PROSE_LIMIT = 280;
 const RUNON_LIMIT = 180; // a long run-on regardless of structure
 const WELD_LIMIT = 120;  // a semicolon welding clauses in a non-trivial sentence
 
-// plurnkdown linter. Free prose (top-level paragraphs) is capped by rendered length;
-// every structural block is exempt by not being prose. Ops written bare in prose are
-// flagged for fencing; ops inside a ```plurnk fence are delegated to plurnk-grammar
-// for statement-level validation.
+// plurnkdown linter. Structural blocks are exempt by not being prose. Ops written bare
+// in prose are flagged for fencing; ops inside a ```plurnk fence are delegated to
+// plurnk-grammar for statement-level validation; prose sentences stay atomic.
 export default class Plurnkdown {
     lint(source: string): Diagnostic[] {
         const diagnostics: Diagnostic[] = [];
         let line = 1;
         for (const token of Lexer.lex(source)) {
             if (token.type === "paragraph") {
-                this.#checkProse(token, line, diagnostics);
                 this.#checkBareOps(token, line, diagnostics);
                 this.#checkRunOns(token, line, diagnostics);
             } else if (token.type === "code" && (token as Tokens.Code).lang === "plurnk") {
@@ -25,20 +22,6 @@ export default class Plurnkdown {
             line += this.#newlines(token.raw);
         }
         return diagnostics;
-    }
-
-    // Free prose is capped by RENDERED length — link URLs, emphasis marks, and code
-    // ticks don't count; the reader's visible characters do.
-    #checkProse(token: Token, line: number, diagnostics: Diagnostic[]): void {
-        const length = this.#visibleText((token as Tokens.Paragraph).tokens ?? []).trim().length;
-        if (length <= PROSE_LIMIT) return;
-        diagnostics.push({
-            rule: "prose-280",
-            severity: "error",
-            message: `Free prose block renders ${length} characters; the limit is ${PROSE_LIMIT}.`,
-            line,
-            column: 1,
-        });
     }
 
     // A Plurnk op sigil (`<<`) opening a prose line is a bare op; ops must live in a

@@ -4,21 +4,8 @@ import Plurnkdown from "./Plurnkdown.ts";
 
 const linter = new Plurnkdown();
 
-test("free prose over 280 chars is flagged", () => {
-    const prose = "x ".repeat(200).trim(); // 399 chars on one line → one paragraph
-    const diagnostics = linter.lint(prose).filter(d => d.rule === "prose-280");
-    assert.equal(diagnostics.length, 1);
-    assert.equal(diagnostics[0].rule, "prose-280");
-    assert.equal(diagnostics[0].severity, "error");
-    assert.equal(diagnostics[0].line, 1);
-});
-
-test("free prose at exactly 280 chars passes", () => {
-    assert.deepEqual(linter.lint("a".repeat(280)).filter(d => d.rule === "prose-280"), []);
-});
-
-test("prose length counts rendered text, not markdown syntax", () => {
-    const url = `https://example.com/${"p".repeat(400)}`; // source >> 280
+test("run-on length counts rendered text, not markdown syntax", () => {
+    const url = `https://example.com/${"p".repeat(400)}`; // source far past RUNON_LIMIT
     const source = `See [the docs](${url}) for the full story.`; // renders ~32 chars
     assert.deepEqual(linter.lint(source), []);
 });
@@ -34,10 +21,9 @@ test("structural blocks are exempt regardless of length", () => {
 });
 
 test("line number tracks the offending prose block", () => {
-    const source = `# Heading\n\nShort intro.\n\n${"z".repeat(300)}`;
-    const diagnostics = linter.lint(source).filter(d => d.rule === "prose-280");
+    const source = `# Heading\n\nShort intro.\n\n${"z".repeat(300)}.`;
+    const diagnostics = linter.lint(source).filter(d => d.rule === "run-on");
     assert.equal(diagnostics.length, 1);
-    assert.equal(diagnostics[0].rule, "prose-280");
     assert.equal(diagnostics[0].line, 5);
 });
 

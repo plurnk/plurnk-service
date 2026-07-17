@@ -1,8 +1,12 @@
 # @plurnk/plurnk-plurnkdown
 
-Plurnkdown — a flavor of Markdown with Mermaid, Gherkin, and style enforcement, for [plurnk-service](https://github.com/plurnk/plurnk-service).
+Plurnkdown — the [plurnk-service](https://github.com/plurnk/plurnk-service) packet house style: GFM + Mermaid + fenced Plurnk ops.
 
-> **Status: scaffold.** A **mandatory core format**, not an optional plugin — the platform will apply filters requiring model output to comply. This is the aligned workspace skeleton (lockstep-versioned, no-build dev via the `plurnk-dev` condition, gated by the monorepo drill), standing by for the implementation.
+`PACKET.md` is the standard every outbound packet is built against. The linter enforces it:
+
+- `op-fence` — a bare Plurnk op in prose belongs in a ```plurnk fence.
+- `op-syntax` — fenced ops parse statement-level via `@plurnk/plurnk-grammar`.
+- `run-on` — soft-warn on multi-compound run-ons; prose stays atomic (split, don't weld).
 
 ## license
 
