@@ -742,3 +742,38 @@ Machine-generated content (minified bundles, lockfiles, sourcemaps) is honest by
 - `matchNoEmbed(path)` — the exported matcher, read at call time from the host env like the pdf caps. Unset/empty → nothing suppressed; **no code fallback carries a hidden default**.
 - A content heuristic (line-length mass ratios) was evaluated and **rejected**: it false-positives on line-record data (large-record JSONL, wide-row CSV), silently excluding real searchable content — a worse failure than the waste it prevents — and its thresholds would be hidden magic. Name-based misses a generated file with an innocent name; the operator adds a pattern, which is the paradigm working, not failing.
 - Whole-content size ceilings are explicitly NOT this mechanism: a 500-page novel embeds fully (owner ruling, #47) — suppression is name-targeted, never size-targeted.
+
+## 22. Standards alignment — the DIVERGENCES register (#490/#408) <!-- coverage: policy -->
+
+Owner doctrine: every plurnkism carries a DGR (Documented Good Reason) or converges. Verified against the **live** IANA text/application registries, GitHub Linguist `languages.yml`, mime-db, Pygments, and shared-mime-info (2026-07-16). Census of the 44 registered mimetypes: **13 IANA-registered, 23 established tooling conventions, 8 house-invented.**
+
+### 22.1 House naming style vs BCP 178 (the umbrella DGR)
+
+RFC 6648/BCP 178 deprecates minting new `x-` names *for registration contexts* — an `x-` name can never be promoted as-is (the `application/x-javascript` → `text/javascript` history). 27 of our 44 use `x-`. **DGR:** for unregistered tooling-internal identifiers, `x-` explicitly signals "unregistered" — more honest than squatting standards-tree names that IANA may later assign differently; GitHub Linguist (the dominant convention source, and our §2.1 tier-2) does exactly the same. House policy stands: tier-1 IANA always wins (we adopt registered names on sight, per §2.1); tier-3 coinages stay `x-`-marked as unregistered.
+
+### 22.2 The eight invented types
+
+| type | disposition |
+|---|---|
+| `text/x-cpp` | **CONVERGE**: register the Linguist convention `text/x-c++src` alongside, per §2.1's own multiple-conventions rule (the §2.1 example already prescribes this; the registry never caught up). |
+| `text/x-tsx` | **CONVERGE**: register `text/tsx` (Deno's canonical — consistent with our Deno-sourced `text/typescript`) alongside. |
+| `text/x-zig`, `text/x-odin` | **DGR** (umbrella §22.1): Pygments uses unprefixed `text/zig`/`text/odin`, but unprefixed unregistered standards-tree names are squatting; `x-` marks the truth. Adopt the IANA name the day one exists. |
+| `text/x-fsharp-signature` | **DGR**: no ecosystem term exists anywhere for F# `.fsi` signature files; distinct grammar requires a distinct type. |
+| `application/jsonc` | **DGR**: JSONC (comments/trailing commas) is *not valid JSON*, so `+json` suffix semantics (RFC 6839 "receivers may process as JSON") would be a lie; a distinct bare name is the honest shape. "jsonc" is the model-vocabulary term (VS Code language id). |
+| `text/stream` | **DGR**: tail-oriented live data (exec output streams). Deliberately NOT WHATWG `text/event-stream` — no SSE framing; naming it `event-stream` would promise a wire format we don't speak. |
+| `text/x-dotenv` | **DGR** (umbrella): Linguist recognizes the Dotenv language but assigns no MIME; no convention exists to converge on. |
+
+### 22.3 Vocabulary vs ecosystem terms
+
+| surface | standard neighbor | disposition |
+|---|---|---|
+| positions 1-indexed | LSP is 0-indexed | **DGR**: model/editor/compiler vocabulary is 1-indexed everywhere models read; anchoring to the model's vocabulary is family doctrine. |
+| `container` (full dotted path) | LSP `containerName` (immediate parent) | **DGR**: the full path is the graph join key (§16); the immediate parent would break `@>` resolution. Name deliberately differs from LSP's since the semantics differ. |
+| `SymbolKind` values | LSP SymbolKind | Convergent subset (lowercase); additions `heading` (markdown; LSP has no equivalent) and `type` (aliases; absent from LSP's enum) carry the DGR. |
+| `RefKind` taxonomy | LSP has none; SCIP/Kythe use roles/edges | **DGR**: frozen 2026-06-10 against the service graph schema (§16); LSP references are untyped so there is nothing to converge on. |
+| dialect names regex/xpath/jsonpath/glob | ECMAScript / XPath 1.0 / RFC 9535 / shell glob | Names converge. jsonpath is **RFC 9535** (owner-ruled, #490): the engine is grammar-closed per the RFC — no expression-language filters, no eval sandbox on the model-authored input path (the jsonpath-plus predecessor carried a sandboxed evaluator with a CVE history: 2024-21534, 2025-1302). |
+| `maxTokens` (context window) | OpenAI `max_tokens` = *output* cap; HF `model_max_length`; llama.cpp `n_ctx` | **DGR with a debt note**: ours means the context window, colliding with the ecosystem's most-read meaning. Documented at §17; scoped to embeddings (no generation surface to confuse). Rename (`contextWindow`) is queued for the next platform MAJOR — the collision isn't worth breaking the seam alone. |
+| `countTokens`, `dimension`, `embedBatch` | Anthropic `count_tokens`; OpenAI `dimensions`; batch-embed | Convergent. |
+| `tokenizerId` (vocab sha) | no ecosystem standard exists | **DGR**: §19.2 — vocab identity ≠ model identity is the load-bearing distinction; the ecosystem has no term for it. |
+| `mimetype` (one word) | IANA/RFC "media type"; MDN "MIME type" | Colloquial convergence (MDN-aligned); the RFC term "media type" appears in registry-facing prose. |
+| `deepJson`/`deepXml`, `channels`, `glyph`, `extent` | — | Plurnkisms naming our own projections/surfaces, not standard concepts; the *dialects served over them* are standards-cited above. No convergence target exists. |
