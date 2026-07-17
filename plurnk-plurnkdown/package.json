@@ -1,13 +1,14 @@
 {
     "name": "@plurnk/plurnk-plurnkdown",
     "version": "1.0.5",
-    "description": "Plurnkdown — a flavor of Markdown (Mermaid + Gherkin + style enforcement) for plurnk-service. Mandatory core format; scaffold, implementation pending.",
+    "description": "Plurnkdown — the plurnk packet house style (GFM + Mermaid + fenced Plurnk ops) and its linter.",
     "keywords": [
         "plurnk",
-        "markdown",
         "plurnkdown",
+        "markdown",
+        "gfm",
         "mermaid",
-        "gherkin"
+        "linter"
     ],
     "engines": {
         "node": ">=26"
