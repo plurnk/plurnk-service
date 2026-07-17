@@ -51,7 +51,7 @@
         "deps:fresh": "npm outdated",
         "prepublishOnly": "npm run deps:fresh && npm audit && npm run build && npm run test:all && npm run test:smoke",
         "prepack": "npm run build",
-        "prepare": "npm run build:grammar && npm run build:types && npm run build:gbnf"
+        "prepare": "npm run build"
     },
     "dependencies": {
         "@cfworker/json-schema": "^4.1.1",
