@@ -189,11 +189,16 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
     // drain. Pre-#265 the drain rejected the already-.catch()'d promise and broadcast nothing → hang.
     const dsl = "<<EDIT(known:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
+    // #506 — the death must reach the daemon log too. Capture stderr around the run.
+    const logged: string[] = [];
+    const realErr = console.error;
+    console.error = (...a: unknown[]) => { logged.push(a.map((x) => x instanceof Error ? x.stack ?? x.message : String(x)).join(" ")); };
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const terminated = subscribeNotifications(ws, "loop/terminated");
+            const telemetry = subscribeNotifications(ws, "telemetry/event");
             await rpcCall(ws, 1, "workspace.create", { name: "errored-loop" });
             const accept = await rpcCall(ws, 2, "loop.run", { prompt: "go", maxTurns: 5 });
             assert.equal((accept.result as { finalStatus: number }).finalStatus, 100, "loop.run accepts immediately (100)");
@@ -213,8 +218,14 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
             assert.ok(typeof msg === "string" && msg.length > 0, "loop/terminated carries the error message");
             const loopRow = await (_db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: (captured[0] as { loopId: number }).loopId });
             assert.equal(loopRow?.status, 500, "the loop ROW is terminal 500 — a dead loop never reads as live");
+            // #506 — the WHY reaches ALL THREE forensic channels, never one: the daemon log carries
+            // the stack, and an error-level telemetry event fires (run54 had zero of either).
+            const telemErr = (telemetry() as Array<{ event?: { kind?: string; level?: string } }>).find((e) => e.event?.kind === "loop_error");
+            assert.ok(telemErr?.event?.level === "error", "an error-level telemetry event named the death");
         } finally { ws.close(); }
     });
+    console.error = realErr;
+    assert.ok(logged.some((l) => /drain error/.test(l)), "the daemon log carried the drain error — the WHY is never nowhere (#506)");
 });
 
 test("loop.run without provider returns 501", async () => {
