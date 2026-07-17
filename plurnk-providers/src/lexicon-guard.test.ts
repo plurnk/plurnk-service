@@ -36,7 +36,10 @@ const BANNED: Array<{ label: string; re: RegExp; canon: string; exempt?: RegExp 
     { label: "thinking (our-voice)", re: /\bthinking\b/i, canon: "reasoning (the #472 lexicon ruling)", exempt: WIRE_THINKING },
     { label: "contextSize", re: /\bcontextSize\b/, canon: "contextWindow — the provider window (#472)" },
     { label: "retired providers knob", re: /PLURNK_PROVIDERS_(THINKING|LOGPROB\b|CONTEXT_SIZE\b)/, canon: "PLURNK_PROVIDERS_{REASONING,TOP_LOGPROBS,CONTEXT_WINDOW} (#399/#472) — only the shed may name these" },
-    { label: "session/run coordinate (noun)", re: /\b(sessionId|runId)\b/, canon: "workspaceId/workerId (#486)" },
+    // #511: catch the retired run/session noun in the WIRE-HEADER form too (a
+    // quoted string, not an identifier — the hole the old `Plurnk-Run-Id` hid in),
+    // alongside the coordinate identifiers.
+    { label: "run/session (retired noun — coordinate or wire header)", re: /\b(sessionId|runId)\b|Plurnk-(Run|Session)-Id/, canon: "workerId/workspaceId, Plurnk-Worker-Id/Plurnk-Workspace-Id (#486/#511)" },
 ];
 
 test("[§lexicon] retired provider terms never reappear in src or SPEC — drift fails CI, not the next audit", () => {

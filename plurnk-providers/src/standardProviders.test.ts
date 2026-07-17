@@ -698,7 +698,7 @@ test("plurnk: forwards attributions + client as Plurnk-* telemetry headers (firs
     const h = chatHeaders(seen);
     assert.equal(h["Plurnk-Attribution"], '["@acme/x@1.0.0"]');
     assert.equal(h["Plurnk-Client"], "plurnk-tui/0.9.0");
-    assert.equal(h["Plurnk-Run-Id"], "r"); // run identity rides the same gate (#26)
+    assert.equal(h["Plurnk-Worker-Id"], "r"); // worker identity rides the same gate (#26/#511)
     mock.restoreAll();
 });
 
@@ -733,7 +733,7 @@ test("fireworks: does NOT forward attributions/client — first-party telemetry 
     assert.equal("Plurnk-Attribution" in seenHeaders, false);
     assert.equal("Plurnk-Client" in seenHeaders, false);
     assert.equal("Plurnk-Strikes" in seenHeaders, false); // strikes gated identically
-    assert.equal("Plurnk-Run-Id" in seenHeaders, false); // run identity gated identically (#26)
+    assert.equal("Plurnk-Worker-Id" in seenHeaders, false); // worker identity gated identically (#26/#511)
     mock.restoreAll();
 });
 
