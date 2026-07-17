@@ -331,6 +331,7 @@ test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a sile
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
     seam.ensureModelWorker = async () => 20;
     seam.runLoop = async () => { throw new Error("runLoop: no provider configured"); };
+    const before = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } }) });
@@ -340,6 +341,11 @@ test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a sile
         assert.ok(err !== undefined, "the throw surfaced as a RUN_ERROR frame, not a silent end");
         assert.match(err.message ?? "", /no provider configured/);
         assert.equal(err.code, "501", "the no-model throw maps to 501");
+        // The leak pin: the error path must release the run's handles (heartbeat
+        // interval, portal binding) — a survivor here wedges `node --test` (no
+        // force-exit in the drill) forever.
+        const timeouts = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
+        assert.equal(timeouts, before, "no timer survives the errored run");
     } finally { await mod.close(); }
 });
 

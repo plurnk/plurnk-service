@@ -211,6 +211,7 @@ export default class Module {
         ]);
         if (finished) return;
 
+        try {
         // §3 — a management ACTION run (forwardedProps.plurnk.action): execute via the
         // seam; the outcome rides the workspace's CURRENT thread binding (Portal.finishRun),
         // never this closure — a proposal-gated action (op.exec → 202) terminates THIS
@@ -273,6 +274,15 @@ export default class Module {
             this.#seam.cancelDrain(workerId);
             finish();
         });
+        } catch (err) {
+            // Post-headers throw INSIDE the run (svc#480, completed): the frame alone is
+            // not enough — the heartbeat interval and the Portal binding are live, and a
+            // throw that escapes past finish() leaks them forever (the drill-hang). emit()
+            // writes the terminal frame AND finish()es on RUN_ERROR — one door out.
+            const message = err instanceof Error ? err.message : String(err);
+            const code = /no provider configured|no model|unknown alias/i.test(message) ? "501" : "500";
+            emit([{ type: "RUN_ERROR", message, code }]);
+        }
     }
 
     // A control-plane run: no world bound. Open the SSE, run the worldless verb, answer on
