@@ -149,7 +149,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // — Chinese cloud hosts (all OpenAI-compat, plain bearer, doc-verified 2026). —
     // The .env.defaults base is the INTERNATIONAL endpoint; mainland operators
     // point the override var at the `.cn` twin noted per entry. Reasoning is left
-    // "none" for the whole cohort: each host's thinking toggle is either
+    // "none" for the whole cohort: each host's reasoning toggle is either
     // model-selected or a non-standard param that rides in `extra_body` (the
     // `effort`/`anthropic` styles don't reach it) — same posture as deepseek.
     // None are in the @plurnk/plurnk-models snapshot, so context comes from
