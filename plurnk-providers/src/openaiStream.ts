@@ -17,23 +17,46 @@ type StreamRequest = {
 import type { RawUsage } from "./usage.ts";
 import type { TokenLogprob } from "./types.ts";
 
-// Sealed reasoning (#482). A relay backend (OpenRouter fronting OpenAI o-series)
-// returns the chain-of-thought ENCRYPTED as reasoning_details entries
-// ({ type: "reasoning.encrypted", data, format, index }) while readable text
-// still rides the reasoning/reasoning_content fields (verified live: o4-mini
-// via OpenRouter — reasoning null, one encrypted entry, format
-// "openai-responses-v1"). Blobs are collected verbatim, never decoded.
-export type EncryptedReasoning = { data: string; format: string | null };
+// Sealed reasoning (#482, widened per client). A relay backend (OpenRouter
+// fronting OpenAI o-series) returns the chain-of-thought ENCRYPTED as
+// reasoning_details entries ({ type: "reasoning.encrypted", id, data, format,
+// index }) while readable text still rides reasoning/reasoning_content (verified
+// live: o4-mini via OpenRouter — reasoning null, one encrypted entry, format
+// "openai-responses-v1"). The ITEM shape preserves the wire's `id` (a flat blob
+// list dropped item identity — the widening's whole point) and a `subtype` from
+// wire POSITION: we parse message.reasoning_details, so it is message-attached.
+// plurnk is tools-in-body (SPEC §2), so reasoning is never tool-call-attached and
+// subtype is constant here; the field is structural, future-proofing the seam.
+// An ARRAY of items (not a single object) so N distinct reasoning ids never
+// re-collide the identity this fixes. Blobs verbatim, never decoded.
+export type EncryptedReasoningItem = { id: string | null; subtype: string; encrypted: Array<{ data: string; format: string | null }> };
 
-const encryptedFromDetails = (details: unknown): EncryptedReasoning[] => {
-    if (!Array.isArray(details)) return [];
-    const out: EncryptedReasoning[] = [];
-    for (const e of details) {
-        const entry = e as { type?: unknown; data?: unknown; format?: unknown };
-        if (entry?.type !== "reasoning.encrypted" || typeof entry.data !== "string") continue;
-        out.push({ data: entry.data, format: typeof entry.format === "string" ? entry.format : null });
+type RawEncrypted = { id: string | null; data: string; format: string | null };
+
+// Group accumulated encrypted entries into items by wire `id` (id-less entries
+// stand alone, never merged). Order preserved.
+const groupEncrypted = (entries: Iterable<RawEncrypted>): EncryptedReasoningItem[] => {
+    const items: EncryptedReasoningItem[] = [];
+    const byId = new Map<string, EncryptedReasoningItem>();
+    for (const e of entries) {
+        const blob = { data: e.data, format: e.format };
+        if (e.id === null) { items.push({ id: null, subtype: "message", encrypted: [blob] }); continue; }
+        let item = byId.get(e.id);
+        if (item === undefined) { item = { id: e.id, subtype: "message", encrypted: [] }; byId.set(e.id, item); items.push(item); }
+        item.encrypted.push(blob);
     }
-    return out;
+    return items;
+};
+
+const encryptedFromDetails = (details: unknown): EncryptedReasoningItem[] => {
+    if (!Array.isArray(details)) return [];
+    const raw: RawEncrypted[] = [];
+    for (const e of details) {
+        const entry = e as { type?: unknown; id?: unknown; data?: unknown; format?: unknown };
+        if (entry?.type !== "reasoning.encrypted" || typeof entry.data !== "string") continue;
+        raw.push({ id: typeof entry.id === "string" ? entry.id : null, data: entry.data, format: typeof entry.format === "string" ? entry.format : null });
+    }
+    return groupEncrypted(raw);
 };
 
 export type StreamResponse = {
@@ -41,7 +64,7 @@ export type StreamResponse = {
     content: string;
     reasoning_content: string;
     // Sealed relay reasoning (#482) — empty for the open-reasoning backends.
-    reasoning_encrypted: EncryptedReasoning[];
+    reasoning_encrypted: EncryptedReasoningItem[];
     finish_reason: string | null;
     usage: RawUsage | null;
     chunkMetadata: Record<string, unknown>;
@@ -156,10 +179,11 @@ export const chatCompletionStream = async ({ url, headers, body, signal, capture
     // #36: logprobs stream as per-chunk choices[0].logprobs.content[] deltas —
     // accumulate the raw entries across chunks, map once at the end.
     const logprobEntries: unknown[] = [];
-    // #482: encrypted reasoning_details entries may stream chunked — concatenate
-    // `data` per entry index; an indexless entry stands alone.
-    const encryptedByKey = new Map<string, EncryptedReasoning>();
-    let encryptedNoIndex = 0;
+    // #482: encrypted reasoning_details stream chunked — concatenate `data` per
+    // reassembly key (index when present, else id, else a counter); the id/format
+    // ride along and items group by id at the end.
+    const encryptedByKey = new Map<string, RawEncrypted>();
+    let encryptedNoKey = 0;
 
     while (true) {
         const { done, value } = await reader.read();
@@ -202,12 +226,13 @@ export const chatCompletionStream = async ({ url, headers, body, signal, capture
             if (typeof delta.thinking === "string") reasoning_content += delta.thinking;
             if (Array.isArray(delta.reasoning_details)) {
                 for (const e of delta.reasoning_details) {
-                    const entry = e as { type?: unknown; data?: unknown; format?: unknown; index?: unknown };
+                    const entry = e as { type?: unknown; id?: unknown; data?: unknown; format?: unknown; index?: unknown };
                     if (entry?.type !== "reasoning.encrypted" || typeof entry.data !== "string") continue;
-                    const key = typeof entry.index === "number" ? `i${entry.index}` : `n${encryptedNoIndex++}`;
+                    const id = typeof entry.id === "string" ? entry.id : null;
+                    const key = typeof entry.index === "number" ? `i${entry.index}` : id ?? `n${encryptedNoKey++}`;
                     const prev = encryptedByKey.get(key);
                     if (prev !== undefined) prev.data += entry.data;
-                    else encryptedByKey.set(key, { data: entry.data, format: typeof entry.format === "string" ? entry.format : null });
+                    else encryptedByKey.set(key, { id, data: entry.data, format: typeof entry.format === "string" ? entry.format : null });
                 }
             }
         }
@@ -220,5 +245,5 @@ export const chatCompletionStream = async ({ url, headers, body, signal, capture
     const rawBody = captureRawBody === true
         ? { ...chunkMetadata, model, usage, choices: [{ index: 0, message: { content, reasoning_content }, finish_reason, logprobs: logprobs !== null ? { content: logprobEntries } : null }] }
         : undefined;
-    return { model, content, reasoning_content, reasoning_encrypted: [...encryptedByKey.values()], finish_reason, usage, chunkMetadata, logprobs, rawBody };
+    return { model, content, reasoning_content, reasoning_encrypted: groupEncrypted(encryptedByKey.values()), finish_reason, usage, chunkMetadata, logprobs, rawBody };
 };

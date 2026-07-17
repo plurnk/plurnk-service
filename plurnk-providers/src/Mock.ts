@@ -15,7 +15,9 @@ export type MockAssistant = {
     usage?: Partial<ProviderUsage>;
     finishReason?: FinishReason;
     model?: string;
-    reasoningEncrypted?: ReadonlyArray<{ data: string; format: string | null }>; // #482 — sealed blobs, contract-mirrored
+    // #482: sealed relay reasoning items (id-keyed, widened per client), so core's
+    // sealed-reasoning conformance test can drive the shape through Mock.
+    reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
     // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
     // framework carries NO @plurnk/plurnk-grammar dependency; plurnk-service
     // casts these to PlurnkStatement[] on its side. Production providers never

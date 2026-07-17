@@ -33,7 +33,7 @@ export type { DiscoverOptions, Discovery } from "./discover.ts";
 export { default as OpenAICompatProvider, effortFromBudget } from "./OpenAICompat.ts";
 export type { OpenAICompatConfig, ReasoningStyle, GrammarStyle } from "./OpenAICompat.ts";
 export { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
-export type { StreamResponse, EncryptedReasoning } from "./openaiStream.ts";
+export type { StreamResponse, EncryptedReasoningItem } from "./openaiStream.ts";
 export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv } from "./env.ts";
 export type { Reasoning, ReasoningMode, ReserveSpec } from "./env.ts";
 export { normalizeUsage, computeCost } from "./usage.ts";
