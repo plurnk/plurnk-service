@@ -8,6 +8,7 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
 
 export type PluginKind = "provider" | "scheme" | "mimetype";
@@ -15,6 +16,9 @@ export type PluginKind = "provider" | "scheme" | "mimetype";
 export interface PluginManifest {
     kind: PluginKind;
     name: string;
+    // #514 — the stepchild covenant: the exact family-head version the artifact was built
+    // against, stamped at publish. Verified before import; absent = legacy (warn once, proceed).
+    builtAgainst?: string;
 }
 
 export interface DiscoveredPlugin {
@@ -46,10 +50,11 @@ export default class PluginLoader {
             const candidate = pkg.plurnk as { kind?: unknown; name?: unknown };
             if (!PluginLoader.#isValidKind(candidate.kind)) continue;
             if (typeof candidate.name !== "string" || candidate.name.length === 0) continue;
+            const builtAgainst = (candidate as { builtAgainst?: unknown }).builtAgainst;
             discovered.push({
                 packageName: pkg.name,
                 packagePath,
-                manifest: { kind: candidate.kind, name: candidate.name },
+                manifest: { kind: candidate.kind, name: candidate.name, ...(typeof builtAgainst === "string" && builtAgainst.length > 0 ? { builtAgainst } : {}) },
             });
         }
 
@@ -62,7 +67,31 @@ export default class PluginLoader {
     // the instance's claimed identity MUST match the package manifest's `plurnk.name`.
     // Providers skip this check — manifest.name is a vendor identifier; the
     // instance's `model` is per-config (plurnk-providers#1, identity getters).
+    // #514 — the family-head version this daemon IS (lockstep fleet). Resolved once.
+    static #headVersion: string | undefined;
+    static async headVersion(): Promise<string> {
+        if (PluginLoader.#headVersion === undefined) {
+            const pkg = JSON.parse(await readFile(fileURLToPath(import.meta.resolve("@plurnk/plurnk-service/package.json")), "utf8")) as { version: string };
+            PluginLoader.#headVersion = pkg.version;
+        }
+        return PluginLoader.#headVersion;
+    }
+    static #legacyWarned = new Set<string>();
+
     static async loadPlugin(plugin: DiscoveredPlugin): Promise<unknown> {
+        // #514 — skew refuses LEGIBLY at the boundary, BEFORE import: a stepchild built against an
+        // older head detonates mid-import otherwise (#512's SyntaxError on a removed export), which
+        // names neither the cause nor the cure. Absent field = a legacy artifact: warn once, proceed
+        // (the field becomes required once the stepchild phase has stamped the fleet).
+        const head = await PluginLoader.headVersion();
+        if (plugin.manifest.builtAgainst !== undefined) {
+            if (plugin.manifest.builtAgainst !== head) {
+                throw new Error(`${plugin.packageName} built against ${plugin.manifest.builtAgainst}; loaded ${head} — republish pending.`);
+            }
+        } else if (!PluginLoader.#legacyWarned.has(plugin.packageName)) {
+            PluginLoader.#legacyWarned.add(plugin.packageName);
+            process.stderr.write(`plurnk-service: ${plugin.packageName} declares no plurnk.builtAgainst (legacy artifact) — loading unverified against head ${head}\n`);
+        }
         const mod = await import(plugin.packageName);
         const PluginClass = mod.default;
         if (typeof PluginClass !== "function") {
