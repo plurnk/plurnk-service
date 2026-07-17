@@ -661,15 +661,15 @@ export default class Engine {
                 // when it runs fewer than 12 (whole-read form doubles as teaching). Prior prompts
                 // stay listed by path in the system packet's User Prompts section — reachable,
                 // never silently lost.
-                // §arrival-law (#499) — the preview bound is the knob (was a hardcoded 12); the char
-                // condition routes an over-wide prompt into the sliced form too. (A single-line
-                // char-bomb still rides the line-slice whole — line markers cannot cut mid-line;
-                // residual noted in SPEC.)
+                // §arrival-law (#499) — the preview bound is the knob (was a hardcoded 12). The
+                // line-slice is an EFFICIENCY (do not materialize hundreds of lines into rx); the
+                // RENDER is the law — packet-wire's arrival preview cuts the char dimension there,
+                // which a line marker structurally cannot (a 1-line slice of a 1-line bomb is 416).
                 const previewLines = Number(process.env.PLURNK_SERVICE_ARRIVAL_PREVIEW_LINES ?? "16");
                 const promptLineCount = promptRow.prompt.split("\n").length;
                 const promptRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, target: promptPath,
-                    lineMarker: { marks: promptLineCount >= previewLines || promptRow.prompt.length > 80 * previewLines ? [1, previewLines] : [1, -1] },
+                    lineMarker: { marks: promptLineCount >= previewLines ? [1, previewLines] : [1, -1] },
                     body: null, position: { line: 1, column: 1 },
                 };
                 await this.dispatch({

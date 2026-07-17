@@ -409,7 +409,20 @@ export default class PacketWire {
                 // startLine === null is the matcher-result signal (already source-numbered → verbatim);
                 // a number numbers from it; absent → 1 (whole-content default).
                 const start = rx.startLine === null ? null : (typeof rx.startLine === "number" ? rx.startLine : 1);
-                body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
+                // §arrival-law — a foisted READ of a prompt path is PUSHED content (user- or
+                // sibling-authored); the render-side preview bounds it like any arrival, closing
+                // the single-line char-bomb the line-slice alone cannot cut (line markers cannot
+                // cut mid-line; the render can). Model-authored READs stay self-invited — untouched.
+                const promptPush = e.origin === "plurnk" && op === "READ"
+                    && e.target !== null && typeof e.target === "object" && (e.target as { scheme?: string }).scheme === "plurnk"
+                    && String((e.target as { pathname?: string }).pathname ?? "").startsWith("/prompt/");
+                if (promptPush) {
+                    const arrival = PacketWire.#arrivalPreview(rx.content);
+                    body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, arrival.text, mimetype, start);
+                    if (arrival.cut) body += `\n… arrival preview — the full prompt is ${rx.content.split("\n").length} line(s), ${rx.content.length} chars: READ ${target}`;
+                } else {
+                    body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
+                }
             } else if ((op === "EDIT" || op === "COPY" || op === "MOVE") && rx !== null && typeof rx === "object" && (typeof (rx as { span?: unknown }).span === "string" || typeof (rx as { body?: unknown }).body === "string")) {
                 // EDIT (§edit-result-render): the resulting span as it looks now. editedSpan already
                 // line-numbered it with the changed region's REAL offsets (e.g. 50:\t…), so wrap
