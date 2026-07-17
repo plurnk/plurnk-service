@@ -43,7 +43,7 @@ const REQUIEM_PROMPT = "This worker was a test of the Plurnk System. The system 
 // flags, tx, rx) arrive as strings, parsed on use.
 interface WorkspaceRow { id: number; name: string; cost_pico: number }
 interface WorkerRow { id: number; workspace_id: number; name: string; cost_pico: number }
-interface LoopRow { id: number; worker_id: number; sequence: number; status: number; prompt: string; flags: string }
+interface LoopRow { id: number; worker_id: number; sequence: number; status: number; prompt: string; flags: string; terminal_message: string | null; terminated_by: string | null }
 interface TurnRow {
     id: number; loop_id: number; sequence: number; status: number; packet: string;
     usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_pico: number;
@@ -224,6 +224,9 @@ export default class Digest {
                     lines.push(`#### Loop ${loop.sequence} (id=${loop.id}, status=${loop.status})${badge}`);
                     lines.push("");
                     lines.push(`Prompt: ${Digest.#summarize(loop.prompt, 160)}`);
+                    if (loop.status !== 200 && loop.terminal_message !== null && loop.terminal_message.length > 0) {
+                        lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${Digest.#summarize(loop.terminal_message, 400)}`);
+                    }
                     const flags = Digest.#parseJson(loop.flags, {}) as Record<string, unknown>;
                     const flagSummary = Object.entries(flags).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(" ");
                     if (flagSummary.length > 0) lines.push(`Flags: ${flagSummary}`);
@@ -304,6 +307,7 @@ export default class Digest {
             loops: m.loops.map((l) => ({
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt, flags: Digest.#parseJson(l.flags, {}),
+                terminal_message: l.terminal_message, terminated_by: l.terminated_by,
             })),
             turns: m.turns.map((t) => ({
                 id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
