@@ -66,7 +66,7 @@ describe("conformance: text/x-dart defs + refs (issues #19/#20)", () => {
                 { name: "tokenize", kind: "call", line: 8, container: "Parser.parse" },
                 { name: "Helper", kind: "instantiate", line: 11, container: "Parser.build" },
                 { name: "Point", kind: "instantiate", line: 12, container: "Parser.build" },
-                { name: "worker", kind: "call", line: 13, container: "Parser.build" },
+                { name: "run", kind: "call", line: 13, container: "Parser.build" },
                 { name: "decoyFree", kind: "call", line: 18, container: "Helper.run" },
                 { name: "Base", kind: "inherit", line: 21, container: "Mixy" },
                 { name: "inner", kind: "call", line: 24, container: "tokenize" },

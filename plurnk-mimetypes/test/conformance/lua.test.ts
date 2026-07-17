@@ -41,21 +41,21 @@ describe("conformance: text/x-lua defs + refs (issues #19/#20)", () => {
                 // helper(input) inside M.process joins to the local function
                 // helper — exactly the service's (container, name) edge.
                 { refName: "helper", container: "process" },
-                { refName: "process", container: "worker" },
-                { refName: "helper", container: "worker" },
+                { refName: "process", container: "run" },
+                { refName: "helper", container: "run" },
             ],
             expectRefs: [
                 { name: "helper", kind: "call", line: 8, container: "process" },
                 // Dotted call: M.finish(v) → field name.
                 { name: "finish", kind: "call", line: 9, container: "process" },
                 // Dotted call to a sibling def: M.process(...) → process.
-                { name: "process", kind: "call", line: 14, container: "worker" },
-                { name: "helper", kind: "call", line: 14, container: "worker" },
+                { name: "process", kind: "call", line: 14, container: "run" },
+                { name: "helper", kind: "call", line: 14, container: "run" },
                 // Method call: self:emit(r) → method name.
-                { name: "emit", kind: "call", line: 15, container: "worker" },
+                { name: "emit", kind: "call", line: 15, container: "run" },
                 // Chained dotted call: obj.mod.deep(r) → final field.
-                { name: "deep", kind: "call", line: 16, container: "worker" },
-                { name: "print", kind: "call", line: 17, container: "worker" },
+                { name: "deep", kind: "call", line: 16, container: "run" },
+                { name: "print", kind: "call", line: 17, container: "run" },
                 // Top-level call has no container.
                 { name: "setmetatable", kind: "call", line: 22 },
             ],

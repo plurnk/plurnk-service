@@ -66,7 +66,7 @@ describe("conformance: text/x-scala defs + refs (issues #19/#20)", () => {
                 { name: "ListBuffer", kind: "instantiate", line: 17, container: "Registry.buf" },
                 { name: "Token", kind: "type", line: 18, container: "Registry.parse" },
                 { name: "Helper", kind: "instantiate", line: 19, container: "Registry.parse" },
-                { name: "worker", kind: "call", line: 20, container: "Registry.parse" },
+                { name: "run", kind: "call", line: 20, container: "Registry.parse" },
                 { name: "tokenize", kind: "call", line: 21, container: "Registry.parse" },
                 { name: "Token", kind: "call", line: 23, container: "Registry.tokenize" },
             ],

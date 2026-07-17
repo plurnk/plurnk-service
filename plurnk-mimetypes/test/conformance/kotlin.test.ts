@@ -51,7 +51,7 @@ describe("conformance: text/x-kotlin defs + refs (issues #19/#20)", () => {
                 { name: "Token", kind: "type", line: 9, container: "Parser.items" },
                 { name: "Token", kind: "type", line: 10, container: "Parser.parse" },
                 { name: "Helper", kind: "call", line: 11, container: "Parser.parse" },
-                { name: "worker", kind: "call", line: 12, container: "Parser.parse" },
+                { name: "run", kind: "call", line: 12, container: "Parser.parse" },
                 { name: "tokenize", kind: "call", line: 13, container: "Parser.parse" },
                 { name: "decoyFree", kind: "call", line: 17, container: "Helper.run" },
                 // Nullable return type (Token?) still yields the type name.

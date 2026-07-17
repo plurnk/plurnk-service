@@ -57,7 +57,7 @@ describe("conformance: text/x-java defs + refs (issues #19/#20)", () => {
                 { name: "String", kind: "type", line: 9, container: "Parser.parse" },
                 { name: "Helper", kind: "type", line: 10, container: "Parser.parse" },
                 { name: "Helper", kind: "instantiate", line: 10, container: "Parser.parse" },
-                { name: "worker", kind: "call", line: 11, container: "Parser.parse" },
+                { name: "run", kind: "call", line: 11, container: "Parser.parse" },
                 { name: "tokenize", kind: "call", line: 12, container: "Parser.parse" },
                 { name: "inner", kind: "call", line: 16, container: "Parser.tokenize" },
                 { name: "decoyFree", kind: "call", line: 21, container: "Helper.run" },
