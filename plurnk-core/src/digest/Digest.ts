@@ -48,6 +48,7 @@ interface TurnRow {
     id: number; loop_id: number; sequence: number; status: number; packet: string;
     usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_pico: number;
     finish_reason: string | null; model: string | null;
+    meta: string | null;  // #498 — provider passthrough (timings, railsAttached/railsVerdict); digest consumers need rail truth
 }
 interface LogRow {
     id: number; turn_id: number; sequence: number;
@@ -156,10 +157,13 @@ export default class Digest {
         const tokens = `prompt=${turn.usage_prompt} completion=${turn.usage_completion} cached=${turn.usage_cached}`;
         const cost = turn.usage_cost_pico > 0 ? ` cost=$${(turn.usage_cost_pico / 1e12).toFixed(6)}` : "";
         const finishReason = turn.finish_reason ?? "—";
+        // #498 — rail truth on the human line: attached+ok stays quiet-positive; anything else shouts.
+        const tm = Digest.#parseJson(turn.meta ?? "null", null) as { railsAttached?: boolean; railsVerdict?: string } | null;
+        const rails = tm?.railsAttached === undefined ? "" : ` rails=${tm.railsAttached ? (tm.railsVerdict ?? "attached") : "OFF"}`;
         const model = turn.model ?? "—";
         const errs = (m.logEntriesByTurn.get(turn.id) ?? []).filter((le) => le.status_rx >= 400).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
-        const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason} model=${model} ${tokens}${cost}${errBadge}`;
+        const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}`;
         const summary = content.length > 0 ? `  ↳ emission: ${Digest.#summarize(content, 100)}` : `  ↳ emission: (empty)`;
         const reasoningLine = reasoning && reasoning.length > 0
             ? `  ↳ reasoning: ${Digest.#summarize(reasoning, 100)}`
@@ -306,6 +310,9 @@ export default class Digest {
                 usage_prompt: t.usage_prompt, usage_completion: t.usage_completion,
                 usage_cached: t.usage_cached, usage_cost_pico: t.usage_cost_pico,
                 finish_reason: t.finish_reason, model: t.model,
+                // #498 — the raw provider meta (timings + railsAttached/railsVerdict): rail truth for
+                // aggregate tooling, and the speculative-decode stats the #488 fingerprint needed.
+                meta: Digest.#parseJson(t.meta ?? "null", null),
             })),
             log_entries: m.logEntries.map((le) => ({
                 id: le.id, turn_id: le.turn_id, sequence: le.sequence,
