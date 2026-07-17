@@ -1,6 +1,6 @@
 // #391 — the turn COORDINATE rides generate() as first-party metadata (Plurnk-Workspace-Id/Loop/Turn),
 // the authoritative workspace/loop/turn hierarchy the endpoint flywheel keys on. The daemon owns the
-// value; providers stamps the header (same split as Run-Id #26). This pins that core passes it, and
+// value; providers stamps the header (same split as Worker-Id #26). This pins that core passes it, and
 // that `loop` is the loop's SEQUENCE (the coordinate) — never the DB id, which they diverge to prove.
 import test from "node:test";
 import assert from "node:assert/strict";
