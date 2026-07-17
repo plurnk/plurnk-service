@@ -98,3 +98,22 @@ test("[§arrival-law] a small deliverable rides whole — whole-when-small is th
     assert.ok(rendered.includes("answer: 42") && rendered.includes("notes: none"), "the whole deliverable rides");
     assert.ok(!rendered.includes("arrival preview"), "no cut statement on an in-bounds arrival");
 });
+
+test("[§arrival-law] a single-line char-bomb PROMPT renders bounded — the render cap cuts what the line-slice cannot", async () => {
+    await withDaemon(mock(), async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "par-bomb" });
+            const bomb = `find the needle: ${"hay ".repeat(5000)}needle`; // one line, ~20k chars
+            const resp = await runLoopToTerminal(ws, 2, { prompt: bomb });
+            const { turnIds } = resp as { loopId: number; turnIds: number[] };
+            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnIds[0] });
+            const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; content: string }> };
+            const log = (packet.sections ?? []).find((sec) => sec.name === "log")?.content ?? "";
+            const longestHayRun = (log.match(/(?:hay )+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
+            assert.ok(longestHayRun > 0, "the prompt's head DOES ride — the model sees what arrived");
+            assert.ok(longestHayRun <= 80 * 16, `the 80×N char cap bounds the one-line prompt (longest run ${longestHayRun} ≤ 1280)`);
+            assert.match(log, /arrival preview — the full prompt is 1 line\(s\), \d+ chars: READ plurnk:\/\//, "the cut states itself with the prompt's address");
+        } finally { ws.close(); }
+    });
+});
