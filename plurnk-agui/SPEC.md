@@ -43,7 +43,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `log/entry` op=PLAN (model) | `REASONING_START` + `REASONING_MESSAGE_START/CONTENT/END` + `REASONING_END` (§475: current AG-UI reasoning; the deprecated THINKING_* is retired) |
 | `log/entry` op=SEND (model) | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | `log/entry` other op (model) | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
-| `log/entry` op=model (mirror) | `REASONING_ENCRYPTED_VALUE` per sealed blob when `attrs.reasoningEncrypted` present ({§agui-sealed-reasoning}); otherwise nothing — forensic, not speech |
+| `log/entry` op=model (mirror) | nothing — forensic, not speech |
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `loop/proposal` | `CUSTOM plurnk.proposal` |
 | `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |

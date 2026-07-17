@@ -42,25 +42,6 @@ test("[§agui-custom-namespace] ambient (origin plurnk) rows ride plurnk.ambient
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
-test("[§agui-projection][§agui-sealed-reasoning] a mirror row's attrs.reasoningEncrypted projects REASONING_ENCRYPTED_VALUE, conformant shape (#482)", () => {
-    const tr = t();
-    tr.logEntry(entry({ op: "PLAN", tx: "{}" })); // consume the turn boundary
-    // Sealed blobs ride attrs as a JSON string (core's carrier), format included.
-    const sealed = tr.logEntry(entry({ op: "model", coordinate: "1/1/9/model", tx: "<<PLAN:x:PLAN",
-        attrs: JSON.stringify({ reasoningEncrypted: [{ data: "SEALED-BLOB-1", format: "openai-responses-v1" }, { data: "SEALED-BLOB-2", format: "openai-responses-v1" }] }) }));
-    assert.deepEqual(sealed.map((e) => e.type), ["CUSTOM", "REASONING_ENCRYPTED_VALUE", "REASONING_ENCRYPTED_VALUE"],
-        "plurnk.row (forensic, carries format) + one conformant event per blob");
-    const ev = sealed[1] as { type: string; subtype: string; entityId: string; encryptedValue: string; value?: unknown; messageId?: unknown };
-    assert.equal(ev.subtype, "message", "our sealed COT is message-level, never a tool-call's");
-    assert.equal(ev.entityId, "1/1/9/model", "entityId ties to the row");
-    assert.equal(ev.encryptedValue, "SEALED-BLOB-1", "the blob rides verbatim");
-    assert.equal(ev.messageId, undefined, "NOT the loose messageId/value shape — the @ag-ui/core nouns");
-    assert.equal(ev.value, undefined, "encryptedValue, not value");
-    // The common case — a mirror row with no sealed reasoning — projects nothing extra.
-    const plain = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN", attrs: "{}" }));
-    assert.deepEqual(plain.map((e) => e.type), ["CUSTOM"], "no sealed reasoning → the mirror stays plurnk.row-only");
-});
-
 test("[§agui-projection] turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
     const tr = t();
     const first = tr.logEntry(entry({ op: "PLAN", turn_id: 1, tx: "{}" }));
