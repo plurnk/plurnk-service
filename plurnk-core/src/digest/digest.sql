@@ -17,7 +17,7 @@ FROM loops ORDER BY worker_id, sequence;
 -- PREP: digest_turns
 SELECT id, loop_id, sequence, status, packet,
        usage_prompt, usage_completion, usage_cached, usage_cost_pico,
-       finish_reason, model, timestamp
+       finish_reason, model, meta, timestamp
 FROM turns ORDER BY loop_id, sequence;
 
 -- PREP: digest_log_entries
