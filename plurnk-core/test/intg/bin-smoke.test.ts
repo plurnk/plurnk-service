@@ -169,3 +169,26 @@ test("bin: a failed DB open names the path and any stale sidecars — never a ba
         await rm(dir, { recursive: true, force: true });
     }
 });
+
+// #501 (owner ruling, gates 1.0.6) — a SET-but-unresolvable PLURNK_MODEL must fail the boot hard,
+// naming the value and the contract; the old path booted silently modelless behind a warning that
+// claimed the knob was unset (the operator's live daemon was doing exactly this).
+test("bin: PLURNK_MODEL naming no declared alias fails the boot LOUD — never a silent modelless daemon", { timeout: 60_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-501-"));
+    try {
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: dir,
+            PLURNK_SERVICE_DB_PATH: join(dir, "plurnk.db"),
+            PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0",
+            PLURNK_MODEL: "plurnk/jennifer",  // the run112-adjacent specimen: a provider/model PATH where an ALIAS belongs
+        };
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, stdio: ["ignore", "pipe", "pipe"] });
+        let stderrBuf = "";
+        child.stderr?.on("data", (d: Buffer) => { stderrBuf += d.toString(); });
+        const code = await new Promise<number | null>((res) => { child.on("exit", (c) => res(c)); });
+        assert.notEqual(code, 0, "the boot FAILED — no silent modelless daemon");
+        assert.match(stderrBuf, /PLURNK_MODEL=plurnk\/jennifer names no declared alias/, "the error names the VALUE and the violated contract");
+        assert.match(stderrBuf, /declare PLURNK_MODEL_<alias>=plurnk\/jennifer/, "the corrective declaration form is stated");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+});

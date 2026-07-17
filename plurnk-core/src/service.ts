@@ -13,7 +13,7 @@ import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import Meta from "@plurnk/plurnk-meta";
-import { resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 
 // The `plurnk-service` executable: launches the daemon (start) or runs migrations.
@@ -110,6 +110,9 @@ export default class Service {
     // node-style env-file flags: --env-file=<path> (required) / --env-file-if-exists=<path>
     // (skip if missing), repeatable, in command-line order. node only loads pre-script files;
     // a published `plurnk-service --env-file=…` needs this post-script loader.
+    // PRECEDENCE CAUTION (#501): this post-script cascade is FIRST-wins (highest-priority file
+    // first); node's own pre-script parsing of the same flags is LAST-wins. The same flag
+    // obeys opposite precedence depending on argv position relative to the script path.
     static #envFileArgs(): Array<{ path: string; required: boolean }> {
         return process.argv.flatMap((a): Array<{ path: string; required: boolean }> => {
             if (a.startsWith("--env-file-if-exists=")) return [{ path: a.slice(a.indexOf("=") + 1), required: false }];
@@ -180,6 +183,19 @@ export default class Service {
 
         const db = await Service.#openDb(dbPath);
         const alias = resolveActiveAlias();
+        // #501 (owner ruling, gates 1.0.6) — SET-but-unresolvable is the silent-absence class, never
+        // a modelless boot: PLURNK_MODEL=plurnk/jennifer (a provider/model PATH where an ALIAS name
+        // belongs) resolved to null and the daemon booted modelless behind a warning claiming the
+        // knob was unset. Fail hard naming the violated contract; UNSET stays the legal modelless
+        // boot (clients may supply per-request models).
+        const selectedModel = process.env.PLURNK_MODEL ?? "";
+        if (alias === null && selectedModel !== "") {
+            const declared = parseAliasesFromEnv(process.env).map((a) => a.alias).join(", ");
+            throw new Error(
+                `PLURNK_MODEL=${selectedModel} names no declared alias (declared: ${declared.length > 0 ? declared : "none"}). `
+                + `The knob takes an ALIAS name; for an inline model, declare PLURNK_MODEL_<alias>=${selectedModel} and set PLURNK_MODEL=<alias>.`,
+            );
+        }
         const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
         // AG-UI daughter module (#355) — THE client surface, always on: its init runs at boot with the
