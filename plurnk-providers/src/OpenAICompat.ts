@@ -9,7 +9,7 @@
 // Pure-config providers come from ./standardProviders.ts with no sibling at all.
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
-import type { Reasoning } from "./env.ts";
+import type { Reasoning, ReserveSpec } from "./env.ts";
 import { chatCompletionStream, chatCompletion, OpenAiHttpError, type StreamResponse } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
@@ -101,6 +101,18 @@ export type OpenAICompatConfig = {
     // gated per-alias.
     topLogprobs?: number | null;
     rawBody?: boolean;
+    // #507 (owner-ruled): the generation-envelope reserves, env-read via
+    // envelopeFromEnv — a percentage of the DETECTED window or an absolute token
+    // count. Optional so an out-of-date sibling keeps constructing (no claim);
+    // the standard factory always supplies them. Resolved against contextWindow
+    // at read time (getters), so a probe that lands after config assembly still
+    // derives correctly.
+    reasoningReserve?: ReserveSpec;
+    completionReserve?: ReserveSpec;
+    // #507: the plurnk.ai router owns tuning (SPEC §5) — false suppresses the
+    // client-side temperature/penalty FLOORS on this provider (caller `sampling`
+    // still passes through verbatim). Default true (floors ride).
+    tuningFloors?: boolean;
 };
 
 // Only these two classifications are transient and worth retrying: rate_limit
@@ -213,6 +225,9 @@ export default class OpenAICompatProvider implements Provider {
     #slotCount: number | null;
     #retryAttempts: number;
     #topLogprobs: number | null;
+    #reasoningReserve: ReserveSpec | undefined;
+    #completionReserve: ReserveSpec | undefined;
+    #tuningFloors: boolean;
     #rawBody: boolean;
     #servedModel: string | undefined;
     #requiresMaxTokens: boolean | undefined;
@@ -253,6 +268,9 @@ export default class OpenAICompatProvider implements Provider {
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
         this.#topLogprobs = config.topLogprobs ?? null;
+        this.#reasoningReserve = config.reasoningReserve;
+        this.#completionReserve = config.completionReserve;
+        this.#tuningFloors = config.tuningFloors ?? true;
         this.#rawBody = config.rawBody ?? false;
         this.#servedModel = config.servedModel;
         this.#requiresMaxTokens = config.requiresMaxTokens;
@@ -276,6 +294,15 @@ export default class OpenAICompatProvider implements Provider {
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
+    // #507: envelope reserves — absolute pins stand alone; percentages need the
+    // detected window; null = underivable (no claim for core's no-cap path).
+    #resolveReserve(spec: ReserveSpec | undefined): number | null {
+        if (spec === undefined) return null;
+        if ("tokens" in spec) return spec.tokens;
+        return this.#contextWindow === null ? null : Math.round(spec.percent * this.#contextWindow);
+    }
+    get reasoningReserve(): number | null { return this.#resolveReserve(this.#reasoningReserve); }
+    get completionReserve(): number | null { return this.#resolveReserve(this.#completionReserve); }
     get model(): string { return this.#model; }
     // #37: backend's self-reported served id; undefined when unprobed/unknown.
     get servedModel(): string | undefined { return this.#servedModel; }
@@ -519,8 +546,9 @@ export default class OpenAICompatProvider implements Provider {
         // paths and the name promises every request) < the caller's `sampling`
         // < the managed fields, which always win.
         const body: Record<string, unknown> = {
-            temperature: this.#temperature,
-            ...this.#repetitionPenaltyBody(),
+            // #507: floors suppressed on router-owned-tuning providers (plurnk) —
+            // the router's per-model tuning must not be overridden by client floors.
+            ...(this.#tuningFloors ? { temperature: this.#temperature, ...this.#repetitionPenaltyBody() } : {}),
             ...this.#samplingBody(sampling),
             model: this.#model,
             messages,

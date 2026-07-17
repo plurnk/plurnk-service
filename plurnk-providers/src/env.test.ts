@@ -103,19 +103,19 @@ test("#472 contextWindowFromEnv: reads the new name, sheds CONTEXT_SIZE hard, nu
 
 test("scopeEnvToAlias: a caller-supplied knob list scopes CONSUMER vars (service window partition)", async () => {
     const { scopeEnvToAlias } = await import("./env.ts");
-    const SERVICE_KNOBS = ["PLURNK_SERVICE_CONTEXT_WINDOW", "PLURNK_SERVICE_REASONING", "PLURNK_SERVICE_COMPLETION", "PLURNK_SERVICE_SAFETY"];
+    const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_SAFETY"];
     const env = {
-        PLURNK_SERVICE_CONTEXT_WINDOW: "163840", PLURNK_SERVICE_REASONING: "16384", PLURNK_SERVICE_COMPLETION: "49152", PLURNK_SERVICE_SAFETY: "1024",
-        PLURNK_SERVICE_CONTEXT_WINDOW_turboderp: "78848", PLURNK_SERVICE_REASONING_turboderp: "4096", PLURNK_SERVICE_COMPLETION_TURBODERP: "8192", // case-folds
+        PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_SAFETY: "1024",
+        PLURNK_SERVICE_MAX_TURNS_turboderp: "78848", PLURNK_SERVICE_LOOP_TIMEOUT_turboderp: "4096", PLURNK_SERVICE_EXEC_HOLD_MS_TURBODERP: "8192", // case-folds
     } as NodeJS.ProcessEnv;
     const gemma = scopeEnvToAlias(env, "turboderp", SERVICE_KNOBS);
-    assert.equal(gemma.PLURNK_SERVICE_CONTEXT_WINDOW, "78848");
-    assert.equal(gemma.PLURNK_SERVICE_REASONING, "4096");
-    assert.equal(gemma.PLURNK_SERVICE_COMPLETION, "8192");
+    assert.equal(gemma.PLURNK_SERVICE_MAX_TURNS, "78848");
+    assert.equal(gemma.PLURNK_SERVICE_LOOP_TIMEOUT, "4096");
+    assert.equal(gemma.PLURNK_SERVICE_EXEC_HOLD_MS, "8192");
     assert.equal(gemma.PLURNK_SERVICE_SAFETY, "1024"); // bare fallback intact
     const cloud = scopeEnvToAlias(env, "fireslow", SERVICE_KNOBS);
-    assert.equal(cloud.PLURNK_SERVICE_REASONING, "16384"); // 64k envelope untouched by gemma overrides
-    assert.equal(cloud.PLURNK_SERVICE_COMPLETION, "49152");
+    assert.equal(cloud.PLURNK_SERVICE_LOOP_TIMEOUT, "16384"); // 64k envelope untouched by gemma overrides
+    assert.equal(cloud.PLURNK_SERVICE_EXEC_HOLD_MS, "49152");
     // custom list does NOT scope providers-family knobs (closed-list isolation both ways)
     const mixed = scopeEnvToAlias({ PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_REASONING_turboderp: "on" } as NodeJS.ProcessEnv, "turboderp", SERVICE_KNOBS);
     assert.equal(mixed.PLURNK_PROVIDERS_REASONING, "off");
@@ -161,4 +161,27 @@ test("#399: the shipped floor activates reasoning by default (adaptive — owner
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.ok(defaults.includes("PLURNK_PROVIDERS_REASONING=adaptive"), "floor must ship REASONING=adaptive");
     assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — budget is on-mode only");
+});
+
+// -- #507: envelope reserves (owner-ruled migration from PLURNK_SERVICE_*) --
+
+test("#507 envelopeFromEnv: percentages and absolutes parse; missing/invalid fail hard", async () => {
+    const { envelopeFromEnv } = await import("./env.ts");
+    assert.deepEqual(
+        envelopeFromEnv({ PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "4096" } as NodeJS.ProcessEnv, "x"),
+        { reasoningReserve: { percent: 0.1 }, completionReserve: { tokens: 4096 } },
+    );
+    assert.throws(() => envelopeFromEnv({ PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%" } as NodeJS.ProcessEnv, "x"), /PLURNK_PROVIDERS_REASONING_RESERVE must be set/);
+    assert.throws(() => envelopeFromEnv({ PLURNK_PROVIDERS_REASONING_RESERVE: "150%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%" } as NodeJS.ProcessEnv, "x"), /percentage must be in \(0, 100\)/);
+    assert.throws(() => envelopeFromEnv({ PLURNK_PROVIDERS_REASONING_RESERVE: "-5", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%" } as NodeJS.ProcessEnv, "x"), /positive integer token count/);
+});
+
+test("#507 envelope knobs are per-alias scopable (measured envelope per box)", async () => {
+    const { scopeEnvToAlias, envelopeFromEnv } = await import("./env.ts");
+    const env = {
+        PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%",
+        PLURNK_PROVIDERS_REASONING_RESERVE_turboderp: "4096", PLURNK_PROVIDERS_COMPLETION_RESERVE_turboderp: "8192",
+    } as NodeJS.ProcessEnv;
+    assert.deepEqual(envelopeFromEnv(scopeEnvToAlias(env, "turboderp"), "x"), { reasoningReserve: { tokens: 4096 }, completionReserve: { tokens: 8192 } });
+    assert.deepEqual(envelopeFromEnv(scopeEnvToAlias(env, "jennifer"), "x"), { reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 } });
 });

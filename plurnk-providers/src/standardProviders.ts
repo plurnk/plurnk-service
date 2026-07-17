@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv } from "./env.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
@@ -74,6 +74,9 @@ type StandardProviderSpec = {
     // structurally incapable of reaching a third-party backend (never sold,
     // never leaked — the destination is the consent boundary).
     firstPartyMetadata?: boolean;
+    // #507: the plurnk.ai router owns tuning (SPEC §5) — suppress the client-side
+    // temperature/penalty floors on this provider; caller sampling still passes.
+    suppressTuningFloors?: boolean;
     // Top-level response field the endpoint reports account balance (pico-USD) in,
     // surfaced as ProviderResponse.balancePico (plurnk only, #23). Absent elsewhere.
     balanceMetaKey?: string;
@@ -263,7 +266,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: false,
         reasoningStyle: "none", grammarStyle: "none", tokenizerEnvVar: "PLURNK_TOKENIZER",
-        probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico",
+        probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico", suppressTuningFloors: true,
     },
 });
 
@@ -520,6 +523,10 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", name, 0),
         repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
         frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", name, 0),
+        // #507: the envelope reserves (window-fraction floor, absolute overrides)
+        // + router-owned-tuning suppression (plurnk).
+        ...envelopeFromEnv(env, name),
+        tuningFloors: spec.suppressTuningFloors !== true,
         retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", name),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         reasoningStyle,
