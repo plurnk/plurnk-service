@@ -77,12 +77,13 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 |--------|----------|-----------------------------|------------------|
 | `#`    | regex    | #pattern#[igmsu]*           | ECMAScript       |
 | `//`   | xpath    | //selector                  | XPath 1.0        |
-| `$`    | jsonpath | $.field                     | RFC 9535         |
+| `$`    | jsonpath | $.field, $[?(@.role=="admin")] | RFC 9535     |
 | `~`    | semantic | ~phrase                     | keyword + cosine |
 | `@`    | graph    | @<symbol, @>symbol, @symbol | symbol index     |
 | none   | glob     | pattern                     | shell glob       |
 
 * The leading symbol commits its dialect; a mistyped matcher is flagged, not silently downgraded to a glob.
+* Filters bracket directly: $[?(@.role=="admin")], never $.[?(...)].
 * Mapping is universal (you can do jsonpath against XML files and xpath on json files, etc...).
 * Matching returns whole lines, never extracted values: `Alice` returns `42:	I bought Alice some flowers`, not `1:	Alice`.
 * Escape a literal `#` inside regex patterns with `\#`.
@@ -254,7 +255,7 @@ Each line is a standalone op example — a valid statement on its own, never a t
 <<FIND(known:///**)<0.7>:~french territorial concessions:FIND
 <<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
 <<FIND[history](known:///**):revolution:FIND
-<<FIND(known:///**):$[?(@.role=="admin")]:FIND
+<<FIND(data/users.json):$[?(@.role=="admin")]:FIND
 <<FIND(#src/.*\.test\.ts#)::FIND
 <<FIND(src/**):@createCoder:FIND
 <<FIND(src/**):@<createCoder:FIND
