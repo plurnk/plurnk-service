@@ -1505,7 +1505,7 @@ export default class Engine {
     }
 
     // #290 — run the derivation pump (deep channels: symbols/refs/FTS +
-    // embeddings, deep_hash-gated) at SESSION-SCOPE, off the per-turn path, so a freshly-created
+    // embeddings, deep_hash-gated) at WORKSPACE-SCOPE, off the per-turn path, so a freshly-created
     // workspace's corpus warms DURING the client's startup window instead of freezing the first
     // loop.run. workspace.create fires this and returns immediately; embed_progress live-fans-out as it
     // runs. Idempotent + deep_hash-gated, so turn 1's pump finds the work done (or harmlessly re-runs);
