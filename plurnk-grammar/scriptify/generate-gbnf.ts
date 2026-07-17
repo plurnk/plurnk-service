@@ -356,17 +356,23 @@ export const buildModel = (): GModel => {
     // stays gone, and free-text/reasoning spans stay unbounded (probes show the models'
     // preferred preamble is 0 chars - length is the sampler's concern, not the rail's).
     const K_MID_STEPS = 14;
+    // MID-BATCH CHANNEL (#497, owner-ruled 2026-07-17): each step admits ONE optional harmony
+    // channel before its statement — think → act → think → act gets a legal home. The requiem
+    // evidence (run104/run112): denied mid-turn reasoning, models escape or narrate inside op
+    // bodies. The channel rides WITH the step (opt per position, never a standalone step), so
+    // a channel-loop is underivable — the think-spam class cannot become rail-legal. Nothing
+    // follows the terminal SEND but EOS, unchanged: the place to think is before concluding.
     for (let k = 0; k < K_MID_STEPS; k++) {
         model.set(`tail-${k}`, [
-            [ref("send-mid-any"), ref("sep"), ref(`tail-${k + 1}`)],
-            [ref("op-statement"), ref("sep"), ref(`tail-${k + 1}`)],
+            [opt(ref("channel")), ref("send-mid-any"), ref("sep"), ref(`tail-${k + 1}`)],
+            [opt(ref("channel")), ref("op-statement"), ref("sep"), ref(`tail-${k + 1}`)],
             // Position 0 exits through the no-idle trie (no [102]); every deeper
             // position has >=1 statement behind it, so the full disposition set returns.
-            [ref(k === 0 ? "send-final-first" : "send-final-any"), ref("sep")],
+            [opt(ref("channel")), ref(k === 0 ? "send-final-first" : "send-final-any"), ref("sep")],
         ]);
     }
-    // Step budget exhausted: terminal SEND is the only continuation.
-    model.set(`tail-${K_MID_STEPS}`, [[ref("send-final-any"), ref("sep")]]);
+    // Step budget exhausted: terminal SEND is the only continuation (one last think allowed).
+    model.set(`tail-${K_MID_STEPS}`, [[opt(ref("channel")), ref("send-final-any"), ref("sep")]]);
     model.set("root-turn", [[opt(ref("channel")), ref("plan"), ref("sep"), ref("tail-0")]]);
     trieRules(model, "op-statement", opEntries);
     trieRules(model, "send-mid-any", sendMidEntries);

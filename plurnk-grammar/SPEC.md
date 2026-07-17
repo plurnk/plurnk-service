@@ -549,6 +549,10 @@ The entry points are `PlurnkParser.parse` (a model turn), `PlurnkParser.parseSta
 // grammar: free text before PLAN, a required PLAN, nothing but whitespace between/after
 // ops, and a required terminal SEND. A packet without a PLAN and a terminal SEND is
 // invalid. A Plurnk packet IS a turn; there is no permissive fallback. {§turn-shape}
+// On the GBNF rail each step also admits ONE optional harmony-channel enclosure before
+// its statement (think → act → think → act; #497) — never standalone, so a channel loop
+// is underivable, and nothing follows the terminal SEND but EOS. ANTLR absorbs channels
+// as prose, so L(GBNF) ⊆ L(ANTLR) holds. {§mid-batch-channel}
 PlurnkParser.parse(input: string): ParseResult
 
 // Parse a bare sequence of statements — teaching-example collections, single ops,
@@ -751,7 +755,7 @@ The three sources distinguish:
 - **`"parser"`** — structural failures at parse-tree level (missing close tag, wrong token order, etc.).
 - **`"visitor"`** — semantic failures during AST construction (SEND signal not an integer, EXEC signal with multiple values, etc.).
 
-`severity` distinguishes a hard error from a non-fatal advisory. The parser is the sole and complete owner of syntax-error messaging (it holds the parse state, lexer mode, and expected-token set that no consumer has), so it produces the final model-ready message plus value-adds: deduped expected-token lists, turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and `warning`-severity near-miss advisories when the forgiving parser swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion (`<<CLOSE` → did you mean `<<FOLD`). `severity: "warning"` maps to TelemetryEvent `level: "warn"`. Consumers transmit the message to the model unaltered.
+`severity` distinguishes a hard error from a non-fatal advisory. The parser is the sole and complete owner of syntax-error messaging (it holds the parse state, lexer mode, and expected-token set that no consumer has), so it produces the final model-ready message plus value-adds: deduped expected-token lists, turn-shape imperatives (begin with `<<PLAN`, end with a terminal `<<SEND`), and `warning`-severity near-miss advisories when the forgiving parser swallows a `<<Word…:Word` heredoc whose keyword is a known op confusion (`<<CLOSE` → did you mean `<<FOLD`), plus the invented-closer diagnostic on a never-closed body: when the swallowed text carries a `:ALLCAPS` tag that is not the op's closer, the unparsedTail reason names it (`found \`:COMPARISON_TASK\`, which is body text - the closer echoes the op's name`) so a cap-cut runaway's recovery turn learns what happened, not just that something did. {§invented-closer-advisory} `severity: "warning"` maps to TelemetryEvent `level: "warn"`. Consumers transmit the message to the model unaltered.
 
 Serialization convention for transmission to the model (the agent
 runtime constructs this; the parser provides the fields):
