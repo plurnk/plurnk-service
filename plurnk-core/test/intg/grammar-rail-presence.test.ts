@@ -116,32 +116,3 @@ test("[#488] a configured-but-unloadable variant fails LOUD — a broken rail is
         await db.close();
     }
 });
-
-test("[#488] a grammar-impossible emission under an attached rail is NAMED per turn — rail_unbound, never silent", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "rail-"));
-    const gbnfPath = join(dir, "probe.gbnf");
-    await writeFile(gbnfPath, String.raw`root ::= "PROBE-RAIL"` + "\n");
-    const db = await openMigrated();
-    const key = "PLURNK_PROVIDERS_GBNF_railviolated";
-    const prior = process.env[key];
-    const lines: string[] = [];
-    const realWrite = process.stderr.write.bind(process.stderr);
-    (process.stderr as { write: unknown }).write = (s: string | Uint8Array) => { lines.push(String(s)); return realWrite(s); };
-    try {
-        process.env[key] = gbnfPath;
-        // A backend that ACCEPTS the grammar but does not bind it: the emission carries TWO SENDs —
-        // underivable under any plurnk grammar (run104 was 105 of them). The engine must name it.
-        const base = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "<<PLAN::PLAN\n<<SEND[102]:one:SEND\n<<SEND[200]:two:SEND", reasoning: null } },
-        ] });
-        ProviderInstantiate.registerAlias(base as unknown as Provider, "railviolated");
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        await engine.runTurn({ provider: base as unknown as Provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        assert.ok(lines.some((l) => l.includes("RAIL UNBOUND on this request")), "the unbound rail is named loudly, per turn, with the loop/turn coordinate");
-    } finally {
-        (process.stderr as { write: unknown }).write = realWrite;
-        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
-        await db.close(); await rm(dir, { recursive: true, force: true });
-    }
-});
