@@ -49,10 +49,12 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             if (settled) return;
             settled = true;
             child.kill("SIGKILL");
-            // 30s, not 10: concurrent lanes drill on one box now — a saturated CPU makes a healthy
-            // boot legitimately slow, and this smoke asserts BOOTS-AND-ANSWERS, never boots-fast.
-            rejectPromise(new Error(`bootDaemon timeout after 30s. stdout=${stdoutBuf} stderr=${stderrBuf}`));
-        }, 30_000);
+            // 90s, under the test's own 120s override (#495): concurrent lanes drill on one box, so a
+            // healthy boot is legitimately slow under tier concurrency — this smoke asserts
+            // BOOTS-AND-ANSWERS, never boots-fast. Internal < per-test, so the legible diagnostic
+            // (with captured stdout/stderr) always beats the runner's bare cancellation.
+            rejectPromise(new Error(`bootDaemon timeout after 90s. stdout=${stdoutBuf} stderr=${stderrBuf}`));
+        }, 90_000);
 
         child.stdout?.on("data", (chunk: Buffer) => {
             stdoutBuf += chunk.toString("utf8");
@@ -104,7 +106,7 @@ const stopDaemon = async (booted: BootedDaemon): Promise<{ code: number | null; 
     return result;
 };
 
-test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits cleanly on SIGTERM", async () => {
+test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits cleanly on SIGTERM", { timeout: 120_000 }, async () => {
     const booted = await bootDaemon();
     try {
         // Any HTTP response proves the module's listener is live and serving — the route
