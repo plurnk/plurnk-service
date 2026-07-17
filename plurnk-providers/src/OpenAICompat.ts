@@ -442,10 +442,10 @@ export default class OpenAICompatProvider implements Provider {
         if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
         if (client !== undefined && client.length > 0) h["Plurnk-Client"] = client;
         if (strikes !== undefined && Number.isInteger(strikes) && strikes >= 0) h["Plurnk-Strikes"] = String(strikes);
-        // Run identity (#26): the opaque workerId the consumer already supplies,
-        // forwarded so the endpoint can key per-worker affinity/telemetry — same
-        // gate as every first-party signal.
-        h["Plurnk-Run-Id"] = workerId;
+        // Worker identity (#26, wire-name completed #486/#511): the opaque workerId
+        // the consumer already supplies, forwarded so the endpoint can key
+        // per-worker affinity/telemetry — same gate as every first-party signal.
+        h["Plurnk-Worker-Id"] = workerId;
         // Turn coordinate (#404, extends #26 per #391): workspace/loop/turn, the
         // daemon-side sequence the endpoint can never scrape from the wire.
         // Coordinates are 1-based — 0 is not a real value, so no strikes-style
