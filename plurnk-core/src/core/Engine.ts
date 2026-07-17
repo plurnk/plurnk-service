@@ -940,6 +940,7 @@ export default class Engine {
         // decode → finish=length mid-reasoning → no emission → strike spiral). The
         // provider enforces its physical wall on its own.
         let response: ProviderResponse;
+        let grammarAttached: string | undefined;  // #488 — hoisted so the post-parse rail detector knows the request was constrained
         // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
         // active-plugin set (placeholder); real per-turn grounding is deferred.
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
@@ -964,7 +965,8 @@ export default class Engine {
             // the value; providers stamps the header (same split as Run-Id, #26). loopSeq (the 1-based
             // coordinate, not the DB id) resolves the same way the prompt-slot path does (§log coords).
             const loopSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(provider), maxTokens: this.#packets.maxTokensFor(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            grammarAttached = await this.#grammarConstraint(provider);
+            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: grammarAttached, maxTokens: this.#packets.maxTokensFor(provider), strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
@@ -988,6 +990,19 @@ export default class Engine {
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
         const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
+        // #488 — PER-REQUEST rail verification, from the receiving side: a grammar-constrained
+        // emission can NEVER carry parse errors or more than one SEND (the GBNF forbids both), so
+        // either invariant violated while a grammar was attached = the backend did not bind the
+        // rail on THIS request. Named loudly per turn — the aggregate "8 of 25 runs railless" becomes
+        // an attributable per-turn event stream instead of digest archaeology.
+        if (grammarAttached !== undefined) {
+            const sendCount = packetAssistant.ops.filter((op) => op.op === "SEND").length;
+            if (parseErrors.length > 0 || sendCount > 1) {
+                const why = parseErrors.length > 0 ? `${parseErrors.length} parse error(s)` : `${sendCount} SENDs in one emission`;
+                process.stderr.write(`plurnk-engine: RAIL UNBOUND on this request: loop ${loopId} turn ${seq} — grammar was attached (${grammarAttached.length} chars) but the emission is grammar-impossible (${why})\n`);
+                this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "rail_unbound", level: "error", message: `grammar attached but emission is grammar-impossible: ${why}` } as never);
+            }
+        }
         // Surface parse errors to the model's NEXT packet so it can self-
         // correct. Without this, malformed emissions (e.g. a READ matcher
         // body starting with `//` being interpreted as xpath) silently
