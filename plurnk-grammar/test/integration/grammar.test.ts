@@ -546,6 +546,24 @@ test("#59: invalid jsonpath body (unclosed paren) is a visitor ERROR, not a sile
     assert.match(errors[0]!.error.message, /leads with `\$` but is not a valid jsonpath/);
 });
 
+// #494: the validity check converged to RFC 9535 (json-p3) — the engine the runtime
+// dispatches — replacing the lenient jsonpath-plus check. Pins the strictness delta:
+// malformations that used to slide through now flag, and the RFC's bare filter form parses.
+test("#494: RFC 9535 strictness — lenient-era malformations now flag as visitor errors", () => {
+    for (const body of ["$HOME", "$.users["]) {
+        const result = PlurnkParser.parseStatements(`<<READ(data.json):${body}:READ`);
+        const errors = result.items.filter((i) => i.kind === "error");
+        assert.equal(errors.length, 1, `${body} must flag under RFC 9535`);
+        assert.match(errors[0]!.error.message, /leads with `\$` but is not a valid jsonpath/);
+    }
+});
+
+test("#494: RFC 9535 bare filter form ($[?@.role==\"admin\"]) is accepted", () => {
+    const result = PlurnkParser.parseStatements('<<READ(users.json):$[?@.role=="admin"]:READ');
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
+});
+
 
 test("glob body (no special prefix) skips regex validation", () => {
     const result = PlurnkParser.parseStatements("<<FIND(known://**):Paris*:FIND");

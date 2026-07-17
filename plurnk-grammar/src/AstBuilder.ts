@@ -1,6 +1,6 @@
 import { ParserRuleContext, TerminalNode } from "antlr4ng";
 import * as xpath from "xpath";
-import { JSONPath } from "jsonpath-plus";
+import { JSONPathEnvironment } from "json-p3";
 import type {
     BuffStatement,
     ClientOp,
@@ -73,6 +73,8 @@ type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker:
 
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+    // RFC 9535 jsonpath, the runtime's own engine (json-p3, #494/#490) — compile-only here.
+    static #JSONPATH = new JSONPathEnvironment();
 
     static build(ctx: StatementContext | MidStatementContext | PlanStatementContext | SendStatementContext): PlurnkStatement {
         // The strict turn root attaches the leading PLAN and the terminal SEND as direct
@@ -576,7 +578,9 @@ export default class AstBuilder {
                     : `pattern leads with \`#\` but is not a valid \`#pattern#flags\` regex - ${regex.detail}`);
         }
         if (body.startsWith("$")) {
-            try { JSONPath({ path: body, json: {} }); }
+            // Compile-only validity check against RFC 9535 — json-p3 is the engine the runtime
+            // dispatches (#494/#490), so the flag layer and the engine agree by construction.
+            try { AstBuilder.#JSONPATH.compile(body); }
             catch (e) {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor",
                     `pattern leads with \`$\` but is not a valid jsonpath - ${AstBuilder.#detail(e)}`);
