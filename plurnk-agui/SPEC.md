@@ -109,6 +109,24 @@ only the thread's model worker projects onto the core vocabulary. Foreign-run ro
 `plurnk.row`/`plurnk.ambient` — visible to rich clients as topology, never interleaved
 into the conversation a generic frontend renders.
 
+## Broadcast fan {§agui-broadcast-fan}
+
+One workspace fans EVERY event to ALL its open runs — the WS-wire semantics preserved:
+each concurrent SSE is an independent subscriber with its own render router. This is a
+broadcast, never a single "current" binding: a resumed exec's output, a loop's rows, and a
+proposal's TOOL_CALL triple all reach every open run of the workspace. Two consequences the
+module OWNS and a client MUST handle:
+
+- **Multiplicity.** A proposal-paused action's result and a workspace stream event arrive
+  on every open run — so a client with N concurrent runs sees N copies. Clients demux/dedupe
+  by `logEntryId` (proposals) and by run identity (results). A client that funnels all runs
+  through one shared handler (e.g. a single dispatch) must SERIALIZE its management runs —
+  one action in flight, the rest queued — or a background action's stream steals the shared
+  slot. Both first-party clients do exactly this (nvim's management lane, svc#504).
+- **No silent drop.** The fan never routes to a lone last-binder — a regression to that
+  shape is what svc#504 reported (a client-side single-slot handler, since fixed) and is
+  pinned against here.
+
 ## The worker endpoint {§agui-run-endpoint}
 
 `POST /` (or `/agui`) with an AG-UI `RunAgentInput` body: the last `user` message becomes the
