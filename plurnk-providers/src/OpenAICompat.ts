@@ -298,7 +298,7 @@ export default class OpenAICompatProvider implements Provider {
     // failures (low→cycles, high→spirals) were pre-max_tokens-cap; with a bounded
     // cap the matrix ACCEPTs across efforts (reasoning-rails matrix, TUNING-EPIC
     // F9). Clamping was the root of the plan-less regression (service#331).
-    #reasoningBody(): Record<string, unknown> {
+    #reasoningBody(railsLive: boolean): Record<string, unknown> {
         const { mode, budget } = this.#reasoning;
         const on = mode !== "off";
         switch (this.#reasoningStyle) {
@@ -306,7 +306,25 @@ export default class OpenAICompatProvider implements Provider {
             // enable_thinking:false is the only working off-switch on llama-server
             // (§13). Activation only; budget is enforced by the box's
             // --reasoning-budget launch flag (per-request numerics ignored, F7).
-            case "template": return { chat_template_kwargs: { enable_thinking: on } };
+            //
+            // #488: rails WIN the channel. On llama-server a live native thinking
+            // channel under a transported grammar auto-gates enforcement past the
+            // think block and the content channel LEAKS (unconstrained prose,
+            // fabrication — §13, reproduced live: grammar-shaped prefix, then
+            // "thought\n" bleeding). The two are measured-incompatible here, so a
+            // transported grammar forces enable_thinking:false for THAT request —
+            // deterministic, per-request, no operator pairing required. In-DSL
+            // PLAN carries the reasoning under rails. (Fireworks/response_format
+            // is untouched — its clamp was deliberately lifted, F9/service#331.)
+            case "template": {
+                if (railsLive && on) {
+                    emitWarningOnce(
+                        `${this.#source}: native reasoning (${mode}) suppressed under a transported grammar on the llama-server path — the two cannot coexist (leaky enforcement, #488); reasoning rides in-DSL PLAN`,
+                        "PLURNK_REASONING_SUPPRESSED_UNDER_GRAMMAR",
+                    );
+                }
+                return { chat_template_kwargs: { enable_thinking: railsLive ? false : on } };
+            }
             case "think": return on ? { think: true } : {};
             case "include_reasoning": return on ? { include_reasoning: true } : {};
             // effort tiers from the budget; off/adaptive omit the field (the
@@ -528,7 +546,7 @@ export default class OpenAICompatProvider implements Provider {
             ...this.#samplingBody(sampling),
             model: this.#model,
             messages,
-            ...this.#reasoningBody(),
+            ...this.#reasoningBody(sendGrammar !== undefined),
             ...this.#grammarBody(sendGrammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
             // #36: request per-token logprobs only when enabled (managed field —
