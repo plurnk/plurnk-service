@@ -1,4 +1,4 @@
-import { JSONPath } from "jsonpath-plus";
+import { jsonpath as jp3, type JSONValue } from "json-p3";
 import { DOMParser } from "@xmldom/xmldom";
 import * as xpath from "xpath";
 import { InvalidExpressionError, QueryParseFailureError } from "./QueryError.ts";
@@ -62,17 +62,18 @@ export function queryJsonpathObject(
     pattern: string,
     lineFor?: (pointer: string, value: unknown) => readonly LineSpan[] | undefined,
 ): QueryMatch[] {
+    // RFC 9535 engine (json-p3; owner-ruled convergence, #490 / SPEC §22.3).
+    // Grammar-closed filters — no expression evaluator on the model-authored
+    // input path (the jsonpath-plus predecessor sandboxed an eval with a CVE
+    // history). Normalized paths per RFC §2.7; pointers per RFC 6901.
     let results: Array<{ value: unknown; path: string; pointer: string }>;
     try {
-        // jsonpath-plus's overload set selects the array-return signature when
-        // resultType is set, but its published types over-constrain at the
-        // call site. Route through `unknown` to pick the overload we want.
-        const call = JSONPath as unknown as (opts: {
-            path: string;
-            json: unknown;
-            resultType: "all";
-        }) => Array<{ value: unknown; path: string; pointer: string }>;
-        results = call({ path: pattern, json: obj, resultType: "all" });
+        // deepJson is JSON-shaped by the §12 contract; the cast is the seam.
+        results = jp3.query(pattern, obj as JSONValue).nodes.map((n) => ({
+            value: n.value,
+            path: n.path,
+            pointer: String(n.toPointer()),
+        }));
     } catch (cause) {
         throw new InvalidExpressionError({ dialect: "jsonpath", expression: pattern, cause });
     }
