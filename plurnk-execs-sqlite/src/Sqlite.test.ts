@@ -113,6 +113,25 @@ test("syntax error → sqlite_error, 500", async () => {
     assert.equal(events[0].kind, "sqlite_error");
 });
 
+// #493 — SQLite's prepare compiles only the FIRST statement; a sqlite3-CLI-style
+// script would partially execute under a 200. The contract is one statement per
+// op, ENFORCED: a real SQL tail fails hard instead of silently dropping.
+test("multi-statement script → sqlite_multi_statement, 400, nothing truncated silently", async () => {
+    const { result, events, states } = await run("CREATE TABLE t(x); INSERT INTO t VALUES(1)");
+    assert.equal(result.status, 400);
+    assert.equal(events[0].kind, "sqlite_multi_statement");
+    assert.match(String(events[0].message), /one SQL statement per op/);
+    assert.match(String(events[0].message), /INSERT INTO t VALUES\(1\)/);
+    assert.equal(states.at(-1), "errored");
+});
+
+test("a trailing semicolon and trailing comments are NOT a second statement", async () => {
+    const semi = await run("SELECT 1 AS one;");
+    assert.equal(semi.result.status, 200);
+    const comment = await run("SELECT 1 AS one; -- done\n/* trailing block */");
+    assert.equal(comment.result.status, 200);
+});
+
 // SPEC §6 — must honor args.signal. sqlite is synchronous, so a pre-aborted
 // signal is honored at entry: the file-backed mutation never runs (the db file
 // is never created), and the channel closes errored with 499.

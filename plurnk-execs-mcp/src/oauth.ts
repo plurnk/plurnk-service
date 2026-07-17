@@ -13,7 +13,8 @@ import { serverConfig } from "./config.ts";
 //   poll()      → a device-token request, polled → pending / slow_down / authorized(headers) / denied / expired
 // `device` is an opaque, JSON-serializable blob the caller round-trips from
 // authorize() into each poll(): the flow is stateless server-side; the CALLER
-// drives the poll loop, honoring `interval` (and backing off on `slow_down`).
+// drives the poll loop, honoring `interval` — and on `slow_down` MUST add 5
+// seconds to the interval for all subsequent polls (RFC 8628 §3.5, exact).
 
 type FetchLike = typeof fetch;
 
@@ -107,7 +108,8 @@ export const authorize = async (
 };
 
 // One device-token poll (RFC 8628 §3.4). The CALLER drives the loop, honoring the
-// `interval` from authorize() and backing off on `slow_down`. `authorized` carries
+// `interval` from authorize(); on `slow_down` it MUST add 5 seconds to the
+// interval for this and all subsequent polls (§3.5). `authorized` carries
 // the Bearer headers (the shape Mcp.install() takes); `denied`/`expired` are
 // terminal; `pending`/`slow_down` mean poll again. A non-standard error throws.
 export const poll = async (
