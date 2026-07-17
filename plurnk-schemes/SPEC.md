@@ -183,3 +183,28 @@ A scheme handler is discovered and registered with **zero first-party involvemen
 - **The framework stays contract-only.** `@plurnk/plurnk-schemes` never depends on a scheme package — that would nest daughters under it and the top-level scan would miss them. Daughters peer the framework (`^1`); it arrives transitively and is itself ignored by the scan (no `plurnk.kind`).
 - **The default bundle is the daemon's own `dependencies`**, not an aggregator package (the `-all` metapackages are retired). Installing `plurnk-core` surfaces the first-party schemes; any other leaf — first-party or third-party — is added by installing it, and scope-agnostic discovery lights it up identically. No bundle is ever a gate.
 - **Trust.** An operator can require host-level trust before a discovered plugin registers (`PLURNK_PLUGINS_TRUSTED_ONLY`, plurnk-service#229) — the scope-agnostic scan widens reach, the trust gate bounds it.
+
+## §7 Standards divergences register (#491, parent #408)
+
+Doctrine: every plurnkism carries a DGR (documented good reason) or converges. Verified against RFC 3986 §3.2/§3.2.2, RFC 8089, RFC 7595, RFC 9110 + WHATWG Fetch, WHATWG EventSource (HTML §9.2), RFC 6455. This register is standing SPEC and grows with the lane; audit landed 2026-07-16.
+
+### §7.1 URI shape of the invented schemes
+
+| surface | standard neighbor | disposition |
+|---|---|---|
+| Unregistered schemes (`known`/`log`/`plurnk`/`worker`/`mcp`) | IANA URI scheme registry; RFC 7595 asks registration for web-facing schemes | **Convergent** — an internal, model-facing address space never emitted on the open web; RFC 7595's registration concern doesn't attach. Provisional registration becomes due only if one is ever exposed externally. |
+| `scheme:///path` (empty authority: `known`/`log`/`plurnk`) | RFC 3986 §3.2 / RFC 8089 — `file:///path` is the canonical empty-authority form; terser `scheme:path` (mailto/urn) also legal | **Convergent with the `file://` precedent.** DGR for choosing `///` over the terser form: the `//` marks URL-shaped hierarchical addressing for a floor-grade model — one URI shape everywhere. |
+| `scheme://name/path` (reg-name authority: `worker://self/…`, `mcp://<server>/…`) | RFC 3986 §3.2.2 — authority admits a registered name, not required DNS-resolvable; authority "governs the namespace" | **Convergent by construction** — the worker/server name governing its path namespace is the RFC's stated intent; mirrors `docker://`, `git://`. |
+
+### §7.2 Protocol handling (the http/wss package)
+
+| surface | standard neighbor | disposition |
+|---|---|---|
+| READ of HTML returns the post-JS rendered DOM, not the raw body | RFC 9110 / Fetch: a client hands back the response body verbatim | **DGR** (http SPEC §render-lifecycle): the scheme is model-facing content *acquisition*, not a byte-faithful HTTP client — a raw SPA body is unusable to the reader. Non-HTML streams verbatim (convergent). |
+| Manual per-hop redirects, operator-capped hops | Fetch: `redirect: "follow"`, 20-hop cap, engine-internal | **DGR**: each hop is SSRF re-guarded (http SPEC §prefetch) — impossible under engine-followed redirects. The method/body downgrade itself (301/302 non-GET→GET, 303→GET, 307/308 preserve) follows Fetch exactly (convergent). |
+| SSE consumed as a `data:`-payload read-projection | WHATWG EventSource: typed-event dispatch, `Last-Event-ID` auto-reconnect, `retry:` | **DGR** (http SPEC §sse): the model READs a flat text channel; event framing is transport, not content. Field *parsing* (data-join, one-space strip, CR/CRLF normalize) is spec-conformant. Reconnection is a tracked follow-up (#468), not a rejected concept. |
+| WebSocket via the platform `WebSocket`; ws/wss SSRF-guarded | RFC 6455; no SSRF guard in the standard client | **Convergent by construction, plus a security addition** (the guard). Binary frames stringify loosely day-one — a scope gap tracked on #468, not a spec deviation. |
+
+### §7.3 Covenant vs npm
+
+`plurnk.kind` / `plurnk.schemes[]` in `package.json` (§6) is the ordinary namespaced-key npm extension pattern; `exports` conditions (`plurnk-dev`) are standard Node resolution. **Convergent** — no register row needed beyond §6 itself.
