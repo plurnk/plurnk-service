@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-service",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "description": "Plurnk agent runtime — the server / engine / core. Implements the @plurnk/plurnk-grammar contract.",
     "type": "module",
     "license": "MIT",
@@ -60,23 +60,23 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-agui": "1.0.6",
-        "@plurnk/plurnk-execs": "1.0.6",
-        "@plurnk/plurnk-execs-common": "1.0.6",
-        "@plurnk/plurnk-execs-mcp": "1.0.6",
-        "@plurnk/plurnk-execs-search": "1.0.6",
-        "@plurnk/plurnk-grammar": "1.0.6",
-        "@plurnk/plurnk-mimetypes": "1.0.6",
-        "@plurnk/plurnk-mimetypes-text-html": "1.0.6",
-        "@plurnk/plurnk-providers": "1.0.6",
-        "@plurnk/plurnk-schemes": "1.0.6",
-        "@plurnk/plurnk-schemes-http": "1.0.6",
+        "@plurnk/plurnk-agui": "1.0.7",
+        "@plurnk/plurnk-execs": "1.0.7",
+        "@plurnk/plurnk-execs-common": "1.0.7",
+        "@plurnk/plurnk-execs-mcp": "1.0.7",
+        "@plurnk/plurnk-execs-search": "1.0.7",
+        "@plurnk/plurnk-grammar": "1.0.7",
+        "@plurnk/plurnk-mimetypes": "1.0.7",
+        "@plurnk/plurnk-mimetypes-text-html": "1.0.7",
+        "@plurnk/plurnk-providers": "1.0.7",
+        "@plurnk/plurnk-schemes": "1.0.7",
+        "@plurnk/plurnk-schemes-http": "1.0.7",
         "@possumtech/sqlrite": "5.2.0",
         "diff": "^9.0.0",
         "ignore": "7.0.6",
         "isomorphic-git": "1.38.7",
-        "@plurnk/plurnk-mimetypes-embeddings": "1.0.6",
-        "@plurnk/plurnk-meta": "1.0.6"
+        "@plurnk/plurnk-mimetypes-embeddings": "1.0.7",
+        "@plurnk/plurnk-meta": "1.0.7"
     },
     "devDependencies": {
         "@types/diff": "^7.0.2"
