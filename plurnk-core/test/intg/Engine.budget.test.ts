@@ -11,14 +11,15 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection 
 // These pin the TABULAR budget baseline; #440's default is the mermaid form (covered by [§budget-mermaid]).
 process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
 
-test("[§tokenomics-window-partition] the prompt ceiling derives from min(CONTEXT_WINDOW, window) minus reserves — reserves over the window fail hard", async () => {
-    // The partition arithmetic, end to end through a real packet build: CONTEXT_WINDOW 10000, reserves
-    // 1000+2000+500 → promptBudget 6500 against a wide window; a 5000 window → min caps →
-    // 1500; a 3000 window → reserves exceed it → the build fails hard (config contradiction).
-    const prev = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
-    process.env.PLURNK_SERVICE_CONTEXT_WINDOW = "10000";
-    process.env.PLURNK_SERVICE_REASONING = "1000";
-    process.env.PLURNK_SERVICE_COMPLETION = "2000";
+test("[§tokenomics-window-partition] the prompt ceiling derives from the provider window minus reserves — reserves over the window fail hard", async () => {
+    // #507 — the envelope is PROVIDER-owned: the window is the provider's own (Mock ctor), the
+    // reserves ride the bare PLURNK_PROVIDERS_*_RESERVE knobs Mock reads, SAFETY stays core's.
+    // 1000+2000 reserves + 500 safety: a 10000 window → promptBudget 6500; a 5000 window → 1500;
+    // a 3000 window → reserves exceed it → the build fails hard (pinned absolutes vs the window).
+    const KEYS = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE", "PLURNK_SERVICE_SAFETY"] as const;
+    const prev = KEYS.map((k) => process.env[k]);
+    process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "1000";
+    process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "2000";
     process.env.PLURNK_SERVICE_SAFETY = "500";
     const db = await openMigrated();
     try {
@@ -31,13 +32,11 @@ test("[§tokenomics-window-partition] the prompt ceiling derives from min(CONTEX
             const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
-        assert.match(await run(100000), /Token Ceiling 6500 /, "wide window → CONTEXT_WINDOW governs: 10000 − 3500 reserves");
-        assert.match(await run(5000), /Token Ceiling 1500 /, "narrow window → min(CONTEXT_WINDOW, window) governs: 5000 − 3500");
+        assert.match(await run(10000), /Token Ceiling 6500 /, "the provider window governs: 10000 − 3500 reserves");
+        assert.match(await run(5000), /Token Ceiling 1500 /, "a narrower window: 5000 − 3500");
         await assert.rejects(() => run(3000), /partition contradiction/, "reserves exceeding the window fail hard");
     } finally {
-        ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].forEach((k, i) => {
-            if (prev[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prev[i];
-        });
+        KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
         await db.close();
     }
 });

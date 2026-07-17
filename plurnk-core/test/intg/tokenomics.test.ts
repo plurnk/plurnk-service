@@ -187,21 +187,19 @@ test("[§tokenomics-over-budget-floor] the UN-FOLDABLE hard-413 record renders t
         const workspaceId = await insertWorkspace(db, `tok-over-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
-        const prevPart = ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].map((k) => process.env[`PLURNK_SERVICE_${k}`]);
-        process.env.PLURNK_SERVICE_CONTEXT_WINDOW = "9";
-        process.env.PLURNK_SERVICE_REASONING = "0";
-        process.env.PLURNK_SERVICE_COMPLETION = "0";
+        // #507 — the envelope rides the provider: an 11-token window with the 1+1 reserve floor
+        // and SAFETY 0 → promptBudget 9, same arithmetic as the retired env pin.
+        const prevPart = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE", "PLURNK_SERVICE_SAFETY"].map((k) => process.env[k]);
+        process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "1";
+        process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "1";
         process.env.PLURNK_SERVICE_SAFETY = "0";
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        ["CONTEXT_WINDOW", "REASONING", "COMPLETION", "SAFETY"].forEach((k, i) => {
-            if (prevPart[i] === undefined) delete process.env[`PLURNK_SERVICE_${k}`]; else process.env[`PLURNK_SERVICE_${k}`] = prevPart[i];
-        });
-        // Pinned CONTEXT_WINDOW 9 under a 10 window, zero reserves → promptBudget 9; the packet's own
+        // An 11-token provider window − 1 − 1 reserves → promptBudget 9; the packet's own
         // scaffolding alone blows past it and CANNOT fold under
         // (turn 1, nothing to roll back) → the un-foldable corner case. The loop hard-413s rather than
         // DELIVER an over-budget packet; the stored record below is engine forensics, NOT a packet the
         // model saw — the grinder never sends a >100% packet (a delivered budget is always ≤100%).
-        const provider = new Mock({ contextWindow: 10, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
         // The STORED failure record renders the overshoot honestly — never clamped to hide the degenerate state.

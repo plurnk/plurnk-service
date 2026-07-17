@@ -1,8 +1,9 @@
-// #377/#421 — §tokenomics-window-unpollable-deliberate: "CONTEXT_WINDOW stands in for unknown physics" only when
-// deliberate. An unpollable window (provider.contextWindow null) with NO per-alias knob is nobody's
-// policy — treated as NO-CAP: the prompt is unbounded, the budget/ceiling are null, and the gauge omits
-// its headline (never a stand-in the operator never chose; a probe blip degrades, never crashes). A
-// per-alias knob makes the window deliberate and the build proceeds bounded.
+// #421/#507 — §tokenomics-window-unpollable-deliberate: an unpollable window (provider.contextWindow
+// null after the provider tier's env/probe/catalog all miss) is genuinely-unknown — nobody chose an
+// envelope — and is treated as NO-CAP: the prompt is unbounded, the budget/ceiling are null, and the
+// gauge omits its headline (never a stand-in the operator never chose; a probe blip degrades, never
+// crashes). The deliberate-window arm lives in the PROVIDER tier (PLURNK_PROVIDERS_CONTEXT_WINDOW);
+// core's retired per-alias spelling fails hard naming the successor.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -11,8 +12,6 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-
-const nullWindowMock = () => new Mock({ contextWindow: null, responses: [{ assistant: { content: "", reasoning: null, ops: [] } }] });
 
 test("[§tokenomics-window-unpollable-deliberate] null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline (#421)", async () => {
     const db = await openMigrated();
@@ -34,17 +33,16 @@ test("[§tokenomics-window-unpollable-deliberate] null window + no per-alias kno
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-window-unpollable-deliberate] a per-alias partition knob makes the stand-in DELIBERATE — the build proceeds", async () => {
-    // The active test alias is 'mocktest' (test/setup.ts); a per-alias CONTEXT_WINDOW marks its envelope chosen.
+test("[§tokenomics-window-unpollable-deliberate] the retired per-alias window knob FAILS HARD naming its provider-tier successor (#507)", async () => {
+    // The deliberate-stand-in arm moved to the provider tier (PLURNK_PROVIDERS_CONTEXT_WINDOW_<alias>);
+    // a stale core-prefixed pin must never silently lose the operator's window to the move.
     process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest = "8192";
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `deliberate-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const r = await engine.runTurn({ provider: nullWindowMock(), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        assert.ok(r.turnId > 0, "the turn builds — the operator's per-alias CONTEXT_WINDOW stands in deliberately");
+        assert.throws(
+            () => new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES }),
+            /PLURNK_SERVICE_CONTEXT_WINDOW_mocktest is retired \(#507\).+PLURNK_PROVIDERS_CONTEXT_WINDOW_mocktest/,
+        );
     } finally {
         delete process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest;
         await db.close();
