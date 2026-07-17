@@ -293,3 +293,25 @@ test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", a
         } finally { ws.close(); }
     });
 });
+
+// #506 — the run54/55 death class: a seam SUBSCRIBER throwing (a transport's bad socket) must
+// never propagate into engine control flow. The loop completes; the failure logs per event.
+test("a throwing seam subscriber never kills the loop — the transport's failure is its own (#506)", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    const logged: string[] = [];
+    const realErr = console.error;
+    console.error = (...a: unknown[]) => { logged.push(a.map(String).join(" ")); };
+    await withDaemon(mock, async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            daemon.subscribeToEvents(() => { throw new Error("transport socket died mid-send"); });
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            await rpcCall(ws, 1, "workspace.create", { name: "sub-throws" });
+            await rpcCall(ws, 2, "loop.run", { prompt: "go", flags: { yolo: true } });
+            const t = await waitFor(() => terminated() as Array<{ finalStatus: number }>, (ts) => ts.length >= 1, { timeoutMs: 8000 });
+            assert.equal(t[0].finalStatus, 200, "the loop concluded normally through a burst of throwing broadcasts");
+        } finally { ws.close(); }
+    });
+    console.error = realErr;
+    assert.ok(logged.some((l) => l.includes("seam subscriber failed")), "every subscriber failure logged loudly — never silent, never fatal");
+});
