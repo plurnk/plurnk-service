@@ -132,20 +132,24 @@ test("[§actor-boundary-passive-wake] an irc (SEND worker://name) wakes a CONCLU
     });
 });
 
-test("[§worker-lifecycle-idle-is-concluded] an idle worker's wait concludes (loop/terminated 200) — it never parks or quiesces", async () => {
+test("[§worker-lifecycle-idle-is-concluded] an idle wait 409s; the model sees the fact and concludes NEXT turn — the run113 recovery shape through the real loop", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        // A wait with nothing running under it — an idle subtree. A wait on zero obligations concludes.
+        // Turn 1: a wait with nothing running under it — the ∅ contradiction, refused with the fact.
         makeMockResponse("<<SEND[202]:nothing running; done for now:SEND", 10),
+        // Turn 2: the model has SEEN the 409 in its log and concludes deliberately — the recovery rail.
+        makeMockResponse("<<SEND[200]:nothing to do — done.:SEND", 10),
     ] });
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "idle-concludes" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do", flags: { yolo: true } });
             const t = await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
-            assert.equal(t.length, 1, "the idle run concluded — one loop/terminated, no held-open 202");
-            assert.equal(t[0].finalStatus, 200, "a wait on zero obligations resolves to 200 (§wait-obligation-matrix)");
+            assert.equal(t.length, 1, "the run concluded — one loop/terminated, no held-open 202");
+            assert.equal(t[0].finalStatus, 200, "the model's OWN conclude, one turn after the 409 (§wait-obligation-matrix)");
+            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number }>({ loop_id: (t[0] as { loopId?: number }).loopId ?? 1 });
+            assert.ok(rows.some((r) => r.op === "SEND" && r.status_rx === 409), "the ∅ wait minted the 409 the model recovered from");
         } finally { ws.close(); }
     });
 });

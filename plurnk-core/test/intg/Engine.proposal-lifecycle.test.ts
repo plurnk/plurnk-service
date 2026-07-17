@@ -252,12 +252,12 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
         });
         const parkId = await parkDeferred.promise;
 
-        // Dispatch handled the wait inline (a wait on zero obligations concludes) — it never paused...
-        assert.equal(parkResult.status, 200, "the broadcast wait ([102]<-1> on nothing) resolves inline, unpaused");
-        // ...the entry is a resolved terminal, not a proposed one...
+        // Dispatch handled the wait inline (∅ wait → 409, the contradiction returned) — it never paused...
+        assert.equal(parkResult.status, 409, "the broadcast wait ([102]<-1> on nothing) is the ∅ contradiction — refused inline, unpaused");
+        // ...the entry is a resolved row, not a proposed one...
         const parkRow = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number }>({ id: parkId });
-        assert.equal(parkRow?.state, "resolved", "the wait SEND is a resolved terminal, not a proposed entry");
-        assert.equal(parkRow?.status_rx, 200);
+        assert.equal(parkRow?.state, "resolved", "the wait SEND is a resolved row, not a proposed entry");
+        assert.equal(parkRow?.status_rx, 409);
         // ...and no loop/proposal was announced for it.
         assert.ok(!proposed.includes(parkId), "no proposal announced for the broadcast SEND[202] wait");
 

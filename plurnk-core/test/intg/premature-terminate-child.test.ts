@@ -108,7 +108,7 @@ test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 —
     } finally { await db.close(); }
 });
 
-test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run self-resolves (200) — the void never hangs", async () => {
+test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run is the ∅ 409 — refused with the fact, never a hang, never a silent conclude", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
@@ -116,7 +116,7 @@ test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run self
         const loopId = await insertLoop(db, workerId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // The legacy indefinite-park syntax routes through the obligation-checked wait: with no live
-        // work under it, a wait on nothing is already satisfied and concludes — it cannot hang the agent.
+        // work under it, the ∅ wait is the contradiction — 409 returns the turn (owner ruling, #502).
         const wait = { op: "SEND" as const, suffix: "", signal: 102, target: null, lineMarker: { marks: [-1] }, body: "standing by", position: { line: 1, column: 1 } };
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
@@ -124,7 +124,9 @@ test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run self
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 200, "an indefinite wait on zero obligations self-resolves to done, never a held-open 202");
+        assert.notEqual(loopStatus, 202, "never a held-open 202 — the 409 returned the turn to the model");
+        const row = await (db.test_send_rows_for_run as PrepMethod).all<{ status_rx: number }>({ worker_id: workerId });
+        assert.ok(row.some((r) => r.status_rx === 409), "the ∅ wait minted the 409 — the fact the model sees next turn");
     } finally { await db.close(); }
 });
 
