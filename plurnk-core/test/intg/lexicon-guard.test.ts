@@ -32,6 +32,10 @@ const BANNED: Array<{ label: string; re: RegExp; canon: string }> = [
     { label: "decodeBudget", re: /decodeBudget/, canon: "maxTokensFor — it IS the standard max_tokens concept (#477)" },
     { label: "usage_context_size", re: /usage_context_size/, canon: "usage_prompt_budget (#477)" },
     { label: "retired partition knobs", re: /PLURNK_SERVICE_(CTX|ASSISTANT|CONTEXT_WINDOW|REASONING(?!_)|COMPLETION)/, canon: "PLURNK_PROVIDERS_{CONTEXT_WINDOW,REASONING_RESERVE,COMPLETION_RESERVE} (#507) — only the shed may name these" },
+    // #511 — QUOTED WIRE STRINGS are lexicon too: the endpoint agent caught `Plurnk-Run-Id` shipping
+    // a workerId under the retired noun, invisible to identifier-shaped bans. Exact-string bans only
+    // (the run noun is unguardable as a word — verbs are legal); extend per retired wire name.
+    { label: "retired wire header", re: /Plurnk-Run-Id/, canon: "Plurnk-Worker-Id (#486/#511)" },
 ];
 
 test("[§lexicon] retired terms never reappear in src or SPEC — drift fails CI, not the next audit", () => {
