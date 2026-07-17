@@ -2,7 +2,7 @@
     "name": "@plurnk/monorepo",
     "private": true,
     "version": "1.0.0",
-    "description": "The plurnk platform monorepo — daemon core, contract, and bundled families. Root is orchestration only; every workspace publishes individually.",
+    "description": "The plurnk platform monorepo \u2014 daemon core, contract, and bundled families. Root is orchestration only; every workspace publishes individually.",
     "license": "MIT",
     "type": "module",
     "engines": {
@@ -53,8 +53,9 @@
         "test": "node scripts/drill.mjs",
         "build": "npm run build --workspaces --if-present",
         "deps:check": "node scripts/deps-preflight.mjs",
-        "release:version": "npm run generate -w plurnk-models && node scripts/deps-preflight.mjs && node scripts/release-version.mjs",
-        "release:order": "node scripts/release-order.mjs"
+        "release:version": "npm run generate -w plurnk-models && node scripts/deps-preflight.mjs && node scripts/release-gates.mjs && node scripts/release-version.mjs",
+        "release:order": "node scripts/release-order.mjs",
+        "release:publish": "node scripts/release-publish.mjs"
     },
     "devDependencies": {
         "@types/node": "^26.1.1",
