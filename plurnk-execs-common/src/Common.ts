@@ -58,12 +58,15 @@ export default class Common extends SubprocessExecutor {
         const r = RECIPES[runtime];
         if (r === undefined) throw new Error(`plurnk-execs-common received unclaimed runtime tag '${runtime}'`);
         // With a target the program IS the target and the body is its stdin
-        // (plurnk-execs#15): a shell runs it as a command line (`-c`, so the shell
-        // tokenizes — we don't); every other runtime runs it as a single
-        // script-file positional.
+        // (plurnk-execs#15), run as a single script-file positional for EVERY
+        // interpreter — transient exec (owner ruling, #500): the interpreter
+        // READS the file, so no exec bit is consulted and none is ever set.
+        // The old sh/bash `-c` arm made the shell execve() the target instead
+        // (PATH lookup on bare names, +x demanded on EDIT-created scripts) and
+        // doubled as an unsanctioned command-line side door — commands belong
+        // in the body.
         if (target !== null) {
-            const shell = runtime === "sh" || runtime === "bash";
-            return { cmd: r.bin, args: shell ? ["-c", target] : [target], useShell: false, stdin: command };
+            return { cmd: r.bin, args: [target], useShell: false, stdin: command };
         }
         // Trailing newline so line-oriented readers (bc, tclsh) evaluate the
         // final line before EOF rather than erroring on an unterminated line.
