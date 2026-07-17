@@ -15,6 +15,7 @@ export type MockAssistant = {
     usage?: Partial<ProviderUsage>;
     finishReason?: FinishReason;
     model?: string;
+    reasoningEncrypted?: ReadonlyArray<{ data: string; format: string | null }>; // #482 — sealed blobs, contract-mirrored
     // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
     // framework carries NO @plurnk/plurnk-grammar dependency; plurnk-service
     // casts these to PlurnkStatement[] on its side. Production providers never
@@ -78,6 +79,7 @@ export default class Mock implements Provider {
             content: a.content,
             reasoning: a.reasoning,
             usage: { ...DEFAULT_USAGE, ...a.usage },
+            ...(a.reasoningEncrypted !== undefined ? { reasoningEncrypted: a.reasoningEncrypted } : {}), // #482 — sealed blobs ride the contract through Mock too
             finishReason: a.finishReason ?? "stop",
             model: a.model ?? "mock",
             ...(a.ops !== undefined ? { ops: a.ops } : {}),
