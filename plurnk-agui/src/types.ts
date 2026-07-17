@@ -24,6 +24,10 @@ export type AguiEvent =
     | { type: "REASONING_MESSAGE_CONTENT"; messageId: string; delta: string }
     | { type: "REASONING_MESSAGE_END"; messageId: string }
     | { type: "REASONING_END"; messageId: string }
+    // Sealed reasoning (o1-class encrypted COT). @ag-ui/core shape — subtype/entityId/
+    // encryptedValue, NOT messageId/value. entityId correlates to the reasoning-item id
+    // the span is keyed by. (#482)
+    | { type: "REASONING_ENCRYPTED_VALUE"; subtype: "message" | "tool-call"; entityId: string; encryptedValue: string }
     | { type: "TOOL_CALL_START"; toolCallId: string; toolCallName: string; parentMessageId?: string }
     | { type: "TOOL_CALL_ARGS"; toolCallId: string; delta: string }
     | { type: "TOOL_CALL_END"; toolCallId: string }

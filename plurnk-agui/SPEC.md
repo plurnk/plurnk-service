@@ -43,7 +43,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `log/entry` op=PLAN (model) | `REASONING_START` + `REASONING_MESSAGE_START/CONTENT/END` + `REASONING_END` (§475: current AG-UI reasoning; the deprecated THINKING_* is retired) |
 | `log/entry` op=SEND (model) | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | `log/entry` other op (model) | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
-| `log/entry` op=model (mirror) | nothing — forensic, not speech |
+| `log/entry` op=model (mirror) | a correlated `REASONING_START` / `REASONING_ENCRYPTED_VALUE`* / `REASONING_END` span when the reasoning-item `attrs.reasoning` is present (see §agui-sealed-reasoning); otherwise nothing — forensic |
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `loop/proposal` | `CUSTOM plurnk.proposal` |
 | `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
@@ -55,6 +55,23 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
   core vocabulary can't hold (fold state, tags, tokens) stays on the row inside
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
+- **Sealed reasoning: a hard interface to the standard** {§agui-sealed-reasoning} — reasoning
+  transmission is a SOLVED problem (OpenAI Responses / AG-UI reasoning-item; DIVERGENCES row 3 =
+  reasoning CONVERGED, with no exception for its representation), so agui consumes the standard
+  shape VERBATIM and does not translate a bespoke one. The REQUIRED seam contract: core surfaces
+  the model's reasoning as ONE addressable item on the model row's `attrs.reasoning` —
+  `{ id: string, subtype: "message" | "tool-call", encrypted?: [{ data, format }] }` — where `id`
+  is the reasoning entity's identity (the SAME id its open reasoning carries, so open text and
+  sealed value are two faces of one entity, per the Responses model). agui projects
+  `REASONING_ENCRYPTED_VALUE` (@ag-ui/core shape: `subtype`/`entityId`/`encryptedValue`, never
+  `messageId`/`value`) with `entityId` = the item `id`, correlated to a `REASONING_START/END` span
+  keyed by that same `id`. `format` has no AG-UI slot; it rides `plurnk.row` losslessly.
+- **Deliberately broken until core delivers the shape** — the interface fails CLOSED: any row
+  lacking a well-formed reasoning-item (including the pre-convergence `{ reasoningEncrypted:
+  [{ data, format }] }` carrier, which has no `id`/`subtype`) projects NOTHING. agui never
+  synthesizes an id or guesses a subtype to manufacture a schema-valid event. The gap is the
+  forcing function: `REASONING_ENCRYPTED_VALUE` is unserved until the seam carries the reasoning-
+  item, and closing it is core's convergence obligation (#482), not agui's to translate around.
 - **The custom namespace** {§agui-custom-namespace} — everything plurnk-specific rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`, `plurnk.proposal`,
   `plurnk.telemetry`, `plurnk.stream`, `plurnk.quiesced`, `plurnk.terminated` — the full loop

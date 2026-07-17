@@ -42,6 +42,38 @@ test("[§agui-custom-namespace] ambient (origin plurnk) rows ride plurnk.ambient
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
+test("[§agui-sealed-reasoning] the STANDARD reasoning-item on the mirror row projects a correlated REASONING_ENCRYPTED_VALUE span (#482)", () => {
+    const tr = t();
+    tr.logEntry(entry({ op: "PLAN", tx: "{}" })); // consume the turn boundary
+    // The seam CONTRACT agui requires: reasoning as ONE addressable item — { id, subtype,
+    // encrypted:[{data,format}] } (the OpenAI/AG-UI reasoning-item, not the legacy blob bag).
+    const events = tr.logEntry(entry({ op: "model", coordinate: "1/1/9/model", tx: "<<PLAN:x:PLAN",
+        attrs: JSON.stringify({ reasoning: { id: "reason-42", subtype: "message", encrypted: [{ data: "SEALED-1", format: "openai-responses-v1" }, { data: "SEALED-2", format: "openai-responses-v1" }] } }) }));
+    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "REASONING_START", "REASONING_ENCRYPTED_VALUE", "REASONING_ENCRYPTED_VALUE", "REASONING_END"],
+        "plurnk.row (forensic) + a reasoning span correlated by the item id");
+    const start = events[1] as { messageId: string };
+    const end = events[4] as { messageId: string };
+    assert.equal(start.messageId, "reason-42", "the span keys off the SEAM's reasoning-item id, never a synthesized row coordinate");
+    assert.equal(end.messageId, "reason-42", "START and END share the item id");
+    const ev = events[2] as { type: string; subtype: string; entityId: string; encryptedValue: string; value?: unknown; messageId?: unknown };
+    assert.equal(ev.subtype, "message", "subtype comes FROM the seam, never guessed");
+    assert.equal(ev.entityId, "reason-42", "entityId === the reasoning-item id — correlates to the span, never an orphan");
+    assert.equal(ev.encryptedValue, "SEALED-1", "the blob rides verbatim");
+    assert.equal(ev.messageId, undefined, "the @ag-ui/core nouns, not the loose messageId/value");
+    assert.equal(ev.value, undefined, "encryptedValue, not value");
+});
+
+test("[§agui-sealed-reasoning] the LEGACY {reasoningEncrypted} carrier stays DARK — no id/subtype means unserved, never guessed (#482)", () => {
+    const tr = t();
+    tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
+    // The bespoke pre-convergence shape agui deliberately does NOT consume: no reasoning-item
+    // id, no subtype. agui projects nothing (honestly unserved) rather than synthesize an id or
+    // guess a subtype — the forcing function: core must deliver the standard shape.
+    const legacy = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN",
+        attrs: JSON.stringify({ reasoningEncrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }) }));
+    assert.deepEqual(legacy.map((e) => e.type), ["CUSTOM"], "legacy carrier → plurnk.row only; the standard event is unserved until core aligns");
+});
+
 test("[§agui-projection] turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
     const tr = t();
     const first = tr.logEntry(entry({ op: "PLAN", turn_id: 1, tx: "{}" }));
