@@ -1232,8 +1232,9 @@ export default class Engine {
         // else does: the model that cares READs the folded row at the lines it wants — and can
         // introspect any prior emission of its own the same way. Empty emissions (a struck/
         // silent turn) write nothing — no prior output to mirror.
-        if (packetAssistant.content.trim().length > 0) {
-            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true });
+        const sealed = (response.assistant as { reasoningEncrypted?: ReadonlyArray<{ data: string; format: string | null }> }).reasoningEncrypted;
+        if (packetAssistant.content.trim().length > 0 || (sealed !== undefined && sealed.length > 0)) {
+            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true, ...(sealed !== undefined && sealed.length > 0 ? { reasoningEncrypted: sealed } : {}) });
         }
 
         // Zero ops is NOT an error to report — the model knows it emitted
