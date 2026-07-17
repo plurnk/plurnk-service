@@ -223,7 +223,7 @@ export default class Service {
         // IGNORED by llama-server — when reasoning is on, only the box's --reasoning-budget launch
         // flag clamps it, and it must equal the alias's resolved reasoning reserve. Unverifiable here, so
         // say it loudly rather than let the reserve be fiction. (#472 — reads the post-#399 knob
-        // names; the shed THINKING names made this advisory dead code that could never fire.)
+        // names; the shed pre-#399 knob names made this advisory dead code that could never fire.)
         const reasoning = process.env.PLURNK_PROVIDERS_REASONING ?? "off";
         if (reasoning !== "off") {
             process.stderr.write(`plurnk-service: reasoning is ${reasoning} — llama-server ignores per-request numeric budgets; ensure the serving box launches with --reasoning-budget ${process.env.PLURNK_PROVIDERS_REASONING_BUDGET ?? "?"} or the budget is not enforced.\n`);
