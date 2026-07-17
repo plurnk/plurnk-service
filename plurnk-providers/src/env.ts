@@ -28,6 +28,15 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
     return raw;
 };
 
+// Old-name shed (the #399/#472 lexicon renames): a still-set retired knob fails
+// hard pointing at its successor — never silently coexists with the new floor.
+// The retired names appear ONLY as this function's ARGUMENTS at the call sites
+// (each lexicon-allow), never as a live identifier.
+const shedRenamed = (env: NodeJS.ProcessEnv, oldName: string, newName: string, label: string, ref: string): void => {
+    const stale = env[oldName];
+    if (stale !== undefined && stale.length > 0) throw new Error(`${label} provider: ${oldName} was renamed to ${newName} (${ref}); update the env`);
+};
+
 // Data-capture knobs (#36), read identically by every provider (standard AND
 // daughter) so the opt-in surface is one source of truth. Both OFF by default —
 // the flag is the isolation, so serving turns request and carry nothing.
@@ -36,12 +45,7 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
 //   PLURNK_PROVIDERS_RAWBODY   truthy (not ""/"0") → attach the verbatim wire
 //     body to response.rawBody. Per-alias-scopable.
 export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { topLogprobs: number | null; rawBody: boolean } => {
-    // Old-name shed (OpenAI-lexicon ruling, same pattern as #399): the knob sets
-    // the wire `top_logprobs`, so it carries that name. A still-set old name
-    // fails hard with the pointer, never silently coexists.
-    if (env.PLURNK_PROVIDERS_LOGPROB !== undefined && env.PLURNK_PROVIDERS_LOGPROB.length > 0) {
-        throw new Error(`${label} provider: PLURNK_PROVIDERS_LOGPROB was renamed to PLURNK_PROVIDERS_TOP_LOGPROBS (the OpenAI wire term); update the env`);
-    }
+    shedRenamed(env, "PLURNK_PROVIDERS_LOGPROB", "PLURNK_PROVIDERS_TOP_LOGPROBS", label, "the OpenAI wire term"); // lexicon-allow
     return {
         topLogprobs: parseOptionalInt(env.PLURNK_PROVIDERS_TOP_LOGPROBS, "PLURNK_PROVIDERS_TOP_LOGPROBS", label),
         rawBody: env.PLURNK_PROVIDERS_RAWBODY !== undefined && env.PLURNK_PROVIDERS_RAWBODY !== "" && env.PLURNK_PROVIDERS_RAWBODY !== "0",
@@ -53,9 +57,7 @@ export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { top
 // contextWindow); CONTEXT_SIZE was home-grown. One reader for base AND
 // daughters, so the shed fires everywhere the knob is honored.
 export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): number | null => {
-    if (env.PLURNK_PROVIDERS_CONTEXT_SIZE !== undefined && env.PLURNK_PROVIDERS_CONTEXT_SIZE.length > 0) {
-        throw new Error(`${label} provider: PLURNK_PROVIDERS_CONTEXT_SIZE was renamed to PLURNK_PROVIDERS_CONTEXT_WINDOW (the industry term, #472); update the env`);
-    }
+    shedRenamed(env, "PLURNK_PROVIDERS_CONTEXT_SIZE", "PLURNK_PROVIDERS_CONTEXT_WINDOW", label, "the industry term, #472"); // lexicon-allow
     return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
 };
 
@@ -124,15 +126,8 @@ export type ReasoningMode = "off" | "adaptive" | "on";
 export type Reasoning = { mode: ReasoningMode; budget: number | null };
 
 export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoning => {
-    // Old-name shed (#399, industry-standard ruling): the family word is
-    // REASONING — the wire standard we actually speak. A still-set old name
-    // fails hard with the pointer, never silently coexists with the new floor.
-    if (env.PLURNK_PROVIDERS_THINKING !== undefined && env.PLURNK_PROVIDERS_THINKING.length > 0) {
-        throw new Error(`${label} provider: PLURNK_PROVIDERS_THINKING was renamed to PLURNK_PROVIDERS_REASONING (#399); update the env`);
-    }
-    if (env.PLURNK_PROVIDERS_THINKING_CAPACITY !== undefined && env.PLURNK_PROVIDERS_THINKING_CAPACITY.length > 0) {
-        throw new Error(`${label} provider: PLURNK_PROVIDERS_THINKING_CAPACITY was renamed to PLURNK_PROVIDERS_REASONING_BUDGET (#399); update the env`);
-    }
+    shedRenamed(env, "PLURNK_PROVIDERS_THINKING", "PLURNK_PROVIDERS_REASONING", label, "#399"); // lexicon-allow
+    shedRenamed(env, "PLURNK_PROVIDERS_THINKING_CAPACITY", "PLURNK_PROVIDERS_REASONING_BUDGET", label, "#399"); // lexicon-allow
     const name = "PLURNK_PROVIDERS_REASONING";
     const raw = env[name];
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (off | adaptive | on)`);
