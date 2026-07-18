@@ -45,7 +45,9 @@ const alignStepdaughter = async (repoDir) => {
     const p = JSON.parse(await readFile(pjPath, "utf8"));
     let changed = p.version !== version;
     p.version = version;
-    for (const field of ["dependencies", "peerDependencies"]) {
+    // devDependencies included — a leaf's gate installs its devDeps and runs `npm outdated`; a stale
+    // `^1` devDep head resolves behind the just-published stamp and fails the freshness check (#513 maiden).
+    for (const field of ["dependencies", "peerDependencies", "devDependencies"]) {
         for (const k of Object.keys(p[field] ?? {})) {
             if (/^@plurnk\//.test(k) && p[field][k] !== version) { p[field][k] = version; changed = true; }
         }
@@ -96,7 +98,9 @@ for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
 
     console.log(`  sweep   ${tag}  [${heads.join(",")}] → ${version}`);
     await alignStepdaughter(repo);
-    if (existsSync(join(repo, "package-lock.json"))) await run("npm", ["install"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 }); // pulls the just-published head
+    // --prefer-online: a head published moments ago is not in npm's local metadata cache yet, so a plain
+    // install resolves the leaf's heads behind the stamp. Force a fresh metadata fetch so it pulls the stamp.
+    await run("npm", ["install", "--prefer-online"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
     if (DRY) {
         const scripts = JSON.parse(await readFile(join(repo, "package.json"), "utf8")).scripts ?? {};
         if (scripts.build) await run("npm", ["run", "build"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
