@@ -79,4 +79,12 @@ try {
     await fs.rm(tmp, { recursive: true, force: true });
 }
 
-console.log(`release-publish GREEN: ${version} is whole on the registry and installs from the consumer's seat. Announcement is now permitted.`);
+// The stepchild phase (#513): the family-operated outside repos align to this stamp BEFORE any
+// announcement — a publish means ALL lifecycle is aligned (owner, AGENTS §stepchildren), constellation included.
+console.log("release-publish: stepchild phase");
+await new Promise((res, rej) => {
+    const ph = spawn("node", ["scripts/release-stepchildren.mjs"], { stdio: "inherit" });
+    ph.on("exit", (code) => code === 0 ? res() : rej(new Error(`stepchild phase failed (exit ${code}) — a stepchild did not align; the constellation is torn, do NOT announce`)));
+});
+
+console.log(`release-publish GREEN: ${version} is whole on the registry, installs from the consumer's seat, and the stepchild constellation is aligned. Announcement is now permitted.`);

@@ -1,0 +1,537 @@
+{
+    "root": "«monorepo parent»",
+    "count": 59,
+    "stepchildren": [
+        {
+            "dir": "plurnk",
+            "name": "@plurnk/plurnk",
+            "lane": "client",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-aliases"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-application-gguf",
+            "name": "@plurnk/plurnk-mimetypes-application-gguf",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-application-safetensors",
+            "name": "@plurnk/plurnk-mimetypes-application-safetensors",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-bash",
+            "name": "@plurnk/plurnk-mimetypes-grammar-bash",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-c",
+            "name": "@plurnk/plurnk-mimetypes-grammar-c",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-cpp",
+            "name": "@plurnk/plurnk-mimetypes-grammar-cpp",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-css",
+            "name": "@plurnk/plurnk-mimetypes-grammar-css",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-dart",
+            "name": "@plurnk/plurnk-mimetypes-grammar-dart",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-elixir",
+            "name": "@plurnk/plurnk-mimetypes-grammar-elixir",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-fsharp",
+            "name": "@plurnk/plurnk-mimetypes-grammar-fsharp",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-fsharp-signature",
+            "name": "@plurnk/plurnk-mimetypes-grammar-fsharp-signature",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-go",
+            "name": "@plurnk/plurnk-mimetypes-grammar-go",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-haskell",
+            "name": "@plurnk/plurnk-mimetypes-grammar-haskell",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-java",
+            "name": "@plurnk/plurnk-mimetypes-grammar-java",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-javascript",
+            "name": "@plurnk/plurnk-mimetypes-grammar-javascript",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-julia",
+            "name": "@plurnk/plurnk-mimetypes-grammar-julia",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-kotlin",
+            "name": "@plurnk/plurnk-mimetypes-grammar-kotlin",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-lua",
+            "name": "@plurnk/plurnk-mimetypes-grammar-lua",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-make",
+            "name": "@plurnk/plurnk-mimetypes-grammar-make",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-ocaml",
+            "name": "@plurnk/plurnk-mimetypes-grammar-ocaml",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-odin",
+            "name": "@plurnk/plurnk-mimetypes-grammar-odin",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-php",
+            "name": "@plurnk/plurnk-mimetypes-grammar-php",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-python",
+            "name": "@plurnk/plurnk-mimetypes-grammar-python",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-ruby",
+            "name": "@plurnk/plurnk-mimetypes-grammar-ruby",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-rust",
+            "name": "@plurnk/plurnk-mimetypes-grammar-rust",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-scala",
+            "name": "@plurnk/plurnk-mimetypes-grammar-scala",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-toml",
+            "name": "@plurnk/plurnk-mimetypes-grammar-toml",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-tsx",
+            "name": "@plurnk/plurnk-mimetypes-grammar-tsx",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-typescript",
+            "name": "@plurnk/plurnk-mimetypes-grammar-typescript",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-yaml",
+            "name": "@plurnk/plurnk-mimetypes-grammar-yaml",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-grammar-zig",
+            "name": "@plurnk/plurnk-mimetypes-grammar-zig",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-clojure",
+            "name": "@plurnk/plurnk-mimetypes-text-clojure",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-cmake",
+            "name": "@plurnk/plurnk-mimetypes-text-cmake",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-common-lisp",
+            "name": "@plurnk/plurnk-mimetypes-text-common-lisp",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-csharp",
+            "name": "@plurnk/plurnk-mimetypes-text-csharp",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-datalog",
+            "name": "@plurnk/plurnk-mimetypes-text-datalog",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-dockerfile",
+            "name": "@plurnk/plurnk-mimetypes-text-dockerfile",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-erlang",
+            "name": "@plurnk/plurnk-mimetypes-text-erlang",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-gherkin",
+            "name": "@plurnk/plurnk-mimetypes-text-gherkin",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-graphql",
+            "name": "@plurnk/plurnk-mimetypes-text-graphql",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-mariadb",
+            "name": "@plurnk/plurnk-mimetypes-text-mariadb",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-nix",
+            "name": "@plurnk/plurnk-mimetypes-text-nix",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-perl",
+            "name": "@plurnk/plurnk-mimetypes-text-perl",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-plsql",
+            "name": "@plurnk/plurnk-mimetypes-text-plsql",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-postgresql",
+            "name": "@plurnk/plurnk-mimetypes-text-postgresql",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-prolog",
+            "name": "@plurnk/plurnk-mimetypes-text-prolog",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-protobuf",
+            "name": "@plurnk/plurnk-mimetypes-text-protobuf",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-r",
+            "name": "@plurnk/plurnk-mimetypes-text-r",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-redis",
+            "name": "@plurnk/plurnk-mimetypes-text-redis",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-sparql",
+            "name": "@plurnk/plurnk-mimetypes-text-sparql",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-sqlite",
+            "name": "@plurnk/plurnk-mimetypes-text-sqlite",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-swift",
+            "name": "@plurnk/plurnk-mimetypes-text-swift",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-terraform",
+            "name": "@plurnk/plurnk-mimetypes-text-terraform",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-tsql",
+            "name": "@plurnk/plurnk-mimetypes-text-tsql",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-mimetypes-text-vim",
+            "name": "@plurnk/plurnk-mimetypes-text-vim",
+            "lane": "mimetypes",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-providers-cloudflare",
+            "name": "@plurnk/plurnk-providers-cloudflare",
+            "lane": "providers",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-providers"
+            ]
+        },
+        {
+            "dir": "plurnk-providers-google",
+            "name": "@plurnk/plurnk-providers-google",
+            "lane": "providers",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-providers"
+            ]
+        },
+        {
+            "dir": "plurnk-providers-openrouter",
+            "name": "@plurnk/plurnk-providers-openrouter",
+            "lane": "providers",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-providers"
+            ]
+        },
+        {
+            "dir": "plurnk-providers-xai",
+            "name": "@plurnk/plurnk-providers-xai",
+            "lane": "providers",
+            "pushable": true,
+            "heads": [
+                "@plurnk/plurnk-providers"
+            ]
+        }
+    ]
+}
