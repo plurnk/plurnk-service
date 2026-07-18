@@ -98,11 +98,13 @@ export default class Translator {
             // interface to the standard, deliberately BROKEN against the bespoke {data,format}
             // carrier: it lights up only when the seam delivers { id, subtype, encrypted } (the
             // forcing function — the gap is core's to close, not agui's to translate around).
-            const r = Translator.#reasoningItem(e.attrs);
-            if (r !== null && r.encrypted.length > 0) {
-                // The reasoning-item id IS the messageId — sealed value correlates to the same
-                // entity as the open reasoning (which keys off the same id once core carries it
-                // there too). No synthesis: the id and subtype come from the seam, not invented.
+            // The standard is a LIST of reasoning items (a turn can carry N, each its own
+            // entity/id) — agui consumes the array. A single item object is tolerated as a
+            // one-element list (core's current single-object write, #482 residual); the array
+            // is the target core must relay to serve multi-item turns. Each well-formed item
+            // projects its OWN correlated span; the id/subtype come from the seam, never invented.
+            for (const r of Translator.#reasoningItems(e.attrs)) {
+                if (r.encrypted.length === 0) continue;
                 events.push({ type: "REASONING_START", messageId: r.id });
                 for (const blob of r.encrypted) events.push({ type: "REASONING_ENCRYPTED_VALUE", subtype: r.subtype, entityId: r.id, encryptedValue: blob.data });
                 events.push({ type: "REASONING_END", messageId: r.id });
@@ -189,23 +191,30 @@ export default class Translator {
         return [{ type: "CUSTOM", name: "plurnk.telemetry", value: event }];
     }
 
-    // The reasoning-item agui REQUIRES on the model row's attrs — the OpenAI/AG-UI shape:
-    // { id: string, subtype: "message"|"tool-call", encrypted: [{ data, format }] }. This is
-    // the seam CONTRACT (#482): core surfaces reasoning as ONE addressable entity (open text +
-    // sealed blobs under one id), agui projects it conformantly. Returns null for anything that
-    // is not this shape — including the legacy {reasoningEncrypted:[{data,format}]} carrier,
-    // which lacks the id/subtype the standard event needs. Null = honestly unserved (never a
-    // guessed id or subtype); the breakage is the pressure on core to deliver the shape.
-    static #reasoningItem(attrs: unknown): { id: string; subtype: "message" | "tool-call"; encrypted: Array<{ data: string }> } | null {
+    // The reasoning-item LIST agui REQUIRES on the model row's attrs — the OpenAI/AG-UI shape:
+    // reasoning items { id, subtype: "message"|"tool-call", encrypted:[{data,format}] }, an ARRAY
+    // (a turn can carry N reasoning entities). A single object is tolerated as a one-element list
+    // (core's transitional write, #482 residual). Items lacking a correlatable id or a known
+    // subtype are DROPPED — never a guessed id/subtype; the legacy {reasoningEncrypted:[...]}
+    // carrier (no id/subtype) yields []. Empty = honestly unserved; the gap is pressure on core.
+    static #reasoningItems(attrs: unknown): Array<{ id: string; subtype: "message" | "tool-call"; encrypted: Array<{ data: string }> }> {
         const parsed = typeof attrs === "string" ? (() => { try { return JSON.parse(attrs); } catch { return null; } })() : attrs;
-        const r = (parsed as { reasoning?: unknown } | null)?.reasoning as { id?: unknown; subtype?: unknown; encrypted?: unknown } | undefined;
-        if (r === undefined || r === null) return null;
-        if (typeof r.id !== "string" || r.id.length === 0) return null;
-        if (r.subtype !== "message" && r.subtype !== "tool-call") return null;
-        const encrypted = Array.isArray(r.encrypted)
-            ? r.encrypted.filter((b): b is { data: string } => typeof (b as { data?: unknown })?.data === "string" && (b as { data: string }).data.length > 0)
-            : [];
-        return { id: r.id, subtype: r.subtype, encrypted };
+        const raw = (parsed as { reasoning?: unknown } | null)?.reasoning;
+        // Array = the standard (N items); a single object = the transitional single-item write.
+        const list = Array.isArray(raw) ? raw : raw !== undefined && raw !== null ? [raw] : [];
+        const out: Array<{ id: string; subtype: "message" | "tool-call"; encrypted: Array<{ data: string }> }> = [];
+        for (const e of list) {
+            const r = e as { id?: unknown; subtype?: unknown; encrypted?: unknown };
+            // id null/absent (core allows `id: string | null`) or an unknown subtype = uncorrelatable
+            // → DROP the item: agui never coins an id or coerces a subtype to fake a conformant event.
+            if (typeof r.id !== "string" || r.id.length === 0) continue;
+            if (r.subtype !== "message" && r.subtype !== "tool-call") continue;
+            const encrypted = Array.isArray(r.encrypted)
+                ? r.encrypted.filter((b): b is { data: string } => typeof (b as { data?: unknown })?.data === "string" && (b as { data: string }).data.length > 0)
+                : [];
+            out.push({ id: r.id, subtype: r.subtype, encrypted });
+        }
+        return out;
     }
 
     // The model-facing statement body out of the tx — SEND/PLAN carry their text here. The real
