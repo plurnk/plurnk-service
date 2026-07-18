@@ -604,6 +604,32 @@ test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async
     assert.equal(headerVal(calls[0].init, "Plurnk-Client"), "plurnk.nvim/1.4.0");
 });
 
+test("#522 Plurnk-Worker-Primary: the lineage root rides under the gate; emitted even when it equals workerId", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "w-child", primaryWorkerId: "w-root", messages: [] });
+    assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), "w-root"); // a descendant: Primary != Worker-Id
+    mock.restoreAll();
+
+    // the primary worker's own turn: Primary == Worker-Id, still stamped (never skipped on equality)
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "w-root", primaryWorkerId: "w-root", messages: [] });
+    assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), "w-root");
+    mock.restoreAll();
+
+    // absent when the consumer supplies none — the provider never invents a primary
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "w-root", messages: [] });
+    assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), undefined);
+});
+
+test("#522 Plurnk-Worker-Primary is structurally dropped when firstPartyMetadata is off", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "w-child", primaryWorkerId: "w-root", messages: [] });
+    assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), undefined); // never reaches a third-party backend
+});
+
 test("firstPartyMetadata off (default): the headers are structurally dropped even when values are passed", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);

@@ -445,7 +445,7 @@ export default class OpenAICompatProvider implements Provider {
     // absent (consumer didn't report); contract per plurnk-service#313. Strikes
     // ride HTTP headers only — the packet never carries them (the model must
     // never see strike state; engine accounting is not a metric to game).
-    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, workerId: string, workspaceId: string | undefined, loop: number | undefined, turn: number | undefined): Record<string, string> {
+    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, workerId: string, primaryWorkerId: string | undefined, workspaceId: string | undefined, loop: number | undefined, turn: number | undefined): Record<string, string> {
         if (!this.#firstPartyMetadata) return {};
         const h: Record<string, string> = {};
         if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
@@ -455,6 +455,14 @@ export default class OpenAICompatProvider implements Provider {
         // the consumer already supplies, forwarded so the endpoint can key
         // per-worker affinity/telemetry — same gate as every first-party signal.
         h["Plurnk-Worker-Id"] = workerId;
+        // Root worker of the lineage (#522): the no-parent ancestor of this turn's
+        // worker tree. The consumer classifies primary-vs-spawned by equality
+        // (primaryWorkerId == workerId ⇒ the primary/root worker). The provider
+        // EMITS what the consumer supplies and never invents a primary; the
+        // consumer's contract is to stamp it EVERY turn (including the primary's
+        // own, where it equals workerId). Absence is the consumer's violation for
+        // the endpoint to surface, not a provider default.
+        if (primaryWorkerId !== undefined && primaryWorkerId.length > 0) h["Plurnk-Worker-Primary"] = primaryWorkerId;
         // Turn coordinate (#404, extends #26 per #391): workspace/loop/turn, the
         // daemon-side sequence the endpoint can never scrape from the wire.
         // Coordinates are 1-based — 0 is not a real value, so no strikes-style
@@ -534,7 +542,7 @@ export default class OpenAICompatProvider implements Provider {
         return out;
     }
 
-    async generate({ messages, workerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling }: { messages: ChatMessage[]; workerId: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
+    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling }: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
         // Boundary validation (SPEC §2): the worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
         // Reject before any wire call when already aborted (SPEC §10.8).
@@ -588,7 +596,7 @@ export default class OpenAICompatProvider implements Provider {
         const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
 
         // Per-request headers = static auth/routing + any first-party telemetry.
-        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, workspaceId, loop, turn);
+        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn);
         const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
         let raw;
         for (let attempt = 0; ; attempt++) {
