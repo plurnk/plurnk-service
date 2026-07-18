@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 import { Jsonplurnk } from "../../src/index.ts";
 
 // The ratified #437 sample (fold-key = `display`): three entries, the middle one `open` with a
-// heredoc body whose TAG is a `plurnk://` URI (colons and slashes).
+// heredoc body whose TAG is a `prompt://` URI (colons and slashes).
 const SAMPLE = `[
 {"op":"model","path":"log:///1/1/1/model","status":200,"tokens":109,"display":"folded"},
-{"op":"READ","path":"log:///1/1/3/READ","status":200,"target":"plurnk://prompt/2/1/1","tokens":545,"lines":12,"display":"open","body":
-<<:::plurnk://prompt/2/1/1
+{"op":"READ","path":"log:///1/1/3/READ","status":200,"target":"prompt:///2/1","tokens":545,"lines":12,"display":"open","body":
+<<:::prompt:///2/1
 1:\tImprove ABS module loading so \`require()\` remains deterministic
-:::plurnk://prompt/2/1/1
+:::prompt:///2/1
 },
-{"op":"FIND","path":"log:///1/1/6/FIND","status":200,"target":"known:///**","items":0,"tokens":0,"display":"none"}
+{"op":"FIND","path":"log:///1/1/6/FIND","status":200,"target":"worker:///**","items":0,"tokens":0,"display":"none"}
 ]`;
 
 test("jsonplurnk: the ratified sample strips to valid JSON (the magnum-opus shape)", () => {

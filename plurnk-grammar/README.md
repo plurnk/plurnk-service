@@ -76,7 +76,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<READ(lang/??.json):$.greeting:READ
 
 3. Write a known entry
-	<<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning):The meaning of life is 42:EDIT
+	<<EDIT[philosophy,existentialism](worker:///philosophy/existentialism/meaning):The meaning of life is 42:EDIT
 
 4. Read an entry in full
 	<<READ(https://www.britannica.com/biography/Donald-Rumsfeld)::READ
@@ -85,32 +85,32 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<READ(https://en.wikipedia.org/wiki/Donald_Rumsfeld)<426-465>::READ
 
 6. Create an unknown entry with tags
-	<<EDIT[france,geography](unknown:///countries/france/capital):What is the capital of France?:EDIT
+	<<EDIT[france,geography](worker:///countries/france/capital):What is the capital of France?:EDIT
 
 7. Create a multi-line plan
-	<<EDIT[plan,france,task](known:///plan):
+	<<EDIT[plan,france,task](worker://~/plan):
 	- [ ] Decompose prompt into unknowns
 	- [ ] Discover capital of France
 	- [ ] Deliver
 	:EDIT
 
 8. Mark a plan step complete (single-line replace)
-	<<EDIT(known:///plan)<2>:- [x] Discover capital of France:EDIT
+	<<EDIT(worker://~/plan)<2>:- [x] Discover capital of France:EDIT
 
 9. Replace a range of lines
-	<<EDIT(known:///countries/france/capital)<4-5>:
+	<<EDIT(worker:///countries/france/capital)<4-5>:
 	The capital of France is Paris, on the river Seine.
 	Paris has been the continuous capital of France since 987 CE.
 	:EDIT
 
 10. Append content to an existing entry
-	<<EDIT(known:///countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
+	<<EDIT(worker:///countries/france/capital)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 
 11. Prepend content to an existing entry
-	<<EDIT(known:///countries/france/capital)<0>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
+	<<EDIT(worker:///countries/france/capital)<0>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
 
 12. Clear entry contents (empty body between two colons)
-	<<EDIT(known:///countries/france/capital)::EDIT
+	<<EDIT(worker:///countries/france/capital)::EDIT
 
 13. Collapse every distilled fetch-log row
 	<<FOLD(log:///1/*/*/get)::FOLD
@@ -119,7 +119,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<OPEN[france](log:///**)::OPEN
 
 15. Rename a draft entry
-	<<MOVE(known:///draft):known:///final/answer:MOVE
+	<<MOVE(worker:///draft):worker:///final/answer:MOVE
 
 16. Run a shell command in the project root
 	<<EXEC(./):node --test:EXEC
@@ -134,16 +134,16 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
 
 20. Find entries whose content begins with "Paris" (glob body)
-	<<FIND(known:///countries/**):Paris*:FIND
+	<<FIND(worker:///countries/**):Paris*:FIND
 
 21. List the first 20 entries under a broad path (result-set pagination)
-	<<FIND(known:///**)<1-20>::FIND
+	<<FIND(worker:///**)<1-20>::FIND
 
 22. Read the first five lines of a local file (bare path → file://)
 	<<READ(./README.md)<1-5>::READ
 
 23. Copy a draft entry to a dated archive location
-	<<COPY(known:///draft):known:///archive/2026-05-14/draft:COPY
+	<<COPY(worker:///draft):worker:///archive/2026-05-14/draft:COPY
 
 24. Run an inline node script
 	<<EXEC[node](./):
@@ -173,21 +173,21 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<KILL(sh:///3/1/2)::KILL
 
 32. Permanently delete an entry
-	<<KILL(known:///obsolete/note)::KILL
+	<<KILL(worker:///obsolete/note)::KILL
 
 33. Think aloud — reasoning recorded to the log
 	<<PLAN:Need the capital fact; discover via wiki, record to known, deliver.:PLAN
 
 34. Insert a line between lines 2 and 3 (decimal = between; replaces nothing)
-	<<EDIT(known:///plan)<2.5>:- [ ] Verify against a second source:EDIT
+	<<EDIT(worker://~/plan)<2.5>:- [ ] Verify against a second source:EDIT
 
 35. Semantic search with a similarity threshold (decimal = minimum score)
-	<<FIND(known:///**)<0.7>:~territorial concessions:FIND
+	<<FIND(worker:///**)<0.7>:~territorial concessions:FIND
 
 36. Quote a plurnk operation inside another (nesting via suffix discipline)
-	<<EDITouter(known:///demo):
+	<<EDITouter(worker:///demo):
 	The following is a quoted plurnk operation, preserved verbatim:
-	<<EDIT(known:///inner):hello world:EDIT
+	<<EDIT(worker:///inner):hello world:EDIT
 	:EDITouter
 
 37. Find every entry whose path matches a regex (path-name regex target)

@@ -6,7 +6,7 @@ Plurnk Service Features:
 
 * Simple Grammar: HEREDOC-inspired syntax achieves predictable but powerful operations.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
-* Knowledgebase: Use taxonomical trees and folksonomic tags to distill piles of data into known:/// information.
+* Knowledgebase: Use taxonomical trees and folksonomic tags to distill piles of data into the shared worker:/// knowledgebase.
 * Extended Context: Agents FOLD, OPEN, and KILL their own Active Context log for lossless, limitless memory management.
 
 ## Grammar
@@ -48,7 +48,7 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 <<FIND(path)::FIND
 <<READ(path)::READ
 <<EDIT(path):literal text:EDIT
-<<EDIT1(known:///demo):quoted: <<EDIT(known:///inner):hello:EDIT:EDIT1
+<<EDIT1(worker:///demo):quoted: <<EDIT(worker:///inner):hello:EDIT:EDIT1
 <<OPEN(log path)::OPEN
 <<FOLD(log path)::FOLD
 <<EXEC::EXEC
@@ -97,7 +97,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
 
-| OP   | file | entry | worker | stream | log |
+| OP   | file | entry | actor | stream | log |
 |------|------|-------|-----|--------|-----|
 | FIND | yes  | yes   | yes | yes    | yes |
 | READ | yes  | yes   | yes | yes    | yes |
@@ -130,8 +130,8 @@ Clearing content: `<1,-1>` selects every position; combine with an empty body to
 On structured files, entries, and items, `<scope>` addresses result index, not line number.
 
 ```plurnk
-<<FIND(known:///**)<0.7>:~france:FIND
-<<READ(known:///**)<0.5,10,20>:~poland:READ
+<<FIND(worker:///**)<0.7>:~france:FIND
+<<READ(worker:///**)<0.5,10,20>:~poland:READ
 ```
 
 - FIND retrieves results with a semantic score of 0.7 or greater.
@@ -155,11 +155,11 @@ Your history renders in the `## Log` section as a `jsonplurnk` block: a JSON arr
 ```jsonplurnk
 [
 {"op":"FIND","path":"log:///1/1/2/FIND","status":200,"items":0,"tokens":0,"display":"none"},
-{"op":"READ","path":"log:///1/1/3/READ","status":200,"target":"plurnk://docs/api.md","tokens":140,"display":"folded"},
-{"op":"READ","path":"log:///1/1/4/READ","status":200,"target":"known:///notes.md","tokens":88,"display":"open","body":
-<<:::known:///notes.md
+{"op":"READ","path":"log:///1/1/3/READ","status":200,"target":"worker://plurnk/docs/api.md","tokens":140,"display":"folded"},
+{"op":"READ","path":"log:///1/1/4/READ","status":200,"target":"worker:///notes.md","tokens":88,"display":"open","body":
+<<:::worker:///notes.md
 1:	the note body, shown verbatim
-:::known:///notes.md
+:::worker:///notes.md
 }
 ]
 ```
@@ -228,8 +228,7 @@ stateDiagram-v2
 
 ### Rule: The knowledgebase is your memory across turns
 
-- Record open questions as taxonomized, tagged unknown:/// entries.
-- Distill source information into taxonomized, tagged known:/// entries.
+- Distill open questions and source information into taxonomized, tagged worker:/// entries.
 - Break non-trivial tasks into checklisted steps, saved across turns.
 
 ### Rule: Work economically
@@ -251,37 +250,37 @@ Each line is a standalone op example — a valid statement on its own, never a t
 
 ```plurnk
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
-<<FIND(known:///**)<5>:~french revolutionary history:FIND
-<<FIND(known:///**)<0.7>:~french territorial concessions:FIND
+<<FIND(worker:///**)<5>:~french revolutionary history:FIND
+<<FIND(worker:///**)<0.7>:~french territorial concessions:FIND
 <<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
-<<FIND[history](known:///**):revolution:FIND
+<<FIND[history](worker:///**):revolution:FIND
 <<FIND(data/users.json):$[?(@.role=="admin")]:FIND
 <<FIND(#src/.*\.test\.ts#)::FIND
 <<FIND(src/**):@createCoder:FIND
 <<FIND(src/**):@<createCoder:FIND
 <<FIND(**/notes.md)::FIND
 <<READ(lang/??.json):$.greeting:READ
-<<READ(plurnk://docs/sh.md):$.Environment:READ
-<<READ(known:///guides/setup.md)://h2/text():READ
-<<READ(known:///users.json):$[?(@.role=="admin")]:READ
+<<READ(worker://plurnk/docs/sh.md):$.Environment:READ
+<<READ(worker:///guides/setup.md)://h2/text():READ
+<<READ(worker:///users.json):$[?(@.role=="admin")]:READ
 <<READ(log:///1/2/3)<0.8>:~high-signal findings:READ
 <<READ(node:///3/1/2#stdout)<1,40>::READ
 <<READ(../../../../etc/hosts)<2>::READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
-<<EDIT[philosophy,existentialism](known:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
-<<EDIT[france,geography](unknown:///countries/france/capital.md):What is the capital of France?:EDIT
-<<EDIT[plan,france,task](worker://self/plan.md):- [ ] Decompose prompt into unknowns:EDIT
-<<EDIT(worker://self/plan.md)<2>:- [x] Discover capital of France:EDIT
-<<EDIT(known:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
-<<EDIT(known:///countries/france/capital.md)<1,-1>::EDIT
-<<EDIT(known:///users.json)<0>:{"name":"Eve"}:EDIT
+<<EDIT[philosophy,existentialism](worker:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
+<<EDIT[france,geography](worker:///countries/france/capital.md):What is the capital of France?:EDIT
+<<EDIT[plan,france,task](worker://~/plan.md):- [ ] Decompose prompt into unknowns:EDIT
+<<EDIT(worker://~/plan.md)<2>:- [x] Discover capital of France:EDIT
+<<EDIT(worker:///countries/france/capital.md)<-1>:[Wikipedia: Paris](https://en.wikipedia.org/wiki/Paris):EDIT
+<<EDIT(worker:///countries/france/capital.md)<1,-1>::EDIT
+<<EDIT(worker:///users.json)<0>:{"name":"Eve"}:EDIT
 <<EDIT[tutorial,training,scripts](example.sh):echo "Maximize your Active Context signal/noise ratio." > advice.txt:EDIT
-<<COPY[archive,2026-05-14](known:///draft.md):known:///archive/2026-05-14/draft.md:COPY
-<<MOVE[final](known:///draft/answer.md):known:///final/answer.md:MOVE
+<<COPY[archive,2026-05-14](worker:///draft.md):worker:///archive/2026-05-14/draft.md:COPY
+<<MOVE[final](worker:///draft/answer.md):worker:///final/answer.md:MOVE
 <<OPEN(log:///**)<1,10>::OPEN
 <<FOLD(log:///**)<101,200>::FOLD
-<<SEND(worker://capital-checker):{"hint":"known entries are your persistent memory"}:SEND
-<<KILL(known:///draft.md)::KILL
+<<SEND(worker://capital-checker):{"hint":"worker:/// entries are your persistent memory"}:SEND
+<<KILL(worker:///draft.md)::KILL
 <<KILL(obsolete/file.md)::KILL
 <<KILL(sh:///3/1/2)::KILL
 <<KILL[9](sh:///3/1/3)::KILL

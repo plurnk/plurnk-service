@@ -55,7 +55,7 @@ that needs interpretation belongs in the runtime resolver.
 
 **Concretely out of domain — runtime:**
 
-- URI resolution: what `known:///`, `unknown:///`, `file://` actually point at; what bare paths resolve to.
+- URI resolution: what `worker:///`, `worker://<name>/`, `file://` actually point at; what bare paths resolve to.
 - Tag-matching combination (AND/OR), tag-set semantics.
 - Line-marker arithmetic, out-of-range handling, result-set ordering for pagination.
 - Status code *meanings*: any digit string is grammatically valid in `[signal]`; whether `[410]` means "Gone" or any code carries privileged semantics on any OP is runtime convention.
@@ -175,8 +175,9 @@ model the authority slot names a worker (`worker://alice/…`,
 pretraining prior expects. Lowercase-only is load-bearing:
 non-special-scheme URL parsing PRESERVES authority case
 (`worker://Alice` ≠ `worker://alice`), so admitting case would mint
-look-alike principals. `RESERVED_AUTHORITIES` (`plurnk`, the kernel)
-are resolver-interpreted, never mintable; `~` (self) is reserved by
+look-alike principals. `RESERVED_AUTHORITIES` (`plurnk`, the kernel;
+`self`, which would impersonate the `~` idiom) are
+resolver-interpreted, never mintable; `~` (self) is reserved by
 construction — outside the alphabet. Id-freedom is the GENERATOR's
 contract (core), not the charset's: no alphabet distinguishes
 hash-like. The parser stays permissive — it decomposes ANY authority
@@ -213,7 +214,7 @@ Lexer-enforced shape:
 Runtime-enforced semantics:
 
 - Bare paths (no scheme) resolve as `file://` at runtime.
-- Conventional schemes include `known:///`, `unknown:///`, `log:///`,
+- Conventional schemes include `worker:///`, `prompt:///`, `log:///`,
   `file://`, `http://`, `https://`. Any scheme matching the lexer
   shape is grammatically valid; resolution is a runtime concern. The
   scheme catalogue and per-scheme semantics — and their packet-time
@@ -416,9 +417,9 @@ Suffix rules:
 Example — nested EDIT inside an outer EDITa:
 
 ```
-<<EDITa(known:///demo):
+<<EDITa(worker:///demo):
 The following is a quoted plurnk operation, preserved verbatim:
-<<EDIT(known:///inner):hello world:EDIT
+<<EDIT(worker:///inner):hello world:EDIT
 :EDITa
 ```
 
@@ -554,7 +555,7 @@ forgiveness is safe, strict where laxity would corrupt content.
 
 Comments: plurnk has no comment syntax. The protocol is wire-shaped,
 not source-shaped. To leave a self-documenting breadcrumb, use
-`<<EDIT(known:///notes/…):…:EDIT` (model-visible) or
+`<<EDIT(worker:///notes/…):…:EDIT` (model-visible) or
 `<<SEND[1xx](…):…:SEND` (orchestrator-visible).
 
 ## 12. Public API
@@ -661,8 +662,9 @@ interface UrlPath {
     scheme: string;          // protocol without trailing ':'
     username: string | null;
     password: string | null;
-    hostname: string | null; // first authority segment; for custom schemes like
-                             // `known:///entries/foo`, hostname = "entries"
+    hostname: string | null; // the URI authority - under actor addressing, the worker
+                             // name (`worker://alice/x` -> "alice"); null when empty
+                             // (`worker:///x` -> the commons / scheme default)
     port: number | null;
     pathname: string;        // path component, may be empty
     params: Record<string, string | string[]>;
