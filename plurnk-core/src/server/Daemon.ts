@@ -5,6 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import type { Db, PrepMethod } from "../core/Db.ts";
+import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import ChannelWrite, { type WakeWorkerPayload } from "../core/ChannelWrite.ts";
 import { Paths } from "../index.ts";
@@ -105,6 +106,7 @@ export default class Daemon {
     // per worker (the tightest cadence); cleared/replaced on each park and on cancel.
     #parkTimers: Map<number, NodeJS.Timeout> = new Map();
     #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
+    #pollBackoff = new Map<number, number>(); // #521 — the exec-poll backoff step per worker (nth wake)
     // Per-run drain-transition lock — see #withDrainLock (R4 / §worker-lifecycle-single-drain).
     #drainLocks = new Map<number, Promise<unknown>>();
     // §worker-lifecycle-child-wake — runs OWED a wake: a child/stream conclusion fired while the worker was
@@ -540,6 +542,7 @@ export default class Daemon {
         this.#engine.cancelAllProposals("daemon_stopping");
         for (const scope of this.#workerAborts.values()) { if (!scope.signal.aborted) scope.abort("daemon_stopping"); }
         for (const t of this.#pollTimers.values()) clearTimeout(t); // drop pending hibernation poll-wakes
+        this.#pollBackoff.clear();
         this.#pollTimers.clear();
         // …and the park-DEADLINE timers (#432): a bounded park's timer fires #wakeParkedWorker after
         // stop/db-close if left pending — an unhandled rejection (SqlRite closed) that abnormally
@@ -1162,14 +1165,37 @@ export default class Daemon {
         if (existing !== undefined) { clearTimeout(existing); this.#pollTimers.delete(workerId); }
         const row = await (this.#db.drain_worker_min_poll as PrepMethod).get<{ poll_seconds: number | null }>({ worker_id: workerId });
         const pollSec = row?.poll_seconds ?? null;
-        if (pollSec === null || pollSec <= 0) return; // no polled stream → the 202 just sleeps (woken only by conclusion)
+        // #521 (§exec-poll, owner-ruled) — the poll cadence for a parked exec stream:
+        //   explicit <,P> (P>0)  → fixed cadence P, reset the backoff (today's behavior).
+        //   explicit <,0>        → poll_seconds=0 stored → blind opt-out (an exec a model wants unwatched).
+        //   absent <,P> + a LIVE stream → EXPONENTIAL BACKOFF (base*2^min(step,turns-1)), so a hung
+        //     exec is no longer park-blind-forever: the model regains a turn every tick to read
+        //     partial output and re-park a slow long-runner or KILL a stuck one (no auto-kill — only
+        //     the model tells a silent deadlock from a silent `cargo build`).
+        //   no open stream at all → nothing to poll (a child-join park is woken by the child terminal).
+        let delayMs: number;
+        if (pollSec !== null && pollSec > 0) {
+            this.#pollBackoff.delete(workerId);
+            delayMs = pollSec * 1000;
+        } else if (pollSec === 0) {
+            this.#pollBackoff.delete(workerId);
+            return; // explicit opt-out
+        } else {
+            const open = await (this.#db.drain_worker_open_stream_count as PrepMethod).get<{ n: number }>({ worker_id: workerId });
+            if ((open?.n ?? 0) === 0) { this.#pollBackoff.delete(workerId); return; } // no stream → nothing to poll
+            const base = Number(process.env.PLURNK_SERVICE_EXEC_POLL_SEC ?? "60");
+            const turns = Number(process.env.PLURNK_SERVICE_EXEC_POLL_TURNS ?? "8");
+            const step = this.#pollBackoff.get(workerId) ?? 0;
+            delayMs = execPollBackoffMs(step, base, turns);
+            this.#pollBackoff.set(workerId, step + 1);
+        }
         // Floored by the post-EXEC breath (PLURNK_SERVICE_EXEC_WAIT_MS) so a `<…,1>` can't wake the loop
         // faster than a turn settles — §exec-poll.
         const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
         const timer = setTimeout(() => {
             this.#pollTimers.delete(workerId);
             void this.#wakeParkedWorker(workspaceId, workerId, provider, systemPrompt);
-        }, Math.max(pollSec * 1000, execWaitMs));
+        }, Math.max(delayMs, execWaitMs));
         timer.unref();
         this.#pollTimers.set(workerId, timer);
     }
