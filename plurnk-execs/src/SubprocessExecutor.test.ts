@@ -57,6 +57,18 @@ test("§2 a target runs as the program with the body as its stdin (#15)", async 
     assert.equal(out.stdout, "hello from stdin");
 });
 
+test("§2 a stdin-reading program with NO stdin body gets /dev/null (EOF), never hangs (#519)", async () => {
+    // `cat` with no argument reads fd0 to EOF — the exact shape of a bare
+    // interpreter reached via the sh fallthrough (`EXEC[python3]` → `sh -c
+    // "python3 …"`). With the pre-#519 dangling pipe this blocked forever and
+    // parked the loop until a client cancel; /dev/null delivers immediate EOF, so
+    // it exits 0 cleanly. If the fix regresses, this test HANGS to timeout — the
+    // positive assertion is that it resolves at all, with a clean exit.
+    const { result, out } = await exec("sh", "cat");
+    assert.equal(result.status, 200, "the stdin-reader exited cleanly on EOF, not blocked");
+    assert.equal(out.stdout, "", "/dev/null yields no bytes");
+});
+
 test("§2 env: a scoped env is handed to the child verbatim (#8)", async () => {
     const { result, out } = await exec("sh", 'echo "$FOO"', { env: { FOO: "scoped-value" } });
     assert.equal(result.status, 200);

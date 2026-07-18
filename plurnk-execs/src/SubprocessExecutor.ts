@@ -106,7 +106,18 @@ export default class SubprocessExecutor extends BaseExecutor {
             // option, which only kills the direct child (plurnk-execs#4).
             // env: consumer-scoped when provided (drops plurnk's own secrets,
             // plurnk-execs#8); host env inherited by default for back-compat.
-            const child = spawn(cmd, args, { shell: useShell, cwd: cwd ?? undefined, env: env ?? process.env, detached: true });
+            // fd0: a provided stdin body gets a pipe (written + EOF'd below); NO
+            // stdin body gets /dev/null, never a dangling open pipe (#519). A bare
+            // interpreter reached via the sh fallthrough (`EXEC[python3]` → `sh -c
+            // "python3 …"`) reads its program from fd0 — an unclosed pipe there
+            // never EOFs, so the child blocks in the kernel (unix_stream_read) and
+            // the exec obligation never resolves: the loop hangs until a client
+            // cancel. /dev/null delivers immediate EOF, so it fails fast instead.
+            // (The probe path already uses this discipline; matches it.)
+            const child = spawn(cmd, args, {
+                stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+                shell: useShell, cwd: cwd ?? undefined, env: env ?? process.env, detached: true,
+            });
 
             // Filter-style runtimes feed their program/input via stdin; closing
             // it also delivers EOF (awk BEGIN-only). Left untouched otherwise.
