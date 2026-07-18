@@ -6,7 +6,7 @@
 -- for bare/absolute paths; storage normalizes its rows to scheme=NULL
 -- (Engine.#extractTarget). SQL's `=` doesn't match NULL, so use `IS`.
 SELECT id FROM entries
-WHERE scope = 'workspace' AND workspace_id = $workspace_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE scope = 'workspace' AND workspace_id = $workspace_id AND owner_id = $owner_id AND scheme IS $scheme AND pathname = $pathname;
 
 -- PREP: crud_read_channels
 SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;
@@ -15,8 +15,8 @@ SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: crud_insert_workspace_entry
-INSERT INTO entries (scope, workspace_id, scheme, pathname)
-VALUES ('workspace', $workspace_id, $scheme, $pathname)
+INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname)
+VALUES ('workspace', $workspace_id, $owner_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: crud_find_worker_entry
@@ -27,8 +27,8 @@ SELECT id FROM entries
 WHERE scope = 'worker' AND workspace_id = $workspace_id AND scheme IS $scheme AND pathname = $pathname;
 
 -- PREP: crud_insert_worker_entry
-INSERT INTO entries (scope, workspace_id, scheme, pathname)
-VALUES ('worker', $workspace_id, $scheme, $pathname)
+INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname)
+VALUES ('worker', $workspace_id, $owner_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: crud_register_workspace_member
@@ -37,9 +37,9 @@ RETURNING id;
 -- is the membership marker the File read-gate checks and FIND globs by path.
 -- Channel-less by design — disk stays the truth (D3). ON CONFLICT no-ops so
 -- re-resolving membership each turn never duplicates or churns rows.
-INSERT INTO entries (scope, workspace_id, scheme, pathname, membership_origin)
-VALUES ('workspace', $workspace_id, $scheme, $pathname, $membership_origin)
-ON CONFLICT (workspace_id, scheme, pathname) WHERE scope = 'workspace'
+INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname, membership_origin)
+VALUES ('workspace', $workspace_id, $owner_id, $scheme, $pathname, $membership_origin)
+ON CONFLICT (workspace_id, owner_id, scheme, pathname) WHERE scope = 'workspace'
 DO NOTHING
 RETURNING id;
 
@@ -48,7 +48,7 @@ RETURNING id;
 -- (mtime:size), read before materializing so an unchanged file short-circuits
 -- before any content read. Null-aware scheme (file members store scheme=NULL).
 SELECT id, synced_sig FROM entries
-WHERE scope = 'workspace' AND workspace_id = $workspace_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE scope = 'workspace' AND workspace_id = $workspace_id AND owner_id = $owner_id AND scheme IS $scheme AND pathname = $pathname;
 
 -- PREP: crud_set_synced_sig
 -- Stamp the disk signature after a member materializes to disk truth; the next

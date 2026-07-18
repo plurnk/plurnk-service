@@ -4,6 +4,7 @@
 // File.applyResolution which writes patched content to disk.
 
 import test from "node:test";
+import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -80,7 +81,7 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
         // Materialize the member coherently — entry + body channel (= disk content) + synced_sig —
         // exactly as the production reconcile (#materializeMember) does. EDIT now bases its diff on
         // the body-channel snapshot (so the diff shows -hello), and the write-CAS has a sig to guard.
-        const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${target}` });
+        const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname: `/${target}` });
         await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content: "hello\n", mimetype: "text/plain", tokens: 0 });
         const seededStat = await stat(join(root, target));
         await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
@@ -123,7 +124,7 @@ test("[§proposal-outcome-terse-error] file.edit: rejection leaves file untouche
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
-        await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${target}` });
+        await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname: `/${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
         const stmt = fileEditStmt(target, "should-not-land\n");
@@ -204,7 +205,7 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
-        await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, scheme: null, pathname: `/${target}` });
+        await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname: `/${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
         // No file:/// prefix — the form the sysprompt teaches.

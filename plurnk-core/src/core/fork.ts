@@ -84,7 +84,7 @@ export default class Fork {
         for (const s of scratch) {
             const newPathname = branchPrefix + s.pathname.slice(parentPrefix.length);
             const ne = await (db.fork_insert_worker_scope_entry as PrepMethod).get<{ id: number }>(
-                { workspace_id: parent.workspace_id, scheme: s.scheme, pathname: newPathname, deep_hash: s.deep_hash, attributes: s.attributes },
+                { workspace_id: parent.workspace_id, owner_id: branchWorkerId, scheme: s.scheme, pathname: newPathname, deep_hash: s.deep_hash, attributes: s.attributes },
             );
             if (ne === undefined) throw new Error("fork: worker-scope entry copy returned no row");
             await (db.fork_copy_entry_channels as PrepMethod).run({ old_entry_id: s.id, new_entry_id: ne.id });

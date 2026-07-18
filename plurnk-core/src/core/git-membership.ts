@@ -35,6 +35,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db, PrepMethod } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
+import Owner from "./Owner.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
@@ -248,11 +249,12 @@ export default class GitMembership {
         // desired with their origin, then un-register any overlay-owned member ('git'
         // or 'constraint') no longer desired — untracked, unmatched, or newly hidden.
         // Model-created ('client') members are never reclaimed.
+        const commonsId = await Owner.commonsId(db, workspaceId);
         for (const pathname of desiredGit) {
-            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, scheme: null, pathname: `/${pathname}`, membership_origin: "git" });
+            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: null, pathname: `/${pathname}`, membership_origin: "git" });
         }
         for (const pathname of desiredPick) {
-            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, scheme: null, pathname: `/${pathname}`, membership_origin: "constraint" });
+            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: null, pathname: `/${pathname}`, membership_origin: "constraint" });
         }
         const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
         for (const m of registered) {
@@ -349,7 +351,7 @@ export default class GitMembership {
             throw err;
         }
         const known = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({
-            workspace_id: ctx.workspaceId, scheme: null, pathname,
+            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname,
         });
         if (known !== undefined && known.synced_sig === sig) return null;  // unchanged — the change-gate
 
@@ -384,7 +386,7 @@ export default class GitMembership {
         // the entry: an existing body channel whose content differs from disk is an
         // ambient divergence (D5). writeEntry then refreshes the entry to disk truth.
         const prior = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({
-            workspace_id: ctx.workspaceId, scheme: null, pathname, channel: "body",
+            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname, channel: "body",
         });
         const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
         if (result.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: result.entryId, synced_sig: sig });

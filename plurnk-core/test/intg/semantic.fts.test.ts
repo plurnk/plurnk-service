@@ -4,6 +4,7 @@
 // lands when the embedding channel does.)
 
 import test from "node:test";
+import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
@@ -91,7 +92,7 @@ test("[#186-fusion] semantic_rank fuses FTS narrowing with cosine ranking", asyn
         for (const [p, c] of ENTRIES) await new Known().edit(editStmt(url(p), c), ctx);
         await EntryManifest.maintainDerivations(ctx);  // FTS-indexes every entry
         for (const [p, , v] of ENTRIES) {
-            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "known", pathname: `/${p}` });
+            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: `/${p}` });
             assert.ok(e);
             // maintainDerivations stored a real one-chunk embedding; clear it and seed
             // the deterministic test vector as the entry's single chunk.
@@ -122,7 +123,7 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         await new Known().edit(editStmt(url("other.ts"), "payment unrelated text"), ctx);
         await EntryManifest.maintainDerivations(ctx);
         const idOf = async (p: string): Promise<number> => {
-            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "known", pathname: p });
+            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: p });
             assert.ok(e, `entry ${p} found`);
             return e.id;
         };
@@ -164,7 +165,7 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
             "\nchloroplasts drive photosynthesis in green plants";
         await new Known().edit(editStmt(url("bio.md"), content), ctx);
-        const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "known", pathname: "/bio.md" });
+        const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/bio.md" });
         assert.ok(e);
         const { chunks, model } = await EntrySemantic.deriveEmbeddings(embedder, content, [], undefined, undefined);
         assert.ok(chunks.length > 1, `the body tiled into multiple chunks (got ${chunks.length})`);
@@ -212,7 +213,7 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         // has none → the keyword narrow excludes it.
         const mk = async (p: string, content: string): Promise<void> => {
             await new Known().edit(editStmt(url(p), content), ctx);
-            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "known", pathname: `/${p}` });
+            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: `/${p}` });
             assert.ok(e, `entry ${p} created`);
             await EntrySemantic.indexFts(db, e.id, content);
         };

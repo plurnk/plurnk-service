@@ -10,6 +10,7 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
+import Owner from "../../src/core/Owner.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -74,7 +75,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         const handles = new Map<string, () => void>();
 
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
+            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "fakestream", pathname: "/feed/x",
         });
         if (entry === undefined) throw new Error("seed entry failed");
         const entryId = entry.id;

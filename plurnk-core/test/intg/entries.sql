@@ -2,7 +2,7 @@
 SELECT sql FROM sqlite_master WHERE name = $name;
 
 -- PREP: test_entries_insert_session
-INSERT INTO entries (scope, workspace_id, scheme, pathname) VALUES ('workspace', $workspace_id, $scheme, $pathname) RETURNING id;
+INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname) VALUES ('workspace', $workspace_id, (SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1), $scheme, $pathname) RETURNING id;
 
 -- PREP: test_entries_get_first
 SELECT id, version, scope, workspace_id, scheme, pathname, attributes FROM entries LIMIT 1;
@@ -11,16 +11,16 @@ SELECT id, version, scope, workspace_id, scheme, pathname, attributes FROM entri
 SELECT scope, workspace_id FROM entries LIMIT 1;
 
 -- PREP: test_entries_insert_with_workspace_id_only
-INSERT INTO entries (scope, workspace_id, pathname) VALUES ('workspace', $workspace_id, $pathname);
+INSERT INTO entries (scope, workspace_id, owner_id, pathname) VALUES ('workspace', $workspace_id, (SELECT id FROM workers ORDER BY id LIMIT 1), $pathname);
 
 -- PREP: test_entries_insert_with_port
-INSERT INTO entries (scope, workspace_id, scheme, hostname, port, pathname) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), $scheme, $hostname, $port, $pathname);
+INSERT INTO entries (scope, workspace_id, owner_id, scheme, hostname, port, pathname) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), $scheme, $hostname, $port, $pathname);
 
 -- PREP: test_entries_insert_with_params
-INSERT INTO entries (scope, workspace_id, pathname, params) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), $pathname, $params);
+INSERT INTO entries (scope, workspace_id, owner_id, pathname, params) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), $pathname, $params);
 
 -- PREP: test_entries_insert_with_attributes
-INSERT INTO entries (scope, workspace_id, pathname, attributes) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), $pathname, $attributes);
+INSERT INTO entries (scope, workspace_id, owner_id, pathname, attributes) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), $pathname, $attributes);
 
 -- PREP: test_entries_count_all
 SELECT COUNT(*) AS n FROM entries;
@@ -65,16 +65,16 @@ SELECT entry_id FROM entry_tags WHERE tag = $tag ORDER BY entry_id;
 SELECT name FROM sqlite_master WHERE type='index' AND name='entry_tags_tag';
 
 -- EXEC: test_entries_insert_session_no_workspace_id
-INSERT INTO entries (scope, pathname) VALUES ('workspace', '/x');
+INSERT INTO entries (scope, owner_id, pathname) VALUES ('workspace', (SELECT id FROM workers ORDER BY id LIMIT 1), '/x');
 
 -- EXEC: test_entries_insert_bad_scope
-INSERT INTO entries (scope, pathname) VALUES ('global', '/x');
+INSERT INTO entries (scope, owner_id, pathname) VALUES ('global', (SELECT id FROM workers ORDER BY id LIMIT 1), '/x');
 
 -- EXEC: test_entries_insert_empty_scheme
-INSERT INTO entries (scope, workspace_id, scheme, pathname) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), '', '/x');
+INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), '', '/x');
 
 -- EXEC: test_entries_insert_no_pathname
-INSERT INTO entries (scope, workspace_id) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1));
+INSERT INTO entries (scope, workspace_id, owner_id) VALUES ('workspace', (SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1));
 
 -- PREP: test_entry_channels_insert_missing_name
 INSERT INTO entry_channels (entry_id, content, mimetype) VALUES ($entry_id, '', 'text/plain');

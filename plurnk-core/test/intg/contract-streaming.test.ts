@@ -24,6 +24,7 @@ import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
     insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors,
 } from "./_helpers.ts";
+import Owner from "../../src/core/Owner.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, sendStmt, execStmt } from "./_dsl.ts";
 
@@ -49,7 +50,7 @@ test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] reso
         const teardownFns = new Map<string, () => void>([[HANDLE, () => teardownByHandle.push(HANDLE)]]);
 
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
+            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "fakestream", pathname: "/feed/x",
         });
         if (entry === undefined) throw new Error("seed entry failed");
         const entryId = entry.id;
@@ -163,7 +164,7 @@ test("[§stream-constraints-engine-one-cap] 100 MiB channel-body CHECK rejects o
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "known", pathname: "/cap",
+            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/cap",
         });
         const entryId = entry!.id;
 

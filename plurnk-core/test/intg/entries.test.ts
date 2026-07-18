@@ -38,6 +38,7 @@ test("entries: workspace-scoped insert — workspace_id required", async () => {
 test("entries: scope='workspace' with null workspace_id rejected", async () => {
     const db = await openMigrated();
     try {
+        await insertWorkspace(db, `ws-${crypto.randomUUID()}`); // a commons owner exists → the constraint under test is the one that fires
         await assert.rejects(
             () => (db.test_entries_insert_session_no_workspace_id as ExecMethod)(),
             /CHECK constraint failed/,
@@ -48,6 +49,7 @@ test("entries: scope='workspace' with null workspace_id rejected", async () => {
 test("entries: scope value outside enum rejected", async () => {
     const db = await openMigrated();
     try {
+        await insertWorkspace(db, `ws-${crypto.randomUUID()}`); // a commons owner exists → the constraint under test is the one that fires
         await assert.rejects(
             () => (db.test_entries_insert_bad_scope as ExecMethod)(),
             /CHECK constraint failed/,
@@ -82,6 +84,7 @@ test("entries: cross-workspace same (scheme, pathname) is allowed", async () => 
 test("entries: workspace_id FK — insert with non-existent workspace rejected", async () => {
     const db = await openMigrated();
     try {
+        await insertWorkspace(db, "ws-fk-owner"); // a commons owner exists → the FK is the failing constraint
         await assert.rejects(
             () => (db.test_entries_insert_with_workspace_id_only as PrepMethod).run({ workspace_id: 99999, pathname: "/x" }),
             /FOREIGN KEY constraint failed/,

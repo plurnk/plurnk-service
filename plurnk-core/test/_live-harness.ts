@@ -10,6 +10,7 @@
 // stance). Everything funnels through these two so the tier has exactly one path.
 
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import Owner from "../src/core/Owner.ts";
 import { rmSync, readdirSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -164,7 +165,7 @@ export const seedEntry = async (
     // membership filter — so a plain workspace entry resolves; no git materialization needed.)
     const pathname = opts.pathname.startsWith("/") ? opts.pathname : `/${opts.pathname}`;
     const e = await (db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({
-        workspace_id: workspaceId, scheme: opts.scheme ?? "known", pathname,
+        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: opts.scheme ?? "known", pathname,
     });
     if (e === undefined) throw new Error("seedEntry: insert returned no row");
     await (db.crud_write_channel as PrepMethod).run({

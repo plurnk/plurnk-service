@@ -2,6 +2,7 @@ import type { FindStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import type Exec from "./Exec.ts";
+import { resolveStreamStatement } from "./Exec.ts";
 import EntryOps, { type ReadResult } from "./_entry-ops.ts";
 import EntryFind, { type FindResult } from "./_entry-find.ts";
 import EntryCrud, { type ReadEntryResult } from "./_entry-crud.ts";
@@ -26,18 +27,26 @@ export default class ExecOutputScheme {
 
     get manifest(): SchemeManifest { return this.#executor.manifest; }
 
+    // {§stream-owner-scoped} — the authority names the OWNER: empty = the calling worker (your
+    // own streams need no qualifier), a name = that worker's streams, ancestry-gated. The
+    // resolved owner scopes the identity; the storage path stays the bare loop coordinate.
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        return EntryOps.readWorkspaceEntry(statement, ctx, this.#executor.manifest);
+        const owner = await resolveStreamStatement(statement, ctx);
+        if (owner === null) return { status: 404, content: null, mimetype: null, channel: null };
+        return EntryOps.readWorkspaceEntry(owner.statement, ctx, this.#executor.manifest, owner.ownerId);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findWorkspaceEntries(statement, ctx, this.#executor.manifest);
+        const owner = await resolveStreamStatement(statement, ctx);
+        if (owner === null) return { status: 404, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+        return EntryFind.findWorkspaceEntries(owner.statement, ctx, this.#executor.manifest, owner.ownerId);
     }
 
     // COPY/MOVE source — read the output entry by pathname, tag-scoped (not via the
-    // shared Exec handler, which would scope to scheme="exec" and 404).
+    // shared Exec handler, which would scope to scheme="exec" and 404). Self-owned:
+    // a worker copies from its own streams.
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        return EntryCrud.readEntry(pathname, ctx, this.#executor.manifest.name);
+        return EntryCrud.readEntry(pathname, ctx, this.#executor.manifest.name, ctx.workerId);
     }
 
     // Process-KILL by coordinate — the spawn-abort state (#activeAborts) lives on the

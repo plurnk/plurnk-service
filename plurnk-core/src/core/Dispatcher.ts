@@ -2,6 +2,7 @@ import { parsePath } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
+import Owner from "./Owner.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
@@ -352,7 +353,8 @@ export default class Dispatcher {
             return { status: 429, error: `Per-turn search limit reached (${verdict.cap}).` };
         }
         if (verdict.verdict === "duplicate") {
-            const prior = await EntryCrud.readEntry(verdict.priorPathname, ctx, runtime);
+            // {§stream-owner-scoped} — the prior survivor digest is the CALLER's own stream entry.
+            const prior = await EntryCrud.readEntry(verdict.priorPathname, ctx, runtime, ctx.workerId);
             const raw = prior.entry?.channels["#results"]?.content ?? "";
             let results: unknown = raw;
             try { results = JSON.parse(raw); } catch { /* non-JSON results serve verbatim */ }
@@ -450,6 +452,8 @@ export default class Dispatcher {
         const name = target.kind === "url" ? (target.hostname ?? "") : ""; // §worker-scheme — run is the AUTHORITY (worker://<name>), not the path
         if (name === "") return { status: 400, error: `${statement.op} requires a worker name (worker://<name>)` };
         if (name === "self") return { status: 400, error: `'self' is the current run — ${statement.op} names a NEW run (worker://<name>)` };
+        // {§entry-owner} — 'commons'/'plurnk' are the reserved owner rows, '~' the self-sigil; no spawn takes them.
+        if (Owner.RESERVED.has(name)) return { status: 400, error: `'${name}' is a reserved worker name` };
         if (ctx.injectWorker === undefined) throw new Error("run control: injectWorker capability absent");
         const denied = await WorkerCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
