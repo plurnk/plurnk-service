@@ -166,6 +166,23 @@ all OPs.
 ## 5. Path Grammar
 
 Paths are URI-shaped, drawn from RFC 3986 in spirit but not strictly.
+
+**Worker names as URI authorities (#527).** Under the actor addressing
+model the authority slot names a worker (`worker://alice/…`,
+`jq://child3/…`). The mintable-name contract is the exported
+`WORKER_NAME` constant — a lowercase DNS label (LDH:
+`[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?`), the hostname shape the slot's
+pretraining prior expects. Lowercase-only is load-bearing:
+non-special-scheme URL parsing PRESERVES authority case
+(`worker://Alice` ≠ `worker://alice`), so admitting case would mint
+look-alike principals. `RESERVED_AUTHORITIES` (`plurnk`, the kernel)
+are resolver-interpreted, never mintable; `~` (self) is reserved by
+construction — outside the alphabet. Id-freedom is the GENERATOR's
+contract (core), not the charset's: no alphabet distinguishes
+hash-like. The parser stays permissive — it decomposes ANY authority
+(http hosts are arbitrary); this contract governs minting and registry
+validation, not ingestion. {§worker-name}
+
 Two RFC concessions justify the relaxation:
 
 1. RFC 3986 lists `)` as a sub-delim — a valid path character. Plurnk

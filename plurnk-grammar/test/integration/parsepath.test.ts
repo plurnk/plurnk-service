@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AstBuilder, PlurnkParseError, PlurnkParser } from "../../src/index.ts";
+import { AstBuilder, PlurnkParseError, PlurnkParser, WORKER_NAME, RESERVED_AUTHORITIES } from "../../src/index.ts";
 
 // AstBuilder.parsePath was promoted from private to public in 0.3.2 (issue #7)
 // so consumer RPC layers can decompose path strings without round-tripping
@@ -262,4 +262,36 @@ test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses
         .filter((i): i is Extract<typeof i, { kind: "statement" }> => i.kind === "statement")
         .map((i) => (i.statement.target?.kind === "url" ? i.statement.target.scheme : null));
     assert.deepEqual(schemes, ["ws", "wss", "ws"]);
+});
+
+// #527 (§worker-name): the mintable worker-name contract — a lowercase DNS label. The single
+// source core's auto-namer and schemes' registry derive from. The parser stays permissive
+// (any authority decomposes); this pins the CONTRACT constant, not ingestion behavior.
+test("worker-name contract (§worker-name): WORKER_NAME is a lowercase DNS label", () => {
+    for (const ok of ["alice", "child3", "brisk-otter", "3com", "a", "plurnk"]) {
+        assert.ok(WORKER_NAME.test(ok), `${ok} must be mintable`);
+    }
+    for (const bad of ["Alice", "-lead", "trail-", "under_score", "dot.name", "~", "", "sp ace"]) {
+        assert.ok(!WORKER_NAME.test(bad), `${bad} must NOT be mintable`);
+    }
+    // Reserved authorities are resolver-interpreted; `plurnk` is charset-legal but reserved by list.
+    assert.deepEqual([...RESERVED_AUTHORITIES], ["plurnk"]);
+});
+
+test("worker-name contract: the case footgun is real — parser preserves authority case", () => {
+    // WHY lowercase-only: non-special schemes do not lowercase the authority, so `Alice` and
+    // `alice` would be distinct principals. The charset closes the whole class at minting.
+    const upper = AstBuilder.parsePath("worker://Alice/x");
+    const lower = AstBuilder.parsePath("worker://alice/x");
+    if (upper?.kind !== "url" || lower?.kind !== "url") { assert.fail("both must decompose"); return; }
+    assert.equal(upper.hostname, "Alice");
+    assert.equal(lower.hostname, "alice");
+    assert.notEqual(upper.hostname, lower.hostname);
+});
+
+test("worker-name contract: `~` decomposes as a one-char authority but is outside the mintable alphabet", () => {
+    const p = AstBuilder.parsePath("worker://~/draft");
+    if (p?.kind !== "url") { assert.fail("~ authority must decompose"); return; }
+    assert.equal(p.hostname, "~");
+    assert.ok(!WORKER_NAME.test("~"));
 });

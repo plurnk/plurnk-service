@@ -23,7 +23,7 @@ export { default as Validator } from "./Validator.ts";
 export type { ValidationResult } from "./Validator.ts";
 // The canonical runtime op-set (a value, not just the PlurnkOp type) — consumers derive their
 // op enums / SQL CHECKs from this single source instead of hand-copying the literal list.
-export { PLURNK_OPS } from "./types.ts";
+export { PLURNK_OPS, WORKER_NAME, RESERVED_AUTHORITIES } from "./types.ts";
 
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";
 export type {
