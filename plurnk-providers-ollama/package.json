@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers-ollama",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "description": "Ollama provider for plurnk-service. Routes ollama/{model[/registry]} aliases through Ollama's OpenAI-compatible chat-completions endpoint, with dynamic context-size resolution from /api/show.",
     "type": "module",
     "license": "MIT",
@@ -35,6 +35,6 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-providers": "1.0.7"
+        "@plurnk/plurnk-providers": "1.0.8"
     }
 }

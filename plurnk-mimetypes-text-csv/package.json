@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-csv",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "description": "text/csv mimetype handler for plurnk-service. Homebrew RFC 4180 tokenizer; no parser dependency.",
     "type": "module",
     "license": "MIT",
@@ -45,6 +45,6 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "1.0.7"
+        "@plurnk/plurnk-mimetypes": "1.0.8"
     }
 }

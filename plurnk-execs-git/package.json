@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-git",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "description": "In-process git runtime executor for plurnk-service's exec scheme — isomorphic-git (no subprocess, no shell escape) for EXEC[git]. The sandbox-portable versioning surface.",
     "keywords": [
         "plurnk",
@@ -62,6 +62,6 @@
         "isomorphic-git": "1.38.7"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.0.7"
+        "@plurnk/plurnk-execs": "1.0.8"
     }
 }
