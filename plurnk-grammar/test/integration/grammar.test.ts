@@ -1146,6 +1146,39 @@ test("error message: stray char in slot region names what's allowed", () => {
     assert.match(e.message, /\[signal\].*\(target\).*<L>.*:body:/);
 });
 
+// #516 (run56 T13): a model that has the `<timeout,poll>` vocabulary but puts it in the
+// executor slot (`EXEC[-1,300]`) gets a redirect to the `<scope>` slot AT THE PARSE, not a raw
+// `unrecognized character` dead-end. SIGNAL_IDENT is EXEC-exclusive, so the redirect is op-correct.
+test("error message: mark-shaped EXEC signal redirects to <scope> (§signal-scope-redirect)", () => {
+    for (const src of ["<<EXEC[-1,300]:make:EXEC", "<<EXEC[1,300]:make:EXEC", "<<EXEC[30,5]:make:EXEC"]) {
+        const e = firstError(src);
+        assert.match(e.message, /timeout\/poll ride the `<scope>` slot; try `EXEC<-1,300>`/, src);
+    }
+});
+
+test("error message: a non-mark EXEC signal failure keeps the generic executor message", () => {
+    const e = firstError("<<EXEC[!bad]:m:EXEC");
+    assert.match(e.message, /expected executor for EXEC/);
+    assert.doesNotMatch(e.message, /timeout\/poll/);
+});
+
+test("error message: the redirect is EXEC-scoped — SEND/KILL (SIGNAL_INT) do not get it", () => {
+    // KILL has no <scope> slot; redirecting it would be wrong. SIGNAL_INT is left untouched.
+    for (const src of ["<<SEND[1,300]:x:SEND", "<<KILL[1,300](p)::KILL"]) {
+        const e = firstError(src);
+        assert.match(e.message, /expected integer for SEND\/KILL/, src);
+        assert.doesNotMatch(e.message, /timeout\/poll/, src);
+    }
+});
+
+test("error message: the redirect's suggested spelling actually parses (EXEC<-1,300>)", () => {
+    const result = PlurnkParser.parseStatements("<<EXEC(build.sh)<-1,300>:make:EXEC");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const stmt = result.items.find((i) => i.kind === "statement");
+    assert.ok(stmt && stmt.kind === "statement" && stmt.statement.op === "EXEC");
+    if (stmt?.kind === "statement") assert.deepEqual((stmt.statement as any).lineMarker?.marks, [-1, 300]);
+});
+
 test("error message: no ANTLR-y terminology leaks through", () => {
     const inputs = [
         "<<EDIT(p):body without close",
