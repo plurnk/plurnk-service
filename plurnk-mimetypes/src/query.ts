@@ -1,4 +1,13 @@
-import { jsonpath as jp3, type JSONValue } from "json-p3";
+import { JSONPathEnvironment, type JSONValue } from "json-p3";
+
+// json-p3's default recursion-descent cap (50 nodes visited) is a DoS guard for
+// untrusted deeply-nested JSON. Our jsonpath target is deepJson — our OWN parse
+// tree (§12), trusted and traversed linearly, so `$..*` over it can't amplify.
+// Real parse trees run hundreds to millions of nodes (a 2-line Erlang file is
+// 348), so the 50-node default breaks recursive descent on every ANTLR/tree-
+// sitter handler (#523 — the regression the #490 swap's shallow fixtures missed).
+// Unbounded over trusted trees is the honest bound, not a magic threshold.
+const JP3 = new JSONPathEnvironment({ maxRecursionDepth: Number.MAX_SAFE_INTEGER });
 import { DOMParser } from "@xmldom/xmldom";
 import * as xpath from "xpath";
 import { InvalidExpressionError, QueryParseFailureError } from "./QueryError.ts";
@@ -69,7 +78,7 @@ export function queryJsonpathObject(
     let results: Array<{ value: unknown; path: string; pointer: string }>;
     try {
         // deepJson is JSON-shaped by the §12 contract; the cast is the seam.
-        results = jp3.query(pattern, obj as JSONValue).nodes.map((n) => ({
+        results = JP3.query(pattern, obj as JSONValue).nodes.map((n) => ({
             value: n.value,
             path: n.path,
             pointer: String(n.toPointer()),

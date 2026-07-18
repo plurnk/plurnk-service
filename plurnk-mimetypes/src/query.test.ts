@@ -234,3 +234,15 @@ describe("outlineLineFor — bare-number outline projection resolver (#41 symmet
         assert.deepEqual(out[0].lines, [{ line: 5, endLine: 5 }]);
     });
 });
+
+describe("jsonpath recursive descent over deep parse trees (#523)", () => {
+    it("$..* traverses a tree far past json-p3's default 50-node cap", () => {
+        // A deepJson-shaped tree with ~200 nodes — mirrors an ANTLR/tree-sitter
+        // handler's full parse tree. The default recursion cap threw here,
+        // breaking recursive-descent jsonpath on every deep-tree handler.
+        const child = (i: number): unknown => ({ type: `node_${i}`, line: i, endLine: i, text: String(i) });
+        const tree = { type: "root", line: 1, endLine: 200, children: Array.from({ length: 200 }, (_, i) => child(i + 1)) };
+        const matches = queryJsonpathObject(tree, "$..*");
+        assert.ok(matches.length > 200, `expected >200 matches, got ${matches.length}`);
+    });
+});
