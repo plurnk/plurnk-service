@@ -237,6 +237,11 @@ ORDER BY tag;
 -- PREP: test_list_entry_schemes
 SELECT scheme FROM entries ORDER BY scheme;
 
+-- PREP: test_insert_open_subscription
+-- #521 — seed an OPEN exec-stream subscription with an optional poll cadence (NULL = no explicit <,P>).
+INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, poll_seconds)
+VALUES ($worker_id, $entry_id, 'sh', 'h', $poll_seconds);
+
 -- PREP: test_invalid_subscription_only_closed_at
 -- Used to verify the closed_at + close_status pairing CHECK constraint.
 INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, closed_at)
