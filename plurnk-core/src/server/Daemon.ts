@@ -1181,8 +1181,12 @@ export default class Daemon {
             this.#pollBackoff.delete(workerId);
             return; // explicit opt-out
         } else {
-            const open = await (this.#db.drain_worker_open_stream_count as PrepMethod).get<{ n: number }>({ worker_id: workerId });
-            if ((open?.n ?? 0) === 0) { this.#pollBackoff.delete(workerId); return; } // no stream → nothing to poll
+            // #521 (universal, owner-ruled) — ANY unbounded park backs off; no park is ever blind.
+            // A child-join and a hung exec wake on the SAME ladder, so a lost wake edge (a dropped
+            // child-terminal/stream conclusion) self-heals within one step and the model regains a
+            // turn to inspect + KILL. The primary wake edge still resumes it immediately when it fires;
+            // the backoff timer then no-ops (the loop is no longer slept). Non-striking — shares the
+            // explicit-poll wake primitive, so a correctly-waiting parent never strikes out.
             const base = Number(process.env.PLURNK_SERVICE_EXEC_POLL_SEC ?? "60");
             const turns = Number(process.env.PLURNK_SERVICE_EXEC_POLL_TURNS ?? "8");
             const step = this.#pollBackoff.get(workerId) ?? 0;
