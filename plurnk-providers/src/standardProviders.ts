@@ -78,6 +78,8 @@ type StandardProviderSpec = {
     // temperature/penalty floors on this provider; caller sampling still passes.
     suppressTuningFloors?: boolean;
     // #518: send prompt_cache_key=workerId (serverless replica-cache affinity).
+    // Default ON for standard providers (OpenAI-standard field, broadly accepted);
+    // set false to opt a backend out (e.g. anthropic's cache_control mechanism).
     promptCacheKey?: boolean;
     // Top-level response field the endpoint reports account balance (pico-USD) in,
     // surfaced as ProviderResponse.balancePico (plurnk only, #23). Absent elsewhere.
@@ -141,7 +143,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
         baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "effort_explicit", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerEnvVar: "FIREWORKS_TOKENIZER", promptCacheKey: true,
+        reasoningStyle: "effort_explicit", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
         apiKeyVar: ["DEEPINFRA_API_KEY", "DEEPINFRA_API_TOKEN", "DEEPINFRA_TOKEN"], apiKeyRequired: true,
@@ -230,6 +232,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         apiKeyVar: "ANTHROPIC_API_KEY", apiKeyRequired: true,
         baseUrlVar: "ANTHROPIC_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "anthropic", tokenizerEnvVar: "ANTHROPIC_TOKENIZER",
+        promptCacheKey: false, // #518: anthropic caches via cache_control breakpoints, not prompt_cache_key (unverified) — opt out
     },
     // AWS Bedrock via its OpenAI-compat endpoint (path is /openai/v1, NOT /v1),
     // bearer-authed with a Bedrock API key (SigV4 optional). Region-templated base
@@ -543,7 +546,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         ...dataCaptureFromEnv(env, name),
         streaming: spec.streaming,
         firstPartyMetadata: spec.firstPartyMetadata,
-        promptCacheKey: spec.promptCacheKey,
+        promptCacheKey: spec.promptCacheKey ?? true, // #518: default-on for standard providers (OpenAI-standard field, 6/6 backends verified accept it); per-spec opt-out below
         balanceMetaKey: spec.balanceMetaKey,
         supportsSlotPinning,
         slotCount,

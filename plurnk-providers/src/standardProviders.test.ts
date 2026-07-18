@@ -826,3 +826,21 @@ test("fireworks: a bare alias is prefixed with accounts/fireworks/models/ on the
 test("fireworks: an already-prefixed id is left unchanged (idempotent prepend)", async () => {
     assert.equal(await fireworksWireModel("accounts/fireworks/models/deepseek-v4-pro"), "accounts/fireworks/models/deepseek-v4-pro");
 });
+
+test("#518 prompt_cache_key: default-ON for a standard provider (workerId), OFF for anthropic (cache_control)", async () => {
+    const bodies: string[] = [];
+    mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
+        bodies.push(String(init?.body ?? ""));
+        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+    });
+    const env = { ...baseEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192", TOGETHER_BASE_URL: "https://api.together.xyz/v1", ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1" };
+
+    const together = await standardProviderFromEnv("together", { ...env, TOGETHER_API_KEY: "k" }, "moonshotai/Kimi-K2.7-Code");
+    await together!.generate({ workerId: "worker-xyz", messages: [] });
+    assert.equal(JSON.parse(bodies.at(-1)!).prompt_cache_key, "worker-xyz"); // default-on for standard providers
+
+    const anthropic = await standardProviderFromEnv("anthropic", { ...env, ANTHROPIC_API_KEY: "k" }, "claude-x");
+    await anthropic!.generate({ workerId: "worker-xyz", messages: [] });
+    assert.equal("prompt_cache_key" in JSON.parse(bodies.at(-1)!), false); // opted out (cache_control mechanism)
+    mock.restoreAll();
+});
