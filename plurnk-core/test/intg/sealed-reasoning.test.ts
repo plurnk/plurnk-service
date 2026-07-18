@@ -22,17 +22,19 @@ test("[§sealed-reasoning-carrier] sealed blobs land verbatim on the mirror row'
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "<<PLAN::PLAN\n<<SEND[102]:one:SEND", reasoning: null, reasoningEncrypted: [{ data: BLOB, format: "openai-responses-v1" }] } },
+            { assistant: { content: "<<PLAN::PLAN\n<<SEND[102]:one:SEND", reasoning: null, reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
             { assistant: { content: "<<PLAN::PLAN\n<<SEND[200]:done:SEND", reasoning: null } },
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
         // 1. The carrier: the mirror row's attrs hold the blobs verbatim — agui's per-turn seam.
         const rows = await (db.test_log_entries_by_run_op as PrepMethod).all<{ attrs: string }>({ worker_id: workerId, op: "model" });
-        const sealed = rows.map((r) => JSON.parse(r.attrs) as { reasoningEncrypted?: Array<{ data: string; format: string | null }> })
-            .find((a) => a.reasoningEncrypted !== undefined);
-        assert.ok(sealed, "the mirror row carries reasoningEncrypted");
-        assert.deepEqual(sealed!.reasoningEncrypted, [{ data: BLOB, format: "openai-responses-v1" }], "blobs verbatim — never decoded, never synthesized");
+        const item = rows.map((r) => JSON.parse(r.attrs) as { reasoning?: { id: string | null; subtype: string; encrypted: Array<{ data: string; format: string | null }> } })
+            .find((a) => a.reasoning !== undefined)?.reasoning;
+        assert.ok(item, "the mirror row carries attrs.reasoning — the standard item shape agui reads");
+        assert.equal(item!.id, "rs_1", "id verbatim from the wire — never synthesized");
+        assert.equal(item!.subtype, "message", "subtype verbatim (message vs tool-call)");
+        assert.deepEqual(item!.encrypted, [{ data: BLOB, format: "openai-responses-v1" }], "blobs verbatim — never decoded");
 
         // 2. Weight safety: the NEXT packet's render must not contain the blob anywhere.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
