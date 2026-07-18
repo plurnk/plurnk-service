@@ -109,7 +109,7 @@ export default class PacketWire {
     // §jsonplurnk — the Note that leads the Log's fenced block, teaching the one carve-out inline
     // plus the token semantics (#466: a model-facing number defines itself where it appears — an
     // undefined `tokens` beside `itemsTokenTotal` read as 577-vs-6127 unreliability in run59).
-    static #JSONPLURNK_NOTE = "Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when present, is a HEREDOC-style `<<:::tag … :::tag` block. `tokens` prices a row's body in this packet (what OPEN adds, what FOLD saves); a FIND's `itemsTokenTotal` sizes the matched entries themselves (the cost of READing them).";
+    static #JSONPLURNK_NOTE = "Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when present, is a HEREDOC-style `<<:::tag … :::tag` block. `tokens` is the ruler-weight of a row's body in this packet — the room it takes (what OPEN adds, what FOLD saves); a FIND's `itemsTokenTotal` is the ruler-weight of the matched entries themselves (the room READing them takes). These are curation weights (the model-agnostic ruler), not dollars.";
 
     // The log section's content: the model's curated rows as a fenced `jsonplurnk` array (§jsonplurnk).
     // Empty log → "" (the section is omitted).
@@ -163,8 +163,8 @@ export default class PacketWire {
         const perEntry: Array<{ path: string; tokens: number }> = [];
         for (const e of logEntries) {
             // Two weights, two purposes (#466 — one labeled semantic per number): the row's FULL
-            // render (meta line + fences + body) composes the turn rollup — what the turn costs in
-            // the packet; the heaviest list carries the row's BODY price — the FOLD unit, the SAME
+            // render (meta line + fences + body) composes the turn rollup — the room the turn takes in
+            // the packet; the heaviest list carries the row's BODY weight — the FOLD unit, the SAME
             // number the row's own `tokens` shows, so the budget and the log can never disagree
             // about one row. A bodyless row is no FOLD target and never ranks.
             const bodyPrice: number[] = [];
@@ -312,7 +312,7 @@ export default class PacketWire {
         return op !== null ? `log:///${coordinate}/${op}` : `log:///${coordinate}`;
     }
 
-    // `collectBodyTokens`, when supplied, receives each row's body price (the rendered meta.tokens)
+    // `collectBodyTokens`, when supplied, receives each row's body weight (the rendered meta.tokens)
     // in order — the FOLD unit measureLogBudget ranks, guaranteed identical to what the row shows.
     // §arrival-law (#499) — the pushed-lane bound: another actor's text rides OPEN only up to
     // the preview (N lines AND 80×N chars — the char cap guards single-line bombs); over, the
