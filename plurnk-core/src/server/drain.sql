@@ -106,11 +106,6 @@ SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequ
 -- engine's next-turn-sequence is DB-derived, so the resumed loop foists no prompt (seq > 1).
 UPDATE loops SET status = 100 WHERE id = $loop_id AND status = 202;
 
--- PREP: drain_worker_open_stream_count
--- #521 — count a worker's OPEN polled-scheme subscriptions (exec streams). Disambiguates a NULL
--- min-poll: >0 here + NULL min = a live exec stream with no explicit <,P> → the backoff poll applies.
-SELECT COUNT(*) AS n FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
-
 -- PREP: drain_worker_min_poll
 -- grammar 0.74.20 EXEC `<T,P>` — the tightest poll cadence (seconds) among a worker's OPEN
 -- polled subscriptions. NULL when the worker holds no polled stream → no hibernation poll-wake.
