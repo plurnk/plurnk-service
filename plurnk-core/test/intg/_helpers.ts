@@ -1,4 +1,5 @@
 import SqlRite from "@possumtech/sqlrite";
+import { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { mkdir, readFile } from "node:fs/promises";
@@ -68,7 +69,22 @@ const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 // pre-clean .tmp (test:clean-tmp) so only the current worker's DBs remain —
 // no cross-worker accumulation. A bare `node --test <file>` bypasses that, so
 // run `npm run test:clean-tmp` yourself first if you go around the script.
+// Leak guard — an idle SqlRite handle HOLDS THE PROCESS (possumtech/sqlrite#8): a seeder that
+// throws between open and close leaks one, every test settles, and the child process never exits —
+// the file wedges silently with zero output. The after() hook closes whatever the tests left open.
+const openHandles = new Set<() => Promise<void>>();
+let leakGuardArmed = false;
+const armLeakGuard = (): void => {
+    if (leakGuardArmed) return;
+    leakGuardArmed = true;
+    after(async () => {
+        for (const close of openHandles) await close().catch(() => {}); // already-closed is fine — the guard only exists for the leaked
+        openHandles.clear();
+    });
+};
+
 export const openMigrated = async (atPath?: string): Promise<Db> => {
+    armLeakGuard();
     const dbPath = atPath ?? join(TMP_DIR, `db-${crypto.randomUUID()}.db`);
     await mkdir(dirname(dbPath), { recursive: true });
     const db = (await SqlRite.open({
@@ -81,7 +97,9 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
         functions: [resolve(PROJECT_ROOT, "src/schemes/cosine.ts")],
     })) as unknown as Db;
     const originalClose = db.close.bind(db);
+    openHandles.add(originalClose);
     db.close = async () => {
+        openHandles.delete(originalClose);
         await originalClose();
         console.error(`[openMigrated] db kept: ${dbPath}`);
     };
