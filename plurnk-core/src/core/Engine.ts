@@ -1233,15 +1233,11 @@ export default class Engine {
         // introspect any prior emission of its own the same way. Empty emissions (a struck/
         // silent turn) write nothing — no prior output to mirror.
         const sealed = (response.assistant as { reasoningEncrypted?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }> }).reasoningEncrypted;
-        const reasoningItem = sealed !== undefined && sealed.length > 0 ? sealed[0] : undefined;
-        // #482 — providers can emit MULTIPLE reasoning items (message vs tool-call subtypes); agui's
-        // seam reads ONE `attrs.reasoning`. The single-item case (the common one) serves end to end; a
-        // >1 turn surfaces only its first item until agui iterates + core relays the array (routed).
-        if (reasoningItem !== undefined && sealed !== undefined && sealed.length > 1) {
-            this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "reasoning_multi_item", level: "warn", message: `provider returned ${sealed.length} reasoning items; the seam carries the first (#482 residual)` } as never);
-        }
-        if (packetAssistant.content.trim().length > 0 || reasoningItem !== undefined) {
-            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true, ...(reasoningItem !== undefined ? { reasoningItem } : {}) });
+        // #482 — relay the FULL item ARRAY verbatim (agui projects one correlated span per item), so a
+        // multi-id turn serves N entities, not a collapsed first. Providers already expose the array.
+        const reasoningItems = sealed !== undefined && sealed.length > 0 ? sealed : undefined;
+        if (packetAssistant.content.trim().length > 0 || reasoningItems !== undefined) {
+            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true, ...(reasoningItems !== undefined ? { reasoningItems } : {}) });
         }
 
         // Zero ops is NOT an error to report — the model knows it emitted
