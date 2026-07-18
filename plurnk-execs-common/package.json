@@ -53,6 +53,11 @@
                 "example": "<<EXEC[python]:print(sum(range(101))):EXEC"
             },
             {
+                "name": "python3",
+                "glyph": "🐍",
+                "example": "<<EXEC[python3]:print(sum(range(101))):EXEC"
+            },
+            {
                 "name": "perl",
                 "glyph": "🐪",
                 "example": "<<EXEC[perl]:print join(',', 1..5):EXEC"

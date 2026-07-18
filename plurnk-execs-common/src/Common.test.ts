@@ -30,7 +30,7 @@ test("manifest declares the candidate common-REPL tags, matching RUNTIME_TAGS", 
     const manifest = pkg.plurnk.runtimes.map((r: { name: string }) => r.name);
     assert.deepEqual(manifest, [...RUNTIME_TAGS]);
     assert.deepEqual(manifest, [
-        "sh", "bash", "node", "python",
+        "sh", "bash", "node", "python", "python3",
         "perl", "ruby", "php", "lua", "deno", "bun", "tcl", "bc", "awk",
     ]);
 });
@@ -42,6 +42,9 @@ test("spawnArgs: the subprocess floor (sh/node/python)", () => {
     assert.deepEqual(make("node").spawnArgs("node", "console.log(1)"), { cmd: "node", args: ["-e", "console.log(1)"], useShell: false });
     // @ts-expect-error
     assert.deepEqual(make("python").spawnArgs("python", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
+    // python3 is an alias of python — same python3 binary, same -c script arm (#519)
+    // @ts-expect-error
+    assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
 
 test("spawnArgs: a target is the script-file positional for EVERY interpreter, body = stdin (#15, transient exec #500)", () => {
