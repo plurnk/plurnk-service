@@ -122,7 +122,7 @@ export default class SchemeRegistry {
     // plurnk://docs/<name>.md by loop_run, READ on demand). The verbose semantics live
     // in that pull doc, not here: terse pushes, depth pulls — exactly the exec tools
     // sheet's shape (#collectTools). Insertion order; a scheme with no example
-    // (provisional, e.g. skill) is omitted. The doc's token cost rides its manifest entry.
+    // (provisional, e.g. skill) is omitted. The doc's token weight rides its manifest entry.
     teach(): string {
         const lines: string[] = [];
         const excluded = docsExcludeSet();

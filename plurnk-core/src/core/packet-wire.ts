@@ -383,7 +383,7 @@ export default class PacketWire {
                     if (Array.isArray(parsed)) items = parsed.length;
                 }
                 // The matched set's content weight (sum of the entries' live channel tokens) — the
-                // FIND self-describes its hits' READ-cost; carries the per-scheme roll-up in the foist.
+                // FIND self-describes its hits' READ-weight; carries the per-scheme roll-up in the foist.
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsTokenTotal === "number") {
                     meta.itemsTokenTotal = rx.itemsTokenTotal;
                 }
@@ -481,7 +481,7 @@ export default class PacketWire {
             }
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
-            // it; for a folded row this is the cost an OPEN would add. items present even at 0.
+            // it; for a folded row this is the room an OPEN would add. items present even at 0.
             if (items !== null) meta.items = items;
             // 0 for a genuinely empty body — never call countTokens("") (some providers return
             // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
