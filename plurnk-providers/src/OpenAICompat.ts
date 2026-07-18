@@ -47,6 +47,12 @@ export type OpenAICompatConfig = {
     costFor?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
+    // #518: send the OpenAI-standard `prompt_cache_key` set to workerId, so a
+    // serverless backend with REPLICA-LOCAL prompt caching (fireworks, verified)
+    // pins a worker's turns to one replica and claims its stable prefix. Default
+    // false -- a backend that strict-validates unknown fields 400s, so enable only
+    // where the field is accepted. Same identity that already drives slot affinity.
+    promptCacheKey?: boolean;
     gbnfDebug?: boolean;                        // PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
@@ -185,6 +191,7 @@ const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set([
     "model", "messages", "stream", "stream_options", "grammar", "response_format", "id_slot", "logprobs", "top_logprobs",
     "n", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls",
     "modalities", "audio", "prediction", "max_tokens", "max_completion_tokens",
+    "prompt_cache_key",
 ]);
 
 // Render a non-accept verdict into a terse, factual grammar_unenforced message
@@ -217,6 +224,7 @@ export default class OpenAICompatProvider implements Provider {
     #costFor: (usage: ProviderUsage) => number;
     #source: string;
     #grammarStyle: GrammarStyle;
+    #promptCacheKey: boolean;
     #gbnfDebug: boolean;
     #streaming: boolean;
     #firstPartyMetadata: boolean;
@@ -261,6 +269,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#costFor = config.costFor ?? (() => 0);
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
+        this.#promptCacheKey = config.promptCacheKey ?? false;
         this.#gbnfDebug = config.gbnfDebug ?? false;
         this.#streaming = config.streaming ?? true;
         this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
@@ -559,6 +568,10 @@ export default class OpenAICompatProvider implements Provider {
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
             ...this.#slotBody(workerId),
+            // #518: prompt-cache affinity -- workerId as the OpenAI-standard
+            // prompt_cache_key routes a worker's turns to one serverless replica so
+            // its stable prefix caches (managed; reserved from caller sampling).
+            ...(this.#promptCacheKey ? { prompt_cache_key: workerId } : {}),
         };
 
         // Transient-failure retry (#18). Each attempt gets a FRESH fetch timeout
