@@ -100,12 +100,14 @@ The envelope is mirrored locally (`TelemetryEvent`, `ContentOffset`, `LogCoordin
 
 ### §2.5 Deadlines & polling — the executor stays oblivious
 
-An EXEC op may carry a `<L>` line-marker slot read as `[TIMEOUT_SECONDS, POLL_SECONDS?]` (plurnk-grammar#39, plurnk-service#277): `<1800>` hard-kills at 1800s, `<-1>` declines a per-exec deadline (still loop-life bounded), `<1800,300>` adds a 300s loop-poll. **None of this touches the executor contract.** `run()` stays stream-only and abort-driven:
+An EXEC op may carry a `<L>` line-marker slot read as `[TIMEOUT_SECONDS, POLL_SECONDS?]` (plurnk-grammar#39, plurnk-service#277): `<1800>` hard-kills at 1800s, `<-1>` declines a per-exec deadline (still loop-life bounded), `<1800,300>` fixes a 300s loop-poll. **None of this touches the executor contract.** `run()` stays stream-only and abort-driven:
 
 - The **timeout** is the consumer's: at the deadline it fires `args.signal` — arriving as an ordinary abort the executor already honors (the §4 process-group SIGHUP→grace→KILL path). No deadline awareness in the executor.
 - The **poll** is purely the consumer's loop: it wakes on a cadence while the channel is `active`, reading the partial output the executor already streams incrementally via `write`. The executor never sees a tick; it's non-destructive.
 
-So the feature is contract-free for executors and applies to all of them uniformly: a long-runner is bounded/watched by the op slot, a fast/logical executor (search) terminates before the first tick and the slot is a no-op.
+**Default poll — exponential backoff, not park-blind (owner ruling, #519).** An absent poll (`<T>`, `<T,-1>`, or no slot) does **not** mean "never wake" — the consumer applies a default **exponential backoff, base 60s, 8 turns** (both operator-tunable: `PLURNK_SERVICE_EXEC_POLL_SEC` / `PLURNK_SERVICE_EXEC_POLL_TURNS`): the loop wakes at 60s, 120, 240 … doubling for 8 turns then holding at the cap. This reverses the earlier park-blind default, under which a hung exec (a deadlock, a lock-wait, a bare interpreter on stdin) held its worker for the whole loop life with the model never regaining a turn. The wake is **non-destructive and model-driven**: each tick hands the model a turn to observe the partial output and decide — re-park a legitimately slow long-runner, or **KILL** a stuck one. There is deliberately **no auto-kill**: only the model can tell a silent deadlock from a silent `cargo build`, so disposal is its judgment, not a timer's. Overrides: `<,P>` (P>0) fixes the cadence; `<,0>` opts out to a blind park for an exec a model truly wants unwatched. Mechanism + knobs live in the consumer (plurnk-service).
+
+So the feature is contract-free for executors and applies to all of them uniformly: a long-runner is watched by the backoff (or the op slot), a fast/logical executor (search) terminates before the first tick and the slot is a no-op.
 
 ### §2.6 Output addressing — the executor produces, the consumer reads
 
