@@ -959,3 +959,26 @@ test("#507 router-owned tuning: tuningFloors:false drops the temperature/penalty
     assert.equal(body.temperature, 0.9);           // caller intent passes verbatim
     assert.equal("frequency_penalty" in body, false); // the floor is suppressed (router owns tuning, SPEC §5)
 });
+
+// -- #518: prompt-cache affinity (workerId -> prompt_cache_key) --
+
+test("#518 promptCacheKey on: body sends prompt_cache_key = workerId (serverless replica affinity)", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "worker-abc", messages: [] });
+    assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "worker-abc");
+});
+
+test("#518 promptCacheKey off (default): no prompt_cache_key on the wire", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "worker-abc", messages: [] });
+    assert.equal("prompt_cache_key" in JSON.parse(calls[0].init.body as string), false);
+});
+
+test("#518 prompt_cache_key is managed: caller sampling cannot forge/override the affinity key", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "worker-abc", messages: [], sampling: { prompt_cache_key: "hijack" } });
+    assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "worker-abc"); // managed wins
+});

@@ -77,6 +77,8 @@ type StandardProviderSpec = {
     // #507: the plurnk.ai router owns tuning (SPEC §5) — suppress the client-side
     // temperature/penalty floors on this provider; caller sampling still passes.
     suppressTuningFloors?: boolean;
+    // #518: send prompt_cache_key=workerId (serverless replica-cache affinity).
+    promptCacheKey?: boolean;
     // Top-level response field the endpoint reports account balance (pico-USD) in,
     // surfaced as ProviderResponse.balancePico (plurnk only, #23). Absent elsewhere.
     balanceMetaKey?: string;
@@ -139,7 +141,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
         baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "effort_explicit", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
+        reasoningStyle: "effort_explicit", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerEnvVar: "FIREWORKS_TOKENIZER", promptCacheKey: true,
     },
     deepinfra: {
         apiKeyVar: ["DEEPINFRA_API_KEY", "DEEPINFRA_API_TOKEN", "DEEPINFRA_TOKEN"], apiKeyRequired: true,
@@ -541,6 +543,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         ...dataCaptureFromEnv(env, name),
         streaming: spec.streaming,
         firstPartyMetadata: spec.firstPartyMetadata,
+        promptCacheKey: spec.promptCacheKey,
         balanceMetaKey: spec.balanceMetaKey,
         supportsSlotPinning,
         slotCount,
