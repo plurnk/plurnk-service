@@ -87,8 +87,12 @@ for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
 
     // STEPDAUGHTER: passive substrate, machine owns the version — lockstep to the stamp, republish.
     if (await served(name) === version) { console.log(`  serves  ${tag}`); skipped++; continue; }
-    const dirty = (await run("git", ["-C", repo, "status", "--porcelain"])).stdout.trim();
-    if (dirty !== "") throw new Error(`${tag}: uncommitted work in the stepdaughter tree — the lane must land or stash it before the sweep can align+publish`);
+    // Clean tree — never bundle a lane's uncommitted SOURCE work blindly. A dirty package-lock is NOT
+    // source: it's a regenerable artifact the sweep's own `npm install` rewrites and the commit absorbs
+    // (dev-env workspace-link churn dirties it across the fleet). Block real changes; ignore the lock.
+    const dirty = (await run("git", ["-C", repo, "status", "--porcelain"])).stdout
+        .split("\n").filter((l) => l.trim() !== "" && !/\bpackage-lock\.json$/.test(l)).join("\n");
+    if (dirty !== "") throw new Error(`${tag}: uncommitted SOURCE work — the lane must land or stash it before the sweep can align+publish:\n${dirty}`);
 
     console.log(`  sweep   ${tag}  [${heads.join(",")}] → ${version}`);
     await alignStepdaughter(repo);
