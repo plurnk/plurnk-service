@@ -32,9 +32,12 @@ export type PlurnkOp = (typeof PLURNK_OPS)[number];
 export const WORKER_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 // Authorities interpreted by the RESOLVER, never mintable as worker names. `~` (self) is
-// reserved by construction — it is outside WORKER_NAME's alphabet. The commons row's name
-// (core-minted) must also never render into a URI: the commons renders as the EMPTY authority.
-export const RESERVED_AUTHORITIES = Object.freeze(["plurnk"] as const);
+// reserved by construction — it is outside WORKER_NAME's alphabet. `self` is reserved because
+// a worker literally named self would impersonate the `~` idiom (worker://self/ reading as
+// "mine" while addressing someone else's space — a minted look-alike principal). The commons
+// row's name (core-minted) must also never render into a URI: the commons renders as the
+// EMPTY authority.
+export const RESERVED_AUTHORITIES = Object.freeze(["plurnk", "self"] as const);
 
 // Client-tier-only ops (parseClient). Kept distinct from PlurnkOp so the protocol op set
 // stays closed and client ops never widen the model-facing type.

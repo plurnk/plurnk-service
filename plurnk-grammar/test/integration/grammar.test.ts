@@ -206,7 +206,7 @@ test("value-add: warning carries severity through to the TelemetryEvent level", 
 
 // {§send-mid-reservation}
 test("value-add: mid-turn termination (op after a disposition SEND) is lifted to the rule", () => {
-    const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(known:///a):v:EDIT");
+    const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[200]:done:SEND\n<<EDIT(worker:///a):v:EDIT");
     // Shape-only wording: no code enumeration in error messages (the menu is canon's job) -
     // enumerating painted us into corners twice (202 retirement, the 300 injectable-only leak).
     assert.ok(errs.some((e) => /a disposition SEND ends the turn - nothing may follow it/.test(e!.message)));
@@ -745,14 +745,14 @@ test("ParsedPath: https URL decomposed fully", () => {
     assert.equal(p.fragment, "frag");
 });
 
-test("ParsedPath: known:/// — empty authority, leading-slash pathname", () => {
-    const result = PlurnkParser.parseStatements("<<READ(known:///entries/foo/bar)::READ");
+test("ParsedPath: worker:/// — empty authority, leading-slash pathname", () => {
+    const result = PlurnkParser.parseStatements("<<READ(worker:///entries/foo/bar)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") return;
     const p = item.statement.target;
     assert.ok(p);
     if (p.kind !== "url") return;
-    assert.equal(p.scheme, "known");
+    assert.equal(p.scheme, "worker");
     assert.equal(p.hostname, null);
     assert.equal(p.pathname, "/entries/foo/bar");
 });
@@ -862,13 +862,13 @@ test("ParsedPath: empty-authority scheme preserves params and fragment", () => {
     assert.equal(p.fragment, "History");
 });
 
-test("ParsedPath: known:/// nested path stays whole", () => {
-    const result = PlurnkParser.parseStatements("<<READ(known:///philosophy/existentialism/meaning)::READ");
+test("ParsedPath: worker:/// nested path stays whole", () => {
+    const result = PlurnkParser.parseStatements("<<READ(worker:///philosophy/existentialism/meaning)::READ");
     const item = result.items[0];
     if (item.kind !== "statement") { assert.fail("expected statement"); return; }
     const p = item.statement.target;
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.equal(p.scheme, "known");
+    assert.equal(p.scheme, "worker");
     assert.equal(p.hostname, null);
     assert.equal(p.pathname, "/philosophy/existentialism/meaning");
 });
@@ -1045,26 +1045,26 @@ test("COPY body carries a worker-fork prompt verbatim", () => {
 });
 
 test("parsePath export resolves a COPY destination into the same ParsedPath as a (target) slot", () => {
-    const result = PlurnkParser.parseStatements("<<COPY(known:///draft):known:///archive/draft:COPY");
+    const result = PlurnkParser.parseStatements("<<COPY(worker:///draft):worker:///archive/draft:COPY");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "COPY") return;
     const dest = parsePath(item.statement.body!);
     assert.ok(dest);
     if (dest.kind !== "url") return;
-    assert.equal(dest.scheme, "known");
+    assert.equal(dest.scheme, "worker");
     assert.equal(dest.pathname, "/archive/draft");
     // A bare/local destination stays local, never throws.
     assert.deepEqual(parsePath("archive/2026/draft"), { kind: "local", raw: "archive/2026/draft" });
 });
 
 test("MOVE body is a ParsedPath", () => {
-    const result = PlurnkParser.parseStatements("<<MOVE(known:///draft):known:///final/answer:MOVE");
+    const result = PlurnkParser.parseStatements("<<MOVE(worker:///draft):worker:///final/answer:MOVE");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "MOVE") return;
     const b = item.statement.body;
     assert.ok(b);
     if (b.kind !== "url") return;
-    assert.equal(b.scheme, "known");
+    assert.equal(b.scheme, "worker");
     assert.equal(b.hostname, null);
     assert.equal(b.pathname, "/final/answer");
 });
@@ -1399,7 +1399,7 @@ const logInvalid = (input: string) => {
 
 test("parseLog: a multi-turn log of <<TURN>-wrapped turns parses clean and flattens in order", () => {
     const log =
-        turn("<<PLAN:find it:PLAN <<READ(known:///x)::READ <<SEND[102]:reading:SEND") + "\n" +
+        turn("<<PLAN:find it:PLAN <<READ(worker:///x)::READ <<SEND[102]:reading:SEND") + "\n" +
         turn("<<PLAN:answer:PLAN <<SEND[200]:done:SEND");
     assert.deepEqual(logResult(log), { stmts: 5, errs: 0, tail: false }); // PLAN READ SEND | PLAN SEND
 });
@@ -1409,7 +1409,7 @@ test("parseLog: a single wrapped turn is a valid log", () => {
 });
 
 test("parseLog: prose inside a wrapped turn is tolerated (comments)", () => {
-    assert.equal(logResult(turn("thinking <<PLAN:p:PLAN consider <<READ(known:///x)::READ <<SEND[200]:done:SEND")).errs, 0);
+    assert.equal(logResult(turn("thinking <<PLAN:p:PLAN consider <<READ(worker:///x)::READ <<SEND[200]:done:SEND")).errs, 0);
 });
 
 test("parseLog: a BARE (unwrapped) turn is NOT a valid log — TURN wrapping is required", () => {
@@ -1417,11 +1417,11 @@ test("parseLog: a BARE (unwrapped) turn is NOT a valid log — TURN wrapping is 
 });
 
 test("parseLog: a wrapped turn missing its inner PLAN is invalid (sandwich is law)", () => {
-    assert.ok(logInvalid(turn("<<READ(known:///x)::READ <<SEND[200]:done:SEND")), "no PLAN inside the TURN");
+    assert.ok(logInvalid(turn("<<READ(worker:///x)::READ <<SEND[200]:done:SEND")), "no PLAN inside the TURN");
 });
 
 test("parseLog: a wrapped turn missing its terminal SEND is invalid", () => {
-    assert.ok(logInvalid(turn("<<PLAN:p:PLAN <<READ(known:///x)::READ")), "no terminal SEND inside the TURN");
+    assert.ok(logInvalid(turn("<<PLAN:p:PLAN <<READ(worker:///x)::READ")), "no terminal SEND inside the TURN");
 });
 
 test("parseLog: an unclosed <<TURN is invalid", () => {
@@ -1455,7 +1455,7 @@ test("parse: rejects a mid-batch PLAN (PLAN is the anchor, never a mid-op)", () 
 });
 
 test("parse: the canonical single sandwich is valid", () => {
-    const r = PlurnkParser.parse("<<PLAN:p:PLAN\n<<READ(known:///x)::READ\n<<SEND[200]:done:SEND");
+    const r = PlurnkParser.parse("<<PLAN:p:PLAN\n<<READ(worker:///x)::READ\n<<SEND[200]:done:SEND");
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
     assert.equal(r.unparsedTail, undefined);
 });

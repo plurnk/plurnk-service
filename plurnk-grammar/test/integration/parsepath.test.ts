@@ -40,9 +40,9 @@ test("parsePath: HTTPS retains full authority decomposition", () => {
 });
 
 test("parsePath: authority-less scheme uses three slashes — empty authority, leading-slash path", () => {
-    const p = AstBuilder.parsePath("known:///philosophy/existentialism/meaning");
+    const p = AstBuilder.parsePath("worker:///philosophy/existentialism/meaning");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.equal(p.scheme, "known");
+    assert.equal(p.scheme, "worker");
     assert.equal(p.hostname, null);
     assert.equal(p.pathname, "/philosophy/existentialism/meaning");
     assert.equal(p.port, null);
@@ -132,9 +132,9 @@ test("parsePath: leading `#…#flags` returns kind=regex with split pattern/flag
 });
 
 test("parsePath: flagless path regex returns empty flags", () => {
-    const p = AstBuilder.parsePath("#^known:///archive#");
+    const p = AstBuilder.parsePath("#^worker:///archive#");
     if (p?.kind !== "regex") { assert.fail("expected regex"); return; }
-    assert.equal(p.pattern, "^known:///archive");
+    assert.equal(p.pattern, "^worker:///archive");
     assert.equal(p.flags, "");
 });
 
@@ -275,7 +275,8 @@ test("worker-name contract (§worker-name): WORKER_NAME is a lowercase DNS label
         assert.ok(!WORKER_NAME.test(bad), `${bad} must NOT be mintable`);
     }
     // Reserved authorities are resolver-interpreted; `plurnk` is charset-legal but reserved by list.
-    assert.deepEqual([...RESERVED_AUTHORITIES], ["plurnk"]);
+    // `self` reserved too: a worker named self would impersonate the `~` idiom.
+    assert.deepEqual([...RESERVED_AUTHORITIES], ["plurnk", "self"]);
 });
 
 test("worker-name contract: the case footgun is real — parser preserves authority case", () => {
