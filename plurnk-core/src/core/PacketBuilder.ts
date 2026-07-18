@@ -500,7 +500,7 @@ export default class PacketBuilder {
 
     // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
-    // catalogue's doc-links READ and the manifest carries each doc's token cost.
+    // catalogue's doc-links READ and the manifest carries each doc's token weight.
     async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
         const out = this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
         // §send-300-choices — the conditional teaching: questions.md (from the docs corpus)

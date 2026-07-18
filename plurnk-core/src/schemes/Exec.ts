@@ -420,7 +420,7 @@ export default class Exec {
         // the write, replay/fork-complete), rx carries the span (§edit-result-render, the whole
         // content numbered — a wholesale write's span IS the content; no diff, which would be a
         // pathological cost against a rewritten multi-MB page). Rendered folded by default, so no
-        // body rides a packet uninvited — the meta line carries the honest OPEN cost.
+        // body rides a packet uninvited — the meta line carries the honest OPEN weight.
         // Serialized: parallel entry() calls (allSettled) write in order; a rejection prunes that
         // survivor executor-side without breaking the chain. Lazy narration context: one plurnk-run
         // turn per spawn, not per entry.
@@ -448,7 +448,7 @@ export default class Exec {
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
                 // The web-fetch entry point: a fetched html page stores the handler's readable
                 // projection as the decisive `body` (text/markdown — what READ serves, FIND matches,
-                // FTS indexes, every price reports) with the raw page under `html` (xpath + archive).
+                // FTS indexes, every weight reports) with the raw page under `html` (xpath + archive).
                 // Scoped HERE, not writeEntry: only auto-fetched web content projects; authored files
                 // stay verbatim (a `<user email=…>` roster's attribute data must survive a default READ).
                 let channels: EntryData["channels"] = { body: { content: body, mimetype } };
