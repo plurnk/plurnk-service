@@ -337,6 +337,18 @@ export default class Engine {
     // budget the packet actually lives under (effective window minus the partition reserves),
     // the same number loop-usage stores per turn. providers.list advertised the raw KV and the
     // client's gauge rendered a window the model can never fill.
+    // #522 — the PRIMARY worker of a turn's lineage: the no-parent root reached by walking
+    // parent_worker_id up. A no-parent worker is its OWN primary (stamped on the primary's own
+    // turns). Supplied on the first-party metadata channel alongside Worker-Id; the endpoint routes
+    // primary→strong / spawned→cheap by `Worker-Primary == Worker-Id` equality. Fail-hard if a
+    // worker resolves to no root — that is a corrupt lineage (a cycle the parent!=id CHECK forbids),
+    // never a silent "assume primary."
+    async resolveWorkerPrimary(workerId: number): Promise<number> {
+        const root = await (this.#db.engine_worker_lineage_root as PrepMethod).get<{ id: number }>({ worker_id: workerId });
+        if (root === undefined) throw new Error(`resolveWorkerPrimary: worker ${workerId} has no lineage root — corrupt parent chain (#522)`);
+        return root.id;
+    }
+
     promptBudgetFor(provider: Provider): number | null {
         return this.#packets.promptBudgetFor(provider);
     }
