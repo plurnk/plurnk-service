@@ -10,6 +10,7 @@ import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
+import Owner from "../core/Owner.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import EntryFind from "./_entry-find.ts";
 import type { ReadResult } from "./_entry-ops.ts";
@@ -77,6 +78,24 @@ const coordinateFromPathname = (pathname: string): StreamCoordinate | undefined 
     return { loop_seq, turn_seq, sequence };
 };
 
+// {§stream-owner-scoped} — resolve a stream statement's authority to the owning worker and hand
+// back the statement authority-stripped (the storage path is the bare loop coordinate; the owner
+// rides the owner_id column, never the pathname). Empty authority = the CALLING worker — your own
+// streams need no qualifier, so a fan-out sibling's identical coordinate can never be yours (#526).
+// A named authority = that worker's streams, ancestry-gated (reader must be the owner or an
+// ancestor); an unknown name or unpermitted reader resolves null → the face 404s, no existence leak.
+export const resolveStreamStatement = async <S extends { target: ReadStatement["target"] }>(
+    statement: S,
+    ctx: PlurnkSchemeContext,
+): Promise<{ statement: S; ownerId: number } | null> => {
+    const t = statement.target;
+    const hostname = t !== null && t.kind === "url" ? t.hostname : null;
+    const ownerId = await Owner.resolveStreamOwner(hostname, ctx);
+    if (ownerId === null) return null;
+    if (hostname === null || t === null || t.kind !== "url") return { statement, ownerId };
+    return { statement: { ...statement, target: { ...t, hostname: null } }, ownerId };
+};
+
 // §exec-entry-sink / #455 — the guarded web-fetch the sink calls when the executor hands content:null:
 // schemes-http's WebFetcher (SSRF-guarded fetch+render, dead-as-null). Injectable because the guard
 // refuses localhost — a fake stands in for both the live { body, mimetype } and the null-dead verdict.
@@ -142,13 +161,14 @@ export default class Exec {
     // with any other terminal status) · 404 unknown (no subscription for that coordinate).
     async kill(pathname: string, signal: number | null, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
         for (const entry of this.#activeAborts.values()) {
-            if (entry.pathname === pathname) {
+            if (entry.workerId === ctx.workerId && entry.pathname === pathname) {
                 entry.controller.abort(ExecAbort.killReason(signal));
                 return { status: 200 };
             }
         }
-        // Not running — settle the outcome from the closed subscription's status.
-        const terminal = await ChannelWrite.execTerminalStatus(ctx.db, { workspaceId: ctx.workspaceId, pathname });
+        // Not running — settle the outcome from the closed subscription's status, scoped to the
+        // caller's own subscription (coordinates duplicate across workers, {§stream-owner-scoped}).
+        const terminal = await ChannelWrite.execTerminalStatus(ctx.db, { workspaceId: ctx.workspaceId, workerId: ctx.workerId, pathname });
         if (terminal === null) return { status: 404, error: `no exec at exec://${pathname}` };
         if (terminal === 499) return { status: 410, error: `exec://${pathname} was killed earlier` };
         return { status: 304 };
@@ -331,7 +351,7 @@ export default class Exec {
         const seed: EntryData = { channels: seedChannels, tags: [] };
         // §exec — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
-        const { entryId } = await EntryCrud.writeEntry(pathname, seed, ctx, runtime);
+        const { entryId } = await EntryCrud.writeEntry(pathname, seed, ctx, runtime, ctx.workerId);
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
         const subscriptionId = await ChannelWrite.openSubscription(ctx.db, {
@@ -571,15 +591,19 @@ export default class Exec {
     }
 
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        return EntryOps.readWorkspaceEntry(statement, ctx, Exec.manifest);
+        const owner = await resolveStreamStatement(statement, ctx);
+        if (owner === null) return { status: 404, content: null, mimetype: null, channel: null };
+        return EntryOps.readWorkspaceEntry(owner.statement, ctx, Exec.manifest, owner.ownerId);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        return EntryFind.findWorkspaceEntries(statement, ctx, Exec.manifest);
+        const owner = await resolveStreamStatement(statement, ctx);
+        if (owner === null) return { status: 404, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+        return EntryFind.findWorkspaceEntries(owner.statement, ctx, Exec.manifest, owner.ownerId);
     }
 
     async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        return EntryCrud.readEntry(pathname, ctx, Exec.manifest.name);
+        return EntryCrud.readEntry(pathname, ctx, Exec.manifest.name, ctx.workerId);
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {

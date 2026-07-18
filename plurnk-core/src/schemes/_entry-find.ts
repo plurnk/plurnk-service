@@ -23,6 +23,7 @@ import Matcher from "../content/matcher.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
+import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 
 // A FIND match: an entry and the (file, span) where the matcher hit — ONE per match, so a
@@ -102,6 +103,7 @@ export default class EntryFind {
         statement: FindStatement,
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
+        explicitOwnerId?: number,
     ): Promise<{ status: number; matches: Match[] }> {
         if (statement.target === null) return { status: 400, matches: [] };
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
@@ -140,13 +142,20 @@ export default class EntryFind {
         // §worker-scheme — a worker-scope scheme (manifest.scope==='run', today worker://) draws from the worker
         // partition instead; the owner narrowing rides scopeGlob (Run.find folds `/<owner>/*` in).
         const candidatesQuery = manifest.scope === "worker" ? "find_worker_entry_candidates" : "find_workspace_entry_candidates";
-        let candidates = await (db[candidatesQuery] as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>({
+        const baseParams = {
             workspace_id: workspaceId,
             scheme,
             channel: manifest.defaultChannel,
             scope_pathname: scopeGlob,
             tags: tagsParam,
-        });
+        };
+        // {§entry-owner} — the workspace identity carries the owner: an owner-scoped face passes its
+        // resolved owner; every other scheme draws from the commons. The worker-scope variant keys
+        // the pathname prefix (until the #527 wave) and takes no owner param.
+        const params = manifest.scope === "worker"
+            ? baseParams
+            : { ...baseParams, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId) };
+        let candidates = await (db[candidatesQuery] as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>(params);
 
         // grammar 0.46 regex-in-path — a `#pattern#flags` target narrows candidates by regex
         // over their pathname (in TS; SQLite has no regex). Malformed pattern → 400, parallel
@@ -193,8 +202,8 @@ export default class EntryFind {
     // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
     // {mimetype, tokens, lines}, tags, seconds) — FIND is the filtered, navigable slice of
     // that catalog, rendered as a JSON array (application/json). §find-result-catalog-rows
-    static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<FindResult> {
-        const match = await EntryFind.#matchPathnames(statement, ctx, manifest);
+    static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
+        const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
         if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
         const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
         // The catalog row is keyed by its addressable path; align each match to its row through

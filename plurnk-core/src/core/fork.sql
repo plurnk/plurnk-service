@@ -79,8 +79,8 @@ FROM entries WHERE scope = 'worker' AND workspace_id = $workspace_id AND pathnam
 -- PREP: fork_insert_worker_scope_entry
 -- A worker-scope entry copy with the owner-remapped pathname. synced_sig/membership_origin are NULL
 -- (scratch is never disk-synced nor a file member); version defaults 0.
-INSERT INTO entries (scope, workspace_id, scheme, pathname, deep_hash, attributes)
-VALUES ('worker', $workspace_id, $scheme, $pathname, $deep_hash, $attributes)
+INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname, deep_hash, attributes)
+VALUES ('worker', $workspace_id, $owner_id, $scheme, $pathname, $deep_hash, $attributes)
 RETURNING id;
 
 -- PREP: fork_copy_entry_channels

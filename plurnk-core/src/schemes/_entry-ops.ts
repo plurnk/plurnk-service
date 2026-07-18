@@ -4,6 +4,7 @@ import type { Db, PrepMethod } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
+import Owner from "../core/Owner.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } from "../content/index.ts";
 
 // Shared static-method helpers for workspace-scope entry-bearing schemes
@@ -36,6 +37,8 @@ export default class EntryOps {
         if (t.kind === "regex") return t.raw; // regex source — parens are syntax, never encoded
         // Namespace-as-authority: fold a plurnk://docs/x.md authority back into the storage
         // path (/docs/x.md) so it keys identically to the empty-authority form. #239 item 4
+        // ({§stream-owner-scoped} streams never reach this fold: their face resolves the authority
+        // to the owner and hands the statement over authority-stripped.)
         if (t.kind === "url") return decodePathParens(foldAuthorityIntoPath(t.hostname, t.pathname));
         return decodePathParens(t.raw);
     }
@@ -65,7 +68,24 @@ export default class EntryOps {
         return db[(scope === "worker" ? run : workspace)[base]] as PrepMethod;
     }
 
-    static async editWorkspaceEntry(statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<EditResult> {
+    // {§entry-owner} — the entry's owner for this call: an owner-scoped face (capability streams)
+    // resolves its authority itself (empty = caller, name = ancestry-gated) and passes the result
+    // explicitly; a worker-scope scheme stamps the caller; everything else is the workspace commons.
+    static async #ownerOf(explicit: number | undefined, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<number> {
+        if (explicit !== undefined) return explicit;
+        if (manifest.scope === "worker") return ctx.workerId;
+        return Owner.commonsId(ctx.db, ctx.workspaceId);
+    }
+
+    // Exact param shape per scope — the prepared statements bind strictly (no unknown params):
+    // workspace identity carries owner_id; worker-scope find/read key the pathname prefix
+    // (until the #527 wave) so only its INSERT stamps the owner.
+    static #identityParams(scope: string, ownerId: number, base: "crud_find" | "crud_insert" | "ops_read_channel", rest: Record<string, unknown>): Record<string, unknown> {
+        if (scope !== "worker") return { ...rest, owner_id: ownerId };
+        return base === "crud_insert" ? { ...rest, owner_id: ownerId } : rest;
+    }
+
+    static async editWorkspaceEntry(statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<EditResult> {
         if (statement.target === null) return { status: 400, entryId: null, channel: null };
 
         const { db, workspaceId } = ctx;
@@ -76,7 +96,8 @@ export default class EntryOps {
         if (targetChannel === null) return { status: 400, entryId: null, channel: null };
 
         const pathname = EntryOps.#pathnameOf(statement);
-        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+        const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx, manifest);
+        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>(EntryOps.#identityParams(manifest.scope, ownerId, "crud_find", { workspace_id: workspaceId, scheme, pathname }));
 
         // Non-default channel write requires the entry to exist (§channel-selection-fragment-on-nonexistent-404).
         if (existing === undefined && fragment !== null) {
@@ -92,9 +113,9 @@ export default class EntryOps {
 
         // 415 on binary entries (SPEC.md §op-invariants).
         if (existing !== undefined) {
-            const channel = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ mimetype: string }>({
-                workspace_id: workspaceId, scheme, pathname, channel: targetChannel,
-            });
+            const channel = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ mimetype: string }>(
+                EntryOps.#identityParams(manifest.scope, ownerId, "ops_read_channel", { workspace_id: workspaceId, scheme, pathname, channel: targetChannel }),
+            );
             if (channel !== undefined && MimetypeBinary.isBinaryMimetype(channel.mimetype)) {
                 return { status: 415, entryId: existing.id, channel: targetChannel };
             }
@@ -109,9 +130,9 @@ export default class EntryOps {
         // surface diff in EDIT response so wrong-marker mistakes are visible).
         let originalContent = "";
         if (existing !== undefined) {
-            const channel = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string }>({
-                workspace_id: workspaceId, scheme, pathname, channel: targetChannel,
-            });
+            const channel = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string }>(
+                EntryOps.#identityParams(manifest.scope, ownerId, "ops_read_channel", { workspace_id: workspaceId, scheme, pathname, channel: targetChannel }),
+            );
             originalContent = channel?.content ?? "";
         }
 
@@ -151,7 +172,7 @@ export default class EntryOps {
         let entryId: number;
         let createdNow: boolean;
         if (existing === undefined) {
-            const row = await EntryOps.#stmt(db, manifest.scope, "crud_insert").get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+            const row = await EntryOps.#stmt(db, manifest.scope, "crud_insert").get<{ id: number }>(EntryOps.#identityParams(manifest.scope, ownerId, "crud_insert", { workspace_id: workspaceId, scheme, pathname }));
             if (row === undefined) throw new Error("editWorkspaceEntry: insert returned no row");
             entryId = row.id;
             createdNow = true;
@@ -181,17 +202,18 @@ export default class EntryOps {
     // Scope-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves the
     // entry via the scope's crud_find variant (so a worker-scope row is found, not just
     // workspace), then deletes by id (channels/tags CASCADE). 404 when the entry is absent.
-    static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<{ status: number }> {
+    static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<{ status: number }> {
         if (statement.target === null) return { status: 400 };
         const { db, workspaceId } = ctx;
         const pathname = EntryOps.#pathnameOf(statement);
-        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ workspace_id: workspaceId, scheme: manifest.name, pathname });
+        const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx, manifest);
+        const existing = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>(EntryOps.#identityParams(manifest.scope, ownerId, "crud_find", { workspace_id: workspaceId, scheme: manifest.name, pathname }));
         if (existing === undefined) return { status: 404 };
         await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });
         return { status: 200 };
     }
 
-    static async readWorkspaceEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest): Promise<ReadResult> {
+    static async readWorkspaceEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<ReadResult> {
         if (statement.target === null) return { status: 400, content: null, mimetype: null, channel: null };
 
         const { db, workspaceId } = ctx;
@@ -205,18 +227,19 @@ export default class EntryOps {
         if (targetChannel === null) return { status: 400, content: null, mimetype: null, channel: null };
 
         const pathname = EntryOps.#pathnameOf(statement);
+        const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx, manifest);
         // An xpath is a question about the DOM — a fragmentless xpath READ routes to the raw `html`
         // channel (the archive the decisive markdown body was projected from). A fragment still wins.
         let readChannel = targetChannel;
         if (fragment === null && statement.body !== null && statement.body.dialect === "xpath") {
-            const html = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string }>({
-                workspace_id: workspaceId, scheme, pathname, channel: "html",
-            });
+            const html = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string }>(
+                EntryOps.#identityParams(manifest.scope, ownerId, "ops_read_channel", { workspace_id: workspaceId, scheme, pathname, channel: "html" }),
+            );
             if (html !== undefined) readChannel = "html";
         }
-        const row = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string; mimetype: string }>({
-            workspace_id: workspaceId, scheme, pathname, channel: readChannel,
-        });
+        const row = await EntryOps.#stmt(db, manifest.scope, "ops_read_channel").get<{ content: string; mimetype: string }>(
+            EntryOps.#identityParams(manifest.scope, ownerId, "ops_read_channel", { workspace_id: workspaceId, scheme, pathname, channel: readChannel }),
+        );
         if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };  // §read-read-404
 
         if (MimetypeBinary.isBinaryMimetype(row.mimetype)) {
@@ -226,7 +249,7 @@ export default class EntryOps {
         // `[tag]` filter: entry must have ALL requested tags. Mismatch = 404
         // (entry doesn't match the tag-scoped READ).
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            const entry = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+            const entry = await EntryOps.#stmt(db, manifest.scope, "crud_find").get<{ id: number }>(EntryOps.#identityParams(manifest.scope, ownerId, "crud_find", { workspace_id: workspaceId, scheme, pathname }));
             if (entry === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
             const tagRows = await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: entry.id });
             const have = new Set(tagRows.map((r) => r.tag));

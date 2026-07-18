@@ -31,7 +31,7 @@ const seedExecEntry = async (
     stderr: string,
 ): Promise<number> => {
     const entryId = await seedEntryWithChannel(db, {
-        workspaceId, workerId, scheme: "exec", pathname, channel: "stdout", content: stdout, mimetype: "text/stream",
+        workspaceId, workerId, ownerId: workerId, scheme: "exec", pathname, channel: "stdout", content: stdout, mimetype: "text/stream",
     });
     // Second channel on the SAME entry — the (entry_id, name) keying means a
     // distinct name is a distinct row under the same entry.
@@ -48,13 +48,13 @@ test("[§channel-selection-fragment-selects-named-channel] fragment targets the 
         const exec = new Exec();
 
         // Fragment `#stderr` selects the named (non-default) channel.
-        const frag = await exec.read(readStmt(urlPath("exec", "/run/abc", "stderr")), makeSchemeCtx({ db, workspaceId }));
+        const frag = await exec.read(readStmt(urlPath("exec", "/run/abc", "stderr")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(frag.status, 200);
         assert.equal(frag.channel, "stderr");
         assert.equal(frag.content, "ERR-content");
 
         // Fragment-less resolves to the scheme's defaultChannel (stdout).
-        const dflt = await exec.read(readStmt(urlPath("exec", "/run/abc")), makeSchemeCtx({ db, workspaceId }));
+        const dflt = await exec.read(readStmt(urlPath("exec", "/run/abc")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(dflt.status, 200);
         assert.equal(dflt.channel, "stdout");
         assert.equal(dflt.content, "OUT-content");

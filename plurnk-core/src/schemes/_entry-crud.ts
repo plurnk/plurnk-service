@@ -6,6 +6,7 @@ import type { PrepMethod } from "../core/Db.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import Owner from "../core/Owner.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored";
 
@@ -39,9 +40,10 @@ export interface DeleteEntryResult {
 }
 
 export default class EntryCrud {
-    static async readEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string | null): Promise<ReadEntryResult> {
+    static async readEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string | null, ownerId?: number): Promise<ReadEntryResult> {
         const { db, workspaceId } = ctx;
-        const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+        const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
+        const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
         if (entry === undefined) return { status: 404, entry: null };
 
         const channelRows = await (db.crud_read_channels as PrepMethod).all<{ name: string; content: string; mimetype: string }>({ entry_id: entry.id });
@@ -56,15 +58,16 @@ export default class EntryCrud {
         return { status: 200, entry: { channels, tags } };
     }
 
-    static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string | null): Promise<WriteEntryResult> {
+    static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string | null, ownerId?: number): Promise<WriteEntryResult> {
         const { db, workspaceId, tokenize } = ctx;
         if (tokenize === undefined) throw new Error("writeEntry: ctx.tokenize is required for token accounting");
-        const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+        const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
+        const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
 
         let entryId: number;
         let created: boolean;
         if (existing === undefined) {
-            const row = await (db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+            const row = await (db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
             if (row === undefined) throw new Error("writeEntry: insert returned no row");
             entryId = row.id;
             created = true;
@@ -101,9 +104,10 @@ export default class EntryCrud {
         return { status: created ? 201 : 200, created, entryId };
     }
 
-    static async deleteEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string | null): Promise<DeleteEntryResult> {
+    static async deleteEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string | null, ownerId?: number): Promise<DeleteEntryResult> {
         const { db, workspaceId } = ctx;
-        const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });
+        const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
+        const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
         if (existing === undefined) return { status: 404 };
         await EntrySemantic.indexFts(db, existing.id, ""); // §semantic-fts-at-write — the keyword row dies with the entry
         await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });

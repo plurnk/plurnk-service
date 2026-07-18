@@ -136,6 +136,11 @@ CREATE TABLE IF NOT EXISTS entries (
     hostname   TEXT,
     port       INTEGER                      CHECK (port IS NULL OR (port BETWEEN 0 AND 65535)),
     pathname   TEXT    NOT NULL,
+    -- #527 {§entry-owner} — every entry is owned by a worker: the spawning worker for capability
+    -- streams, the workspace's reserved 'commons' worker for shared content. A real row, never
+    -- NULL (NULLs are distinct under UNIQUE — a nullable owner would let the commons fragment).
+    -- The id never renders into a URI or packet; the model addresses owners by NAME (authority).
+    owner_id   INTEGER NOT NULL,
     params     TEXT                         CHECK (params IS NULL OR json_valid(params)),
     attributes TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attributes)),
     -- SPEC §membership — how a file member entered the curated surface. 'git' rows are
@@ -159,11 +164,16 @@ CREATE TABLE IF NOT EXISTS entries (
     -- the catalog by it ASC so dormant entries hold the stable prompt-cache prefix.
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     CHECK (workspace_id IS NOT NULL),
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (owner_id)     REFERENCES workers(id)    ON DELETE CASCADE
 ) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS entries_workspace_identity ON entries (workspace_id, scheme, pathname) WHERE scope = 'workspace';
--- §worker-scheme — worker-scope entries key (workspace, scheme='run', pathname='/<owner>/<path>'); the owner rides the pathname (no worker_id).
+-- {§stream-owner-scoped} — owner_id in the identity: concurrent workers' capability streams share
+-- the loop-relative coordinate (every worker's first loop is seq 1), so identity keys on the owner
+-- and identical coordinates across workers are DISTINCT rows (#526). Commons-owned content is one
+-- owner per workspace, so its uniqueness semantics are unchanged.
+CREATE UNIQUE INDEX IF NOT EXISTS entries_workspace_identity ON entries (workspace_id, owner_id, scheme, pathname) WHERE scope = 'workspace';
+-- §worker-scheme — worker-scope entries key (workspace, scheme='run', pathname='/<owner>/<path>'); the owner ALSO rides the pathname until the #527 wave re-keys it.
 CREATE UNIQUE INDEX IF NOT EXISTS entries_worker_identity ON entries (workspace_id, scheme, pathname) WHERE scope = 'worker';
 
 -- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap

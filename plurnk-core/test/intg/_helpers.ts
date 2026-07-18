@@ -6,6 +6,7 @@ import { Paths } from "../../src/index.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import Owner from "../../src/core/Owner.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
@@ -113,6 +114,7 @@ export const viableWindow = (): number => _viableWindow;
 export const insertWorkspace = async (db: Db, name: string): Promise<number> => {
     const row = await (db.test_insert_workspace as PrepMethod).get<{ id: number }>({ name });
     if (row === undefined) throw new Error("insertWorkspace: insert returned no row");
+    await Owner.commonsId(db, row.id); // {§entry-owner} — the workspace's commons row, eagerly (seeds' owner subselects resolve)
     return row.id;
 };
 
@@ -196,6 +198,9 @@ export const seedEntryWithChannel = async (
     opts: {
         workspaceId: number;
         workerId?: number;
+        // {§entry-owner} — the seeded entry's owner; absent = the workspace commons (shared
+        // content). A stream seed passes the owning worker.
+        ownerId?: number;
         scheme?: string;
         pathname?: string;
         channel?: string;
@@ -206,6 +211,7 @@ export const seedEntryWithChannel = async (
 ): Promise<number> => {
     const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
         workspace_id: opts.workspaceId,
+        owner_id: opts.ownerId ?? await Owner.commonsId(db, opts.workspaceId),
         scheme: opts.scheme ?? "known",
         pathname: opts.pathname ?? "/x",
     });

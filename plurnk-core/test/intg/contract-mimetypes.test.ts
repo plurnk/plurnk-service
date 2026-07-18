@@ -33,6 +33,7 @@ import {
     openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn,
     seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES,
 } from "./_helpers.ts";
+import Owner from "../../src/core/Owner.ts";
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -130,7 +131,7 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
         // Seed a two-channel entry directly (production Known is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "known", pathname: "/multi",
+            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/multi",
         });
         const entryId = entry!.id;
         await (db.test_seed_channel as PrepMethod).run({ entry_id: entryId, name: "body", content: "keep me", mimetype: "text/plain", state: "static" });

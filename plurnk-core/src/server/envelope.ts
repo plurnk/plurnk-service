@@ -8,6 +8,7 @@
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 import GitMembership from "../core/git-membership.ts";
+import Owner from "../core/Owner.ts";
 
 export interface WorkspaceRow {
     id: number;
@@ -46,7 +47,7 @@ export default class Envelope {
     // attach to a worker under a reserved name (origin-impersonation — `plurnk`
     // is the runtime actor, §authority-terms/§actor-boundary). Checked case-insensitively, before
     // lookup, so a client can neither forge nor hijack one (SPEC §methods).
-    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = new Set(["plurnk"]); // §methods-worker-name-reserved
+    static readonly RESERVED_RUN_NAMES: ReadonlySet<string> = Owner.RESERVED; // §methods-worker-name-reserved + {§entry-owner} (commons/plurnk rows, ~ self-sigil)
 
     // Grammar 0.5.0 (#10): Workspace and Run carry user-renameable string names.
     // Defaults are `workspace-{unixtime}` and `run-{unixtime}`; random suffix avoids
@@ -61,8 +62,12 @@ export default class Envelope {
         return Envelope.#tsName("workspace");
     }
 
-    static generateWorkerName(): string {
-        return Envelope.#tsName("worker");
+    static async mintWorkerName(db: Db, workspaceId: number, prefix: string): Promise<string> {
+        const count = await (db.envelope_count_workers_by_prefix as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, name_prefix: `${prefix}-%` });
+        let n = (count?.n ?? 0) + 1;
+        // A manually-named squatter (`model-3` typed by a user) can hold the ordinal — bump past it.
+        while (await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: `${prefix}-${n}` }) !== undefined) n++;
+        return `${prefix}-${n}`;
     }
 
     static async createClientEnvelope(db: Db, opts: { name?: string; prefix?: string; projectRoot?: string | null; settings?: string } = {}): Promise<ClientEnvelope> {
@@ -74,7 +79,7 @@ export default class Envelope {
         // tracked files are members before the first op. No-op when projectRoot is
         // null (headless) or not a git working tree.
         await GitMembership.resolveGitMembership(db, workspace.id, undefined);
-        const workerName = Envelope.generateWorkerName();
+        const workerName = await Envelope.mintWorkerName(db, workspace.id, "client");
         const run = await (db.envelope_insert_worker as PrepMethod).get<{ id: number; name: string }>({ workspace_id: workspace.id, name: workerName, origin: "client" });
         if (run === undefined) throw new Error("createClientEnvelope: run insert returned no row");
         return {
@@ -111,7 +116,7 @@ export default class Envelope {
             if (created === undefined) throw new Error("resolveWorker: run insert returned no row");
             return created;
         }
-        const created = await (db.envelope_insert_worker as PrepMethod).get<{ id: number; name: string }>({ workspace_id: workspaceId, name: Envelope.generateWorkerName(), origin: "client" });
+        const created = await (db.envelope_insert_worker as PrepMethod).get<{ id: number; name: string }>({ workspace_id: workspaceId, name: await Envelope.mintWorkerName(db, workspaceId, "client"), origin: "client" });
         if (created === undefined) throw new Error("resolveWorker: run insert returned no row");
         return created;
     }
@@ -146,7 +151,8 @@ export default class Envelope {
     // conversations about one curated workspace): a named, empty-log, model-origin ROOT run.
     // Distinct from ensureModelWorker (the stable default conversation) and forkWorker (copies history).
     static async createModelWorker(db: Db, workspaceId: number, name?: string): Promise<{ id: number; name: string }> {
-        const run = await (db.envelope_insert_worker as PrepMethod).get<{ id: number; name: string }>({ workspace_id: workspaceId, name: name ?? Envelope.#tsName("model"), origin: "model" });
+        if (name !== undefined && Owner.RESERVED.has(name.toLowerCase())) throw new Error(`worker name "${name}" is reserved`);
+        const run = await (db.envelope_insert_worker as PrepMethod).get<{ id: number; name: string }>({ workspace_id: workspaceId, name: name ?? await Envelope.mintWorkerName(db, workspaceId, "model"), origin: "model" });
         if (run === undefined) throw new Error("createModelWorker: run insert returned no row");
         return run;
     }
@@ -158,7 +164,7 @@ export default class Envelope {
         // inherit origin and are excluded by parent_worker_id). #366 is the explicit fresh-run door.
         const existing = await (db.envelope_get_model_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId });
         if (existing !== undefined) return existing.id;
-        const run = await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: Envelope.#tsName("model"), origin: "model" });
+        const run = await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: await Envelope.mintWorkerName(db, workspaceId, "model"), origin: "model" });
         if (run === undefined) throw new Error("ensureModelWorker: run insert returned no row");
         return run.id;
     }

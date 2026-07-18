@@ -102,8 +102,8 @@ ORDER BY s.closed_at DESC LIMIT 1;
 
 -- PREP: test_seed_entry_session
 -- Tests bypass scheme handlers when seeding state for visibility / render tests.
-INSERT INTO entries (scope, workspace_id, scheme, pathname)
-VALUES ('workspace', $workspace_id, $scheme, $pathname)
+INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname)
+VALUES ('workspace', $workspace_id, $owner_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: test_seed_channel
