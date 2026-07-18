@@ -37,11 +37,14 @@ if (only) registry.stepchildren = registry.stepchildren.filter((s) => s.dir === 
 
 const served = async (name) => { try { return (await run("npm", ["view", name, "version"])).stdout.trim(); } catch { return null; } };
 
-// Rewrite every @plurnk/* dep + peerDep to the exact stamp — the honesty edit (^1 → exact).
-const repinExact = async (repoDir) => {
+// STEPDAUGHTER edit: lockstep the leaf's OWN version to the stamp AND repin every @plurnk head exact.
+// A stepdaughter's version IS the head it tracks (self-documenting: mimetypes-grammar-rust@1.0.8 pins
+// mimetypes@1.0.8). Only rewrites when something differs — idempotent.
+const alignStepdaughter = async (repoDir) => {
     const pjPath = join(repoDir, "package.json");
     const p = JSON.parse(await readFile(pjPath, "utf8"));
-    let changed = false;
+    let changed = p.version !== version;
+    p.version = version;
     for (const field of ["dependencies", "peerDependencies"]) {
         for (const k of Object.keys(p[field] ?? {})) {
             if (/^@plurnk\//.test(k) && p[field][k] !== version) { p[field][k] = version; changed = true; }
@@ -51,33 +54,56 @@ const repinExact = async (repoDir) => {
     return changed;
 };
 
-console.log(`release-stepchildren: ${registry.count} stepchildren, stamp ${version}${DRY ? " [DRY RUN]" : ""}`);
-let swept = 0, skipped = 0;
-for (const { dir, name, lane, heads } of registry.stepchildren) {
+// NIECE guard: a niece is lane-released with its own version — the machine NEVER republishes it. It only
+// enforces the honesty rule: every @plurnk head-pin must be EXACT (a range is the #512 lie). An old-but-
+// exact pin is fine (the niece works against that head; its lane bumps the pin when it ships). Returns the
+// list of dishonest (ranged) head-pins, empty if clean.
+const nieceRangedPins = async (repoDir) => {
+    const p = JSON.parse(await readFile(join(repoDir, "package.json"), "utf8"));
+    const bad = [];
+    for (const field of ["dependencies", "peerDependencies"]) {
+        for (const [k, v] of Object.entries(p[field] ?? {})) {
+            if (/^@plurnk\//.test(k) && /[\^~*x><|\s-]|\.\*/.test(v)) bad.push(`${k}@${v}`);
+        }
+    }
+    return bad;
+};
+
+console.log(`release-stepchildren: ${registry.stepdaughters} stepdaughters + ${registry.nieces} nieces, stamp ${version}${DRY ? " [DRY RUN]" : ""}`);
+let swept = 0, skipped = 0, guarded = 0;
+for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
     const repo = join(ROOT, dir);
     const tag = `${dir} (${lane})`;
     if (!existsSync(repo)) throw new Error(`${tag}: registry names a repo not on disk — census drift, regenerate`);
-    if (await served(name) === version) { console.log(`  serves  ${tag}`); skipped++; continue; }
 
-    // Clean tree first — never bundle a lane's uncommitted work blindly into a release publish.
+    if (kind === "niece") {
+        // A niece is lane-released with its own version — the machine only guards pin honesty, never republishes.
+        const bad = await nieceRangedPins(repo);
+        if (bad.length > 0) throw new Error(`${tag} [niece]: dishonest head-pin(s) ${bad.join(", ")} — a range on a fail-forward head is the #512 lie; the lane must pin exact (an old-but-exact pin is fine)`);
+        console.log(`  guard   ${tag} [niece] — pins exact, lane-released`);
+        guarded++;
+        continue;
+    }
+
+    // STEPDAUGHTER: passive substrate, machine owns the version — lockstep to the stamp, republish.
+    if (await served(name) === version) { console.log(`  serves  ${tag}`); skipped++; continue; }
     const dirty = (await run("git", ["-C", repo, "status", "--porcelain"])).stdout.trim();
-    if (dirty !== "") throw new Error(`${tag}: uncommitted work in the stepchild tree — the lane must land or stash it before the sweep can repin+publish`);
+    if (dirty !== "") throw new Error(`${tag}: uncommitted work in the stepdaughter tree — the lane must land or stash it before the sweep can align+publish`);
 
     console.log(`  sweep   ${tag}  [${heads.join(",")}] → ${version}`);
-    await repinExact(repo);
+    await alignStepdaughter(repo);
     if (existsSync(join(repo, "package-lock.json"))) await run("npm", ["install"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 }); // pulls the just-published head
     if (DRY) {
-        // Prove the leaf builds/tests against the real published head without shipping.
         const scripts = JSON.parse(await readFile(join(repo, "package.json"), "utf8")).scripts ?? {};
         if (scripts.build) await run("npm", ["run", "build"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
         if (scripts.test) await run("npm", ["test"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
-        console.log(`          would commit repin + push + publish ${name}@${version}`);
+        console.log(`          would commit align + push + publish ${name}@${version}`);
         swept++; continue;
     }
-    await run("git", ["-C", repo, "commit", "-am", `chore(release): pin heads to ${version}`], { maxBuffer: 8 * 1024 * 1024 });
+    await run("git", ["-C", repo, "commit", "-am", `chore(release): lockstep ${version}`], { maxBuffer: 8 * 1024 * 1024 });
     await run("git", ["-C", repo, "push"], { maxBuffer: 8 * 1024 * 1024 });
     await run("npm", ["publish", "--access", "public"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 }); // runs the repo's own prepublishOnly gate
     for (let i = 0; ; i++) { if (await served(name) === version) break; if (i >= 12) throw new Error(`${tag}: published but registry never served ${version}`); await sleep(10_000); }
     swept++;
 }
-console.log(`release-stepchildren GREEN: ${swept} swept, ${skipped} already served — the constellation is aligned at ${version}${DRY ? " [DRY]" : ""}`);
+console.log(`release-stepchildren GREEN: ${swept} swept, ${skipped} already served, ${guarded} nieces pin-verified — the constellation is aligned at ${version}${DRY ? " [DRY]" : ""}`);

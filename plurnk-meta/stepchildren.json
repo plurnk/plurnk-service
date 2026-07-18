@@ -1,10 +1,13 @@
 {
     "root": "«monorepo parent»",
     "count": 59,
+    "stepdaughters": 58,
+    "nieces": 1,
     "stepchildren": [
         {
             "dir": "plurnk",
             "name": "@plurnk/plurnk",
+            "kind": "niece",
             "lane": "client",
             "pushable": true,
             "heads": [
@@ -14,6 +17,7 @@
         {
             "dir": "plurnk-mimetypes-application-gguf",
             "name": "@plurnk/plurnk-mimetypes-application-gguf",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -23,6 +27,7 @@
         {
             "dir": "plurnk-mimetypes-application-safetensors",
             "name": "@plurnk/plurnk-mimetypes-application-safetensors",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -32,6 +37,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-bash",
             "name": "@plurnk/plurnk-mimetypes-grammar-bash",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -41,6 +47,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-c",
             "name": "@plurnk/plurnk-mimetypes-grammar-c",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -50,6 +57,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-cpp",
             "name": "@plurnk/plurnk-mimetypes-grammar-cpp",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -59,6 +67,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-css",
             "name": "@plurnk/plurnk-mimetypes-grammar-css",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -68,6 +77,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-dart",
             "name": "@plurnk/plurnk-mimetypes-grammar-dart",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -77,6 +87,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-elixir",
             "name": "@plurnk/plurnk-mimetypes-grammar-elixir",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -86,6 +97,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-fsharp",
             "name": "@plurnk/plurnk-mimetypes-grammar-fsharp",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -95,6 +107,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-fsharp-signature",
             "name": "@plurnk/plurnk-mimetypes-grammar-fsharp-signature",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -104,6 +117,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-go",
             "name": "@plurnk/plurnk-mimetypes-grammar-go",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -113,6 +127,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-haskell",
             "name": "@plurnk/plurnk-mimetypes-grammar-haskell",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -122,6 +137,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-java",
             "name": "@plurnk/plurnk-mimetypes-grammar-java",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -131,6 +147,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-javascript",
             "name": "@plurnk/plurnk-mimetypes-grammar-javascript",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -140,6 +157,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-julia",
             "name": "@plurnk/plurnk-mimetypes-grammar-julia",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -149,6 +167,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-kotlin",
             "name": "@plurnk/plurnk-mimetypes-grammar-kotlin",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -158,6 +177,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-lua",
             "name": "@plurnk/plurnk-mimetypes-grammar-lua",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -167,6 +187,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-make",
             "name": "@plurnk/plurnk-mimetypes-grammar-make",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -176,6 +197,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-ocaml",
             "name": "@plurnk/plurnk-mimetypes-grammar-ocaml",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -185,6 +207,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-odin",
             "name": "@plurnk/plurnk-mimetypes-grammar-odin",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -194,6 +217,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-php",
             "name": "@plurnk/plurnk-mimetypes-grammar-php",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -203,6 +227,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-python",
             "name": "@plurnk/plurnk-mimetypes-grammar-python",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -212,6 +237,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-ruby",
             "name": "@plurnk/plurnk-mimetypes-grammar-ruby",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -221,6 +247,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-rust",
             "name": "@plurnk/plurnk-mimetypes-grammar-rust",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -230,6 +257,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-scala",
             "name": "@plurnk/plurnk-mimetypes-grammar-scala",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -239,6 +267,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-toml",
             "name": "@plurnk/plurnk-mimetypes-grammar-toml",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -248,6 +277,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-tsx",
             "name": "@plurnk/plurnk-mimetypes-grammar-tsx",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -257,6 +287,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-typescript",
             "name": "@plurnk/plurnk-mimetypes-grammar-typescript",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -266,6 +297,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-yaml",
             "name": "@plurnk/plurnk-mimetypes-grammar-yaml",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -275,6 +307,7 @@
         {
             "dir": "plurnk-mimetypes-grammar-zig",
             "name": "@plurnk/plurnk-mimetypes-grammar-zig",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -284,6 +317,7 @@
         {
             "dir": "plurnk-mimetypes-text-clojure",
             "name": "@plurnk/plurnk-mimetypes-text-clojure",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -293,6 +327,7 @@
         {
             "dir": "plurnk-mimetypes-text-cmake",
             "name": "@plurnk/plurnk-mimetypes-text-cmake",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -302,6 +337,7 @@
         {
             "dir": "plurnk-mimetypes-text-common-lisp",
             "name": "@plurnk/plurnk-mimetypes-text-common-lisp",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -311,6 +347,7 @@
         {
             "dir": "plurnk-mimetypes-text-csharp",
             "name": "@plurnk/plurnk-mimetypes-text-csharp",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -320,6 +357,7 @@
         {
             "dir": "plurnk-mimetypes-text-datalog",
             "name": "@plurnk/plurnk-mimetypes-text-datalog",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -329,6 +367,7 @@
         {
             "dir": "plurnk-mimetypes-text-dockerfile",
             "name": "@plurnk/plurnk-mimetypes-text-dockerfile",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -338,6 +377,7 @@
         {
             "dir": "plurnk-mimetypes-text-erlang",
             "name": "@plurnk/plurnk-mimetypes-text-erlang",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -347,6 +387,7 @@
         {
             "dir": "plurnk-mimetypes-text-gherkin",
             "name": "@plurnk/plurnk-mimetypes-text-gherkin",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -356,6 +397,7 @@
         {
             "dir": "plurnk-mimetypes-text-graphql",
             "name": "@plurnk/plurnk-mimetypes-text-graphql",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -365,6 +407,7 @@
         {
             "dir": "plurnk-mimetypes-text-mariadb",
             "name": "@plurnk/plurnk-mimetypes-text-mariadb",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -374,6 +417,7 @@
         {
             "dir": "plurnk-mimetypes-text-nix",
             "name": "@plurnk/plurnk-mimetypes-text-nix",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -383,6 +427,7 @@
         {
             "dir": "plurnk-mimetypes-text-perl",
             "name": "@plurnk/plurnk-mimetypes-text-perl",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -392,6 +437,7 @@
         {
             "dir": "plurnk-mimetypes-text-plsql",
             "name": "@plurnk/plurnk-mimetypes-text-plsql",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -401,6 +447,7 @@
         {
             "dir": "plurnk-mimetypes-text-postgresql",
             "name": "@plurnk/plurnk-mimetypes-text-postgresql",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -410,6 +457,7 @@
         {
             "dir": "plurnk-mimetypes-text-prolog",
             "name": "@plurnk/plurnk-mimetypes-text-prolog",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -419,6 +467,7 @@
         {
             "dir": "plurnk-mimetypes-text-protobuf",
             "name": "@plurnk/plurnk-mimetypes-text-protobuf",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -428,6 +477,7 @@
         {
             "dir": "plurnk-mimetypes-text-r",
             "name": "@plurnk/plurnk-mimetypes-text-r",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -437,6 +487,7 @@
         {
             "dir": "plurnk-mimetypes-text-redis",
             "name": "@plurnk/plurnk-mimetypes-text-redis",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -446,6 +497,7 @@
         {
             "dir": "plurnk-mimetypes-text-sparql",
             "name": "@plurnk/plurnk-mimetypes-text-sparql",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -455,6 +507,7 @@
         {
             "dir": "plurnk-mimetypes-text-sqlite",
             "name": "@plurnk/plurnk-mimetypes-text-sqlite",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -464,6 +517,7 @@
         {
             "dir": "plurnk-mimetypes-text-swift",
             "name": "@plurnk/plurnk-mimetypes-text-swift",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -473,6 +527,7 @@
         {
             "dir": "plurnk-mimetypes-text-terraform",
             "name": "@plurnk/plurnk-mimetypes-text-terraform",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -482,6 +537,7 @@
         {
             "dir": "plurnk-mimetypes-text-tsql",
             "name": "@plurnk/plurnk-mimetypes-text-tsql",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -491,6 +547,7 @@
         {
             "dir": "plurnk-mimetypes-text-vim",
             "name": "@plurnk/plurnk-mimetypes-text-vim",
+            "kind": "stepdaughter",
             "lane": "mimetypes",
             "pushable": true,
             "heads": [
@@ -500,6 +557,7 @@
         {
             "dir": "plurnk-providers-cloudflare",
             "name": "@plurnk/plurnk-providers-cloudflare",
+            "kind": "stepdaughter",
             "lane": "providers",
             "pushable": true,
             "heads": [
@@ -509,6 +567,7 @@
         {
             "dir": "plurnk-providers-google",
             "name": "@plurnk/plurnk-providers-google",
+            "kind": "stepdaughter",
             "lane": "providers",
             "pushable": true,
             "heads": [
@@ -518,6 +577,7 @@
         {
             "dir": "plurnk-providers-openrouter",
             "name": "@plurnk/plurnk-providers-openrouter",
+            "kind": "stepdaughter",
             "lane": "providers",
             "pushable": true,
             "heads": [
@@ -527,6 +587,7 @@
         {
             "dir": "plurnk-providers-xai",
             "name": "@plurnk/plurnk-providers-xai",
+            "kind": "stepdaughter",
             "lane": "providers",
             "pushable": true,
             "heads": [
