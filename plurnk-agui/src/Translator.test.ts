@@ -42,25 +42,47 @@ test("[§agui-custom-namespace] ambient (origin plurnk) rows ride plurnk.ambient
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
-test("[§agui-sealed-reasoning] the STANDARD reasoning-item on the mirror row projects a correlated REASONING_ENCRYPTED_VALUE span (#482)", () => {
+test("[§agui-sealed-reasoning] core's single reasoning-item projects a correlated REASONING_ENCRYPTED_VALUE span (#482)", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" })); // consume the turn boundary
-    // The seam CONTRACT agui requires: reasoning as ONE addressable item — { id, subtype,
-    // encrypted:[{data,format}] } (the OpenAI/AG-UI reasoning-item, not the legacy blob bag).
+    // core's actual write (Dispatcher.writeModelEntry): attrs = { reasoning: <single item> }.
     const events = tr.logEntry(entry({ op: "model", coordinate: "1/1/9/model", tx: "<<PLAN:x:PLAN",
         attrs: JSON.stringify({ reasoning: { id: "reason-42", subtype: "message", encrypted: [{ data: "SEALED-1", format: "openai-responses-v1" }, { data: "SEALED-2", format: "openai-responses-v1" }] } }) }));
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "REASONING_START", "REASONING_ENCRYPTED_VALUE", "REASONING_ENCRYPTED_VALUE", "REASONING_END"],
         "plurnk.row (forensic) + a reasoning span correlated by the item id");
-    const start = events[1] as { messageId: string };
-    const end = events[4] as { messageId: string };
-    assert.equal(start.messageId, "reason-42", "the span keys off the SEAM's reasoning-item id, never a synthesized row coordinate");
-    assert.equal(end.messageId, "reason-42", "START and END share the item id");
-    const ev = events[2] as { type: string; subtype: string; entityId: string; encryptedValue: string; value?: unknown; messageId?: unknown };
+    assert.equal((events[1] as { messageId: string }).messageId, "reason-42", "START keys off the SEAM's item id");
+    assert.equal((events[4] as { messageId: string }).messageId, "reason-42", "END shares the item id");
+    const ev = events[2] as { subtype: string; entityId: string; encryptedValue: string; value?: unknown; messageId?: unknown };
     assert.equal(ev.subtype, "message", "subtype comes FROM the seam, never guessed");
-    assert.equal(ev.entityId, "reason-42", "entityId === the reasoning-item id — correlates to the span, never an orphan");
-    assert.equal(ev.encryptedValue, "SEALED-1", "the blob rides verbatim");
-    assert.equal(ev.messageId, undefined, "the @ag-ui/core nouns, not the loose messageId/value");
+    assert.equal(ev.entityId, "reason-42", "entityId === the item id — correlates, never an orphan");
+    assert.equal(ev.encryptedValue, "SEALED-1", "blob verbatim");
+    assert.equal(ev.messageId, undefined, "the @ag-ui/core nouns, not messageId/value");
     assert.equal(ev.value, undefined, "encryptedValue, not value");
+});
+
+test("[§agui-sealed-reasoning] the STANDARD array of items projects ONE correlated span per item (#482)", () => {
+    const tr = t();
+    tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
+    // The standard: a turn CAN carry N reasoning entities (distinct ids) — each its own span.
+    const events = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN", attrs: JSON.stringify({ reasoning: [
+        { id: "rs_a", subtype: "message", encrypted: [{ data: "A1", format: "f" }] },
+        { id: "rs_b", subtype: "message", encrypted: [{ data: "B1", format: "f" }] },
+    ] }) }));
+    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "REASONING_START", "REASONING_ENCRYPTED_VALUE", "REASONING_END", "REASONING_START", "REASONING_ENCRYPTED_VALUE", "REASONING_END"],
+        "one correlated span per item — the array is consumed, not collapsed");
+    assert.equal((events[1] as { messageId: string }).messageId, "rs_a");
+    assert.equal((events[2] as { entityId: string }).entityId, "rs_a", "item A's value correlates to item A's id");
+    assert.equal((events[5] as { entityId: string }).entityId, "rs_b", "item B's value correlates to item B's id — never cross-wired");
+});
+
+test("[§agui-sealed-reasoning] a NULL-id item stays dark — agui never coins an id to fake correlation (#482)", () => {
+    const tr = t();
+    tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
+    // core allows `id: string | null`; a null id is uncorrelatable, so the standard event can't
+    // be served honestly — dark, not a synthesized entityId.
+    const events = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN",
+        attrs: JSON.stringify({ reasoning: { id: null, subtype: "message", encrypted: [{ data: "X", format: "f" }] } }) }));
+    assert.deepEqual(events.map((e) => e.type), ["CUSTOM"], "null id → plurnk.row only; no coined id");
 });
 
 test("[§agui-sealed-reasoning] the LEGACY {reasoningEncrypted} carrier stays DARK — no id/subtype means unserved, never guessed (#482)", () => {

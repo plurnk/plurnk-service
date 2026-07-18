@@ -59,13 +59,17 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   transmission is a SOLVED problem (OpenAI Responses / AG-UI reasoning-item; DIVERGENCES row 3 =
   reasoning CONVERGED, with no exception for its representation), so agui consumes the standard
   shape VERBATIM and does not translate a bespoke one. The REQUIRED seam contract: core surfaces
-  the model's reasoning as ONE addressable item on the model row's `attrs.reasoning` —
-  `{ id: string, subtype: "message" | "tool-call", encrypted?: [{ data, format }] }` — where `id`
-  is the reasoning entity's identity (the SAME id its open reasoning carries, so open text and
-  sealed value are two faces of one entity, per the Responses model). agui projects
-  `REASONING_ENCRYPTED_VALUE` (@ag-ui/core shape: `subtype`/`entityId`/`encryptedValue`, never
-  `messageId`/`value`) with `entityId` = the item `id`, correlated to a `REASONING_START/END` span
-  keyed by that same `id`. `format` has no AG-UI slot; it rides `plurnk.row` losslessly.
+  the model's reasoning on the model row's `attrs.reasoning` as a LIST of reasoning items —
+  `[{ id: string, subtype: "message" | "tool-call", encrypted?: [{ data, format }] }]` — because a
+  turn can carry N reasoning entities (distinct ids), each its own span (the OpenAI Responses
+  model). `id` is the entity's identity (the SAME id its open reasoning carries, so open text and
+  sealed value are two faces of one entity). agui projects, per item, `REASONING_ENCRYPTED_VALUE`
+  (@ag-ui/core shape: `subtype`/`entityId`/`encryptedValue`, never `messageId`/`value`) with
+  `entityId` = the item `id`, correlated to a `REASONING_START/END` span keyed by that same `id`.
+  `format` has no AG-UI slot; it rides `plurnk.row` losslessly. A single item object is accepted
+  as a one-element list (core's transitional single-object write, #482 residual — core must relay
+  the full array to serve multi-item turns). An item with a null/absent `id` or an unknown
+  `subtype` is DROPPED (uncorrelatable → agui never coins an id or coerces a subtype).
 - **Deliberately broken until core delivers the shape** — the interface fails CLOSED: any row
   lacking a well-formed reasoning-item (including the pre-convergence `{ reasoningEncrypted:
   [{ data, format }] }` carrier, which has no `id`/`subtype`) projects NOTHING. agui never
