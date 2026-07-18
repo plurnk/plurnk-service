@@ -508,6 +508,18 @@ UPDATE turns SET status = $status WHERE id = $id;
 -- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
 SELECT sequence FROM loops WHERE id = $loop_id;
 
+-- PREP: engine_worker_lineage_root
+-- #522 — the PRIMARY worker: the no-parent root the lineage descends from (walk parent_worker_id
+-- up). A worker with no parent returns ITSELF (the primary's own turns stamp Worker-Primary ==
+-- Worker-Id). The endpoint routes primary→strong, spawned→cheap by equality, so this is the
+-- root-of-tree grouping key. Always resolvable (the chain is finite + acyclic — parent != id CHECK).
+WITH RECURSIVE lineage(id, parent_worker_id) AS (
+    SELECT id, parent_worker_id FROM workers WHERE id = $worker_id
+    UNION ALL
+    SELECT w.id, w.parent_worker_id FROM workers w JOIN lineage l ON w.id = l.parent_worker_id
+)
+SELECT id FROM lineage WHERE parent_worker_id IS NULL;
+
 -- PREP: engine_worker_has_undelivered_child_term
 -- A child worker whose loop TERMINATED after the current turn's timestamp — its deliverable
 -- (the §worker-scheme collect delta) is queued for the NEXT packet build and has not been seen.
