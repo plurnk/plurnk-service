@@ -40,7 +40,10 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
         };
         delete env.PLURNK_MODEL;
 
-        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, stdio: ["ignore", "pipe", "pipe"] });
+        // cwd isolation, same reason as HOME: the service cascade loads ./.env (operator config,
+        // the owner's surface) — an inherited cwd leaks the box's model selector into this
+        // hermetic tier (a jennifer pivot + #537's required key = boot death, no test bug).
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
         let stdoutBuf = "";
         let stderrBuf = "";
         let settled = false;
@@ -183,7 +186,7 @@ test("bin: PLURNK_MODEL naming no declared alias fails the boot LOUD — never a
             PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0",
             PLURNK_MODEL: "plurnk/jennifer",  // the run112-adjacent specimen: a provider/model PATH where an ALIAS belongs
         };
-        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, stdio: ["ignore", "pipe", "pipe"] });
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] }); // cwd-isolated from ./.env like the boot smoke
         let stderrBuf = "";
         child.stderr?.on("data", (d: Buffer) => { stderrBuf += d.toString(); });
         const code = await new Promise<number | null>((res) => { child.on("exit", (c) => res(c)); });
