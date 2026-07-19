@@ -39,7 +39,7 @@ test("engine.inject: writes prompt entry at prompt:///<loop>/<next-turn>, owner-
     } finally { await db.close(); }
 });
 
-test("engine.inject: last-wins — two injects targeting the same slot collapse", async () => {
+test("[§prompt-slot-supersedes] two injects before the slot's turn opens resolve to ONE frame — the later supersedes, deliberately", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
