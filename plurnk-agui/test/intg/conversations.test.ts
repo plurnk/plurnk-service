@@ -46,13 +46,13 @@ test("[§agui-thread-is-run] two threads, one world: distinct runs, shared files
 
     try {
         // Thread A (== workspace name: the default conversation) EDITs a shared entry.
-        const edit = await action(port, "shared-world", "shared-world", "op.parse", { text: "<<EDIT(plurnk:///notes.md):the world is one:EDIT\n" });
+        const edit = await action(port, "shared-world", "shared-world", "op.parse", { text: "<<EDIT(worker:///notes.md):the world is one:EDIT\n" });
         assert.equal(edit.ok, true, edit.error ?? "");
         const editResults = (edit.result as { results: Array<{ status: number }> }).results;
         assert.ok(editResults.every((r) => r.status < 300), `EDIT dispatched clean: ${JSON.stringify(editResults)}`);
 
         // Thread B — a DISTINCT conversation over the SAME world.
-        const read = await action(port, "second-look", "shared-world", "op.parse", { text: "<<READ(plurnk:///notes.md):READ\n" });
+        const read = await action(port, "second-look", "shared-world", "op.parse", { text: "<<READ(worker:///notes.md):READ\n" });
         assert.equal(read.ok, true, read.error ?? "");
         const readResults = (read.result as { results: Array<{ status: number; [k: string]: unknown }> }).results;
         assert.equal(readResults[0]?.status, 200, `thread B READs what thread A wrote: ${JSON.stringify(readResults)}`);
