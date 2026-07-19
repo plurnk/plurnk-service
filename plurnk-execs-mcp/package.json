@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-mcp",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "description": "MCP bridge for plurnk-service — each configured MCP server is its own EXEC tag (tools called via EXEC[<server>](<tool>)) and its server-side state (catalog, resources, prompts) is read via the mcp:// scheme.",
     "keywords": [
         "plurnk",
@@ -72,7 +72,7 @@
         "@modelcontextprotocol/sdk": "^1.29.0"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.0.8",
-        "@plurnk/plurnk-schemes": "1.0.8"
+        "@plurnk/plurnk-execs": "1.0.9",
+        "@plurnk/plurnk-schemes": "1.0.9"
     }
 }

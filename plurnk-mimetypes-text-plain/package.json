@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-plain",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "description": "text/plain (head-oriented prose) and text/stream (tail-oriented live data) mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
@@ -50,6 +50,6 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "1.0.8"
+        "@plurnk/plurnk-mimetypes": "1.0.9"
     }
 }
