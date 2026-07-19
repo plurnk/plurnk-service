@@ -143,8 +143,8 @@ export default class ProviderInstantiate {
         // deterministically by PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1, which the notice names.
         if (provider.constrainsOutput === false) {
             process.stderr.write(
-                `plurnk-service: PLURNK_PROVIDERS_GBNF=${gbnf} is configured, but '${provider.model}' does not enforce grammars — running UNCONSTRAINED on this alias. `
-                + `If this backend is a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 so detection never races.\n`,
+                `plurnk-service: PLURNK_PROVIDERS_GBNF=${gbnf} configured; '${provider.model}' does not transport grammars — enforcement rides the backend (delegated) and the engine verifies every emission per turn ({§rail-truth-engine-verdict}). `
+                + `If this backend is a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 so client-side transport engages.\n`,
             );
             return;
         }

@@ -93,6 +93,7 @@ const readFilesItems = (): number | null => {
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { Provider, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
 import { ProviderError, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 
 // Split-out call-metadata that travels with the parsed packet but lands in
@@ -212,6 +213,15 @@ export default class Engine {
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
     #gbnfCache = new Map<string, string>();  // variant name -> GBNF text (per-alias selection, #353)
     #railAnnounced = new Set<string>();  // #488 — one rail-state line per alias, positive drill-visible signal
+
+    // {§rail-truth-engine-verdict} — the verify GAP (a configured grammar @plurnk/gbnf can't
+    // parse): warn once per message, never per turn; the turn records railsVerdict "unverifiable".
+    static #railGapWarned = new Set<string>();
+    static #warnRailVerdictGapOnce(message: string): void {
+        if (Engine.#railGapWarned.has(message)) return;
+        Engine.#railGapWarned.add(message);
+        process.stderr.write(`plurnk-engine: rail verdict unavailable — the configured grammar did not parse in @plurnk/gbnf (${message})\n`);
+    }
 
     constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, telemetryEventNotify, tokenize }: {
         db: Db;
@@ -967,6 +977,7 @@ export default class Engine {
         // decode → finish=length mid-reasoning → no emission → strike spiral). The
         // provider enforces its physical wall on its own.
         let response: ProviderResponse;
+        let railGrammar: string | undefined;
         // #249 — plugin attribution tags onto the per-turn generate() wire. Value is the
         // active-plugin set (placeholder); real per-turn grounding is deferred.
         const attributions = [...new Set([...this.#schemes.attributions(), ...(this.#executors?.attributions() ?? [])])].toSorted();
@@ -991,7 +1002,8 @@ export default class Engine {
             // the value; providers stamps the header (same split as Worker-Id, #26). loopSeq (the 1-based
             // coordinate, not the DB id) resolves the same way the prompt-slot path does (§log coords).
             const loopSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), primaryWorkerId: String(await this.resolveWorkerPrimary(workerId)), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: await this.#grammarConstraint(provider), maxTokens: this.#packets.maxTokensFor(provider) ?? undefined, strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
+            railGrammar = await this.#grammarConstraint(provider);
+            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), primaryWorkerId: String(await this.resolveWorkerPrimary(workerId)), signal: this.#loopAborts.get(loopId)?.signal ?? signal, grammar: railGrammar, maxTokens: this.#packets.maxTokensFor(provider) ?? undefined, strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
             if (!signal?.aborted) this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
@@ -1052,6 +1064,30 @@ export default class Engine {
                     ? { position: { type: "content-offset", line: located.line, column: located.column } }
                     : {}),
             });
+        }
+        // {§rail-truth-engine-verdict} (#534) — the engine grades every emission against its own
+        // grammar contract, on every path: delegated enforcement changes who CONSTRAINS, never who
+        // verifies (verification sharing a failure domain with the enforcer is not verification).
+        // Keys merge OVER the provider's transitional railsMeta at the close stamp below.
+        let railKeys: { railsAttached: "client" | "delegated"; railsVerdict: string } | undefined;
+        if (railGrammar !== undefined) {
+            let verdict: ReturnType<typeof validateGbnf> | null = null;
+            try { verdict = validateGbnf(railGrammar, packetAssistant.content); }
+            catch (cause) { Engine.#warnRailVerdictGapOnce((cause as Error).message); }
+            railKeys = { railsAttached: provider.constrainsOutput === true ? "client" : "delegated", railsVerdict: verdict?.status ?? "unverifiable" };
+            const providerGraded = (response.telemetry ?? []).some((e) => e.kind === "grammar_unenforced");
+            if (verdict !== null && verdict.status !== "accept" && !providerGraded) {
+                const located = this.#offsetToLineColumn(packetAssistant.content, verdict.pos);
+                this.#telemetry.push(workspaceId, loopId, {
+                    source: "engine:rails",
+                    kind: "grammar_unenforced",
+                    message: verdict.status === "reject"
+                        ? `emission rejects the grammar at code point ${verdict.pos}`
+                        : `emission is an incomplete grammar sentence (ends mid-match at ${verdict.pos})`,
+                    level: "warn",
+                    position: { type: "content-offset", line: located.line, column: located.column },
+                });
+            }
         }
         const opsCount = packetAssistant.ops.length;
         // PLAN (reasoning) and informational SEND[103] are no-ops, not actions: both are
@@ -1127,8 +1163,9 @@ export default class Engine {
             finish_reason: finishReason,
             model,
             // #252 — opaque provider→client metadata passthrough (e.g. balancePico the
-            // provider normalized). Stored verbatim, unenforced; the service never reads a field.
-            meta: JSON.stringify(response.meta ?? {}),
+            // provider normalized), plus the ONE service-authored carve-out: the engine's rail
+            // keys ({§rail-truth-engine-verdict}) merge over any transitional provider railsMeta.
+            meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
         });
 
         // Dispatch model ops starting at nextActionIndex (continues the

@@ -158,8 +158,13 @@ export default class Digest {
         const cost = turn.usage_cost_pico > 0 ? ` cost=$${(turn.usage_cost_pico / 1e12).toFixed(6)}` : "";
         const finishReason = turn.finish_reason ?? "—";
         // #498 — rail truth on the human line: attached+ok stays quiet-positive; anything else shouts.
-        const tm = Digest.#parseJson(turn.meta ?? "null", null) as { railsAttached?: boolean; railsVerdict?: string } | null;
-        const rails = tm?.railsAttached === undefined ? "" : ` rails=${tm.railsAttached ? (tm.railsVerdict ?? "attached") : "OFF"}`;
+        // {§rail-truth-engine-verdict} three-valued railsAttached ("client"/"delegated"); boolean-era
+        // specimens (provider-graded, pre-#534) render true as client, false as OFF.
+        const tm = Digest.#parseJson(turn.meta ?? "null", null) as { railsAttached?: boolean | string; railsVerdict?: string } | null;
+        const attached = tm?.railsAttached;
+        const rails = attached === undefined ? ""
+            : attached === false ? " rails=OFF"
+            : ` rails=${attached === true ? "client" : attached}:${tm?.railsVerdict ?? "attached"}`;
         const model = turn.model ?? "—";
         const errs = (m.logEntriesByTurn.get(turn.id) ?? []).filter((le) => le.status_rx >= 400).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";

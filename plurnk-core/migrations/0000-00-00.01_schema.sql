@@ -113,7 +113,8 @@ CREATE TABLE IF NOT EXISTS turns (
     model            TEXT    NOT NULL DEFAULT 'unknown' CHECK (length(model) >= 1),
     -- #252 — opaque provider→client metadata passthrough (e.g. balancePico). Stored
     -- UNENFORCED (json_valid only, no schema): the canonical-field contract lives between
-    -- the provider framework (normalizes) and the client (renders), never the service.
+    -- the provider framework (normalizes) and the client (renders) — the service authors
+    -- only the engine-stamped rail keys ({§rail-truth-engine-verdict}, #534).
     meta             TEXT    NOT NULL DEFAULT '{}'     CHECK (json_valid(meta)),
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE
 ) STRICT;

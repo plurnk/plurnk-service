@@ -67,6 +67,7 @@
         "@plurnk/plurnk-execs-common": "1.0.8",
         "@plurnk/plurnk-execs-mcp": "1.0.8",
         "@plurnk/plurnk-execs-search": "1.0.8",
+        "@plurnk/gbnf": "1.0.8",
         "@plurnk/plurnk-grammar": "1.0.8",
         "@plurnk/plurnk-mimetypes": "1.0.8",
         "@plurnk/plurnk-mimetypes-text-html": "1.0.8",

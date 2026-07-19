@@ -407,3 +407,6 @@ VALUES ($entry_id, $name, $content, $mimetype, 0, $content_hash, $state);
 
 -- PREP: test_count_stamped_deep_hash
 SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id AND deep_hash IS NOT NULL;
+
+-- PREP: test_get_turn_meta
+SELECT meta FROM turns WHERE id = $id;
