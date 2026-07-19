@@ -108,7 +108,11 @@ for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
         console.log(`          would commit align + push + publish ${name}@${version}`);
         swept++; continue;
     }
-    await run("git", ["-C", repo, "commit", "-am", `chore(release): lockstep ${version}`], { maxBuffer: 8 * 1024 * 1024 });
+    // Idempotent against a lane pre-committing the alignment (#541 resume): commit only when the
+    // align/install actually changed the tree — an empty `git commit` exits 1 and would halt a
+    // resume on a leaf whose lane already landed the lockstep. Push is a safe no-op either way.
+    const aligned = (await run("git", ["-C", repo, "status", "--porcelain"])).stdout.trim();
+    if (aligned !== "") await run("git", ["-C", repo, "commit", "-am", `chore(release): lockstep ${version}`], { maxBuffer: 8 * 1024 * 1024 });
     await run("git", ["-C", repo, "push"], { maxBuffer: 8 * 1024 * 1024 });
     await run("npm", ["publish", "--access", "public"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 }); // runs the repo's own prepublishOnly gate
     for (let i = 0; ; i++) { if (await served(name) === version) break; if (i >= 12) throw new Error(`${tag}: published but registry never served ${version}`); await sleep(10_000); }
