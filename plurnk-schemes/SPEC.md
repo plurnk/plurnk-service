@@ -186,15 +186,17 @@ A scheme handler is discovered and registered with **zero first-party involvemen
 
 ## §7 Standards divergences register (#491, parent #408)
 
-Doctrine: every plurnkism carries a DGR (documented good reason) or converges. Verified against RFC 3986 §3.2/§3.2.2, RFC 8089, RFC 7595, RFC 9110 + WHATWG Fetch, WHATWG EventSource (HTML §9.2), RFC 6455. This register is standing SPEC and grows with the lane; audit landed 2026-07-16.
+Doctrine: every plurnkism carries a DGR (documented good reason) or converges. Verified against RFC 3986 §2.3/§3.2/§3.2.2, RFC 8089, RFC 7595, RFC 9110 + WHATWG Fetch, WHATWG EventSource (HTML §9.2), RFC 6455. This register is standing SPEC and grows with the lane; audit landed 2026-07-16, updated for the #527 actor-addressing retirements.
 
 ### §7.1 URI shape of the invented schemes
 
+`known`/`unknown`/`plurnk`/`exec` retired under #527 (the worker-as-host addressing model); the live internals are `worker`/`prompt`/`log`, plus the open-ended capability schemes (`mcp`, `jq`, `sh`, …). The `worker://` authority carving (empty = commons, `~` = self, `<name>` = ancestry-gated, `plurnk` = kernel) is core SPEC §worker-authority-carving; this register judges only the URI *shape* against the RFCs.
+
 | surface | standard neighbor | disposition |
 |---|---|---|
-| Unregistered schemes (`known`/`log`/`plurnk`/`worker`/`mcp`) | IANA URI scheme registry; RFC 7595 asks registration for web-facing schemes | **Convergent** — an internal, model-facing address space never emitted on the open web; RFC 7595's registration concern doesn't attach. Provisional registration becomes due only if one is ever exposed externally. |
-| `scheme:///path` (empty authority: `known`/`log`/`plurnk`) | RFC 3986 §3.2 / RFC 8089 — `file:///path` is the canonical empty-authority form; terser `scheme:path` (mailto/urn) also legal | **Convergent with the `file://` precedent.** DGR for choosing `///` over the terser form: the `//` marks URL-shaped hierarchical addressing for a floor-grade model — one URI shape everywhere. |
-| `scheme://name/path` (reg-name authority: `worker://self/…`, `mcp://<server>/…`) | RFC 3986 §3.2.2 — authority admits a registered name, not required DNS-resolvable; authority "governs the namespace" | **Convergent by construction** — the worker/server name governing its path namespace is the RFC's stated intent; mirrors `docker://`, `git://`. |
+| Unregistered schemes (`worker`/`prompt`/`log`/`mcp`, + capability schemes) | IANA URI scheme registry; RFC 7595 asks registration for web-facing schemes | **Convergent** — an internal, model-facing address space never emitted on the open web; RFC 7595's registration concern doesn't attach. Provisional registration becomes due only if one is ever exposed externally. |
+| `scheme:///path` (empty authority: `log:///`, `prompt:///` self-only; `worker:///` = the commons) | RFC 3986 §3.2 / RFC 8089 — `file:///path` is the canonical empty-authority form; terser `scheme:path` (mailto/urn) also legal | **Convergent with the `file://` precedent.** DGR for choosing `///` over the terser form: the `//` marks URL-shaped hierarchical addressing for a floor-grade model — one URI shape everywhere. (Empty `worker://` authority is the commons *principal*, not absence.) |
+| `scheme://name/path` (reg-name authority: `worker://~/…` self, `worker://<name>/…`, `worker://plurnk/…`, `mcp://<server>/…`) | RFC 3986 §3.2.2 — authority admits a registered name, not required DNS-resolvable; §2.3 — `~` is unreserved (a legal authority character) | **Convergent by construction** — the worker/server name governing its path namespace is the RFC's stated intent; `~` as the self-token is unreserved-legal; mirrors `docker://`, `git://`. |
 
 ### §7.2 Protocol handling (the http/wss package)
 
