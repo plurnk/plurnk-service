@@ -45,12 +45,15 @@ const NO_CURATION_FACTOR = 1.45;
 test("demo: budget grind — under a pinned ceiling, the model must curate to keep assembled context under budget", async () => {
     const fixture = await seedDemoFixture("budget");
     const userPromptText = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
+    // RESERVES bind at the provider's FIRST construction (cached for the process) — pin the
+    // absolutes BEFORE the floor probe boots it, so both probe and story run the same known
+    // envelope. The CAP binds LIVE per turn (#528), so each phase pins its own.
+    const restoreReserves = pinAliasPartition({ REASONING: "1", COMPLETION: "8192", SAFETY: "0" });
     const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText });
     const CEILING = Math.round(floor * GRIND_FACTOR);
     const NO_CURATION = Math.round(floor * NO_CURATION_FACTOR);
-    // promptBudget = CEILING exactly; a real assistant reserve keeps maxTokens sane for live gemma.
-    // Rides the active alias's suffix — bare is overridden by the model's own .env window knobs.
-    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(CEILING + 8192), REASONING: "0", COMPLETION: "8192", SAFETY: "0" });
+    // #528 — promptBudget = min(cap, natural) − reserves − safety = CEILING exactly.
+    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(CEILING + 1 + 8192) });
     try {
         const s = await liveWorkspace({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {
@@ -76,6 +79,7 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
         } finally { await s.cleanup(); }
     } finally {
         restore();
+        restoreReserves();
         await fixture.cleanup();
     }
 });

@@ -176,14 +176,7 @@ export default class PacketBuilder {
     // space (usage.prompt, the numerator, is real; the calibration ratio maps measured→real and
     // has no business here). The raw n_ctx overstates usable room by the reserve total.
     promptBudgetFor(provider: Provider): number | null {
-        if (this.#isUnboundedWindow(provider) || provider.contextWindow === null) return null; // #421 — no cap: an unknown window has no denominator
-        const { reasoning, completion, safety } = this.#partitionFor(provider);
-        if (reasoning === null || completion === null) return null; // #421 — unknown reserves: no denominator either
-        // #528 — min(cap, natural): the operator's pin tightens the PROMPT alone; the reserves
-        // above derive from the provider's natural window and are untouched by the cap.
-        const cap = this.#capFor(provider);
-        const effective = cap === null ? provider.contextWindow : Math.min(cap, provider.contextWindow);
-        return Math.max(0, effective - reasoning - completion - safety);
+        return this.ceilingFor(provider); // ONE derivation (#528) — the gauge denominator IS the grinder ceiling
     }
 
     // §tokenomics-agnostic-ruler — the ceiling is the real window partition (window − reserves),
@@ -195,14 +188,20 @@ export default class PacketBuilder {
         if (this.#isUnboundedWindow(provider) || provider.contextWindow === null) return null; // #421 — no cap: the gauge headline is omitted
         const { reasoning, completion, safety } = this.#partitionFor(provider);
         if (reasoning === null || completion === null) return null; // #421 — unknown reserves, no ceiling
-        const promptBudget = provider.contextWindow - reasoning - completion - safety;
-        if (promptBudget <= 0) {
+        const naturalBudget = provider.contextWindow - reasoning - completion - safety;
+        if (naturalBudget <= 0) {
             const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
             // #507 — post-migration this contradiction has ONE cause: pinned absolute reserves
             // exceeding the window the provider detected (percent reserves derive and cannot contradict).
             throw new Error(`window partition contradiction for alias '${alias}': window ${provider.contextWindow} <= reserves ${reasoning}+${completion}+${safety}. Pinned PLURNK_PROVIDERS_{REASONING,COMPLETION}_RESERVE absolutes exceed the detected window — repin them under it, or use percent reserves, which derive from the window.`);
         }
-        return promptBudget;
+        // #528 — the operator's cap tightens the PROMPT alone (reserves above are off the natural
+        // window). A cap tighter than the reserves is deliberate tightening, not a contradiction —
+        // the budget floors at 1 (0 and 1 force the same every-packet-413; the usage record needs
+        // a positive denominator). ONE derivation: the grinder ceiling IS the gauge denominator.
+        const cap = this.#capFor(provider);
+        if (cap === null) return naturalBudget;
+        return Math.max(1, Math.min(cap, provider.contextWindow) - reasoning - completion - safety);
     }
 
     // Assemble the request half of the spec'd packet (Packet.json system
@@ -584,6 +583,13 @@ export default class PacketBuilder {
     exactPacketTokens(packet: RequestPacket, provider: Provider): number {
         return provider.countTokens(PacketWire.renderSlot(packet.sections, "system"))
             + provider.countTokens(PacketWire.renderSlot(packet.sections, "user"));
+    }
+
+    // #529 — the INCOMPRESSIBLE floor: the system-slot render alone. The model can never FOLD
+    // the definition/tools/schemes/policy sections, so a prompt budget below this floor makes a
+    // recovery grant unwinnable — no amount of curation fits the packet.
+    systemFloorTokens(packet: RequestPacket, provider: Provider): number {
+        return provider.countTokens(PacketWire.renderSlot(packet.sections, "system"));
     }
 
     // Complete the packet by adding the model's response. After this the

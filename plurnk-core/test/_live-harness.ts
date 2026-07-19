@@ -196,15 +196,18 @@ export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise
 // model's real window (the budget-grind/-meta/floor-probe regression: turboderp's 35840 leaked
 // past a tight pin). Setting the ACTIVE alias's suffix wins over its own .env knobs; alias-agnostic,
 // so it holds when the demo model pivots (turboderp ↔ gbuild). Returns a restore fn.
-export const pinAliasPartition = (part: { CONTEXT_WINDOW: string; REASONING: string; COMPLETION: string; SAFETY: string }): (() => void) => {
+export const pinAliasPartition = (part: { CONTEXT_WINDOW?: string; REASONING?: string; COMPLETION?: string; SAFETY?: string }): (() => void) => {
     const alias = resolveActiveAlias(process.env)?.alias ?? "";
-    // #507 — window + reserves pin PROVIDER-tier (the envelope moved); SAFETY stays core's.
-    const entries: Array<readonly [string, string]> = [
+    // #528 dialect — CONTEXT_WINDOW is CORE's log-budget cap (min(cap, natural), the prompt alone);
+    // the reserves are provider-tier ABSOLUTES (positive — a zero reserve is unspellable by design,
+    // pin "1" for a nil slice); SAFETY stays core's. Pin only what a story needs:
+    // promptBudget = min(cap, natural) − reasoning − completion − safety.
+    const entries: Array<readonly [string, string]> = ([
         [`PLURNK_PROVIDERS_CONTEXT_WINDOW_${alias}`, part.CONTEXT_WINDOW],
         [`PLURNK_PROVIDERS_REASONING_RESERVE_${alias}`, part.REASONING],
         [`PLURNK_PROVIDERS_COMPLETION_RESERVE_${alias}`, part.COMPLETION],
         [`PLURNK_SERVICE_SAFETY_${alias}`, part.SAFETY],
-    ];
+    ] as Array<readonly [string, string | undefined]>).filter((e): e is readonly [string, string] => e[1] !== undefined);
     const prev = entries.map(([k]) => [k, process.env[k]] as const);
     for (const [k, v] of entries) process.env[k] = v;
     return () => { for (const [k, v] of prev) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } };

@@ -50,11 +50,13 @@ interface BudgetRun {
 const runUnderBudget = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
     const root = opts.projectRoot ?? fixture!.workspace;
+    // RESERVES bind at the provider's FIRST construction (process-cached) — pin the absolutes
+    // BEFORE the floor probe boots it; the CAP binds live (#528), each phase pins its own.
+    const restoreReserves = pinAliasPartition({ REASONING: "1", COMPLETION: "8192", SAFETY: "0" });
     const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt });
     const ceiling = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
-    // promptBudget = ceiling exactly; real assistant reserve keeps maxTokens sane live. Rides the
-    // active alias's suffix — bare is overridden by the model's own .env window knobs.
-    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(ceiling + 8192), REASONING: "0", COMPLETION: "8192", SAFETY: "0" });
+    // #528 — promptBudget = min(cap, natural) − reserves − safety = ceiling exactly.
+    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(ceiling + 1 + 8192) });
     try {
         const s = await liveWorkspace({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
@@ -81,6 +83,7 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
         throw err;
     } finally {
         restore();
+        restoreReserves();
     }
 };
 
