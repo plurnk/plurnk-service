@@ -77,7 +77,7 @@
         "@possumtech/sqlrite": "6.3.0",
         "diff": "^9.0.0",
         "ignore": "7.0.6",
-        "isomorphic-git": "1.38.8",
+        "isomorphic-git": "1.38.9",
         "@plurnk/plurnk-mimetypes-embeddings": "1.0.8",
         "@plurnk/plurnk-meta": "1.0.8"
     },
