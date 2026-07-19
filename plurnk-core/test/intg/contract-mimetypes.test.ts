@@ -244,3 +244,35 @@ test("[§mimetype-schemes-do-not-invoke-handlers] write resolves mimetype withou
         assert.ok(previewCalls.includes("alpha\nbeta\ngamma"), "handler saw the stored channel content at render time");
     } finally { await db.close(); }
 });
+
+// --- #524 (mimetypes#523) consumer regression: recursive descent over a DEEP parse tree ------
+// The prod break: json-p3's default maxRecursionDepth (50) threw InvalidExpressionError on
+// `$..x` over any code entry's deepJson (a 2-line file is ~350 nodes) — and matcher.ts maps
+// that error class to 400 "malformed matcher", blaming the MODEL for a correct expression.
+// Supplier-side fix is unbounded recursion over trusted trees; this pins the CONSUMER contract
+// (a $.. READ over a real code entry through the dispatch path succeeds) so a future engine
+// swap that reintroduces a depth ceiling fails HERE, loudly, not in a live daemon.
+test("recursive-descent jsonpath over a deep code-entry parse tree matches — never a depth-capped 400 (#524)", async () => {
+    const { db, workspaceId, workerId, mimetypes } = await setup();
+    try {
+        const k = new Worker();
+        const source = [
+            "export function greet(name: string): string {",
+            "    const prefix = \"hello\";",
+            "    return `${prefix}, ${name}`;",
+            "}",
+            "export function part(items: string[]): string[] {",
+            "    return items.filter((x) => x.length > 0).map((x) => x.trim());",
+            "}",
+        ].join("\n");
+        await k.edit(editStmt(urlPath("worker", "/util.ts"), source), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+
+        const matched = await k.read(
+            { ...readStmt(urlPath("worker", "/util.ts")), body: { dialect: "jsonpath", raw: "$..*" } as MatcherBody },
+            makeSchemeCtx({ db, workspaceId, mimetypes }),
+        );
+        assert.notEqual(matched.status, 400, `depth cap resurfaced as a model-blamed 400: ${(matched as { error?: string }).error ?? ""}`);
+        assert.equal(matched.status, 200, "recursive descent over the full parse tree succeeds");
+        assert.ok(typeof matched.content === "string" && matched.content.includes("greet"), "matches carry real tree content (positive presence)");
+    } finally { await db.close(); }
+});
