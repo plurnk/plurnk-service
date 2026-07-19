@@ -30,6 +30,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
+import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
+
+// sqlrite 6.x types the dynamic PREP accessors as `any` ([method: string]) — bind each
+// block accessor to the shipped generic statement shape at the site (#535).
+type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
 import PacketWire from "../core/packet-wire.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { ChatMessage } from "@plurnk/plurnk-providers";
@@ -61,9 +66,6 @@ interface WorkerRollupRow {
     last_status: number | null;
 }
 interface OpMixRow { worker_id: number; op: string; n: number }
-
-// The SqlRiteSync handle's type (sync per-PREP accessors) is declared in
-// src/types/sqlrite.d.ts; digest reads each block through its own accessor.
 
 // Loaded snapshot + derived index maps, threaded through the renderers so the
 // data flow is explicit (no hidden module-level state).
@@ -360,13 +362,13 @@ export default class Digest {
 
         const moduleDir = dirname(fileURLToPath(import.meta.url));
         const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
-        const workers = db.digest_workers.all<WorkerRow>();
-        const loopById = new Map(db.digest_loops.all<LoopRow>().map((l) => [l.id, l]));
+        const workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
+        const loopById = new Map((db.digest_loops as SyncPrep<LoopRow>).all().map((l) => [l.id, l]));
 
         // Each worker's turns that carry a MODEL packet (non-empty sections — setup/plurnk turns have none),
         // ordered; the last is the worker's final context. A worker with no model packet (client/plurnk) is silent.
         const byWorker = new Map<number, Array<{ loopSeq: number; turnSeq: number; sections: Parameters<typeof PacketWire.renderSlot>[0]; assistant: string }>>();
-        for (const t of db.digest_turns.all<TurnRow>()) {
+        for (const t of (db.digest_turns as SyncPrep<TurnRow>).all()) {
             const loop = loopById.get(t.loop_id);
             if (loop === undefined) continue;
             const packet = Digest.#parseJson(t.packet, {}) as { sections?: unknown; assistant?: { content?: unknown } };
@@ -429,13 +431,13 @@ export default class Digest {
         // mode) inspect cleanly; this tool only reads. The DB is quiescent at
         // digest time, so each PREP reads on its own — no cross-query snapshot.
         const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
-        let workspaces = db.digest_workspaces.all<WorkspaceRow>();
-        let workers = db.digest_workers.all<WorkerRow>();
-        let loops = db.digest_loops.all<LoopRow>();
-        let turns = db.digest_turns.all<TurnRow>();
-        let logEntries = db.digest_log_entries.all<LogRow>();
-        let workerRollupRows = db.digest_worker_rollups.all<WorkerRollupRow>();
-        let opMixRows = db.digest_worker_op_mix.all<OpMixRow>();
+        let workspaces = (db.digest_workspaces as SyncPrep<WorkspaceRow>).all();
+        let workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
+        let loops = (db.digest_loops as SyncPrep<LoopRow>).all();
+        let turns = (db.digest_turns as SyncPrep<TurnRow>).all();
+        let logEntries = (db.digest_log_entries as SyncPrep<LogRow>).all();
+        let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
+        let opMixRows = (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all();
         // The semantic-state analytic (owner ask), feature-detected per table: a HISTORICAL
         // specimen may predate token_counts/entry_embeddings — an old db is a fact to read,
         // not a contract violation. Absent tables read as -1. node:sqlite directly (SqlRite's
