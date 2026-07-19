@@ -20,6 +20,8 @@
 //   - Outcome assertions only: file content, response text. Not op shapes.
 
 import test from "node:test";
+import { cannedWeb, CANNED_VERSION } from "./_web-fixture.ts";
+import type { WebFetch } from "../../src/schemes/Exec.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -34,6 +36,7 @@ interface StoryOpts {
     prompt: string;
     maxTurns?: number;
     flags?: Record<string, unknown>;
+    fetchWeb?: WebFetch; // #530 — the canned-web gate fixture's page source (absent = the real guarded fetcher)
 }
 
 interface StoryResult {
@@ -48,7 +51,7 @@ interface StoryResult {
 
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace, ...(opts.fetchWeb !== undefined ? { fetchWeb: opts.fetchWeb } : {}) });
     // A liveLoop throw (loop.run rejection, waitFor timeout) happens BEFORE the caller holds the
     // StoryResult, so its finally-cleanup is unreachable — tear down HERE or the orphaned daemon's
     // handles (ws pair, db worker) keep the child process alive after the worker and wedge the tier.
@@ -83,7 +86,8 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     };
 };
 
-interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>; }
+interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>;     fetchWeb?: WebFetch;
+}
 interface ChainStep { finalStatus: number; lastContent: string; turnIds: number[]; }
 interface ChainResult { workspace: string; steps: ChainStep[]; cleanup: () => Promise<void>; }
 
@@ -93,7 +97,7 @@ interface ChainResult { workspace: string; steps: ChainStep[]; cleanup: () => Pr
 // runStory: a liveLoop throw lands before the caller holds the result, so tear down here.
 const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
+    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace, ...(opts.fetchWeb !== undefined ? { fetchWeb: opts.fetchWeb } : {}) });
     const teardown = async () => { await s.cleanup(); await fixture.cleanup(); };
     const steps: ChainStep[] = [];
     try {
@@ -131,14 +135,41 @@ test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async 
     } finally { await story.cleanup(); }
 });
 
-test("story: answer a question with a web search", { timeout: TIMEOUT }, async () => {
-    // The Web Search Epic's model-driven demo — the whole composition in one story:
-    // EXEC[search] → SearXNG → the one-load flow (survivor pages materialized as tagged
-    // https:// entries + the open digest of survivors) → ambient narration rows → the model
-    // answers from what it retrieved. The subject is release-current, so weights alone can't
-    // answer it honestly — the tool is the path of least resistance, not a scripted op.
+test("story: answer a question with a web search (canned gate — #530)", { timeout: TIMEOUT }, async () => {
+    // The Web Search Epic's composition through the REAL machinery with DETERMINISTIC content:
+    // EXEC[search] → a local SearXNG-shaped stub → the one-load flow (survivor pages served by
+    // the sink's injectable WebFetch, canned) → ambient narration → the model answers from what
+    // it retrieved. The MODEL is still live; the WEB is not — a gate must not generate its own
+    // nondeterminism (#530: an unautopsiable red from variable page sizes).
+    const web = await cannedWeb();
+    const prevSearx = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
+    process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = web.searxngUrl;
+    try {
+        const story = await runStory({
+            label: "web-search",
+            prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
+            maxTurns: 8,
+            fetchWeb: web.fetchWeb,
+        });
+        try {
+            const searchEntries = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "search" });
+            const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && story.lastContent.includes(CANNED_VERSION);
+            if (!ok) await story.dump();
+            assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
+            assert.equal(story.finalStatus, 200);
+            assert.ok(story.lastContent.includes(CANNED_VERSION), `the answer carries the CANNED version ${CANNED_VERSION} — retrieved, not recalled; got: ${story.lastContent.slice(0, 200)}`);
+        } finally { await story.cleanup(); }
+    } finally {
+        if (prevSearx === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = prevSearx;
+        await web.close();
+    }
+});
+
+test("story: answer a question with a web search (LIVE smoke — opt-in, out of the gate)", { timeout: TIMEOUT, skip: process.env.PLURNK_DEMO_LIVE_WEB !== "1" }, async () => {
+    // The live-web form (#530): ad-hoc smoke against the real SearXNG + real pages —
+    // PLURNK_DEMO_LIVE_WEB=1 opts in; the release gate never depends on the open web.
     const story = await runStory({
-        label: "web-search",
+        label: "web-search-live",
         prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
         maxTurns: 8,
     });
