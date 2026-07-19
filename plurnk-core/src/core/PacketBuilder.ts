@@ -143,6 +143,18 @@ export default class PacketBuilder {
         return { reasoning: provider.reasoningReserve ?? null, completion: provider.completionReserve ?? null, safety: this.#safetyFor(alias) };
     }
 
+    // #528 — the operator's CONTEXT_WINDOW pin is the LOG-budget cap, core-composed: the provider
+    // reports its natural window (construction strips the pin), and the cap tightens only the
+    // prompt — never the reserves, which stay task-natural. Alias-scoped else bare; garbage fails hard.
+    #capFor(provider: Provider): number | null {
+        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        const raw = scopeEnvToAlias(process.env, alias).PLURNK_PROVIDERS_CONTEXT_WINDOW;
+        if (raw === undefined || raw.length === 0) return null;
+        const cap = Number.parseInt(raw, 10);
+        if (!Number.isInteger(cap) || cap <= 0) throw new Error(`PLURNK_PROVIDERS_CONTEXT_WINDOW must be a positive integer, got '${raw}'`);
+        return cap;
+    }
+
     // The generation envelope — REASONING + COMPLETION, one undifferentiated pool, passed on
     // every generate({maxTokens}): no decode is unbounded (§tokenomics-window-partition). Per
     // alias (#352): gemma's measured envelope; a cloud alias's generous default the backend clamps.
@@ -167,7 +179,11 @@ export default class PacketBuilder {
         if (this.#isUnboundedWindow(provider) || provider.contextWindow === null) return null; // #421 — no cap: an unknown window has no denominator
         const { reasoning, completion, safety } = this.#partitionFor(provider);
         if (reasoning === null || completion === null) return null; // #421 — unknown reserves: no denominator either
-        return Math.max(0, provider.contextWindow - reasoning - completion - safety);
+        // #528 — min(cap, natural): the operator's pin tightens the PROMPT alone; the reserves
+        // above derive from the provider's natural window and are untouched by the cap.
+        const cap = this.#capFor(provider);
+        const effective = cap === null ? provider.contextWindow : Math.min(cap, provider.contextWindow);
+        return Math.max(0, effective - reasoning - completion - safety);
     }
 
     // §tokenomics-agnostic-ruler — the ceiling is the real window partition (window − reserves),

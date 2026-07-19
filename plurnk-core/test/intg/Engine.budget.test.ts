@@ -77,3 +77,34 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
         assert.ok(Math.abs(free - (2656 - total)) <= 25, `free ${free} ~= 2656 - ${total}`);
     } finally { await db.close(); }
 });
+
+test("[§tokenomics-window-partition] an intermediate operator cap tightens the PROMPT alone — reserves stay natural, maxTokens untouched (#528)", async () => {
+    // The conflation this pins against: folding the cap into the window shrank the reserves, so
+    // capping the log also throttled reasoning + response length. Natural window 49152, absolute
+    // reserves via the bare env knobs (Mock resolves them against ITS window); a 32000 cap must
+    // cut promptBudget by exactly the window delta and leave the generation envelope untouched.
+    const db = await openMigrated();
+    const prev = { cap: process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW, rr: process.env.PLURNK_PROVIDERS_REASONING_RESERVE, cr: process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE };
+    try {
+        process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "4915";
+        process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "12288";
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const mkProvider = (): Mock => new Mock({ contextWindow: 49152, responses: [] });
+
+        delete process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW;
+        const natural = engine.promptBudgetFor(mkProvider());
+        assert.ok(natural !== null && natural > 0, "the natural partition resolves");
+
+        process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW = "32000";
+        const provider = mkProvider();
+        const capped = engine.promptBudgetFor(provider);
+        assert.equal(capped, natural! - (49152 - 32000), "the cap cuts the prompt budget by exactly the window delta — reserves untouched");
+        assert.equal(provider.reasoningReserve, 4915, "the reasoning reserve stays task-natural under the cap");
+        assert.equal(provider.completionReserve, 12288, "the completion reserve — the response ceiling — stays task-natural under the cap");
+    } finally {
+        for (const [k, v] of [["PLURNK_PROVIDERS_CONTEXT_WINDOW", prev.cap], ["PLURNK_PROVIDERS_REASONING_RESERVE", prev.rr], ["PLURNK_PROVIDERS_COMPLETION_RESERVE", prev.cr]] as const) {
+            if (v === undefined) delete process.env[k]; else process.env[k] = v;
+        }
+        await db.close();
+    }
+});

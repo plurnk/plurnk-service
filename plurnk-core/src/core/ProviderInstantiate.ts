@@ -56,10 +56,25 @@ export default class ProviderInstantiate {
 
     static async #construct(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
         // #525 — promote the alias-scoped provider-knob family (PLURNK_PROVIDERS_*_<alias>) to
-        // bare BEFORE construction, so a per-alias CONTEXT_WINDOW/TEMPERATURE/reserve pin binds.
-        // Without this the whole per-alias provider surface was silently dropped at construction
-        // (only GBNF/SAFETY were scoped, individually, downstream).
+        // bare BEFORE construction, so a per-alias TEMPERATURE/reserve pin binds. Without this
+        // the whole per-alias provider surface was silently dropped at construction.
         env = scopeEnvToAlias(env, alias.alias);
+        // #528 — the CONTEXT_WINDOW pin is CORE's log-budget cap, never the provider's window:
+        // strip it so the provider reports its NATURAL window (probe/served) and percent reserves
+        // resolve off nature. PacketBuilder mins the cap into the prompt budget alone.
+        const cap = env.PLURNK_PROVIDERS_CONTEXT_WINDOW;
+        delete env.PLURNK_PROVIDERS_CONTEXT_WINDOW; // env is scopeEnvToAlias's copy — the caller's is untouched
+        const provider = await ProviderInstantiate.#constructWith(alias, env);
+        // #419 — a pinned UNPOLLABLE window: no natural exists, so the pin DECLARES the window
+        // (reserves resolve off the declaration — there is no separate nature to protect).
+        // Reconstruct once, probe skipped: the pin is the window, deterministically.
+        if (provider.contextWindow === null && cap !== undefined) {
+            return ProviderInstantiate.#constructWith(alias, { ...env, PLURNK_PROVIDERS_CONTEXT_WINDOW: cap, PLURNK_PROVIDERS_PROBE_NCTX: "0" });
+        }
+        return provider;
+    }
+
+    static async #constructWith(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
         // Standard providers (openai-compat + groq/deepinfra/...) construct via
         // the framework's factory — it carries probeNctx (auto-detect the
         // endpoint's n_ctx, so a local llama-server isn't a no-window black box
