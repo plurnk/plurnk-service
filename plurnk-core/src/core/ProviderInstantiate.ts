@@ -55,6 +55,11 @@ export default class ProviderInstantiate {
     }
 
     static async #construct(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
+        // #525 — promote the alias-scoped provider-knob family (PLURNK_PROVIDERS_*_<alias>) to
+        // bare BEFORE construction, so a per-alias CONTEXT_WINDOW/TEMPERATURE/reserve pin binds.
+        // Without this the whole per-alias provider surface was silently dropped at construction
+        // (only GBNF/SAFETY were scoped, individually, downstream).
+        env = scopeEnvToAlias(env, alias.alias);
         // Standard providers (openai-compat + groq/deepinfra/...) construct via
         // the framework's factory — it carries probeNctx (auto-detect the
         // endpoint's n_ctx, so a local llama-server isn't a no-window black box

@@ -27,3 +27,13 @@ test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL"
     assert.ok(hit.some((u) => u.startsWith("http://127.0.0.1:59731")), `probe must use alias.baseUrl; hit: ${hit.join(", ")}`);
     assert.ok(!hit.some((u) => u.startsWith("http://127.0.0.1:59732")), `probe must NOT fall through to OPENAI_BASE_URL; hit: ${hit.join(", ")}`);
 });
+
+test("[#525] an alias-scoped provider knob binds at construction — the per-alias CONTEXT_WINDOW pin is promoted, not dropped", async () => {
+    // The regression: #construct passed raw env, so PLURNK_PROVIDERS_CONTEXT_WINDOW_<alias>
+    // never reached the factory and min(cap, served) could not bind on any path.
+    const provider = await ProviderInstantiate.instantiateProvider(
+        { alias: "pinbox", provider: "openai", model: "test-model", baseUrl: "http://127.0.0.1:9" },
+        { ...process.env, OPENAI_API_KEY: "k", PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500", PLURNK_PROVIDERS_CONTEXT_WINDOW_PINBOX: "8000", PLURNK_PROVIDERS_PROBE_NCTX: "0" },
+    );
+    assert.equal(provider.contextWindow, 8000, "the alias-scoped pin binds — min(cap, served) has a cap to bind with");
+});
