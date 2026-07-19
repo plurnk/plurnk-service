@@ -15,8 +15,7 @@
 SELECT e.id AS entry_id, e.pathname, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
-WHERE e.scope = 'workspace'
-  AND e.workspace_id = $workspace_id
+WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
   AND e.scheme IS $scheme
   AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
@@ -31,25 +30,3 @@ WHERE e.scope = 'workspace'
   )
 ORDER BY e.pathname;
 
--- PREP: find_worker_entry_candidates
--- §worker-scheme — worker-scope FIND, byte-identical to find_workspace_entry_candidates BUT scope='worker'.
--- The owner narrowing rides $scope_pathname (Run.find folds the owner into the prefix glob —
--- `/<owner>/*`), so a worker reaches only its own (self) or a named sister's scratch. Additive: the
--- workspace query above is untouched (§worker-scheme Inc-1).
-SELECT e.id AS entry_id, e.pathname, ec.content, ec.mimetype
-FROM entries e
-JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
-WHERE e.scope = 'worker'
-  AND e.workspace_id = $workspace_id
-  AND e.scheme IS $scheme
-  AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
-  AND (
-    json_array_length(COALESCE($tags, '[]')) = 0
-    OR e.id IN (
-        SELECT entry_id FROM entry_tags
-        WHERE tag IN (SELECT value FROM json_each(COALESCE($tags, '[]')))
-        GROUP BY entry_id
-        HAVING COUNT(DISTINCT tag) = json_array_length(COALESCE($tags, '[]'))
-    )
-  )
-ORDER BY e.pathname;

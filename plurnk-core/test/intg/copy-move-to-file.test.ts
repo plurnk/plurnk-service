@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
@@ -40,10 +40,10 @@ const withWorkspace = async (fn: (root: string, ctx: Ctx) => Promise<void>): Pro
 };
 
 const seedKnown = (ctx: Ctx, pathname: string, content: string) =>
-    new Known().edit(editStmt(urlPath("known", `/${pathname}`), content), makeSchemeCtx({ db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId }));
+    new Worker().edit(editStmt(urlPath("worker", `/${pathname}`), content), makeSchemeCtx({ db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId }));
 
 const knownEntry = (ctx: Ctx, pathname: string) =>
-    (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "known" });
+    (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "worker" });
 
 // Materialize a FILE member the production way: on disk + a scheme=null entry + body channel +
 // synced_sig — so it's a tracked member (editable, movable, deletable), not untracked disk.
@@ -73,10 +73,10 @@ const proposeAndResolve = async (ctx: Ctx, statement: Parameters<Engine["dispatc
     return dispatchPromise;
 };
 
-test("[#2-copy-to-file] COPY known:/// → file:/// proposes then lands the file on accept", async () => {
+test("[#2-copy-to-file] COPY worker:/// → file:/// proposes then lands the file on accept", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedKnown(ctx, "note", "copied content\n");
-        const result = await proposeAndResolve(ctx, copyStmt(urlPath("known", "/note"), urlPath("file", "/copied.txt")), "accept");
+        const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/copied.txt")), "accept");
         assert.equal(result.status, 200);
         assert.equal(await readFile(join(root, "copied.txt"), "utf8"), "copied content\n");
         assert.notEqual(await knownEntry(ctx, "note"), undefined, "COPY leaves the source intact");
@@ -86,16 +86,16 @@ test("[#2-copy-to-file] COPY known:/// → file:/// proposes then lands the file
 test("[#2-copy-to-file-reject] a rejected COPY into file:/// never touches disk", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedKnown(ctx, "note", "nope\n");
-        const result = await proposeAndResolve(ctx, copyStmt(urlPath("known", "/note"), urlPath("file", "/rejected.txt")), "reject");
+        const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/rejected.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
         await assert.rejects(readFile(join(root, "rejected.txt"), "utf8"), "the rejected COPY never created the file");
     });
 });
 
-test("[#2-move-to-file] MOVE known:/// → file:/// lands the file AND deletes the source on accept", async () => {
+test("[#2-move-to-file] MOVE worker:/// → file:/// lands the file AND deletes the source on accept", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedKnown(ctx, "movee", "moved content\n");
-        const result = await proposeAndResolve(ctx, moveStmt(urlPath("known", "/movee"), urlPath("file", "/moved.txt")), "accept");
+        const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/movee"), urlPath("file", "/moved.txt")), "accept");
         assert.equal(result.status, 200);
         assert.equal(await readFile(join(root, "moved.txt"), "utf8"), "moved content\n");
         assert.equal(await knownEntry(ctx, "movee"), undefined, "MOVE deletes the source on accept");
@@ -105,7 +105,7 @@ test("[#2-move-to-file] MOVE known:/// → file:/// lands the file AND deletes t
 test("[#2-move-to-file-reject] a rejected MOVE into file:/// preserves the source (deferred delete)", async () => {
     await withWorkspace(async (_root, ctx) => {
         await seedKnown(ctx, "keepme", "keep\n");
-        const result = await proposeAndResolve(ctx, moveStmt(urlPath("known", "/keepme"), urlPath("file", "/rejected-move.txt")), "reject");
+        const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/keepme"), urlPath("file", "/rejected-move.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
         assert.notEqual(await knownEntry(ctx, "keepme"), undefined, "the source MUST survive a rejected MOVE — the delete was deferred behind the dest write");
     });

@@ -17,8 +17,8 @@ const runPump = async (concurrency: string): Promise<number> => {
         const workspaceId = await insertWorkspace(db, `derive-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         // A mix: distinct contents + a triplet of identical content (the dedup case).
-        for (let i = 0; i < 8; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: `/u${i}`, channel: "body", content: `distinct entry number ${i}`, mimetype: "text/markdown" });
-        for (let i = 0; i < 3; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: `/dup${i}`, channel: "body", content: "identical shared body across three entries", mimetype: "text/markdown" });
+        for (let i = 0; i < 8; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: `/u${i}`, channel: "body", content: `distinct entry number ${i}`, mimetype: "text/markdown" });
+        for (let i = 0; i < 3; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: `/dup${i}`, channel: "body", content: "identical shared body across three entries", mimetype: "text/markdown" });
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }));
         // Every body entry has a stamped deep_hash — fully derived exactly once.
         const stamped = await (db.test_count_stamped_deep_hash as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId });

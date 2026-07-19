@@ -16,7 +16,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string, tags: string[] | null = null): EditStatement => ({
     op: "EDIT", suffix: "", signal: tags,
-    target: urlPath("known", pathname),
+    target: urlPath("worker", pathname),
     lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
@@ -72,7 +72,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; SEND[200] broadcast terminal → 200");
 
         const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-            workspace_id: env.workspaceId, scheme: "known", pathname: "/france/capital",
+            workspace_id: env.workspaceId, scheme: "worker", pathname: "/france/capital",
         });
         assert.ok(entry !== undefined);
 
@@ -118,7 +118,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-multi");
         const readStmt = (pathname: string): PlurnkStatement => ({
             op: "READ", suffix: "", signal: null,
-            target: urlPath("known", pathname),
+            target: urlPath("worker", pathname),
             lineMarker: null, body: null,
             position: { line: 1, column: 1 },
         });

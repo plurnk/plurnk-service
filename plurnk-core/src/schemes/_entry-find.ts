@@ -48,15 +48,6 @@ export interface FindResult {
 }
 
 export default class EntryFind {
-    // §worker-scheme — the owner-prefix glob (`/<owner>/*`) for a worker-scope FIND, from the target
-    // pathname Run.find already folded (`/<owner>/<rest>`). Bounds the catalog source to one worker's
-    // scratch — the building worker's own (self) or a named sister's.
-    static #workerOwnerPrefix(statement: FindStatement): string {
-        const path = statement.target?.kind === "url" ? statement.target.pathname : "";
-        const owner = path.split("/").filter((s) => s.length > 0)[0];
-        return owner === undefined ? "/*" : `/${owner}/*`;
-    }
-
     static #scopePathnameOf(statement: FindStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
@@ -138,24 +129,17 @@ export default class EntryFind {
         const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
 
         const { db, workspaceId } = ctx;
-        // Candidates are workspace-scoped — a FIND never reaches across workspaces. §find-scoped-isolation.
-        // §worker-scheme — a worker-scope scheme (manifest.scope==='run', today worker://) draws from the worker
-        // partition instead; the owner narrowing rides scopeGlob (Run.find folds `/<owner>/*` in).
-        const candidatesQuery = manifest.scope === "worker" ? "find_worker_entry_candidates" : "find_workspace_entry_candidates";
-        const baseParams = {
+        // Candidates are workspace-scoped — a FIND never reaches across workspaces (§find-scoped-isolation)
+        // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
+        // other scheme draws from the commons.
+        let candidates = await (db.find_workspace_entry_candidates as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>({
             workspace_id: workspaceId,
+            owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId),
             scheme,
             channel: manifest.defaultChannel,
             scope_pathname: scopeGlob,
             tags: tagsParam,
-        };
-        // {§entry-owner} — the workspace identity carries the owner: an owner-scoped face passes its
-        // resolved owner; every other scheme draws from the commons. The worker-scope variant keys
-        // the pathname prefix (until the #527 wave) and takes no owner param.
-        const params = manifest.scope === "worker"
-            ? baseParams
-            : { ...baseParams, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId) };
-        let candidates = await (db[candidatesQuery] as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>(params);
+        });
 
         // grammar 0.46 regex-in-path — a `#pattern#flags` target narrows candidates by regex
         // over their pathname (in TS; SQLite has no regex). Malformed pattern → 400, parallel
@@ -210,10 +194,9 @@ export default class EntryFind {
         // the same EntryManifest.toPath the catalog uses (single source of truth). Match order is
         // preserved (rank for ~semantic); a match whose entry has no row (e.g. the self-excluded
         // manifest) drops out. Each match becomes ONE result item carrying its span (#286).
-        // §worker-scheme — a worker-scope FIND aligns to the building worker's OWN worker-scope catalog rows
-        // (the owner prefix the candidate scope already enforced), never the workspace filesystem.
-        const workerOwnerPrefix = manifest.scope === "worker" ? EntryFind.#workerOwnerPrefix(statement) : undefined;
-        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, workerOwnerPrefix)).map((r) => [r.path, r] as const));
+        // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
+        // match never pairs with a coordinate-twin sibling's catalog metadata.
+        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId))).map((r) => [r.path, r] as const));
         const results: MatchItem[] = [];
         const matches: Match[] = [];
         const seenPath = new Set<string>();

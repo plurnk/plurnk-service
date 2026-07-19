@@ -14,10 +14,10 @@ test("[§op-look] seam look: resolves a READ's content and mints NO log row (#35
             const workspaceId = (created.result as { id: number }).id;
             const workerId = await daemon.ensureModelWorker(workspaceId);
             // Seed an entry through the seam (the client-op path), then look it up.
-            const edit = parseDsl("<<PLAN::PLAN\n<<EDIT(known:///notes/target.md):the looked-up body:EDIT")[1];
+            const edit = parseDsl("<<PLAN::PLAN\n<<EDIT(worker:///notes/target.md):the looked-up body:EDIT")[1];
             await daemon.dispatchAsClient({ workspaceId, workerId, statement: edit });
             const before = (await (db.test_count_log_entries as PrepMethod).get<{ n: number }>({}))?.n;
-            const read = parseDsl("<<PLAN::PLAN\n<<READ(known:///notes/target.md)::READ")[1];
+            const read = parseDsl("<<PLAN::PLAN\n<<READ(worker:///notes/target.md)::READ")[1];
             const result = await daemon.look({ workspaceId, workerId, statement: read });
             assert.equal(result.status, 200);
             assert.match(String((result as { content?: string }).content ?? ""), /the looked-up body/, "look returns the entry's content");

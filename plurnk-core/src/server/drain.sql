@@ -55,7 +55,8 @@ SELECT workspace_id FROM workers WHERE id = $worker_id;
 SELECT c.content, e.pathname
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
-WHERE e.scheme = 'plurnk'
+WHERE e.scheme = 'prompt'
+  AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
 ORDER BY e.id DESC
@@ -70,7 +71,8 @@ LIMIT 1;
 SELECT c.content, e.pathname
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
-WHERE e.scheme = 'plurnk'
+WHERE e.scheme = 'prompt'
+  AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
 ORDER BY e.id ASC;
@@ -88,7 +90,8 @@ SELECT c.content AS body, l.flags AS flags
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 JOIN loops l ON l.id = $loop_id
-WHERE e.scheme = 'plurnk'
+WHERE e.scheme = 'prompt'
+  AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
   AND CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) >

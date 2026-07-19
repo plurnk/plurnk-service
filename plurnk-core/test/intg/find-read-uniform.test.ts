@@ -14,7 +14,7 @@ import type { FindStatement, ReadStatement, EditStatement, PlurnkStatement } fro
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
@@ -45,8 +45,8 @@ const setup = async () => {
 // Seed with literal (possibly multiline) content — the EDIT heredoc body can't carry raw
 // newlines, so build the statement then set the real body before dispatching to the scheme.
 const seedRaw = async (ctx: ReturnType<typeof makeSchemeCtx>, name: string, content: string): Promise<void> => {
-    const k = new Known();
-    const stmt = parseOp<EditStatement>(`<<EDIT(known:///${name}):x:EDIT`, "EDIT");
+    const k = new Worker();
+    const stmt = parseOp<EditStatement>(`<<EDIT(worker:///${name}):x:EDIT`, "EDIT");
     await k.edit({ ...stmt, body: content }, ctx);
 };
 
@@ -71,7 +71,7 @@ test("[#286] glob READ — multiple matches in ONE file fan out to multiple rows
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target\ndelta target");
-        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///log.md):*target*:READ", "READ"));
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///log.md):*target*:READ", "READ"));
         assert.equal(result.rowsWritten, 4, "the FIND summary + three matching lines in one file");
         assert.deepEqual(rows.map((r) => `${r.startLine}:\t${r.content}`), ["1:\talpha target", "3:\tgamma target", "4:\tdelta target"]);
     } finally { await db.close(); }
@@ -83,7 +83,7 @@ test("[#286] regex READ across files — one row per match, each at its (file, s
         await seedRaw(ctx, "a.md", "intro\nerror: one\ntail");
         await seedRaw(ctx, "b.md", "error: two\nmore");
         await seedRaw(ctx, "c.md", "clean");
-        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///**):#error: \\w+#:READ", "READ"));
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**):#error: \\w+#:READ", "READ"));
         assert.equal(result.rowsWritten, 3, "the FIND summary + two matches across two files (c excluded)");
         assert.deepEqual(rows.map((r) => r.content).toSorted(), ["error: one", "error: two"]);
     } finally { await db.close(); }
@@ -93,7 +93,7 @@ test("[#286] jsonpath READ over JSON — per-match rows, each the SOURCE LINE (n
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "team.json", '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
-        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///team.json):$.users[*].name:READ", "READ"));
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///team.json):$.users[*].name:READ", "READ"));
         assert.equal(result.rowsWritten, 4, "the FIND summary + three name rows (a structural mimetype does NOT collapse to item-index)");
         assert.deepEqual(rows.map((r) => r.startLine), [3, 4, 5], "each row at its source line");
         assert.match(rows[1].content ?? "", /Bob/);
@@ -104,7 +104,7 @@ test("[#286] dedup by span — two matches on one source line collapse to a sing
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "one.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
-        const { result } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///one.json):$.users[*].name:READ", "READ"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///one.json):$.users[*].name:READ", "READ"));
         assert.equal(result.rowsWritten, 2, "the FIND summary + ONE delivery — both hits on line 1 dedup to one row");
     } finally { await db.close(); }
 });
@@ -113,7 +113,7 @@ test("[#286] a matcher READ with zero matches writes a single 204 row, never sil
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.md", "nothing here");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///**):*absent*:READ", "READ"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**):*absent*:READ", "READ"));
         assert.equal(result.status, 204);
         assert.equal(result.rowsWritten, 1);
     } finally { await db.close(); }
@@ -125,7 +125,7 @@ test("[#286] ~semantic READ honors FIND — the ranked chunks come back as rows 
         await seedRaw(ctx, "db.md", "the database connection failed with a timeout error");
         await seedRaw(ctx, "cake.md", "preheat the oven and frost the birthday cake");
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, ...ids, mimetypes }));
-        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///**)<3>:~database connection error:READ", "READ"));
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**)<3>:~database connection error:READ", "READ"));
         assert.equal(result.status, 200);
         assert.ok((result.rowsWritten ?? 0) >= 1, "semantic READ fans out the ranked matches");
         assert.ok(rows.some((r) => /database connection/.test(r.content ?? "")), "the db entry's chunk is delivered as content");
@@ -137,7 +137,7 @@ test("[#286] xpath READ over HTML — per-match rows, each the source line of th
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "page.html", "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>");
-        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///page.html)://li:READ", "READ"));
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///page.html)://li:READ", "READ"));
         assert.equal(result.rowsWritten, 3, "the FIND summary + two <li> rows");
         assert.deepEqual(rows.map((r) => r.startLine), [2, 3], "each row at its node's source line");
     } finally { await db.close(); }
@@ -149,7 +149,7 @@ test("[#286] @graph READ honors FIND — references come back as rows, one per o
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, ...ids, mimetypes }));
-        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///**):@<foo:READ", "READ"));
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**):@<foo:READ", "READ"));
         assert.equal(result.status, 200);
         assert.ok((result.rowsWritten ?? 0) >= 1, "@graph READ fans out the referencing occurrences");
         assert.ok(rows.some((r) => /foo\(\)/.test(r.content ?? "")), "a reference line is delivered as content");
@@ -162,7 +162,7 @@ test("[#286] @graph FIND emits per-occurrence items carrying spans (uniform with
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes }));
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**):@<foo:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**):@<foo:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.ok(r.results.length >= 1, "@graph FIND returns the referencing entries' occurrences");
         assert.ok(r.results.every((x) => x.matchSpan !== undefined), "each @graph item carries a (file, span)");
@@ -176,9 +176,9 @@ test("[#286] FIND(bare entry) is the ONE entry — never a prefix that pulls sib
     try {
         await seedRaw(ctx, "config.md", "the config");
         await seedRaw(ctx, "config.md.bak", "the backup");
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///config.md)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///config.md)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.map((x) => x.path), ["known:///config.md"], "bare = exact: config.md.bak is NOT pulled in");
+        assert.deepEqual(r.results.map((x) => x.path), ["worker:///config.md"], "bare = exact: config.md.bak is NOT pulled in");
     } finally { await db.close(); }
 });
 
@@ -188,9 +188,9 @@ test("[#286] FIND(folder/) returns the folder's contents; a glob is a scope", as
         await seedRaw(ctx, "docs/a.md", "alpha");
         await seedRaw(ctx, "docs/b.md", "beta");
         await seedRaw(ctx, "top.md", "top");
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///docs/)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///docs/)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.map((x) => x.path).toSorted(), ["known:///docs/a.md", "known:///docs/b.md"], "folder/ = its contents, not top.md");
+        assert.deepEqual(r.results.map((x) => x.path).toSorted(), ["worker:///docs/a.md", "worker:///docs/b.md"], "folder/ = its contents, not top.md");
     } finally { await db.close(); }
 });
 
@@ -200,7 +200,7 @@ test("[#286] READ(folder/) reads the folder's contents — one row per entry, wh
         await seedRaw(ctx, "docs/a.md", "alpha body");
         await seedRaw(ctx, "docs/b.md", "beta body");
         await seedRaw(ctx, "top.md", "top body");
-        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(known:///docs/)::READ", "READ"));
+        const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///docs/)::READ", "READ"));
         assert.equal(result.rowsWritten, 3, "the FIND summary + two folder entries (top.md excluded)");
         assert.deepEqual(rows.map((r) => r.content).toSorted(), ["alpha body", "beta body"], "each row is an entry's whole content");
     } finally { await db.close(); }
@@ -212,7 +212,7 @@ test("[#286] FIND with a matcher emits one item per match, each carrying its (fi
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target");
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**):*target*:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**):*target*:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 2, "two matches in one file → two items");
         assert.deepEqual(r.results.map((x) => x.matchSpan), [{ lineStart: 1, lineEnd: 1 }, { lineStart: 3, lineEnd: 3 }], "each item carries the span it matched");
@@ -224,7 +224,7 @@ test("[#286] body-less FIND is the catalog — one item per entry, no span", asy
     try {
         await seedRaw(ctx, "a.md", "alpha");
         await seedRaw(ctx, "b.md", "beta");
-        const r = await new Known().find(parseOp<FindStatement>("<<FIND(known:///**)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.results.length, 2, "two entries → two catalog rows");
         assert.ok(r.results.every((x) => x.matchSpan === undefined), "the catalog carries no match span");
     } finally { await db.close(); }

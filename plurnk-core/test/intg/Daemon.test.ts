@@ -346,9 +346,9 @@ test("the client-interface seam — pendingProposals reads a workspace's stopped
         await (db.engine_insert_log_entry as PrepMethod).get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
-            scheme: "known", username: null, password: null, hostname: null, port: null,
+            scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/x", params: null, fragment: null, lineMarker: null,
-            tx: "<<EDIT(known:///x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
+            tx: "<<EDIT(worker:///x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
             status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
         });
@@ -395,10 +395,10 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             assert.equal((terminals[0].params as { finalStatus?: number }).finalStatus, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
 
             // The marquee first-turn feature holds on the seam path: runLoop materialized the
-            // teaching docs BEFORE the loop, so the turn-1 FIND(plurnk://docs/**) foist finds them.
+            // teaching docs BEFORE the loop, so the turn-1 FIND(worker://plurnk/docs/**) foist finds them.
             // (The gap that shipped: agui-driven workspaces started docless and the foist reported 0.)
-            const docs = await (db.test_entries_by_scheme_prefix as PrepMethod).all<{ pathname: string }>({ workspace_id: created.id, scheme: "plurnk", prefix: "/docs/%" });
-            assert.ok(docs.length > 0, "runLoop materialized plurnk://docs/*.md — the discovery foist has something to find");
+            const docs = await (db.test_entries_by_scheme_prefix as PrepMethod).all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/docs/%" });
+            assert.ok(docs.length > 0, "runLoop materialized worker://plurnk/docs/*.md — the discovery foist has something to find");
         } finally { ws.close(); }
     });
 });
@@ -414,10 +414,10 @@ test("the client-interface seam — dispatchAsClient runs a client op through th
             const entries: Array<{ method: string; params: unknown }> = [];
             daemon.subscribeToEvents((_s, method, params) => { entries.push({ method, params }); });
 
-            // WRITE then READ known:///x through the seam — a positive roundtrip proving dispatch + journal.
-            const wrote = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildEdit({ target: "known:///x", content: "seam" }) });
+            // WRITE then READ worker:///x through the seam — a positive roundtrip proving dispatch + journal.
+            const wrote = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "seam" }) });
             assert.equal(wrote.status, 201, "the client EDIT created the entry through the seam (201)");
-            const read = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildRead({ target: "known:///x" }) });
+            const read = await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildRead({ target: "worker:///x" }) });
             assert.equal(read.status, 200);
             assert.equal(read.content, "seam", "the value roundtripped — the op executed through the engine, not a shadow path");
 
@@ -435,7 +435,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-read" })).result as { id: number };
             const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildEdit({ target: "known:///x", content: "read me" }) });
+            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "read me" }) });
 
             const entries = await daemon.readLog({ workspaceId: created.id, workerId: run.id });
             assert.ok(entries.length >= 1, "readLog returned the workspace's journal entries");
@@ -520,10 +520,10 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-entry" })).result as { id: number };
             const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildEdit({ target: "known:///x", content: "hello world" }) });
+            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "hello world" }) });
 
             // full shape — the written content is on one of the entry's channels.
-            const entry = (await daemon.readEntry({ workspaceId: created.id, target: "known:///x" })).entry!;
+            const entry = (await daemon.readEntry({ workspaceId: created.id, target: "worker:///x" })).entry!;
             const found = Object.entries(entry.channels).find(([, c]) => c.content.includes("hello"));
             assert.ok(found !== undefined, "readEntry returns the entry's channels with content");
             const [channel, chan] = found!;
@@ -531,13 +531,13 @@ test("the client-interface seam — readEntry returns an entry's shape and the #
             assert.equal(chan.contentLength, 11);
 
             // #192 incremental slice — that channel's content from an offset; only the delta leaves storage.
-            const sliced = (await daemon.readEntry({ workspaceId: created.id, target: "known:///x", channel, offset: 6 })).entry!;
+            const sliced = (await daemon.readEntry({ workspaceId: created.id, target: "worker:///x", channel, offset: 6 })).entry!;
             assert.equal(sliced.channels[channel].content, "world", "the incremental read returns only the delta from the offset");
             assert.equal(sliced.channels[channel].contentLength, 11, "contentLength is the full length — the next poll resumes from there");
 
             // a missing entry is 404; an offset without a channel is refused.
-            assert.equal((await daemon.readEntry({ workspaceId: created.id, target: "known:///nope" })).status, 404);
-            await assert.rejects(() => daemon.readEntry({ workspaceId: created.id, target: "known:///x", offset: 3 }), /offset requires channel/);
+            assert.equal((await daemon.readEntry({ workspaceId: created.id, target: "worker:///nope" })).status, 404);
+            await assert.rejects(() => daemon.readEntry({ workspaceId: created.id, target: "worker:///x", offset: 3 }), /offset requires channel/);
         } finally { ws.close(); }
     });
 });
@@ -548,7 +548,7 @@ test("the client-interface seam — forkWorker branches a worker's log, ownershi
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-fork" })).result as { id: number };
             const run = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: created.id }))!;
-            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildEdit({ target: "known:///x", content: "branch me" }) });
+            await daemon.dispatchAsClient({ workspaceId: created.id, workerId: run.id, statement: Dsl.buildEdit({ target: "worker:///x", content: "branch me" }) });
 
             const branch = await daemon.forkWorker({ workspaceId: created.id, workerId: run.id, name: "mybranch" });
             assert.ok(branch.workerId > 0 && branch.workerId !== run.id, "forkWorker created a new run");
@@ -580,7 +580,7 @@ test("the client-interface seam — hotloadRuntime registers a live tag, dispatc
 
             // one-name-one-owner arbitration flows through the seam: a dup and a reserved name fail-hard.
             assert.throws(() => daemon.hotloadRuntime(fakeRegistration("seamtag")), /already/i, "a dup tag is rejected");
-            assert.throws(() => daemon.hotloadRuntime(fakeRegistration("known")), /reserved/i, "a reserved built-in name is rejected");
+            assert.throws(() => daemon.hotloadRuntime(fakeRegistration("worker")), /reserved/i, "a reserved built-in name is rejected");
         } finally { ws.close(); }
     });
 });

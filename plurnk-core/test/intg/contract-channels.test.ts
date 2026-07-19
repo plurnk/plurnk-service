@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
@@ -64,18 +64,18 @@ test("[§channel-selection-fragment-selects-named-channel] fragment targets the 
 test("[§channel-selection-fragment-on-nonexistent-404] fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        const k = new Known();
+        const k = new Worker();
 
         // Explicit fragment on a path with no existing entry → 404 (the
         // fragment-targeted write requires the entry to already exist), even
         // when the fragment names the default channel.
-        const missing = await k.edit(editStmt(urlPath("known", "/ghost", "body"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const missing = await k.edit(editStmt(urlPath("worker", "/ghost", "body"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(missing.status, 404);
         assert.equal(missing.entryId, null);
         assert.equal(missing.channel, "body");
 
         // Fragment-less EDIT to the same (still absent) path creates the entry.
-        const created = await k.edit(editStmt(urlPath("known", "/ghost"), "made"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const created = await k.edit(editStmt(urlPath("worker", "/ghost"), "made"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(created.status, 201);
         assert.equal(created.channel, "body");
         assert.notEqual(created.entryId, null);
@@ -137,20 +137,20 @@ test("[§channel-state-state-is-metadata] channel state does not gate reads — 
         // Seed an entry whose channel is in the 'errored' terminal state with
         // partial content still present.
         await seedEntryWithChannel(db, {
-            workspaceId, workerId, scheme: "known", pathname: "/partial", channel: "body",
+            workspaceId, workerId, scheme: "worker", pathname: "/partial", channel: "body",
             content: "partial-but-readable", mimetype: "text/markdown", state: "errored",
         });
-        const k = new Known();
+        const k = new Worker();
 
         // READ returns the accumulated content regardless of the errored state —
         // state is metadata, not an engine gate.
-        const r = await k.read(readStmt(urlPath("known", "/partial")), makeSchemeCtx({ db, workspaceId }));
+        const r = await k.read(readStmt(urlPath("worker", "/partial")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200, "errored state does not gate the read");
         assert.equal(r.content, "partial-but-readable");
         assert.equal(r.channel, "body");
 
         // Confirm the stored state really is 'errored' (the read ignored it).
-        const stored = await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "known", pathname: "/partial" }))?.id, name: "body" });
+        const stored = await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "worker", pathname: "/partial" }))?.id, name: "body" });
         assert.equal(stored?.state, "errored", "state persisted as errored — read succeeded anyway");
     } finally { await db.close(); }
 });

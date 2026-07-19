@@ -230,7 +230,7 @@ export const seedEntryWithChannel = async (
     const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
         workspace_id: opts.workspaceId,
         owner_id: opts.ownerId ?? await Owner.commonsId(db, opts.workspaceId),
-        scheme: opts.scheme ?? "known",
+        scheme: opts.scheme ?? "worker",
         pathname: opts.pathname ?? "/x",
     });
     if (entry === undefined) throw new Error("seedEntryWithChannel: insert returned no row");

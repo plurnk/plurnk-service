@@ -98,7 +98,7 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; pathname: string | null }>({ worker_id: workerId });
         // #382 — the prompt frame is grinder-exempt; the grinder folds the prior turn's WORK, not the task.
-        const t1 = after.filter((r) => r.turn_seq === 1 && !(r.pathname ?? "").startsWith("/prompt/"));
+        const t1 = after.filter((r) => r.turn_seq === 1 && (r as { scheme?: string | null }).scheme !== "prompt");
         assert.ok(t1.length > 0 && t1.every((r) => r.expanded === 0), "prior turn's WORK folded (the exempt prompt stays open) — collapsed to coordinate, not deleted");
     } finally { await db.close(); }
 });
@@ -121,7 +121,7 @@ test("[§grinder-errors-exempt] a PLAN row at the newest boundary survives the o
         const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; op: string; expanded: number; pathname: string | null }>({ worker_id: workerId });
         const plan = after.find((r) => r.turn_seq === 1 && r.op === "PLAN");
         assert.equal(plan?.expanded, 1, "the PLAN row is grinder-exempt — still OPEN through the fold");
-        const folded = after.filter((r) => r.turn_seq === 1 && r.op !== "PLAN" && r.op !== "error" && !(r.pathname ?? "").startsWith("/prompt/"));
+        const folded = after.filter((r) => r.turn_seq === 1 && r.op !== "PLAN" && r.op !== "error" && (r as { scheme?: string | null }).scheme !== "prompt");
         assert.ok(folded.length > 0 && folded.every((r) => r.expanded === 0), "the boundary's non-exempt WORK still folds around the surviving plan");
     } finally { await db.close(); }
 });

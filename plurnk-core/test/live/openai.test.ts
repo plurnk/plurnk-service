@@ -21,7 +21,7 @@ test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes w
         // One natural sentence, no ops spelled, no turn choreography (the contract-tier doctrine).
         const secret = crypto.randomUUID().slice(0, 8);
         await seedEntry(s.db, s.workspaceId, { pathname: "vault/code.md", content: `the access code is ${secret}` });
-        const userPrompt = "What is the access code stored at known:///vault/code.md? Tell me in one sentence.";
+        const userPrompt = "What is the access code stored at worker:///vault/code.md? Tell me in one sentence.";
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { timeoutMs: 240_000 });
 
         console.log(`\n=== multi-turn run (${turnIds.length} turns, final ${finalStatus}) ===`);
@@ -41,7 +41,7 @@ test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes w
 test("live OpenAI: a single-shot store-and-reply terminates cleanly", async () => {
     const s = await liveWorkspace({ name: `live-smoke-${crypto.randomUUID()}` });
     try {
-        const userPrompt = "What is the capital of France? Store the answer under known:///france/capital and reply with a single SEND[200] message containing the answer.";
+        const userPrompt = "What is the capital of France? Store the answer under worker:///france/capital and reply with a single SEND[200] message containing the answer.";
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 4 }, { timeoutMs: 240_000 });
 
         assert.ok([200, 499].includes(finalStatus), `single-shot store-and-reply terminates cleanly; got ${finalStatus}`);
@@ -54,7 +54,7 @@ test("live OpenAI: a single-shot store-and-reply terminates cleanly", async () =
         const pathnames = (await (s.db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>()).map((e) => e.pathname);
         assert.ok(
             pathnames.some((p) => /france|capital/.test(p)),
-            `the answer was stored under known:///france/capital; got ${JSON.stringify(pathnames)}`,
+            `the answer was stored under worker:///france/capital; got ${JSON.stringify(pathnames)}`,
         );
     } finally { await s.cleanup(); }
 });

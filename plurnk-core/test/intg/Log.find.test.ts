@@ -17,7 +17,7 @@ import { urlPath, findStmt } from "./_dsl.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    target: { kind: "url", raw: `known://${pathname}`, scheme: "known", username: null, password: null, hostname: null, port: null, pathname, params: {}, fragment: null } as UrlPath,
+    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, params: {}, fragment: null } as UrlPath,
     lineMarker: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): ReadStatement => ({
@@ -33,7 +33,7 @@ const setup = async () => {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     // Three rows: an EDIT ack (JSON dust), a READ result carrying prose, another EDIT.
     await engine.dispatch({ statement: editStmt("/notes.md", "the engine hums along"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-    await engine.dispatch({ statement: readStmt(urlPath("known", "/notes.md")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+    await engine.dispatch({ statement: readStmt(urlPath("worker", "/notes.md")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
     await engine.dispatch({ statement: editStmt("/other.md", "nothing relevant"), workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model" });
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };

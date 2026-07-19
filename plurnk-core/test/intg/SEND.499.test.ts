@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -42,8 +42,8 @@ const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; 
 test("SEND[499] on entry without subscription returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("known", "x")));
+        await new Worker().edit(editStmt(url("worker", "x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("worker", "x")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
@@ -51,7 +51,7 @@ test("SEND[499] on entry without subscription returns 404", async () => {
 test("SEND[499] on nonexistent entry returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("known", "nope")));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("worker", "nope")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
@@ -59,11 +59,11 @@ test("SEND[499] on nonexistent entry returns 404", async () => {
 test("SEND[499] on entry-bearing scheme with foreign subscription returns 501", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        const r = await new Known().edit(editStmt(url("known", "x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().edit(editStmt(url("worker", "x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
         const entryId = r.entryId as number;
         await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "fake-stream-scheme", handle: "h" });
 
-        const cancelResult = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("known", "x")));
+        const cancelResult = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(499, url("worker", "x")));
         assert.equal(cancelResult.status, 501);
     } finally { await db.close(); }
 });
@@ -157,8 +157,8 @@ test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscr
 
     try {
         await rpcCall(1, "workspace.create", { name: "test-499" });
-        await rpcCall(2, "op.edit", { target: "known:///x", content: "hi" });
-        const r = await rpcCall(3, "op.send", { status: 499, recipient: "known:///x" });
+        await rpcCall(2, "op.edit", { target: "worker:///x", content: "hi" });
+        const r = await rpcCall(3, "op.send", { status: 499, recipient: "worker:///x" });
         assert.equal(r.result?.status, 404, "SEND[499] on entry with no subscription is 404");
     } finally {
         ws.close();

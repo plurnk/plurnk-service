@@ -84,50 +84,53 @@ test("[§worker-scheme-fork-scratch] a fork inherits the parent's worker-scope s
         const parent = await insertWorker(db, workspaceId, null, "alpha");
         const ctxP = makeSchemeCtx({ db, workspaceId, workerId: parent, loopId: 0, turnId: 0 });
         const run = new Worker();
-        await run.edit(editStmt(workerEntry("self", "todo.md"), "parent note"), ctxP);
+        await run.edit(editStmt(workerEntry("~", "todo.md"), "parent note"), ctxP);
 
-        // Fork the parent — the branch must open with the parent's scratch under its OWN name.
+        // Fork the parent — the branch must open with the parent's scratch as its OWN ({§entry-owner}).
         const forkId = await Fork.fork(db, parent, "alpha-fork");
         const ctxF = makeSchemeCtx({ db, workspaceId, workerId: forkId, loopId: 0, turnId: 0 });
 
-        const inherited = await run.find(findEntry("self", "**"), ctxF);
-        assert.deepEqual(inherited.results.map((r) => r.path), ["worker://alpha-fork/todo.md"], "the fork's perspective holds the inherited scratch under its own name");
-        const fRead = await run.read(readEntry("self", "todo.md"), ctxF);
+        const inherited = await run.find(findEntry("~", "**"), ctxF);
+        assert.deepEqual(inherited.results.map((r) => r.path), ["worker://~/todo.md"], "the fork's own-space FIND holds the inherited scratch, addressed as its own");
+        const fRead = await run.read(readEntry("~", "todo.md"), ctxF);
         assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
 
         // Divergence: the fork edits its scratch; the parent's copy is independent + untouched.
-        await run.edit(editStmt(workerEntry("self", "todo.md"), "fork note"), ctxF);
-        assert.equal((await run.read(readEntry("self", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
-        assert.equal((await run.read(readEntry("self", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
+        await run.edit(editStmt(workerEntry("~", "todo.md"), "fork note"), ctxF);
+        assert.equal((await run.read(readEntry("~", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
+        assert.equal((await run.read(readEntry("~", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-find-perspective] a worker FINDs its OWN worker-scope scratch; a sister's only by name — the worker's perspective", async () => {
+test("[§worker-authority-carving] FIND draws from the resolved principal alone — ~ is own space, a name is ancestry-gated, perspectives never bleed", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `run-find-${crypto.randomUUID()}`);
         const alpha = await insertWorker(db, workspaceId, null, "alpha");
-        const beta = await insertWorker(db, workspaceId, null, "beta");
+        const beta = await insertWorker(db, workspaceId, alpha, "beta"); // beta is alpha's CHILD (ancestry gates the named read)
         const ctxA = makeSchemeCtx({ db, workspaceId, workerId: alpha, loopId: 0, turnId: 0 });
         const ctxB = makeSchemeCtx({ db, workspaceId, workerId: beta, loopId: 0, turnId: 0 });
         const run = new Worker();
 
-        // Each worker writes its OWN scratch (worker://self).
-        await run.edit(editStmt(workerEntry("self", "todo.md"), "alpha note"), ctxA);
-        await run.edit(editStmt(workerEntry("self", "plan.md"), "beta note"), ctxB);
+        // Each worker writes its OWN space (worker://~).
+        await run.edit(editStmt(workerEntry("~", "todo.md"), "alpha note"), ctxA);
+        await run.edit(editStmt(workerEntry("~", "plan.md"), "beta note"), ctxB);
 
-        // alpha's self FIND sees ONLY alpha's scratch, addressed worker://alpha/...
-        const own = await run.find(findEntry("self", "**"), ctxA);
+        // alpha's own-space FIND sees ONLY alpha's entries, addressed as its own.
+        const own = await run.find(findEntry("~", "**"), ctxA);
         assert.equal(own.status, 200);
-        assert.deepEqual(own.results.map((r) => r.path), ["worker://alpha/todo.md"], "self FIND(worker://self/**) returns only the building worker's own scratch");
+        assert.deepEqual(own.results.map((r) => r.path), ["worker://~/todo.md"], "FIND(worker://~/**) returns only the caller's own space ({§entry-owner})");
 
-        // beta's perspective excludes alpha's — isolation is structural (scope='worker' + owner prefix).
-        const betaOwn = await run.find(findEntry("self", "**"), ctxB);
-        assert.deepEqual(betaOwn.results.map((r) => r.path), ["worker://beta/plan.md"], "a sibling never sees another's scratch in its own perspective");
+        // beta's perspective excludes alpha's — isolation is structural (the owner column).
+        const betaOwn = await run.find(findEntry("~", "**"), ctxB);
+        assert.deepEqual(betaOwn.results.map((r) => r.path), ["worker://~/plan.md"], "a sibling never sees another's space in its own perspective");
 
-        // A sister's scratch is reachable ONLY by explicit name (cross-worker READ/FIND is allowed).
-        const sister = await run.find(findEntry("beta", "**"), ctxA);
-        assert.deepEqual(sister.results.map((r) => r.path), ["worker://beta/plan.md"], "FIND(worker://beta/**) reaches the named sister's scratch");
+        // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down)…
+        const child = await run.find(findEntry("beta", "**"), ctxA);
+        assert.deepEqual(child.results.map((r) => r.path), ["worker://beta/plan.md"], "FIND(worker://beta/**) reaches the named child's space");
+        // …but a child cannot snoop upward: the parent's space 404s from below, no existence leak.
+        const upward = await run.find(findEntry("alpha", "**"), ctxB);
+        assert.equal(upward.status, 404, "a non-ancestor naming a space is 404 — the reader must be the owner or an ancestor");
     } finally { await db.close(); }
 });
 
@@ -294,25 +297,29 @@ test("[§worker-scheme-irc] SEND(worker://name):msg delivers to a sister; a miss
 // Dispatch-path coverage (#282): KILL of a worker-scope ENTRY must DELETE the entry, NOT
 // cancel the worker — and stay self-only. Driven through engine.dispatch (the real routing),
 // not a bare Run instance, because the bug lived in Engine.#handleKill's run branch.
-test("[§worker-scheme-scratch-kill] KILL(worker://owner/entry) deletes the scratch entry (self-only); the worker survives — #282", async () => {
+test("[§worker-read-scope] entry KILL: a child naming upward is 404 (no existence leak); an ancestor sees but cannot write (403); the worker survives — #282", async () => {
     const db = await openMigrated();
     try {
         const { injectWorker } = recordingInjectWorker();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
         const workspaceId = await insertWorkspace(db, `run-kill-entry-${crypto.randomUUID()}`);
         const alpha = await insertWorker(db, workspaceId, null, "alpha");
-        const beta = await insertWorker(db, workspaceId, null, "beta");
+        const beta = await insertWorker(db, workspaceId, alpha, "beta"); // beta is alpha's child
         const loopA = await insertLoop(db, alpha, 1, "go");
         const turnA = await insertTurn(db, loopA, 1, 102);
         const loopB = await insertLoop(db, beta, 1, "go");
         const turnB = await insertTurn(db, loopB, 1, 102);
 
         await engine.dispatch({ statement: editStmt(workerEntry("alpha", "note.md"), "scratch"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(workerEntry("~", "child-note.md"), "beta scratch"), workspaceId, workerId: beta, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
 
-        // A sister cannot delete alpha's scratch — cross-worker write is denied (403); the entry survives.
-        const cross = await engine.dispatch({ statement: killEntry("alpha", "note.md"), workspaceId, workerId: beta, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
-        assert.equal(cross.status, 403, "cross-worker KILL of a sister's scratch is denied (self-only)");
-        assert.equal((await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 2, origin: "model" })).status, 200, "the denied cross-worker KILL left the entry intact");
+        // {§worker-read-scope} — a child KILLing UPWARD can't even see the parent's space: 404, no existence leak.
+        const upward = await engine.dispatch({ statement: killEntry("alpha", "note.md"), workspaceId, workerId: beta, loopId: loopB, turnId: turnB, sequence: 10, origin: "model" });
+        assert.equal(upward.status, 404, "a non-ancestor naming a space is 404 — no existence leak");
+        // {§worker-write-scoping} — the PARENT sees the child's space (ancestor read) but cannot write into it: 403.
+        const downward = await engine.dispatch({ statement: killEntry("beta", "child-note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 10, origin: "model" });
+        assert.equal(downward.status, 403, "an ancestor's named KILL is read-only — a named space takes no model writes");
+        assert.equal((await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 20, origin: "model" })).status, 200, "the denied KILLs left the entries intact");
 
         // alpha kills its OWN scratch entry → 200; it's gone; the worker alpha still exists.
         const killed = await engine.dispatch({ statement: killEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 3, origin: "model" });
@@ -408,32 +415,32 @@ test("[§worker-scheme-terminate] KILL(worker://name) aborts a sister by address
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-scratch] self EDIT writes the worker partition; cross-worker READ reaches it; cross-worker WRITE is 403", async () => {
+test("[§worker-write-scoping] own-space EDIT lands owner-keyed; an ancestor READs the child's space; every named authority refuses model writes (403)", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize });
         const workspaceId = await insertWorkspace(db, `run-store-${crypto.randomUUID()}`);
         const meId = await insertWorker(db, workspaceId, null, "me");
-        const otherId = await insertWorker(db, workspaceId, null, "other");
+        const childId = await insertWorker(db, workspaceId, meId, "child"); // me's child: me may read down into it
         const loopId = await insertLoop(db, meId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const readOf = (target: ParsedPath): ReadStatement => ({ op: "READ", suffix: "", signal: null, lineMarker: null, target, body: null, position: { line: 1, column: 1 } });
 
-        // self EDIT(worker://self/note.md) — a self-owned worker-scope entry; self folds to "me".
-        const write = await engine.dispatch({ statement: editStmt(workerEntry("self", "note.md"), "scratch"), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
-        assert.equal(write.status, 201, "self scratch write creates the entry");
-        const stored = await (db.crud_find_worker_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "worker", pathname: "/me/note.md" });
-        if (stored === undefined) throw new Error("entry must be keyed (scope='worker', /me/note.md) — owner folded from self");
+        // own-space EDIT(worker://~/note.md) — owner-keyed storage, BARE pathname ({§entry-owner}).
+        const childLoop = await insertLoop(db, childId, 1, "go");
+        const childTurn = await insertTurn(db, childLoop, 1, 102);
+        const write = await engine.dispatch({ statement: editStmt(workerEntry("~", "note.md"), "scratch"), workspaceId, workerId: childId, loopId: childLoop, turnId: childTurn, sequence: 1, origin: "model" });
+        assert.equal(write.status, 201, "own-space write creates the entry");
+        const stored = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: childId, scheme: "worker", pathname: "/note.md" });
+        if (stored === undefined) throw new Error("entry must be keyed (owner=child, /note.md) — the owner is the column, never the pathname");
 
-        // cross-worker READ(worker://me/note.md) from 'other' — reaches the sister's scratch (perspective-private, not ACL).
-        const otherLoop = await insertLoop(db, otherId, 1, "go");
-        const otherTurn = await insertTurn(db, otherLoop, 1, 102);
-        const readCross = await engine.dispatch({ statement: readOf(workerEntry("me", "note.md")), workspaceId, workerId: otherId, loopId: otherLoop, turnId: otherTurn, sequence: 1, origin: "model" });
-        assert.equal(readCross.status, 200, "cross-worker READ reaches a sister's scratch by address");
+        // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down).
+        const readCross = await engine.dispatch({ statement: readOf(workerEntry("child", "note.md")), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.equal(readCross.status, 200, "an ancestor's named READ reaches the child's space");
 
-        // cross-worker EDIT(worker://me/note.md) from 'other' — denied (write is self-only).
-        const writeCross = await engine.dispatch({ statement: editStmt(workerEntry("me", "note.md"), "tamper"), workspaceId, workerId: otherId, loopId: otherLoop, turnId: otherTurn, sequence: 2, origin: "model" });
-        assert.equal(writeCross.status, 403, "cross-worker WRITE is denied — read a sister's notes, never write them");
+        // {§worker-write-scoping} — the ancestor still can't WRITE into it: named spaces are read-only.
+        const writeCross = await engine.dispatch({ statement: editStmt(workerEntry("child", "note.md"), "tamper"), workspaceId, workerId: meId, loopId, turnId, sequence: 2, origin: "model" });
+        assert.equal(writeCross.status, 403, "a named space takes no model writes — write to the commons or your own ~");
     } finally { await db.close(); }
 });
 

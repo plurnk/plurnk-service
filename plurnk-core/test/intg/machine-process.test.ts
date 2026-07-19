@@ -40,7 +40,7 @@ test("[§machine-processes-one-filesystem] the entries are the workspace's — a
         };
         const a = await spawn();
         const b = await spawn();
-        const target = urlPath("known", "/shared.md");
+        const target = urlPath("worker", "/shared.md");
         const ra = await engine.dispatch({ statement: editStmt(target, "from run A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
         const rb = await engine.dispatch({ statement: editStmt(target, "from run B"), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // A creates the entry (201) in the workspace's one filesystem; B, a different
@@ -63,8 +63,8 @@ test("[§machine-processes-fork-copies-the-log] a fork copies the parent's log (
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
-        await engine.dispatch({ statement: editStmt(urlPath("known", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: editStmt(urlPath("known", "/b.md"), "second"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("worker", "/b.md"), "second"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         // Fold the first row — a fold-state bit on the parent's own log.
         const ids = await (db.test_log_entries_by_run as PrepMethod).all<{ id: number }>({ worker_id: workerId });
         await (db.log_set_expanded_by_id as PrepMethod).run({ id: ids[0].id, expanded: 0 });
@@ -87,7 +87,7 @@ test("[§log-region-tagging] a fork carries a log row's region tags along with i
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
-        await engine.dispatch({ statement: editStmt(urlPath("known", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         // Tag the parent's row (the write FOLD[tag] performs), directly — to isolate the fork-copy.
         const ids = await (db.test_log_entries_by_run as PrepMethod).all<{ id: number }>({ worker_id: workerId });
         await (db.log_write_tag as PrepMethod).run({ log_entry_id: ids[0].id, tag: "projectB" });
@@ -107,7 +107,7 @@ test("[§machine-processes-fork-shares-the-world] a fork shares the workspace's 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
-        await engine.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         const before = (await (db.engine_list_workspace_entries as PrepMethod).all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
 
         const branchWorkerId = await Fork.fork(db, workerId);

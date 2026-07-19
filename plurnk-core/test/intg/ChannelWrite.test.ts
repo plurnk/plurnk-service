@@ -14,7 +14,7 @@ const seedEntryWithChannel = async (channelName: string, channelMime: string, in
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/x",
+        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/x",
     });
     if (entry === undefined) throw new Error("seed entry failed");
     await (db.test_seed_channel as PrepMethod).run({
@@ -141,7 +141,7 @@ test("[§exec-poll] findOpenTurnScopedSubscriptionsForWorker selects only turn-s
         // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since
         // there's one active sub per (run, entry). Only the turn-scoped one is reaped at pre-turn.
         const scoped = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
-        const e2 = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/y" });
+        const e2 = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
         const ordinary = await ChannelWrite.openSubscription(db, { workerId, entryId: e2.id, scheme: "sh", handle: "ordinary" });
 

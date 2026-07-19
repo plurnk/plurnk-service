@@ -13,7 +13,7 @@ import type { ParsedPath } from "@plurnk/plurnk-grammar";
 import { sendStmt, readStmt } from "./_dsl.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({
-    kind: "url", raw: `known://${pathname}`, scheme: "known",
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null, pathname, params: {}, fragment: null,
 });
 
@@ -90,7 +90,7 @@ test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 —
         const workspaceId = await insertWorkspace(db, `pend-read-${crypto.randomUUID()}`);
         const parentWorker = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(200, null, "the host is db.internal")] } }] }),
@@ -138,7 +138,7 @@ test("[§send-premature-terminate] a READ + non-terminal SEND[102] continue does
         const workspaceId = await insertWorkspace(db, `prem-read-ok-${crypto.randomUUID()}`);
         const parentWorker = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(102)] } }] }),
@@ -185,7 +185,7 @@ test("[§send-premature-terminate] GUARD: 499 is NEVER gated — abandon-by-inte
         const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "child"); // live child
-        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(499, null, "abandoning")] } }] }),
@@ -209,7 +209,7 @@ test("[§send-premature-terminate] a retrievals-ONLY refusal states the continua
         const workspaceId = await insertWorkspace(db, `steer-ret-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } }] }),
@@ -234,7 +234,7 @@ test("[§send-premature-terminate] retrieval preemies NEVER strike — repeated 
         const workspaceId = await insertWorkspace(db, `preemie-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const readAndConclude = () => ({ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } });
         const provider = new Mock({ contextWindow: 100000, responses: [readAndConclude(), readAndConclude(), readAndConclude(), readAndConclude()] });
@@ -257,7 +257,7 @@ test("[§send-premature-terminate] one idle-grace turn after a retrieval-409 —
         const workspaceId = await insertWorkspace(db, `grace-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: { raw: "waiting", json: null }, position: { line: 1, column: 1 } } as never;
         const idle = () => ({ assistant: { content: "", reasoning: null, ops: [planStmt, sendStmt(102, null, "waiting")] } });
@@ -312,7 +312,7 @@ test("[§log-row-self-explains] a FAILED op row carries its failure message on i
         const workspaceId = await insertWorkspace(db, `steer-meta-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "known", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [

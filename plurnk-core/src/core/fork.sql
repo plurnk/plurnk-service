@@ -74,13 +74,13 @@ SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 -- and attributes ride along; copying the channels with their tokens keeps the deep_hash valid so
 -- the next-turn pump skips re-derivation (the content is byte-identical).
 SELECT id, scheme, pathname, deep_hash, attributes
-FROM entries WHERE scope = 'worker' AND workspace_id = $workspace_id AND pathname GLOB $owner_prefix ORDER BY id;
+FROM entries WHERE workspace_id = $workspace_id AND owner_id = $owner_id ORDER BY id;
 
 -- PREP: fork_insert_worker_scope_entry
 -- A worker-scope entry copy with the owner-remapped pathname. synced_sig/membership_origin are NULL
 -- (scratch is never disk-synced nor a file member); version defaults 0.
-INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname, deep_hash, attributes)
-VALUES ('worker', $workspace_id, $owner_id, $scheme, $pathname, $deep_hash, $attributes)
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname, deep_hash, attributes)
+VALUES ($workspace_id, $owner_id, $scheme, $pathname, $deep_hash, $attributes)
 RETURNING id;
 
 -- PREP: fork_copy_entry_channels

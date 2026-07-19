@@ -28,7 +28,7 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
         const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "what do I have?"); // worker's first loop → foist fires (#269)
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
@@ -36,10 +36,10 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
         const packet = await getPacket(db, result.turnId);
         const log = packetSection(packet, "log");
 
-        // THE REGRESSION GUARD: the foisted FIND(known:///**) renders its RESULT into the
+        // THE REGRESSION GUARD: the foisted FIND(worker:///**) renders its RESULT into the
         // log (§render-rule-find-renders-result) — the model SEES the catalog rows, not just
         // its own echoed query. The invisible-catalog bug rendered only `<<FIND(...)::FIND`.
-        assert.match(log, /known:\/\/\/note\.md/, "the foisted catalog FIND renders the entry into the packet's log");
+        assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders the entry into the packet's log");
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
 
         // Section slots are a TRUST boundary (§packet-assembly): system holds framework-authored,
@@ -61,7 +61,7 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
     }
 });
 
-test("assembled packet: the docs foist — FIND(plurnk://docs/**) surfaces materialized docs into the log", async () => {
+test("assembled packet: the docs foist — FIND(worker://plurnk/docs/**) surfaces materialized docs into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const db = await openMigrated();
@@ -69,17 +69,19 @@ test("assembled packet: the docs foist — FIND(plurnk://docs/**) surfaces mater
         const workspaceId = await insertWorkspace(db, `pkt-docs-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't).
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "plurnk", pathname: "/docs/known.md", channel: "body", content: "# known\nYour persistent memory.", mimetype: "text/markdown" });
+        // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't) —
+        // kernel-owned at worker://plurnk/docs/… ({§entry-owner}).
+        const Owner = (await import("../../src/core/Owner.ts")).default;
+        await seedEntryWithChannel(db, { workspaceId, workerId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/docs/worker.md", channel: "body", content: "# worker\nYour shared blackboard.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const log = packetSection(await getPacket(db, result.turnId), "log");
 
-        // The plurnk catalog is scoped to its docs subtree, and the FIND renders its result —
+        // The kernel surface is scoped to its docs subtree, and the FIND renders its result —
         // the materialized doc reaches the model via FIND, not an inline link (#270).
-        assert.match(log, /"target":"plurnk:\/\/docs\/\*\*"/, "the foist scopes the plurnk catalog to the docs subtree");
-        assert.match(log, /plurnk:\/\/docs\/known\.md/, "the materialized doc surfaces in the foist's rendered result");
+        assert.match(log, /"target":"worker:\/\/plurnk\/docs\/\*\*"/, "the foist scopes the kernel surface to the docs subtree");
+        assert.match(log, /worker:\/\/plurnk\/docs\/worker\.md/, "the materialized doc surfaces in the foist's rendered result");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;

@@ -9,13 +9,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { EditStatement, FindStatement, UrlPath, MatcherBody } from "@plurnk/plurnk-grammar";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known:///${pathname}`, scheme: "known",
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
@@ -43,11 +43,11 @@ const seedAndQuery = async (warm: boolean): Promise<string[]> => {
         const workspaceId = await insertWorkspace(db, `${warm ? "warm" : "cold"}-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        for (const [path, body] of CORPUS) await new Known().edit(editStmt(url(path), body), ctx);
+        for (const [path, body] of CORPUS) await new Worker().edit(editStmt(url(path), body), ctx);
         if (warm) await EntryManifest.maintainDerivations(ctx); // the control: full pump
         // The cold arm queries with NO pump ever having run — the write-time FTS narrow
         // plus the dispatch-inline slice must deliver the identical ranking.
-        const r = await new Known().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
+        const r = await new Worker().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
         return (r.results as Array<{ path: string }>).map((f) => f.path);
     } finally { await db.close(); }
@@ -57,7 +57,7 @@ test("[§semantic-cold-query-full-fidelity] a cold workspace's first ~query equa
     const warm = await seedAndQuery(true);
     const cold = await seedAndQuery(false);
     assert.deepEqual(cold, warm, "cold-vs-warm parity: the inline slice IS full fidelity");
-    assert.deepEqual([...cold].sort(), ["known:///db.md", "known:///sql.md"], "and the ranking is the real semantic one");
+    assert.deepEqual([...cold].sort(), ["worker:///db.md", "worker:///sql.md"], "and the ranking is the real semantic one");
 });
 
 test("[§derivation-off-hot-path] the queued pump completes on the background chain — drainDerivations awaits it", async () => {
@@ -68,7 +68,7 @@ test("[§derivation-off-hot-path] the queued pump completes on the background ch
         const workspaceId = await insertWorkspace(db, `drain-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Known().edit(editStmt(url("note.md"), "alpha beta gamma delta"), ctx);
+        await new Worker().edit(editStmt(url("note.md"), "alpha beta gamma delta"), ctx);
         const Engine = (await import("../../src/core/Engine.ts")).default;
         const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });

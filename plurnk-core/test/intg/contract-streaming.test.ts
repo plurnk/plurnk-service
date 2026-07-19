@@ -164,7 +164,7 @@ test("[§stream-constraints-engine-one-cap] 100 MiB channel-body CHECK rejects o
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/cap",
+            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/cap",
         });
         const entryId = entry!.id;
 
@@ -285,7 +285,7 @@ test("[§notifications-stream-event-on-channel-change] state transition fires me
             assert.equal(evt.channel, "body");
             assert.equal(evt.state, "closed", "carries the NEW state (active → closed)");
             assert.equal(evt.contentLength, "finished".length, "carries the existing content length (8)");
-            assert.equal(evt.target, "known:///x", "carries the entry's target URI (#179)");
+            assert.equal(evt.target, "worker:///x", "carries the entry's target URI (#179)");
             // Metadata only — never the content body.
             assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workspaceId"], "payload is metadata-only (ids/state/length/mimetype + target URI per #179, + workspace scope per #191); no content field");
         } finally { ws.close(); }

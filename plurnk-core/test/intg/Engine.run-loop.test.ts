@@ -16,7 +16,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    target: urlPath("known", pathname),
+    target: urlPath("worker", pathname),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -198,7 +198,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
     try {
         const readStmt = (pathname: string) => ({
             op: "READ" as const, suffix: "", signal: null,
-            target: urlPath("known", pathname),
+            target: urlPath("worker", pathname),
             lineMarker: null, body: null,
             position: { line: 1, column: 1 },
         });

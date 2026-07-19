@@ -1,18 +1,21 @@
 import test from "node:test";
+import Prompt from "../../src/schemes/Prompt.ts";
 import assert from "node:assert/strict";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Known from "../../src/schemes/Known.ts";
-import Plurnk from "../../src/schemes/Plurnk.ts";
+import Worker from "../../src/schemes/Worker.ts";
 
 test("SchemeRegistry: constructor registers all eight bundled schemes", () => {
     const r = new SchemeRegistry();
-    assert.deepEqual(r.list(), ["exec", "file", "known", "log", "plurnk", "skill", "unknown", "worker"]);
+    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "prompt", "skill", "worker"], "the #527 roster — plurnk/known/unknown retired, prompt emerged");
 });
 
 test("SchemeRegistry: get(name) returns the registered handler instance", () => {
     const r = new SchemeRegistry();
-    assert.ok(r.get("known") instanceof Known);
-    assert.ok(r.get("plurnk") instanceof Plurnk);
+    assert.ok(r.get("worker") instanceof Worker);
+    assert.ok(r.get("prompt") instanceof Prompt);
+    assert.equal(r.get("plurnk"), undefined, "plurnk:// is retired");
+    assert.equal(r.get("known"), undefined, "worker:/// is retired");
+    assert.equal(r.get("unknown"), undefined, "unworker:/// is retired");
 });
 
 test("SchemeRegistry: get(name) returns undefined for unknown scheme", () => {
@@ -23,7 +26,7 @@ test("SchemeRegistry: get(name) returns undefined for unknown scheme", () => {
 
 test("SchemeRegistry: has(name) reflects registration state", () => {
     const r = new SchemeRegistry();
-    assert.equal(r.has("known"), true);
+    assert.equal(r.has("worker"), true);
     assert.equal(r.has("nonexistent"), false);
 });
 
@@ -38,8 +41,8 @@ test("SchemeRegistry: register(name, handler) accepts new scheme", () => {
 test("SchemeRegistry: register(name) on already-registered name fails hard", () => {
     const r = new SchemeRegistry();
     assert.throws(
-        () => r.register("known", new Known()),
-        /scheme 'known' is already registered/,
+        () => r.register("worker", new Worker()),
+        /scheme 'worker' is already registered/,
     );
 });
 
@@ -49,7 +52,7 @@ test("SchemeRegistry: list() is sorted and exhaustive", () => {
     class FakeHttps {}
     r.register("wss", new FakeWs());
     r.register("https", new FakeHttps());
-    assert.deepEqual(r.list(), ["exec", "file", "https", "known", "log", "plurnk", "skill", "unknown", "worker", "wss"]);
+    assert.deepEqual(r.list().toSorted(), ["exec", "file", "https", "log", "prompt", "skill", "worker", "wss"], "the #527 roster + the two registered externals");
 });
 
 test("SchemeRegistry: two independent registries don't share state", () => {
@@ -67,21 +70,21 @@ import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 test("SchemeRegistry.resolveForLoop: default flags include all bundled schemes", () => {
     const r = new SchemeRegistry();
     const active = r.resolveForLoop(DEFAULT_LOOP_FLAGS);
-    assert.deepEqual([...active].toSorted(), ["exec", "file", "known", "log", "plurnk", "skill", "unknown", "worker"]);
+    assert.deepEqual([...active].toSorted(), ["exec", "file", "log", "prompt", "skill", "worker"]);
 });
 
 test("[§scheme-manifest-manifest] SchemeRegistry.resolveForLoop: mode=ask excludes exec (excludedInAsk)", () => {
     const r = new SchemeRegistry();
     const active = r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, mode: "ask" });
     assert.equal(active.has("exec"), false);
-    assert.equal(active.has("known"), true);
+    assert.equal(active.has("worker"), true);
 });
 
 test("SchemeRegistry.resolveForLoop: noProposals is not a gate — exec stays active", () => {
     const r = new SchemeRegistry();
     const active = r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, noProposals: true });
     assert.equal(active.has("exec"), true);
-    assert.equal(active.has("known"), true);
+    assert.equal(active.has("worker"), true);
 });
 
 test("SchemeRegistry.resolveForLoop: handler without manifest is always active", () => {

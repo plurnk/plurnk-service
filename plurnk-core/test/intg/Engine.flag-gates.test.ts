@@ -65,10 +65,10 @@ test("[§mode-ask-read-only] ask mode refuses EVERY filesystem write — EDIT/CO
         assert.equal(edit.status, 403, "EDIT to the filesystem is refused in ask mode");
         assert.match(String(edit.error), /read-only|side-effecting/, "the refusal names the read-only contract");
         // COPY into the workspace — the DEST is the write → refused.
-        const copy = await disp(copyStmt(urlPath("known", "note"), localPath("copied.md")));
+        const copy = await disp(copyStmt(urlPath("worker", "note"), localPath("copied.md")));
         assert.equal(copy.status, 403, "COPY writing the filesystem is refused");
         // MOVE a workspace file out — the SOURCE delete side-effects → refused.
-        const move = await disp(moveStmt(localPath("brief.md"), urlPath("known", "moved")));
+        const move = await disp(moveStmt(localPath("brief.md"), urlPath("worker", "moved")));
         assert.equal(move.status, 403, "MOVE deleting a workspace file is refused");
         // But a READ of the same workspace file is ALLOWED — ask is read-ONLY, not no-access.
         const read = await disp(readStmt(localPath("brief.md")));
@@ -94,7 +94,7 @@ test("noProposals is not a dispatch gate — non-proposing schemes dispatch norm
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await setLoopFlags(db, loopId, { noProposals: true });
-        const stmt = editStmt(urlPath("known", "/x"), "body");
+        const stmt = editStmt(urlPath("worker", "/x"), "body");
         const r = await engine.dispatch({ statement: stmt, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
         assert.equal(r.status, 201);
     } finally { await db.close(); }

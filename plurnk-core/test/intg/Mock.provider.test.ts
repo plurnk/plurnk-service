@@ -11,7 +11,7 @@ const sendStmt = (status: number, body: string): SendStatement => ({
 
 const editStmt = (target: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    target: { kind: "url", raw: `known:///${target}`, scheme: "known", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, params: {}, fragment: null },
+    target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, params: {}, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -125,7 +125,7 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
         editStmt("b", "2"),
         sendStmt(102, "continuing"),
     ];
-    const content = "<<EDIT(known:///a):1:EDIT\n<<EDIT(known:///b):2:EDIT\n<<SEND[102]:continuing:SEND";
+    const content = "<<EDIT(worker:///a):1:EDIT\n<<EDIT(worker:///b):2:EDIT\n<<SEND[102]:continuing:SEND";
     const mock = new Mock({ contextWindow: 100, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);

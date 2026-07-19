@@ -1,4 +1,6 @@
 import test from "node:test";
+import Owner from "../../src/core/Owner.ts";
+import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
 import type { EditStatement, ReadStatement, KillStatement, PlanStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
@@ -48,37 +50,37 @@ const planStmt = (opts: { body?: string | null }): PlanStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("Engine.dispatch: KILL against known:/// permanently deletes the entry (200, then READ 404)", async () => {
+test("Engine.dispatch: KILL against worker:/// permanently deletes the entry (200, then READ 404)", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/obsolete/note"), body: "stale" }),
+            statement: editStmt({ target: urlPath("worker", "/obsolete/note"), body: "stale" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const kill = await engine.dispatch({
-            statement: killStmt({ target: urlPath("known", "/obsolete/note") }),
+            statement: killStmt({ target: urlPath("worker", "/obsolete/note") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200);
         const read = await engine.dispatch({
-            statement: readStmt({ target: urlPath("known", "/obsolete/note") }),
+            statement: readStmt({ target: urlPath("worker", "/obsolete/note") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
         });
         assert.equal(read.status, 404);
     } finally { await db.close(); }
 });
 
-test("[§scheme-address-namespace-fold] known://x (authority form) folds to the same entry as known:///x", async () => {
+test("[§scheme-address-namespace-fold] worker:///x (authority form) folds to the same entry as worker:///x", async () => {
     const { db, engine, env } = await setup();
     try {
-        // create via the path form: known:///config.json => /config.json
+        // create via the path form: skill:///config.json => /config.json
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/config.json"), body: "host=db.internal" }),
+            statement: editStmt({ target: urlPath("skill", "/config.json"), body: "host=db.internal" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        // known://config.json => authority "config.json", empty path; #extractTarget folds it to /config.json,
+        // worker:///config.json => authority "config.json", empty path; #extractTarget folds it to /config.json,
         // the same entry the path form created. Without the fold the authority drops to "" and this 404s.
-        const authForm: UrlPath = { kind: "url", raw: "known://config.json", scheme: "known", username: null, password: null, hostname: "config.json", port: null, pathname: "", params: {}, fragment: null };
+        const authForm: UrlPath = { kind: "url", raw: "skill://config.json", scheme: "skill", username: null, password: null, hostname: "config.json", port: null, pathname: "", params: {}, fragment: null };
         const read = await engine.dispatch({
             statement: readStmt({ target: authForm }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
@@ -91,7 +93,7 @@ test("Engine.dispatch: KILL on a nonexistent entry returns 404", async () => {
     const { db, engine, env } = await setup();
     try {
         const kill = await engine.dispatch({
-            statement: killStmt({ target: urlPath("known", "/never/existed") }),
+            statement: killStmt({ target: urlPath("worker", "/never/existed") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(kill.status, 404);
@@ -102,7 +104,7 @@ test("Engine.dispatch: the KILL body annotation survives into the log row's tx (
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: killStmt({ target: urlPath("known", "/gone"), body: "superseded — see /final" }),
+            statement: killStmt({ target: urlPath("worker", "/gone"), body: "superseded — see /final" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ op: string; tx: string }>({ turn_id: env.turnId });
@@ -186,11 +188,11 @@ const setup = async () => {
     return { db, engine, env };
 };
 
-test("[§op-methods-op-dispatch] Engine.dispatch: EDIT against known:/// routes to Known.edit, returns 201, writes entry", async () => {
+test("[§op-methods-op-dispatch] Engine.dispatch: EDIT against worker:/// routes to Known.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/france/capital"), body: "Paris", tags: ["france"] }),
+            statement: editStmt({ target: urlPath("worker", "/france/capital"), body: "Paris", tags: ["france"] }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -206,7 +208,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("worker", "/x"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -225,7 +227,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         assert.equal(log.op, "EDIT");
         assert.equal(log.suffix, "");
         assert.equal(log.signal, null);
-        assert.equal(log.scheme, "known");
+        assert.equal(log.scheme, "worker");
         assert.equal(log.pathname, "/x");
         assert.equal(log.mimetype_tx, "application/json");
         assert.equal(log.mimetype_rx, "application/json");
@@ -237,16 +239,16 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: READ against known:/// routes to Known.read", async () => {
+test("Engine.dispatch: READ against worker:/// routes to Known.read", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/r"), body: "value" }),
+            statement: editStmt({ target: urlPath("worker", "/r"), body: "value" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const result = await engine.dispatch({
-            statement: readStmt({ target: urlPath("known", "/r") }),
+            statement: readStmt({ target: urlPath("worker", "/r") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -294,12 +296,12 @@ test("Engine.dispatch: multiple actions in one turn — log_entries sequence UNI
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/a"), body: "1" }),
+            statement: editStmt({ target: urlPath("worker", "/a"), body: "1" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/b"), body: "2" }),
+            statement: editStmt({ target: urlPath("worker", "/b"), body: "2" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -316,7 +318,7 @@ test("Engine.dispatch: signal serialized to JSON in log", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/tagged"), tags: ["france", "europe"], body: "Paris" }),
+            statement: editStmt({ target: urlPath("worker", "/tagged"), tags: ["france", "europe"], body: "Paris" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -330,7 +332,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
     try {
         for (const [i, origin] of (["model", "client", "plurnk", "plugin"] as const).entries()) {
             await engine.dispatch({
-                statement: editStmt({ target: urlPath("known", `/o${i}`), body: "x" }),
+                statement: editStmt({ target: urlPath("worker", `/o${i}`), body: "x" }),
                 workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
                 sequence: i + 1, origin,
             });
@@ -346,19 +348,18 @@ test("Engine.dispatch: origin field captured in log", async () => {
 test("[§scheme-surface-writableby-403] Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
     const { db, engine, env } = await setup();
     try {
-        // known:// is the model's memory — writableBy ['model','client'] excludes the engine's own
-        // plurnk origin, so a plurnk-origin EDIT 403s at the gate.
+        // worker://'s writableBy is ['model','client','plurnk'] — a plugin-origin EDIT 403s at the gate.
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/x"), body: "y" }),
+            statement: editStmt({ target: urlPath("worker", "/x"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
-            sequence: 1, origin: "plurnk",
+            sequence: 1, origin: "plugin",
         });
         assert.equal(result.status, 403);
-        assert.match((result as unknown as { error: string }).error, /writer 'plurnk'.*'known'/);
+        assert.match((result as unknown as { error: string }).error, /writer 'plugin'.*'worker'/);
         // 403 still writes a log row
         const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 403);
-        assert.equal(log?.scheme, "known");
+        assert.equal(log?.scheme, "worker");
     } finally { await db.close(); }
 });
 
@@ -377,11 +378,11 @@ test("Engine.dispatch: model EDIT log:/// clears the gate but 501s — Log's han
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT plurnk:///prompt/* rejected with 403 (engine/client own prompts)", async () => {
+test("Engine.dispatch: model EDIT prompt:/// rejected with 403 (engine/client own the task frames)", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("plurnk", "/prompt/1"), body: "y" }),
+            statement: editStmt({ target: urlPath("prompt", "/1/1"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -389,15 +390,17 @@ test("Engine.dispatch: model EDIT plurnk:///prompt/* rejected with 403 (engine/c
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT plurnk:/// non-prompt path ALSO rejected 403 — all plurnk:// is engine-authored (#310)", async () => {
+test("Engine.dispatch: model EDIT worker://plurnk/ is 403 — only the kernel authors its surface ({§worker-write-scoping})", async () => {
     const { db, engine, env } = await setup();
     try {
+        await Owner.commonsId(db, env.workspaceId); // ensure reserved rows resolvable
+        await Envelope.ensurePlurnkWorker(db, env.workspaceId);
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("plurnk", "/docs/log.md"), body: "y" }),
+            statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/docs/log.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/log.md", params: {}, fragment: null }, body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 403, "the model never writes plurnk:// reference — no scratch sink");
+        assert.equal(result.status, 403, "a named space takes no model writes — the kernel surface included");
     } finally { await db.close(); }
 });
 
@@ -503,17 +506,17 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
 test("Engine.dispatch: model COPY into log:/// destination 501s — no writeEntry on Log, the gate no longer pre-empts", async () => {
     const { db, engine, env } = await setup();
     try {
-        // Source first: model creates an entry in known:///.
+        // Source first: model creates an entry in worker:///.
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("known", "/src"), body: "v" }),
+            statement: editStmt({ target: urlPath("worker", "/src"), body: "v" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        // Attempt copy known:///src → log:///dst — destination scheme rejects.
+        // Attempt copy worker:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
                 op: "COPY", suffix: "", signal: null,
-                target: urlPath("known", "/src"),
+                target: urlPath("worker", "/src"),
                 lineMarker: null,
                 body: urlPath("log", "/dst").raw,
                 position: { line: 1, column: 1 },

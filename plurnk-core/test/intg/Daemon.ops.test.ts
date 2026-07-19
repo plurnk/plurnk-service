@@ -9,12 +9,12 @@ test("[§methods-op-mirror] op.edit creates an entry via engine.dispatch (origin
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "ops-test" });
             const response = await rpcCall(ws, 2, "op.edit", {
-                target: "known:///france/capital", content: "Paris", tags: ["france", "geography"],
+                target: "worker:///france/capital", content: "Paris", tags: ["france", "geography"],
             });
             assert.equal((response.result as { status: number }).status, 201);
 
-            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "/france/capital", scheme: "known" });
-            assert.equal(entry?.scheme, "known");
+            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "/france/capital", scheme: "worker" });
+            assert.equal(entry?.scheme, "worker");
             assert.equal(entry?.pathname, "/france/capital");
             const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/france/capital" }))?.content;
             assert.equal(body, "Paris");
@@ -39,7 +39,7 @@ test("op.edit: log/entry notification precedes the RPC response on the wire (#25
                 const m = JSON.parse(typeof data === "string" ? data : (data as Buffer).toString("utf8")) as { method?: string; id?: number };
                 order.push(m.method ?? `response#${m.id}`);
             });
-            await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "hi" });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "hi" });
             const notifyIdx = order.indexOf("log/entry");
             const respIdx = order.indexOf("response#2");
             assert.ok(notifyIdx !== -1, `log/entry should have fired (order: ${order.join(", ")})`);
@@ -53,8 +53,8 @@ test("op.read fetches an entry's body", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "read-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "hello" });
-            const response = await rpcCall(ws, 3, "op.read", { target: "known:///x" });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "hello" });
+            const response = await rpcCall(ws, 3, "op.read", { target: "worker:///x" });
             const result = response.result as { status: number; content: string };
             assert.equal(result.status, 200);
             assert.equal(result.content, "hello");
@@ -67,7 +67,7 @@ test("op.read on nonexistent entry returns 404", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "404-test" });
-            const response = await rpcCall(ws, 2, "op.read", { target: "known:///nope" });
+            const response = await rpcCall(ws, 2, "op.read", { target: "worker:///nope" });
             assert.equal((response.result as { status: number }).status, 404);
         } finally { ws.close(); }
     });
@@ -78,9 +78,9 @@ test("[§op-look] op.look (#283) resolves a target like op.read but writes NO lo
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "look-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "secret" });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "secret" });
             const before = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n ?? -1;
-            const response = await rpcCall(ws, 3, "op.look", { text: "<<READ(known:///x)::READ" });
+            const response = await rpcCall(ws, 3, "op.look", { text: "<<READ(worker:///x)::READ" });
             const result = response.result as { status: number; content: string };
             assert.equal(result.status, 200);
             assert.equal(result.content, "secret");
@@ -95,7 +95,7 @@ test("op.look rejects a non-READ statement — it is READ-only (#283)", async ()
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "look-readonly" });
-            const response = await rpcCall(ws, 2, "op.look", { text: "<<EDIT(known:///x):nope:EDIT" });
+            const response = await rpcCall(ws, 2, "op.look", { text: "<<EDIT(worker:///x):nope:EDIT" });
             assert.ok(response.error, "a non-READ LOOK must be rejected");
             assert.match(response.error!.message, /READ only/);
         } finally { ws.close(); }
@@ -112,8 +112,8 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
                 suffix: "",
                 signal: null,
                 target: {
-                    kind: "url" as const, raw: "known:///hello",
-                    scheme: "known", username: null, password: null,
+                    kind: "url" as const, raw: "worker:///hello",
+                    scheme: "worker", username: null, password: null,
                     hostname: null, port: null, pathname: "/hello",
                     params: {}, fragment: null,
                 },
@@ -135,8 +135,8 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "parse-test" });
-            const text = `<<EDIT(known:///a):alpha:EDIT
-<<EDIT(known:///b):beta:EDIT`;
+            const text = `<<EDIT(worker:///a):alpha:EDIT
+<<EDIT(worker:///b):beta:EDIT`;
             const response = await rpcCall(ws, 2, "op.parse", { text });
             const result = response.result as { results: Array<{ status: number }> };
             assert.equal(result.results.length, 2);
@@ -155,7 +155,7 @@ test("op.parse surfaces a parse failure as a 400 result with its line:col — no
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "parse-err" });
             // A valid statement (line 1) + a malformed one (line 2: non-integer signal 'x').
-            const text = `<<EDIT(known:///a):alpha:EDIT\n<<SEND[x]:y:SEND`;
+            const text = `<<EDIT(worker:///a):alpha:EDIT\n<<SEND[x]:y:SEND`;
             const response = await rpcCall(ws, 2, "op.parse", { text });
             const result = response.result as { results: Array<{ status: number; error?: string; position?: { type: string; line: number; column: number } }> };
             assert.ok(result.results.some((r) => r.status === 201), "the valid EDIT dispatched");
@@ -173,7 +173,7 @@ test("[§notifications-log-entry-notify] op.* fires log/entry notification with 
         try {
             const notifications = subscribeNotifications(ws, "log/entry");
             await rpcCall(ws, 1, "workspace.create", { name: "notif-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "known:///x", content: "test" });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "test" });
             await flush();
 
             const captured = notifications();
@@ -199,7 +199,7 @@ test("log/entry notification is scoped to workspace", async () => {
             await flush();
             aNotifs(); bNotifs();
 
-            await rpcCall(wsA, 2, "op.edit", { target: "known:///x", content: "from A" });
+            await rpcCall(wsA, 2, "op.edit", { target: "worker:///x", content: "from A" });
             await flush();
 
             assert.equal(aNotifs().length, 1);
@@ -212,7 +212,7 @@ test("op.find on empty scope returns 200 with empty results", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "find-test" });
-            const response = await rpcCall(ws, 2, "op.find", { scope: "known:///" });
+            const response = await rpcCall(ws, 2, "op.find", { scope: "worker:///" });
             const result = response.result as { status: number; results: string[]; content: string };
             assert.equal(result.status, 200);
             assert.deepEqual(result.results, []);

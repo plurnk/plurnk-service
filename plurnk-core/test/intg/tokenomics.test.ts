@@ -18,7 +18,7 @@ process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
 // the bare Engine), so the expected counts are deterministic: ceil(len/4).
 
 const urlPath = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known:///${pathname}`, scheme: "known",
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
@@ -119,8 +119,8 @@ test("[§tokenomics-turn-totals] budget groups render-weight by turn, oldest fir
         // only under pressure now (§tokenomics-pressure-gates-on-occupancy).
         const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 3000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
         // Two turns each write to the log → two distinct loop/turn coordinates (1/1, 1/2).
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "a"), "alpha beta gamma delta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "b"), "epsilon zeta eta theta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "a"), "alpha beta gamma delta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "b"), "epsilon zeta eta theta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t3 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId }))!.packet), "budget");
         assert.match(budget, /Turns:\n\| turn \| tokens \|/, "per-turn table present");
@@ -143,7 +143,7 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] }); // unfolded ≈4.6k (heavy row 3.6k open) → ~78%: above the gate, under the grinder
         // A heavy edit (seq 1) and a tiny edit (seq 2) in one turn; read the next turn's budget.
         const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(60);
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "big"), heavy), anyEdit(anyUrl("known", "small"), "x"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "big"), heavy), anyEdit(anyUrl("worker", "small"), "x"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         assert.match(budget, /Heaviest items \(FOLD targets — folding reclaims their tokens\):\n\| item \| tokens \|/, "heaviest-items table present, verb attached — the lever is named where the targets are listed");
@@ -223,7 +223,7 @@ test("[§tokenomics-pressure-gates-on-occupancy] a high-headroom window renders 
         const loopId = await insertLoop(db, workerId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("known", "note"), "some content worth logging"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "note"), "some content worth logging"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         assert.match(budget, /Token Ceiling \d+/, "the headline gauge always renders");

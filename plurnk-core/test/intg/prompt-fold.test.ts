@@ -1,4 +1,4 @@
-// User Note 6 / §prompt-fold — the foisted prompt EDIT (plurnk://prompt/<run>/<loop>/<seq>)
+// User Note 6 / §prompt-fold — the foisted prompt EDIT (prompt:///<loop>/<seq>, owner-keyed)
 // duplicates packet.user.prompt, so its LOG ROW is folded by default (expanded=0):
 // kept for forensics, collapsed in the model's log, re-OPENable. A normal model op in
 // the SAME turn stays open — that control distinguishes this targeted fold from the
@@ -22,7 +22,7 @@ test("[§prompt-fold] the foisted prompt EDIT log row is folded by default; a no
             const resp = await runLoopToTerminal(ws, 2, { prompt: "hello there" });
             const { loopId } = resp as { loopId: number };
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname.startsWith("/prompt/"));
+            const prompt = rows.find((r) => r.op === "EDIT" && r.scheme === "prompt");
             assert.ok(prompt !== undefined, "the prompt EDIT is logged (forensics)");
             assert.equal(prompt!.expanded, 0, "the prompt EDIT log row is FOLDed by default — its body lives in packet.user.prompt");
             const send = rows.find((r) => r.op === "SEND" && r.turn_id === prompt!.turn_id);

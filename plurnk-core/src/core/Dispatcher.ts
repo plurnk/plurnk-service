@@ -556,16 +556,16 @@ export default class Dispatcher {
             // entry; only the path-ABSENT form (worker://<name>) terminates the run-as-actor. §worker-scheme
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
-                const workerHandler = this.#schemes.get("worker") as { deleteEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
-                return await workerHandler.deleteEntry(statement, ctx);
+                const workerHandler = this.#schemes.get("worker") as { killEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
+                return await workerHandler.killEntry(statement, ctx);
             }
             // terminate — abort any worker by address; whoever holds it may end it.
             // `worker://self` = self. cancelWorker (→ Daemon.cancelDrain) aborts the worker's signal
             // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
-            const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §worker-scheme — run is the AUTHORITY
-            if (name === "") return { status: 400, error: "worker:// kill requires a worker name or 'self' (worker://<name>)" };
+            const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §worker-scheme — the worker is the AUTHORITY
+            if (name === "") return { status: 400, error: "worker:// kill requires a worker name or ~ (worker://<name>)" };
             let workerId = ctx.workerId;
-            if (name !== "self") {
+            if (name !== "~") {
                 const row = await (this.#db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
                 if (row === undefined) return { status: 404, error: `worker://${name} not found in this workspace` };
                 workerId = row.id;
@@ -723,6 +723,13 @@ export default class Dispatcher {
         const srcSchemeName = schemeNameOf(srcPath);
         const dstSchemeName = schemeNameOf(dstPath);
         if (srcSchemeName === null || dstSchemeName === null) return { status: 400, error: "COPY/MOVE require URL paths with schemes" };
+        // {§worker-authority-carving} — the entry-copy seam is pathname-keyed; on worker:// it
+        // addresses the COMMONS. A space's content moves via READ + EDIT, not COPY.
+        for (const p of [srcPath, dstPath]) {
+            if (p.kind === "url" && p.scheme === "worker" && (p.hostname ?? "") !== "") {
+                return { status: 400, error: "COPY/MOVE address the commons (worker:///…); a space's content moves via READ + EDIT" };
+            }
+        }
 
         const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
         const dstHandler = this.#schemes.get(dstSchemeName) as SchemeWithCrud | undefined;

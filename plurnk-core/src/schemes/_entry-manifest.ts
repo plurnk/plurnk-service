@@ -36,34 +36,30 @@ export default class EntryManifest {
         // but the model types the relative path it reads — render the leading slash off so
         // the catalog matches what the model writes back (READ/EDIT resolve either form).
         if (scheme === null) return pathname.replace(/^\//, "");
-        // §worker-scheme — worker-scope keys store the owner as the first path segment
-        // (`/<owner>/<path>`); render it back as the authority so the model sees the
-        // addressable `worker://<owner>/<path>` it types, not a bare `worker:///<owner>/<path>`.
-        if (scheme === "worker") {
-            const m = pathname.match(/^\/([^/]+)(\/.*)?$/);
-            if (m !== null) return `worker://${m[1]}${m[2] ?? "/"}`;
-        }
+        // {§entry-owner} — the owner rides the owner_id column, never the pathname; render the
+        // empty-authority form. A face that queried a non-empty authority re-applies it to the
+        // result paths (Worker.find) so the model sees the address it typed.
         return renderAddress(scheme, pathname);
     }
 
     // Read-only catalog rows for a scheme (or all entries when undefined) — the CatalogEntry[]
     // a per-scheme FIND(scheme:///**) renders as its JSON result, WITHOUT the derivation pump
     // (maintainDerivations runs that once per turn; FIND reads the channels it leaves).
-    // §worker-scheme — `workerOwnerPrefix` (e.g. `/<owner>/*`) sources the building worker's OWN worker-scope
-    // scratch instead of the workspace filesystem: the worker's perspective. Omitted → the workspace path,
-    // byte-identical (Inc-1).
-    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null, workerOwnerPrefix?: string): Promise<CatalogEntry[]> {
+    // {§entry-owner} — `ownerId` sources ONE principal's rows (a FIND's alignment matches its
+    // owner-scoped candidates — never a coordinate-twin sibling's metadata). Omitted → the whole
+    // workspace across owners (the packet catalog's view).
+    static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string | null, ownerId?: number): Promise<CatalogEntry[]> {
         const { db, workspaceId, mimetypes, tokenize } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — the model-agnostic ruler, re-counted at render");
-        const all = workerOwnerPrefix === undefined
+        const all = ownerId === undefined
             ? await (db.engine_list_workspace_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId })
-            : await (db.engine_list_worker_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId, owner_prefix: workerOwnerPrefix });
+            : await (db.engine_list_worker_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId, owner_id: ownerId });
         const rows = schemeFilter === undefined ? all : all.filter((r) => r.scheme === schemeFilter);
         const tagsById = new Map<number, string[]>();
-        const tagRows = workerOwnerPrefix === undefined
+        const tagRows = ownerId === undefined
             ? await (db.engine_list_workspace_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId })
-            : await (db.engine_list_worker_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId, owner_prefix: workerOwnerPrefix });
+            : await (db.engine_list_worker_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId, owner_id: ownerId });
         for (const { entry_id, tag } of tagRows) {
             const list = tagsById.get(entry_id);
             if (list === undefined) tagsById.set(entry_id, [tag]); else list.push(tag);

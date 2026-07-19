@@ -24,7 +24,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import Log from "../../src/schemes/Log.ts";
 import File from "../../src/schemes/File.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
@@ -53,17 +53,17 @@ const setup = async () => {
 test("[§matcher-dispatch-203-soft-fallback] jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
-        const k = new Known();
+        const k = new Worker();
         const broken = '{"host": "db.internal", "pool":}';  // trailing-colon: not valid JSON
-        await k.edit(editStmt(urlPath("known", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        await k.edit(editStmt(urlPath("worker", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
 
         const r = await k.read(
-            readStmt(urlPath("known", "/config.json")) as ReadStatement & { body: MatcherBody },
+            readStmt(urlPath("worker", "/config.json")) as ReadStatement & { body: MatcherBody },
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         // read() above has no body matcher; re-issue WITH the jsonpath body.
         const matched = await k.read(
-            { ...readStmt(urlPath("known", "/config.json")), body: { dialect: "jsonpath", raw: "$.host" } as MatcherBody },
+            { ...readStmt(urlPath("worker", "/config.json")), body: { dialect: "jsonpath", raw: "$.host" } as MatcherBody },
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(r.status, 200, "plain READ of the entry still works");
@@ -91,15 +91,15 @@ test("[§slice-semantics-compose-pattern] a matcher READ fans out per match — 
         const turnId = await insertTurn(db, loopId, 1, 102);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
 
-        await new Known().edit(
-            editStmt(urlPath("known", "/log.txt"), "error: alpha\nok: beta\nerror: gamma"),
+        await new Worker().edit(
+            editStmt(urlPath("worker", "/log.txt"), "error: alpha\nok: beta\nerror: gamma"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
 
         // Matcher READ through the engine → fans out one row per match (#286).
         const r = await engine.dispatch({
             statement: {
-                ...readStmt(urlPath("known", "/log.txt")),
+                ...readStmt(urlPath("worker", "/log.txt")),
                 body: { dialect: "regex", raw: "/error: (\\w+)/g", pattern: "error: (\\w+)", flags: "g" } as MatcherBody,
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
@@ -131,14 +131,14 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
         // Seed a two-channel entry directly (production Known is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
         const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/multi",
+            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/multi",
         });
         const entryId = entry!.id;
         await (db.test_seed_channel as PrepMethod).run({ entry_id: entryId, name: "body", content: "keep me", mimetype: "text/plain", state: "static" });
         await (db.test_seed_channel as PrepMethod).run({ entry_id: entryId, name: "summary", content: "delete me", mimetype: "text/plain", state: "static" });
 
         const r = await engine.dispatch({
-            statement: sendStmt(410, urlPath("known", "/multi", "summary")) as SendStatement,
+            statement: sendStmt(410, urlPath("worker", "/multi", "summary")) as SendStatement,
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(r.status, 200, "410 on an existing channel succeeds");
@@ -221,8 +221,8 @@ test("[§mimetype-schemes-do-not-invoke-handlers] write resolves mimetype withou
 
         // WRITE phase: Known.edit on a `.spy` path. Resolves mimetype via
         // detect; must not touch preview/query.
-        const edited = await new Known().edit(
-            editStmt(urlPath("known", "/notes.spy"), "alpha\nbeta\ngamma"),
+        const edited = await new Worker().edit(
+            editStmt(urlPath("worker", "/notes.spy"), "alpha\nbeta\ngamma"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(edited.status, 201, "write succeeded");

@@ -70,15 +70,15 @@ test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc; 
     const registry = new SchemeRegistry();
     const prior = process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
     try {
-        process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "known,nonsuch";
+        process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "log,nonsuch";
         const teaching = registry.teach();
-        assert.doesNotMatch(teaching, /known:\/\/\/plan\.md/, "an excluded scheme contributes no oneliner");
-        assert.match(teaching, /worker:\/\/self\/todo\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
-        assert.equal(registry.docs().find((d) => d.name === "known"), undefined, "an excluded scheme materializes no doc");
+        assert.doesNotMatch(teaching, /log:\/\/\//, "an excluded scheme contributes no oneliner");
+        assert.match(teaching, /worker:\/\/\/plan\.md/, "a non-excluded scheme still teaches (stray 'nonsuch' is inert)");
+        assert.equal(registry.docs().find((d) => d.name === "log"), undefined, "an excluded scheme materializes no doc");
         assert.ok(registry.docs().find((d) => d.name === "worker"), "a non-excluded scheme still materializes its doc");
 
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "";
-        assert.match(registry.teach(), /known:\/\/\/plan\.md/, "cleared exclude → known teaches again");
+        assert.match(registry.teach(), /log:\/\/\//, "cleared exclude → log teaches again");
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
         else process.env.PLURNK_SERVICE_DOCS_EXCLUDE = prior;

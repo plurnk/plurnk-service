@@ -25,11 +25,11 @@ const setup = async () => {
         source: null,
         op: "EDIT", suffix: "",
         signal: null,
-        scheme: "known", username: null, password: null,
+        scheme: "worker", username: null, password: null,
         hostname: null, port: null,
         pathname: "/x", params: null, fragment: null,
         lineMarker: null,
-        tx: "<<EDIT(known:///x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
+        tx: "<<EDIT(worker:///x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201 }), mimetype_rx: "application/json",
         status_rx: 201, tokens: 0,
         state: "resolved", outcome: null, attrs: "{}",
@@ -136,9 +136,9 @@ test("FOLD(log:///**/READ)<1> folds the first matching READ row — glob + pagin
             await (db.engine_insert_log_entry as PrepMethod).get({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin: "model", source: null, op: "READ", suffix: "", signal: null,
-                scheme: "known", username: null, password: null, hostname: null, port: null,
+                scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", params: null, fragment: null, lineMarker: null,
-                tx: "<<READ(known:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
+                tx: "<<READ(worker:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });
@@ -248,9 +248,9 @@ test("[§log-region-tagging] FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filt
             await (db.engine_insert_log_entry as PrepMethod).get({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin: "model", source: null, op: "READ", suffix: "", signal: null,
-                scheme: "known", username: null, password: null, hostname: null, port: null,
+                scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", params: null, fragment: null, lineMarker: null,
-                tx: "<<READ(known:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
+                tx: "<<READ(worker:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });

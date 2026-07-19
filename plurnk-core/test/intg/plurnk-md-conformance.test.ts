@@ -12,7 +12,7 @@
 // the entry CONTENT. The canonical examples are unambiguous about this:
 //   <<FIND(config/**/*.xml)://user[@role='admin']:FIND   — xpath over XML content
 //   <<FIND(log:///**/error):/timeout|deadline exceeded/i:FIND — regex over log content
-//   <<OPEN[france](known:///countries/**):Paris*:OPEN      — glob over entry content
+//   <<OPEN[france](worker:///countries/**):Paris*:OPEN      — glob over entry content
 // The path-globs live in the (target); the body is the content matcher.
 //
 // READ resolves via read-resolve; FIND runs its body matcher through
@@ -25,7 +25,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
@@ -34,7 +34,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_h
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known:///${pathname}`, scheme: "known",
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
@@ -71,7 +71,7 @@ const seed = async (
     workerId: number,
     entries: Array<[string, string]>,
 ) => {
-    const k = new Known();
+    const k = new Worker();
     for (const [pathname, content] of entries) {
         await k.edit(editStmt(url(pathname), content), makeSchemeCtx({ db, workspaceId, workerId }));
     }
@@ -86,7 +86,7 @@ test("[plurnk.md-READ-glob-on-content] READ glob body matches entry CONTENT, not
     try {
         // pathname "doc" contains no "TODO"; only the content does.
         await seed(db, workspaceId, workerId, [["doc", "alpha\nTODO: ship\nbeta"]]);
-        const r = await new Known().read(readStmt(url("doc"), glob("TODO*")), makeSchemeCtx({ db, workspaceId }));
+        const r = await new Worker().read(readStmt(url("doc"), glob("TODO*")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "2:\tTODO: ship");
     } finally { db.close(); }
@@ -97,7 +97,7 @@ test("[plurnk.md-READ-regex-on-content] READ regex body matches entry CONTENT, n
     try {
         // pathname "doc" contains no "timeout"; only the content does.
         await seed(db, workspaceId, workerId, [["doc", "alpha timeout beta"]]);
-        const r = await new Known().read(readStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, workspaceId }));
+        const r = await new Worker().read(readStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         // READ returns the LINE that matched (plurnk.md:31), not the token `timeout`.
         assert.equal(r.content, "1:\talpha timeout beta");
@@ -112,7 +112,7 @@ test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot
     try {
         await seed(db, workspaceId, workerId, [["lines", "alpha\nbeta\ngamma"]]);
         const stmt: ReadStatement = { op: "READ", suffix: "", signal: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
-        const r = await new Known().read(stmt, makeSchemeCtx({ db, workspaceId }));
+        const r = await new Worker().read(stmt, makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);
         assert.doesNotMatch(r.content ?? "", /alpha|gamma/);
@@ -133,13 +133,13 @@ test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CO
             ["alpha", "timeout occurred"], // content matches /timeout/; pathname does not
             ["timeout", "all clear"],      // pathname matches /timeout/; content does not
         ]);
-        const r = await new Known().find(findStmt(url(""), regex("timeout")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+        const r = await new Worker().find(findStmt(url(""), regex("timeout")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///alpha"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///alpha"]);
     } finally { db.close(); }
 });
 
-// plurnk.md: <<OPEN[france](known:///countries/**):Paris*:OPEN (glob body) — same
+// plurnk.md: <<OPEN[france](worker:///countries/**):Paris*:OPEN (glob body) — same
 // dispatch as FIND; glob body selects entries whose CONTENT matches.
 test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONTENT, not pathname", async () => {
     const { db, workspaceId, workerId } = await setup();
@@ -148,9 +148,9 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
             ["france/capital", "Paris is the capital"], // content matches Paris*; pathname does not
             ["Paris/note", "see the capital"],          // pathname matches Paris*; content does not
         ]);
-        const r = await new Known().find(findStmt(url(""), glob("Paris*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+        const r = await new Worker().find(findStmt(url(""), glob("Paris*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///france/capital"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///france/capital"]);
     } finally { db.close(); }
 });
 
@@ -167,9 +167,9 @@ test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by
             ["alice.json", '{"admin":true}'],
             ["bob.json", '{"guest":true}'],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$.admin" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+        const r = await new Worker().find(findStmt(url(""), { dialect: "jsonpath", raw: "$.admin" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///alice.json"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///alice.json"]);
     } finally { db.close(); }
 });
 
@@ -181,9 +181,9 @@ test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content
             ["a.xml", "<root><user>admin</user></root>"],
             ["b.xml", "<root><group>x</group></root>"],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//user" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+        const r = await new Worker().find(findStmt(url(""), { dialect: "xpath", raw: "//user" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.xml"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a.xml"]);
     } finally { db.close(); }
 });
 
@@ -200,9 +200,9 @@ test("[plurnk.md-ex-FIND-xpath-on-json] FIND xpath selects JSON entries by struc
             ["a.json", '{"role":"admin"}'],
             ["b.json", '{"name":"guest"}'],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "xpath", raw: "//role" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+        const r = await new Worker().find(findStmt(url(""), { dialect: "xpath", raw: "//role" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.json"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a.json"]);
     } finally { db.close(); }
 });
 
@@ -214,13 +214,13 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
             ["a.xml", '<root><user role="admin">x</user></root>'],
             ["b.xml", '<root><user name="guest">x</user></root>'],
         ]);
-        const r = await new Known().find(findStmt(url(""), { dialect: "jsonpath", raw: "$..role" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+        const r = await new Worker().find(findStmt(url(""), { dialect: "jsonpath", raw: "$..role" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a.xml"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a.xml"]);
     } finally { db.close(); }
 });
 
-// plurnk.md (grammar 0.21.0): `<<FIND(known:///**)<5>:~french revolutionary history:FIND`
+// plurnk.md (grammar 0.21.0): `<<FIND(worker:///**)<5>:~french revolutionary history:FIND`
 // — RAG semantic similarity, top-K via <L>. Runs against the REAL embedder
 // (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings) — the production tile+embed
 // path, not a model-free stub. Semantics is normal intg coverage; the model load is an
@@ -232,11 +232,11 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
     const { db, workspaceId, workerId } = await setup();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Known().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
-        await new Known().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
+        await new Worker().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
+        await new Worker().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
         await EntryManifest.maintainDerivations(ctx);  // store real embeddings via the daughter
-        const r = await new Known().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
+        const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["known:///a"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a"]);
     } finally { db.close(); }
 });

@@ -74,17 +74,15 @@ export default class Fork {
             await (db.fork_copy_log_tags as PrepMethod).run({ old_log_id: oldLogId, new_log_id: ne.id });
         }
 
-        // §worker-scheme — inherit the parent's worker-scope SCRATCH, owner remapped (parent → branch) in
-        // the pathname so the branch's private workspace is independent and diverges on its own edits.
-        const parentPrefix = `/${parent.name}/`;
-        const branchPrefix = `/${branchName}/`;
+        // §worker-scheme — inherit the parent's private scratch: same pathnames, the BRANCH as owner
+        // ({§entry-owner} — ownership is the column, never the pathname), so the branch's private
+        // workspace is independent and diverges on its own edits.
         const scratch = await (db.fork_get_worker_scope_entries as PrepMethod).all<{ id: number; scheme: string; pathname: string; deep_hash: string | null; attributes: string }>(
-            { workspace_id: parent.workspace_id, owner_prefix: `${parentPrefix}*` },
+            { workspace_id: parent.workspace_id, owner_id: parentWorkerId },
         );
         for (const s of scratch) {
-            const newPathname = branchPrefix + s.pathname.slice(parentPrefix.length);
             const ne = await (db.fork_insert_worker_scope_entry as PrepMethod).get<{ id: number }>(
-                { workspace_id: parent.workspace_id, owner_id: branchWorkerId, scheme: s.scheme, pathname: newPathname, deep_hash: s.deep_hash, attributes: s.attributes },
+                { workspace_id: parent.workspace_id, owner_id: branchWorkerId, scheme: s.scheme, pathname: s.pathname, deep_hash: s.deep_hash, attributes: s.attributes },
             );
             if (ne === undefined) throw new Error("fork: worker-scope entry copy returned no row");
             await (db.fork_copy_entry_channels as PrepMethod).run({ old_entry_id: s.id, new_entry_id: ne.id });
