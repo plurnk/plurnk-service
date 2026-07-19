@@ -61,7 +61,7 @@ try {
 import { PlurnkParser, Validator, PlurnkParseError, parsePath } from "@plurnk/plurnk-grammar";
 
 // 1. Parse a simple plurnk statement.
-const result = PlurnkParser.parseStatements("<<EDIT(known://foo):body content:EDIT");
+const result = PlurnkParser.parseStatements("<<EDIT(worker:///foo):body content:EDIT");
 const item = result.items[0];
 if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
 if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.statement.op);
@@ -76,7 +76,7 @@ if (typeof PlurnkParseError !== "function") throw new Error("PlurnkParseError is
 
 // 4. Confirm the parsePath helper is a callable top-level export (COPY-dest recipe).
 const dest = parsePath("worker:///archive/draft");
-if (dest?.kind !== "url" || dest.scheme !== "known" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
+if (dest?.kind !== "url" || dest.scheme !== "worker" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
 
 console.log("OK: parser, validator, error class, and parsePath all consumable from npm-installed package.");
 `);
