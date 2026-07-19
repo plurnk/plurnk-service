@@ -1,6 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import OpenAICompatProvider, { effortFromBudget } from "./OpenAICompat.ts";
+import { OpenAiHttpError } from "./openaiStream.ts";
 
 // Build a fake fetch returning a one-chunk SSE stream, capturing the request
 // so tests can assert what the spine sent on the wire.
@@ -66,6 +67,23 @@ test("effortFromBudget: maps budget to tiers", () => {
     assert.equal(effortFromBudget(1001), "medium");
     assert.equal(effortFromBudget(4000), "medium");
     assert.equal(effortFromBudget(4001), "high");
+});
+
+test("#543: OpenAiHttpError distills a non-JSON (edge/CDN HTML) body and drops the OpenAI prefix", () => {
+    const cf = new OpenAiHttpError(524, "<!DOCTYPE html><html><body>Error code 524</body></html>", null);
+    assert.equal(cf.message, "524 origin timeout"); // distilled: no raw HTML, no "OpenAI" prefix
+    assert.ok(cf.body.length > 20); // raw body retained on the field for forensics
+    const api = new OpenAiHttpError(400, '{"error":{"message":"bad param"}}', null);
+    assert.match(api.message, /^OpenAI 400 - \{/); // JSON API error passes through verbatim
+});
+
+test("#543: a 524 Cloudflare edge timeout fails fast - not retried despite retryAttempts", async () => {
+    const calls = installFetchScript([{ status: 524, retryAfter: 120 }]);
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 3 });
+    await assert.rejects(p.generate({ workerId: "r", messages: [] }));
+    await flush();
+    assert.equal(calls.length, 1); // edge code: one attempt, no retry despite retryAttempts: 3
+    mock.restoreAll();
 });
 
 test("identity getters and defaults", () => {

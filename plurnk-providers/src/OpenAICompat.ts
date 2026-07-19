@@ -10,7 +10,7 @@
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { Reasoning, ReserveSpec } from "./env.ts";
-import { chatCompletionStream, chatCompletion, OpenAiHttpError, type StreamResponse } from "./openaiStream.ts";
+import { chatCompletionStream, chatCompletion, OpenAiHttpError, isEdgeStatus, type StreamResponse } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
@@ -614,8 +614,11 @@ export default class OpenAICompatProvider implements Provider {
                 // Caller-initiated abort is cancellation — never retried or wrapped.
                 if (signal?.aborted) throw err;
                 const { kind } = classifyProviderError(err);
-                // Terminal kind, or budget spent → surface the classified failure.
-                if (!RETRYABLE.has(kind) || attempt >= this.#retryAttempts) {
+                // #543: Cloudflare/CDN edge codes (520-527) classify as network_failure
+                // but fail-fast - a retry just re-incurs the same origin/edge timeout.
+                const edgeTimeout = err instanceof OpenAiHttpError && isEdgeStatus(err.status);
+                // Terminal kind, edge failure, or budget spent -> surface the failure.
+                if (!RETRYABLE.has(kind) || edgeTimeout || attempt >= this.#retryAttempts) {
                     const pe = toProviderError(err, this.#source);
                     // #537 case 2: a 401/403 with a key PRESENT is a rejected key, not a
                     // transport failure — surface the distinct, actionable hint (kind stays

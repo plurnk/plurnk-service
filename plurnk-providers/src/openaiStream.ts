@@ -90,15 +90,32 @@ const parseLogprobs = (raw: unknown): TokenLogprob[] | null => {
     });
 };
 
+// Cloudflare/CDN EDGE status codes (520-527): infrastructure failures the proxy
+// returns (as HTML error pages), NOT OpenAI/API statuses. A retry re-incurs the
+// same origin wait, so they fail-fast (#543).
+const EDGE_LABELS: ReadonlyMap<number, string> = new Map([
+    [520, "web server returned an unknown error"], [521, "web server is down"],
+    [522, "connection timed out"], [523, "origin is unreachable"], [524, "origin timeout"],
+    [525, "SSL handshake failed"], [526, "invalid SSL certificate"], [527, "railgun error"],
+]);
+export const isEdgeStatus = (status: number): boolean => status >= 520 && status <= 527;
+
 export class OpenAiHttpError extends Error {
     readonly status: number;
     readonly body: string;
     readonly retryAfter: number | null;
     constructor(status: number, body: string, retryAfter: number | null) {
-        super(`OpenAI ${status} - ${body}`);
+        super(OpenAiHttpError.#describe(status, body));
         this.status = status;
         this.body = body;
         this.retryAfter = retryAfter;
+    }
+    // A non-JSON error body (a proxy/CDN HTML page) collapses to one line and drops
+    // the misleading "OpenAI" prefix - an edge code is not an API status (#543).
+    // JSON API errors pass through verbatim.
+    static #describe(status: number, body: string): string {
+        if (body.trimStart().startsWith("<")) return `${status} ${EDGE_LABELS.get(status) ?? "edge/proxy error"}`;
+        return `OpenAI ${status} - ${body}`;
     }
 }
 
