@@ -113,7 +113,11 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 
 ### `<scope>`
 
-This field can contain one or more numeric entries limiting the scope of the operation to specific lines, results, thresholds, or timeouts.
+One or more numbers narrowing the operation. The number's shape decides its meaning:
+
+- An integer is a position: a line on plain files, a result index on structured files, entries, and items.
+- A leading decimal is a `~`-similarity threshold: results scoring at least that value.
+- On EXEC and SEND, the slot is `<timeout, poll>` seconds.
 
 ```plurnk
 <<READ(file.md)<5>::READ
@@ -127,7 +131,6 @@ This field can contain one or more numeric entries limiting the scope of the ope
 
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
-On structured files, entries, and items, `<scope>` addresses result index, not line number.
 
 ```plurnk
 <<FIND(worker:///**)<0.7>:~france:FIND
@@ -137,7 +140,7 @@ On structured files, entries, and items, `<scope>` addresses result index, not l
 - FIND retrieves results with a semantic score of 0.7 or greater.
 - READ retrieves the 10th-20th results with a semantic score of 0.5 or greater.
 
-A leading decimal is a `~`-similarity threshold — results scoring at least that value. Following integers are positions, threshold first then range.
+Combined form: threshold first, then the position range.
 
 ### `:body:`
 
