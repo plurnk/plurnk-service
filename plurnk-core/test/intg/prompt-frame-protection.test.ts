@@ -12,14 +12,14 @@ import type { ParsedPath, KillStatement } from "@plurnk/plurnk-grammar";
 const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 const urlLog = (raw: string) => ({ kind: "url" as const, raw, scheme: "log", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^log:\/\/\//, ""), params: {}, fragment: null });
-const urlKnown = (raw: string) => ({ kind: "url" as const, raw, scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^known:\/\/\//, ""), params: {}, fragment: null });
+const urlKnown = (raw: string) => ({ kind: "url" as const, raw, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^worker:\/\/\//, ""), params: {}, fragment: null });
 
 async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workspaceId = await insertWorkspace(db, `frame-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "go");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    // turn 1 runs the prompt foist (EDIT + auto-READ of plurnk://prompt/1/1)
+    // turn 1 runs the prompt foist (EDIT + auto-READ of prompt:///1/1)
     await engine.runTurn({
         provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
@@ -63,8 +63,8 @@ test("[§grinder-errors-exempt] the grinder never folds the prompt frame — eve
     } finally { await db.close(); }
 });
 
-test("[§prompt-worker-qualified] sister workers' turn-1 prompts land at DISTINCT addresses — no clobber (#382 fault-1)", async () => {
-    // run43: exactly two writes hit /prompt/1/1 — the model worker's task foist and a WORK-spawned
+test("[§prompt-self-only] sister workers' turn-1 prompts are DISTINCT rows at the same coordinate — owner-keyed, no clobber (#382 fault-1)", async () => {
+    // run43: exactly two writes hit /1/1 — the model worker's task foist and a WORK-spawned
     // worker's — and the worker's DESTROYED the parent's task. Run-qualified paths keep one
     // filesystem with collision-free coordinates (/proc/<pid>-style).
     const db = await openMigrated();
@@ -79,14 +79,14 @@ test("[§prompt-worker-qualified] sister workers' turn-1 prompts land at DISTINC
         const workerLoop = await insertLoop(db, childWorker, 1, "the worker task");
         await engine.runTurn({ provider: mkProvider(), workspaceId, workerId: childWorker, loopId: workerLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the worker task" }] });
 
-        const bodyAt = async (workerId: number) => (await (db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `/prompt/${workerId}/1/%` }));
+        const bodyAt = async (workerId: number) => (await (db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: "/1/%" }));
         const parentRows = await bodyAt(parentWorker);
         const workerRows = await bodyAt(childWorker);
         assert.equal(parentRows.length, 1, "the parent's prompt entry exists at its worker-qualified address");
         assert.equal(workerRows.length, 1, "the worker's prompt entry exists at ITS worker-qualified address");
         assert.equal(parentRows[0].content, "the parent task", "the worker's turn-1 foist did not clobber the parent's task");
         assert.equal(workerRows[0].content, "the worker task");
-        assert.notEqual(parentRows[0].pathname, workerRows[0].pathname, "two workers, two addresses — one filesystem, collision-free coordinates");
+        assert.equal(parentRows[0].pathname, workerRows[0].pathname, "one coordinate — the owner column carries the identity ({§entry-owner})");
     } finally { await db.close(); }
 });
 
@@ -94,8 +94,8 @@ test("OPEN/FOLD are recorded in the DB but suppressed from the packet render (#3
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        // seed a genuine non-prompt row (a known:// note), then fold IT so the success records
-        await engine.dispatch({ statement: editStmt(urlKnown("known:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        // seed a genuine non-prompt row (a worker:/// note), then fold IT so the success records
+        await engine.dispatch({ statement: editStmt(urlKnown("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         const dbRow = await (db.test_count_op as PrepMethod).get<{ n: number }>({ op: "FOLD" });
         assert.ok((dbRow?.n ?? 0) >= 1, "the FOLD is recorded in the DB (forensics)");

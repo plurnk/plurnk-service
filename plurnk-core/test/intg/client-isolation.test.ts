@@ -24,7 +24,7 @@ test("a client op.* never enters the model's packet — the client writes to its
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "client-isolation" });
             // A client op — lands in the connection's client worker.
-            await rpcCall(ws, 2, "op.edit", { target: "known:///secret", content: "client-only" });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///secret", content: "client-only" });
             // The model workers — in its OWN run.
             const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
             const loopId = (run as { loopId: number }).loopId;
@@ -57,7 +57,7 @@ test("[§machine-processes-model-worker-readable] a connection reads the model w
             const created = await rpcCall(ws, 1, "workspace.create", { name: "model-run-readable" });
             const clientWorkerId = (created.result as { workerId: number }).workerId;
             // A client op lands in the connection's own (client) run.
-            await rpcCall(ws, 2, "op.edit", { target: "known:///note", content: "client-only" });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///note", content: "client-only" });
             // Drive the model — its conversation lives in its OWN run, whose id loop.run returns.
             const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
             const { loopId, modelWorkerId } = run as { loopId: number; modelWorkerId: number };
@@ -95,7 +95,7 @@ test("[§machine-processes-worker-origin] workspace.workers tags each worker wit
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "run-origin" });
             const clientWorkerId = (created.result as { workerId: number }).workerId;
-            await rpcCall(ws, 2, "op.edit", { target: "known:///note", content: "x" });
+            await rpcCall(ws, 2, "op.edit", { target: "worker:///note", content: "x" });
             const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
             const { modelWorkerId } = run as { modelWorkerId: number };
 

@@ -62,14 +62,14 @@ test("[§machine-processes-worker-is-its-log] a worker learns a sibling's edit t
         await sleep(2);  // ms-resolution timestamps — ensure B's edit lands strictly after A's turn 1
 
         // B edits a shared entry — a real EDIT row in B's own log.
-        const edit = await eng.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
+        const edit = await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         assert.ok(edit.status === 200 || edit.status === 201, "B's edit to the shared entry lands");
 
         // A's turn 2 pulls B's edit from the shared log as a FOLDED delta — A consulted no
         // per-worker snapshot; it learned its world moved purely through its own log.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ worker_id: workerA });
-        const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "known" && r.pathname === "/shared.md");
+        const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
         assert.equal(delta!.source, String(workerB), "the delta is attributed to the sibling run that caused it");
         assert.equal(delta!.expanded, 0, "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
@@ -96,7 +96,7 @@ test("[§actor-boundary-two-doors] exactly two cross-worker channels — state v
         await sleep(2);
 
         // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a FOLDED delta, not a message.
-        await eng.dispatch({ statement: editStmt(urlPath("known", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
+        await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; pathname: string; source: string | null }>({ worker_id: workerA });
         assert.ok(

@@ -12,7 +12,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 
 const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 40)] });
 
-type LogRow = { op: string; origin: string; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
+type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
 
 test("[§prompt-auto-read] a short prompt foists READ(prompt)<1,-1> — whole, the teaching form", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
@@ -22,7 +22,7 @@ test("[§prompt-auto-read] a short prompt foists READ(prompt)<1,-1> — whole, t
             const resp = await runLoopToTerminal(ws, 2, { prompt: "three\nshort\nlines" });
             const { loopId } = resp as { loopId: number };
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-            const autoRead = rows.find((r) => r.op === "READ" && r.origin === "plurnk" && /^\/prompt\/\d+\/1\/\d+$/.test(r.pathname ?? "")); // worker-qualified loop-SEQ coordinates (§prompt-worker-qualified)
+            const autoRead = rows.find((r) => r.op === "READ" && r.origin === "plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt"); // bare loop-SEQ coordinates, owner-keyed ({§prompt-self-only})
             assert.ok(autoRead, "the auto-READ foisted");
             const marker = JSON.parse(autoRead!.lineMarker ?? "null") as { marks: number[] } | null;
             assert.deepEqual(marker?.marks, [1, -1], "fewer than 12 lines → whole-read <1,-1>");
@@ -40,7 +40,7 @@ test("[§prompt-auto-read] an over-preview prompt foists READ(prompt)<1,16> — 
             const resp = await runLoopToTerminal(ws, 2, { prompt: fat });
             const { loopId, turnIds } = resp as { loopId: number; turnIds: number[] };
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-            const autoRead = rows.find((r) => r.op === "READ" && r.origin === "plurnk" && /^\/prompt\/\d+\/1\/\d+$/.test(r.pathname ?? "")); // worker-qualified loop-SEQ coordinates (§prompt-worker-qualified)
+            const autoRead = rows.find((r) => r.op === "READ" && r.origin === "plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt"); // bare loop-SEQ coordinates, owner-keyed ({§prompt-self-only})
             assert.ok(autoRead, "the auto-READ foisted");
             const marker = JSON.parse(autoRead!.lineMarker ?? "null") as { marks: number[] } | null;
             assert.deepEqual(marker?.marks, [1, 16], "over the arrival preview → <1,16> (§arrival-law knob, default 16)");
@@ -49,7 +49,7 @@ test("[§prompt-auto-read] an over-preview prompt foists READ(prompt)<1,16> — 
             const promptSection = (packet.sections ?? []).find((sec) => sec.name === "prompt");
             assert.ok(promptSection, "the prompts section exists");
             assert.equal(promptSection!.slot, "system", "system slot — the very bottom of the system packet");
-            assert.match(promptSection!.content, /^\* plurnk:\/\/prompt\/\d+\/1\/1$/m, "paths-only, worker-qualified loop-SEQ coordinates — the first loop is <run>/1/1, never the db id (§prompt-worker-qualified)");
+            assert.match(promptSection!.content, /^\* prompt:\/\/\/1\/1$/m, "paths-only, bare loop-SEQ coordinates — prompt:///1/1, never a worker id ({§prompt-self-only})");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });
@@ -113,7 +113,7 @@ test("[§arrival-law] a single-line char-bomb PROMPT renders bounded — the ren
             const longestHayRun = (log.match(/(?:hay )+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
             assert.ok(longestHayRun > 0, "the prompt's head DOES ride — the model sees what arrived");
             assert.ok(longestHayRun <= 80 * 16, `the 80×N char cap bounds the one-line prompt (longest run ${longestHayRun} ≤ 1280)`);
-            assert.match(log, /arrival preview — the full prompt is 1 line\(s\), \d+ chars: READ plurnk:\/\//, "the cut states itself with the prompt's address");
+            assert.match(log, /arrival preview — the full prompt is 1 line\(s\), \d+ chars: READ prompt:\/\/\//, "the cut states itself with the prompt's address");
         } finally { ws.close(); }
     });
 });

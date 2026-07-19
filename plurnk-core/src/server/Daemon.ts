@@ -959,10 +959,10 @@ export default class Daemon {
     // prompt is never silently dropped. Inherits the ended loop's flags.
     async #reconcileOrphanedWake(workerId: number, endedLoopId: number): Promise<void> {
         const endedSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
-        const prefix = promptLoopPrefix(workerId, endedSeq);
+        const prefix = promptLoopPrefix(endedSeq);
         const orphan = await (this.#db.drain_orphaned_prompt_for_loop as PrepMethod).get<{
             body: string; flags: string | null;
-        }>({ loop_id: endedLoopId, pattern: `${prefix}%`, prefix_len: prefix.length });
+        }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
         if (orphan === undefined) return;
         const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ worker_id: workerId });
         if (seqRow === undefined) throw new Error("reconcileOrphanedWake: next-sequence query returned no row");

@@ -16,7 +16,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    target: urlPath("known", pathname),
+    target: urlPath("worker", pathname),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -175,7 +175,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
         // the definition; the prompt-foist fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
         assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
-        assert.match(packetSection(packet, "schemes"), /<<EDIT\(known:\/\/\/plan\.md\)/, "the scheme directory is its own section now, not appended to the definition");
+        assert.match(packetSection(packet, "schemes"), /<<EDIT\(worker:\/\/\/plan\.md\)/, "the scheme directory is its own section now, not appended to the definition");
         assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
@@ -202,7 +202,7 @@ test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prom
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
                 { idx: 1, op: "model" }, // the turn-0 exemplar, mirrored OPEN at sequence 1 (§model-entry)
-                { idx: 2, op: "EDIT" },  // the prompt (plurnk://prompt/<run>/<loop>/1)
+                { idx: 2, op: "EDIT" },  // the prompt (prompt:///<loop>/1, owner-keyed)
                 { idx: 3, op: "READ" },  // §prompt-auto-read — the prompt's body arrives as a READ
                 { idx: 4, op: "EDIT" },
                 { idx: 5, op: "EDIT" },
@@ -302,11 +302,11 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
             assert.equal(t1.statuses.length, 3, "only 3 ops dispatched (cap)");
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
-            // Scope to scheme='known' to exclude the engine's plurnk:///prompt entry.
+            // Scope to scheme='worker' to exclude the engine's prompt:/// entry.
             const known = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
-                workspace_id: workspaceId, scheme: "known",
+                workspace_id: workspaceId, scheme: "worker",
             });
-            assert.equal(known?.n, 3, "3 known:/// entries; overflow ops never reached schemes");
+            assert.equal(known?.n, 3, "3 worker:/// entries; overflow ops never reached schemes");
 
             // Turn 2 packet carries the cap failure as a terse 'Max Commands Exceeded' (429) log row,
             // surfaced via its derived LogCoordinate pointer. The emitted/dropped counts live on the row.
@@ -348,9 +348,9 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             assert.equal(t1.statuses.length, 5, "all 5 ops dispatched — no cap");
             const known = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
-                workspace_id: workspaceId, scheme: "known",
+                workspace_id: workspaceId, scheme: "worker",
             });
-            assert.equal(known?.n, 5, "5 known:/// entries; nothing dropped");
+            assert.equal(known?.n, 5, "5 worker:/// entries; nothing dropped");
 
             // Next packet carries NO max_commands_exceeded — the ceiling never engaged.
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -441,13 +441,13 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
 test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // READ a missing unknown:/// path → 404 (soft). With maxStrikes=2 and
+        // READ a missing worker:/// path → 404 (soft). With maxStrikes=2 and
         // 4 consecutive soft turns, no abandon should fire.
         // Vary path each turn to keep rail #39 cycle detection orthogonal
         // (per rummy's same-pattern test).
         const readMissing = (suffix: string): ReadStatement => ({
             op: "READ", suffix: "", signal: null,
-            target: urlPath("unknown", `/not-there-${suffix}`),
+            target: urlPath("worker", `/not-there-${suffix}`),
             lineMarker: null, body: null, position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -481,7 +481,7 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
         });
         const goodEdit = (p: string): EditStatement => ({
             op: "EDIT", suffix: "", signal: null,
-            target: urlPath("known", p),
+            target: urlPath("worker", p),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         // maxStrikes=2. Pattern: hard, clean, hard, hard, done.
@@ -562,7 +562,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
 test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumulate", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Same fingerprint each turn: EDIT known:///fixed + SEND[102].
+        // Same fingerprint each turn: EDIT worker:///fixed + SEND[102].
         // detectCycle fires on turn 3 (period 1, MIN_CYCLES=3) → turnErrors++
         // → strike. After turn 3: streak=1. After 4 + 5: streak=3 → ABANDON.
         const provider = new Mock({
@@ -785,7 +785,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
 
 test("Engine.runTurn: packet.system.log on first turn contains the prompt entry", async () => {
     // Turn-as-container: turn 1 opens with the prompt written as a real
-    // system-origin EDIT against plurnk://prompt/<run>/<loop>/1 at
+    // system-origin EDIT against prompt:///<loop>/1 at
     // sequence=1 (1-based). When #buildLog snapshots the log for
     // THIS turn's packet, the prompt is already there. The 2 model ops
     // dispatch AFTER the packet builds, so they don't appear in this
@@ -800,14 +800,14 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
         const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // The prompt foist is the loop's opening EDIT (plurnk-origin) against
-        // plurnk://prompt/<run>/<loop>/1. Found by its stable identity (origin + target),
+        // prompt:///<loop>/1 ({§prompt-self-only}). Found by its stable identity (origin + target),
         // robust to the turn-0 `model` exemplar at 1/1/1 (§model-entry) and any
         // manifest-preview READ that shift its coordinate.
-        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && e.target === `plurnk://prompt/${workerId}/1/1`);
-        assert.ok(prompt, "prompt entry logged (plurnk-origin EDIT against plurnk:///prompt)");
+        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && e.target === "prompt:///1/1");
+        assert.ok(prompt, "prompt entry logged (plurnk-origin EDIT against prompt:///1/1)");
         assert.equal(prompt.op, "EDIT");
         assert.equal(prompt.origin, "plurnk");
-        assert.equal(prompt.target, `plurnk://prompt/${workerId}/1/1`);
+        assert.equal(prompt.target, "prompt:///1/1");
     } finally { await db.close(); }
 });
 
@@ -829,11 +829,11 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
         // turn-0 `model` exemplar (§model-entry) and a manifest-preview foist that
         // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && typeof e.target === "string" && e.target.startsWith("plurnk://prompt/")), "prompt foist logged");
+        assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "EDIT" && typeof e.target === "string" && e.target.startsWith("prompt:///")), "prompt foist logged");
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
-        assert.equal(edit.target, "known:///a");
+        assert.equal(edit.target, "worker:///a");
         const send = log.find((e) => e.origin === "model" && e.op === "SEND");
         assert.ok(send, "model SEND logged");
         assert.equal(send.status, 102);
@@ -862,7 +862,7 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
         // The EDIT's result span renders (line-numbered) under its target fence —
         // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
         // rx.span, so the render would fall back to the statement heredoc instead.
-        assert.match(packetSection(packet, "log"), /<<:::known:\/\/\/x\n1:\tv\n:::known:\/\/\/x/);
+        assert.match(packetSection(packet, "log"), /<<:::worker:\/\/\/x\n1:\tv\n:::worker:\/\/\/x/);
     } finally { await db.close(); }
 });
 

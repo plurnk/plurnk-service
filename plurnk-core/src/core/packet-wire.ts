@@ -414,8 +414,7 @@ export default class PacketWire {
                 // the single-line char-bomb the line-slice alone cannot cut (line markers cannot
                 // cut mid-line; the render can). Model-authored READs stay self-invited — untouched.
                 const promptPush = e.origin === "plurnk" && op === "READ"
-                    && e.target !== null && typeof e.target === "object" && (e.target as { scheme?: string }).scheme === "plurnk"
-                    && String((e.target as { pathname?: string }).pathname ?? "").startsWith("/prompt/");
+                    && e.target !== null && typeof e.target === "object" && (e.target as { scheme?: string }).scheme === "prompt";
                 if (promptPush) {
                     const arrival = PacketWire.#arrivalPreview(rx.content);
                     body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, arrival.text, mimetype, start);

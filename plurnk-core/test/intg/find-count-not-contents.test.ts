@@ -5,13 +5,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import EntryFind from "../../src/schemes/_entry-find.ts";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import type { FindStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx } from "./_helpers.ts";
 
 const findAll = (): FindStatement => ({
     op: "FIND", suffix: "", signal: null,
-    target: { kind: "url", raw: "known:///**", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/**", params: {}, fragment: null },
+    target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", params: {}, fragment: null },
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
@@ -22,9 +22,9 @@ test("[§find-count-not-contents] over the budget, FIND returns a count + narrow
     try {
         const workspaceId = await insertWorkspace(db, `findcap-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        for (let i = 0; i < 6; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: `/e${i}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
+        for (let i = 0; i < 6; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: `/e${i}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Known.manifest);
+        const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest);
         assert.equal(r.status, 200);
         assert.equal(r.overflow, 6, "the full match count is reported");
         assert.equal(r.mimetype, "text/markdown", "the content is a steer, not the JSON catalog");
@@ -43,9 +43,9 @@ test("[§find-count-not-contents] under the budget, FIND enumerates the catalog 
     try {
         const workspaceId = await insertWorkspace(db, `findsmall-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "known", pathname: "/one", channel: "body", content: "just one", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/one", channel: "body", content: "just one", mimetype: "text/markdown" });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Known.manifest);
+        const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest);
         assert.equal(r.overflow, undefined, "no overflow under budget");
         assert.equal(r.mimetype, "application/json", "the catalog rows are enumerated");
         assert.ok(Array.isArray(JSON.parse(String(r.content))), "content is the JSON catalog array");

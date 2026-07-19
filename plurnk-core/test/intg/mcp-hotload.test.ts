@@ -58,8 +58,8 @@ test("hotload: one-name-one-owner — a dup tag AND a reserved built-in name fai
         // A reserved built-in scheme name (known/exec/run/…) is rejected by the scheme-first arbitration
         // gate — and because the face is registered BEFORE the executor, the executor registry is never
         // touched on a rejected tag (no half-write).
-        assert.throws(() => engine.hotloadRuntime("known", fakeEntry("known")), /reserved/i, "reserved name rejected");
-        assert.equal(executors.entry("known"), undefined, "reserved collision left the executor registry untouched");
-        assert.equal(schemes.get("known")?.constructor.name, "Known", "the reserved 'known' scheme is unchanged, not shadowed");
+        assert.throws(() => engine.hotloadRuntime("worker", fakeEntry("worker")), /reserved/i, "reserved name rejected");
+        assert.equal(executors.entry("worker"), undefined, "reserved collision left the executor registry untouched");
+        assert.equal(schemes.get("worker")?.constructor.name, "Worker", "the reserved 'worker' scheme is unchanged, not shadowed");
     } finally { await db.close(); }
 });

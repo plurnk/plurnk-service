@@ -2,7 +2,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, openStmt, foldStmt } from "./_dsl.ts";
@@ -15,14 +15,14 @@ const setup = async () => {
 };
 
 test("Known declares static channels manifest + defaultChannel", () => {
-    assert.deepEqual(Known.manifest.channels, { body: "text/markdown" });
-    assert.equal(Known.manifest.defaultChannel, "body");
+    assert.deepEqual(Worker.manifest.channels, { body: "text/markdown" });
+    assert.equal(Worker.manifest.defaultChannel, "body");
 });
 
 test("[§per-entry-channels-edit-writes-only-body] Known.edit writes only the body channel; preview is render-time", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        const r = await new Known().edit(editStmt(urlPath("known", "/x"), "hello"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().edit(editStmt(urlPath("worker", "/x"), "hello"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 201);
         assert.equal(r.channel, "body");
 
@@ -37,7 +37,7 @@ test("[§per-entry-channels-edit-writes-only-body] Known.edit writes only the bo
 test("[§channel-selection-unknown-channel-400] Known.edit with unknown channel returns 400", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        const r = await new Known().edit(editStmt(urlPath("known", "/x", "not-a-channel"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().edit(editStmt(urlPath("worker", "/x", "not-a-channel"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 400);
         assert.equal(r.entryId, null);
     } finally { await db.close(); }
@@ -46,9 +46,9 @@ test("[§channel-selection-unknown-channel-400] Known.edit with unknown channel 
 test("[§channel-selection-fragmentless-targets-default-channel] Known.read with no fragment returns body channel (default)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        const k = new Known();
-        await k.edit(editStmt(urlPath("known", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await k.read(readStmt(urlPath("known", "/x")), makeSchemeCtx({ db, workspaceId }));
+        const k = new Worker();
+        await k.edit(editStmt(urlPath("worker", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await k.read(readStmt(urlPath("worker", "/x")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "body content");
         assert.equal(r.channel, "body");
@@ -58,9 +58,9 @@ test("[§channel-selection-fragmentless-targets-default-channel] Known.read with
 test("Known.read with unknown channel returns 400", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        const k = new Known();
-        await k.edit(editStmt(urlPath("known", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await k.read(readStmt(urlPath("known", "/x", "not-a-channel")), makeSchemeCtx({ db, workspaceId }));
+        const k = new Worker();
+        await k.edit(editStmt(urlPath("worker", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await k.read(readStmt(urlPath("worker", "/x", "not-a-channel")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 400);
     } finally { await db.close(); }
 });

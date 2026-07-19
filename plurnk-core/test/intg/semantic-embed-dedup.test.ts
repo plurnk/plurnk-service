@@ -15,11 +15,11 @@ test("[§semantic-embed-dedup] the dedup source query returns a sibling's chunks
         const workspaceId = await insertWorkspace(db, `dedup-${crypto.randomUUID()}`);
         const hash = contentHash("shared body content");
         // Entry A: a body channel stamped with the content_hash + an embedding under 'm1'.
-        const a = (await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/a" }))!.id;
+        const a = (await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/a" }))!.id;
         await (db.test_seed_channel_hashed as PrepMethod).run({ entry_id: a, name: "body", content: "shared body content", mimetype: "text/markdown", content_hash: hash, state: "static" });
         await (db.embedding_set as PrepMethod).run({ entry_id: a, chunk_seq: 0, line_start: 1, line_end: 1, vector: new Uint8Array([9, 8, 7]), embedding_model: "m1" });
         // Entry B: same content_hash, not yet embedded.
-        const b = (await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "known", pathname: "/b" }))!.id;
+        const b = (await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/b" }))!.id;
         await (db.test_seed_channel_hashed as PrepMethod).run({ entry_id: b, name: "body", content: "shared body content", mimetype: "text/markdown", content_hash: hash, state: "static" });
 
         // The dedup source query for B under m1 finds A's chunk.

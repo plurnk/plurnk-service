@@ -39,7 +39,7 @@ class ProposingTest {
 }
 
 test("loop.run with flags.yolo=true persists to loops.flags", async () => {
-    const dsl = "<<EDIT(known:///x):body:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<<EDIT(worker:///x):body:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -58,7 +58,7 @@ test("loop.run with flags.yolo=true persists to loops.flags", async () => {
 });
 
 test("loop.run without flags leaves loops.flags at default ({})", async () => {
-    const dsl = "<<EDIT(known:///x):body:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<<EDIT(worker:///x):body:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {

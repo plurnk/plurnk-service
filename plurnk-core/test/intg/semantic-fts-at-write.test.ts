@@ -6,11 +6,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, UrlPath, MatcherBody } from "@plurnk/plurnk-grammar";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known:///${pathname}`, scheme: "known",
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
@@ -30,14 +30,14 @@ test("[§semantic-fts-at-write] a cold workspace's first keyword ~query finds wh
         const workspaceId = await insertWorkspace(db, `ftsw-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
-        await new Known().edit(editStmt(url("alpha.md"), "the flux capacitor hums quietly"), ctx);
-        await new Known().edit(editStmt(url("beta.md"), "an unrelated grocery list"), ctx);
-        const r = await new Known().find(semanticStmt(url(""), "flux capacitor", 5), ctx);
+        await new Worker().edit(editStmt(url("alpha.md"), "the flux capacitor hums quietly"), ctx);
+        await new Worker().edit(editStmt(url("beta.md"), "an unrelated grocery list"), ctx);
+        const r = await new Worker().find(semanticStmt(url(""), "flux capacitor", 5), ctx);
         assert.equal(r.status, 200);
-        assert.deepEqual((r.results as Array<{ path: string }>).map((f) => f.path), ["known:///alpha.md"], "write-time FTS narrows the cold corpus");
+        assert.deepEqual((r.results as Array<{ path: string }>).map((f) => f.path), ["worker:///alpha.md"], "write-time FTS narrows the cold corpus");
         // The keyword row dies with the entry.
-        await new Known().deleteEntry("/alpha.md", ctx);
-        const r2 = await new Known().find(semanticStmt(url(""), "flux capacitor", 5), ctx);
+        await new Worker().deleteEntry("/alpha.md", ctx);
+        const r2 = await new Worker().find(semanticStmt(url(""), "flux capacitor", 5), ctx);
         assert.deepEqual(r2.results, [], "a killed entry leaves no keyword ghost");
     } finally { await db.close(); }
 });

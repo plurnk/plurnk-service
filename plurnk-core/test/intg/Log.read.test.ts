@@ -1,4 +1,5 @@
 import test from "node:test";
+import Worker from "../../src/schemes/Worker.ts";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
 import type { EditStatement, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
@@ -21,7 +22,7 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
-    target: urlPath("known", pathname),
+    target: urlPath("worker", pathname),
     lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
@@ -186,16 +187,15 @@ test("Log.read: a matcher READ fans out per match — the Nth match is its own r
     // match IS log:///<l>/<t>/N — addressed directly, not sliced out of a combined result.
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        const Known = (await import("../../src/schemes/Known.ts")).default;
-        await new Known().edit(
-            { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "known:///notes", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null } },
+        await new Worker().edit(
+            { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null } },
             { db, workspaceId, workerId, loopId, turnId, writer: "model", signal: undefined, tokenize: (t: string) => Math.ceil(t.length / 4) },
         );
         // Dispatch a matcher READ — captures all three lines.
         await engine.dispatch({
             statement: {
                 op: "READ", suffix: "", signal: null,
-                target: { kind: "url", raw: "known:///notes", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null },
+                target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", params: {}, fragment: null },
                 lineMarker: null,
                 body: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" },
                 position: { line: 1, column: 1 },

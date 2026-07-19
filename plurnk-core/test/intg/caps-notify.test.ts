@@ -28,8 +28,8 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         const workspaceId = await insertWorkspace(db, `caps-notify-${crypto.randomUUID()}`);
         const captured: Array<{ sid: number; payload: StreamEventPayload }> = [];
         const ctx = makeSchemeCtx({ db, workspaceId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
-        const entries = new DbEntryCaps(ctx, "known");
-        const notify = new DbNotifyCaps(ctx, "known");
+        const entries = new DbEntryCaps(ctx, "worker");
+        const notify = new DbNotifyCaps(ctx, "worker");
 
         await entries.write("/stream.md", { channels: { body: { content: "data", mimetype: "text/markdown" } }, tags: [] });
 
@@ -41,7 +41,7 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         assert.equal(captured[0].payload.channel, "body");
         assert.equal(captured[0].payload.state, "active");
         assert.equal(captured[0].payload.contentLength, 42);
-        assert.match(captured[0].payload.target, /known:\/\/\/.*stream\.md/);
+        assert.match(captured[0].payload.target, /worker:\/\/\/.*stream\.md/);
 
         // a vanished entry resolves to null → never emits (give the resolve room)
         notify.streamEvent("/missing.md", "body", "active", 1);
@@ -49,7 +49,7 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         assert.equal(captured.length, 1);
 
         // no notifier wired → silent sync no-op, never throws, nothing scheduled
-        const noNotifier = new DbNotifyCaps(makeSchemeCtx({ db, workspaceId }), "known");
+        const noNotifier = new DbNotifyCaps(makeSchemeCtx({ db, workspaceId }), "worker");
         assert.doesNotThrow(() => noNotifier.streamEvent("/stream.md", "body", "active", 1));
         for (let i = 0; i < 5; i++) await tick();
         assert.equal(captured.length, 1);

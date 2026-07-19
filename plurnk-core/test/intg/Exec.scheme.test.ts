@@ -61,14 +61,14 @@ test("EXEC: empty body → 400 (no command)", async () => {
     });
 });
 
-test("EXEC[sh](known:///script) empty body → resolves the scheme content as the command (#201)", async () => {
+test("EXEC[sh](worker:///script) empty body → resolves the scheme content as the command (#201)", async () => {
     await withWorkspace(async (ctx) => {
-        // A stored script lives at known:///script; running it runs its content.
-        await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "known", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
+        // A stored script lives at worker:///script; running it runs its content.
+        await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
 
         const statement: ExecStatement = {
             op: "EXEC", suffix: "", signal: "sh",
-            target: { kind: "url", raw: "known:///script", scheme: "known", username: null, password: null, hostname: null, port: null, pathname: "/script", params: {}, fragment: null },
+            target: { kind: "url", raw: "worker:///script", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/script", params: {}, fragment: null },
             lineMarker: null, body: "", position: { line: 1, column: 1 },
         };
 

@@ -48,7 +48,7 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 // (that's what makes the next turn fat). It CONTINUES (SEND[102]) — the result is for the next turn
 // anyway (a same-turn READ + SEND[200] is a parser-rejected shape, grammar#51).
 const fatReads = (chars: number, n = 1): MockResponse[] =>
-    Array.from({ length: n }, () => response([editStmt(urlPath("known", "big"), heavy(chars)), readStmt(urlPath("known", "big")), sendStmt(102, null, "ok")]));
+    Array.from({ length: n }, () => response([editStmt(urlPath("worker", "big"), heavy(chars)), readStmt(urlPath("worker", "big")), sendStmt(102, null, "ok")]));
 
 process.env.PLURNK_SERVICE_SAFETY = "0"; // the stories compute exact ceilings — no margin
 // #507 — the envelope rides the provider: the ceiling pins as the Mock's window − the 1+1
@@ -84,7 +84,7 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
 const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>> =>
     (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>({ worker_id: workerId });
 // #382 — the user prompt (plurnk://prompt/…) is grinder-EXEMPT frame; the grinder folds work, never the task.
-const isPrompt = (r: { pathname: string | null }): boolean => (r.pathname ?? "").startsWith("/prompt/");
+const isPrompt = (r: { scheme?: string | null; pathname: string | null }): boolean => (r as { scheme?: string | null }).scheme === "prompt";
 
 // Two reference measurements on throwaway runs (deterministic FAT body), so the
 // fold-to-fit ceilings track the real assembly and never magic numbers:
@@ -117,7 +117,7 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
         const engine = engineAt(db, WIDE);
         // A heavy DELIVERING turn (fat EDIT + terminal SEND[200], no same-turn READ) — under a wide
         // ceiling it delivers and the packet reads ≤ 100%.
-        const fatDeliver = [response([editStmt(urlPath("known", "big"), heavy(FAT)), sendStmt(200, null, "ok")])];
+        const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), sendStmt(200, null, "ok")])];
         const t = await engine.runTurn({ provider: new Mock({ contextWindow: WINDOW, responses: fatDeliver }), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t.status, 200, "delivered");
         assert.equal(t.budgetHardStop, false, "no hard-stop under a wide ceiling");

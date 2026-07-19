@@ -25,11 +25,11 @@ const execFileP = promisify(execFile);
 // Turn 1 emits two model EDITs; the cap decides how many land. Turn 2 SENDs to terminate
 // (no reliance on maxTurns composition), so the loop ends cleanly either way.
 const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
-    makeMockResponse("<<EDIT(known:///a.md):aaa:EDIT\n<<EDIT(known:///b.md):bbb:EDIT", 50),
+    makeMockResponse("<<EDIT(worker:///a.md):aaa:EDIT\n<<EDIT(worker:///b.md):bbb:EDIT", 50),
     makeMockResponse("<<SEND[200]:done:SEND", 50),
 ] });
 const entryId = (db: Db, pathname: string) =>
-    (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "known", pathname });
+    (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "worker", pathname });
 
 test("[§operator-config-workspace-max-commands] workspace settings.maxCommands min()s the env op cap — tightens, never widens", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
@@ -68,7 +68,7 @@ test("[§operator-config-workspace-max-commands-floor] maxCommands:0 admits PLAN
         // maxCommands:0 caps actions at zero — both EDITs drop — but PLAN and the terminal
         // SEND always dispatch, so the loop still plans and concludes (0's only coherent meaning).
         const mock = new Mock({ contextWindow: viableWindow(), responses: [
-            makeMockResponse("<<EDIT(known:///a.md):aaa:EDIT\n<<EDIT(known:///b.md):bbb:EDIT\n<<SEND[200]:done:SEND", 50),
+            makeMockResponse("<<EDIT(worker:///a.md):aaa:EDIT\n<<EDIT(worker:///b.md):bbb:EDIT\n<<SEND[200]:done:SEND", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

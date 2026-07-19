@@ -278,7 +278,7 @@ export default class Log {
             const promptIds = new Set<number>();
             for (const id of r.ids) {
                 const row = await (ctx.db.log_row_target as PrepMethod).get<{ scheme: string | null; pathname: string | null }>({ id });
-                if (row?.scheme === "plurnk" && (row.pathname ?? "").startsWith("/prompt/")) promptIds.add(id);
+                if (row?.scheme === "prompt") promptIds.add(id);
             }
             if (promptIds.size > 0) {
                 ids = r.ids.filter((id) => !promptIds.has(id));

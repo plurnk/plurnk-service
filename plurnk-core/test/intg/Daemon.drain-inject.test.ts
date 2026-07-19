@@ -11,7 +11,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
-    const dsl = "<<EDIT(known:///x):hello:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<<EDIT(worker:///x):hello:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -196,7 +196,7 @@ test("[§worker-lifecycle-single-drain] loop.run while a loop is live: second ca
 
             type EntryRow = { scheme: string; pathname: string };
             const entries = await (db as unknown as { test_list_entries_by_workspace_workspace_pathname: { all<T = unknown>(p?: object): Promise<T[]> } }).test_list_entries_by_workspace_workspace_pathname.all<EntryRow>({ workspace_id: 1 });
-            const injected = entries.find((e) => e.scheme === "plurnk" && /^\/prompt\/\d+\/\d+\/[2-9]\d*$/.test(e.pathname));
+            const injected = entries.find((e) => e.scheme === "prompt" && /^\/\d+\/[2-9]\d*$/.test(e.pathname));
             assert.ok(injected, "injected prompt entry exists in a turn slot >1");
 
             // Reject the proposal (no spawn); loop 1 continues to turn 2, which

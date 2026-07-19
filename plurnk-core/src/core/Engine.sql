@@ -123,31 +123,30 @@ WHERE e.workspace_id = $workspace_id
 ORDER BY et.entry_id, et.tag;
 
 -- PREP: engine_list_worker_entries
--- §worker-scheme — the building worker's OWN worker-scope entries (catalogRowsFor source for a worker-scope
--- FIND/foist). Byte-for-byte engine_list_workspace_entries but scope='worker' + an owner-prefix glob
--- (`/<owner>/*`) so it yields exactly one worker's scratch — its perspective, not a sibling's. Additive.
+-- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
+-- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
 SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
     CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER) AS seconds
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
-WHERE e.scope = 'worker' AND e.workspace_id = $workspace_id AND e.pathname GLOB $owner_prefix
+WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
 -- PREP: engine_list_worker_entry_tags
--- §worker-scheme — (entry, tag) for the building worker's own worker-scope entries (the worker-scope catalog's tags field).
+-- {§entry-owner} — (entry, tag) for one principal's entries (the owner-scoped catalog's tags field).
 SELECT et.entry_id, et.tag
 FROM entry_tags et
 JOIN entries e ON e.id = et.entry_id
-WHERE e.workspace_id = $workspace_id AND e.scope = 'worker' AND e.pathname GLOB $owner_prefix
+WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
 ORDER BY et.entry_id, et.tag;
 
 -- PREP: engine_worker_scratch_count
--- §worker-scheme — distinct worker-scope entry count owned by the building run, to decide whether the
--- turn-0 catalog foists a FIND(worker:///**) (a worker with no scratch foists nothing).
+-- §worker-scheme — distinct entry count owned by the building worker, to decide whether the
+-- turn-0 catalog foists a FIND(worker://~/**) (a worker with no private space foists nothing).
 SELECT COUNT(DISTINCT e.id) AS entries
 FROM entries e
-WHERE e.scope = 'worker' AND e.workspace_id = $workspace_id AND e.pathname GLOB $owner_prefix;
+WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id;
 
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
@@ -219,7 +218,7 @@ FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 LEFT JOIN subscriptions s ON s.entry_id = e.id AND s.closed_at IS NULL
 -- entries are workspace-scoped, shared across runs — §machine-processes-one-filesystem
-WHERE e.scope = 'workspace' AND e.workspace_id = $workspace_id
+WHERE e.workspace_id = $workspace_id
 -- User Note 5 — mtime-ascending: dormant entries hold the stable prompt-cache prefix; churn clusters at the tail.
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
@@ -231,7 +230,7 @@ SELECT e.scheme AS scheme,
     COUNT(DISTINCT e.id) AS entries
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-WHERE e.scope = 'workspace' AND e.workspace_id = $workspace_id
+WHERE e.workspace_id = $workspace_id
 GROUP BY e.scheme
 ORDER BY e.scheme;
 
@@ -396,7 +395,7 @@ ORDER BY t.sequence, le.sequence;
 -- the reasoning thread a recovery turn steers by).
 UPDATE log_entries SET expanded = 0
 WHERE loop_id = $loop_id AND expanded = 1 AND op NOT IN ('error', 'PLAN')
-  AND NOT (COALESCE(scheme, '') = 'plurnk' AND COALESCE(pathname, '') LIKE '/prompt/%')  -- NULL-safe: a model row's scheme is NULL
+  AND COALESCE(scheme, '') != 'prompt'  -- the task frame ({§prompt-self-only}); NULL-safe: a model row's scheme is NULL
   AND (turn_id = $turn_id
        OR turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id));
 

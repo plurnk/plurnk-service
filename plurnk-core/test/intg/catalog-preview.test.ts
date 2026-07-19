@@ -25,14 +25,14 @@ test("[§actor-boundary-catalog-preview] PLURNK_SERVICE_FILES_ITEMS foists the c
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "manifest-on" });
-                await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
-                await rpcCall(ws, 3, "op.edit", { target: "known:///b.md", content: "bravo" });
-                await rpcCall(ws, 4, "op.edit", { target: "known:///c.md", content: "charlie" });
+                await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
+                await rpcCall(ws, 3, "op.edit", { target: "worker:///b.md", content: "bravo" });
+                await rpcCall(ws, 4, "op.edit", { target: "worker:///c.md", content: "charlie" });
                 const resp = await runLoopToTerminal(ws, 5, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                const cf = rows.find((r) => r.op === "FIND" && r.scheme === "known");
-                assert.ok(cf !== undefined, "turn 0 foists a FIND(known:///**) catalog preview when set");
+                const cf = rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.pathname === "/**");
+                assert.ok(cf !== undefined, "turn 0 foists a FIND(worker:///**) catalog preview when set");
                 assert.equal(cf!.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
                 const parsed = JSON.parse(cf!.rx) as { content?: string; results?: unknown[] };
                 const items = parsed.results ?? (parsed.content !== undefined ? JSON.parse(parsed.content) as unknown[] : []);
@@ -68,11 +68,11 @@ test("no manifest.json entry — the catalog is FIND-served; preview-off foists 
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "catalog-find-served" });
-                await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
+                await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
                 const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const entry = await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "plurnk", pathname: "/manifest.json" });
-                assert.equal(entry?.id, undefined, "no plurnk:///manifest.json entry — the catalog is not materialized as an entry");
+                const entry = await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "worker", pathname: "/manifest.json" });
+                assert.equal(entry?.id, undefined, "no manifest.json entry — the catalog is not materialized as an entry");
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
                 assert.equal(rows.find((r) => r.op === "FIND"), undefined, "preview off → no catalog FIND foisted; the model FINDs on demand");
             } finally { ws.close(); }
@@ -145,12 +145,12 @@ test("[#269] turn-0 run-once foists fire on the worker's first loop only, not ev
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "foist-once" });
-                await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
+                await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
                 const r1 = await runLoopToTerminal(ws, 3, { prompt: "first" });
                 const r2 = await runLoopToTerminal(ws, 4, { prompt: "second" });
                 const catalogFind = async (loopId: number) => {
                     const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
-                    return rows.find((r) => r.op === "FIND" && r.scheme === "known");
+                    return rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.pathname === "/**");
                 };
                 assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "worker's first loop foists the catalog preview");
                 assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the worker's log (#269)");
@@ -169,17 +169,17 @@ test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dy
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "turn0-exemplar" });
-                await rpcCall(ws, 2, "op.edit", { target: "known:///a.md", content: "alpha" });
+                await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
                 const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
                 const { modelWorkerId } = resp as { modelWorkerId: number };
                 // The worker's first turn opens with the turn-0 `model` exemplar at 1/1/1, born OPEN.
                 const row = await (db.log_read_by_coordinate as PrepMethod).get<{ op: string; rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 assert.equal(row?.op, "model", "the worker's first turn opens with the turn-0 model exemplar");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
-                // Dynamic — it carries the FIND the foist ACTUALLY dispatched (known:///**), rendered to
+                // Dynamic — it carries the FIND the foist ACTUALLY dispatched (worker:///**), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
                 assert.match(content, /^<<PLAN:Initialize:PLAN/, "opens with the reasoning move");
-                assert.match(content, /<<FIND\(known:\/\/\/\*\*\)::FIND/, "the real foisted survey, rendered back to DSL");
+                assert.match(content, /<<FIND\(worker:\/\/\/\*\*\)::FIND/, "the real foisted survey, rendered back to DSL");
                 assert.match(content, /<<SEND\[102\]:Initialized:SEND$/, "closes with the progress signal");
             } finally { ws.close(); }
         });

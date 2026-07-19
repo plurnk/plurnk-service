@@ -1,4 +1,5 @@
 import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-grammar";
+import Owner from "./Owner.ts";
 import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
@@ -48,16 +49,15 @@ export type { ProposalDecision, ProposalResolution, ProposalPendingEvent } from 
 
 const DEFAULT_MAX_STRIKES = 3;
 
-// The foisted prompt EDIT/READ target — worker-qualified storage (§prompt-auto-read, #382 fault-1)
-// rendered in the plurnk:// authority form (hostname carries the namespace, plurnk-uri folds it
-// back into the storage key on dispatch).
+// The foisted prompt EDIT/READ target — prompt:///<loop>/<N>, self-only ({§prompt-self-only}):
+// the owner rides the owner_id column, the address carries only the loop coordinate.
 const promptTarget = (workerId: number, loopSeq: number, turnSeq: number): UrlPath => {
-    const storage = promptPathname(workerId, loopSeq, turnSeq);
+    const storage = promptPathname(loopSeq, turnSeq);
     return {
-        kind: "url", raw: `plurnk://${storage.slice(1)}`,
-        scheme: "plurnk", username: null, password: null,
-        hostname: "prompt", port: null,
-        pathname: storage.slice("/prompt".length), params: {}, fragment: null,
+        kind: "url", raw: `prompt://${storage}`,
+        scheme: "prompt", username: null, password: null,
+        hostname: null, port: null,
+        pathname: storage, params: {}, fragment: null,
     };
 };
 
@@ -635,8 +635,8 @@ export default class Engine {
             // #269 — operator docs are run-once; foist them only on the worker's first loop.
             for (const doc of runFirstLoop ? await WorkspaceSettings.resolveDocs(mdDocs) : []) {
                 const docTarget: UrlPath = {
-                    kind: "url", raw: `plurnk:///${doc.entryName}`, scheme: "plurnk",
-                    username: null, password: null, hostname: null, port: null,
+                    kind: "url", raw: `worker://plurnk/${doc.entryName}`, scheme: "worker",
+                    username: null, password: null, hostname: "plurnk", port: null,
                     pathname: `/${doc.entryName}`, params: {}, fragment: null,
                 };
                 const docRead: ReadStatement = {
@@ -698,7 +698,7 @@ export default class Engine {
         if (seq > 1) {
             const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
             const loopSeq = loopSeqRow?.sequence ?? loopId;
-            const injected = await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: promptPathname(workerId, loopSeq, seq) });
+            const injected = await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: promptPathname(loopSeq, seq) });
             const injectedRow = injected.find((r) => typeof r.content === "string" && r.content.length > 0);
             if (injectedRow !== undefined) {
                 const lineCount = injectedRow.content.split("\n").length;
@@ -766,16 +766,14 @@ export default class Engine {
                 // model burns a turn running the FIND itself, assuming the catalog is merely
                 // being withheld. An empty FIND(**) is orienting, not noise (owner): it tells
                 // the model NOT to look there. Other schemes keep the with-entries default.
-                const foistSchemes = [...catalogSchemes];
-                for (const always of ["known", "unknown", null] as const) {
-                    if (!foistSchemes.some((c) => c.scheme === always)) foistSchemes.push({ scheme: always, entries: 0 });
-                }
+                const foistSchemes = [...catalogSchemes].filter((c) => c.scheme !== "prompt" && c.scheme !== "worker");
+                // The COMMONS (worker:///**) + the file tree always foist — even at zero entries the
+                // empty survey is orienting ("don't look here"), per the #527 re-home of the old
+                // known/unknown always-foist role onto the shared blackboard.
+                foistSchemes.push({ scheme: "worker", entries: catalogSchemes.find((c) => c.scheme === "worker")?.entries ?? 0 });
+                if (!foistSchemes.some((c) => c.scheme === null)) foistSchemes.push({ scheme: null, entries: 0 });
                 for (const { scheme, entries } of foistSchemes) {
                     const schemeName = scheme ?? "file";
-                    // plurnk → its docs subtree (FIND(plurnk://docs/**), uncapped) — the self-
-                    // documenting surface. The prompt is shown in # Prompt, so the plurnk catalog
-                    // the model orients on IS the docs; doc links are no longer rendered inline (#270).
-                    const isPlurnk = schemeName === "plurnk";
                     const isFile = schemeName === "file";
                     // Only the FILE list is cappable (PLURNK_SERVICE_FILES_ITEMS first-N): the tracked-file
                     // tree is external and arbitrarily large. Every other scheme — known/unknown
@@ -791,10 +789,10 @@ export default class Engine {
                         op: "FIND", suffix: "", signal: null,
                         target: isFile ? { kind: "local", raw: "**" } : {
                             kind: "url",
-                            raw: isPlurnk ? "plurnk://docs/**" : `${schemeName}:///**`,
+                            raw: `${schemeName}:///**`,
                             scheme: schemeName,
                             username: null, password: null, hostname: null, port: null,
-                            pathname: isPlurnk ? "/docs/**" : "/**",
+                            pathname: "/**",
                             params: {}, fragment: null,
                         },
                         body: null,
@@ -808,23 +806,33 @@ export default class Engine {
                     nextActionIndex++;
                     // §model-entry — the same FIND, rendered back to DSL for the turn-0 echo (the model's
                     // own survey, mirrored OPEN). The <L> cap rides as `<1,N>`, exactly as the model would type it.
-                    turnZeroMoves.push(`<<FIND(${isPlurnk ? "plurnk://docs/**" : isFile ? "**" : `${schemeName}:///**`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
+                    turnZeroMoves.push(`<<FIND(${isFile ? "**" : `${schemeName}:///**`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
                 }
+                // The kernel's self-documenting surface — FIND(worker://plurnk/docs/**), uncapped,
+                // always (the law materializes the docs): the #270 discovery foist, re-homed (#527).
+                await Owner.kernelId(this.#db, workspaceId); // the row exists even before docs materialize — the empty survey is orienting, never 404
+                const kernelDocsFind: FindStatement = {
+                    op: "FIND", suffix: "", signal: null,
+                    target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", params: {}, fragment: null },
+                    body: null, lineMarker: null, position: { line: 1, column: 1 },
+                };
+                await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
+                nextActionIndex++;
+                turnZeroMoves.push("<<FIND(worker://plurnk/docs/**)::FIND");
                 // §worker-scheme — Manifest(run) = workspace-scope ∪ THIS worker's worker-scope. Foist the
                 // building worker's OWN scratch (worker://self/**, uncapped — a worker needs the full view to
                 // manage its private workspace) so it's catalogued in ITS perspective alone; other
                 // runs reach it only via explicit FIND(worker://<name>/**). A worker with no scratch foists nothing.
-                const selfWorker = await (this.#db.worker_name_by_id as PrepMethod).get<{ name: string }>({ worker_id: workerId });
-                const scratch = selfWorker === undefined ? 0 : (await (this.#db.engine_worker_scratch_count as PrepMethod).get<{ entries: number }>({ workspace_id: workspaceId, owner_prefix: `/${selfWorker.name}/*` }))?.entries ?? 0;
+                const scratch = (await (this.#db.engine_worker_scratch_count as PrepMethod).get<{ entries: number }>({ workspace_id: workspaceId, owner_id: workerId }))?.entries ?? 0;
                 if (scratch > 0) {
                     const runFind: FindStatement = {
                         op: "FIND", suffix: "", signal: null,
-                        target: { kind: "url", raw: "worker://self/**", scheme: "worker", username: null, password: null, hostname: "self", port: null, pathname: "/**", params: {}, fragment: null },
+                        target: { kind: "url", raw: "worker://~/**", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/**", params: {}, fragment: null },
                         body: null, lineMarker: null, position: { line: 1, column: 1 },
                     };
                     await this.dispatch({ statement: runFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                     nextActionIndex++;
-                    turnZeroMoves.push("<<FIND(worker://self/**)::FIND");  // §model-entry — the worker-scope survey, into the turn-0 echo
+                    turnZeroMoves.push("<<FIND(worker://~/**)::FIND");  // §model-entry — the own-space survey, into the turn-0 echo
                 }
             }
             // #260 — foist a turn-0 READ of each client-passed @file path so its content sits in front
@@ -1563,7 +1571,7 @@ export default class Engine {
         const turnSeq = turnRow?.next ?? 1;
         const workspaceRow = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: workerId });
         if (workspaceRow === undefined) throw new Error(`Engine.inject: run ${workerId} not found`);
-        const pathname = promptPathname(workerId, loopRow.sequence, turnSeq); // canonical storage form, worker-qualified loop-SEQ coordinates matching the turn-1 foist
+        const pathname = promptPathname(loopRow.sequence, turnSeq); // bare loop coordinate — the owner rides owner_id ({§prompt-self-only})
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
@@ -1578,7 +1586,7 @@ export default class Engine {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
             tags: [],
         };
-        await EntryCrud.writeEntry(pathname, entry, ctx, "plurnk");
+        await EntryCrud.writeEntry(pathname, entry, ctx, "prompt", workerId);
         return { loopId, turnSeq };
     }
 

@@ -46,10 +46,10 @@ test("COPY/MOVE into a file render their span diff like EDIT — the write is SE
         origin: "model",
         op: "COPY",
         status: 200,
-        target: { scheme: "known", pathname: "/draft" },
+        target: { scheme: "worker", pathname: "/draft" },
         rx: { status: 200, span: "1:\tcopied content" },
     }], tok);
-    assert.match(out, /<<:::known:\/\/\/draft\n1:\tcopied content\n:::known:\/\/\/draft/, "the COPY row carries its resulting span, EDIT-parity");
+    assert.match(out, /<<:::worker:\/\/\/draft\n1:\tcopied content\n:::worker:\/\/\/draft/, "the COPY row carries its resulting span, EDIT-parity");
 });
 
 test("EDIT with an accept-path span (rx.body from a proposed file edit) renders the line-numbered diff", () => {
@@ -154,14 +154,14 @@ test("[§edit-result-render] log render: EDIT@200 with rx.span → wraps the pre
         origin: "model",
         op: "EDIT",
         status: 200,
-        target: { scheme: "known", pathname: "/plan.md" },
+        target: { scheme: "worker", pathname: "/plan.md" },
         rx: { status: 200, span: "3:\t- [x] ship the fix" },  // editedSpan emits N:\t with the changed region's REAL offset
     }], tok);
     // The model sees the edited area as it looks NOW at its TRUE line numbers — editedSpan already
     // line-numbered it, so the renderer wraps verbatim. Re-numbering here would double it (1:\t3:\t…)
     // and lose the real position. (A span-less EDIT — a scheme that returns no span — stands on its meta
     // line alone; the log NEVER re-serializes the op's emission tag, per the no-tags-in-the-log paradigm.)
-    assert.match(out, /<<:::known:\/\/\/plan\.md\n3:\t- \[x\] ship the fix\n:::known:\/\/\/plan\.md/, "EDIT wraps the pre-numbered span verbatim under the target fence");
+    assert.match(out, /<<:::worker:\/\/\/plan\.md\n3:\t- \[x\] ship the fix\n:::worker:\/\/\/plan\.md/, "EDIT wraps the pre-numbered span verbatim under the target fence");
     assert.doesNotMatch(out, /1:\t3:\t/, "must NOT re-number an already-numbered span");
 });
 
@@ -172,7 +172,7 @@ test("render guard: every content-emitting op applies the N:\\t convention unifo
     // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies —
     // which ride into the log as N:\t content, NEVER re-serialized as a <<OP:…:OP tag (the log mirrors
     // the model's WORK, not its emission syntax). No future content branch can silently diverge.
-    const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "known", pathname: "/a" } };
+    const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
     const execTx = (body: string) => ({ op: "EXEC", suffix: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, signal: null, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:\talpha\n2:\tbeta/ },
@@ -200,7 +200,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
             origin: "model",
             op: "EDIT",
             status: 200,
-            target: { scheme: "known", pathname: "/x" },
+            target: { scheme: "worker", pathname: "/x" },
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
@@ -227,7 +227,7 @@ test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from th
     assert.deepEqual(one.largest, [], "a bodyless row is no FOLD target — largest omits it");
     // A BODIED entry ranks, and its `largest` figure IS the row's own rendered `tokens` (the FOLD
     // price) — the budget and the log can never disagree about one row (#466: 577-vs-6127).
-    const bodied = [{ coordinate: "1/1/2", op: "READ", origin: "model", status: 200, target: { scheme: "known", pathname: "/x" }, rx: { status: 200, content: "alpha\nbeta\ngamma", mimetype: "text/plain" } }];
+    const bodied = [{ coordinate: "1/1/2", op: "READ", origin: "model", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { status: 200, content: "alpha\nbeta\ngamma", mimetype: "text/plain" } }];
     const two = PacketWire.measureLogBudget(bodied, tk);
     assert.equal(two.largest[0].path, "log:///1/1/2/READ");
     const rendered = PacketWire.renderLog(bodied, tk);
@@ -371,7 +371,7 @@ test("[§model-entry] an open model row mirrors the model's own emission back, l
 
 test("[§jsonplurnk] the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
     const out = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "known", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
+        { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true, target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: false, target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: heredoc body
     ], tok);

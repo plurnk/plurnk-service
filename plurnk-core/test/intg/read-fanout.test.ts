@@ -9,7 +9,7 @@ import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/pl
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import Log from "../../src/schemes/Log.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
@@ -26,8 +26,8 @@ const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): R
 });
 
 const seed = async (db: Db, workspaceId: number, workerId: number, mimetypes: Mimetypes, path: string, content: string): Promise<void> => {
-    await new Known().edit(
-        { op: "EDIT", suffix: "", signal: null, target: urlPath("known", path), lineMarker: null, body: content, position: { line: 1, column: 1 } },
+    await new Worker().edit(
+        { op: "EDIT", suffix: "", signal: null, target: urlPath("worker", path), lineMarker: null, body: content, position: { line: 1, column: 1 } },
         makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
     );
 };
@@ -59,7 +59,7 @@ test("[§read-multi-file-fanout] a matcher READ fans out to one row per MATCH, e
         await seed(db, workspaceId, workerId, mimetypes, "/c", "italy\nspain");
 
         const r = await engine.dispatch({
-            statement: readStmt(urlPath("known", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
+            statement: readStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
 
@@ -87,7 +87,7 @@ test("a glob READ with zero matches writes a single 204 row, not silence", async
         await seed(db, workspaceId, workerId, mimetypes, "/a", "italy");
         await seed(db, workspaceId, workerId, mimetypes, "/b", "spain");
         const r = await engine.dispatch({
-            statement: readStmt(urlPath("known", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
+            statement: readStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 204);
@@ -102,12 +102,12 @@ test("the running sequence counter advances past the fan-out — a later op land
         await seed(db, workspaceId, workerId, mimetypes, "/b", "france two");
         // Dispatch the glob READ at sequence 1 → rows 1,2. A following single READ must land at 3.
         const fan = await engine.dispatch({
-            statement: readStmt(urlPath("known", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
+            statement: readStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(fan.rowsWritten, 3, "the FIND summary + one delivery per file");
         await engine.dispatch({
-            statement: readStmt(urlPath("known", "/a")),
+            statement: readStmt(urlPath("worker", "/a")),
             workspaceId, workerId, loopId, turnId, sequence: 1 + (fan.rowsWritten as number), origin: "model",
         });
         // Row 4 (after summary + 2 deliveries) is the single-file READ of /a (its full content).

@@ -72,7 +72,7 @@ WHERE worker_id = $worker_id AND closed_at IS NULL AND turn_scoped = 1;
 SELECT s.close_status
 FROM entries e
 JOIN subscriptions s ON s.entry_id = e.id
-WHERE e.scope = 'workspace' AND e.workspace_id = $workspace_id
+WHERE e.workspace_id = $workspace_id
   AND s.worker_id = $worker_id
   AND e.scheme = 'exec' AND e.pathname = $pathname
   AND s.closed_at IS NOT NULL

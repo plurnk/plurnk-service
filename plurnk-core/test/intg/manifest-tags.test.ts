@@ -5,13 +5,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known:///${pathname}`, scheme: "known",
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
@@ -25,8 +25,8 @@ test("[§packet-catalog] the manifest catalog surfaces each entry's tags (note 1
         const workspaceId = await insertWorkspace(db, `mtags-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        await new Known().edit(taggedEdit(url("plan.md"), "the plan", ["wip", "draft"]), ctx);
-        await new Known().edit(taggedEdit(url("done.md"), "shipped", []), ctx);
+        await new Worker().edit(taggedEdit(url("plan.md"), "the plan", ["wip", "draft"]), ctx);
+        await new Worker().edit(taggedEdit(url("done.md"), "shipped", []), ctx);
 
         const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<{ path: string; tags?: string[] }>;
         const plan = catalog.find((e) => e.path.endsWith("plan.md"));

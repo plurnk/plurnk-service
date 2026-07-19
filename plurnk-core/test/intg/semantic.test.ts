@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
@@ -19,7 +19,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_h
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known:///${pathname}`, scheme: "known",
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
@@ -47,17 +47,17 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
         const workspaceId = await insertWorkspace(db, `e2e-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Known().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
-        await new Known().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
-        await new Known().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
+        await new Worker().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
+        await new Worker().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
+        await new Worker().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
         await EntryManifest.maintainDerivations(ctx);  // real embeddings stored via mimetypes-embeddings
 
-        const r = await new Known().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
+        const r = await new Worker().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
         // The two connection entries are returned, real-cosine-ranked; cake (no shared
         // keyword) is excluded by the FTS narrow, never reaching cosine.
-        assert.deepEqual(r.results.map((f) => f.path).sort(), ["known:///db.md", "known:///sql.md"]);
-        assert.ok(!r.results.some((f) => f.path === "known:///cake.md"), "the unrelated recipe never enters the ranking");
+        assert.deepEqual(r.results.map((f) => f.path).sort(), ["worker:///db.md", "worker:///sql.md"]);
+        assert.ok(!r.results.some((f) => f.path === "worker:///cake.md"), "the unrelated recipe never enters the ranking");
         assert.ok(r.results.every((row) => typeof row.channels === "object" && !("extent" in (row as object))), "~semantic FIND returns uniform catalog rows (no per-match extent) — the matched chunk's span is a READ, the ranking is the row order");
     } finally { db.close(); }
 });
@@ -70,7 +70,7 @@ test("[#272] the derivation pump emits throttled embed_progress telemetry for a 
         const workspaceId = await insertWorkspace(db, `progress-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const seed = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        for (const name of ["a.md", "b.md", "c.md"]) await new Known().edit(editStmt(url(name), `content for ${name} with words to embed`), seed);
+        for (const name of ["a.md", "b.md", "c.md"]) await new Worker().edit(editStmt(url(name), `content for ${name} with words to embed`), seed);
 
         type Tel = { source?: string; kind?: string; completed?: number; total?: number };
         const events: Tel[] = [];
@@ -84,7 +84,7 @@ test("[#272] the derivation pump emits throttled embed_progress telemetry for a 
         // A normal turn re-derives a single changed entry (total=1) → below the multi-entry
         // threshold → silent, so steady-state turns carry no per-turn progress noise.
         const events2: Tel[] = [];
-        await new Known().edit(editStmt(url("d.md"), "a single new entry changed this turn"), seed);
+        await new Worker().edit(editStmt(url("d.md"), "a single new entry changed this turn"), seed);
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushTelemetry: (e) => events2.push(e as Tel) }));
         assert.equal(events2.filter((e) => e.kind === "embed_progress").length, 0, "a single-entry pass stays silent");
     } finally { db.close(); }
@@ -98,29 +98,29 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
         const workspaceId = await insertWorkspace(db, `thresh-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Known().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
-        await new Known().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
-        await new Known().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
+        await new Worker().edit(editStmt(url("db.md"), "the database connection failed with a timeout error"), ctx);
+        await new Worker().edit(editStmt(url("sql.md"), "sql server connection could not be established"), ctx);
+        await new Worker().edit(editStmt(url("cake.md"), "preheat the oven and frost the birthday cake"), ctx);
         await EntryManifest.maintainDerivations(ctx);
         const findCtx = (): ReturnType<typeof makeSchemeCtx> => makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes });
 
         // A low floor admits every FTS-matched candidate (cosine > 0.05) — same set
         // an integer top-K would, proving the decimal routes to the threshold path.
-        const low = await new Known().find(thresholdStmt(url(""), "database connection error", 0.05), findCtx());
+        const low = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05), findCtx());
         assert.equal(low.status, 200);
-        assert.deepEqual([...new Set(low.results.map((f) => f.path))].sort(), ["known:///db.md", "known:///sql.md"]);
+        assert.deepEqual([...new Set(low.results.map((f) => f.path))].sort(), ["worker:///db.md", "worker:///sql.md"]);
 
         // A near-1 floor admits nothing — the threshold actually filters; it isn't a top-K in disguise.
-        const high = await new Known().find(thresholdStmt(url(""), "database connection error", 0.999), findCtx());
+        const high = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.999), findCtx());
         assert.equal(high.status, 200);
         assert.deepEqual([...new Set(high.results.map((f) => f.path))], [], "a 0.999 floor filters everything out");
 
         // <0.05,1> — threshold + result cap → at most one, the closest.
-        const capped = await new Known().find(thresholdStmt(url(""), "database connection error", 0.05, 1), findCtx());
+        const capped = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 1), findCtx());
         assert.equal(capped.results.length, 1, "the ,N cap bounds the threshold set");
 
         // A fractional value outside (0,1) is a nonsense result-marker → 416, never coerced.
-        const bad = await new Known().find(thresholdStmt(url(""), "database connection error", 1.5), findCtx());
+        const bad = await new Worker().find(thresholdStmt(url(""), "database connection error", 1.5), findCtx());
         assert.equal(bad.status, 416, "a fractional marker outside (0,1) is 416");
     } finally { db.close(); }
 });
@@ -139,8 +139,8 @@ test("[#47] PLURNK_MIMETYPES_NO_EMBED: a matched entry derives FTS-only — zero
         const workspaceId = await insertWorkspace(db, `noembed-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Known().edit(editStmt(url("package-lock.json"), '{"name":"x","lockfileVersion":3,"packages":{"":{"deps":{"y":"1.0.0"}}}}'), ctx);
-        await new Known().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
+        await new Worker().edit(editStmt(url("package-lock.json"), '{"name":"x","lockfileVersion":3,"packages":{"":{"deps":{"y":"1.0.0"}}}}'), ctx);
+        await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await EntryManifest.maintainDerivations(ctx);
         const lock = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/package-lock.json" });
         const notes = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/notes.md" });
@@ -170,9 +170,9 @@ test("[#337] the pump derives smallest-first — a fat outlier never clogs the c
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         const whale = Array.from({ length: 120 }, (_, i) => `whale line ${i}: substantial prose about topic ${i} with enough words to chunk`).join("\n");
-        await new Known().edit(editStmt(url("whale.md"), whale), ctx);       // written FIRST, biggest
-        await new Known().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);
-        await new Known().edit(editStmt(url("minnow-b.md"), "a tiny note about lemons"), ctx);
+        await new Worker().edit(editStmt(url("whale.md"), whale), ctx);       // written FIRST, biggest
+        await new Worker().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);
+        await new Worker().edit(editStmt(url("minnow-b.md"), "a tiny note about lemons"), ctx);
         await EntryManifest.maintainDerivations(ctx);
         const order = await (db.test_embedding_insertion_order as PrepMethod).all<{ pathname: string; first_rowid: number }>({});
         const byPath = new Map(order.map((o) => [o.pathname, o.first_rowid]));

@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
@@ -19,7 +19,7 @@ const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alic
 
 const readStmt = (pathname: string, body: ReadStatement["body"] = null): ReadStatement => ({
     op: "READ", suffix: "", signal: null,
-    target: { kind: "url", raw: `known:///${pathname}`, scheme: "known", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, params: {}, fragment: null },
+    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, params: {}, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -29,13 +29,13 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4) });
 
-        const written = await EntryCrud.writeEntry("/roster.html", { channels: { body: { content: ROSTER, mimetype: "text/html" } }, tags: [] }, ctx, "known");
+        const written = await EntryCrud.writeEntry("/roster.html", { channels: { body: { content: ROSTER, mimetype: "text/html" } }, tags: [] }, ctx, "worker");
         assert.equal(written.status, 201);
         const rows = await (db.entry_read_channels as PrepMethod).all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
         assert.equal(rows[0].mimetype, "text/html", "the authored mimetype is preserved");
 
-        const read = await EntryOps.readWorkspaceEntry(readStmt("roster.html"), ctx, Known.manifest);
+        const read = await EntryOps.readWorkspaceEntry(readStmt("roster.html"), ctx, Worker.manifest);
         assert.match(read.content ?? "", /alice@x\.com/, "a default READ sees the email — attributes intact");
     } finally { await db.close(); }
 });

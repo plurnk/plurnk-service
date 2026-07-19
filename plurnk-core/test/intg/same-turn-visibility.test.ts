@@ -12,7 +12,7 @@ test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME 
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; SEND[102] (a same-turn SEND[200] would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
-        makeMockResponse("<<PLAN:write then find:PLAN\n<<EDIT[abs](known:///abs/module-loader-spec.md):the spec body:EDIT\n<<FIND(known:///**)::FIND\n<<SEND[102]:wrote and listed:SEND", 10),
+        makeMockResponse("<<PLAN:write then find:PLAN\n<<EDIT[abs](worker:///abs/module-loader-spec.md):the spec body:EDIT\n<<FIND(worker:///**)::FIND\n<<SEND[102]:wrote and listed:SEND", 10),
         makeMockResponse("<<SEND[200]:done:SEND", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

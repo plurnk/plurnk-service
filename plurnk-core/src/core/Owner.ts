@@ -9,7 +9,7 @@ import type { PlurnkSchemeContext } from "./scheme-types.ts";
 export default class Owner {
     // Names no client- or model-supplied worker may take: the two reserved rows plus the
     // self-sigil the #527 wave gives worker:// (reserving it now keeps the namespace clean).
-    static readonly RESERVED = Object.freeze(new Set(["commons", "plurnk", "~"]));
+    static readonly RESERVED = Object.freeze(new Set(["commons", "plurnk", "~", "self"])); // 'self' joins per grammar's canon — a worker named self would impersonate the ~ idiom
 
     // The workspace's reserved commons worker — lazily ensured, one per workspace. A real row
     // (never a NULL owner: NULLs are distinct under UNIQUE, so a nullable owner_id would let
@@ -19,6 +19,15 @@ export default class Owner {
         if (existing !== undefined) return existing.id;
         const created = await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "commons", origin: "plurnk" });
         if (created === undefined) throw new Error("Owner.commonsId: commons worker insert returned no row");
+        return created.id;
+    }
+
+    // The reserved kernel row — worker://plurnk/, the runtime's own actor (§actor-boundary).
+    static async kernelId(db: Db, workspaceId: number): Promise<number> {
+        const existing = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        if (existing !== undefined) return existing.id;
+        const created = await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
+        if (created === undefined) throw new Error("Owner.kernelId: kernel worker insert returned no row");
         return created.id;
     }
 

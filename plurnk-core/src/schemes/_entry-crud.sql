@@ -6,7 +6,7 @@
 -- for bare/absolute paths; storage normalizes its rows to scheme=NULL
 -- (Engine.#extractTarget). SQL's `=` doesn't match NULL, so use `IS`.
 SELECT id FROM entries
-WHERE scope = 'workspace' AND workspace_id = $workspace_id AND owner_id = $owner_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme IS $scheme AND pathname = $pathname;
 
 -- PREP: crud_read_channels
 SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;
@@ -15,20 +15,8 @@ SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: crud_insert_workspace_entry
-INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname)
-VALUES ('workspace', $workspace_id, $owner_id, $scheme, $pathname)
-RETURNING id;
-
--- PREP: crud_find_worker_entry
--- Run-scope twin of crud_find_workspace_entry (§worker-scheme). A worker entry is keyed
--- (scope='worker', scheme='worker', pathname); the owning run rides the pathname's first
--- segment (the folded worker:// authority), so there is no worker_id column.
-SELECT id FROM entries
-WHERE scope = 'worker' AND workspace_id = $workspace_id AND scheme IS $scheme AND pathname = $pathname;
-
--- PREP: crud_insert_worker_entry
-INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname)
-VALUES ('worker', $workspace_id, $owner_id, $scheme, $pathname)
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname)
+VALUES ($workspace_id, $owner_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: crud_register_workspace_member
@@ -37,9 +25,9 @@ RETURNING id;
 -- is the membership marker the File read-gate checks and FIND globs by path.
 -- Channel-less by design — disk stays the truth (D3). ON CONFLICT no-ops so
 -- re-resolving membership each turn never duplicates or churns rows.
-INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname, membership_origin)
-VALUES ('workspace', $workspace_id, $owner_id, $scheme, $pathname, $membership_origin)
-ON CONFLICT (workspace_id, owner_id, scheme, pathname) WHERE scope = 'workspace'
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname, membership_origin)
+VALUES ($workspace_id, $owner_id, $scheme, $pathname, $membership_origin)
+ON CONFLICT (workspace_id, owner_id, scheme, pathname)
 DO NOTHING
 RETURNING id;
 
@@ -48,7 +36,7 @@ RETURNING id;
 -- (mtime:size), read before materializing so an unchanged file short-circuits
 -- before any content read. Null-aware scheme (file members store scheme=NULL).
 SELECT id, synced_sig FROM entries
-WHERE scope = 'workspace' AND workspace_id = $workspace_id AND owner_id = $owner_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme IS $scheme AND pathname = $pathname;
 
 -- PREP: crud_set_synced_sig
 -- Stamp the disk signature after a member materializes to disk truth; the next
@@ -85,7 +73,7 @@ DELETE FROM entries WHERE id = $entry_id;
 -- ((git ls-files ∪ add) − ignore) and un-registers the difference, so entries ==
 -- members. Model-created ('client') members are excluded — not git's to reclaim.
 SELECT id, pathname FROM entries
-WHERE scope = 'workspace' AND workspace_id = $workspace_id AND scheme IS NULL AND membership_origin IN ('git', 'constraint');
+WHERE workspace_id = $workspace_id AND scheme IS NULL AND membership_origin IN ('git', 'constraint');
 
 -- PREP: crud_insert_workspace_constraint
 -- SPEC §membership constraint overlay — the client supersede. Idempotent per

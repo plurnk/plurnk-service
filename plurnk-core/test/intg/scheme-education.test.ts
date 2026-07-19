@@ -36,11 +36,11 @@ test("[§schemes-directory] scheme directory: the packet's `schemes` section is 
 
         // The definition is JUST plurnk.md now — the catalogue left the hot path.
         assert.match(definition, /PLURNK_MD/, "definition carries the operator's plurnk.md");
-        assert.doesNotMatch(definition, /known:\/\/\//, "the scheme catalogue is NOT in the definition anymore");
+        assert.doesNotMatch(definition, /worker:\/\/\//, "the scheme catalogue is NOT in the definition anymore");
 
         // The `schemes` section is the terse directory: known's canonical example, no inline doc-link.
         assert.ok(schemes.startsWith("```plurnk"), "the schemes directory is a fenced plurnk catalog (#436), not bullets");
-        assert.match(schemes, /<<EDIT\(known:\/\/\/plan\.md\)/, "the directory lists `known` with its canonical example one-liner");
+        assert.match(schemes, /<<EDIT\(worker:\/\/\/plan\.md\)/, "the directory lists `known` with its canonical example one-liner");
         assert.doesNotMatch(schemes, /\(docs:/, "no inline doc-link — docs are FIND(plurnk://docs/**)-discovered (#270)");
         assert.doesNotMatch(schemes, /Channels: |Writable by: /, "the verbose channel/writableBy prose is gone from the hot path");
 

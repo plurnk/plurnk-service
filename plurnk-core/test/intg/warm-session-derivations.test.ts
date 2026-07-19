@@ -11,13 +11,13 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { TelemetryEvent } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Known from "../../src/schemes/Known.ts";
+import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const tokenize = (text: string): number => Math.ceil(text.length / 4);
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `known:///${pathname}`, scheme: "known",
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
@@ -42,9 +42,9 @@ test("[#290] Engine.warmWorkspaceDerivations derives deep channels at workspace 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
 
         // A multi-entry corpus — exactly the "initial ingest" case that otherwise looks frozen on turn 1.
-        await new Known().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
-        await new Known().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
-        await new Known().edit(editStmt(url("cart.ts"), "export function addToCart() {}\n"), ctx);
+        await new Worker().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
+        await new Worker().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
+        await new Worker().edit(editStmt(url("cart.ts"), "export function addToCart() {}\n"), ctx);
 
         // §semantic-fts-at-write — the keyword half indexes AT the write now: a cold corpus is
         // FTS-addressable before any pump runs. The warm still owns the DEEP channels (graph,

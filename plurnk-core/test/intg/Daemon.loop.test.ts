@@ -5,7 +5,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 
 test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
-    const dsl = "<<EDIT(known:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
+    const dsl = "<<EDIT(worker:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -25,13 +25,12 @@ test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcom
             assert.equal(result.usage?.costPico, 0);
 
             const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
-            // known:///france/capital + plurnk://prompt/<run>/<loop>/<N> (2 base — no manifest.json entry, the
-            // catalog is FIND-served), plus 12 docs: the 4 non-excluded in-tree schemes (log/known/unknown/run
-            // — plurnk/file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE), the boot-discovered `http`
-            // + `wss` + `mcp` externals (#473; mcp joined via the dual-kind flip, #483), and sh/node/sqlite/git/jq —
-            // executor docs the execs family ships (plurnk-execs#12; git joined with iso-git #460, jq with the
-            // #493 standards audit). 2 + 12 = 14.
-            assert.equal(entryCount, 14);
+            // worker:///france/capital + the prompt frame (2 base — no manifest.json entry, the
+            // catalog is FIND-served), plus 11 docs: the 3 non-excluded in-tree schemes (log/worker/prompt
+            // — file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE, skill excluded too), the
+            // boot-discovered `http` + `wss` + `mcp` externals (#473), and sh/node/sqlite/git/jq —
+            // executor docs the execs family ships. 2 + 11 = 13.
+            assert.equal(entryCount, 13);
         } finally { ws.close(); }
     });
 });
@@ -71,7 +70,7 @@ test("loop.inject speaks into an existing run; errors when there's none (#193)",
 });
 
 test("run.fork branches the model worker into a new -fork run; names it at instantiation; errors with no worker (#228, #248)", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<EDIT(known:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<EDIT(worker:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -113,7 +112,7 @@ test("run.fork branches the model worker into a new -fork run; names it at insta
 });
 
 test("loop.run streams log/entry notifications during execution", async () => {
-    const dsl = "<<EDIT(known:///x):hello:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<<EDIT(worker:///x):hello:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -154,7 +153,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
 });
 
 test("loop.run fires loop/terminated notification on completion", async () => {
-    const dsl = "<<EDIT(known:///x):body:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<<EDIT(worker:///x):body:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -187,7 +186,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
     // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts — generate()
     // throws a plain Error, runTurn re-throws (non-ProviderError → throw), it escapes runLoop to the
     // drain. Pre-#265 the drain rejected the already-.catch()'d promise and broadcast nothing → hang.
-    const dsl = "<<EDIT(known:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
+    const dsl = "<<EDIT(worker:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
     // #506 — the death must reach the daemon log too. Capture stderr around the run.
     const logged: string[] = [];
@@ -254,7 +253,7 @@ test("loop.run requires non-empty prompt", async () => {
 });
 
 test("loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
-    const dsl = "<<EDIT(known:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
+    const dsl = "<<EDIT(worker:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const responses = Array.from({ length: 5 }, () => makeMockResponse(dsl, 10));
     // Generous context: this test isolates the maxTurns ceiling, so the budget must NOT fire first.
     // At 8192 the 3-turn EDIT accumulation + the foisted docs tips into a 413 before turn 3's cap

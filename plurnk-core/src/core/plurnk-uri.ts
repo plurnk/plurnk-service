@@ -34,17 +34,16 @@ export function foldAuthorityIntoPath(hostname: string | null, pathname: string)
     return hostname ? `/${hostname}${pathname}` : pathname;
 }
 
-// §prompt-auto-read — the prompt address is RUN-QUALIFIED (#382 fault-1): entries are
-// workspace-scoped while loop sequences are per-worker, so every worker's first loop is sequence 1 and
-// a WORK-spawned sister's turn-1 foist would clobber its parent's /prompt/1/1. The worker id in
-// the path is /proc/<pid>-style process qualification — one filesystem, collision-free
-// coordinates. Every prompt writer and query builds through these two.
-export function promptPathname(workerId: number, loopSeq: number, turnSeq: number): string {
-    return `/prompt/${workerId}/${loopSeq}/${turnSeq}`;
+// {§prompt-self-only} — the prompt address is prompt:///<loopSeq>/<turnSeq>: the OWNER rides the
+// owner_id column ({§entry-owner}), so the coordinate is bare and loop-relative — the last
+// id-in-pathname (#382) is dead. Every prompt writer and query builds through these two; the
+// owner scoping is the query's owner_id param, never a path segment.
+export function promptPathname(loopSeq: number, turnSeq: number): string {
+    return `/${loopSeq}/${turnSeq}`;
 }
 
-export function promptLoopPrefix(workerId: number, loopSeq: number): string {
-    return `/prompt/${workerId}/${loopSeq}/`;
+export function promptLoopPrefix(loopSeq: number): string {
+    return `/${loopSeq}/`;
 }
 
 export function renderAddress(scheme: string, pathname: string): string {
@@ -52,10 +51,10 @@ export function renderAddress(scheme: string, pathname: string): string {
         return `plurnk://${pathname.replace(/^\//, "")}`;
     }
     // #370 — the worker IS the authority (§worker-scheme): a stored row whose authority was folded into
-    // the pathname (/name/...) must render worker://name/..., never worker:///name/... — one packet was
-    // minting BOTH forms and the model treated them as different addresses. Same for web URLs
+    // Web URLs carry a real host in the pathname's first segment — render it as the authority
     // (run42 sweep: the entry-sink's materialized pages rendered https:///en.wikipedia.org/...).
-    // known/unknown/plurnk-single-segment keep :/// — empty authority IS their canonical form.
-    if (scheme === "worker" || scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss") return `${scheme}://${pathname.replace(/^\//, "")}`;
+    // worker:// renders :/// — the owner rides owner_id ({§entry-owner}), so empty authority IS
+    // the canonical stored form; a querying face re-applies its authority (~/name) for display.
+    if (scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss") return `${scheme}://${pathname.replace(/^\//, "")}`;
     return `${scheme}://${pathname}`;
 }

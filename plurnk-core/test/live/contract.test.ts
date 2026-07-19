@@ -22,7 +22,7 @@ test("live: READ <L> — slice the second line of an entry", { timeout: TIMEOUT 
     const s = await liveWorkspace({ name: `live-contract-read-L-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "lines.md", content: "alpha\nbeta\ngamma" });
-        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "What is on the second line of known:///lines.md?" }, { timeoutMs: TIMEOUT });
+        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "What is on the second line of worker:///lines.md?" }, { timeoutMs: TIMEOUT });
         const rx = await lastRx(s.db, modelWorkerId, "READ");
         assert.match(rx, /beta/);
         assert.doesNotMatch(rx, /alpha|gamma/); // a <2> slice, not a whole-file read
@@ -33,7 +33,7 @@ test("live: READ regex — extract a pattern from an entry's content", { timeout
     const s = await liveWorkspace({ name: `live-contract-read-regex-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "doc.md", content: "hello world hello again" });
-        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "Find every occurrence of the word `hello` in known:///doc.md." }, { timeoutMs: TIMEOUT });
+        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "Find every occurrence of the word `hello` in worker:///doc.md." }, { timeoutMs: TIMEOUT });
         assert.match(await lastRx(s.db, modelWorkerId, "READ"), /hello/);
     } finally { await s.cleanup(); }
 });
@@ -43,7 +43,7 @@ test("live: EDIT <L> — replace the second line of an entry", { timeout: TIMEOU
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "poem.md", content: "roses are red\nviolets are blue" });
         // The prompt IS the test: one sentence that can only mean EDIT<2>.
-        await liveLoop(s, 2, { prompt: "Replace the second line of known:///poem.md with `violets are bright`." }, { timeoutMs: TIMEOUT });
+        await liveLoop(s, 2, { prompt: "Replace the second line of worker:///poem.md with `violets are bright`." }, { timeoutMs: TIMEOUT });
         assert.equal(await readBody(s.db, "poem.md"), "roses are red\nviolets are bright");
     } finally { await s.cleanup(); }
 });
@@ -74,7 +74,7 @@ test("live: COPY <L> — copy a line range into a new entry", { timeout: TIMEOUT
     const s = await liveWorkspace({ name: `live-contract-copy-L-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "src.md", content: "one\ntwo\nthree\nfour" });
-        await liveLoop(s, 2, { prompt: "Copy the second and third lines of known:///src.md into a new entry known:///slice.md." }, { timeoutMs: TIMEOUT });
+        await liveLoop(s, 2, { prompt: "Copy the second and third lines of worker:///src.md into a new entry worker:///slice.md." }, { timeoutMs: TIMEOUT });
         // lines 2-3 only; the trailing newline varies with the model's path
         // (a COPY slice keeps it; a READ-then-EDIT reconstruction may drop it).
         assert.match(await readBody(s.db, "slice.md") ?? "", /^two\nthree\n?$/);
@@ -87,7 +87,7 @@ test("live: KILL — delete an entry", { timeout: TIMEOUT }, async () => {
         await seedEntry(s.db, s.workspaceId, { pathname: "obsolete.md", content: "no longer needed" });
         // KILL is the canonical delete (MOVE→/dev/null retired); the model earns
         // the op from a plain delete request — we verify the entry is gone.
-        await liveLoop(s, 2, { prompt: "Delete the entry known:///obsolete.md." }, { timeoutMs: TIMEOUT });
+        await liveLoop(s, 2, { prompt: "Delete the entry worker:///obsolete.md." }, { timeoutMs: TIMEOUT });
         assert.equal(await readBody(s.db, "obsolete.md"), undefined);
     } finally { await s.cleanup(); }
 });

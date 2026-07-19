@@ -1,5 +1,5 @@
 // PLURNK_SERVICE_MD_<ALIAS> doc injection (self-hosting keystone, §actor-boundary). An operator
-// doc declared via env is materialized as a plurnk:///<ALIAS>.md entry by the
+// doc declared via env is materialized as a worker://plurnk/<ALIAS>.md entry by the
 // plurnk worker (DispatchAsPlurnk) and foisted as a READ into the model's turn 0.
 // The model sees only the READ; the materializing EDIT lives in the plurnk worker.
 //
@@ -32,23 +32,23 @@ test("[§actor-boundary-doc-injection] PLURNK_SERVICE_MD_<ALIAS>: doc is materia
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
 
-                // The model's turn-0 log carries a READ of plurnk:///AGENTS.md.
+                // The model's turn-0 log carries a READ of worker://plurnk/AGENTS.md.
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{
                     op: string; pathname: string; scheme: string; status_rx: number;
                 }>({ loop_id: loopId });
-                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/AGENTS.md");
-                assert.ok(docRead !== undefined, "model turn-0 should carry a READ of plurnk:///AGENTS.md");
+                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/AGENTS.md");
+                assert.ok(docRead !== undefined, "model turn-0 should carry a READ of worker://plurnk/AGENTS.md");
                 assert.equal(docRead!.status_rx, 200, "the doc entry was materialized by the plurnk worker — the READ hits it, not a 404");
 
                 // The materializing EDIT must NOT be in the model loop's log.
-                const editInModel = rows.find((r) => r.op === "EDIT" && r.scheme === "plurnk" && r.pathname === "/AGENTS.md");
+                const editInModel = rows.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/AGENTS.md");
                 assert.equal(editInModel, undefined, "the materializing EDIT lives in the plurnk worker, not the model's log");
 
                 // The materialized entry body equals the host file content.
                 const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({
-                    pathname: "/AGENTS.md", scheme: "plurnk", name: "body",
+                    pathname: "/AGENTS.md", scheme: "worker", name: "body",
                 });
-                assert.equal(body?.content, docBody, "plurnk:///AGENTS.md body mirrors the host file");
+                assert.equal(body?.content, docBody, "the kernel doc body mirrors the host file");
             } finally { ws.close(); }
         });
     } finally {
@@ -77,7 +77,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — 
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
-                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === "/POLICY.md");
+                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/POLICY.md");
                 assert.ok(docRead !== undefined && docRead.status_rx === 200, "PLURNK_MD doc is materialized + READ at turn 0 even with the preview off");
                 assert.equal(rows.find((r) => r.op === "FIND"), undefined, "the catalog preview stays off at =0 — the doc foist is independent of it, not capped by it");
             } finally { ws.close(); }
@@ -114,8 +114,8 @@ test("[§operator-config-workspace-md-docs] workspace.create settings.mdDocs UNI
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
-                const read = (p: string) => rows.filter((r) => r.op === "READ" && r.scheme === "plurnk" && r.pathname === p);
-                const bodyOf = (p: string) => (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: p, scheme: "plurnk", name: "body" });
+                const read = (p: string) => rows.filter((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === p);
+                const bodyOf = (p: string) => (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: p, scheme: "worker", name: "body" });
 
                 // the env doc the client didn't touch rides along (UNION, not replace)
                 assert.equal(read("/GUIDE.md")[0]?.status_rx, 200, "the uncollided server doc survives the union");

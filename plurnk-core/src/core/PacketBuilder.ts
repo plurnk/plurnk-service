@@ -223,7 +223,7 @@ export default class PacketBuilder {
         // the runLoop caller's messages.user for tests that bypass the
         // foist mechanism entirely.
         const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
-        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ pattern: `${promptLoopPrefix(workerId, loopSeqRow?.sequence ?? loopId)}%` }))
+        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopSeqRow?.sequence ?? loopId)}%` }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
         // §prompt-auto-read (owner): the section is a PATHS list (the errors shape — no bodies);
         // each prompt's content reaches the model through its foisted auto-READ in the log, and
@@ -231,7 +231,7 @@ export default class PacketBuilder {
         // unfair curation imposition. Fallback: callers that bypass the foist (bare messages)
         // still get their user text rendered directly.
         const prompt = promptRows.length > 0
-            ? promptRows.map((r) => `* plurnk://${r.pathname.slice(1)}`).join("\n")
+            ? promptRows.map((r) => `* prompt://${r.pathname}`).join("\n")
             : byRole("user");
         // Requirements is engine-sourced, NOT threaded from callers — that threading is
         // exactly how it went missing (callers read the sysprompt but never the

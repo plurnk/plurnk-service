@@ -167,9 +167,9 @@ test("[§worker-delegation-inherits-flags] spawn and fork carry the delegating l
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
         makeMockResponse("<<WORK(worker://worker):edit something and finish:WORK\n<<FORK(worker://mirror):edit something and finish:FORK\n<<SEND[102]<-1>:delegated; waiting:SEND", 10),
         // Worker turn 1: a SIDE-EFFECTING op (proposes unless YOLO), then conclude.
-        makeMockResponse("<<EDIT(known://from-worker):payload:EDIT\n<<SEND[200]:worker done:SEND", 10),
+        makeMockResponse("<<EDIT(worker:///from-worker):payload:EDIT\n<<SEND[200]:worker done:SEND", 10),
         // Fork turn 1: same shape.
-        makeMockResponse("<<EDIT(known://from-fork):payload:EDIT\n<<SEND[200]:fork done:SEND", 10),
+        makeMockResponse("<<EDIT(worker:///from-fork):payload:EDIT\n<<SEND[200]:fork done:SEND", 10),
         // Parent resumes twice (one wake per child conclusion).
         makeMockResponse("<<SEND[102]<-1>:one down:SEND", 10),
         makeMockResponse("<<SEND[200]:all done:SEND", 10),
@@ -231,7 +231,7 @@ test("[§fold-open-meta-operations] OPEN/FOLD are recorded in the DB, suppressed
     // is RECORDED: a curation act with no forensic trace is how run43's task-frame fold stayed
     // invisible. A FAILED FOLD still renders — errors are signals.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<<EDIT(known://note):some content worth folding:EDIT\n<<SEND[102]:wrote:SEND", 10),
+        makeMockResponse("<<EDIT(worker:///note):some content worth folding:EDIT\n<<SEND[102]:wrote:SEND", 10),
         // The phantom FOLD fails (400) — §send-200-failed-ops refuses the same-turn [200], so the
         // curation turn continues and the loop concludes NEXT turn, failure weighed.
         makeMockResponse("<<FOLD(log:///1/2/1)::FOLD\n<<FOLD(log:///9/9/9)::FOLD\n<<SEND[102]:curated:SEND", 10),

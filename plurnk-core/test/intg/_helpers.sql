@@ -102,8 +102,8 @@ ORDER BY s.closed_at DESC LIMIT 1;
 
 -- PREP: test_seed_entry_session
 -- Tests bypass scheme handlers when seeding state for visibility / render tests.
-INSERT INTO entries (scope, workspace_id, owner_id, scheme, pathname)
-VALUES ('workspace', $workspace_id, $owner_id, $scheme, $pathname)
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname)
+VALUES ($workspace_id, $owner_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: test_seed_channel
@@ -359,7 +359,7 @@ SELECT id, name, origin, parent_worker_id FROM workers WHERE workspace_id = $wor
 SELECT packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
 
 -- PREP: test_prompt_expanded
-SELECT expanded FROM log_entries WHERE scheme='plurnk' AND pathname LIKE '/prompt/%' AND op='READ' LIMIT 1;
+SELECT expanded FROM log_entries WHERE scheme='prompt' AND op='READ' LIMIT 1;
 
 -- PREP: test_turn_id_by_seq
 SELECT id FROM turns WHERE loop_id = $loop_id AND sequence = $sequence;
@@ -396,7 +396,7 @@ SELECT COUNT(*) n FROM entries WHERE workspace_id = $workspace_id AND scheme IS 
 SELECT id, worker_id, status, terminated_at, terminal_message, terminated_by FROM loops ORDER BY id;
 
 -- PREP: test_get_entry_attributes
-SELECT attributes FROM entries WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname AND scope = 'workspace';
+SELECT attributes FROM entries WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: test_embeddings_for_entry
 SELECT vector FROM entry_embeddings WHERE entry_id = $entry_id ORDER BY chunk_seq;

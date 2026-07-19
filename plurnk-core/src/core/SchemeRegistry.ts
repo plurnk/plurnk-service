@@ -1,8 +1,6 @@
-import Plurnk from "../schemes/Plurnk.ts";
 import Log from "../schemes/Log.ts";
 import Exec, { type WebFetch } from "../schemes/Exec.ts";
-import Known from "../schemes/Known.ts";
-import Unknown from "../schemes/Unknown.ts";
+import Prompt from "../schemes/Prompt.ts";
 import Skill from "../schemes/Skill.ts";
 import File from "../schemes/File.ts";
 import Worker from "../schemes/Worker.ts";
@@ -49,14 +47,16 @@ export default class SchemeRegistry {
     // `fetchWeb` (§exec-entry-sink / #455) is forwarded to the exec handler's content:null sink; default
     // = schemes-http's guarded WebFetcher, injectable so tests substitute the network the guard would block.
     constructor(opts?: { fetchWeb?: WebFetch }) {
-        this.register("plurnk",  new Plurnk());
-        this.register("log",     new Log());
-        this.register("exec",    new Exec(opts?.fetchWeb));
-        this.register("known",   new Known());
-        this.register("unknown", new Unknown());
-        this.register("skill",   new Skill());
-        this.register("file",    new File());
-        this.register("worker",     new Worker());
+        this.register("log",    new Log());
+        // #527 — "exec" is INTERNAL machinery, not an addressable scheme: the EXEC op routes here
+        // and the spawn-abort/idle state lives here, but the model addresses output via the tag
+        // schemes (sh://, jq://) and process-KILLs the tag coordinate. plurnk/known/unknown retired:
+        // the knowledgebase is worker:// (commons/~/name/plurnk), task frames are prompt://.
+        this.register("exec",   new Exec(opts?.fetchWeb));
+        this.register("prompt", new Prompt());
+        this.register("skill",  new Skill());
+        this.register("file",   new File());
+        this.register("worker", new Worker());
         // #240 — the in-tree names are RESERVED across the whole scheme namespace: a
         // discovered executor or external scheme claiming one fails the boot hard, never
         // silently shadowed. (exec stays poisoned-but-registered — the EXEC op + kill state.)
