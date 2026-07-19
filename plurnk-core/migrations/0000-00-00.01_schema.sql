@@ -1,3 +1,9 @@
+-- INIT: schema_version
+-- {§db-schema-version-stamp} (#536) — the cross-repo drift gate: external consumers (bench's
+-- digest) fail-hard on mismatch instead of rotting silently against a moved schema. ANY change
+-- to the schema's SHAPE (tables, columns, identity keys) bumps this integer in the same commit.
+PRAGMA user_version = 1;
+
 -- INIT: workspaces
 -- project_root: workspace pointer. NULL = headless (no disk side-effects);
 -- non-null = absolute path to the client's source tree, supplied at

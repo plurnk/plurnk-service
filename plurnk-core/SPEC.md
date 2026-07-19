@@ -749,6 +749,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 - **Forward — apply-once evolution.** The idempotent-`INIT` model creates a fresh schema but does not *evolve* a populated one. When persisted state outlives a "just nuke it" reset, the date-prefixed ordering is the foundation a real migration policy layers onto: ordered `ALTER` files applied once and recorded in a marker table, not recreated idempotently. The current scheme is chosen so that transition is **additive** — a marker table plus apply-once dispatch — never a restructuring of how DDL is authored or ordered.
 - **Schema-alignment test**: loads `@plurnk/plurnk-grammar/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Grammar drift fails CI.
 - DDL = storage truth; JSON Schemas = wire truth. Tested-aligned, allowed to differ where ergonomics demand.
+- **Schema-version stamp.** {§db-schema-version-stamp} Every plurnk DB carries `PRAGMA user_version` (genesis stamps `1`), set as an idempotent `INIT`. Any change to the schema's *shape* — tables, columns, identity keys — bumps the integer in the same commit. The stamp is the cross-repo drift gate (#536): external consumers (bench's digest) read it with zero table dependency and fail hard on mismatch — "schema v2 required, found v1" — instead of rotting silently against a moved schema (the pre-rename specimen class: "no such table").
 
 ### §sql-ts-boundary SQL/TS responsibility boundary
 
