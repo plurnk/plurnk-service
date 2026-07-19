@@ -30,6 +30,9 @@ type StandardProviderSpec = {
     // — friendly, actionable guidance shown ONLY on the unset path (#537). A
     // present-but-rejected key is a wire 401 downstream, never this.
     apiKeyMessage?: string;
+    // Custom message when a PRESENT key is rejected by the backend (a live 401/403
+    // with a bearer sent) — distinct from the unset-key apiKeyMessage (#537 case 2).
+    apiKeyRejectedMessage?: string;
     // Custom request-header builder for auth the single-var bearer can't express
     // (multiple optional credentials, vendor routing headers). Returns the
     // headers built from env; an empty object means no auth headers are sent.
@@ -277,6 +280,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
         apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: true,
         apiKeyMessage: "PLURNK_API_KEY not found. Acquire one at https://plurnk.ai . Plurnk also supports local models and alternative cloud provider configurations.",
+        apiKeyRejectedMessage: "PLURNK_API_KEY was rejected by plurnk.ai (invalid or expired). Verify it at https://plurnk.ai .",
         reasoningStyle: "none", grammarStyle: "none", tokenizerEnvVar: "PLURNK_TOKENIZER",
         probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico", suppressTuningFloors: true,
     },
@@ -553,6 +557,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         ...dataCaptureFromEnv(env, name),
         streaming: spec.streaming,
         firstPartyMetadata: spec.firstPartyMetadata,
+        apiKeyRejectedMessage: spec.apiKeyRejectedMessage,
         promptCacheKey: spec.promptCacheKey ?? true, // #518: default-on for standard providers (OpenAI-standard field, 6/6 backends verified accept it); per-spec opt-out below
         balanceMetaKey: spec.balanceMetaKey,
         supportsSlotPinning,

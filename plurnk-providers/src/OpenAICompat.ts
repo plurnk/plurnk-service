@@ -56,6 +56,7 @@ export type OpenAICompatConfig = {
     gbnfDebug?: boolean;                        // PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
+    apiKeyRejectedMessage?: string;            // #537: friendly hint when a PRESENT key is 401/403-rejected (distinct from unset); default undefined
     balanceMetaKey?: string;                    // top-level response field carrying account balance (pico-USD) → validated meta.balancePico (plurnk only, #23); default unset
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
@@ -213,6 +214,8 @@ export default class OpenAICompatProvider implements Provider {
     #url: string;
     #fetchTimeoutMs: number;
     #headers: Record<string, string>;
+    #hasApiKey = false;
+    #apiKeyRejectedMessage: string | undefined;
     #contextWindow: number | null;
     #reasoning: Reasoning;
     #temperature: number;
@@ -273,6 +276,8 @@ export default class OpenAICompatProvider implements Provider {
         this.#gbnfDebug = config.gbnfDebug ?? false;
         this.#streaming = config.streaming ?? true;
         this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
+        this.#apiKeyRejectedMessage = config.apiKeyRejectedMessage;
+        this.#hasApiKey = "Authorization" in this.#headers;
         this.#balanceMetaKey = config.balanceMetaKey;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
@@ -610,7 +615,17 @@ export default class OpenAICompatProvider implements Provider {
                 if (signal?.aborted) throw err;
                 const { kind } = classifyProviderError(err);
                 // Terminal kind, or budget spent → surface the classified failure.
-                if (!RETRYABLE.has(kind) || attempt >= this.#retryAttempts) throw toProviderError(err, this.#source);
+                if (!RETRYABLE.has(kind) || attempt >= this.#retryAttempts) {
+                    const pe = toProviderError(err, this.#source);
+                    // #537 case 2: a 401/403 with a key PRESENT is a rejected key, not a
+                    // transport failure — surface the distinct, actionable hint (kind stays
+                    // "unauthorized", so core's routing is unchanged) rather than the raw
+                    // upstream JSON. Distinct from the unset-key throw at construction.
+                    if ((pe.status === 401 || pe.status === 403) && this.#hasApiKey && this.#apiKeyRejectedMessage !== undefined) {
+                        throw new ProviderError(this.#source, "unauthorized", this.#apiKeyRejectedMessage, { status: pe.status, cause: err });
+                    }
+                    throw pe;
+                }
                 const retryAfter = err instanceof OpenAiHttpError ? err.retryAfter : null;
                 await sleepWithAbort(retryAfter ?? this.#retryDelayMs * 2 ** attempt, signal);
             }

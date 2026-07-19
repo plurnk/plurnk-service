@@ -747,6 +747,16 @@ test("plurnk: a 401 is classified unauthorized — terminal, never retried", asy
     mock.restoreAll();
 });
 
+test("plurnk: a set-but-rejected key (401) surfaces the distinct #537 rejected hint, not the missing-key wording", async () => {
+    const seen = plurnkMock(401);
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-bad" }, "plurnk");
+    await assert.rejects(
+        () => p!.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] }),
+        /PLURNK_API_KEY was rejected by plurnk\.ai \(invalid or expired\)\. Verify it at https:\/\/plurnk\.ai \./,
+    );
+    assert.equal(seen.filter((s) => s.url.endsWith("/chat/completions")).length, 1); // terminal — never retried, distinct message
+});
+
 test("plurnk: normalizes the endpoint's balance_pico into meta.balancePico (#23)", async () => {
     mock.method(globalThis, "fetch", async (url: string) => {
         const u = String(url);
