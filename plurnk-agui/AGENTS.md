@@ -29,7 +29,7 @@ frontends, the community carries the rest. Two planes, ruled:
 - **The RUN plane is AG-UI** — runs, messages, tool calls, steps, state, proposals. Fully
   standard; rich fidelity rides `plurnk.row` and the `plurnk.*` customs (§agui-row-channel).
 - **The MANAGEMENT plane is one escape hatch** — workspaces (projectRoot, constraints, settings),
-  entry CRUD (op.edit/op.read for nvim's direct known:// editing), providers/model switching,
+  entry CRUD (op.edit/op.read for nvim's direct worker:// editing), providers/model switching,
   auth flows. AG-UI does not model a workspace; these ride ONE passthrough endpoint
   (`POST /plurnk/rpc`, JSON-RPC over HTTP to the daemon) — boring, thin, documented, and the
   ONLY non-standard client surface. First-run workspace options may also ride
