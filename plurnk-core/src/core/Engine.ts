@@ -21,7 +21,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, TelemetryEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
-import { promptPathname } from "./plurnk-uri.ts";
+import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
 import SearchGate from "./search-gate.ts";
 import { readFile } from "node:fs/promises";
@@ -692,17 +692,19 @@ export default class Engine {
             }
         }
 
-        // §prompt-auto-read, the mid-loop half (owner): an inject writes a prompt entry for
-        // THIS turn's slot between turns — foist the same auto-READ so an injected prompt
-        // arrives exactly like the first one (first 12 lines, or whole when fewer).
+        // §prompt-auto-read, the mid-loop half + {§prompt-loop-containment}: the loop CONTAINS
+        // every prompt that arrived while it ran — this boundary foists an auto-READ for each
+        // frame not yet delivered (no prior auto-READ in the loop), oldest first, so rapid
+        // arrivals reach the model together, none lost, each exactly once.
         if (seq > 1) {
             const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
             const loopSeq = loopSeqRow?.sequence ?? loopId;
-            const injected = await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: promptPathname(loopSeq, seq) });
-            const injectedRow = injected.find((r) => typeof r.content === "string" && r.content.length > 0);
-            if (injectedRow !== undefined) {
+            const undelivered = (await (this.#db.drain_undelivered_prompts_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopSeq)}%`, loop_id: loopId }))
+                .filter((r) => typeof r.content === "string" && r.content.length > 0);
+            for (const injectedRow of undelivered) {
                 const lineCount = injectedRow.content.split("\n").length;
-                const injTarget = promptTarget(workerId, loopSeq, seq);
+                const ordinal = Number(injectedRow.pathname.split("/").filter(Boolean).at(-1));
+                const injTarget = promptTarget(workerId, loopSeq, ordinal);
                 const injRead: ReadStatement = {
                     op: "READ", suffix: "", signal: null, target: injTarget,
                     lineMarker: { marks: lineCount >= 12 ? [1, 12] : [1, -1] },
@@ -1571,7 +1573,10 @@ export default class Engine {
         const turnSeq = turnRow?.next ?? 1;
         const workspaceRow = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: workerId });
         if (workspaceRow === undefined) throw new Error(`Engine.inject: run ${workerId} not found`);
-        const pathname = promptPathname(loopRow.sequence, turnSeq); // bare loop coordinate — the owner rides owner_id ({§prompt-self-only})
+        // {§prompt-loop-containment} — the frame is the loop's NEXT prompt ordinal, never a turn
+        // slot: rapid arrivals land as N and N+1, both contained, nothing superseded.
+        const countRow = await (this.#db.drain_count_prompts_for_loop as PrepMethod).get<{ n: number }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopRow.sequence)}%` });
+        const pathname = promptPathname(loopRow.sequence, (countRow?.n ?? 0) + 1);
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
