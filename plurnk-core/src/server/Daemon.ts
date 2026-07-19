@@ -962,7 +962,7 @@ export default class Daemon {
         const prefix = promptLoopPrefix(endedSeq);
         const orphan = await (this.#db.drain_orphaned_prompt_for_loop as PrepMethod).get<{
             body: string; flags: string | null;
-        }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
+        }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%` });
         if (orphan === undefined) return;
         const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ worker_id: workerId });
         if (seqRow === undefined) throw new Error("reconcileOrphanedWake: next-sequence query returned no row");

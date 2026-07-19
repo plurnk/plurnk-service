@@ -62,6 +62,30 @@ WHERE e.scheme = 'prompt'
 ORDER BY e.id DESC
 LIMIT 1;
 
+-- PREP: drain_count_prompts_for_loop
+-- {§prompt-loop-containment} — the per-loop prompt ORDINAL source: N = count+1. The frame key is
+-- the Nth prompt of the loop, never a turn slot, so rapid arrivals can never share a row.
+SELECT COUNT(*) AS n FROM entries
+WHERE scheme = 'prompt' AND owner_id = $owner_id AND pathname LIKE $pattern;
+
+-- PREP: drain_undelivered_prompts_for_loop
+-- {§prompt-loop-containment} — the prompts the loop CONTAINS but has not yet delivered: no
+-- plurnk-origin auto-READ row exists for the frame in this loop. Oldest first; the next turn
+-- boundary foists each, so every arrival reaches the model exactly once.
+SELECT c.content, e.pathname
+FROM entries e
+JOIN entry_channels c ON c.entry_id = e.id
+WHERE e.scheme = 'prompt'
+  AND e.owner_id = $owner_id
+  AND e.pathname LIKE $pattern
+  AND c.name = 'body'
+  AND NOT EXISTS (
+      SELECT 1 FROM log_entries le
+      WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'READ'
+        AND le.scheme = 'prompt' AND le.pathname = e.pathname
+  )
+ORDER BY e.id ASC;
+
 -- PREP: drain_get_all_prompt_bodies_for_loop
 -- Sources the Active User Prompts section (§prompt-fold): EVERY prompt entry the
 -- current loop holds, OLDEST first — typically one, but an active loop admits injected
@@ -94,8 +118,11 @@ WHERE e.scheme = 'prompt'
   AND e.owner_id = $owner_id
   AND e.pathname LIKE $pattern
   AND c.name = 'body'
-  AND CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) >
-      (SELECT COALESCE(MAX(sequence), 0) FROM turns WHERE loop_id = $loop_id)
+  AND NOT EXISTS (
+      SELECT 1 FROM log_entries le
+      WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'READ'
+        AND le.scheme = 'prompt' AND le.pathname = e.pathname
+  )
 ORDER BY e.id DESC
 LIMIT 1;
 

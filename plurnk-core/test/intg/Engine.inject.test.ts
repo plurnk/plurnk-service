@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
-test("engine.inject: writes prompt entry at prompt:///<loop>/<next-turn>, owner-keyed", async () => {
+test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, the per-loop ordinal), owner-keyed", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -25,13 +25,14 @@ test("engine.inject: writes prompt entry at prompt:///<loop>/<next-turn>, owner-
         const result = await engine.inject(workerId, "follow-up");
         assert.ok(result, "engine.inject returned a result");
         assert.equal(result.loopId, loopId);
-        assert.equal(result.turnSeq, 2, "next-turn slot is 2 (turn 1 already exists)");
+        assert.equal(result.turnSeq, 2, "the LANDING turn is 2 (turn 1 already exists) — delivery timing, not the key");
 
-        // Verify the entry was actually written with the right body.
+        // The frame keys on the per-loop ORDINAL ({§prompt-loop-containment}): this fixture holds
+        // no prior frames, so the inject is frame 1 — /1/1 — regardless of the landing turn.
         const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2",
+            workspace_id: workspaceId, scheme: "prompt", pathname: "/1/1",
         });
-        assert.ok(entry, "prompt entry exists at prompt:///1/2, owned by the worker");
+        assert.ok(entry, "prompt frame exists at prompt:///1/1, owned by the worker");
         const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({
             entry_id: entry.id, name: "body",
         });
@@ -39,27 +40,26 @@ test("engine.inject: writes prompt entry at prompt:///<loop>/<next-turn>, owner-
     } finally { await db.close(); }
 });
 
-test("[§prompt-slot-supersedes] two injects before the slot's turn opens resolve to ONE frame — the later supersedes, deliberately", async () => {
+test("[§prompt-loop-containment] rapid injects are BOTH contained — distinct frames, nothing superseded (owner: a loop holds every prompt sent before it concludes)", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const workspaceId = await insertWorkspace(db, "engine-inject-lastwins");
+        const workspaceId = await insertWorkspace(db, "engine-inject-containment");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "initial");
         await insertTurn(db, loopId, 1, 102);
 
         const r1 = await engine.inject(workerId, "first follow-up");
         const r2 = await engine.inject(workerId, "second follow-up");
-        assert.equal(r1?.turnSeq, 2);
-        assert.equal(r2?.turnSeq, 2, "both target slot 2 (no turn 2 opened yet)");
+        assert.ok(r1 && r2, "both injects landed in the ACTIVE loop — no new loop while one is live");
 
-        const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2",
-        });
-        const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({
-            entry_id: entry!.id, name: "body",
-        });
-        assert.equal(body?.content, "second follow-up", "last write wins");
+        const f1 = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/1" });
+        const f2 = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2" });
+        assert.ok(f1 && f2, "two frames at consecutive ordinals — the ordinal key cannot collide");
+        const b1 = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: f1!.id, name: "body" });
+        const b2 = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: f2!.id, name: "body" });
+        assert.equal(b1?.content, "first follow-up", "the earlier prompt is CONTAINED, never superseded");
+        assert.equal(b2?.content, "second follow-up");
     } finally { await db.close(); }
 });
 
