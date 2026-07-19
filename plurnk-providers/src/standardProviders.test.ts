@@ -331,7 +331,7 @@ test("openai: non-llama-server endpoint has NO tokenize capability (undefined is
 
 test("plurnk: detectLlamaServer=false never surfaces tokenize, even when the endpoint fingerprints", async () => {
     mockEndpoint({ metaNctx: 32768, modelId: "plurnk" });
-    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     assert.equal(p!.tokenize, undefined);
 });
 
@@ -466,7 +466,7 @@ test("every registry entry resolves the chat URL the spec encodes", async () => 
         // Pin the window: this sweep asserts the chat URL, not budgeting, and the
         // cloud specs fail-hard on an uncataloged model absent a pin (#419).
         const e: NodeJS.ProcessEnv = { ...baseEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" };
-        // Specs whose auth rides headersFromEnv (e.g. plurnk) have no apiKeyVar.
+        // Specs whose auth rides a custom headersFromEnv builder have no apiKeyVar.
         const keyVar = first(spec.apiKeyVar);
         if (keyVar !== undefined) e[keyVar] = "k";
         // Every entry requires its base URL (no in-code default); bedrock also
@@ -671,13 +671,11 @@ const plurnkMock = (chatStatus = 200) => {
 const chatHeaders = (seen: { url: string; headers: Record<string, string> }[]) =>
     seen.find((s) => s.url.endsWith("/chat/completions"))!.headers;
 
-test("plurnk: with no PLURNK_API_KEY, no Authorization header is sent (keyless local server)", async () => {
-    const seen = plurnkMock();
-    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"); // base from PLURNK_BASE_URL, no key
-    await p!.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
-    const h = chatHeaders(seen);
-    assert.equal("Authorization" in h, false);
-    mock.restoreAll();
+test("plurnk: unset PLURNK_API_KEY throws the friendly #537 guidance pre-call, not a raw upstream 401", async () => {
+    await assert.rejects(
+        standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk"), // base from PLURNK_BASE_URL, no key
+        /PLURNK_API_KEY not found\. Acquire one at https:\/\/plurnk\.ai \. Plurnk also supports local models and alternative cloud provider configurations\./,
+    );
 });
 
 test("plurnk: PLURNK_API_KEY sends the bearer; no separate account header (the key identifies the account)", async () => {
@@ -693,7 +691,7 @@ test("plurnk: PLURNK_API_KEY sends the bearer; no separate account header (the k
 
 test("plurnk: forwards attributions + client as Plurnk-* telemetry headers (firstPartyMetadata)", async () => {
     const seen = plurnkMock();
-    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     await p!.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0" });
     const h = chatHeaders(seen);
     assert.equal(h["Plurnk-Attribution"], '["@acme/x@1.0.0"]');
@@ -704,17 +702,17 @@ test("plurnk: forwards attributions + client as Plurnk-* telemetry headers (firs
 
 test("plurnk: forwards strikes as Plurnk-Strikes — and 0 is a real value, distinct from absent (#313)", async () => {
     let seen = plurnkMock();
-    let p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    let p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     await p!.generate({ workerId: "r", messages: [], strikes: 3 });
     assert.equal(chatHeaders(seen)["Plurnk-Strikes"], "3");
     mock.restoreAll();
     seen = plurnkMock();
-    p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     await p!.generate({ workerId: "r", messages: [], strikes: 0 }); // clean streak reported explicitly
     assert.equal(chatHeaders(seen)["Plurnk-Strikes"], "0");
     mock.restoreAll();
     seen = plurnkMock();
-    p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     await p!.generate({ workerId: "r", messages: [] }); // not reported → no header
     assert.equal("Plurnk-Strikes" in chatHeaders(seen), false);
 });
@@ -757,7 +755,7 @@ test("plurnk: normalizes the endpoint's balance_pico into meta.balancePico (#23)
         const sse = 'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}],"balance_pico":880000000}\n\ndata: [DONE]';
         return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(sse)); c.close(); } }), { status: 200 });
     });
-    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     const res = await p!.generate({ workerId: "r", messages: [] });
     assert.equal(res.meta?.balancePico, 880000000);
     mock.restoreAll();
@@ -778,7 +776,7 @@ test("plurnk: reads its window from upstream but stays a plain OpenAI client —
     // detectLlamaServer:false means plurnk reads only the window and refuses every
     // capability it could otherwise be talked into.
     const seen = plurnkMock();
-    const p = await standardProviderFromEnv("plurnk", { ...baseEnv }, "plurnk");
+    const p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     assert.equal(p!.contextWindow, 49152); // window STILL read from upstream — a 32k→48k change is a server decision
     await p!.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(seen.find((s) => s.url.endsWith("/chat/completions"))!.body);

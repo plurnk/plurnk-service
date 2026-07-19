@@ -26,6 +26,10 @@ type StandardProviderSpec = {
     // supplying a custom `headersFromEnv` builder.
     apiKeyVar?: string | readonly string[];
     apiKeyRequired?: boolean;
+    // Custom missing-key throw message (replaces the generic "<var> must be set")
+    // — friendly, actionable guidance shown ONLY on the unset path (#537). A
+    // present-but-rejected key is a wire 401 downstream, never this.
+    apiKeyMessage?: string;
     // Custom request-header builder for auth the single-var bearer can't express
     // (multiple optional credentials, vendor routing headers). Returns the
     // headers built from env; an empty object means no auth headers are sent.
@@ -266,10 +270,13 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     // probeNctx reads the window from upstream (a 32k→48k change is a server
     // decision, not a client release), but detectLlamaServer:false keeps it a
     // plain remote server that can NOT be flipped into grammar/slot behavior.
-    // PLURNK_API_KEY is an optional bearer (identifies the account server-side).
+    // PLURNK_API_KEY is REQUIRED — plurnk.ai rejects keyless requests (live 401
+    // error_invalid_key, #537). The unset path throws the friendly apiKeyMessage
+    // pre-call instead of letting a raw upstream 401 terminate the loop.
     plurnk: {
         baseUrlVar: "PLURNK_BASE_URL", chatPath: "/chat/completions",
-        apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: false,
+        apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: true,
+        apiKeyMessage: "PLURNK_API_KEY not found. Acquire one at https://plurnk.ai . Plurnk also supports local models and alternative cloud provider configurations.",
         reasoningStyle: "none", grammarStyle: "none", tokenizerEnvVar: "PLURNK_TOKENIZER",
         probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico", suppressTuningFloors: true,
     },
@@ -313,7 +320,7 @@ const resolveHeaders = (spec: StandardProviderSpec, env: NodeJS.ProcessEnv, labe
     if (names.length === 0) return {};
     const apiKey = firstSet(env, names);
     if (apiKey === undefined) {
-        if (spec.apiKeyRequired === true) throw new Error(`${label} provider: ${names.join(" or ")} must be set`);
+        if (spec.apiKeyRequired === true) throw new Error(spec.apiKeyMessage ?? `${label} provider: ${names.join(" or ")} must be set`);
         return {};
     }
     return { Authorization: `Bearer ${apiKey}` };
