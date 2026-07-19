@@ -107,8 +107,9 @@ test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unen
         assert.equal(notice.snippet, undefined, "no embedded snippet — the model resolves the line against its own emission");
 
         // The wire: a meta line carrying the position, no snippet / error:// fence. The Errors
-        // section is framework status (uri+status pointers) — it rides the SYSTEM slot (§packet-assembly).
-        const wire = PacketWire.renderSlot(p2.sections, "system");
+        // section is framework status (uri+status pointers) in the user slot's status clump
+        // ([§packet-cache-monotone]); render it alone so the log's JSON rows don't blur the assertions.
+        const wire = PacketWire.renderSection(p2.sections.find((s) => s.name === "errors")!);
         assert.match(wire, /## Errors/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");

@@ -276,12 +276,15 @@ export default class PacketBuilder {
         const logBudget = PacketWire.measureLogBudget(log, countTokens);
         const budgetReadout = this.#renderBudget(logBudget, ceiling);
         // The default packet: an ordered list of addressable sections (§packet-assembly).
-        // `slot` is a TRUST boundary (and the prompt-cache boundary): system holds only
-        // framework-authored, non-injectable sections — the static head (definition/tools/
-        // schemes/policy) forms the cached prefix, then the volatile-but-trusted tail of
-        // errors/git/budget; user holds injectable content (the log, the operator prompt) plus
-        // the requirements footer. The budget section carries its {{tokensFree}} placeholders
-        // here; they resolve below once the assembled total is known.
+        // `slot` is the MESSAGE boundary — and therefore the cache breakpoint every serving
+        // stack keys on. The wire is monotone in volatility ({§packet-cache-monotone}, #531):
+        // system = the timeless (definition/tools/schemes/policy — byte-stable doctrine), user
+        // = the situated (append-mostly log → per-turn status clump → recap), so the prefix
+        // cache survives through the log's frozen head instead of dying at the first gauge
+        // digit. Trust is the one-way ADMISSION rule, not the slot: system admits only
+        // framework-authored, non-injectable content; engine-authored status may ride user;
+        // attacker-reachable text may never ride system. The budget section carries its
+        // {{tokensFree}} placeholders here; they resolve below once the assembled total is known.
         const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
         const workspaceRoot = (await (this.#db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
@@ -302,24 +305,25 @@ export default class PacketBuilder {
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "", tokens: 0 },
             { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "", tokens: 0 },
-            // The packet split is a TRUST boundary: system carries only framework-authored, non-injectable
-            // sections; anything that could carry attacker-reachable text (a READ result, exec output, the
-            // model's own mirrored bytes) stays in user. errors + git are framework status — the errors
-            // section is uri+status POINTERS (the error item + body live in the log), git is counts — so
-            // neither is an injection surface; both sit at the bottom of system, just above budget-the-law.
+            // log leads the user slot: injectable content (READ results, exec output, the model's own mirror) — data, never rules — its frozen head extends the cache prefix ({§packet-cache-monotone}).
+            { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
+            // The status clump — every per-turn-volatile section, quarantined between the log and
+            // the recap ({§packet-cache-monotone}, #531): after the append-only log so its churn
+            // never invalidates the log's cache prefix, and nearest the generation point (the
+            // dashboard reads freshest exactly where the model acts). Engine-authored riding the
+            // user slot is the legal trust direction; errors are uri+status POINTERS (the item +
+            // body live in the log), git is counts — no injection surface either way.
             // child-orientation: what THIS run holds live — streams then runs — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. §child-orientation
-            { name: "child-streams", slot: "system", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
-            { name: "child-workers", slot: "system", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
-            { name: "errors", slot: "system", header: "Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
-            { name: "git", slot: "system", header: "Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
+            { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams), tokens: 0 },
+            { name: "child-workers", slot: "user", header: "Active Child Workers", content: PacketWire.renderChildPointers(childWorkers), tokens: 0 },
+            { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderErrors(telemetryErrors), tokens: 0 },
+            { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus), tokens: 0 },
             // budget — LAW (a hard ceiling the model must obey).
-            { name: "budget", slot: "system", header: "Budget", content: budgetReadout, tokens: 0 },
-            // §prompt-auto-read (owner): the prompts section is the system slot's very bottom —
+            { name: "budget", slot: "user", header: "Budget", content: budgetReadout, tokens: 0 },
+            // §prompt-auto-read (owner): the prompts section closes the status clump —
             // a paths-only list (the errors shape); bodies arrive via the foisted auto-READ.
-            { name: "prompt", slot: "system", header: "User Prompts", content: prompt, tokens: 0 },
-            // log in the user slot: injectable content (READ results, exec output, the model's own mirror) — data, never rules — kept at the action point so the model consults its history.
-            { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens), tokens: 0 },
+            { name: "prompt", slot: "user", header: "User Prompts", content: prompt, tokens: 0 },
             // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
             { name: "requirements", slot: "user", header: "Recap", content: baseRequirements, tokens: 0 },
         ];

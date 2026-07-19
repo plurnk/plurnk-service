@@ -48,7 +48,7 @@ test("[§prompt-auto-read] an over-preview prompt foists READ(prompt)<1,16> — 
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; content: string }> };
             const promptSection = (packet.sections ?? []).find((sec) => sec.name === "prompt");
             assert.ok(promptSection, "the prompts section exists");
-            assert.equal(promptSection!.slot, "system", "system slot — the very bottom of the system packet");
+            assert.equal(promptSection!.slot, "user", "user slot — the prompts paths-list closes the status clump ([§packet-cache-monotone])");
             assert.match(promptSection!.content, /^\* prompt:\/\/\/1\/1$/m, "paths-only, bare loop-SEQ coordinates — prompt:///1/1, never a worker id ({§prompt-self-only})");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
