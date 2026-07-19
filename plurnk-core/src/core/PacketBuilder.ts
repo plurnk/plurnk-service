@@ -585,13 +585,6 @@ export default class PacketBuilder {
             + provider.countTokens(PacketWire.renderSlot(packet.sections, "user"));
     }
 
-    // #529 — the INCOMPRESSIBLE floor: the system-slot render alone. The model can never FOLD
-    // the definition/tools/schemes/policy sections, so a prompt budget below this floor makes a
-    // recovery grant unwinnable — no amount of curation fits the packet.
-    systemFloorTokens(packet: RequestPacket, provider: Provider): number {
-        return provider.countTokens(PacketWire.renderSlot(packet.sections, "system"));
-    }
-
     // Complete the packet by adding the model's response. After this the
     // packet matches Packet.json fully and is ready for storage.
     completePacket(requestPacket: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown, provider: Provider): object {
