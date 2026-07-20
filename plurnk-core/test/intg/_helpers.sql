@@ -413,3 +413,6 @@ SELECT meta FROM turns WHERE id = $id;
 
 -- PREP: test_schema_version
 SELECT user_version AS v FROM pragma_user_version;
+
+-- PREP: test_count_entry_rows
+SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id AND pathname = $pathname;

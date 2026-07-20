@@ -11,6 +11,6 @@ test("[§db-schema-version-stamp] a migrated DB is stamped with the current sche
     const db = await openMigrated();
     try {
         const row = await (db.test_schema_version as PrepMethod).get<{ v: number }>({});
-        assert.equal(row?.v, 1, "PRAGMA user_version carries the genesis stamp — external consumers gate on it");
+        assert.equal(row?.v, 2, "PRAGMA user_version carries the current stamp (v2: entries.scheme NOT NULL) — external consumers gate on it");
     } finally { await db.close(); }
 });

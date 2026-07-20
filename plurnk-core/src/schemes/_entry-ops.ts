@@ -1,4 +1,5 @@
 import EntrySemantic from "./_entry-semantic.ts";
+import EntryCrud from "./_entry-crud.ts";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
@@ -197,8 +198,8 @@ export default class EntryOps {
         const { db, workspaceId } = ctx;
         const { channels, defaultChannel } = manifest;
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
-        // name). File sets storedScheme=null — its rows persist bare (scheme=NULL).
-        const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
+        // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
+        const scheme = EntryCrud.identityScheme(manifest);
 
         const fragment = EntryOps.#fragmentOf(statement);
         const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);

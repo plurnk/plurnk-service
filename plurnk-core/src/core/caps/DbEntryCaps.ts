@@ -12,9 +12,9 @@ import EntryCrud from "../../schemes/_entry-crud.ts";
 
 export default class DbEntryCaps implements EntryCaps {
     readonly #ctx: PlurnkSchemeContext;
-    readonly #scheme: string | null;
+    readonly #scheme: string;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string | null) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string) {
         this.#ctx = ctx;
         this.#scheme = scheme;
     }

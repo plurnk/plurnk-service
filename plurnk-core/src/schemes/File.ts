@@ -71,7 +71,7 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 export default class File {
     static manifest: SchemeManifest = {
         name: "file",
-        storedScheme: null,  // file rows persist bare (entries.scheme = NULL); renders as a bare path
+        storedScheme: "file",  // {§entry-identity-no-null} — file rows persist under the reserved 'file' scheme (a NULL identity component voids the UNIQUE index; run59/#545); renders as a bare path
         channels: {},  // dynamic mimetype per file extension
         defaultChannel: "body",
         category: "data",
@@ -145,7 +145,7 @@ export default class File {
         // the same parity READ/EDIT/deleteEntry have. Without it a COPY/MOVE FROM a bare file path
         // misses the canonical-stored member and 404s a source that plainly exists.
         const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
-        return EntryCrud.readEntry(root === null ? pathname : File.#toMemberKey(pathname, root), ctx, null);
+        return EntryCrud.readEntry(root === null ? pathname : File.#toMemberKey(pathname, root), ctx, "file");
     }
 
     // §membership disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -181,7 +181,7 @@ export default class File {
         let original = "";
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         if (fileExists) {
-            const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname: rel });
+            const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
             if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
             const viewGlobs = (await (ctx.db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
                 .filter((c) => c.effect === "view").map((c) => c.glob);
@@ -190,7 +190,7 @@ export default class File {
             // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
             // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
             // worker's reconcile can't advance it under the paused proposal. §membership-edit-write-cas
-            const snapshot = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname: rel, channel: "body" });
+            const snapshot = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;
         }
@@ -270,7 +270,7 @@ export default class File {
             } catch (err) {
                 if ((err as NodeJS.ErrnoException).code !== "ENOENT") return { status: 500, outcome: "delete_failed", body: err instanceof Error ? err.message : String(err) };
             }
-            await EntryCrud.deleteEntry(attrs.deletePath, ctx, null);
+            await EntryCrud.deleteEntry(attrs.deletePath, ctx, "file");
             return { status: 200 };
         }
         const canonical = attrs.canonical;
@@ -329,7 +329,7 @@ export default class File {
             const { entryId } = await EntryCrud.writeEntry(relPath, {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
-            }, ctx, null);
+            }, ctx, "file");
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
             // write as the synced state — not an FsDivergence narrated back at the model.
             if (entryId !== null) {
@@ -359,7 +359,7 @@ export default class File {
         const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) return { status: 400 };
         const rel = File.#toMemberKey(pathname, root);
-        const member = await (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname: rel });
+        const member = await (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
         if (member === undefined) return { status: 404 };
         return { status: 202, attrs: { deletePath: rel } };
     }

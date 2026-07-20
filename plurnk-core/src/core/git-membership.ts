@@ -251,10 +251,10 @@ export default class GitMembership {
         // Model-created ('client') members are never reclaimed.
         const commonsId = await Owner.commonsId(db, workspaceId);
         for (const pathname of desiredGit) {
-            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: null, pathname: `/${pathname}`, membership_origin: "git" });
+            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname: `/${pathname}`, membership_origin: "git" });
         }
         for (const pathname of desiredPick) {
-            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: null, pathname: `/${pathname}`, membership_origin: "constraint" });
+            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname: `/${pathname}`, membership_origin: "constraint" });
         }
         const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
         for (const m of registered) {
@@ -351,7 +351,7 @@ export default class GitMembership {
             throw err;
         }
         const known = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({
-            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname,
+            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname,
         });
         if (known !== undefined && known.synced_sig === sig) return null;  // unchanged — the change-gate
 
@@ -360,7 +360,7 @@ export default class GitMembership {
             // Empty body channel stamped with the real binary mimetype — a first-
             // class entry that READ-415s through readWorkspaceEntry's isBinaryMimetype
             // gate (#186), not a channel-less row that would read as 404.
-            const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, null);
+            const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, "file");
             if (r.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: r.entryId, synced_sig: sig });
             return null;  // binary bodies are empty markers — no text divergence to narrate
         }
@@ -377,7 +377,7 @@ export default class GitMembership {
         // re-stamp octet-stream and take the binary arm (empty body, READ-415, never
         // FTS'd/embedded/tokenized as text).
         if (buf.subarray(0, 8192).includes(0)) {
-            const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype: "application/octet-stream" } }, tags: [] }, ctx, null);
+            const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype: "application/octet-stream" } }, tags: [] }, ctx, "file");
             if (r.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: r.entryId, synced_sig: sig });
             return null;
         }
@@ -386,12 +386,12 @@ export default class GitMembership {
         // the entry: an existing body channel whose content differs from disk is an
         // ambient divergence (D5). writeEntry then refreshes the entry to disk truth.
         const prior = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({
-            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: null, pathname, channel: "body",
+            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname, channel: "body",
         });
-        const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
+        const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
         if (result.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: result.entryId, synced_sig: sig });
         if (prior !== undefined && prior.content !== content && result.entryId !== null) {
-            return { pathname, scheme: null, entryId: result.entryId, channel: "body", before: prior.content, after: content };
+            return { pathname, scheme: "file", entryId: result.entryId, channel: "body", before: prior.content, after: content };
         }
         return null;
     }

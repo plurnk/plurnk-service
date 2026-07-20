@@ -2,7 +2,8 @@
 -- {§db-schema-version-stamp} (#536) — the cross-repo drift gate: external consumers (bench's
 -- digest) fail-hard on mismatch instead of rotting silently against a moved schema. ANY change
 -- to the schema's SHAPE (tables, columns, identity keys) bumps this integer in the same commit.
-PRAGMA user_version = 1;
+-- v2: entries.scheme NOT NULL — the 'file' reserved scheme replaced NULL ({§entry-identity-no-null}, #545).
+PRAGMA user_version = 2;
 
 -- INIT: workspaces
 -- project_root: workspace pointer. NULL = headless (no disk side-effects);
@@ -129,14 +130,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequ
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
 -- INIT: entries
--- The canonical addressable store. (scope, scheme, pathname) is the
--- identity tuple. scheme is nullable: the `file` scheme is a routing
--- internal only, never stored here; bare/file paths land with scheme=NULL.
+-- The canonical addressable store. (workspace, owner, scheme, pathname) is the identity
+-- tuple, and NO component may be NULL: NULLs are distinct under SQL UNIQUE, so a nullable
+-- component voids the identity index — the #526 disease, re-run on this axis as run59/#545
+-- (one phantom member row per turn; 74k rows for 530 identities). Bare/file paths persist
+-- under the reserved 'file' scheme; they still RENDER as bare paths. {§entry-identity-no-null}
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
     version    INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
     workspace_id INTEGER,
-    scheme     TEXT                         CHECK (scheme IS NULL OR length(scheme) > 0),
+    scheme     TEXT    NOT NULL             CHECK (length(scheme) > 0),
     username   TEXT,
     password   TEXT,
     hostname   TEXT,
@@ -178,6 +181,13 @@ CREATE TABLE IF NOT EXISTS entries (
 -- Concurrent workers' capability streams share the loop-relative coordinate (every worker's first
 -- loop is seq 1), so identity keys on the owner and identical coordinates are DISTINCT rows (#526).
 CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, owner_id, scheme, pathname);
+
+-- INIT: entries_scheme_heal
+-- v1→v2 in-place heal ({§entry-identity-no-null}): fold legacy NULL-scheme member rows onto
+-- the reserved 'file' scheme. Idempotent — a second pass updates zero rows. A v1 db already
+-- fragmented by the #545 duplicate class fails HERE on the identity index, loudly and by
+-- design: a fragmented store has no safe automatic merge; recover via a fresh db.
+UPDATE entries SET scheme = 'file' WHERE scheme IS NULL;
 
 -- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.

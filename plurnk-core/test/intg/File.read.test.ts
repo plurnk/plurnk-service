@@ -46,7 +46,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const content = await readFile(canonical, "utf8");
     // Entry key is namespace-absolute (`/notes.md`), mirroring production's
     // git-membership pass — the disk path (canonical) stays workspace-relative.
-    await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, null);
+    await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
 };
 
 // Set up a workspace whose project_root points at a fresh temp directory,

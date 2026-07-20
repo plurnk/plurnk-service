@@ -783,7 +783,7 @@ export default class Engine {
                 // empty survey is orienting ("don't look here"), per the #527 re-home of the old
                 // known/unknown always-foist role onto the shared blackboard.
                 foistSchemes.push({ scheme: "worker", entries: catalogSchemes.find((c) => c.scheme === "worker")?.entries ?? 0 });
-                if (!foistSchemes.some((c) => c.scheme === null)) foistSchemes.push({ scheme: null, entries: 0 });
+                if (!foistSchemes.some((c) => c.scheme === "file")) foistSchemes.push({ scheme: "file", entries: 0 }); // {§entry-identity-no-null} — file rows persist under the reserved scheme now; a null key would double-foist the tree
                 for (const { scheme, entries } of foistSchemes) {
                     const schemeName = scheme ?? "file";
                     const isFile = schemeName === "file";

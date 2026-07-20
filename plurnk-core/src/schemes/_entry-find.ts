@@ -22,6 +22,7 @@ import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.t
 import Matcher from "../content/matcher.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import EntryGraph from "./_entry-graph.ts";
+import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
 import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
@@ -98,8 +99,8 @@ export default class EntryFind {
     ): Promise<{ status: number; matches: Match[] }> {
         if (statement.target === null) return { status: 400, matches: [] };
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
-        // name). File sets storedScheme=null — bare rows.
-        const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
+        // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
+        const scheme = EntryCrud.identityScheme(manifest);
         if (statement.body !== null && statement.body.dialect === "semantic") {
             // ~query: embed the query text, FTS-narrow by its terms, cosine-rank the narrowed
             // set, top-K CHUNKS. Each ranked chunk is a (file, span) item — a file may appear
@@ -189,7 +190,7 @@ export default class EntryFind {
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
         if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
-        const scheme = manifest.storedScheme === undefined ? manifest.name : manifest.storedScheme;
+        const scheme = EntryCrud.identityScheme(manifest);
         // The catalog row is keyed by its addressable path; align each match to its row through
         // the same EntryManifest.toPath the catalog uses (single source of truth). Match order is
         // preserved (rank for ~semantic); a match whose entry has no row (e.g. the self-excluded

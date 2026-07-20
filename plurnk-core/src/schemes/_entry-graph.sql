@@ -23,7 +23,7 @@ VALUES ($workspace_id, $entry_id, $name, $kind, $container, $line, $col);
 -- (#286: a matcher resolves to (file, span) — one item per reference occurrence).
 SELECT DISTINCT e.pathname, r.line AS line, r.line AS end_line
 FROM symbol_refs r JOIN entries e ON e.id = r.entry_id
-WHERE r.workspace_id = $workspace_id AND e.scheme IS $scheme AND r.name = $name
+WHERE r.workspace_id = $workspace_id AND e.scheme = $scheme AND r.name = $name
 ORDER BY e.pathname, r.line;
 
 -- PREP: graph_def_pathnames_by_name
@@ -32,7 +32,7 @@ ORDER BY e.pathname, r.line;
 -- when a def has no end (#286: the symbol's line..end_line is its (file, span)).
 SELECT DISTINCT e.pathname, d.line AS line, COALESCE(d.end_line, d.line) AS end_line
 FROM symbol_defs d JOIN entries e ON e.id = d.entry_id
-WHERE d.workspace_id = $workspace_id AND e.scheme IS $scheme AND d.name = $name
+WHERE d.workspace_id = $workspace_id AND e.scheme = $scheme AND d.name = $name
 ORDER BY e.pathname, d.line;
 
 -- PREP: graph_resolve_def

@@ -40,7 +40,14 @@ export interface DeleteEntryResult {
 }
 
 export default class EntryCrud {
-    static async readEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string | null, ownerId?: number): Promise<ReadEntryResult> {
+    // {§entry-identity-no-null} — the identity scheme a manifest persists under. Explicit
+    // null is ILLEGAL: a NULL identity component voids the entries UNIQUE index (run59/#545).
+    static identityScheme(manifest: { name: string; storedScheme?: string | null }): string {
+        if (manifest.storedScheme === null) throw new Error(manifest.name + ": storedScheme null is illegal — a NULL identity component voids the entries identity index ({§entry-identity-no-null})");
+        return manifest.storedScheme ?? manifest.name;
+    }
+
+    static async readEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<ReadEntryResult> {
         const { db, workspaceId } = ctx;
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
         const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
@@ -58,7 +65,7 @@ export default class EntryCrud {
         return { status: 200, entry: { channels, tags } };
     }
 
-    static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string | null, ownerId?: number): Promise<WriteEntryResult> {
+    static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<WriteEntryResult> {
         const { db, workspaceId, tokenize } = ctx;
         if (tokenize === undefined) throw new Error("writeEntry: ctx.tokenize is required for token accounting");
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
@@ -104,7 +111,7 @@ export default class EntryCrud {
         return { status: created ? 201 : 200, created, entryId };
     }
 
-    static async deleteEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string | null, ownerId?: number): Promise<DeleteEntryResult> {
+    static async deleteEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<DeleteEntryResult> {
         const { db, workspaceId } = ctx;
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
         const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });

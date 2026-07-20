@@ -11,16 +11,16 @@ SELECT id, version, workspace_id, owner_id, scheme, pathname, attributes FROM en
 SELECT workspace_id, owner_id FROM entries LIMIT 1;
 
 -- PREP: test_entries_insert_with_workspace_id_only
-INSERT INTO entries (workspace_id, owner_id, pathname) VALUES ($workspace_id, (SELECT id FROM workers ORDER BY id LIMIT 1), $pathname);
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname) VALUES ($workspace_id, (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', $pathname);
 
 -- PREP: test_entries_insert_with_port
 INSERT INTO entries (workspace_id, owner_id, scheme, hostname, port, pathname) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), $scheme, $hostname, $port, $pathname);
 
 -- PREP: test_entries_insert_with_params
-INSERT INTO entries (workspace_id, owner_id, pathname, params) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), $pathname, $params);
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname, params) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', $pathname, $params);
 
 -- PREP: test_entries_insert_with_attributes
-INSERT INTO entries (workspace_id, owner_id, pathname, attributes) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), $pathname, $attributes);
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname, attributes) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), 'x', $pathname, $attributes);
 
 -- PREP: test_entries_count_all
 SELECT COUNT(*) AS n FROM entries;
@@ -65,7 +65,7 @@ SELECT entry_id FROM entry_tags WHERE tag = $tag ORDER BY entry_id;
 SELECT name FROM sqlite_master WHERE type='index' AND name='entry_tags_tag';
 
 -- EXEC: test_entries_insert_session_no_workspace_id
-INSERT INTO entries (owner_id, pathname) VALUES ((SELECT id FROM workers ORDER BY id LIMIT 1), '/x');
+INSERT INTO entries (owner_id, scheme, pathname) VALUES ((SELECT id FROM workers ORDER BY id LIMIT 1), 'x', '/x');
 
 
 
@@ -73,7 +73,7 @@ INSERT INTO entries (owner_id, pathname) VALUES ((SELECT id FROM workers ORDER B
 INSERT INTO entries (workspace_id, owner_id, scheme, pathname) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), '', '/x');
 
 -- EXEC: test_entries_insert_no_pathname
-INSERT INTO entries (workspace_id, owner_id) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1));
+INSERT INTO entries (workspace_id, owner_id, scheme) VALUES ((SELECT id FROM workspaces ORDER BY id LIMIT 1), (SELECT id FROM workers ORDER BY id LIMIT 1), 'x');
 
 -- PREP: test_entry_channels_insert_missing_name
 INSERT INTO entry_channels (entry_id, content, mimetype) VALUES ($entry_id, '', 'text/plain');

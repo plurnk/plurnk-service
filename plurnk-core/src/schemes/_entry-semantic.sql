@@ -36,7 +36,7 @@ WITH ranked AS (
     JOIN entry_embeddings em ON em.entry_id = e.id AND em.embedding_model = $embedding_model
     WHERE f.content MATCH $fts_query
       AND e.workspace_id = $workspace_id
-      AND e.scheme IS $scheme
+      AND e.scheme = $scheme
 )
 SELECT pathname, line_start, line_end FROM ranked
 WHERE rn = 1
@@ -56,7 +56,7 @@ WITH ranked AS (
     JOIN entry_embeddings em ON em.entry_id = e.id AND em.embedding_model = $embedding_model
     WHERE f.content MATCH $fts_query
       AND e.workspace_id = $workspace_id
-      AND e.scheme IS $scheme
+      AND e.scheme = $scheme
 )
 SELECT pathname, line_start, line_end FROM ranked
 WHERE rn = 1 AND score >= $threshold
@@ -75,7 +75,7 @@ FROM entry_fts f
 JOIN entries e ON e.id = f.rowid
 WHERE f.content MATCH $fts_query
   AND e.workspace_id = $workspace_id
-  AND e.scheme IS $scheme
+  AND e.scheme = $scheme
 ORDER BY rank
 LIMIT $k;
 
@@ -90,7 +90,7 @@ JOIN entries e ON e.id = f.rowid
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
 WHERE f.content MATCH $fts_query
   AND e.workspace_id = $workspace_id
-  AND e.scheme IS $scheme
+  AND e.scheme = $scheme
 ORDER BY bm25(entry_fts)
 LIMIT $cap;
 

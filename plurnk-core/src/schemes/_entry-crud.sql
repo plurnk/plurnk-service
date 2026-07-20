@@ -2,11 +2,10 @@
 -- (known/unknown/skill) and the engine for cross-scheme COPY/MOVE/SEND[410].
 
 -- PREP: crud_find_workspace_entry
--- Null-aware scheme comparison: the file scheme is the routing internal
--- for bare/absolute paths; storage normalizes its rows to scheme=NULL
--- (Engine.#extractTarget). SQL's `=` doesn't match NULL, so use `IS`.
+-- {§entry-identity-no-null} — every identity component is NOT NULL (bare/absolute paths
+-- persist under the reserved 'file' scheme), so plain `=` is the honest comparison.
 SELECT id FROM entries
-WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: crud_read_channels
 SELECT name, content, mimetype FROM entry_channels WHERE entry_id = $entry_id;
@@ -34,9 +33,9 @@ RETURNING id;
 -- PREP: crud_get_member_sig
 -- SPEC §membership-change-gated-sync — the member's last-synced disk signature
 -- (mtime:size), read before materializing so an unchanged file short-circuits
--- before any content read. Null-aware scheme (file members store scheme=NULL).
+-- before any content read. File members store scheme='file' ({§entry-identity-no-null}).
 SELECT id, synced_sig FROM entries
-WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme IS $scheme AND pathname = $pathname;
+WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: crud_set_synced_sig
 -- Stamp the disk signature after a member materializes to disk truth; the next
@@ -73,7 +72,7 @@ DELETE FROM entries WHERE id = $entry_id;
 -- ((git ls-files ∪ add) − ignore) and un-registers the difference, so entries ==
 -- members. Model-created ('client') members are excluded — not git's to reclaim.
 SELECT id, pathname FROM entries
-WHERE workspace_id = $workspace_id AND scheme IS NULL AND membership_origin IN ('git', 'constraint');
+WHERE workspace_id = $workspace_id AND scheme = 'file' AND membership_origin IN ('git', 'constraint');
 
 -- PREP: crud_insert_workspace_constraint
 -- SPEC §membership constraint overlay — the client supersede. Idempotent per

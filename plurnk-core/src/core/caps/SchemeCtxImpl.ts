@@ -33,7 +33,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly subscriptions: SubscriptionCaps;
     readonly crossScheme: CrossSchemeCaps = CROSS_SCHEME_STUB;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string | null) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string) {
         this.workspaceId = ctx.workspaceId;
         this.workerId = ctx.workerId;
         this.loopId = ctx.loopId;

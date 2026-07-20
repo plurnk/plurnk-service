@@ -17,7 +17,7 @@ FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
-  AND e.scheme IS $scheme
+  AND e.scheme = $scheme
   AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
   AND (
     json_array_length(COALESCE($tags, '[]')) = 0

@@ -14,7 +14,7 @@ FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
-  AND e.scheme IS $scheme
+  AND e.scheme = $scheme
   AND e.pathname = $pathname
   AND ec.name = $channel;
 

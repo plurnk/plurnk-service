@@ -32,10 +32,13 @@ export default class EntryManifest {
     // Public — the catalog's path-rendering is the single source of truth for the
     // addressable key, shared by FIND (EntryFind aligns matched pathnames to catalog rows).
     static toPath(scheme: string | null, pathname: string): string {
-        // Bare (file, scheme===null) entries store the namespace-absolute key (`/notes.md`)
-        // but the model types the relative path it reads — render the leading slash off so
-        // the catalog matches what the model writes back (READ/EDIT resolve either form).
-        if (scheme === null) return pathname.replace(/^\//, "");
+        // File entries persist under the reserved scheme ({§entry-identity-no-null}) storing
+        // the namespace-absolute key (`/notes.md`), but the model types the relative path it
+        // reads — render the leading slash off so the catalog matches what the model writes
+        // back (READ/EDIT resolve either form). A NULL scheme row cannot exist on a v2 schema
+        // (NOT NULL + the heal INIT) — refuse rather than render a wrong address.
+        if (scheme === "file") return pathname.replace(/^\//, "");
+        if (scheme === null) throw new Error(`entry '${pathname}' carries a NULL scheme — pre-v2 row survived the heal ({§entry-identity-no-null})`);
         // {§entry-owner} — the owner rides the owner_id column, never the pathname; render the
         // empty-authority form. A face that queried a non-empty authority re-applies it to the
         // result paths (Worker.find) so the model sees the address it typed.

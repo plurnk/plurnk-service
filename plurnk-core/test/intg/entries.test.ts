@@ -94,12 +94,10 @@ test("entries: ON DELETE CASCADE via workspace", async () => {
     } finally { await db.close(); }
 });
 
-test("entries: scheme can be null", async () => {
+test("[§entry-identity-no-null] entries: a NULL scheme is refused — no identity component may be NULL", async () => {
     const db = await openMigrated();
     try {
-        await insertEntry(db, null, "config/foo.json");
-        const row = await (db.test_entries_get_scheme as PrepMethod).get<{ scheme: string | null }>();
-        assert.equal(row?.scheme, null);
+        await assert.rejects(() => insertEntry(db, null, "config/foo.json"), /NOT NULL constraint failed: entries\.scheme/);
     } finally { await db.close(); }
 });
 
