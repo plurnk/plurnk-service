@@ -62,7 +62,8 @@
         "test": "npm run test:lint && npm run test:unit",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
-        "prepack": "npm run build"
+        "prepack": "npm run build",
+        "prepublishOnly": "npm outdated && npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
         "wabt": "^1.0.39"
