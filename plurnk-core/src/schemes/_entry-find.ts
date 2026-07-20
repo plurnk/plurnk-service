@@ -117,6 +117,20 @@ export default class EntryFind {
         }
 
         const scopePathname = EntryFind.#scopePathnameOf(statement);
+        // {§fs-errno} — the green-lie pin (#545): a FIND whose target is an EXACT path (no glob,
+        // no folder scope) that resolves to NO entry is ENOENT with its fact — certifying empty
+        // over nothing taught run59's model that a real function did not exist. A glob/folder
+        // scope with zero matches stays the blessed orienting empty (§render-rule, owner: an
+        // empty survey says "don't look here").
+        if (statement.target.kind !== "regex" && scopePathname !== null && scopePathname.length > 0
+            && !scopePathname.includes("*") && !scopePathname.endsWith("/")) {
+            const exact = await (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+                workspace_id: ctx.workspaceId,
+                owner_id: explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
+                scheme, pathname: scopePathname,
+            });
+            if (exact === undefined) return { status: 404, matches: [], error: `no entry at ${EntryManifest.toPath(scheme, scopePathname)}` } as { status: number; matches: Match[] };
+        }
         // The target's GLOB scope. A FOLDER (trailing slash, incl. the scheme root `/`) expands to
         // its contents — append `*`; a bare ENTRY path stays exact (one entry); an explicit glob
         // passes through literally. The `*` is folderhood, not a blanket prefix — so FIND(README.md)
@@ -189,7 +203,7 @@ export default class EntryFind {
     // that catalog, rendered as a JSON array (application/json). §find-result-catalog-rows
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
-        if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+        if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [], ...((match as { error?: string }).error !== undefined ? { error: (match as { error?: string }).error } : {}) }; // {§fs-errno} — the ENOENT fact rides through
         const scheme = EntryCrud.identityScheme(manifest);
         // The catalog row is keyed by its addressable path; align each match to its row through
         // the same EntryManifest.toPath the catalog uses (single source of truth). Match order is

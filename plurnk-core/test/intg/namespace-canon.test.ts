@@ -146,3 +146,36 @@ test("[§fs-write-surface] the six-row write matrix — grantor-keyed mounts, O_
         assert.equal(mint.status, 403, "no mount ever mints — only the root creates");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
+
+test("[§fs-errno] pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by the strings alone", async () => {
+    const { root, db, workspaceId, ctx } = await setup();
+    try {
+        await writeFile(join(root, "real.md"), "content\n");
+        await EntryCrud.writeEntry("real.md", { channels: { body: { content: "content\n", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
+        const file = new File();
+
+        // ENOENT on a READ miss carries the resolved name in wire canon.
+        const miss = await file.read(readStmt("/no/such.md"), ctx);
+        assert.equal(miss.status, 404);
+        assert.equal((miss as { error?: string }).error, "no entry at no/such.md", "the READ miss states its fact — resolved form, wire canon");
+
+        // The green-lie pin: FIND over an unresolvable EXACT path is ENOENT with its fact, never 200-empty.
+        const findMissStmt = { op: "FIND", suffix: "", signal: null, lineMarker: null, position: { line: 1, column: 1 },
+            target: { kind: "local", raw: "no/such.md" }, body: null } as never;
+        const findMiss = await file.find(findMissStmt, ctx);
+        assert.equal(findMiss.status, 404, "FIND over nothing never certifies empty (run59's launcher)");
+        assert.equal((findMiss as { error?: string }).error, "no entry at no/such.md");
+
+        // A FOLDER scope with zero matches stays the blessed orienting empty survey.
+        const surveyStmt = { op: "FIND", suffix: "", signal: null, lineMarker: null, position: { line: 1, column: 1 },
+            target: { kind: "local", raw: "empty-dir/" }, body: null } as never;
+        const survey = await file.find(surveyStmt, ctx);
+        assert.equal(survey.status, 200, "an empty folder survey is orienting, not an error");
+
+        // Occupancy (EEXIST-class): a hidden non-member at the path — the fact reveals occupancy only.
+        await writeFile(join(root, "occupied.md"), "hidden\n");
+        const clobber = await file.edit(editStmt("occupied.md", "x\n"), ctx);
+        assert.equal(clobber.status, 403);
+        assert.equal((clobber as { error?: string }).error, "a file exists at occupied.md", "occupancy leaks; content stays dark — distinguishable from ENOENT by the string");
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});

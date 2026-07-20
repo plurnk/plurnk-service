@@ -174,7 +174,9 @@ export default class File {
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         if (fileExists) {
             const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null; membership_origin: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
-            if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
+            // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
+            // occupies the path; existence leaks, content stays dark. The model picks another name.
+            if (member === undefined) return { ok: false, status: 403, error: `a file exists at ${rel}` };
             // {§fs-write-surface} 5 — a git-included mount member is read-only: git's grants
             // confer rw only within the project; only an explicit client grant carries write.
             if (isMount && member.membership_origin === "git") return { ok: false, status: 403, error: "member is read-only" };

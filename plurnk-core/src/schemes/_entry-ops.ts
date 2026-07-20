@@ -6,6 +6,7 @@ import { decodePathParens } from "../core/path-decode.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
+import EntryManifest from "./_entry-manifest.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } from "../content/index.ts";
 
 // Shared static-method helpers for workspace-scope entry-bearing schemes
@@ -28,7 +29,7 @@ export type EditResult = { status: number; entryId: number | null; channel: stri
 // distinguishes "0 matches" from "empty content."
 // reason — surfaced on 203 dialect-fallback so the model sees why the
 // structured parse failed and got raw content instead.
-export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string; awaitWorker?: string };
+export type ReadResult = { status: number; content: string | null; mimetype: string | null; channel: string | null; startLine?: number | null; matches?: number | null; reason?: string; error?: string; awaitWorker?: string };
 export type OpenFoldResult = { status: number };
 
 export default class EntryOps {
@@ -215,7 +216,9 @@ export default class EntryOps {
             if (html !== undefined) readChannel = "html";
         }
         const row = await (db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: readChannel }, owner_id: ownerId });
-        if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };  // §read-read-404
+        // §read-read-404 + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
+        // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
+        if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel, error: `no entry at ${EntryManifest.toPath(scheme, pathname)}` };
 
         if (MimetypeBinary.isBinaryMimetype(row.mimetype)) {
             return { status: 415, content: null, mimetype: row.mimetype, channel: targetChannel };
