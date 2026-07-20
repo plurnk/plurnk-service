@@ -83,3 +83,27 @@ test("[§fs-canonical-name] the storage fixpoint: every file-class row is its ow
         }
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test("[§fs-answer-in-canon] the log row: address COLUMNS speak canon, tx keeps the model's verbatim spelling — both halves of the line", async () => {
+    const { root, db, workspaceId, ctx } = await setup();
+    try {
+        await writeFile(join(root, "readme.md"), "hello\n");
+        await EntryCrud.writeEntry("readme.md", { channels: { body: { content: "hello\n", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
+
+        const Engine = (await import("../../src/core/Engine.ts")).default;
+        const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
+        const { insertLoop, insertTurn } = await import("./_helpers.ts");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const loopId = await insertLoop(db, (await (db.test_first_worker_for_ws as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId }))!.id, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const spelling = "/./readme.md"; // a deliberately ugly legal spelling
+        const r = await engine.dispatch({
+            statement: readStmt(spelling), workspaceId, workerId: ctx.workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(r.status, 200, "the ugly spelling resolves");
+        const row = await (db.test_last_log_row as PrepMethod).get<{ pathname: string | null; tx: string }>({ loop_id: loopId });
+        assert.equal(row?.pathname, "readme.md", "the engine-authored pathname COLUMN carries wire canon");
+        assert.ok(row?.tx.includes("/./readme.md"), "tx keeps the model's own spelling verbatim — history is never rewritten");
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});

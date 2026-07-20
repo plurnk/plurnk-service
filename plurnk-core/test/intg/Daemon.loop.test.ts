@@ -288,7 +288,7 @@ test("loop.run({ openPaths }) foists a turn-0 file READ for each path (#260)", a
             const reads = (logEntries() as Array<{ entry: { op: string; origin: string; scheme: string | null; pathname: string } }>)
                 .map((c) => c.entry)
                 .filter((e) => e.op === "READ" && e.origin === "plurnk" && e.scheme === null);
-            assert.deepEqual(reads.map((r) => r.pathname).toSorted(), ["/README.md", "/src/foo.ts"], "a plurnk-origin file READ foisted per openPath at turn 0");
+            assert.deepEqual(reads.map((r) => r.pathname).toSorted(), ["README.md", "src/foo.ts"], "a plurnk-origin file READ foisted per openPath at turn 0 — columns in wire canon ({§fs-answer-in-canon})");
         } finally { ws.close(); }
     });
 });

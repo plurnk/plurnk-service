@@ -13,6 +13,7 @@ import { foldAuthorityIntoPath, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
 import { decodePathParens } from "./path-decode.ts";
+import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
 import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
@@ -117,6 +118,27 @@ export default class Dispatcher {
         this.#joinTargets = joinTargets ?? new Set();
     }
 
+    // workspace → project_root, memoized: {§fs-namespace} fixes the root immutably at
+    // workspace creation, so a process-lifetime cache can never go stale.
+    #rootCache = new Map<number, string | null>();
+    async #workspaceRoot(workspaceId: number): Promise<string | null> {
+        if (this.#rootCache.has(workspaceId)) return this.#rootCache.get(workspaceId) ?? null;
+        const row = await (this.#db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
+        const root = row?.project_root ?? null;
+        this.#rootCache.set(workspaceId, root);
+        return root;
+    }
+
+    // {§fs-answer-in-canon} — a file-class target's engine-authored address COLUMNS carry
+    // the canonical key; the tx JSON keeps the model's verbatim statement (history is never
+    // rewritten — the one surviving spelling). An un-canonicalizable spelling keeps its raw
+    // form: the row must still faithfully exist for the op that happened.
+    async #canonColumns(target: { scheme: string | null; pathname: string | null }, workspaceId: number): Promise<void> {
+        if (target.scheme !== null || target.pathname === null) return;
+        const key = Namespace.canonicalizeSpelling(target.pathname, await this.#workspaceRoot(workspaceId));
+        if (key !== null) target.pathname = key;
+    }
+
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         const { statement, workspaceId, workerId, loopId, turnId, sequence, origin, onDispatch, turnParseErrors } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
@@ -172,7 +194,7 @@ export default class Dispatcher {
         // §join-blocking-collect (#354) — Run.read on a still-running child returns an awaitWorker signal;
         // arm the join so THIS turn's bare SEND[102] parks (the blocking collect) instead of spinning.
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
-        const logEntryId = await this.#writeLog({ statement, result, workerId, loopId, turnId, sequence, origin });
+        const logEntryId = await this.#writeLog({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin });
         // §search-gate — register successful searches AFTER #writeLog stamps the runtime
         // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
         if (statement.op === "EXEC" && result.status < 400) {
@@ -207,6 +229,7 @@ export default class Dispatcher {
             // YOLO listener auto-resolves) BEFORE awaiting — they may
             // resolve synchronously inside their handlers.
             const target = this.#extractTarget(statement.target);
+            await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon} — compare in the same canon the rows store
             const flags = await this.#loadLoopFlags(loopId); // the loop/proposal notification carries flags (yolo) — §dual-yolo-proposal-carries-flags
             // #note10 — if the target diverged on disk this turn, the model's EDIT is based
             // on a stale read; flag it so a YOLO auto-accept rejects instead of clobbering.
@@ -630,7 +653,7 @@ export default class Dispatcher {
         // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
         if (found.status !== 200 || matches.length === 0) {
             const result: DispatchResult = { status: found.status === 200 ? 204 : found.status };
-            const id = await this.#writeLog({ statement, result, workerId, loopId, turnId, sequence, origin });
+            const id = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
             onDispatch?.(id);
             return { ...result, rowsWritten: 1 };
         }
@@ -644,7 +667,7 @@ export default class Dispatcher {
         // had FINDed then READ. On a degenerate single-line document the N delivery rows are
         // identical whole-file lines; the summary row is what tells the model its query hit N
         // times and WHERE (run30: two hits indistinguishable from failure; 17 retries, 508).
-        const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, workerId, loopId, turnId, sequence, origin });
+        const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
         onDispatch?.(findRowId);
         const wholeByPath = new Map<string, DispatchResult>();
         const fannedStatuses: number[] = [];
@@ -656,7 +679,7 @@ export default class Dispatcher {
                 wholeByPath.set(m.pathname, whole);
             }
             const result = Dispatcher.#sliceMatch(whole, m.span);
-            const id = await this.#writeLog({ statement: Dispatcher.#retargetRead(statement, m.pathname, m.span), result, workerId, loopId, turnId, sequence: sequence + written, origin });
+            const id = await this.#writeLog({ statement: Dispatcher.#retargetRead(statement, m.pathname, m.span), result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + written, origin });
             onDispatch?.(id);
             fannedStatuses.push(result.status);
             written++;
@@ -999,12 +1022,13 @@ export default class Dispatcher {
     }
 
     async #writeLog({
-        statement, result, workerId, loopId, turnId, sequence, origin,
+        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
-        workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
+        workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
     }): Promise<number> {
         const target = this.#extractTarget(statement.target);
+        await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon} — columns speak canon; tx below stays verbatim
         const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
             ? JSON.stringify(statement.lineMarker as LineMarker)
             : null;

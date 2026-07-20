@@ -419,3 +419,9 @@ SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id AND pathnam
 
 -- PREP: test_file_pathnames
 SELECT pathname FROM entries WHERE workspace_id = $workspace_id AND scheme = 'file';
+
+-- PREP: test_first_worker_for_ws
+SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1;
+
+-- PREP: test_last_log_row
+SELECT pathname, tx FROM log_entries WHERE loop_id = $loop_id ORDER BY id DESC LIMIT 1;

@@ -54,6 +54,19 @@ export default class Namespace {
         return out.join("/");
     }
 
+    // Folderhood-aware spelling canon ({§fs-namei}): a trailing slash is a folder marker,
+    // not a segment — canonicalize the path portion, re-mark. The scheme root ('/' or '')
+    // canonicalizes to the EMPTY scope (git's empty-pathspec convention: the root has no
+    // name, so scoping to it means everything).
+    static canonicalizeSpelling(raw: string, root: string | null): string | null {
+        const folder = raw.endsWith("/") || raw.length === 0;
+        const trimmed = raw.replace(/\/+$/, "");
+        if (folder && (trimmed === "" || trimmed === "/")) return "";
+        const key = Namespace.canonicalize(trimmed, root);
+        if (key === null) return null;
+        return folder ? `${key}/` : key;
+    }
+
     // True when `key` is already canonical — the fixpoint the world-state invariant
     // asserts over every stored file-class pathname: canon(key, root) === key.
     static isCanonical(key: string, root: string | null): boolean {

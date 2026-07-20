@@ -109,17 +109,10 @@ export default class File {
         return statement; // regex — not a path
     }
 
-    // Folderhood survives canonicalization (§find-scope-prefix-filter): a trailing slash is
-    // FIND's folder marker, not a path segment — canonicalize the path portion, re-mark. The
-    // scheme root ('/' or '') canonicalizes to the EMPTY scope (all rows), matching git's
-    // empty-pathspec convention — the root has no name, so scoping to it means everything.
+    // Folderhood survives canonicalization (§find-scope-prefix-filter) — the shared
+    // spelling canon lives on Namespace (the Dispatcher's log columns use the same one).
     static #canonSpelling(raw: string, root: string | null): string | null {
-        const folder = raw.endsWith("/") || raw.length === 0;
-        const trimmed = raw.replace(/\/+$/, "");
-        if (folder && (trimmed === "" || trimmed === "/")) return "";
-        const key = Namespace.canonicalize(trimmed, root);
-        if (key === null) return null;
-        return folder ? `${key}/` : key;
+        return Namespace.canonicalizeSpelling(raw, root);
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
