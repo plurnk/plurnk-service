@@ -28,6 +28,7 @@ import { join } from "node:path";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
+import WorldState from "../../src/core/world-state.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches rummy's story timeout.
 
@@ -69,6 +70,10 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     }
     const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
     console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
+    // {§fs-world-state} — every demo story doubles as a world-state audit: whatever the model
+    // did, the world it leaves behind is lawful (the run59 class self-names here, not in bench).
+    const wsViolations = await WorldState.check(s.db);
+    assert.deepEqual(wsViolations, [], `[story:${opts.label}] the world stays lawful after the story`);
 
     const dump = async (): Promise<void> => {
         for (const turnId of turnIds) {
@@ -89,7 +94,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
 interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>;     fetchWeb?: WebFetch;
 }
 interface ChainStep { finalStatus: number; lastContent: string; turnIds: number[]; }
-interface ChainResult { workspace: string; steps: ChainStep[]; cleanup: () => Promise<void>; }
+interface ChainResult { workspace: string; steps: ChainStep[]; db: Db; cleanup: () => Promise<void>; }
 
 // Multi-prompt story: ONE workspace, prompts fired in sequence (each its own loop.run), so
 // workspace state persists — the model works with its OWN prior output across turns (an authored
@@ -116,7 +121,10 @@ const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
         await teardown().catch((e) => console.error(`[chain:${opts.label}] cleanup after failure:`, e));
         throw err;
     }
-    return { workspace: fixture.workspace, steps, cleanup: teardown };
+    // {§fs-world-state} — the chain leaves a lawful world, audited like every story.
+    const chainViolations = await WorldState.check(s.db);
+    assert.deepEqual(chainViolations, [], `[chain:${opts.label}] the world stays lawful after the chain`);
+    return { workspace: fixture.workspace, steps, db: s.db, cleanup: teardown };
 };
 
 test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async () => {
@@ -401,4 +409,35 @@ test("story: ask mode answers directly — no EXEC reach, no 403 spiral (#367/#3
         assert.equal(story.finalStatus, 200, "ask mode concluded (no 403-cycle 508, no max_turns)");
         assert.ok(story.lastContent.length > 0, "a direct prose answer landed");
     } finally { await story.cleanup(); }
+});
+
+
+// {§fs-world-state} Phase-4 (#546) — the edit-heavy belief test: the run59 shape on our own
+// terms. The model CREATES a file (O_EXCL + git auto-add admission), revises its OWN creation
+// (the address round-trip: the name it minted must resolve back), and reports it — then the
+// world is audited and the created file's identity is asserted to be exactly ONE row (the
+// 227× fragmentation class, pinned at the demo rung).
+test("story: create a decisions doc, then revise it — the world stays lawful (#546)", { timeout: TIMEOUT * 2 }, async () => {
+    const chain = await runStoryChain({
+        label: "world-state-edit",
+        prompts: [
+            "Create a new file docs/decisions.md that lists exactly two architecture decisions as bullet points: we use express, and we use sqlite.",
+            "In docs/decisions.md, change the sqlite decision to postgres. Leave the express one alone.",
+            "Read docs/decisions.md and tell me both decisions in one sentence.",
+        ],
+    });
+    try {
+        for (const [i, step] of chain.steps.entries()) {
+            assert.equal(step.finalStatus, 200, `step ${i + 1} concluded`);
+        }
+        const onDisk = await readFile(join(chain.workspace, "docs/decisions.md"), "utf8");
+        assert.match(onDisk, /express/i, "the surviving decision is on disk");
+        assert.match(onDisk, /postgres/i, "the revision landed on disk");
+        assert.doesNotMatch(onDisk, /sqlite/i, "the revised decision is gone");
+        assert.match(chain.steps[2].lastContent, /express/i, "the model reports its own work");
+        assert.match(chain.steps[2].lastContent, /postgres/i);
+        // the identity pin: one file, one row — under every spelling the model used across three loops.
+        const row = await (chain.db.test_count_rows_for_pathname as PrepMethod).get<{ n: number }>({ pathname: "docs/decisions.md" });
+        assert.equal(row?.n, 1, "the created file is exactly ONE row — the 227× class stays dead at the demo rung");
+    } finally { await chain.cleanup(); }
 });

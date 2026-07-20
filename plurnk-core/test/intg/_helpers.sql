@@ -428,3 +428,6 @@ SELECT pathname, tx FROM log_entries WHERE loop_id = $loop_id ORDER BY id DESC L
 
 -- PREP: test_set_origin
 UPDATE entries SET membership_origin = $membership_origin WHERE workspace_id = $workspace_id AND pathname = $pathname;
+
+-- PREP: test_count_rows_for_pathname
+SELECT COUNT(*) AS n FROM entries WHERE scheme = 'file' AND pathname = $pathname;
