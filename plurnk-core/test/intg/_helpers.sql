@@ -425,3 +425,6 @@ SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1;
 
 -- PREP: test_last_log_row
 SELECT pathname, tx FROM log_entries WHERE loop_id = $loop_id ORDER BY id DESC LIMIT 1;
+
+-- PREP: test_set_origin
+UPDATE entries SET membership_origin = $membership_origin WHERE workspace_id = $workspace_id AND pathname = $pathname;
