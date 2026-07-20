@@ -86,6 +86,27 @@ test("#543: a 524 Cloudflare edge timeout fails fast - not retried despite retry
     mock.restoreAll();
 });
 
+test("#539: a trailing eos_token (--special EOG leak) is stripped from content", async () => {
+    installFetchJson({ model: "m", choices: [{ message: { content: "the answer<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
+    const res = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(res.assistant.content, "the answer"); // trailing <eos> gone; packet + verdict see clean bytes
+});
+
+test("#539: without a probed eos_token the content passes through untouched", async () => {
+    installFetchJson({ model: "m", choices: [{ message: { content: "keeps <eos> literally" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const res = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(res.assistant.content, "keeps <eos> literally"); // no eosText (a cloud backend) -> no strip
+});
+
+test("#539: only the TRAILING eos_token is stripped; a quoted one mid-body survives", async () => {
+    installFetchJson({ model: "m", choices: [{ message: { content: "quotes <eos> in the body<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6 } });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
+    const res = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(res.assistant.content, "quotes <eos> in the body"); // only the tail goes
+});
+
 test("identity getters and defaults", () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     assert.equal(p.model, "m");

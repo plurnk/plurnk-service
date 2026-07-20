@@ -57,6 +57,7 @@ export type OpenAICompatConfig = {
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
     apiKeyRejectedMessage?: string;            // #537: friendly hint when a PRESENT key is 401/403-rejected (distinct from unset); default undefined
+    eosText?: string;                          // #539: server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
     balanceMetaKey?: string;                    // top-level response field carrying account balance (pico-USD) → validated meta.balancePico (plurnk only, #23); default unset
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
@@ -127,6 +128,18 @@ export type OpenAICompatConfig = {
 // quota_exceeded, invalid_response, model_refused are terminal — retrying just
 // burns time and budget.
 const RETRYABLE: ReadonlySet<string> = new Set(["rate_limit", "network_failure"]);
+
+// #539: drop trailing occurrences of a server-rendered EOG marker. llama-server
+// under --special renders EOS as literal text, so a raw-EOS-ended turn carries a
+// trailing <eos> the grammar never sanctioned. Trailing-only + exact-match, so it
+// can never eat body content (a body ending in the literal marker isn't producible
+// under the grammar, and is vanishingly rare unconstrained).
+const stripTrailingSpecial = (content: string, marker: string): string => {
+    if (marker.length === 0) return content;
+    let out = content;
+    while (out.endsWith(marker)) out = out.slice(0, -marker.length);
+    return out;
+};
 
 // Sleep that rejects the moment `signal` aborts (caller cancellation must not
 // wait out a backoff). Resolves normally on timeout.
@@ -216,6 +229,7 @@ export default class OpenAICompatProvider implements Provider {
     #headers: Record<string, string>;
     #hasApiKey = false;
     #apiKeyRejectedMessage: string | undefined;
+    #eosText: string | undefined;
     #contextWindow: number | null;
     #reasoning: Reasoning;
     #temperature: number;
@@ -277,6 +291,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#streaming = config.streaming ?? true;
         this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
         this.#apiKeyRejectedMessage = config.apiKeyRejectedMessage;
+        this.#eosText = config.eosText;
         this.#hasApiKey = "Authorization" in this.#headers;
         this.#balanceMetaKey = config.balanceMetaKey;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
@@ -633,6 +648,14 @@ export default class OpenAICompatProvider implements Provider {
                 await sleepWithAbort(retryAfter ?? this.#retryDelayMs * 2 ** attempt, signal);
             }
         }
+
+        // #539: llama-server --special renders EOG tokens as text, so a turn ending
+        // via raw EOS carries a trailing <eos> the grammar never sanctioned - it both
+        // false-rejects the rail verdict and leaks a control token into the packet.
+        // Strip the server-reported eos_token from the tail ONCE, before the verdict
+        // grades it and before it reaches assistant/packet. rawBody keeps the verbatim
+        // wire text for forensics.
+        if (this.#eosText !== undefined) raw.content = stripTrailingSpecial(raw.content, this.#eosText);
 
         // Grammar conformance (§13): bytes always flow; the verdict is an
         // observation. Same check whether the grammar was transported

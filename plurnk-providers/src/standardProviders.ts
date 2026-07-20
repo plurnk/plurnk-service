@@ -380,18 +380,22 @@ const probeModelsRetrying = async (chatUrl: string, headers: Record<string, stri
     return probe;
 };
 
-// Slot count from llama-server's /props (total_slots) — the valid id_slot
-// range for workspace pinning. Only queried after the llama-server fingerprint
-// confirms; same best-effort posture as the models probe.
-const probeSlotCount = async (chatUrl: string, headers: Record<string, string>, fetchTimeoutMs: number): Promise<number | null> => {
+// llama-server /props: total_slots (the valid id_slot range for slot pinning) +
+// eos_token (the EOG the server renders as TEXT under --special, #539). One fetch,
+// both facts. Only queried after the llama-server fingerprint confirms; same
+// best-effort posture as the models probe.
+const probeServerProps = async (chatUrl: string, headers: Record<string, string>, fetchTimeoutMs: number): Promise<{ slotCount: number | null; eosToken: string | null }> => {
     const propsUrl = chatUrl.replace(/\/v1\/chat\/completions$/, "/props");
     try {
         const res = await fetch(propsUrl, { headers, signal: AbortSignal.timeout(fetchTimeoutMs) });
-        if (!res.ok) return null;
-        const data = (await res.json()) as { total_slots?: number };
-        return typeof data.total_slots === "number" && data.total_slots > 0 ? data.total_slots : null;
+        if (!res.ok) return { slotCount: null, eosToken: null };
+        const data = (await res.json()) as { total_slots?: number; eos_token?: string };
+        return {
+            slotCount: typeof data.total_slots === "number" && data.total_slots > 0 ? data.total_slots : null,
+            eosToken: typeof data.eos_token === "string" && data.eos_token.length > 0 ? data.eos_token : null,
+        };
     } catch {
-        return null;
+        return { slotCount: null, eosToken: null };
     }
 };
 
@@ -445,6 +449,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     let grammarStyle: GrammarStyle = spec.grammarStyle ?? "none";
     let supportsSlotPinning = false;
     let slotCount: number | null = null;
+    let eosText: string | undefined;
     let tokenizeUrl: string | undefined;
     let servedModel: string | undefined;
     let requiresMaxTokens: boolean | undefined;
@@ -468,7 +473,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         if (isLlama && spec.detectLlamaServer !== false) {
             grammarStyle = "llamacpp";
             supportsSlotPinning = true;
-            slotCount = await probeSlotCount(url, headers, fetchTimeoutMs);
+            const serverProps = await probeServerProps(url, headers, fetchTimeoutMs);
+            slotCount = serverProps.slotCount;
+            eosText = serverProps.eosToken ?? undefined;
             // llama-server serves its NATIVE /tokenize at the root (like /props):
             // the model's own vocab, exact — surfaced as the tokenize() capability.
             tokenizeUrl = url.replace(/\/v1\/chat\/completions$/, "/tokenize");
@@ -562,6 +569,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         balanceMetaKey: spec.balanceMetaKey,
         supportsSlotPinning,
         slotCount,
+        eosText,
         tokenizeUrl,
         servedModel,
         requiresMaxTokens,
