@@ -32,6 +32,10 @@ export type { DiscoverOptions, Discovery } from "./discover.ts";
 // extends and the basis for ./standardProviders.ts.
 export { default as OpenAICompatProvider, effortFromBudget } from "./OpenAICompat.ts";
 export type { OpenAICompatConfig, ReasoningStyle, GrammarStyle } from "./OpenAICompat.ts";
+// Capacity pool (SPEC §15): front N interchangeable backends as one Provider -
+// worker-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
+// DECISION stays the consumer's, by choosing which pool to call.
+export { default as Pool } from "./Pool.ts";
 export { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
 export type { StreamResponse, EncryptedReasoningItem } from "./openaiStream.ts";
 export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv } from "./env.ts";
