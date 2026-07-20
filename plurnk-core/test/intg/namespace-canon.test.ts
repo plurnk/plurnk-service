@@ -194,3 +194,22 @@ test("[§fs-write-surface] the accept stamps the grantor the closure proved — 
         assert.equal(row?.membership_origin, "client", "the accepted create carries its PROVEN grantor, not NULL");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test("[§fs-visibility-grantors] an in-root file no grantor admits DOES NOT EXIST; a client pick brings it into existence", async () => {
+    const { root, db, workspaceId, ctx } = await setup();
+    try {
+        // A real file, physically in the root — non-git root, no pick: NO grantor admits it.
+        await writeFile(join(root, "ungran.md"), "present on disk, absent in the world\n");
+        const file = new File();
+        const invisible = await file.read(readStmt("ungran.md"), ctx);
+        assert.equal(invisible.status, 404, "no grantor → the file does not exist for the model (counterintuitive on purpose — the sandbox's center)");
+
+        // The client grants (pick) + the membership pass runs → it exists.
+        await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "ungran.md" });
+        const GitMembership = (await import("../../src/core/git-membership.ts")).default;
+        await GitMembership.indexGitMembership(ctx);
+        const visible = await file.read(readStmt("ungran.md"), ctx);
+        assert.equal(visible.status, 200, "the client's explicit grant is what brings it into existence — every visible byte traces to an external grantor");
+        assert.match(visible.content ?? "", /present on disk/);
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});

@@ -41,6 +41,10 @@ Config + state live in `~/.plurnk/` (created on first run): put your config in `
 
 `FIND`'s `~query` ranks semantically via an optional embedder peer, `@plurnk/plurnk-mimetypes-embeddings` (heavy native deps; not installed by default). Absent → `~query` falls back to FTS keyword ranking and `start` prints an `embedder inactive` notice. Enable vector search: `npm i @plurnk/plurnk-mimetypes-embeddings`.
 
+## The file sandbox
+
+Plurnk sees what git sees. The model's file surface is defined by three external grantors — your explicit client adds, your git's own inclusion rules (tracked plus untracked-not-ignored, minus ignored), and the AGENTS.md policy knob — and by nothing else: a file inside the project that none of these admit does not exist for the model, and your gitignored secrets can be neither read nor overwritten. Writes are narrower still: create-only inside the project (and only where the result will be visible), proposal-gated edits on members, read-only beyond the root unless you explicitly grant otherwise. The shell (EXEC) deliberately reaches beyond this sandbox — gate it accordingly; it is your machine's perimeter, not the grammar's. Details: SPEC §scheme-address ({§fs-namespace} through {§fs-world-state}).
+
 ## Tests
 
 `test:lint`, `test:unit`, `test:intg`, `test:live`, `test:demo`; off-hot-path `test:installation`.
