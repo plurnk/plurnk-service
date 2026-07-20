@@ -94,3 +94,11 @@ These are the ground rules every agent working in this family shares.
 - **The thin-overlay boundary (#533):** mechanism public, decision and values private. Enterprise surfaces compose the family's public engine (`@plurnk/plurnk-aliases` + `instantiateProvider`); only money, pricing, the flex *decision*, corpus, and measured tuning *values* stay private. A parallel private reimplementation is a drift tax waiting to be paid (#19's stale grammar).
 - **Packet layout law (#531):** monotone volatility — immutable canon first, append-only content (the log) next, per-turn-volatile (budget gauge, errors, git status) at the very tail. A mid-stream volatile section zeroes prompt-cache reuse (SWA/checkpoint rollback), and cache is economics, not garnish.
 - **Version-namespace law (#542):** a stamp number is burned forever once any family package publishes it (npm immutability). The next stamp is **1.1.0** (audited virgin across all 94 packages), gated on board zero; the release machine gains a stamp-virginity gate, a sweep collision detector, and serve-check provenance so number-collision impostors die at the first window.
+
+#### Family lexicon (canonized 2026-07-20 — three words that were colliding)
+
+- **daemon** — the `plurnk-service` executable (core + providers + schemes + mimetypes + execs assembled and running). NOT "the client," whatever seat you sit in.
+- **client** — the AG-UI consumers that connect TO the daemon: `plurnk` (cli/tui), `plurnk.nvim`, and kin. The client lane's products.
+- **endpoint** — the enterprise-side service (model.plurnk.ai relay et al.) that directly depends on and composes the providers engine. From the endpoint's seat the daemon is a *consumer of its API*, but it is still called the daemon.
+
+One word, one referent: "client" had been carrying both the AG-UI consumers and (in endpoint threads) the daemon itself — cross-org discussion can't survive that collision.
