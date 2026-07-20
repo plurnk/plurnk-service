@@ -179,3 +179,18 @@ test("[§fs-errno] pins 6+8: facts distinguish wrong-address / occupancy / empty
         assert.equal((clobber as { error?: string }).error, "a file exists at occupied.md", "occupancy leaks; content stays dark — distinguishable from ENOENT by the string");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test("[§fs-write-surface] the accept stamps the grantor the closure proved — provenance never waits for the reconcile", async () => {
+    const { root, db, workspaceId, ctx } = await setup();
+    try {
+        await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
+        const file = new File();
+        const proposal = await file.edit(editStmt("stamped.md", "content\n"), ctx);
+        assert.equal(proposal.status, 202);
+        assert.equal((proposal.attrs as { admittedBy?: string }).admittedBy, "client", "the closure names WHO admitted");
+        const applied = await file.applyResolution({ attrs: proposal.attrs as never, body: undefined }, ctx);
+        assert.equal(applied.status, 200);
+        const row = await (db.test_get_origin as PrepMethod).get<{ membership_origin: string | null }>({ workspace_id: workspaceId, pathname: "stamped.md" });
+        assert.equal(row?.membership_origin, "client", "the accepted create carries its PROVEN grantor, not NULL");
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});

@@ -86,3 +86,8 @@ SELECT effect, glob FROM workspace_constraints WHERE workspace_id = $workspace_i
 -- PREP: crud_delete_workspace_constraint
 -- "remove" a constraint — deleting the row, not a fourth effect.
 DELETE FROM workspace_constraints WHERE workspace_id = $workspace_id AND effect = $effect AND glob = $glob;
+
+-- PREP: crud_stamp_origin
+-- {§fs-write-surface} — the accept stamps the grantor the blind-write closure proved;
+-- set-if-null so a reconcile-stamped row is never overwritten.
+UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id AND membership_origin IS NULL;

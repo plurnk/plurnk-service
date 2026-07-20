@@ -17,7 +17,7 @@ import type { ReadEntryResult, EntryData, WriteEntryResult, DeleteEntryResult } 
 
 // Resolved + §membership-change-gated-sync disk-write target, or the error status to return.
 type WriteTarget =
-    | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string; baseSig: string | null }
+    | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string; baseSig: string | null; admittedBy?: "client" | "git" }
     | { ok: false; status: number; error: string };
 import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
 
@@ -172,6 +172,7 @@ export default class File {
 
         let original = "";
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
+        let admittedBy: "client" | "git" | undefined;
         if (fileExists) {
             const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null; membership_origin: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
@@ -200,11 +201,14 @@ export default class File {
             if (!clientAdmits && !(await GitMembership.wouldGitAdmit(root, rel, ctx.signal))) {
                 return { ok: false, status: 403, error: "create refused — the result would not be a member (git ignores it and no client pick covers it)" };
             }
+            // {§fs-write-surface} — the closure PROVED the grantor; the accept stamps what was
+            // proven instead of leaving provenance NULL until the next reconcile guesses it.
+            admittedBy = clientAdmits ? "client" : "git";
         }
 
         const mimetype = await detectFileMimetype(canonical, ctx);
         if (MimetypeBinary.isBinaryMimetype(mimetype)) return { ok: false, status: 415, error: `cannot write binary mimetype \`${mimetype}\`` };
-        return { ok: true, canonical, rel, fileExists, original, mimetype, baseSig };
+        return { ok: true, canonical, rel, fileExists, original, mimetype, baseSig, ...(admittedBy !== undefined ? { admittedBy } : {}) };
     }
 
     // Edit op (task #42 canonical proposal consumer). Returns status=202
@@ -217,7 +221,7 @@ export default class File {
             : decodePathParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
         const target = await this.#resolveWriteTarget(pathname, ctx);
         if (!target.ok) return { status: target.status, error: target.error };
-        const { canonical, rel, fileExists, original, mimetype, baseSig } = target;
+        const { canonical, rel, fileExists, original, mimetype, baseSig, admittedBy } = target;
 
         // `<L>` line marker dispatches on file mimetype: JSON →
         // LineMarkerOps.applyJsonItemEdit (structural item edit); otherwise →
@@ -236,7 +240,7 @@ export default class File {
         }
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched, span: editedSpan(original, patched), baseSig, existed: fileExists } };
+        return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched, span: editedSpan(original, patched), baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) } };
     }
 
     // COPY/MOVE INTO file:/// — the dest write. Same §membership gate as edit, same 202
@@ -250,10 +254,10 @@ export default class File {
         if (bodyChannel === undefined) return { status: 400, created: false, entryId: null };
         const target = await this.#resolveWriteTarget(pathname, ctx);
         if (!target.ok) return { status: target.status, created: false, entryId: null };
-        const { canonical, rel, fileExists, original, baseSig } = target;
+        const { canonical, rel, fileExists, original, baseSig, admittedBy } = target;
         const patched = bodyChannel.content;
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, span: editedSpan(original, patched), baseSig, existed: fileExists } };
+        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, span: editedSpan(original, patched), baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) } };
     }
 
     // applyResolution — called by Engine.dispatch after a proposed log
@@ -337,6 +341,12 @@ export default class File {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
             }, ctx, "file");
+            // {§fs-write-surface} — stamp the grantor the blind-write closure PROVED at propose
+            // time; provenance never waits for the reconcile to guess what was already known.
+            const admitted = (args.attrs as { admittedBy?: string }).admittedBy;
+            if (entryId !== null && (admitted === "client" || admitted === "git")) {
+                await (ctx.db.crud_stamp_origin as PrepMethod).run({ entry_id: entryId, membership_origin: admitted });
+            }
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
             // write as the synced state — not an FsDivergence narrated back at the model.
             if (entryId !== null) {

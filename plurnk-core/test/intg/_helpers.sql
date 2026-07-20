@@ -431,3 +431,6 @@ UPDATE entries SET membership_origin = $membership_origin WHERE workspace_id = $
 
 -- PREP: test_count_rows_for_pathname
 SELECT COUNT(*) AS n FROM entries WHERE scheme = 'file' AND pathname = $pathname;
+
+-- PREP: test_get_origin
+SELECT membership_origin FROM entries WHERE workspace_id = $workspace_id AND pathname = $pathname;
