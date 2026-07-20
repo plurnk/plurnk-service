@@ -60,19 +60,23 @@ test("spawnArgs: a target is the script-file positional for EVERY interpreter, b
 // a file target still runs — the interpreter reads it; execve never happens.
 test("a file target runs WITHOUT +x — transient exec, mode never mutated (#500)", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-transient-"));
-    const script = path.join(dir, "greet.sh");
-    await fs.writeFile(script, "read name; echo \"hi $name\"\n", { mode: 0o644 });
-    const out: string[] = [];
-    const args: ExecArgs = {
-        runtime: "sh", command: "plurnk", cwd: dir, target: script,
-        signal: new AbortController().signal,
-        write: (_c, chunk) => { out.push(chunk); },
-        setState: () => {}, emit: () => {},
-    };
-    const result = await make("sh").run(args);
-    assert.equal(result.status, 200);
-    assert.match(out.join(""), /hi plurnk/, "the non-executable script ran with the body as stdin");
-    assert.equal(((await fs.stat(script)).mode & 0o111), 0, "the exec bit was never set — zero mutation");
+    try {
+        const script = path.join(dir, "greet.sh");
+        await fs.writeFile(script, "read name; echo \"hi $name\"\n", { mode: 0o644 });
+        const out: string[] = [];
+        const args: ExecArgs = {
+            runtime: "sh", command: "plurnk", cwd: dir, target: script,
+            signal: new AbortController().signal,
+            write: (_c, chunk) => { out.push(chunk); },
+            setState: () => {}, emit: () => {},
+        };
+        const result = await make("sh").run(args);
+        assert.equal(result.status, 200);
+        assert.match(out.join(""), /hi plurnk/, "the non-executable script ran with the body as stdin");
+        assert.equal(((await fs.stat(script)).mode & 0o111), 0, "the exec bit was never set — zero mutation");
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true }); // #551 — leave no temp dir behind
+    }
 });
 
 test("probe: node is always available (not PATH-gated) and reports its version", async () => {

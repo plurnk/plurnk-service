@@ -1,15 +1,27 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import { strict as assert } from "node:assert";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import Discover from "./discover.ts";
 
+// Every temp dir this suite mints is tracked and removed after the run (#551):
+// mkdtemp otherwise leaks a dir per call permanently, and this suite is the
+// family's heaviest generator. One after() rms them all — a green OR red run
+// leaves nothing behind.
+const tmpDirs: string[] = [];
+const mkTmp = async (prefix: string): Promise<string> => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+    tmpDirs.push(dir);
+    return dir;
+};
+after(async () => { await Promise.all(tmpDirs.splice(0).map((d) => fs.rm(d, { recursive: true, force: true }))); });
+
 // Materialize a throwaway package dir with the given package.json contents and
 // return its path. Each call gets a unique temp dir; callers collect the dirs
 // and pass them to Discover.scan({ packageDirs }).
 const makePkg = async (pkg: unknown): Promise<string> => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
+    const dir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify(pkg), "utf-8");
     return dir;
 };
@@ -96,7 +108,7 @@ test("§3 discover: a dual-kind package (kind array including 'exec') registers 
 // an .mjs module exporting the given hook source. `hookSrc` is the body of an
 // ESM module (must `export` `runtimes` or `default`).
 const makeDynamicPkg = async (name: string, hookSrc: string, rel = "runtimes.mjs"): Promise<string> => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
+    const dir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
         name, plurnk: { kind: "exec", runtimesModule: "./runtimes" },
         exports: { "./runtimes": `./${rel}` },
@@ -168,7 +180,7 @@ test("§3.1 discover: an UNTRUSTED package's dynamic hook is NEVER executed (gat
 });
 
 test("§3.1 discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
+    const dir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
         name: "@plurnk/plurnk-execs-both",
         plurnk: { kind: "exec", runtimes: [{ name: "static" }], runtimesModule: "./runtimes.mjs" },
@@ -218,9 +230,9 @@ test("§3 discover: skips entries with no/empty name and malformed package.json"
         name: "@plurnk/plurnk-execs-mixed",
         plurnk: { kind: "exec", runtimes: [{ glyph: "❓" }, { name: "" }, { name: "ok" }] },
     });
-    const brokenDir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
+    const brokenDir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(brokenDir, "package.json"), "{ not json", "utf-8");
-    const emptyDir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-discover-"));
+    const emptyDir = await mkTmp("execs-discover-");
 
     const { registry } = await Discover.scan({ packageDirs: [dir, brokenDir, emptyDir] });
 
@@ -236,7 +248,7 @@ test("§3 discover: empty scan of a nonexistent node_modules yields an empty reg
 test("§3 discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
     // Build a real <cwd>/node_modules with packages under @plurnk, a third-party
     // scope, an unscoped name, and a non-exec package that must be ignored.
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "execs-scan-"));
+    const root = await mkTmp("execs-scan-");
     const write = async (rel: string, pkg: unknown): Promise<void> => {
         const dir = path.join(root, "node_modules", rel);
         await fs.mkdir(dir, { recursive: true });
