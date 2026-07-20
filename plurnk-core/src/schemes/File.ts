@@ -6,6 +6,7 @@ import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
+import GitMembership from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { ReadResult } from "./_entry-ops.ts";
@@ -148,6 +149,7 @@ export default class File {
         // a spelling that names nothing a file can be is refused before any disk touch.
         const key = Namespace.canonicalize(pathname, root);
         if (key === null) return { ok: false, status: 403, error: "path escapes workspace root" };
+        const isMount = key.startsWith("../");
 
         let canonical: string;
         const requested = join(root, key);
@@ -159,18 +161,26 @@ export default class File {
             canonical = requested;
             fileExists = false;
         }
-        const relBare = relative(root, canonical);
-        if (relBare.startsWith("..") || isAbsolute(relBare)) return { ok: false, status: 403, error: "path escapes workspace root" };
-        const rel = relBare;  // the bare canonical member key ({§fs-canonical-name}) — storage ≡ wire
+        // {§fs-write-surface} 6 — only the root mints: no create on any mount, ever.
+        if (isMount && !fileExists) return { ok: false, status: 403, error: "only the project root mints — create outside it is refused" };
+        if (!isMount) {
+            const relBare = relative(root, canonical);
+            // in-tree keys whose realpath escapes (a symlink out) stay refused — the jail holds.
+            if (relBare.startsWith("..") || isAbsolute(relBare)) return { ok: false, status: 403, error: "path escapes workspace root" };
+        }
+        const rel = key;  // the bare canonical member key ({§fs-canonical-name}) — storage ≡ wire
 
         let original = "";
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         if (fileExists) {
-            const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
+            const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null; membership_origin: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
             if (member === undefined) return { ok: false, status: 403, error: "path is outside your workspace surface" };
+            // {§fs-write-surface} 5 — a git-included mount member is read-only: git's grants
+            // confer rw only within the project; only an explicit client grant carries write.
+            if (isMount && member.membership_origin === "git") return { ok: false, status: 403, error: "member is read-only" };
             const viewGlobs = (await (ctx.db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
                 .filter((c) => c.effect === "view").map((c) => c.glob);
-            if (viewGlobs.some((g) => matchesGlob(relBare, g))) return { ok: false, status: 403, error: "member is read-only" }; // view = read-only member, 403 on edit — §membership-overlay-view
+            if (viewGlobs.some((g) => matchesGlob(rel, g))) return { ok: false, status: 403, error: "member is read-only" }; // view = read-only member, 403 on edit — §membership-overlay-view
             // The diff base is the entry's snapshot — the body channel the model READ — not a fresh
             // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
             // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
@@ -178,6 +188,16 @@ export default class File {
             const snapshot = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;
+        } else {
+            // {§fs-write-surface} 1 — the blind-write closure: an exclusive CREATE is legal only
+            // where the RESULT will be a member. A client pick admits it; else git's auto-add
+            // must (untracked-not-ignored). A non-git root grants nothing by itself.
+            const picks = (await (ctx.db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
+                .filter((c) => c.effect === "pick").map((c) => c.glob);
+            const clientAdmits = picks.some((g) => matchesGlob(rel, g));
+            if (!clientAdmits && !(await GitMembership.wouldGitAdmit(root, rel, ctx.signal))) {
+                return { ok: false, status: 403, error: "create refused — the result would not be a member (git ignores it and no client pick covers it)" };
+            }
         }
 
         const mimetype = await detectFileMimetype(canonical, ctx);

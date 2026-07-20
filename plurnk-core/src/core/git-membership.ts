@@ -57,6 +57,18 @@ const nativeGit = (): boolean => process.env.PLURNK_SERVICE_GIT_NATIVE === "1";
 export default class GitMembership {
     static #execFileP = promisify(execFile);
 
+    // {§fs-write-surface} — the blind-write closure git half: would git ADMIT a create at
+    // key (untracked-not-ignored)? check-ignore exit 0 = ignored (refuse), 1 = clean
+    // (admit via auto-add), anything else (128, no repo) = git grants nothing here.
+    static async wouldGitAdmit(root: string, key: string, signal?: AbortSignal): Promise<boolean> {
+        try {
+            await GitMembership.#execFileP("git", ["check-ignore", "-q", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
+            return false;
+        } catch (err) {
+            return (err as { code?: number }).code === 1;
+        }
+    }
+
     // project_root for a workspace. NULL = headless (no membership). Read once per
     // resolution; the File scheme reads the same column for its own root.
     static async #loadWorkspaceRoot(db: Db, workspaceId: number): Promise<string | null> {

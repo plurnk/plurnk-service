@@ -107,3 +107,42 @@ test("[§fs-answer-in-canon] the log row: address COLUMNS speak canon, tx keeps 
         assert.ok(row?.tx.includes("/./readme.md"), "tx keeps the model's own spelling verbatim — history is never rewritten");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test("[§fs-write-surface] the six-row write matrix — grantor-keyed mounts, O_EXCL create, the blind-write closure", async () => {
+    const { root, db, workspaceId, ctx } = await setup();
+    const outside = await mkdtemp(join(tmpdir(), "plurnk-mount-"));
+    try {
+        const file = new File();
+        const commons = await Owner.commonsId(db, workspaceId);
+
+        // (1) root + empty path, no grantor at all (non-git root, no pick) → the blind-write closure refuses.
+        const blind = await file.edit(editStmt("fresh.md", "x\n"), ctx);
+        assert.equal(blind.status, 403, "a create whose result would not be a member is refused — plurnk never writes what it cannot see");
+
+        // (1') the client grants via pick → the same create proposes (O_EXCL at an empty path).
+        await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
+        const granted = await file.edit(editStmt("fresh.md", "x\n"), ctx);
+        assert.equal(granted.status, 202, "the client grant admits the exclusive create");
+
+        // (3) root + existing NON-member (hidden file) → refused; occupancy is all that leaks.
+        await writeFile(join(root, "hidden.md"), "secret\n");
+        const hiddenEdit = await file.edit(editStmt("hidden.md", "overwrite\n"), ctx);
+        assert.equal(hiddenEdit.status, 403, "an existing non-member is never overwritten — the hidden file stays protected");
+
+        // (4)+(5) mount members: client-granted rw, git-included ro. Register both grantor shapes.
+        await writeFile(join(outside, "client.md"), "client-granted\n");
+        await writeFile(join(outside, "gitted.md"), "git-included\n");
+        const mountKeyClient = `../${outside.split("/").at(-1)}/client.md`;
+        const mountKeyGit = `../${outside.split("/").at(-1)}/gitted.md`;
+        await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyClient, membership_origin: "client" });
+        await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyGit, membership_origin: "git" });
+        const rw = await file.edit(editStmt(mountKeyClient, "revised\n"), ctx);
+        assert.equal(rw.status, 202, "a client-granted mount member is read-write — the per-file rw bind mount");
+        const ro = await file.edit(editStmt(mountKeyGit, "revised\n"), ctx);
+        assert.equal(ro.status, 403, "a git-included mount member is read-only — git grants rw only within the project");
+
+        // (6) mount + create → refused, always: only the root mints.
+        const mint = await file.edit(editStmt(`../${outside.split("/").at(-1)}/new.md`, "x\n"), ctx);
+        assert.equal(mint.status, 403, "no mount ever mints — only the root creates");
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
