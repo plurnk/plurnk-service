@@ -88,7 +88,19 @@ for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
     }
 
     // STEPDAUGHTER: passive substrate, machine owns the version — lockstep to the stamp, republish.
-    if (await served(name) === version) { console.log(`  serves  ${tag}`); skipped++; continue; }
+    // COLLISION DETECTOR (#542, the terraform lesson): a leaf whose registry LATEST exceeds the stamp
+    // ran an independent version line that burned numbers ahead of the family — align/publish cannot
+    // succeed and a silent downgrade-align lies about lineage. Halt naming the leaf at the FIRST
+    // window, not the third. (The serves-equality check below is trustworthy by construction: the
+    // stamp-virginity gate proved the number unpublished family-wide at stamp time, so a leaf serving
+    // it now can only have gotten it from THIS train.)
+    const latest = await served(name);
+    if (latest !== null && latest !== version) {
+        const cmp = latest.split(".").map(Number); const stamp = version.split(".").map(Number);
+        const ahead = cmp[0] > stamp[0] || (cmp[0] === stamp[0] && (cmp[1] > stamp[1] || (cmp[1] === stamp[1] && cmp[2] > stamp[2])));
+        if (ahead) throw new Error(`${tag}: VERSION-LINE COLLISION — registry latest ${latest} is ahead of the stamp ${version}; this leaf ran an independent line (the terraform class). It cannot wear this stamp; it rejoins lockstep at the next stamp past ${latest}. Do not align, do not publish — rule it on the board.`);
+    }
+    if (latest === version) { console.log(`  serves  ${tag}`); skipped++; continue; }
     // Clean tree — never bundle a lane's uncommitted SOURCE work blindly. A dirty package-lock is NOT
     // source: it's a regenerable artifact the sweep's own `npm install` rewrites and the commit absorbs
     // (dev-env workspace-link churn dirties it across the fleet). Block real changes; ignore the lock.

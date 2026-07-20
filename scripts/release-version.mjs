@@ -5,7 +5,10 @@
 // crashes the stamp.
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
+const run = promisify(execFile);
 const version = process.argv[2];
 if (!version) throw new Error("usage: release-version.mjs <version>");
 
@@ -18,6 +21,27 @@ for (const dir of root.workspaces) {
     const pkg = JSON.parse(await fs.readFile(file, "utf8"));
     members.add(pkg.name);
     manifests.set(file, pkg);
+}
+
+// STAMP-VIRGINITY GATE (#542): a version number is burned FOREVER once ANY family package has
+// published it (npm immutability) — terraform's independent 1.0.9–1.0.11 line proved a burned
+// number wears the stamp as a lie (a pre-train artifact serving under tonight's number). The stamp
+// is legal only on a number NO family package has ever published; this also makes the stepchild
+// sweep's serves-check trustworthy by construction (any leaf serving the stamp mid-train can only
+// have gotten it FROM this train). Checks workspaces + the stepchild registry, fails loud with the
+// full burned list.
+{
+    const reg = JSON.parse(await fs.readFile(path.join("plurnk-meta", "stepchildren.json"), "utf8"));
+    const names = new Set([...members, ...reg.stepchildren.map((s) => s.name)]);
+    const burned = [];
+    await Promise.all([...names].map(async (name) => {
+        try {
+            const vs = JSON.parse((await run("npm", ["view", name, "versions", "--json"])).stdout);
+            if ((Array.isArray(vs) ? vs : [vs]).includes(version)) burned.push(name);
+        } catch { /* unpublished package — virgin by definition */ }
+    }));
+    if (burned.length > 0) throw new Error(`stamp-virginity: ${version} is BURNED on the registry by ${burned.length} package(s) — a stamp must be virgin family-wide (pick the next clean number):\n  ${burned.sort().join("\n  ")}`);
+    console.log(`stamp-virginity OK — ${version} unpublished across all ${names.size} family packages`);
 }
 
 for (const [file, pkg] of manifests) {
