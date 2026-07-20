@@ -1,13 +1,23 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import { strict as assert } from "node:assert";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import SchemeDiscovery from "./SchemeDiscovery.ts";
 
+// Every mktemp dir is tracked and removed after the suite — a green OR red run
+// leaves nothing behind (these leaked ×6k into /tmp until #551).
+const tmpRoots: string[] = [];
+const mkTmp = async (prefix: string): Promise<string> => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+    tmpRoots.push(dir);
+    return dir;
+};
+after(async () => { await Promise.all(tmpRoots.map((d) => fs.rm(d, { recursive: true, force: true }))); });
+
 // Build a real <root>/node_modules from [relativePath, packageJson] specs.
 const makeTree = async (specs: Array<[string, unknown]>): Promise<string> => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "schemes-discover-"));
+    const root = await mkTmp("schemes-discover-");
     for (const [rel, pkg] of specs) {
         const dir = path.join(root, "node_modules", rel);
         await fs.mkdir(dir, { recursive: true });
@@ -111,7 +121,7 @@ test("discover: a malformed plurnk.schemes fails hard (never a silent skip)", as
 });
 
 test("discover: a missing node_modules yields an empty result", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "schemes-empty-"));
+    const cwd = await mkTmp("schemes-empty-");
     const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
     assert.deepEqual(schemes, []);
     assert.deepEqual(skipped, []);
