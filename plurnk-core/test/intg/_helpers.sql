@@ -416,3 +416,6 @@ SELECT user_version AS v FROM pragma_user_version;
 
 -- PREP: test_count_entry_rows
 SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id AND pathname = $pathname;
+
+-- PREP: test_file_pathnames
+SELECT pathname FROM entries WHERE workspace_id = $workspace_id AND scheme = 'file';

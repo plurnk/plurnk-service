@@ -44,7 +44,7 @@ test("a 'repo' constraint on a ROOTED workspace lands members and returns them v
             await daemon.constrain(workspaceId, "repo", "*");
             const effects = await daemon.listMembers(workspaceId) as { members: Array<{ path: string; effect: string }> };
             assert.ok(effects.members.length > 0, "the workspace catalog is non-empty after /repo on a rooted workspace");
-            assert.ok(effects.members.some((m) => m.path === "/hello.md"), "the tracked file is a member");
+            assert.ok(effects.members.some((m) => m.path === "hello.md"), "the tracked file is a member");
         } finally { ws.close(); }
     });
 });

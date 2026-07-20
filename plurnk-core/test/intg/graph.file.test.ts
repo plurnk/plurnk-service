@@ -38,7 +38,7 @@ const seed = async () => {
     const ctx = makeSchemeCtx({ db, workspaceId, workerId });
     // Materialize file entries exactly as git-membership does: writeEntry(scheme=null).
     for (const [pathname, content] of FILES) {
-        await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, "file");
+        await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype: "text/typescript" } }, tags: [] }, ctx, "file");
     }
     // @graph derives at manifest-add (§mimetype) — build the manifest to populate the index.
     await EntryManifest.maintainDerivations(ctx);

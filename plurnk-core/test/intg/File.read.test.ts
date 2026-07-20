@@ -46,7 +46,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const content = await readFile(canonical, "utf8");
     // Entry key is namespace-absolute (`/notes.md`), mirroring production's
     // git-membership pass — the disk path (canonical) stays workspace-relative.
-    await EntryCrud.writeEntry(`/${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
+    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
 };
 
 // Set up a workspace whose project_root points at a fresh temp directory,
@@ -252,17 +252,16 @@ test("File.read: long content round-trips", async () => {
     });
 });
 
-test("File.read: absolute path under root → normalizes to the member's relative key (exec-echoed-path ergonomic)", async () => {
+test("[§fs-namespace] File.read: a host-absolute spelling does not exist in the jail — no fold, deterministic 404", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "abs.txt"), "abs content");
         const absolutePath = resolve(root, "abs.txt");
         await addMember(ctx, "abs.txt");
-        // The entry is keyed by its workspace-relative pathname ("/abs.txt"). A member READ by
-        // its ABSOLUTE disk path (echoed from exec/build output) normalizes back to that key on
-        // the 404-fallback and resolves — File handles the disk-path form Known never sees.
+        // {§fs-namespace} — chroot semantics: the host path /tmp/.../abs.txt canonicalizes to
+        // the bare key tmp/.../abs.txt, which is not a member. The old exec-echo fold was
+        // run59-class existence-dependent resolution; the model uses the catalog's key.
         const result = await new File().read(readStmt(urlPath("file", absolutePath)), ctx);
-        assert.equal(result.status, 200, "an absolute path under the root normalizes to the relative member key and resolves");
-        assert.equal(result.content, "abs content");
+        assert.equal(result.status, 404, "host paths are not addresses inside the namespace");
     });
 });
 

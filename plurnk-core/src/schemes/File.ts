@@ -1,4 +1,5 @@
 import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import Namespace from "../core/namespace.ts";
 import Owner from "../core/Owner.ts";
 import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
@@ -34,13 +35,6 @@ const loadWorkspaceRoot = async (db: Db, workspaceId: number): Promise<string | 
     return row?.project_root ?? null;
 };
 
-// The model may hand us an absolute disk path (echoed from exec/build output) instead of the
-// workspace-relative key it sees in the manifest. An absolute path UNDER the project root
-// normalizes back to its relative key — so it resolves to the member, not a 404 (READ) or a
-// wrong CREATE nested under root (EDIT). Outside-root absolutes don't arise: the model only
-// ever sees those members as their `../`-relative keys, never an absolute form.
-const toWorkspaceRelative = (pathname: string, root: string): string =>
-    pathname === root || pathname.startsWith(root + sep) ? `/${relative(root, pathname)}` : pathname;
 
 // Detect mimetype from a file's path. Routes through the Mimetypes service
 // when available; falls back to the text primitive (text/markdown). The
@@ -89,52 +83,50 @@ export default class File {
     // → 404, the same gate Known runs on. Disk is reached only at the materialize
     // and write-back edges (git-membership, applyResolution) — never on a read.
     async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        const r = await EntryOps.readWorkspaceEntry(statement, ctx, File.manifest);
-        if (r.status !== 404) return r;
-        // 404 fallback: the model may have used an absolute disk path (echoed from exec/build
-        // output) instead of the relative key it sees. Normalize + retry — an absolute-under-
-        // root member then resolves; anything else keeps the 404. No cost on the hit path.
-        const normalized = File.#normalizeFileTarget(statement, await loadWorkspaceRoot(ctx.db, ctx.workspaceId));
-        return normalized === statement ? r : EntryOps.readWorkspaceEntry(normalized, ctx, File.manifest);
+        // {§fs-namei} — canonicalize ONCE, up front: resolution never depends on what exists
+        // (the old fold-on-miss retry was existence-dependent meaning, run59's disease class).
+        const canon = File.#canonTarget(statement, await loadWorkspaceRoot(ctx.db, ctx.workspaceId));
+        return EntryOps.readWorkspaceEntry(canon ?? statement, ctx, File.manifest);
     }
 
-    static #normalizeFileTarget<S extends { target: ParsedPath | null }>(statement: S, root: string | null): S {
+    // {§fs-namei}/{§fs-canonical-name} — the ONE statement-normalizing seam: every model
+    // spelling resolves through Namespace.canonicalize before storage, comparison, or render.
+    // null (a spelling that names nothing a file can be) falls back to the original statement,
+    // which the entry-existence gate then 404s — no second resolution vocabulary exists.
+    static #canonTarget<S extends { target: ParsedPath | null }>(statement: S, root: string | null): S | null {
         const t = statement.target;
-        if (root === null || t === null) return statement;
-        // A bare member parses as a LocalPath (`notes.md` / `/notes.md` → raw); a scheme'd
-        // one as a UrlPath (pathname). Normalize whichever the grammar produced to the `/rel`
-        // member key — the LOCAL form is what the model actually emits. regex isn't a path.
+        if (t === null) return statement;
         if (t.kind === "url") {
-            const norm = File.#toMemberKey(t.pathname, root);
-            return norm === t.pathname ? statement : { ...statement, target: { ...t, pathname: norm } };
+            const key = File.#canonSpelling(t.pathname, root);
+            if (key === null) return null;
+            return key === t.pathname ? statement : { ...statement, target: { ...t, pathname: key } };
         }
         if (t.kind === "local") {
-            const norm = File.#toMemberKey(t.raw, root);
-            return norm === t.raw ? statement : { ...statement, target: { ...t, raw: norm } };
+            const key = File.#canonSpelling(t.raw, root);
+            if (key === null) return null;
+            return key === t.raw ? statement : { ...statement, target: { ...t, raw: key } };
         }
-        return statement;
+        return statement; // regex — not a path
     }
 
-    // Map any path form the model might type to its namespace member key `/rel`, so READ
-    // resolves a member the way writeEntry does (the parity that was missing — READ only
-    // normalized absolute disk paths). Two forms collapse to `/rel`: an absolute path under
-    // root (echoed from exec output) and a namespace-relative path — bare `notes.md`,
-    // `/notes.md`, or `sub/x`, which is what the model naturally copies from the catalog.
-    // A path escaping root is left unchanged → it stays a 404, so the membership boundary
-    // holds (the entry-existence gate has the final say; no disk is touched on a read).
-    static #toMemberKey(pathname: string, root: string): string {
-        const abs = toWorkspaceRelative(pathname, root);
-        if (abs !== pathname) return abs;
-        const relBare = relative(root, join(root, pathname));
-        return relBare === "" || relBare.startsWith("..") || isAbsolute(relBare) ? pathname : `/${relBare}`;
+    // Folderhood survives canonicalization (§find-scope-prefix-filter): a trailing slash is
+    // FIND's folder marker, not a path segment — canonicalize the path portion, re-mark. The
+    // scheme root ('/' or '') canonicalizes to the EMPTY scope (all rows), matching git's
+    // empty-pathspec convention — the root has no name, so scoping to it means everything.
+    static #canonSpelling(raw: string, root: string | null): string | null {
+        const folder = raw.endsWith("/") || raw.length === 0;
+        const trimmed = raw.replace(/\/+$/, "");
+        if (folder && (trimmed === "" || trimmed === "/")) return "";
+        const key = Namespace.canonicalize(trimmed, root);
+        if (key === null) return null;
+        return folder ? `${key}/` : key;
     }
 
     async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        // Normalize the model-typed path to the `/rel` member key BEFORE the candidate
-        // glob — the parity READ/EDIT already have (§scheme-address). Without it a bare
-        // `notes.md` globs `notes.md*` and misses the canonical-stored `/notes.md`.
-        const normalized = File.#normalizeFileTarget(statement, await loadWorkspaceRoot(ctx.db, ctx.workspaceId));
-        return EntryFind.findWorkspaceEntries(normalized, ctx, File.manifest);
+        // {§fs-namei} — canonicalize the glob's path portion before the candidate scan, the
+        // same seam READ/EDIT use; a bare `notes.md` and `/notes.md` scan identically.
+        const canon = File.#canonTarget(statement, await loadWorkspaceRoot(ctx.db, ctx.workspaceId));
+        return EntryFind.findWorkspaceEntries(canon ?? statement, ctx, File.manifest);
     }
 
     // COPY/MOVE FROM file:/// — read-only, gated by entry-existence (a non-member
@@ -145,7 +137,8 @@ export default class File {
         // the same parity READ/EDIT/deleteEntry have. Without it a COPY/MOVE FROM a bare file path
         // misses the canonical-stored member and 404s a source that plainly exists.
         const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
-        return EntryCrud.readEntry(root === null ? pathname : File.#toMemberKey(pathname, root), ctx, "file");
+        const key = root === null ? pathname : Namespace.canonicalize(pathname, root);
+        return EntryCrud.readEntry(key ?? pathname, ctx, "file");
     }
 
     // §membership disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -158,14 +151,13 @@ export default class File {
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext): Promise<WriteTarget> {
         const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) return { ok: false, status: 400, error: "workspace has no project_root (headless is forever) — file ops need a workspace created with projectRoot" };
-        // An absolute disk path the model echoed → its relative key, so EDIT hits the member
-        // instead of proposing a wrong CREATE nested under root (the fileExists=false path).
-        pathname = toWorkspaceRelative(pathname, root);
+        // {§fs-namei} — the write side resolves through the SAME canonicalizer as reads;
+        // a spelling that names nothing a file can be is refused before any disk touch.
+        const key = Namespace.canonicalize(pathname, root);
+        if (key === null) return { ok: false, status: 403, error: "path escapes workspace root" };
 
         let canonical: string;
-        // pathname is namespace-absolute (`/note`); join roots it at the workspace
-        // root — the leading slash is the namespace origin, not a filesystem path.
-        const requested = join(root, pathname);
+        const requested = join(root, key);
         let fileExists = true;
         try {
             canonical = await realpath(requested);
@@ -176,7 +168,7 @@ export default class File {
         }
         const relBare = relative(root, canonical);
         if (relBare.startsWith("..") || isAbsolute(relBare)) return { ok: false, status: 403, error: "path escapes workspace root" };
-        const rel = `/${relBare}`;  // namespace-absolute entry key — matches the parser + membership storage
+        const rel = relBare;  // the bare canonical member key ({§fs-canonical-name}) — storage ≡ wire
 
         let original = "";
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
@@ -358,7 +350,8 @@ export default class File {
     async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
         const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) return { status: 400 };
-        const rel = File.#toMemberKey(pathname, root);
+        const rel = Namespace.canonicalize(pathname, root);
+        if (rel === null) return { status: 404 };
         const member = await (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
         if (member === undefined) return { status: 404 };
         return { status: 202, attrs: { deletePath: rel } };

@@ -242,7 +242,7 @@ export default class GitMembership {
         // Glob matching above stays bare (client `pick`/`hide` patterns are bare);
         // storage, reconcile, and the returned set are namespace-absolute (`/src/foo.ts`)
         // so they match the parser's pathname the shared read helper queries by.
-        const desired = [...desiredGit, ...desiredPick].map((p) => `/${p}`);
+        const desired = [...desiredGit, ...desiredPick]; // bare canon keys ({§fs-canonical-name}) — ls-files output IS the canon
         const desiredSet = new Set(desired);
 
         // Reconcile so entries == members (the constitutive invariant): register the
@@ -251,10 +251,10 @@ export default class GitMembership {
         // Model-created ('client') members are never reclaimed.
         const commonsId = await Owner.commonsId(db, workspaceId);
         for (const pathname of desiredGit) {
-            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname: `/${pathname}`, membership_origin: "git" });
+            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "git" });
         }
         for (const pathname of desiredPick) {
-            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname: `/${pathname}`, membership_origin: "constraint" });
+            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "constraint" });
         }
         const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
         for (const m of registered) {
@@ -288,8 +288,8 @@ export default class GitMembership {
         const members: Array<{ path: string; effect: "member" | "view" }> = [];
         const hidden: string[] = [];
         for (const p of new Set([...gitMembers, ...picked])) {
-            if (isHidden(p)) hidden.push(`/${p}`);
-            else members.push({ path: `/${p}`, effect: isView(p) ? "view" : "member" });
+            if (isHidden(p)) hidden.push(p);
+            else members.push({ path: p, effect: isView(p) ? "view" : "member" });
         }
         members.sort((a, b) => a.path.localeCompare(b.path));
         hidden.sort();

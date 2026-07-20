@@ -3,7 +3,8 @@
 -- digest) fail-hard on mismatch instead of rotting silently against a moved schema. ANY change
 -- to the schema's SHAPE (tables, columns, identity keys) bumps this integer in the same commit.
 -- v2: entries.scheme NOT NULL — the 'file' reserved scheme replaced NULL ({§entry-identity-no-null}, #545).
-PRAGMA user_version = 2;
+-- v3: file-class pathnames are bare git-pathspec keys — the leading slash retired ({§fs-canonical-name}, #546).
+PRAGMA user_version = 3;
 
 -- INIT: workspaces
 -- project_root: workspace pointer. NULL = headless (no disk side-effects);
@@ -188,6 +189,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, own
 -- fragmented by the #545 duplicate class fails HERE on the identity index, loudly and by
 -- design: a fragmented store has no safe automatic merge; recover via a fresh db.
 UPDATE entries SET scheme = 'file' WHERE scheme IS NULL;
+
+-- INIT: entries_pathname_heal
+-- v2→v3 in-place heal ({§fs-canonical-name}): file-class keys migrate to the bare git-pathspec
+-- form — the leading slash was the retired namespace-origin notation. Idempotent; a db holding
+-- both spellings of one member fails HERE on the identity index, loudly (fresh-db recovery).
+UPDATE entries SET pathname = substr(pathname, 2) WHERE scheme = 'file' AND pathname LIKE '/%';
 
 -- The ONE engine-imposed constraint (SPEC §stream-constraints, §stream-constraints-engine-one-cap): 100 MiB char-length cap
 -- per channel content body. All other limits are extrinsic.

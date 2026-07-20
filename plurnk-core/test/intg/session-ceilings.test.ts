@@ -104,13 +104,13 @@ test("[§operator-config-workspace-git] workspace settings.git:false denies git 
 
         // A workspace that opts OUT of git — membership resolves with git:false in effect.
         const denied = await Envelope.createClientEnvelope(db, { name: `git-deny-${crypto.randomUUID()}`, projectRoot: root, settings: JSON.stringify({ git: false }) });
-        const deniedMember = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: denied.workspaceId, owner_id: await Owner.commonsId(db, denied.workspaceId), scheme: "file", pathname: "/tracked.md" });
+        const deniedMember = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: denied.workspaceId, owner_id: await Owner.commonsId(db, denied.workspaceId), scheme: "file", pathname: "tracked.md" });
         assert.equal(deniedMember, undefined, "git:false denies git-ls-files membership — the tracked file is NOT a member");
 
         // Control: no override → the env ALLOWED ceiling admits the tracked file, so the
         // denial above is the workspace setting's doing, not an absent repo.
         const allowed = await Envelope.createClientEnvelope(db, { name: `git-allow-${crypto.randomUUID()}`, projectRoot: root });
-        const allowedMember = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: allowed.workspaceId, owner_id: await Owner.commonsId(db, allowed.workspaceId), scheme: "file", pathname: "/tracked.md" });
+        const allowedMember = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: allowed.workspaceId, owner_id: await Owner.commonsId(db, allowed.workspaceId), scheme: "file", pathname: "tracked.md" });
         assert.notEqual(allowedMember, undefined, "without the override the tracked file IS a git member — so git:false is what denied it");
     } finally {
         await db.close();

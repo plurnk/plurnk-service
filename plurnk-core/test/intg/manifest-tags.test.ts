@@ -44,7 +44,7 @@ test("manifest catalog: a file member (scheme=null) renders slash-free — match
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         // A file member is stored namespace-absolute (`/notes.md`, scheme=null) but the model
         // types the relative path it reads — the catalog must render it slash-free so the two match.
-        await EntryCrud.writeEntry("/notes.md", { channels: { body: { content: "hi", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
+        await EntryCrud.writeEntry("notes.md", { channels: { body: { content: "hi", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
         const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<{ path: string }>;
         const note = catalog.find((e) => e.path.endsWith("notes.md"));
         assert.equal(note?.path, "notes.md", "the /notes.md member renders as bare notes.md — what the model writes back");

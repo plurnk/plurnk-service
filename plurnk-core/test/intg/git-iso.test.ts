@@ -135,7 +135,7 @@ test("[§git-portable-default] a linked worktree workspace root resolves members
         const workspaceId = await insertWorkspace(db, `iso-wt-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, linked);
         const members = await GitMembership.resolveGitMembership(db, workspaceId, undefined);
-        assert.ok(members.includes("/tracked.md"), "membership resolves through the .git gitdir-file");
+        assert.ok(members.includes("tracked.md"), "membership resolves through the .git gitdir-file");
         const status = await GitState.status(db, workspaceId, undefined);
         assert.equal(status?.branch, "wt-branch", "status reads the linked worktree's own HEAD");
     } finally {
