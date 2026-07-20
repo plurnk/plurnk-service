@@ -55,3 +55,13 @@ for (const [file, pkg] of manifests) {
 }
 
 console.log(`stamped ${manifests.size} workspaces at ${version}`);
+
+// LOCKFILE SYNC (#550): the stamp rewrites manifests, so the committed package-lock must be
+// regenerated in the same act or `npm ci` fails on committed state (the 1.0.9 train shipped every
+// workspace's lock self-version a tick stale — benign only because the drill uses `npm install`).
+// --package-lock-only touches no node_modules; the verification is structural, not trusted.
+await run("npm", ["install", "--package-lock-only", "--no-audit", "--no-fund"], { maxBuffer: 64 * 1024 * 1024 });
+const lock = JSON.parse(await fs.readFile("package-lock.json", "utf8"));
+const stale = root.workspaces.filter((dir) => lock.packages?.[dir]?.version !== version);
+if (stale.length > 0) throw new Error(`lockfile sync failed — ${stale.length} workspace(s) still stale after regen: ${stale.join(", ")}`);
+console.log(`lockfile synced — ${root.workspaces.length} workspace self-versions at ${version}`);
