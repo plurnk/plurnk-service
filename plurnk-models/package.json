@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-models",
-    "version": "1.0.9",
+    "version": "1.1.0",
     "description": "Build-time-vendored snapshot of model metadata (context window + pricing) from models.dev — a FALLBACK for when no live provider data is available.",
     "keywords": [
         "plurnk",

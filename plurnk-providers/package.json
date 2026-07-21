@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "1.0.9",
+    "version": "1.1.0",
     "description": "Framework + contract for plurnk LLM transports: built-in standard OpenAI-compatible providers plus scope-agnostic discovery of first-party and third-party provider packages.",
     "keywords": [
         "plurnk",
@@ -49,10 +49,10 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/gbnf": "1.0.9",
-        "@plurnk/plurnk-aliases": "1.0.9",
-        "@plurnk/plurnk-models": "1.0.9",
-        "@plurnk/plurnk-providers-ollama": "1.0.9",
-        "@plurnk/plurnk-meta": "1.0.9"
+        "@plurnk/gbnf": "1.1.0",
+        "@plurnk/plurnk-aliases": "1.1.0",
+        "@plurnk/plurnk-models": "1.1.0",
+        "@plurnk/plurnk-providers-ollama": "1.1.0",
+        "@plurnk/plurnk-meta": "1.1.0"
     }
 }
