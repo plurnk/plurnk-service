@@ -278,3 +278,21 @@ test("[§loop-terminals] a strike-threshold abandonment NAMES ITSELF — a legib
         assert.match(named!.event.message ?? "", /500|repeated failed or no-op/, "and the failure class");
     } finally { await db.close(); }
 });
+
+test("[§loop-terminals] the FULL terminal enumeration names itself — max_turns included; no deliberate terminal is silent (#555 complete)", async () => {
+    const db = await openMigrated();
+    const events: Array<{ loopId: number; event: { kind?: string; level?: string } }> = [];
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), telemetryEventNotify: (_ws, e) => events.push(e as never) });
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-terminals-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "run to the ceiling");
+        // A model that works forever (non-terminal SENDs) runs into the configured ceiling.
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 4 }, () => response([sendStmt(102, "working")])) });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 2, maxStrikes: 99, messages: [] });
+        assert.equal(result.finalStatus, 429);
+        const named = events.find((e) => e.event.kind === "max_turns");
+        assert.ok(named, `the ceiling names itself on the telemetry channel — got: ${JSON.stringify(events.map((e) => e.event.kind))}`);
+        assert.equal(named!.event.level, "warn", "an expected bound is warn-level, not error");
+    } finally { await db.close(); }
+});

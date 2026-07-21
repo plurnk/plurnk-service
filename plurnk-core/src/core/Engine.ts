@@ -437,6 +437,12 @@ export default class Engine {
         wall.unref();
         const timedOut = (): boolean => loopAbort.signal.aborted && loopAbort.signal.reason === LOOP_TIMEOUT_REASON;
         const ruleTimeout = async (): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "loop_timeout" }> => {
+            // {§loop-terminals} — EVERY abandonment names itself (#555; the full terminal
+            // enumeration, not the two first found): live fan-out before cleanup wipes the buffer.
+            this.#telemetry.push(workspaceId, loopId, {
+                source: "engine:rails", kind: "loop_timeout", level: "error",
+                message: `loop abandoned 504: the loop wall expired after ${turnIds.length} turns`,
+            });
             await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 504, message: "loop_timeout" });
             cleanup("forceful", "loop_timeout");
             return { turnIds, finalStatus: 504, hitMaxTurns: false, reason: "loop_timeout" };
@@ -489,6 +495,12 @@ export default class Engine {
             if (maxTurns >= 0 && turnIds.length >= maxTurns) {
                 // §loop-terminals — the turn ceiling is exhausted: 429 Too Many Requests
                 // (kin to the soft sudden-death 429 warnings that precede it).
+                // {§loop-terminals} — even the EXPECTED ceiling names itself (warn, not error:
+                // the client configured maxTurns; hitting it is a bound, not a malfunction).
+                this.#telemetry.push(workspaceId, loopId, {
+                    source: "engine:rails", kind: "max_turns", level: "warn",
+                    message: `loop ended 429: the configured turn ceiling (${maxTurns}) is exhausted`,
+                });
                 await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 429, message: "max_turns" });
                 cleanup("forceful", "max_turns");
                 return { turnIds, finalStatus: 429, hitMaxTurns: true, reason: "max_turns" };
