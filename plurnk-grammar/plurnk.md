@@ -92,6 +92,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
 * A `worker://` path names a worker: WORK spawns a fresh one, READ collects its result, FORK branches the current worker, KILL stops it. A path beneath it, like `worker://checker/notes.md`, is an entry in that worker's namespace.
+* The `worker://` authority is the owner: `~` is you (`worker://~/draft`), empty is the shared commons (`worker:///notes`), a name is another worker (`worker://checker/`).
 * Log item paths are nested (`log:///1/2/3` is loop/turn/item) and accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
