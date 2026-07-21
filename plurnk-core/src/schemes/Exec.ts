@@ -292,7 +292,7 @@ export default class Exec {
     async applyResolution(
         args: { attrs: object; body?: string },
         ctx: PlurnkSchemeContext,
-    ): Promise<{ status: number; outcome?: string; body?: string }> {
+    ): Promise<{ status: number; outcome?: string; body?: string; error?: string }> {
         const attrs = args.attrs as Partial<ExecAttrs>;
         let command = typeof attrs.command === "string" ? attrs.command : "";
         const pathname = attrs.pathname;
@@ -315,7 +315,8 @@ export default class Exec {
             const channels = read.entry.channels;
             const channelName = fragment ?? (channels.body !== undefined ? "body" : Object.keys(channels)[0]);
             const content = channelName === undefined ? undefined : channels[channelName]?.content;
-            if (content === undefined) return { status: 404, outcome: "scheme_target_channel_not_found" };
+            // §channel-selection-unknown-channel-400 sibling fact — the miss names what exists.
+            if (content === undefined) return { status: 404, outcome: "scheme_target_channel_not_found", error: `no channel #${channelName ?? fragment} at ${scheme}:///${tPath.replace(/^\//, "")}; channels: ${Object.keys(channels).join(", ")}` };
             if (command.length === 0) {
                 command = content;
             } else {

@@ -19,7 +19,7 @@ import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } 
 // `span` computed here and carried on rx. Post-edit state inline, no
 // confirming READ; the same rendering serves system delta-EDITs (§env-delta).
 // Supersedes the prior input-echo of the source statement.
-export type EditResult = { status: number; entryId: number | null; channel: string | null; span?: string | null };
+export type EditResult = { status: number; entryId: number | null; channel: string | null; span?: string | null; error?: string };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N:\t correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
@@ -61,6 +61,15 @@ export default class EntryOps {
         return target;
     }
 
+    // §channel-selection-unknown-channel-400 — the 400 carries its fact: the tried fragment and
+    // the declared universe, so one miss teaches the topology instead of forcing a guessing walk
+    // (run-sweep: a model probed #stdout/#stderr/#body against a results-channel search stream,
+    // each miss a bare 400 that taught nothing).
+    static #channelMissFact(fragment: string | null, scheme: string, pathname: string, channels: Record<string, string>, defaultChannel: string): string {
+        const declared = [...new Set([defaultChannel, ...Object.keys(channels)])].filter((c) => c.length > 0);
+        return `no channel #${fragment} at ${EntryManifest.toPath(scheme, pathname)}; channels: ${declared.join(", ")}`;
+    }
+
     // {§entry-owner} — the entry's owner for this call: an owner-carved face (worker://, the
     // capability streams) resolves its authority itself (empty/~/name per its carving) and passes
     // the result explicitly; everything else is the workspace commons.
@@ -76,10 +85,10 @@ export default class EntryOps {
         const { name: scheme, channels, defaultChannel } = manifest;
 
         const fragment = EntryOps.#fragmentOf(statement);
-        const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
-        if (targetChannel === null) return { status: 400, entryId: null, channel: null };
-
         const pathname = EntryOps.#pathnameOf(statement);
+        const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
+        if (targetChannel === null) return { status: 400, entryId: null, channel: null, error: EntryOps.#channelMissFact(fragment, scheme, pathname, channels, defaultChannel) };
+
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
         const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
 
@@ -203,10 +212,10 @@ export default class EntryOps {
         const scheme = EntryCrud.identityScheme(manifest);
 
         const fragment = EntryOps.#fragmentOf(statement);
-        const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
-        if (targetChannel === null) return { status: 400, content: null, mimetype: null, channel: null };
-
         const pathname = EntryOps.#pathnameOf(statement);
+        const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
+        if (targetChannel === null) return { status: 400, content: null, mimetype: null, channel: null, error: EntryOps.#channelMissFact(fragment, scheme, pathname, channels, defaultChannel) };
+
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
         // An xpath is a question about the DOM — a fragmentless xpath READ routes to the raw `html`
         // channel (the archive the decisive markdown body was projected from). A fragment still wins.

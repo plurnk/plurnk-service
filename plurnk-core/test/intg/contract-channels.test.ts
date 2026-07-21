@@ -61,6 +61,25 @@ test("[§channel-selection-fragment-selects-named-channel] fragment targets the 
     } finally { await db.close(); }
 });
 
+test("[§channel-selection-unknown-channel-400] an unknown fragment 400s WITH the fact naming the declared universe", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
+        const exec = new Exec();
+        // The sweep shape: a model probing a results-channel habit against a stdout/stderr
+        // runtime. One miss must teach the topology — never a bare 400.
+        const read = await exec.read(readStmt(urlPath("exec", "/run/abc", "results")), makeSchemeCtx({ db, workspaceId, workerId }));
+        assert.equal(read.status, 400);
+        assert.match(String(read.error), /no channel #results at exec:.*channels: stdout, stderr/, "the READ miss names the tried fragment and what exists");
+        // EDIT side via Worker (exec streams are not model-editable): same fact shape.
+        const k = new Worker();
+        await k.edit(editStmt(urlPath("worker", "/note"), "seeded"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const edit = await k.edit(editStmt(urlPath("worker", "/note", "nope"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
+        assert.equal(edit.status, 400);
+        assert.match(String(edit.error), /no channel #nope at worker:.*channels: /, "the EDIT miss carries the same fact");
+    } finally { await db.close(); }
+});
+
 test("[§channel-selection-fragment-on-nonexistent-404] fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {

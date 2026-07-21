@@ -503,7 +503,7 @@ Rules:
 
 1. Fragment-less paths target the scheme's `defaultChannel`. {§channel-selection-fragmentless-targets-default-channel}
 2. Paths with a fragment target the named channel. {§channel-selection-fragment-selects-named-channel}
-3. Unknown channel name → 400. {§channel-selection-unknown-channel-400}
+3. Unknown channel name → 400, carrying the fact that names the tried fragment and the declared universe (`no channel #results at exec:///run/abc; channels: stdout, stderr`) — one miss teaches the topology. {§channel-selection-unknown-channel-400}
 4. Schemes without `defaultChannel` reject fragment-less EDIT/READ.
 5. Non-default channel EDIT requires entry to exist (404 if absent); default-channel EDIT creates. {§channel-selection-fragment-on-nonexistent-404}
 | URI | Channel |
