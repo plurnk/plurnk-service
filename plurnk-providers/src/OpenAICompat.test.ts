@@ -2,6 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import OpenAICompatProvider, { effortFromBudget } from "./OpenAICompat.ts";
 import { OpenAiHttpError } from "./openaiStream.ts";
+import { ProviderError } from "./telemetry.ts";
 
 // Build a fake fetch returning a one-chunk SSE stream, capturing the request
 // so tests can assert what the spine sent on the wire.
@@ -40,7 +41,7 @@ const jsonChoice = { model: "m", choices: [{ message: { content: "x" }, finish_r
 // Sequenced fetch mock for retry tests: each entry is one HTTP response. A 200
 // streams its chunks; any other status returns that error (with an optional
 // retry-after header). The last entry repeats once the script runs out.
-type ScriptedResponse = { status: number; chunks?: unknown[]; retryAfter?: number | string };
+type ScriptedResponse = { status: number; chunks?: unknown[]; retryAfter?: number | string; body?: string };
 const installFetchScript = (responses: ScriptedResponse[]) => {
     const calls: { url: string; init: RequestInit }[] = [];
     let i = 0;
@@ -50,7 +51,7 @@ const installFetchScript = (responses: ScriptedResponse[]) => {
         i++;
         if (r.status === 200) return new Response(sseStream(r.chunks ?? []), { status: 200 });
         const headers = r.retryAfter !== undefined ? { "retry-after": String(r.retryAfter) } : {};
-        return new Response("err", { status: r.status, headers });
+        return new Response(r.body ?? "err", { status: r.status, headers });
     });
     return calls;
 };
@@ -83,6 +84,19 @@ test("#543: a 524 Cloudflare edge timeout fails fast - not retried despite retry
     await assert.rejects(p.generate({ workerId: "r", messages: [] }));
     await flush();
     assert.equal(calls.length, 1); // edge code: one attempt, no retry despite retryAttempts: 3
+    mock.restoreAll();
+});
+
+test("#548: a 422 grammar_invalid is transient — retried on the budget, surfaces as grammar_invalid", async () => {
+    const body = JSON.stringify({ error: { message: "non-conforming emission rejected: ...", type: "grammar_invalid" } });
+    const calls = installFetchScript([{ status: 422, body }]);
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 2 });
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (e: unknown) => e instanceof ProviderError && e.kind === "grammar_invalid",
+    );
+    await flush();
+    assert.equal(calls.length, 3); // initial + 2 retries: rode the bounded budget, unlike a terminal 422
     mock.restoreAll();
 });
 

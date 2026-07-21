@@ -24,6 +24,15 @@ test("classifyProviderError maps HTTP status to kind", () => {
     assert.equal(k(404), "invalid_response");
 });
 
+test("classifyProviderError: a 422 flagged grammar_invalid is transient (#548); other 422s terminal", () => {
+    const rejected = new OpenAiHttpError(422, JSON.stringify({ error: { type: "grammar_invalid", message: "non-conforming emission rejected: ..." } }), null);
+    assert.equal(classifyProviderError(rejected).kind, "grammar_invalid");
+    // a 422 carrying any other error.type is a malformed request — terminal
+    assert.equal(classifyProviderError(new OpenAiHttpError(422, JSON.stringify({ error: { type: "invalid_request_error" } }), null)).kind, "invalid_response");
+    // a non-JSON 422 body (edge/proxy HTML) is terminal, and the sniff does not throw
+    assert.equal(classifyProviderError(new OpenAiHttpError(422, "<html>Bad</html>", null)).kind, "invalid_response");
+});
+
 test("classifyProviderError treats non-HTTP errors as network_failure", () => {
     assert.equal(classifyProviderError(new TypeError("fetch failed")).kind, "network_failure");
     const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });

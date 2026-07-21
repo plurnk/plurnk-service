@@ -29,6 +29,12 @@ export type ProviderTelemetryKind =
     | "invalid_response"
     | "unauthorized"
     | "quota_exceeded"
+    // A 422 whose error.type is "grammar_invalid" (#548): the backend served ONE
+    // generation and rejected it as non-conforming. Transient, not terminal — a
+    // fresh sample may conform — so it rides the retry budget. Distinct from
+    // grammar_unenforced below: that observes a SUCCEEDED exchange; this is a
+    // thrown transport failure the daemon retries, then fails as a leaf.
+    | "grammar_invalid"
     // Output did not conform to the GBNF. ALWAYS an observation, never a throw:
     // a completed exchange returns its bytes with this event on
     // response.telemetry (message + divergence position), whether the grammar
@@ -60,6 +66,17 @@ export class ProviderError extends Error {
     }
 }
 
+// An OpenAI-shaped error body carries error.type. null when the body is absent,
+// non-JSON (a proxy/CDN HTML page), or unshaped — none of which is a match.
+const wireErrorType = (body: string): string | null => {
+    try {
+        const { error } = JSON.parse(body) as { error?: { type?: unknown } };
+        return typeof error?.type === "string" ? error.type : null;
+    } catch {
+        return null;
+    }
+};
+
 // Map a thrown transport error to a (kind, message). Conservative; the message
 // is factual, no guidance prose (consumer SPEC §15.1 policy).
 export const classifyProviderError = (err: unknown): { kind: ProviderTelemetryKind; message: string } => {
@@ -69,6 +86,10 @@ export const classifyProviderError = (err: unknown): { kind: ProviderTelemetryKi
         if (status === 402) return { kind: "quota_exceeded", message };
         if (status === 429) return { kind: "rate_limit", message };
         if (status >= 500) return { kind: "network_failure", message };
+        // A 422 flagged grammar_invalid is a stochastic output reject (#548) — one
+        // generation served then rejected, so a fresh sample may conform: transient.
+        // Any other 422 is a malformed request: terminal (invalid_response).
+        if (status === 422 && wireErrorType(err.body) === "grammar_invalid") return { kind: "grammar_invalid", message };
         return { kind: "invalid_response", message };
     }
     const e = err as { name?: string; message?: string };

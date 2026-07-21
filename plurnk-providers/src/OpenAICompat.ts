@@ -123,11 +123,12 @@ export type OpenAICompatConfig = {
     tuningFloors?: boolean;
 };
 
-// Only these two classifications are transient and worth retrying: rate_limit
-// (429) and network_failure (5xx, timeout, connection reset). unauthorized,
-// quota_exceeded, invalid_response, model_refused are terminal — retrying just
-// burns time and budget.
-const RETRYABLE: ReadonlySet<string> = new Set(["rate_limit", "network_failure"]);
+// Transient classifications worth retrying: rate_limit (429) and network_failure
+// (5xx, timeout, connection reset) are transport; grammar_invalid (a 422 output
+// reject a fresh sample may satisfy, #548) rides the same bounded budget.
+// unauthorized, quota_exceeded, invalid_response, model_refused are terminal —
+// retrying just burns time and budget.
+const RETRYABLE: ReadonlySet<string> = new Set(["rate_limit", "network_failure", "grammar_invalid"]);
 
 // #539: drop trailing occurrences of a server-rendered EOG marker. llama-server
 // under --special renders EOS as literal text, so a raw-EOS-ended turn carries a
