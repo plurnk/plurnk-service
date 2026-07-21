@@ -159,7 +159,7 @@ export default class Exec {
     // is no auto-escalation here. The full #203 status matrix: 200 killed (in-flight) · 410
     // killed-earlier (a prior abort closed the stream 499) · 304 already-exited (closed
     // with any other terminal status) · 404 unknown (no subscription for that coordinate).
-    async kill(pathname: string, signal: number | null, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
+    async kill(pathname: string, signal: number | null, ctx: PlurnkSchemeContext, scheme = "exec"): Promise<{ status: number; error?: string }> {
         for (const entry of this.#activeAborts.values()) {
             if (entry.workerId === ctx.workerId && entry.pathname === pathname) {
                 entry.controller.abort(ExecAbort.killReason(signal));
@@ -168,9 +168,11 @@ export default class Exec {
         }
         // Not running — settle the outcome from the closed subscription's status, scoped to the
         // caller's own subscription (coordinates duplicate across workers, {§stream-owner-scoped}).
+        // The error answers in the model's OWN runtime-tag address (sh:///…), never the retired
+        // internal `exec` scheme (#527, {§fs-answer-in-canon}) — the model KILLs what it addressed.
         const terminal = await ChannelWrite.execTerminalStatus(ctx.db, { workspaceId: ctx.workspaceId, workerId: ctx.workerId, pathname });
-        if (terminal === null) return { status: 404, error: `no exec at exec://${pathname}` };
-        if (terminal === 499) return { status: 410, error: `exec://${pathname} was killed earlier` };
+        if (terminal === null) return { status: 404, error: `no active stream at ${scheme}://${pathname}` };
+        if (terminal === 499) return { status: 410, error: `${scheme}://${pathname} was killed earlier` };
         return { status: 304 };
     }
 

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import type { ExecStatement, KillStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type Exec from "../../src/schemes/Exec.ts";
+import Exec from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
@@ -94,5 +94,25 @@ test("Engine.dispatch: KILL on an unknown exec coordinate → 404 (#203 matrix)"
             statement: killExec("/sh/9/9/9"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 404, "KILL on a coordinate that was never spawned is 404");
+    } finally { await db.close(); }
+});
+
+test("[§fs-answer-in-canon] a stream KILL error answers in the model's runtime-tag scheme, never the internal exec:// (#553)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `exec-kill-canon-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, tokenize: (t: string) => t.length };
+        const exec = new Exec();
+        // The model addresses a stream by its RUNTIME TAG; kill() must render the error in the
+        // scheme it was CALLED with (the dispatcher passes the model's schemeName), never the
+        // retired-internal exec (#527). run11: the model KILLed sh:/// and got exec:// back.
+        const notRunning = await exec.kill("/3/1/4", null, ctx as never, "sh");
+        assert.equal(notRunning.status, 404);
+        assert.match(notRunning.error ?? "", /sh:\/\/\/3\/1\/4/, "error names the model's own sh:/// address");
+        assert.doesNotMatch(notRunning.error ?? "", /exec:\/\//, "never leaks the internal exec:// scheme");
+        // The default (other internal callers) stays exec — no behavior change off the model path.
+        const bare = await exec.kill("/3/1/4", null, ctx as never);
+        assert.match(bare.error ?? "", /exec:\/\//, "the default scheme is unchanged for non-model callers");
     } finally { await db.close(); }
 });

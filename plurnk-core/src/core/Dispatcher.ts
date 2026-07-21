@@ -569,9 +569,11 @@ export default class Dispatcher {
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec
-        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> } | undefined;
+        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: PlurnkSchemeContext, scheme?: string) => Promise<{ status: number; error?: string }> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
-            return await killable.kill(pathnameFromPath(path), statement.signal, ctx);
+            // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
+            // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
+            return await killable.kill(pathnameFromPath(path), statement.signal, ctx, schemeName);
         }
         if (schemeName === "worker") {
             // Entry-path present → KILL a worker-scope scratch ENTRY (delete it), self-only —
