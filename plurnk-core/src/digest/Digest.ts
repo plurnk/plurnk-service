@@ -37,7 +37,7 @@ import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
 import PacketWire from "../core/packet-wire.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
-import type { ChatMessage } from "@plurnk/plurnk-providers";
+import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
 
 // The requiem prompt (#requiem): the model's exit interview. Absolution up front — the system is
 // under test, not the model — so RLHF'd self-blame doesn't crowd out the system indictment. The
@@ -351,13 +351,13 @@ export default class Digest {
     // its last emission + the requiem prompt, and calls the provider UNCONSTRAINED (no grammar — free
     // prose, or the leash would distort the testimony). One requiem per worker (workers included).
     // Fail-hard on no provider: testimony with no witness is an error, not a skip.
-    static async requiem(opts: DigestOptions & { signal?: AbortSignal }): Promise<{ path: string; workers: number }> {
+    static async requiem(opts: DigestOptions & { signal?: AbortSignal; provider?: Provider }): Promise<{ path: string; workers: number }> {
         const dbPath = resolve(opts.dbPath);
         if (!existsSync(dbPath)) throw new Error(`digest: no DB at ${dbPath}`);
         const digestDir = opts.digestDir ?? join(process.cwd(), "test", "digest");
         mkdirSync(digestDir, { recursive: true });
 
-        const provider = await ProviderInstantiate.loadActiveProvider();
+        const provider = opts.provider ?? await ProviderInstantiate.loadActiveProvider();
         if (provider === null) throw new Error("requiem: no active provider — set PLURNK_MODEL; a requiem needs a witness to testify");
 
         const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -404,9 +404,15 @@ export default class Digest {
             // 4096 total left content empty (finish=length) on ~40% of a real sweep, and 16384 still
             // starved a heavy thinker (#373). One escalation retry doubles the room; a worker whose
             // testimony is STILL empty records the reasoning spend honestly instead of a bare shrug.
-            let resp = await provider.generate({ messages, workerId: String(worker.id), maxTokens: 16384, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
+            // The interview is a synthetic out-of-band call with no live worker tree, so it identifies
+            // as its OWN root (primaryWorkerId == workerId): a plurnk-endpoint witness requires full turn
+            // identity on every call (both headers) and classifies primary-vs-spawned by that equality —
+            // a testimony call is a primary, graded by the strong model (#561). A non-plurnk witness
+            // ignores the headers, so this is inert there and load-bearing only against the endpoint.
+            const id = String(worker.id);
+            let resp = await provider.generate({ messages, workerId: id, primaryWorkerId: id, maxTokens: 16384, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
             if (resp.assistant.content.trim() === "" && resp.assistant.finishReason === "length") {
-                resp = await provider.generate({ messages, workerId: String(worker.id), maxTokens: 32768, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
+                resp = await provider.generate({ messages, workerId: id, primaryWorkerId: id, maxTokens: 32768, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
             }
             const testimony = resp.assistant.content.trim()
                 || `(no testimony — ${resp.assistant.usage.completion} tokens consumed entirely by reasoning, even after the 32768-token retry)`;
