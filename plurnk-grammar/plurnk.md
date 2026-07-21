@@ -98,7 +98,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
 
-Which ops target which resource (WORK, FORK, and SEND are delegation and turn ops, not resource ops):
+Which ops target which resource. WORK and FORK are delegation ops, not resource ops.
 
 | OP   | file | entry | stream | log |
 |------|------|-------|--------|-----|
