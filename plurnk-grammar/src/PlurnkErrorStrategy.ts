@@ -64,6 +64,16 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (modeName === "SIGNAL_IDENT" && /^'[-\d]'$/.test(ch)) {
             return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`EXEC<-1,300>\``;
         }
+        // Redirect the matcher-in-slot-region slip (§matcher-body-redirect, #562/run61): a matcher's
+        // leading char (`#` regex, `$` jsonpath, `~` semantic, `@` graph) in the slot region means the
+        // model put a body matcher where a slot goes - `FIND(path)#pattern#` instead of the body form
+        // `FIND(path):#pattern#:`. These four commit their dialect unambiguously and nothing legal in
+        // the slot region starts with them, so the redirect is safe; `/` (xpath) is excluded - a bare
+        // `/` there collides with a forgotten `(path)` wrap. This is the run61 turn-burn: the model
+        // recited "pattern in body" yet re-derived the placement each turn - reachable at the parse.
+        if (modeName === "SLOTS" && /^'[#$~@]'$/.test(ch)) {
+            return `unrecognized character ${ch} in slot region - a matcher rides the \`:body:\` slot; try \`:#pattern#:\``;
+        }
         return `unrecognized character ${ch} ${context}`;
     }
 

@@ -1179,6 +1179,39 @@ test("error message: the redirect's suggested spelling actually parses (EXEC<-1,
     if (stmt?.kind === "statement") assert.deepEqual((stmt.statement as any).lineMarker?.marks, [-1, 300]);
 });
 
+// #562 (run61): a model that recites "pattern in body" yet writes `FIND(path)#pattern#` - the
+// matcher after the path instead of in the `:body:` - gets a redirect to the body slot AT THE
+// PARSE, not a generic slot list. The four unambiguous matcher prefixes (#, $, ~, @) commit
+// their dialect and nothing legal in the slot region starts with them.
+test("error message: matcher-shaped char in the slot region redirects to :body: (§matcher-body-redirect)", () => {
+    for (const src of [
+        "<<FIND(functions.go)#require#:FIND",
+        "<<FIND(data.json)$.role:FIND",
+        "<<FIND(notes.md)~budget:FIND",
+        "<<FIND(main.ts)@<handler:FIND",
+    ]) {
+        const e = firstError(src);
+        assert.match(e.message, /a matcher rides the `:body:` slot; try `:#pattern#:`/, src);
+    }
+});
+
+test("error message: a non-matcher slot-region failure keeps the generic slot list", () => {
+    // `/` (xpath) is excluded from the redirect - it collides with a forgotten `(path)` wrap - so
+    // it, and any other stray char, falls through to the generic `[signal]/(target)/<L>/:body:` list.
+    for (const src of ["<<FIND(a.go)//sel:FIND", "<<FIND(a.go)Xbody:FIND"]) {
+        const e = firstError(src);
+        assert.match(e.message, /\[signal\].*\(target\).*<L>.*:body:/, src);
+        assert.doesNotMatch(e.message, /rides the `:body:`/, src);
+    }
+});
+
+test("error message: the matcher redirect's suggested spelling actually parses (:#pattern#:)", () => {
+    const result = PlurnkParser.parseStatements("<<FIND(functions.go):#require#:FIND");
+    assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
+    const stmt = result.items.find((i) => i.kind === "statement");
+    assert.ok(stmt && stmt.kind === "statement" && stmt.statement.op === "FIND");
+});
+
 test("error message: no ANTLR-y terminology leaks through", () => {
     const inputs = [
         "<<EDIT(p):body without close",
