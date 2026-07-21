@@ -113,7 +113,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 
 ### `<scope>`
 
-The `<scope>` field is deliberately polymorphic: one or more numbers narrowing the operation, their meaning fixed by shape and op:
+One or more numbers narrowing the operation, highly contextual and polymorphic by operation. The number's shape decides its meaning:
 
 - An integer is a position: a line on plain files, a result index on structured files, entries, and items.
 - A leading decimal is a `~`-similarity threshold: results scoring at least that value.
