@@ -444,6 +444,28 @@ test("[§worker-write-scoping] own-space EDIT lands owner-keyed; an ancestor REA
     } finally { await db.close(); }
 });
 
+test("[§worker-write-scoping] the kernel's published surface worker://plurnk/ refuses model writes (403) — the read-only host authority", async () => {
+    // The docs library (worker://plurnk/docs/x.md) is world-READABLE and kernel-authored: the
+    // engine seeds it AS the plurnk worker (loopDocs.ts). A model naming that authority must be
+    // refused — the `authority === "plurnk"` branch is a DISTINCT early-return (writable:false)
+    // that the generic sibling-authority test never exercises, so it gets its own pin. run61's
+    // worker://plurnk/docs edits were all origin=plurnk (the kernel publishing), never the model.
+    const db = await openMigrated();
+    try {
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize });
+        const workspaceId = await insertWorkspace(db, `plurnk-ro-${crypto.randomUUID()}`);
+        await insertWorker(db, workspaceId, null, "plurnk"); // the kernel principal must resolve by name
+        const meId = await insertWorker(db, workspaceId, null, "me");
+        const loopId = await insertLoop(db, meId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "docs/tamper.md"), "overwrite the kernel doc"), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.equal(write.status, 403, "a model write to the kernel's published surface is refused — read-only host authority");
+        const leaked = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", pathname: "/docs/tamper.md" });
+        assert.equal(leaked, undefined, "the refused write left nothing behind under any owner");
+    } finally { await db.close(); }
+});
+
 test("[§join-blocking-collect] READ(worker://running-child) arms a join — the turn's bare SEND[102] PARKS, never spins (#354)", async () => {
     const db = await openMigrated();
     try {
