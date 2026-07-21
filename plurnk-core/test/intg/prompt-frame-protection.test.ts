@@ -139,3 +139,26 @@ test("OPEN/FOLD are recorded in the DB but suppressed from the packet render (#3
         assert.ok(!rendered.some((r) => r.op === "FOLD" || r.op === "OPEN"), "no OPEN/FOLD row reaches the packet render");
     } finally { await db.close(); }
 });
+
+test("[§kill-log-receipt-suppressed] a successful KILL of a log item is suppressed from the render; a KILL of a non-log target renders (#561)", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
+        // Two seeds: a worker:/// note (a real artifact) and a log row to curate. KILL each.
+        await engine.dispatch({ statement: editStmt(urlKnown("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        // KILL the log EDIT row just written (a LOG item) — the run61 tombstone case.
+        const logKill = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        assert.ok(logKill.status < 400, `KILL of the log item succeeds — got ${logKill.status}`);
+        // KILL the worker:/// note (a WORLD mutation, not log housekeeping).
+        const noteKill = await engine.dispatch({ statement: killStmt(urlKnown("worker:///scratch")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 3, origin: "model" });
+        assert.ok(noteKill.status < 400, `KILL of the note succeeds — got ${noteKill.status}`);
+
+        const killCount = await (db.test_count_op as PrepMethod).get<{ n: number }>({ op: "KILL" });
+        assert.ok((killCount?.n ?? 0) >= 2, "both KILLs are recorded in the DB (forensics)");
+
+        const rendered = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string | null }>({ worker_id: workerId });
+        const killRows = rendered.filter((r) => r.op === "KILL");
+        assert.ok(!killRows.some((r) => r.scheme === "log"), "the successful log-item KILL tombstone is suppressed from the render");
+        assert.ok(killRows.some((r) => r.scheme === "worker"), "the KILL of the worker:// note — a world mutation — still renders");
+    } finally { await db.close(); }
+});
