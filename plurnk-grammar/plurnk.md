@@ -124,14 +124,20 @@ One or more numbers narrowing the operation, highly contextual and polymorphic b
 <<READ(file.md)<5>::READ
 <<FIND(src/**)<10,20>::FIND
 <<EDIT(file.md)<-1>:literal text appended to the file:EDIT
+<<READ(notes.md)<12,15>::READ
+<<EDIT(notes.md)<12,15>:The revised lines go here.:EDIT
 ```
 
 - READ views line 5.
 - FIND retrieves results 10 through 20, inclusive.
 - EDIT appends a new line.
+- READ views lines 12 through 15.
+- EDIT replaces those same lines, using the numbers from the READ.
 
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
+
+Editing by line is exacting work. A line number is a precise, current file position. Read the lines you mean to change in the same turn you EDIT them. Use the numbers from that read, never from memory. Change only the lines you name.
 
 ```plurnk
 <<FIND(worker:///**)<0.7>:~france:FIND
