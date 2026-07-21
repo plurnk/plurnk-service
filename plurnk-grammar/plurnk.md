@@ -154,7 +154,7 @@ On filtering operations, the matching pattern goes in the body.
 Your history renders in the `## Log` section as a `jsonplurnk` block: a JSON array of log entries.
 
 * `display` is `none` (no body), `folded` (body hidden), or `open` (body shown). OPEN a folded entry to reveal its body; FOLD an open one to reclaim context.
-* An `open` entry's `body` is the one non-JSON value: a HEREDOC shown verbatim, not a JSON-escaped string.
+* An `open` entry's `body` is the one non-JSON value: a HEREDOC shown verbatim, not a JSON-escaped string. Its `<<:::` tag echoes the entry's path, so it varies by entry and is never an arbitrary label.
 
 ```jsonplurnk
 [
