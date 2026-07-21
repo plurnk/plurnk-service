@@ -1,5 +1,6 @@
-// #382 — the task prompt is FRAME, not curatable memory. Three guards, the run43 lesson:
-// a weak model in a housekeeping turn folded its own task auto-READ and lost the plot.
+// #382 — the task frame (the current loop's foisted preview READ) stays visible; every other
+// prompt-target row is ordinary curatable memory. The run43 lesson: a weak model in a
+// housekeeping turn folded its own task auto-READ and lost the plot.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
@@ -7,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { foldStmt, editStmt } from "./_dsl.ts";
+import { foldStmt, editStmt, openStmt } from "./_dsl.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-grammar";
 const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
@@ -34,11 +35,46 @@ test("[§prompt-fold-illegal] a FOLD of the prompt auto-READ is refused with the
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // the prompt auto-READ is at coordinate 1/1/3 (foist EDIT=2, READ=3)
         const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/3/READ")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        assert.equal(r.status, 403, "folding the task prompt is illegal");
-        assert.match(String(r.error), /FOLD a user prompt.*KILL/s, "the steer names KILL as the deliberate path");
+        assert.equal(r.status, 403, "folding the task preview is illegal");
+        assert.match(String(r.error), /FOLD the task preview.*KILL/s, "the steer names KILL as the deliberate path");
         // the prompt row stays expanded — the frame survives
         const exp = await (db.test_prompt_expanded as PrepMethod).get<{ expanded: number }>({});
         assert.equal(exp?.expanded, 1, "the prompt auto-READ is still open after the refused fold");
+    } finally { await db.close(); }
+});
+
+test("[§prompt-fold-illegal] the EDIT foist is ordinary memory — OPEN then fold-back is legal curation", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
+        // the foist EDIT (born folded) sits at 1/1/2 — peek at the full body, then fold it back
+        const opened = await engine.dispatch({ statement: openStmt(urlLog("log:///1/1/2/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        assert.equal(opened.status, 200, "OPEN of the frame body is legal");
+        const folded = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        assert.equal(folded.status, 200, "the fold BACK is legal — no one-way door on the frame body");
+        // the preview stays open throughout — the frame survives the round trip
+        const exp = await (db.test_prompt_expanded as PrepMethod).get<{ expanded: number }>({});
+        assert.equal(exp?.expanded, 1, "the preview READ is untouched by the foist's round trip");
+    } finally { await db.close(); }
+});
+
+test("[§prompt-fold-illegal] a prior loop's preview is ordinary memory — the refusal binds only the current frame", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, engine } = await seedPromptWorker(db);
+        // a second loop takes over the frame; loop 1's preview becomes curatable history
+        const loop2 = await insertLoop(db, workerId, 2, "the next task");
+        await engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", suffix: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
+            workspaceId, workerId, loopId: loop2, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the next task" }],
+        });
+        const curationTurn = await insertTurn(db, loop2, 2, 102);
+        const stale = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/3/READ")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
+        assert.equal(stale.status, 200, "the old loop's preview folds — it is not the frame anymore");
+        assert.equal((stale as { matched?: number }).matched, 1, "the fold matched the stale preview row — not a vacuous zero-match 200");
+        // loop 2's foist has no turn-0 exemplar ahead of it: EDIT=2/1/1, preview READ=2/1/2
+        const current = await engine.dispatch({ statement: foldStmt(urlLog("log:///2/1/2/READ")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
+        assert.equal(current.status, 403, "the CURRENT loop's preview still refuses");
     } finally { await db.close(); }
 });
 

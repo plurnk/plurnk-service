@@ -159,6 +159,10 @@ export default class PacketWire {
         const logEntries: LogEntryView[] = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         const logBody = logEntries.length > 0 ? PacketWire.renderLog(logEntries, countTokens) : "";
         const HEAVIEST_COUNT = 5;
+        const currentLoop = logEntries.reduce((max, e) => {
+            const l = typeof e.coordinate === "string" ? Number(e.coordinate.split("/")[0]) : NaN;
+            return Number.isFinite(l) && l > max ? l : max;
+        }, 0);
         const byTurn = new Map<string, number>();
         const perEntry: Array<{ path: string; tokens: number }> = [];
         for (const e of logEntries) {
@@ -168,8 +172,8 @@ export default class PacketWire {
             // number the row's own `tokens` shows, so the budget and the log can never disagree
             // about one row. A row ranks ONLY when a FOLD would actually reclaim it: a bodyless
             // row has nothing to fold, an already-folded row is already reclaimed (its price is
-            // an OPEN's cost), and a prompt-target row's FOLD is refused (§prompt-fold-illegal) —
-            // listing any of these sells the model a lever that 403s or no-ops.
+            // an OPEN's cost), and the current loop's foisted preview is refused (§prompt-fold-
+            // illegal) — listing any of these sells the model a lever that 403s or no-ops.
             const bodyPrice: number[] = [];
             const weight = countTokens(PacketWire.#renderLogEntries([e], countTokens, bodyPrice));
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
@@ -181,7 +185,9 @@ export default class PacketWire {
                 byTurn.set(turn, (byTurn.get(turn) ?? 0) + weight);
             }
             const path = PacketWire.#entryPath(coordinate, op);
-            const foldable = e.folded !== true && e.target?.scheme !== "prompt";
+            const isPreview = e.target?.scheme === "prompt" && e.origin === "plurnk" && op === "READ"
+                && coordinate !== null && Number(coordinate.split("/")[0]) === currentLoop;
+            const foldable = e.folded !== true && !isPreview;
             if (path !== null && foldable && (bodyPrice[0] ?? 0) > 0) perEntry.push({ path, tokens: bodyPrice[0] });
         }
         return {

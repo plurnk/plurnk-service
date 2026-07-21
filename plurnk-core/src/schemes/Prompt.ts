@@ -13,7 +13,8 @@ import type { FindResult } from "./_entry-find.ts";
 // construction: packets are per-worker and every cross-worker prompt flow (parent→child inject,
 // the drain's orphan promotion) is engine-mediated, so the face takes no authority slot — a
 // worker only ever addresses its own frames. Engine-authored (writableBy excludes the model);
-// FOLD of a prompt row stays illegal (§prompt-fold-illegal), KILL stays the deliberate remove.
+// FOLD of the current loop's preview READ stays illegal (§prompt-fold-illegal), KILL stays the
+// deliberate remove; every other prompt-target log row is ordinary curatable memory.
 export default class Prompt {
     static manifest: SchemeManifest = {
         name: "prompt",

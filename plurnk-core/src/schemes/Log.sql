@@ -54,9 +54,9 @@ WHERE l.worker_id = $worker_id
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_row_target
--- #382 §prompt-fold-illegal — a log row's acted-on target (scheme+pathname), to spot the user
--- prompt frame rows (scheme='plurnk', pathname '/prompt/%') a FOLD must never hide.
-SELECT scheme, pathname FROM log_entries WHERE id = $id;
+-- #382 §prompt-fold-illegal — the fields that identify the CURRENT loop's foisted preview READ
+-- (target scheme 'prompt', origin 'plurnk', op 'READ'), the one row a FOLD must never hide.
+SELECT scheme, pathname, origin, op, loop_id FROM log_entries WHERE id = $id;
 
 -- PREP: log_write_tag
 -- §log-region-tagging — FOLD is the log's write-op (EDIT can't reach engine-written rows). FOLD[tag]
