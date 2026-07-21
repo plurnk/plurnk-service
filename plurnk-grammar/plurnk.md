@@ -98,19 +98,19 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
 
-| OP   | file | entry | actor | stream | log |
-|------|------|-------|-----|--------|-----|
-| FIND | yes  | yes   | yes | yes    | yes |
-| READ | yes  | yes   | yes | yes    | yes |
-| EDIT | yes  | yes   | no  | no     | no  |
-| COPY | yes  | yes   | yes | yes    | yes |
-| MOVE | yes  | yes   | yes | no     | no  |
-| OPEN | no   | no    | no  | no     | yes |
-| FOLD | no   | no    | no  | no     | yes |
-| EXEC | yes  | yes   | no  | no     | no  |
-| WORK | no   | no    | yes | no     | no  |
-| FORK | no   | no    | yes | no     | no  |
-| KILL | yes  | yes   | yes | yes    | yes |
+Which ops target which resource (WORK, FORK, and SEND are delegation and turn ops, not resource ops):
+
+| OP   | file | entry | stream | log |
+|------|------|-------|--------|-----|
+| FIND | yes  | yes   | yes    | yes |
+| READ | yes  | yes   | yes    | yes |
+| EDIT | yes  | yes   | no     | no  |
+| COPY | yes  | yes   | yes    | yes |
+| MOVE | yes  | yes   | no     | no  |
+| OPEN | no   | no    | no     | yes |
+| FOLD | no   | no    | no     | yes |
+| EXEC | yes  | yes   | no     | no  |
+| KILL | yes  | yes   | yes    | yes |
 
 ### `<scope>`
 
