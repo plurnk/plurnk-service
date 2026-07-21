@@ -404,7 +404,7 @@ test("[§jsonplurnk] the Log renders as a fenced jsonplurnk array that strips to
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true, target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: false, target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: heredoc body
     ], tok);
-    assert.match(out, /^Note: jsonplurnk is otherwise-valid JSON/, "the Note leads, teaching the one carve-out");
+    assert.match(out, /^`{3,}jsonplurnk\n/, "the fence leads — the Log carries data only, no prose note");
     const m = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1/.exec(out);
     assert.ok(m, "a fenced jsonplurnk block");
     // Strip the ONE deviation (a `body` heredoc) with a content-agnostic, TAG-anchored transform → strict JSON.

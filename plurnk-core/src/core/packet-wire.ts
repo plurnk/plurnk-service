@@ -106,13 +106,9 @@ export default class PacketWire {
         return git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
     }
 
-    // §jsonplurnk — the Note that leads the Log's fenced block, teaching the one carve-out inline
-    // plus the token semantics (#466: a model-facing number defines itself where it appears — an
-    // undefined `tokens` beside `itemsTokenTotal` read as 577-vs-6127 unreliability in run59).
-    static #JSONPLURNK_NOTE = "Note: jsonplurnk is otherwise-valid JSON in which each `body` value, when present, is a HEREDOC-style `<<:::tag … :::tag` block. `tokens` is the ruler-weight of a row's body in this packet — the room it takes (what OPEN adds, what FOLD saves); a FIND's `itemsTokenTotal` is the ruler-weight of the matched entries themselves (the room READing them takes). These are curation weights (the model-agnostic ruler), not dollars.";
-
     // The log section's content: the model's curated rows as a fenced `jsonplurnk` array (§jsonplurnk).
-    // Empty log → "" (the section is omitted).
+    // Data only — no prose leads the fence (the log carries rules for no one). Empty log → ""
+    // (the section is omitted).
     static renderLog(entries: unknown, countTokens: CountTokens): string {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         if (log.length === 0) return "";
@@ -122,7 +118,7 @@ export default class PacketWire {
         // a line of ≥ its own length). §jsonplurnk-dynamic-fence
         const longestTicks = Math.max(0, ...[...items.matchAll(/`+/g)].map((m) => m[0].length));
         const fence = "`".repeat(Math.max(3, longestTicks + 1));
-        return `${PacketWire.#JSONPLURNK_NOTE}\n\n${fence}jsonplurnk\n[\n${items}\n]\n${fence}`;
+        return `${fence}jsonplurnk\n[\n${items}\n]\n${fence}`;
     }
 
     // Read one section's content by name off a packet (Engine's or re-parsed).
