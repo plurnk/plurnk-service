@@ -45,6 +45,24 @@ The framework calls `YourClass.fromEnv(env, model, options?)` (sync or async) an
 
 First-party daughters install flat via [`@plurnk/plurnk-providers-all`](https://github.com/plurnk/plurnk-providers-all) so the scan finds them; a third party publishes under their own scope and installs alongside.
 
+## Consuming the lockstep family across version bumps
+
+The family is **lockstep-released**: `@plurnk/plurnk-providers` and every `@plurnk/plurnk-providers-*` daughter publish at one version, and each daughter **peer-requires the engine at that exact version**. This is deliberate: the base contract ships breaking changes on most bumps (`contextWindow`, envelope reserves, the `<eos>` transport strip, telemetry kinds) with no semver-major, so a plugin built against engine vX must not silently run against vY. A tree mixing heads (engine `1.1.0` against a `1.0.9` daughter) is therefore **unresolvable by design** - the `ERESOLVE` is the peer guarantee catching a real mismatch at install time, not a bug.
+
+**To move across a bump, set every family dependency to the target version in one install**, so npm resolves the whole set together:
+
+```
+npm i @plurnk/plurnk-providers@vY @plurnk/plurnk-providers-xai@vY   # ...and every other @plurnk/plurnk-providers* dep you use, all @vY
+```
+
+Auto-discovering form (bumps whatever family deps are in your `package.json`, so no leaf is missed):
+
+```
+npm i $(node -pe "Object.keys(require('./package.json').dependencies).filter(k=>k.startsWith('@plurnk/plurnk-providers')).map(k=>k+'@vY').join(' ')")
+```
+
+Do **not** reach for `--force` or `--legacy-peer-deps`: those install the exact mismatched split the peer pin exists to forbid - an engine running against a plugin built for a different contract.
+
 ## Exports
 
 - `Provider`, `ChatMessage`, `ProviderResponse`, `ProviderAssistant`, `ProviderUsage`, `FinishReason`, `ProviderFactory`, `ProviderOptions`, `ProviderAlias` (+ `Discovery`, `DiscoverOptions`) — types.
