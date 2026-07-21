@@ -73,14 +73,14 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 
 Plurnk Service treemaps every file, entry, and item, allowing every pattern filter on everything.
 
-| prefix | dialect  | form                        | engine           |
-|--------|----------|-----------------------------|------------------|
-| `#`    | regex    | #pattern#[igmsu]*           | ECMAScript       |
-| `//`   | xpath    | //selector                  | XPath 1.0        |
-| `$`    | jsonpath | $.field, $[?(@.role=="admin")] | RFC 9535     |
-| `~`    | semantic | ~phrase                     | keyword + cosine |
-| `@`    | graph    | @<symbol, @>symbol, @symbol | symbol index     |
-| none   | glob     | pattern                     | shell glob       |
+| prefix | dialect  | form                           | engine           |
+|--------|----------|--------------------------------|------------------|
+| `#`    | regex    | #pattern#[igmsu]*              | ECMAScript       |
+| `//`   | xpath    | //selector                     | XPath 1.0        |
+| `$`    | jsonpath | $.field, $[?(@.role=="admin")] | RFC 9535         |
+| `~`    | semantic | ~phrase                        | keyword + cosine |
+| `@`    | graph    | @<symbol, @>symbol, @symbol    | symbol index     |
+| none   | glob     | pattern                        | shell glob       |
 
 * The leading symbol commits its dialect; a mistyped matcher is flagged, not silently downgraded to a glob.
 * Filters bracket directly: $[?(@.role=="admin")], never $.[?(...)].
@@ -101,7 +101,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 Which ops target which resource. WORK and FORK are delegation ops, not resource ops.
 
 | OP   | file | entry | stream | log |
-|------|------|-------|--------|-----|
+|------|:----:|:-----:|:------:|:---:|
 | FIND | yes  | yes   | yes    | yes |
 | READ | yes  | yes   | yes    | yes |
 | EDIT | yes  | yes   | no     | no  |
