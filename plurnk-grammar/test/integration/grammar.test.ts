@@ -602,6 +602,46 @@ test("plan-body advisory: a clean plan mentioning an op BY NAME does not warn", 
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
+// #562 (run61): the model reads `[signal](target)` as a markdown link and routes a bare file path
+// (which does not look like a URL) into the `[…]` tag slot, leaving `(target)` null — the engine
+// then returns a bare 400. The advisory redirects the path into `(…)` at the parse. Wrapped in a
+// turn because `parse()` (the engine's entry, Engine.ts) requires a PLAN-anchored sandwich.
+const misplacedWarn = (op: string) => {
+    const result = PlurnkParser.parse(`<<PLAN:do the thing:PLAN\n${op}\n<<SEND[200]:done:SEND`);
+    return result.items.find((i) => i.kind === "error" && i.error.severity === "warning"
+        && /has no `\(target\)`/.test(i.error.message));
+};
+
+test("misplaced-target advisory (§misplaced-target-advisory): path in [signal] with null target redirects to (…)", () => {
+    for (const [op, echoed] of [
+        ["<<EDIT[evaluator/functions.go]<38,61>:package x:EDIT", "EDIT(evaluator/functions.go)"],
+        ["<<COPY[src/a.go]:x:COPY", "COPY(src/a.go)"],
+        ["<<MOVE[old/notes.md]:x:MOVE", "MOVE(old/notes.md)"],
+        ["<<EDIT[functions.go]:new body:EDIT", "EDIT(functions.go)"],
+    ] as const) {
+        const w = misplacedWarn(op);
+        assert.ok(w && w.kind === "error", `expected a warning for ${op}`);
+        assert.match(w.error.message, /that path sits in the `\[…\]` tag slot; a target goes in `\(…\)`/);
+        assert.ok(w.error.message.includes(`Try \`${echoed}:…\``), `should echo ${echoed}, got: ${w.error.message}`);
+    }
+});
+
+test("misplaced-target advisory: correct forms and unrelated mistakes stay quiet", () => {
+    for (const op of [
+        "<<EDIT[modules,kb](worker://plurnk/docs/log.md):x:EDIT", // tags + scheme target
+        "<<EDIT(evaluator/functions.go)<38,61>:x:EDIT",           // bare path already in target
+        "<<EDIT[tutorial,training](example.sh):x:EDIT",           // tags + bare target (canon ln 271)
+        "<<EDIT[france,geography]:x:EDIT",                        // tags-only null target — a DIFFERENT slip
+    ]) {
+        assert.equal(misplacedWarn(op), undefined, `should not warn for ${op}`);
+    }
+});
+
+test("misplaced-target advisory: a non-mutating op with a bracketed path does not warn", () => {
+    // FIND/READ read-shaped ops are not in the mutating set; a null target there is not this mistake.
+    assert.equal(misplacedWarn("<<FIND[functions.go]:x:FIND"), undefined);
+});
+
 
 test("glob body (no special prefix) skips regex validation", () => {
     const result = PlurnkParser.parseStatements("<<FIND(known://**):Paris*:FIND");

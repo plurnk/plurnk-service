@@ -42,6 +42,7 @@ export default class PlurnkParser {
         // refine the model-facing message set; neither changes what parsed.
         PlurnkParser.#flagNearMissOps(result.items);
         PlurnkParser.#flagOpsInPlanBody(result.items);
+        PlurnkParser.#flagMisplacedTarget(result.items);
         PlurnkParser.#imperativeTurnShape(result.items);
         PlurnkParser.#imperativeMidTermination(result.items);
         return result;
@@ -289,6 +290,45 @@ export default class PlurnkParser {
                         item.statement.position.column,
                         "parser",
                         `PLAN body contains op-shaped text (\`<<${m[1]}\`) - ops belong after the plan closes; did you omit \`:PLAN\`?`,
+                        "warning",
+                    ),
+                },
+            });
+        });
+        for (const { at, item } of additions.reverse()) items.splice(at + 1, 0, item);
+    }
+
+    // Mutating ops that require a `(target)` and carry a `[tags]` string-array signal. A null target
+    // on one of these is unambiguously wrong - there is nothing to edit/copy/move.
+    static #MUTATING_OPS = new Set(["EDIT", "COPY", "MOVE"]);
+
+    // The misplaced-target advisory (#562, run61): a model riding markdown-link muscle memory reads
+    // `[signal](target)` as `[label](url)` and routes a bare file path - which does not look like a
+    // URL - into the `[…]` slot, leaving `(target)` null (every scheme:// URI landed in `(…)` cleanly;
+    // only plain paths mis-slotted). The `[…]` slot holds tags, so a path there with no target is the
+    // markdown mis-read: redirect it into `(…)` at the parse, where the engine only returns a bare 400
+    // with no reason. Gated on a path-shaped signal element (a `/` or a dotted extension) so a genuine
+    // tags-only slip - a different mistake - is not mis-steered toward a path it does not have. A
+    // WARNING: the parse succeeded; the steer makes the silent rejection legible.
+    static #flagMisplacedTarget(items: ParseItem<any>[]): void {
+        const pathShaped = (s: string) => s.includes("/") || /[^/]\.[a-zA-Z][a-zA-Z0-9]*$/.test(s);
+        const additions: { at: number; item: ParseItem<any> }[] = [];
+        items.forEach((item, idx) => {
+            if (item.kind !== "statement") return;
+            const st: any = item.statement;
+            if (!PlurnkParser.#MUTATING_OPS.has(st.op) || st.target !== null) return;
+            if (!Array.isArray(st.signal)) return;
+            const path = st.signal.find(pathShaped);
+            if (!path) return;
+            additions.push({
+                at: idx,
+                item: {
+                    kind: "error",
+                    error: new PlurnkParseError(
+                        st.position.line,
+                        st.position.column,
+                        "parser",
+                        `\`<<${st.op}\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`${st.op}(${path}):…\``,
                         "warning",
                     ),
                 },
