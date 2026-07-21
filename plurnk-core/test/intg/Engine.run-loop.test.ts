@@ -254,3 +254,27 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
         assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3]);
     } finally { await db.close(); }
 });
+
+test("[§loop-terminals] a strike-threshold abandonment NAMES ITSELF — a legible error telemetry event fires, never a silent 500 (run60/#555)", async () => {
+    const db = await openMigrated();
+    // Capture the live telemetry fan-out — the strike terminal returns a clean finalStatus
+    // (no throw), so the drain's loop_error catch never sees it; the self-naming must ride here.
+    const events: Array<{ loopId: number; event: { source?: string; kind?: string; level?: string; message?: string } }> = [];
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), telemetryEventNotify: (_ws, e) => events.push(e as never) });
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-strike-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "strike out");
+        // Idle turns strike out to the engine's 500 (the run60 shape: repeated failed/no-op turns).
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, () => response([sendStmt(102, "idling")])) });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
+        assert.equal(result.finalStatus, 500, "struck out to the engine's 500");
+
+        const named = events.find((e) => e.event.kind === "strike_threshold");
+        assert.ok(named, `the abandonment emitted a legible event — got: ${JSON.stringify(events.map((e) => e.event.kind))}`);
+        assert.equal(named!.event.level, "error", "it is error-level (the channel bench greps)");
+        assert.equal(named!.loopId, loopId, "the event is attributed to the struck loop");
+        assert.match(named!.event.message ?? "", /strike threshold crossed/, "the message names the abandonment reason");
+        assert.match(named!.event.message ?? "", /500|repeated failed or no-op/, "and the failure class");
+    } finally { await db.close(); }
+});

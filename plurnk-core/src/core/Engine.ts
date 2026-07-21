@@ -537,6 +537,11 @@ export default class Engine {
             // SPEC §grinder: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
                 // §loop-terminals — the packet won't fit even collapsed: 413 Content Too Large.
+                // Same silent-terminal class as strike_threshold ({§loop-terminals}, #555): name it.
+                this.#telemetry.push(workspaceId, loopId, {
+                    source: "engine:rails", kind: "budget_overflow", level: "error",
+                    message: `loop abandoned 413: the packet exceeds the budget even after the newest turn folded — unrecoverable overflow after ${turnIds.length} turns`,
+                });
                 await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 413, message: "budget_overflow" });
                 cleanup("forceful", "budget_overflow");
                 return { turnIds, finalStatus: 413, hitMaxTurns: false, reason: "budget_overflow" };
@@ -558,6 +563,16 @@ export default class Engine {
                 // (508 Loop Detected); a failure/no-op strike is the model failing (500
                 // Internal Server Error). The straw that crossed the threshold picks it.
                 const status = verdict.cycleDetected ? 508 : 500;
+                // {§loop-terminals} — the abandonment NAMES ITSELF (#506 promise; run60/#555): a
+                // deliberate strike terminal returns a clean finalStatus, so the drain's loop_error
+                // catch never sees it and the death would be silent on every channel. Emit a legible
+                // error event — live fan-out fires here, BEFORE cleanup deletes the loop's buffer.
+                this.#telemetry.push(workspaceId, loopId, {
+                    source: "engine:rails", kind: "strike_threshold", level: "error",
+                    message: verdict.cycleDetected
+                        ? `loop abandoned ${status}: strike threshold crossed after ${turnIds.length} turns — the model was spinning in place (cycle detected)`
+                        : `loop abandoned ${status}: strike threshold crossed after ${turnIds.length} turns — repeated failed or no-op turns`,
+                });
                 await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status, message: "strike_threshold" });
                 cleanup("forceful", "strike_threshold");
                 return { turnIds, finalStatus: status, hitMaxTurns: false, reason: "strike_threshold" };
