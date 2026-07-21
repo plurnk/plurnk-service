@@ -173,9 +173,13 @@ test("story: answer a question with a web search (canned gate — #530)", { time
     }
 });
 
-test("story: answer a question with a web search (LIVE smoke — opt-in, out of the gate)", { timeout: TIMEOUT, skip: process.env.PLURNK_DEMO_LIVE_WEB !== "1" }, async () => {
-    // The live-web form (#530): ad-hoc smoke against the real SearXNG + real pages —
-    // PLURNK_DEMO_LIVE_WEB=1 opts in; the release gate never depends on the open web.
+test("story: answer a question with a web search (LIVE — #530, in the default sweep)", { timeout: TIMEOUT }, async () => {
+    // The live-web form runs by DEFAULT (#530, meta reversal): the demo stage is a DISCOVERY
+    // instrument, not a release gate that must stay green — a red on variable web content is the
+    // highest-signal thing it produces (the product is fragile on exactly the input real customers
+    // supply). Its failing db is KEPT (keep-on-fail, #410) to autopsy the red — flake vs regression
+    // is decided by the specimen, never by deleting the test. The canned gate above stays the
+    // deterministic REGRESSION pin; this discovers NEW fragility. A red is a finding, not a light.
     const story = await runStory({
         label: "web-search-live",
         prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
