@@ -235,6 +235,26 @@ test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from th
     assert.equal(two.largest[0].tokens, rowTokens, "largest carries the SAME number the row's own meta shows");
 });
 
+test("[§tokenomics-largest-entries] largest never advertises a FOLD the law refuses or the state already pulled", () => {
+    const tk = (s: string) => s.length;
+    const entries = [
+        // The task prompt's foist EDIT (born folded) and its auto-READ: bodied, heavy, and
+        // FOLD-ILLEGAL (target prompt:// — §prompt-fold-illegal 403s the fold).
+        { coordinate: "1/1/2", op: "EDIT", origin: "plurnk", status: 201, target: { scheme: "prompt", pathname: "/1/1" }, folded: true, rx: { status: 201, content: "the whole task body ".repeat(50), mimetype: "text/plain" } },
+        { coordinate: "1/1/3", op: "READ", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { status: 200, content: "the task readback ".repeat(40), mimetype: "text/plain" } },
+        // An already-folded ordinary row: its body prices an OPEN, not a FOLD — nothing to reclaim.
+        { coordinate: "1/2/2", op: "READ", origin: "model", status: 200, target: { scheme: "worker", pathname: "/main.go" }, folded: true, rx: { status: 200, content: "package main ".repeat(30), mimetype: "text/plain" } },
+        // The one genuine target: open, bodied, fold-legal.
+        { coordinate: "1/2/4", op: "READ", origin: "model", status: 200, target: { scheme: "worker", pathname: "/util.go" }, rx: { status: 200, content: "alpha beta gamma", mimetype: "text/plain" } },
+    ];
+    const { largest, byTurn } = PacketWire.measureLogBudget(entries, tk);
+    assert.deepEqual(largest.map((e) => e.path), ["log:///1/2/4/READ"], "only the open, fold-legal row ranks");
+    // The excluded rows still weigh on the TURN rollup — room taken is room taken; only the
+    // FOLD-target advertisement is withheld.
+    assert.equal(byTurn.length, 2);
+    assert.ok(byTurn[0].tokens > 0 && byTurn[1].tokens > 0);
+});
+
 test("telemetry render: a content-offset error → a single meta line carrying line:col, no snippet fence", () => {
     const user = {
         prompt: "P",

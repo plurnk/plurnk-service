@@ -166,7 +166,10 @@ export default class PacketWire {
             // render (meta line + fences + body) composes the turn rollup — the room the turn takes in
             // the packet; the heaviest list carries the row's BODY weight — the FOLD unit, the SAME
             // number the row's own `tokens` shows, so the budget and the log can never disagree
-            // about one row. A bodyless row is no FOLD target and never ranks.
+            // about one row. A row ranks ONLY when a FOLD would actually reclaim it: a bodyless
+            // row has nothing to fold, an already-folded row is already reclaimed (its price is
+            // an OPEN's cost), and a prompt-target row's FOLD is refused (§prompt-fold-illegal) —
+            // listing any of these sells the model a lever that 403s or no-ops.
             const bodyPrice: number[] = [];
             const weight = countTokens(PacketWire.#renderLogEntries([e], countTokens, bodyPrice));
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
@@ -178,7 +181,8 @@ export default class PacketWire {
                 byTurn.set(turn, (byTurn.get(turn) ?? 0) + weight);
             }
             const path = PacketWire.#entryPath(coordinate, op);
-            if (path !== null && (bodyPrice[0] ?? 0) > 0) perEntry.push({ path, tokens: bodyPrice[0] });
+            const foldable = e.folded !== true && e.target?.scheme !== "prompt";
+            if (path !== null && foldable && (bodyPrice[0] ?? 0) > 0) perEntry.push({ path, tokens: bodyPrice[0] });
         }
         return {
             entries: logEntries.length,
