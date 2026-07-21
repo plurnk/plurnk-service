@@ -112,7 +112,12 @@ for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
     await alignStepdaughter(repo);
     // --prefer-online: a head published moments ago is not in npm's local metadata cache yet, so a plain
     // install resolves the leaf's heads behind the stamp. Force a fresh metadata fetch so it pulls the stamp.
-    await run("npm", ["install", "--prefer-online"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
+    // --ignore-scripts: a leaf with `prepare: npm run build` otherwise builds DURING install, racing npm's
+    // extraction of the just-published heads (the build fires before the head's dist/ lands → TS2307, flaky).
+    // The leaf's own build belongs at publish/prepublishOnly (dry: the explicit build below), where the heads
+    // are guaranteed present. `npm rebuild` restores dep native builds (tree-sitter node-gyp) --ignore-scripts skipped.
+    await run("npm", ["install", "--prefer-online", "--ignore-scripts"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
+    await run("npm", ["rebuild"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
     if (DRY) {
         const scripts = JSON.parse(await readFile(join(repo, "package.json"), "utf8")).scripts ?? {};
         if (scripts.build) await run("npm", ["run", "build"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
