@@ -5,7 +5,7 @@ Layers under the monorepo-root `AGENTS.md` (family model, commits, `.env.default
 ## What the lane is
 
 - **The head** `@plurnk/plurnk-mimetypes` owns the *contract*: the duck-typed handler surface, channel selection (§5), the query dialects (§11), channel architecture (§12), and the classification / embedder / tokenizer authorities (§20/§17/§19). **`SPEC.md` is authoritative** — §1–22, and a drifting spec is a bug, not a nicety (#444). `spec:check` enforces that every section is test-cited or declared `<!-- coverage: policy -->`.
-- **In-lane workspaces** (~14): the framework + `application-*` / `text-*` floor handlers + `embeddings` + `tokenizers`. These are lockstep monorepo members.
+- **In-lane workspaces** (15): the framework head + `application-*` / `text-*` floor handlers (json/xml/jsonl/ipynb/pdf + csv/html/markdown/plain/diff/ini/dotenv) + `embeddings` + `tokenizers`. These are lockstep monorepo members.
 - **Outside leaves**: 28 `plurnk-mimetypes-grammar-*` + ~24 community `text-*` + gguf/safetensors. Independent repos, `peer "^1"` on the head, **instructed via issues on their own repos** — never edited from here. They are family-operated but not workspaces.
 - **Division:** the head owns the algebra (which content is line- vs tree-navigable, how a dialect dispatches, what a channel means); a **handler owns its per-mimetype material** only. Cross-cutting behavior lives at the head, never copied into a handler.
 
@@ -35,4 +35,4 @@ These are lane-specific traps that cost real rework. Each is a rule *plus* the s
 
 ## Fastpath
 
-Read `SPEC.md` first (it *is* the contract). To touch a dialect, find its engine (`src/query.ts`) — don't add a second. To touch classification, `src/classify.ts` + §20. To touch a seam, `src/Embeddings.ts` / `src/Tokenizers.ts` + §17/§19. Every issue/comment opens by naming the lane ("Mimetypes agent here."). Never `--no-verify` a push — the root pre-push gate *is* the CI.
+Read `SPEC.md` first (it *is* the contract). To touch a dialect, find its engine (`src/query.ts`) — don't add a second. To touch classification, `src/classify.ts` + §20. To touch a seam, `src/Embeddings.ts` / `src/Tokenizers.ts` + §17/§19. Every issue/comment opens by naming the lane ("Mimetypes agent here."). Never `--no-verify` a push — the root pre-push gate *is* the CI. Commit subjects must be ≤80 chars and include a reference (`#N`, or `(#0)` sentinel when no issue exists) — the hook enforces both and rejects without them.
