@@ -95,11 +95,12 @@ export type OpenAICompatConfig = {
     // Optional (default 0 = off) so an out-of-date daughter that omits it just runs unguarded
     // rather than failing construction; the standard factory always supplies it.
     frequencyPenalty?: number;
-    // #567: llama.cpp anti-repetition-LOOP controls, off by default (absent = the box's
-    // own default = unchanged). DRY penalizes repeated SEQUENCES with a penalty that
-    // escalates with run length — the tool for a plan-restart loop a single-token
-    // repeat_penalty over a short window can't see. repeatLastN widens that window.
-    // llamacpp path only (DRY is a llama.cpp sampler); values are operator/bench config.
+    // #567: llama.cpp anti-repetition-LOOP controls, sent on the llamacpp path (DRY is a
+    // llama.cpp sampler). DRY penalizes repeated SEQUENCES with a penalty escalating in run
+    // length — the tool for a plan-restart loop a single-token repeat_penalty over a short
+    // window can't see. The GENERIC DRY defaults (0.8/1.75/2) ship as a floor in .env.defaults
+    // like repeatPenalty — applied for a detected llama.cpp backend, customer-overridable;
+    // absent (a daughter omitting them) = the box's own default. repeatLastN widens the window.
     dryMultiplier?: number;
     dryBase?: number;
     dryAllowedLength?: number;
