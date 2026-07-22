@@ -336,14 +336,14 @@ export default class PacketWire {
         return { text: head, cut: true };
     }
 
-    // §arrival-law (#566 — generalized to authored emission): a model-AUTHORED op body — a PLAN/SEND/
-    // WORK/FORK's text, an EDIT/COPY/MOVE span, an EXEC command — renders PREVIEW-bounded, so the
-    // model can never author an unbounded OPEN log row. run42: an unclosed `<<PLAN` swallowed a
-    // 57k-char runaway into ONE 29k open row the grinder is forbidden to fold (op NOT IN … 'PLAN') —
-    // a permanent budget bomb that pushed the packet past the physical window and gated out the
-    // recovery. RETRIEVED content (READ/FIND) is engine-bounded and stays FULL (capping a READ would
-    // break its `<start,end>` slice contract). The verbatim emission always survives in the folded
-    // `model` mirror, so nothing is lost; a cut states the true extent.
+    // §arrival-law (#566): a model-COMPOSED op body — a PLAN/SEND/WORK/FORK's text or an EXEC
+    // command — renders PREVIEW-bounded, so the model can never compose an unbounded OPEN log row.
+    // run42: an unclosed `<<PLAN` swallowed a 57k-char runaway into ONE 29k open row the grinder is
+    // forbidden to fold (op NOT IN … 'PLAN') — a permanent budget bomb that pushed the packet past
+    // the physical window and gated out the recovery. CONTENT ops are exempt and render FULL —
+    // READ/FIND (retrieved bytes; capping a READ would break its `<start,end>` slice contract) and
+    // EDIT/COPY/MOVE spans (the resulting file content the model inspects). The verbatim emission
+    // always survives in the folded `model` mirror, so nothing is lost; a cut states the true extent.
     static #renderAuthoredBody(logAddr: string, body: string, preNumbered: boolean): string {
         const arrival = PacketWire.#arrivalPreview(body);
         const rendered = preNumbered
@@ -456,7 +456,10 @@ export default class PacketWire {
                 // accept delivers the same span under `body` (the generic accept-rx key) — render either.
                 const r = rx as { span?: string; body?: string };
                 const span = typeof r.span === "string" ? r.span : (r.body ?? "");
-                if (span.length > 0) body = PacketWire.#renderAuthoredBody(target ?? `log:///${coordinate}`, span, true);
+                // An EDIT/COPY/MOVE span is the RESULTING file content — bytes the model inspects to
+                // confirm its edit landed, CONTENT not composed directive text — so it renders FULL
+                // like READ/FIND (#566). Grinder-foldable (not PLAN-exempt), so a large span reclaims.
+                if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
             } else if (op === "EXEC" && e.tx !== null && e.tx !== undefined && typeof (e.tx as { body?: unknown }).body === "string") {
                 // EXEC: the literal command body, :::-fenced + line-numbered at the op's log address —
                 // the model sees what it ran and can reference lines of its own code. The OUTPUT is a

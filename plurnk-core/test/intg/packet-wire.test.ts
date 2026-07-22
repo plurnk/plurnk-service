@@ -443,12 +443,13 @@ test("[§arrival-law-authored-bodies] a runaway authored body renders preview-bo
     assert.match(planOut, /preview — the full body is 30 line\(s\)/, "the runaway PLAN is preview-bounded, the true extent stated");
     assert.doesNotMatch(planOut, /line 20 of a runaway/, "content past the 16-line preview is cut from the render");
 
-    // A runaway EDIT span (pre-numbered) caps too.
+    // An EDIT span is CONTENT (the resulting file bytes the model inspects) — full, like READ/FIND.
     const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
     const editOut = PacketWire.renderLog([
         { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
     ], tok);
-    assert.match(editOut, /preview — the full body is 30 line\(s\)/, "the runaway EDIT span is preview-bounded");
+    assert.match(editOut, /span line 30/, "an EDIT span renders full — file content is a content op, exempt");
+    assert.doesNotMatch(editOut, /preview — the full body/, "no preview cut on an EDIT span");
 
     // READ and FIND deliver RETRIEVED content — full, even when long (the exemption).
     const readOut = PacketWire.renderLog([
