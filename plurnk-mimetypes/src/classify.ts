@@ -16,7 +16,7 @@
 
 export interface MimeClassification {
     binary: boolean;
-    // Line-navigable = the model addresses this content by line number (`N:\t`
+    // Line-navigable = the model addresses this content by line number (`N:`
     // READ prefixes, line-based <L>); tree-navigated = structural addressing
     // (jsonpath/xpath) where line prefixes would fight the format's own
     // navigation. The axes do NOT collapse: NDJSON is text AND line-navigable
@@ -45,7 +45,7 @@ const TEXT_APPLICATION = new Set([
 
 // Tree-navigated types: JSON-shaped and markup documents whose native
 // navigation is structural (jsonpath/xpath), not line numbers. yaml/toml/csv
-// are deliberately NOT here — they are line-oriented text (a `N:\t` prefix
+// are deliberately NOT here — they are line-oriented text (a `N:` prefix
 // reads naturally), matching the consumer semantics this absorbs.
 const TREE_NAVIGATED = new Set([
     "application/json",
