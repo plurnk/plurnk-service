@@ -593,6 +593,34 @@ test("standard provider: a catalog hit fills contextWindow + cost when there's n
     }
 });
 
+test("standard provider: completionReserve is capped to min(catalog.maxOutput, 25%*ctx) when catalog wins (#507)", async () => {
+    // claude-opus-4-8: ctx=1,000,000, maxOutput=128,000 — 25% = 250,000 (catalog wins: 128K < 250K).
+    // anthropic has no probe — context + maxOutput come cleanly from catalog.
+    const opus = catalogSnapshot().anthropic?.["claude-opus-4-8"];
+    if (opus?.maxOutput === undefined) return; // skip if catalog snapshot lacks the model
+    const p = await standardProviderFromEnv("anthropic", { ...baseEnv, ANTHROPIC_API_KEY: "k" }, "claude-opus-4-8");
+    assert.ok(p !== null);
+    assert.equal(p.completionReserve, opus.maxOutput); // 128000: catalog wins over 25%=250000
+});
+
+test("standard provider: completionReserve uses percentage floor when maxOutput >= 25%*ctx (#507)", async () => {
+    // claude-haiku-4-5-20251001: ctx=200,000, maxOutput=64,000 — 25% = 50,000 (floor wins: min(64K,50K)=50K).
+    const haiku = catalogSnapshot().anthropic?.["claude-haiku-4-5-20251001"];
+    if (haiku?.maxOutput === undefined) return;
+    const p = await standardProviderFromEnv("anthropic", { ...baseEnv, ANTHROPIC_API_KEY: "k" }, "claude-haiku-4-5-20251001");
+    assert.ok(p !== null);
+    const expected = Math.round(haiku.contextWindow * 0.25); // 50000: floor wins over maxOutput=64K
+    assert.equal(p.completionReserve, expected);
+});
+
+test("standard provider: operator absolute COMPLETION_RESERVE overrides the catalog cap (#507)", async () => {
+    // Even though catalog gives 128K for claude-opus, an absolute env pin always wins.
+    const env = { ...baseEnv, ANTHROPIC_API_KEY: "k", PLURNK_PROVIDERS_COMPLETION_RESERVE: "8192" };
+    const p = await standardProviderFromEnv("anthropic", env, "claude-opus-4-8");
+    assert.ok(p !== null);
+    assert.equal(p.completionReserve, 8192); // absolute pin beats catalog
+});
+
 test("standard provider: a local (non-cataloged) model misses the fallback — probe owns it, contextWindow null", async () => {
     mock.method(globalThis, "fetch", async (url: string) =>
         String(url).endsWith("/models") ? new Response(JSON.stringify({ data: [] }), { status: 200 }) : new Response("{}", { status: 200 }));

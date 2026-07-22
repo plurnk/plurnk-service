@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv, type ReserveSpec } from "./env.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
@@ -544,6 +544,20 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             cached: (cost.cacheReadPer1M ?? cost.inputPer1M) * 1e6,
         });
 
+    // #507: completion cap — when the catalog reports a maxOutput, use
+    // min(maxOutput, percentage_amount) as an absolute reserve instead of the
+    // raw percentage. The 25% floor dramatically over-reserves on large-context
+    // models (gpt-4.1-mini: 1M ctx → 262K reserved, real cap 32K; claude-sonnet:
+    // 1M ctx → 250K reserved, real cap 128K). The min() preserves the floor on
+    // models where maxOutput > 25%*ctx (deepseek 1M/384K, llama 131K/131K).
+    // An operator absolute pin (COMPLETION_RESERVE=8192 not "25%") always wins.
+    const { reasoningReserve, completionReserve: envCompletion } = envelopeFromEnv(env, name);
+    const completionReserve: ReserveSpec = (() => {
+        if ("tokens" in envCompletion) return envCompletion; // operator absolute always wins
+        if (fallback?.maxOutput === undefined || contextWindow === null) return envCompletion;
+        return { tokens: Math.min(fallback.maxOutput, Math.round(envCompletion.percent * contextWindow)) };
+    })();
+
     return new OpenAICompatProvider({
         model: wireModel,
         url,
@@ -560,9 +574,9 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         dryBase: parseOptionalFloat(env.PLURNK_PROVIDERS_DRY_BASE, "PLURNK_PROVIDERS_DRY_BASE", name, 0) ?? undefined,
         dryAllowedLength: parseOptionalInt(env.PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH, "PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH", name) ?? undefined,
         repeatLastN: parseOptionalInt(env.PLURNK_PROVIDERS_REPEAT_LAST_N, "PLURNK_PROVIDERS_REPEAT_LAST_N", name) ?? undefined,
-        // #507: the envelope reserves (window-fraction floor, absolute overrides)
-        // + router-owned-tuning suppression (plurnk).
-        ...envelopeFromEnv(env, name),
+        // #507: resolved envelope (catalog-capped completion above) + router-owned-tuning suppression (plurnk).
+        reasoningReserve,
+        completionReserve,
         tuningFloors: spec.suppressTuningFloors !== true,
         retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", name),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
