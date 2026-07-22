@@ -121,5 +121,6 @@ exception or converges. Ecosystem-wide rows live in `plurnk-meta/DIVERGENCES.md`
 | 2 | Mermaid chart types | Stable core diagram types; beta types churn | Budget emits `treemap-beta` + `xychart-beta`; the canon doc uses stable `stateDiagram-v2` / `sequenceDiagram` / `pie` | **EXCEPTION + CONVERGENCE SCHEDULED** (#440, owner-ruled on-by-default) — budget-scaled salience visuals, GitHub-render-validated. Converge when mermaid graduates them: drop `-beta`, re-verify syntax. |
 | 3 | Log fence name | NDJSON, or a pure JSON array in a ` ```json ` fence (multi-line bodies as escaped strings) | ` ```jsonplurnk `: a JSON array where an `open` entry's `body` is a verbatim HEREDOC — the one non-JSON value | **EXCEPTION — grammar-owned (#437)** — JSON-escaping bodies would destroy char-perfect semantics (`N:	` line addressing, EDIT literality). The custom fence name honestly signals "not parseable as pure JSON"; a ` ```json ` label would lie to parsers. Corpus-checked (grammar strip-parser, 184 entries). |
 
-Retired plurnkisms hold no residue: Gherkin (#435) and the 280-char prose cap are gone from
-the package surface and the linter alike (#492).
+Two non-constraints, stated so they are not re-invented: prose carries no character cap
+(atomicity is the lever — `run-on` measures weld and length, never a raw limit), and Gherkin
+is a model-steering register, never a wired conformance rule.
