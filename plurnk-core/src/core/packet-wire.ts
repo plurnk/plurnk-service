@@ -336,6 +336,22 @@ export default class PacketWire {
         return { text: head, cut: true };
     }
 
+    // §arrival-law (#566 — generalized to authored emission): a model-AUTHORED op body — a PLAN/SEND/
+    // WORK/FORK's text, an EDIT/COPY/MOVE span, an EXEC command — renders PREVIEW-bounded, so the
+    // model can never author an unbounded OPEN log row. run42: an unclosed `<<PLAN` swallowed a
+    // 57k-char runaway into ONE 29k open row the grinder is forbidden to fold (op NOT IN … 'PLAN') —
+    // a permanent budget bomb that pushed the packet past the physical window and gated out the
+    // recovery. RETRIEVED content (READ/FIND) is engine-bounded and stays FULL (capping a READ would
+    // break its `<start,end>` slice contract). The verbatim emission always survives in the folded
+    // `model` mirror, so nothing is lost; a cut states the true extent.
+    static #renderAuthoredBody(logAddr: string, body: string, preNumbered: boolean): string {
+        const arrival = PacketWire.#arrivalPreview(body);
+        const rendered = preNumbered
+            ? PacketWire.#wrapHeredocBody(logAddr, arrival.text)
+            : PacketWire.#renderContentBody(logAddr, arrival.text, "text/plain");
+        return arrival.cut ? `${rendered}\n… preview — the full body is ${body.split("\n").length} line(s)` : rendered;
+    }
+
     static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens, collectBodyTokens?: number[]): string {
         return entries.map((e) => {
             const meta: Record<string, unknown> = {};
@@ -440,12 +456,12 @@ export default class PacketWire {
                 // accept delivers the same span under `body` (the generic accept-rx key) — render either.
                 const r = rx as { span?: string; body?: string };
                 const span = typeof r.span === "string" ? r.span : (r.body ?? "");
-                if (span.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, span);
+                if (span.length > 0) body = PacketWire.#renderAuthoredBody(target ?? `log:///${coordinate}`, span, true);
             } else if (op === "EXEC" && e.tx !== null && e.tx !== undefined && typeof (e.tx as { body?: unknown }).body === "string") {
                 // EXEC: the literal command body, :::-fenced + line-numbered at the op's log address —
                 // the model sees what it ran and can reference lines of its own code. The OUTPUT is a
                 // SEPARATE stream (meta.stream), surfaced by the injector, never re-emitted here. §exec-stream
-                body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, (e.tx as { body: string }).body, "text/plain");
+                body = PacketWire.#renderAuthoredBody(path ?? `log:///${coordinate}`, (e.tx as { body: string }).body, false);
             } else if ((op === "PLAN" || op === "SEND" || op === "WORK" || op === "FORK") && e.tx !== null && e.tx !== undefined) {
                 // PLAN's plan / SEND's message / WORK's & FORK's seed task ride into the log as N:
                 // content at the op's log address — a dispatch's record IS the task it dispatched, so
@@ -457,7 +473,7 @@ export default class PacketWire {
                 const b = e.tx.body;
                 const opBody = typeof b === "string" ? b
                     : b !== null && typeof b === "object" && typeof b.raw === "string" ? b.raw : "";
-                if (opBody.length > 0) body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, opBody, "text/plain");
+                if (opBody.length > 0) body = PacketWire.#renderAuthoredBody(path ?? `log:///${coordinate}`, opBody, false);
                 // §worker-scheme-collect: an injected SEND (a child worker's concluded deliverable surfaced in
                 // the parent) has no authored tx body — its payload is the deliverable in rx (a raw string,
                 // not the {status} envelope a model SEND gets). Surface it so a child's 2xx reaches the

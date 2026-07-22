@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { urlPath as anyUrl, editStmt as anyEdit, sendStmt } from "./_dsl.ts";
+import { urlPath as anyUrl, editStmt as anyEdit, readStmt as anyRead, sendStmt } from "./_dsl.ts";
 
 // The budget assertions here pin the TABULAR baseline; #440's default is the mermaid form ([§budget-mermaid]).
 process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
@@ -140,10 +140,12 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
         // A window sized so the fat log lands BETWEEN the 50% occupancy gate and the grinder: too
         // tight and the grinder folds the fixture itself (folded rows collapse occupancy back under
         // the gate — exactly what the 0.74.49 teaching growth exposed at 3000).
-        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] }); // unfolded ≈4.6k (heavy row 3.6k open) → ~78%: above the gate, under the grinder
-        // A heavy edit (seq 1) and a tiny edit (seq 2) in one turn; read the next turn's budget.
-        const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(60);
-        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "big"), heavy), anyEdit(anyUrl("worker", "small"), "x"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 6500, responses: [{ assistant: { content: "", reasoning: null, ops } }] }); // unfolded ≈4.6k (heavy READ row ~3.6k open) → ~78%: above the gate, under the grinder
+        // A heavy RETRIEVED body (READ, seq 3) and a tiny one (seq 4): after #566 the heaviest log
+        // items are retrieval — authored bodies (EDIT spans etc.) render preview-bounded and can no
+        // longer be budget hogs. The EDITs (seq 1/2) just create the entries; the READs pull them.
+        const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(28);
+        await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "big"), heavy), anyEdit(anyUrl("worker", "small"), "x"), anyRead(anyUrl("worker", "big")), anyRead(anyUrl("worker", "small")), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         assert.match(budget, /Heaviest items \(FOLD targets — folding reclaims their tokens\):\n\| item \| tokens \|/, "heaviest-items table present, verb attached — the lever is named where the targets are listed");

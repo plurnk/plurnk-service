@@ -425,3 +425,41 @@ test("[§jsonplurnk-dynamic-fence] the opening fence outgrows any backtick run a
     const opener = /(`{3,})jsonplurnk/.exec(out)?.[1] ?? "";
     assert.ok(opener.length >= 4, `fence opens with ${opener.length} backticks — longer than the body's 3-run, so the body cannot close it`);
 });
+
+test("[§arrival-law-authored-bodies] a runaway authored body renders preview-bounded; READ/FIND stay full (#566)", () => {
+    const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1} of a runaway emission`).join("\n");
+
+    // A short PLAN renders whole — no behavior change for a well-formed op.
+    const shortOut = PacketWire.renderLog([
+        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: "Tidy context, then read the loader." } },
+    ], tok);
+    assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
+    assert.doesNotMatch(shortOut, /preview — the full body/, "no cut note under the bound");
+
+    // A runaway PLAN (30 lines) renders preview-bounded — the run42 bomb, defused.
+    const planOut = PacketWire.renderLog([
+        { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
+    ], tok);
+    assert.match(planOut, /preview — the full body is 30 line\(s\)/, "the runaway PLAN is preview-bounded, the true extent stated");
+    assert.doesNotMatch(planOut, /line 20 of a runaway/, "content past the 16-line preview is cut from the render");
+
+    // A runaway EDIT span (pre-numbered) caps too.
+    const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
+    const editOut = PacketWire.renderLog([
+        { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
+    ], tok);
+    assert.match(editOut, /preview — the full body is 30 line\(s\)/, "the runaway EDIT span is preview-bounded");
+
+    // READ and FIND deliver RETRIEVED content — full, even when long (the exemption).
+    const readOut = PacketWire.renderLog([
+        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, target: { scheme: null, pathname: "/big.txt" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
+    ], tok);
+    assert.match(readOut, /line 30 of a runaway/, "a long READ delivers full content — retrieval is exempt");
+    assert.doesNotMatch(readOut, /preview — the full body/, "no preview cut on a READ");
+
+    const findOut = PacketWire.renderLog([
+        { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: null } },
+    ], tok);
+    assert.match(findOut, /line 30 of a runaway/, "a long FIND renders its full result — retrieval is exempt");
+    assert.doesNotMatch(findOut, /preview — the full body/, "no preview cut on a FIND");
+});
