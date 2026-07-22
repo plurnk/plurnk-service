@@ -37,6 +37,10 @@ const prune = (m) => {
     // every model — the real per-model max output, not a blind window fraction.
     const maxOutput = m?.limit?.output;
     if (typeof maxOutput === "number" && maxOutput > 0) info.maxOutput = maxOutput;
+    // models.dev carries a per-model reasoning flag (all models) — the static "does this model
+    // reason" fact. The reasoning FORMAT (reasoning_content vs reasoning_effort) stays a
+    // per-provider probe, not a catalog field. Stored only when true; absent = non-reasoning.
+    if (m?.reasoning === true) info.reasoning = true;
     const c = m?.cost;
     if (c && typeof c.input === "number" && typeof c.output === "number") {
         info.cost = { inputPer1M: c.input, outputPer1M: c.output };
