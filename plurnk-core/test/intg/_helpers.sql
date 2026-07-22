@@ -27,6 +27,10 @@ SELECT sequence, status_rx, pathname, op FROM log_entries
 WHERE turn_id = $turn_id
 ORDER BY sequence;
 
+-- PREP: test_ops_by_turn
+-- op + origin + status for a turn's rows — distinguishes model-dispatched ops from engine foists (#566).
+SELECT op, origin, status_rx FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
+
 -- PREP: test_get_log_expanded
 SELECT le.expanded FROM log_entries le
 JOIN turns t ON t.id = le.turn_id

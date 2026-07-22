@@ -995,3 +995,34 @@ test("Engine.runTurn: a prose-only turn strikes as no-ops (422) — free text dr
         assert.equal(result.status, 422, "no terminal SEND — a PLAN-only turn strikes 422");
     } finally { await db.close(); }
 });
+
+test("[§broken-packet-no-dispatch] a truncated emission (finish=length + parse errors) dispatches NOTHING (#566)", async () => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    try {
+        // The run42 shape: the provider guillotined the emission at the completion cap. It has a
+        // FIND and then an EDIT cut mid-body (never closed) — the parser yields the FIND op PLUS a
+        // "never closed" error, and there's no terminal SEND. A severed frame, not a flubbed op.
+        const truncated: MockResponse = {
+            assistant: {
+                content: "<<PLAN::PLAN\n<<FIND(worker:///**)::FIND\n<<EDIT(worker:///scratch):this body was cut off mid-emissi",
+                reasoning: null,
+                finishReason: "length",
+                usage: { prompt: 10, completion: 17000, reasoning: 0, cached: 0, total: 17010 },
+            },
+        };
+        const result = await engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [truncated] }),
+            workspaceId, workerId, loopId,
+            messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
+        });
+        // No op the MODEL emitted dispatched — the FIND and EDIT are refused wholesale.
+        const rows = await (db.test_ops_by_turn as PrepMethod).all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
+        const modelDispatched = rows.filter((r) => r.origin === "model" && r.op !== "model" && r.op !== "error");
+        assert.deepEqual(modelDispatched, [], `a broken packet dispatches nothing; got ${JSON.stringify(modelDispatched)}`);
+        // But the turn still RECORDS through the existing error channel: the output_truncated 413
+        // and the folded model mirror — so the model sees why and re-emits next turn.
+        assert.ok(rows.some((r) => r.op === "error" && r.status_rx === 413), "the output_truncated 413 is recorded");
+        assert.ok(rows.some((r) => r.op === "model"), "the verbatim emission is mirrored (folded) for the model to re-read");
+        assert.equal(result.status, 422, "a no-valid-ops turn strikes 422");
+    } finally { await db.close(); }
+});

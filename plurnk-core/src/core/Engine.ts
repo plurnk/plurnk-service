@@ -1146,7 +1146,22 @@ export default class Engine {
         // Provisional here — a terminal REFUSED at dispatch (the pending-set 409, only knowable
         // post-dispatch) demotes the turn back to a continue below: the SEND's signal stays on the
         // row (the un-erased record), but the loop never went terminal, so the turn didn't either.
-        let turnStatus = sendOp !== undefined
+        // §broken-packet-no-dispatch (#566) — a BROKEN PACKET is structurally incomplete: the
+        // provider GUILLOTINED the emission at the completion cap (finish=length) and it failed the
+        // parse (empty, or cut mid-op). Its parsed "ops" are a severed frame — garbage (run42: an
+        // unclosed `<<PLAN` swallowed a 57k-char runaway into one bogus status-200 PLAN). Nothing
+        // dispatches and the turn is a NO-OPS strike, so a repeated runaway can't spin as a 102
+        // "continue". The turn still records — the folded `model` mirror + the output_truncated 413 +
+        // the parse-error rows — so the model sees WHY next turn and re-emits through the existing
+        // error channel (no same-turn re-generate). A "flubbed op" is DIFFERENT: a well-framed turn
+        // (finish=stop) whose single op erred dispatches its valid ops and steers on the bad one (the
+        // recovery rail); only a severed FRAME is refused wholesale. The formal framing-vs-op-local
+        // error split is grammar's to tag.
+        const brokenPacket = callMetadata.finishReason === "length"
+            && (packetAssistant.content.trim().length === 0 || (parseErrors?.length ?? 0) > 0);
+        let turnStatus = brokenPacket
+            ? TURN_STATUS_NO_OPS
+            : sendOp !== undefined
             ? sendOp.signal
             : realOpsCount === 0 ? TURN_STATUS_NO_OPS : TURN_STATUS_IMPLICIT_CONTINUE;
 
@@ -1209,14 +1224,18 @@ export default class Engine {
         // actions — they always dispatch and never count against the cap. maxCommands
         // bounds real actions only; maxCommands:0 still admits a plan and a conclusion
         // (the PLAN/SEND ops, zero actions), which is its only coherent meaning.
+        // §broken-packet-no-dispatch (#566) — the severed frame dispatches NOTHING (rationale +
+        // status handling at the brokenPacket definition above).
         let realCommands = 0;
-        const opsToDispatch = packetAssistant.ops.filter(
+        const opsToDispatch = brokenPacket ? [] : packetAssistant.ops.filter(
             (op) =>
                 op.op === "PLAN"
                 || (op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200)
                 || realCommands++ < maxCommands,
         );
-        const droppedCount = opsCount - opsToDispatch.length;
+        // A broken packet's ops aren't max_commands drops — they're refused wholesale, and the
+        // output_truncated 413 already tells the model why; don't also mint max_commands_exceeded.
+        const droppedCount = brokenPacket ? 0 : opsCount - opsToDispatch.length;
         const statuses: number[] = [];
         // Running counter — a multi-file READ writes N rows from one statement (rowsWritten),
         // so the next op's sequence picks up after them. Collapses to nextActionIndex+i when
