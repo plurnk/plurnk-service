@@ -109,7 +109,7 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         const tx = JSON.parse(second.tx) as { op: string; body: string };
         assert.equal(tx.body, "<p>wild turkeys are large birds, revised</p>", "tx.body IS the raw transmitted content — the journal can replay the write");
         const rx = JSON.parse(second.rx) as { status: number; span: string };
-        assert.equal(rx.span, "1:\twild turkeys are large birds, revised", "rx.span is the DECISIVE stored form (the readable projection), line-numbered — not the raw markup");
+        assert.equal(rx.span, "1:wild turkeys are large birds, revised", "rx.span is the DECISIVE stored form (the readable projection), line-numbered — not the raw markup");
 
         // The packet gate (the render the model actually sees): folded by default the meta line
         // carries the honest OPEN cost — real tokens + lines, `-` marker, no body riding; opened,
@@ -127,7 +127,7 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
         assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
         const openLine = PacketWire.renderLog(view(false), countTokens);
-        assert.ok(openLine.includes("1:\twild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
+        assert.ok(openLine.includes("1:wild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
         const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await quiesceExecs(schemes); await db.close(); }

@@ -201,8 +201,8 @@ test("[§copy-l-source-range] Engine.copy with <L> slices the source range into 
         const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/sliced" });
         const dstChannel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "beta\ngamma\n");
-        // Symmetric with READ <L> but WITHOUT the N:\t prefix (sliceLinesRaw) — the dest is content, not a view.
-        assert.doesNotMatch(dstChannel?.content ?? "", /^\d+:\t/, "COPY <L> writes raw lines, never the READ line-number prefix");
+        // Symmetric with READ <L> but WITHOUT the N: prefix (sliceLinesRaw) — the dest is content, not a view.
+        assert.doesNotMatch(dstChannel?.content ?? "", /^\d+:/, "COPY <L> writes raw lines, never the READ line-number prefix");
     } finally { await db.close(); }
 });
 

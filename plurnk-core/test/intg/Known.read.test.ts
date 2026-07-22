@@ -96,7 +96,7 @@ test("Known.read: regex body matcher returns N:\\t<value> rows", async () => {
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/markdown");
         // READ returns LINES (plurnk.md:31): two matches on line 1 → the line, deduped once.
-        assert.equal(result.content, "1:\talpha beta alpha gamma");
+        assert.equal(result.content, "1:alpha beta alpha gamma");
     } finally { db.close(); }
 });
 
@@ -109,7 +109,7 @@ test("Known.read: glob body matcher returns matching lines (line-filter primitiv
         const result = await k.read(readStatement({ target: urlPath("worker", "/g"), body: matcher }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/markdown");
-        assert.equal(result.content, "1:\tTODO: one\n3:\tTODO: two");
+        assert.equal(result.content, "1:TODO: one\n3:TODO: two");
     } finally { db.close(); }
 });
 
@@ -146,7 +146,7 @@ test("Known.read: <L> + body matcher composes — slice first, match within, sou
         }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
         // READ returns the LINE on source line 2 (after slice, baseLine preserved): `foo and bar`.
-        assert.equal(result.content, "2:\tfoo and bar");
+        assert.equal(result.content, "2:foo and bar");
     } finally { db.close(); }
 });
 

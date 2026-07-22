@@ -200,29 +200,32 @@ export default class PacketWire {
         };
     }
 
-    // Number each line of body as `<N>:\t<line>` — mirrors rummy
-    // plugins/helpers.js numberLines. The leading digit prevents column-zero
-    // fence collisions and gives the model line refs for free (`READ<42-46>`).
+    // Number each line of body as `<N>:<line>` — a bare `N:` prefix, NO separator whitespace
+    // (#564, owner policy pivot): the leading digit prevents column-zero fence collisions and gives
+    // the model line refs for free (`READ<42-46>`), while the absence of any separator means a
+    // reproduced line has nothing between `N:` and the content to copy — the hard-tab separator used
+    // to leak into edit bodies and corrupt indentation. The content's OWN leading whitespace is
+    // content, preserved verbatim.
     // Used for READ@200 content; index-preview numbering is the framework's
     // job now (baked into the preview string — see renderHeredoc).
     static #numberLines(body: string, start = 1): string {
         if (!body) return "";
         const trailingNewline = body.endsWith("\n");
         const source = trailingNewline ? body.slice(0, -1) : body;
-        const numbered = source.split("\n").map((line, i) => `${start + i}:\t${line}`).join("\n");
+        const numbered = source.split("\n").map((line, i) => `${start + i}:${line}`).join("\n");
         return trailingNewline ? `${numbered}\n` : numbered;
     }
 
     // The single content-body renderer EVERY output-emitting op routes through, so the line-number
-    // convention the model orients on can't drift: line-navigable mimetypes (text/*) get the `N:\t`
+    // convention the model orients on can't drift: line-navigable mimetypes (text/*) get the `N:`
     // prefix from `startLine`; tree-navigable (JSON/XML/HTML) render verbatim so jsonpath/xpath
     // isn't shifted. Empty content ⇒ "" (the meta line stands alone). §render-rule-line-navigable-prefix
     static #renderContentBody(fence: string, content: string, mimetype: string, startLine: number | null = 1): string {
         if (content.length === 0) return "";
-        // Line-navigable text gets the `N:\t` source-line prefix from startLine. `startLine === null`
+        // Line-navigable text gets the `N:` source-line prefix from startLine. `startLine === null`
         // means the content is ALREADY source-numbered — a matcher result whose lines carry their own
-        // (non-contiguous) source numbers like `143:\t…`; re-numbering would double it to `1:\t143:\t…`
-        // (plurnk.md:32 — one source-line prefix). Render verbatim. §render-rule-line-navigable-prefix
+        // (non-contiguous) source numbers like `143:…`; re-numbering would double it to `1:143:…`
+        // (one source-line prefix). Render verbatim. §render-rule-line-navigable-prefix
         const rendered = MimetypeBinary.isLineNavigableMimetype(mimetype) && startLine !== null
             ? PacketWire.#numberLines(content, startLine)
             : content;
@@ -248,7 +251,7 @@ export default class PacketWire {
 
     // Wrap a body in heredoc fences. Leading `\n` always (separates the
     // opening fence from the first body character — necessary because
-    // numbered bodies start with `1:\t…` which would otherwise collide
+    // numbered bodies start with `1:…` which would otherwise collide
     // visually with the `:::FENCE` markers). Trailing `\n` only when the
     // body doesn't already end with one — otherwise you get a doubled
     // newline that renders as a blank line before the closing fence, which
@@ -267,7 +270,7 @@ export default class PacketWire {
     // this is the default-channel convention: the absence of `#channel` is
     // the addressing of the scheme's default channel, not a missing field.
     // Body is a mimetypes preview, rendered VERBATIM — the framework owns its
-    // formatting (N:\t line numbers for text, source-annotated outline for
+    // formatting (N: line numbers for text, source-annotated outline for
     // symbols, correct start-line for tail slices) and bakes it into the
     // preview string as of mimetypes 0.7.3, so the service must not re-number
     // it (re-numbering would double-prefix text and mis-number symbol
@@ -430,8 +433,8 @@ export default class PacketWire {
                 }
             } else if ((op === "EDIT" || op === "COPY" || op === "MOVE") && rx !== null && typeof rx === "object" && (typeof (rx as { span?: unknown }).span === "string" || typeof (rx as { body?: unknown }).body === "string")) {
                 // EDIT (§edit-result-render): the resulting span as it looks now. editedSpan already
-                // line-numbered it with the changed region's REAL offsets (e.g. 50:\t…), so wrap
-                // verbatim — re-numbering here would double it (1:\t50:\t…) and lose the true line
+                // line-numbered it with the changed region's REAL offsets (e.g. 50:…), so wrap
+                // verbatim — re-numbering here would double it (1:50:…) and lose the true line
                 // position. Empty span (content emptied) ⇒ no body — the meta line stands alone.
                 // The inline entry-scheme EDIT delivers the span under `span`; a PROPOSED file EDIT's
                 // accept delivers the same span under `body` (the generic accept-rx key) — render either.
@@ -444,7 +447,7 @@ export default class PacketWire {
                 // SEPARATE stream (meta.stream), surfaced by the injector, never re-emitted here. §exec-stream
                 body = PacketWire.#renderContentBody(path ?? `log:///${coordinate}`, (e.tx as { body: string }).body, "text/plain");
             } else if ((op === "PLAN" || op === "SEND" || op === "WORK" || op === "FORK") && e.tx !== null && e.tx !== undefined) {
-                // PLAN's plan / SEND's message / WORK's & FORK's seed task ride into the log as N:\t
+                // PLAN's plan / SEND's message / WORK's & FORK's seed task ride into the log as N:
                 // content at the op's log address — a dispatch's record IS the task it dispatched, so
                 // the next turn reads what each worker is doing (the spawn-then-retask confusion was
                 // this body missing: the log showed "spawned worker-db" with no task). The log
@@ -492,11 +495,11 @@ export default class PacketWire {
             // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
             meta.tokens = body.length > 0 ? countTokens(body) : 0;
             collectBodyTokens?.push(meta.tokens as number);
-            // lines beside tokens on any row with a navigable body — the count of `N:\t`-numbered
+            // lines beside tokens on any row with a navigable body — the count of `N:`-numbered
             // lines (fences and unnumbered prose don't count), so the model can plan a <start,end>
             // slice before paying for an OPEN. Omitted when the body isn't line-addressable.
             if (body.length > 0) {
-                const navigable = body.split("\n").filter((l) => /^\d+:\t/.test(l)).length;
+                const navigable = body.split("\n").filter((l) => /^\d+:/.test(l)).length;
                 if (navigable > 0) meta.lines = navigable;
             }
 

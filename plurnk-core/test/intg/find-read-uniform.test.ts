@@ -73,7 +73,7 @@ test("[#286] glob READ — multiple matches in ONE file fan out to multiple rows
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target\ndelta target");
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///log.md):*target*:READ", "READ"));
         assert.equal(result.rowsWritten, 4, "the FIND summary + three matching lines in one file");
-        assert.deepEqual(rows.map((r) => `${r.startLine}:\t${r.content}`), ["1:\talpha target", "3:\tgamma target", "4:\tdelta target"]);
+        assert.deepEqual(rows.map((r) => `${r.startLine}:${r.content}`), ["1:alpha target", "3:gamma target", "4:delta target"]);
     } finally { await db.close(); }
 });
 

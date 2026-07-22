@@ -1,7 +1,7 @@
 // xpath / jsonpath matcher coverage — asserts the matcher contract: status
 // mapping, dialect dispatch (through plurnk-mimetypes), and the model-facing
 // result shape. READ returns LINES (plurnk.md:31): each result row is the SOURCE
-// line at a match, prefixed `N:\t` with the match's source line number — one match
+// line at a match, prefixed `N:` with the match's source line number — one match
 // per line, line numbers NON-SEQUENTIAL when matches scatter through the document.
 // A matcher SELECTS the line; it never extracts or re-encodes the projected value.
 
@@ -30,12 +30,12 @@ const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): R
     position: { line: 1, column: 1 },
 });
 
-// Each result row is `N:\t<source line>`. rxLines strips the prefix to the line text;
+// Each result row is `N:<source line>`. rxLines strips the prefix to the line text;
 // rxLineNos surfaces the N's — non-sequential when matches scatter (the contract's point).
 const rxLines = (content: string | null | undefined): string[] =>
-    (content ?? "").split("\n").map((line) => line.replace(/^\d+:\t/, ""));
+    (content ?? "").split("\n").map((line) => line.replace(/^\d+:/, ""));
 const rxLineNos = (content: string | null | undefined): number[] =>
-    (content ?? "").split("\n").map((line) => Number(/^(\d+):\t/.exec(line)?.[1] ?? -1));
+    (content ?? "").split("\n").map((line) => Number(/^(\d+):/.exec(line)?.[1] ?? -1));
 
 const setup = async () => {
     const db = await openMigrated();

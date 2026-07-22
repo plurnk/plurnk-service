@@ -16,7 +16,7 @@ import MimetypeBinary from "./mimetype-binary.ts";
 
 export interface MatchResult {
     status: number;
-    body?: string;          // N:\t<line> rows (200) or raw fallback content (203)
+    body?: string;          // N:<line> rows (200) or raw fallback content (203)
     matches?: number;       // hit count (status 200 / 204)
     // §matcher-selection-signal — each hit's canonical location in the DAUGHTER's own coordinate
     // system (jsonpath: $['users'][0]['name']; xpath: the node path), when the dialect provides
@@ -44,7 +44,7 @@ export default class Matcher {
     // READ returns LINES of content (plurnk.md:31): a matcher SELECTS, READ delivers the
     // source line(s) at each match — not the extracted value. `m.lines` is each hit's source
     // span(s), uniform across dialects (the daughter self-provides them). One source-line
-    // prefix `N:\t` (plurnk.md:32), deduped by source line; baseLine shifts slice-relative
+    // prefix `N:` (plurnk.md:32), deduped by source line; baseLine shifts slice-relative
     // spans back to source coordinates. A hit with no span (e.g. an xpath computed scalar —
     // count()/sum(), which has no source node) falls back to the matched value.
     static #renderRows(matches: readonly QueryMatch[], content: string, baseLine: number): { body: string; lines: number[]; spans: { lineStart: number; lineEnd: number }[] } {
@@ -68,7 +68,7 @@ export default class Matcher {
                     sourceLines.push(src);
                     if (seen.has(src)) continue;
                     seen.add(src);
-                    rows.push(`${src}:\t${lines[ln - 1] ?? Matcher.#renderValue(m.matched)}`);
+                    rows.push(`${src}:${lines[ln - 1] ?? Matcher.#renderValue(m.matched)}`);
                 }
             }
         }

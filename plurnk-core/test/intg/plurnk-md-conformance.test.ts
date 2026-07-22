@@ -88,7 +88,7 @@ test("[plurnk.md-READ-glob-on-content] READ glob body matches entry CONTENT, not
         await seed(db, workspaceId, workerId, [["doc", "alpha\nTODO: ship\nbeta"]]);
         const r = await new Worker().read(readStmt(url("doc"), glob("TODO*")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
-        assert.equal(r.content, "2:\tTODO: ship");
+        assert.equal(r.content, "2:TODO: ship");
     } finally { db.close(); }
 });
 
@@ -100,7 +100,7 @@ test("[plurnk.md-READ-regex-on-content] READ regex body matches entry CONTENT, n
         const r = await new Worker().read(readStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
         // READ returns the LINE that matched (plurnk.md:31), not the token `timeout`.
-        assert.equal(r.content, "1:\talpha timeout beta");
+        assert.equal(r.content, "1:alpha timeout beta");
     } finally { db.close(); }
 });
 

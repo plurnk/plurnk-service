@@ -11,7 +11,7 @@ test("schema: parse_error envelope (grammar source, content-offset position)", a
         kind: "parse_error",
         message: "invalid xpath: Unexpected character :",
         position: { type: "content-offset", line: 1, column: 0 },
-        snippet: "1:\t<<READ(src/app.js):// TODO: add error handling:READ",
+        snippet: "1:<<READ(src/app.js):// TODO: add error handling:READ",
         parserSource: "visitor",
     }, "parse_error from grammar");
 });

@@ -68,7 +68,7 @@ test("[§read-multi-file-fanout] a matcher READ fans out to one row per MATCH, e
         assert.deepEqual(r.fannedStatuses, [200, 200]);
 
         // Each row stores its match's line RAW at its source startLine (in the rx); packet-wire
-        // numbers it N:\t at render (#286 — no pre-numbering baked into the body). Read the stored
+        // numbers it N: at render (#286 — no pre-numbering baked into the body). Read the stored
         // rx directly: Log.read re-resolves the body fresh and wouldn't surface the stored span.
         const rxOf = async (seq: number): Promise<{ content?: string; startLine?: number | null }> => {
             const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq });
@@ -76,8 +76,8 @@ test("[§read-multi-file-fanout] a matcher READ fans out to one row per MATCH, e
         };
         // Sequence 1 is the FIND selection-summary row (§matcher-selection-signal); deliveries follow.
         const stored = [await rxOf(2), await rxOf(3)];
-        const numbered = stored.map((x) => `${x.startLine}:\t${x.content}`).toSorted();
-        assert.deepEqual(numbered, ["1:\tfrance beta", "2:\tfrance alpha"], "each fanned row stores its match line at its source span — render numbers it");
+        const numbered = stored.map((x) => `${x.startLine}:${x.content}`).toSorted();
+        assert.deepEqual(numbered, ["1:france beta", "2:france alpha"], "each fanned row stores its match line at its source span — render numbers it");
     } finally { await db.close(); }
 });
 

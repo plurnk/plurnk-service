@@ -4,7 +4,7 @@
 // `MimetypeBinary.isBinaryMimetype(...)`.
 //
 //   isBinaryMimetype       — enforces 415 on binary entries (SPEC §op-invariants)
-//   isLineNavigableMimetype — decides the render layer's `N:\t` line prefixes
+//   isLineNavigableMimetype — decides the render layer's `N:` line prefixes
 //   TEXT_PRIMITIVE_MIMETYPE — text/markdown, the auto-derived text default
 import { MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE as _TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
 

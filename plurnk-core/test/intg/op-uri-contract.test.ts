@@ -122,7 +122,7 @@ test("contract: FIND(/leading-slash) resolves the member — isolates the missin
 
 // {§matcher-result-read-returns-lines} — DEFERRED-RED until Stage 2. A regex SELECTS the
 // lines it occurs in; READ returns the LINE, not the matched substring. Today the matcher
-// renders `<line>:\t<matched-value>` (the token `phoenix`); the contract wants the line.
+// renders `<line>:<matched-value>` (the token `phoenix`); the contract wants the line.
 test("[§matcher-result-read-returns-lines] a regex READ returns the matching LINE, not the substring", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
@@ -142,8 +142,8 @@ test("contract: a glob READ returns whole matching lines with non-sequential sou
         const stmt = parseOp<ReadStatement>("<<READ(log.md):*target*:READ", "READ");
         const result = await new File().read(stmt, ctx);
         const content = result.content ?? "";
-        assert.match(content, /2:\ttarget one/, `glob returns line 2 whole; got: ${JSON.stringify(content)}`);
-        assert.match(content, /5:\ttarget two/, `glob returns line 5 whole; got: ${JSON.stringify(content)}`);
+        assert.match(content, /2:target one/, `glob returns line 2 whole; got: ${JSON.stringify(content)}`);
+        assert.match(content, /5:target two/, `glob returns line 5 whole; got: ${JSON.stringify(content)}`);
     });
 });
 

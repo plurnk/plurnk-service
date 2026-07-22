@@ -18,5 +18,5 @@ export const editedSpan = (original: string, updated: string, context = 2): stri
     if (lo < 0) { lo = 0; hi = rows.length - 1; }  // no added hunk (defensive) → whole
     const start = Math.max(0, lo - context);
     const end = Math.min(rows.length - 1, hi + context);
-    return rows.slice(start, end + 1).map((r, i) => `${start + i + 1}:\t${r.text}`).join("\n");
+    return rows.slice(start, end + 1).map((r, i) => `${start + i + 1}:${r.text}`).join("\n");
 };

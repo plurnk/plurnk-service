@@ -3,7 +3,7 @@
 // high-level Mimetypes.query(input, ParsedBodyMatcher) (mimetypes#42). What
 // plurnk-service OWNS — and this file tests — is the orchestration around that
 // call: building the ParsedBodyMatcher from the grammar's MatcherBody, #renderRows
-// (each hit's span → `N:\t<source line>`, deduped, baseLine-shifted — plurnk.md:31/:32),
+// (each hit's span → `N:<source line>`, deduped, baseLine-shifted — plurnk.md:31/:32),
 // and the status mapping (200/204/203/400/501). query is stubbed: we hand it the
 // QueryMatch[] the daughter would return and assert how matcher.ts renders it.
 
@@ -32,7 +32,7 @@ test("regex hits → 200, the SOURCE LINE at each match (not the matched token)"
         stubQuery(async () => [hit(2, "foo"), hit(4, "foo")]));
     assert.equal(r.status, 200);
     assert.equal(r.matches, 2);
-    assert.equal(r.body, "2:\tfoo bar\n4:\tfoo baz");  // READ delivers the line, not "foo"
+    assert.equal(r.body, "2:foo bar\n4:foo baz");  // READ delivers the line, not "foo"
     assert.deepEqual(r.lines, [2, 4]);
 });
 
@@ -51,7 +51,7 @@ test("structural hits return the SOURCE LINE — the projected value is never re
         { dialect: "jsonpath", raw: "$.users[*]" } as MatcherBody, content, "application/json",
         stubQuery(async () => [hit(3, { name: "Alice", role: "admin" }), hit(4, { name: "Bob" })]));
     assert.equal(r.status, 200);
-    assert.equal(r.body, '3:\t    { "name": "Alice", "role": "admin" },\n4:\t    { "name": "Bob" }');
+    assert.equal(r.body, '3:    { "name": "Alice", "role": "admin" },\n4:    { "name": "Bob" }');
 });
 
 test("two matches on one source line collapse to a single row (dedup by line)", async () => {
@@ -62,7 +62,7 @@ test("two matches on one source line collapse to a single row (dedup by line)", 
         stubQuery(async () => [hit(1, "Alice"), hit(1, "Bob")]));
     assert.equal(r.status, 200);
     assert.equal(r.matches, 2);
-    assert.equal(r.body, '1:\t{"users":[{"name":"Alice"},{"name":"Bob"}]}');
+    assert.equal(r.body, '1:{"users":[{"name":"Alice"},{"name":"Bob"}]}');
     assert.deepEqual(r.lines, [1, 1]);  // both hits provenance line 1; render deduped
 });
 
@@ -72,7 +72,7 @@ test("a multi-line span emits every line it covers", async () => {
         { dialect: "xpath", raw: "//user" } as MatcherBody, content, "text/html",
         stubQuery(async () => [{ matched: "<user>...</user>", matching: "(//user)[1]", lines: [{ line: 2, endLine: 4 }] } as unknown as QueryMatch]));
     assert.equal(r.status, 200);
-    assert.equal(r.body, "2:\t  <user>\n3:\t    Alice\n4:\t  </user>");
+    assert.equal(r.body, "2:  <user>\n3:    Alice\n4:  </user>");
 });
 
 test("a hit with no source span falls back to the matched value (e.g. xpath count())", async () => {
@@ -88,14 +88,14 @@ test("<L> baseLine offset shifts hit lines back into source coordinates", async 
     // The matcher saw lines 1-2 of a slice that began at source line 10.
     const r = await Matcher.matchAgainstContent(regexBody("foo"), "foo\nfoo", "text/markdown",
         stubQuery(async () => [hit(1, "foo"), hit(2, "foo")]), 10);
-    assert.equal(r.body, "10:\tfoo\n11:\tfoo");
+    assert.equal(r.body, "10:foo\n11:foo");
     assert.deepEqual(r.lines, [10, 11]);
 });
 
 test("baseLine=1 (no slice) leaves hit lines unshifted", async () => {
     const r = await Matcher.matchAgainstContent(regexBody("foo"), "x\nfoo", "text/markdown",
         stubQuery(async () => [hit(2, "foo")]), 1);
-    assert.equal(r.body, "2:\tfoo");
+    assert.equal(r.body, "2:foo");
 });
 
 test("source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {

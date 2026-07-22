@@ -21,7 +21,7 @@ import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } 
 // Supersedes the prior input-echo of the source statement.
 export type EditResult = { status: number; entryId: number | null; channel: string | null; span?: string | null; error?: string };
 // startLine = 1-indexed position the content starts at in the original
-// source. Lets the render layer prefix N:\t correctly for both full
+// source. Lets the render layer prefix N: correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
 // (matcher results, errors).
 // matches = count of matcher hits when body matcher was used; null when

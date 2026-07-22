@@ -47,9 +47,9 @@ test("COPY/MOVE into a file render their span diff like EDIT — the write is SE
         op: "COPY",
         status: 200,
         target: { scheme: "worker", pathname: "/draft" },
-        rx: { status: 200, span: "1:\tcopied content" },
+        rx: { status: 200, span: "1:copied content" },
     }], tok);
-    assert.match(out, /<<:::worker:\/\/\/draft\n1:\tcopied content\n:::worker:\/\/\/draft/, "the COPY row carries its resulting span, EDIT-parity");
+    assert.match(out, /<<:::worker:\/\/\/draft\n1:copied content\n:::worker:\/\/\/draft/, "the COPY row carries its resulting span, EDIT-parity");
 });
 
 test("EDIT with an accept-path span (rx.body from a proposed file edit) renders the line-numbered diff", () => {
@@ -63,9 +63,9 @@ test("EDIT with an accept-path span (rx.body from a proposed file edit) renders 
         op: "EDIT",
         status: 200,
         target: { scheme: null, pathname: "/src/app.js" },
-        rx: { status: 200, body: "3:\tapp.listen(8080);\n4:\t// error handler configured" },
+        rx: { status: 200, body: "3:app.listen(8080);\n4:// error handler configured" },
     }], tok);
-    assert.match(out, /<<:::src\/app\.js\n3:\tapp\.listen\(8080\);\n4:\t\/\/ error handler configured\n:::src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
+    assert.match(out, /<<:::src\/app\.js\n3:app\.listen\(8080\);\n4:\/\/ error handler configured\n:::src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
 });
 
 test("log entry: a worker:// spawn renders the worker NAME in the target — authority survives (§worker-scheme)", () => {
@@ -104,24 +104,24 @@ test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markd
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    // Line-navigable mimetype → `N:\t` prefix per line.
-    assert.match(out, /<<:::notes\.md\n1:\thello\n2:\tworld\n:::notes\.md/);
+    // Line-navigable mimetype → `N:` prefix per line.
+    assert.match(out, /<<:::notes\.md\n1:hello\n2:world\n:::notes\.md/);
 });
 
 test("log render: READ@200 matcher result (startLine null) renders VERBATIM — no double line-numbering", () => {
-    // A matcher result is already source-numbered with non-contiguous lines (`143:\t…`,
-    // `617:\t…`) and carries startLine=null. The render must NOT re-number it — that would
-    // double it to `1:\t143:\t…` and lose the true source line (plurnk.md:32: one `N:\t`).
+    // A matcher result is already source-numbered with non-contiguous lines (`143:…`,
+    // `617:…`) and carries startLine=null. The render must NOT re-number it — that would
+    // double it to `1:143:…` and lose the true source line (plurnk.md:32: one `N:`).
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
         origin: "model",
         op: "READ",
         status: 200,
         target: { scheme: null, pathname: "/spec.md" },
-        rx: { content: "143:\tgrinder\n617:\tgrinder", mimetype: "text/markdown", startLine: null },
+        rx: { content: "143:grinder\n617:grinder", mimetype: "text/markdown", startLine: null },
     }], tok);
-    assert.match(out, /<<:::spec\.md\n143:\tgrinder\n617:\tgrinder\n:::spec\.md/);
-    assert.doesNotMatch(out, /1:\t143:\t/);
+    assert.match(out, /<<:::spec\.md\n143:grinder\n617:grinder\n:::spec\.md/);
+    assert.doesNotMatch(out, /1:143:/);
 });
 
 test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
@@ -138,9 +138,9 @@ test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with applicat
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    // Tree-navigable mimetype → body rendered verbatim, no outer N:\t.
+    // Tree-navigable mimetype → body rendered verbatim, no outer N:.
     assert.match(out, /<<:::notes\.md\n\[\n {2}\{"line":1,"matched":"hello"\}\n\]\n:::notes\.md/);
-    assert.doesNotMatch(out, /<<:::notes\.md\n1:\t/);
+    assert.doesNotMatch(out, /<<:::notes\.md\n1:/);
 });
 
 // EDIT log renders re-emit the model's statement as heredoc — same syntax
@@ -155,14 +155,14 @@ test("[§edit-result-render] log render: EDIT@200 with rx.span → wraps the pre
         op: "EDIT",
         status: 200,
         target: { scheme: "worker", pathname: "/plan.md" },
-        rx: { status: 200, span: "3:\t- [x] ship the fix" },  // editedSpan emits N:\t with the changed region's REAL offset
+        rx: { status: 200, span: "3:- [x] ship the fix" },  // editedSpan emits N: with the changed region's REAL offset
     }], tok);
     // The model sees the edited area as it looks NOW at its TRUE line numbers — editedSpan already
-    // line-numbered it, so the renderer wraps verbatim. Re-numbering here would double it (1:\t3:\t…)
+    // line-numbered it, so the renderer wraps verbatim. Re-numbering here would double it (1:3:…)
     // and lose the real position. (A span-less EDIT — a scheme that returns no span — stands on its meta
     // line alone; the log NEVER re-serializes the op's emission tag, per the no-tags-in-the-log paradigm.)
-    assert.match(out, /<<:::worker:\/\/\/plan\.md\n3:\t- \[x\] ship the fix\n:::worker:\/\/\/plan\.md/, "EDIT wraps the pre-numbered span verbatim under the target fence");
-    assert.doesNotMatch(out, /1:\t3:\t/, "must NOT re-number an already-numbered span");
+    assert.match(out, /<<:::worker:\/\/\/plan\.md\n3:- \[x\] ship the fix\n:::worker:\/\/\/plan\.md/, "EDIT wraps the pre-numbered span verbatim under the target fence");
+    assert.doesNotMatch(out, /1:3:/, "must NOT re-number an already-numbered span");
 });
 
 test("render guard: every content-emitting op applies the N:\\t convention uniformly (READ/FIND/EDIT/EXEC/stream/PLAN/SEND)", () => {
@@ -170,19 +170,19 @@ test("render guard: every content-emitting op applies the N:\\t convention unifo
     // line-navigable (text/*) bodies and leave tree-navigable (JSON) verbatim — else it has its
     // bearings on one op's output but not another's. Pins the invariant across READ, FIND, EDIT-span,
     // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies —
-    // which ride into the log as N:\t content, NEVER re-serialized as a <<OP:…:OP tag (the log mirrors
+    // which ride into the log as N: content, NEVER re-serialized as a <<OP:…:OP tag (the log mirrors
     // the model's WORK, not its emission syntax). No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
     const execTx = (body: string) => ({ op: "EXEC", suffix: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, signal: null, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
-        { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:\talpha\n2:\tbeta/ },
-        { label: "READ json → verbatim", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n\{"k":1\}\n/, anti: /\d:\t/ },
-        { label: "FIND text → numbered", entry: { ...base, op: "FIND", rx: { status: 200, mimetype: "text/markdown", content: "m1\nm2" } }, want: /1:\tm1\n2:\tm2/ },
-        { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:\tx\n6:\ty" } }, want: /5:\tx\n6:\ty/, anti: /1:\t5:\t/ },
-        { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:\tls\n2:\tpwd/ },
-        { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:\tout5\n6:\tout6/ },
-        { label: "PLAN body → numbered content, never a <<PLAN tag", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:\tread line 2\n2:\tthen answer/, anti: /<<PLAN/ },
-        { label: "SEND body → numbered content, never a <<SEND tag", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:\there is the answer/, anti: /<<SEND/ },
+        { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
+        { label: "READ json → verbatim", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "application/json", content: '{"k":1}' } }, want: /\n\{"k":1\}\n/, anti: /\d:/ },
+        { label: "FIND text → numbered", entry: { ...base, op: "FIND", rx: { status: 200, mimetype: "text/markdown", content: "m1\nm2" } }, want: /1:m1\n2:m2/ },
+        { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
+        { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
+        { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
+        { label: "PLAN body → numbered content, never a <<PLAN tag", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:read line 2\n2:then answer/, anti: /<<PLAN/ },
+        { label: "SEND body → numbered content, never a <<SEND tag", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /<<SEND/ },
     ];
     for (const c of cases) {
         const out = PacketWire.renderLog([c.entry], tok);
@@ -357,8 +357,8 @@ test("[§render-rule-find-renders-result] log render: FIND@200 renders its resul
         rx: { content: catalog, mimetype: "application/json" },
     }], tok);
     assert.match(out, /"path": "plurnk:\/\/prompt\/1\/1"/, "FIND@200 renders its result body — the model sees what the FIND returned");
-    // Tree-navigable JSON → verbatim, no N:\t line-number prefix.
-    assert.doesNotMatch(out, /\n1:\t/);
+    // Tree-navigable JSON → verbatim, no N: line-number prefix.
+    assert.doesNotMatch(out, /\n1:/);
 });
 
 test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-navigable)", () => {
@@ -376,7 +376,7 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
     };
     const out = PacketWire.renderLog(system.log, tok);
     assert.match(out, /<<:::page\.html\n<h1>Hi<\/h1>\n:::page\.html/);
-    assert.doesNotMatch(out, /1:\t/);
+    assert.doesNotMatch(out, /1:/);
 });
 
 test("[§model-entry] a folded model row renders meta-only — the verbatim hides until OPEN", () => {
@@ -394,8 +394,8 @@ test("[§model-entry] an open model row mirrors the model's own emission back, l
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /\{"display":"open","lines":2,"op":"model"/, "open → display:open — lines counts the navigable body");
-    assert.match(out, /1:\t<<PLAN:Initialize:PLAN/, "the model sees its own emission — line 1");
-    assert.match(out, /2:\t<<SEND\[102\]:Initialized:SEND/, "line 2, referenceable when reasoning through a syntax error");
+    assert.match(out, /1:<<PLAN:Initialize:PLAN/, "the model sees its own emission — line 1");
+    assert.match(out, /2:<<SEND\[102\]:Initialized:SEND/, "line 2, referenceable when reasoning through a syntax error");
 });
 
 test("[§jsonplurnk] the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {

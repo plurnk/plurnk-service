@@ -505,7 +505,7 @@ export default class Exec {
                     tx: JSON.stringify({ op: "EDIT", body }), mimetype_tx: "application/json",
                     rx: JSON.stringify({
                         status: written.status, entryId: written.entryId, tags,
-                        span: decisive.split("\n").map((l, n) => `${n + 1}:\t${l}`).join("\n"),
+                        span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
                     }), mimetype_rx: "application/json",
                     status_rx: written.status, tokens: ctx.tokenize?.(decisive) ?? 0, state: "resolved", outcome: null,
                     attrs: JSON.stringify({ tags }),

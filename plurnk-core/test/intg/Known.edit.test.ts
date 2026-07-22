@@ -317,11 +317,11 @@ test("Known.edit result carries the edited span — post-edit state, line-number
         // New entry: the whole body is the edit → span is the full body, 1-indexed.
         const r1 = await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nbeta\ngamma" }), ctx);
         assert.equal(r1.status, 201);
-        assert.equal(r1.span, "1:\talpha\n2:\tbeta\n3:\tgamma", "new entry → span is the full body, line-numbered");
+        assert.equal(r1.span, "1:alpha\n2:beta\n3:gamma", "new entry → span is the full body, line-numbered");
         // Re-edit changing one line: the diff finds it; span shows the edited region
         // plus context, in its post-edit state — not the input statement.
         const r2 = await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nBETA\ngamma" }), ctx);
         assert.equal(r2.status, 200);
-        assert.equal(r2.span, "1:\talpha\n2:\tBETA\n3:\tgamma", "re-edit → span shows the change (BETA) with context, post-edit, line-numbered");
+        assert.equal(r2.span, "1:alpha\n2:BETA\n3:gamma", "re-edit → span shows the change (BETA) with context, post-edit, line-numbered");
     } finally { await db.close(); }
 });
