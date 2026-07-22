@@ -17,8 +17,8 @@ So the engineering question is never "how do we get the model to do X." It is **
 | The model's per-turn decode | The CPU — a slow, unreliable core | (it's the workload; the goal is to *demand less of it*) | providers |
 | The **packet** | The process address space — the state the CPU sees each cycle | Working-set theory; context as addressable state | `PacketBuilder`, `packet-wire` |
 | The **budget grinder** (fold under a fixed window) | Virtual memory — demand paging / swap | Denning's working-set model; page replacement (LRU/eviction). FOLD = page-out; KILL = `free()` | `PacketBuilder.enforceBudget`, §grinder |
-| The **entry substrate** (`known://`, path-keyed, mutable, FTS+embeddings) | Filesystem + index | VFS, path resolution, content-addressing; inverted index / IR | `_entry-*`, Z4 |
-| **Schemes** (known/worker/log/exec/http behind one op algebra) | VFS + driver/mount model | "Everything is a file"; uniform driver interface; mount table | `SchemeRegistry`, `schemes/*` |
+| The **entry substrate** (path-keyed, mutable, FTS+embeddings) | Filesystem + index | VFS, path resolution, content-addressing; inverted index / IR | `_entry-*`, Z4 |
+| **Schemes** (file/worker/log/exec/prompt/skill/http behind one op algebra) | VFS + driver/mount model | "Everything is a file"; uniform driver interface; mount table | `SchemeRegistry`, `schemes/*` |
 | **Ops** (FIND/READ/EDIT/OPEN/FOLD/KILL/WORK/SEND) | Syscalls / the ABI | Syscall/ABI design; capability-based access | `Dispatcher` |
 | The **matcher** (source-agnostic content dialects) | The query layer over the FS | IR; query planning; parser/dialect design | `Matcher`, §find-source-agnostic |
 | **Workers / loops** | Processes / threads — a worker is a long-lived named actor with identity, lineage, and log-as-memory | Process & thread model | `workers`/`loops`/`turns` |

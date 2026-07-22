@@ -6,7 +6,7 @@ LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/pl
 
 Grammar ops: `PLAN` reason · `READ`/`EDIT` files · `FIND` search · `EXEC` run shell/code · `SEND` message or conclude · `COPY`/`MOVE`/`KILL` manage · `OPEN`/`FOLD` curate its own context.
 
-Over schemes: `file://` project files · `exec://` command output · `http(s)://` web fetch · `worker://` sibling agent runs (spawn / fork / message) · `known://` scratch · `log://` own history.
+Over schemes: `file://` project files · `exec://` command output · `http(s)://` web fetch · `worker://` scratch + sibling agent runs (commons/own-space/spawn/fork/message) · `prompt://` the task frame · `skill://` bundled reference · `log://` own history.
 
 ## Loop model
 
