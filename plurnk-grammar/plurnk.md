@@ -85,7 +85,7 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 * The leading symbol commits its dialect; a mistyped matcher is flagged, not silently downgraded to a glob.
 * Filters bracket directly: $[?(@.role=="admin")], never $.[?(...)].
 * Mapping is universal (you can do jsonpath against XML files and xpath on json files, etc...).
-* Matching returns whole lines, never extracted values: `Alice` returns `42:	I bought Alice some flowers`, not `1:	Alice`.
+* Matching returns whole lines, never extracted values: `Alice` returns `42: I bought Alice some flowers`, not `1: Alice`.
 * The `#…#` fence takes any regex verbatim, so only a literal `#` inside needs escaping, as `\#`.
 
 ### `(path)`
