@@ -41,7 +41,9 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const channels1 = await (db.test_list_channel_names as PrepMethod).all<{ name: string }>({ entry_id: unknownEntryId });
         assert.deepEqual(channels1.map((c) => c.name), ["body"]);
 
-        const [editUnknownAgain] = parse("<<EDIT[geography](worker:///france/capital):rephrased question:EDIT");
+        // {§edit-marker-required-on-existing} — the entry already exists (created above), so
+        // the re-edit needs a marker; <1,-1> states the deliberate full rewrite.
+        const [editUnknownAgain] = parse("<<EDIT[geography](worker:///france/capital)<1,-1>:rephrased question:EDIT");
         const r2 = await dispatch(editUnknownAgain, 2);
         assert.equal(r2.status, 200);
         assert.equal(r2.entryId, unknownEntryId);
@@ -57,7 +59,8 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const knownTags = (await (db.test_list_entry_tags as PrepMethod).all<{ tag: string }>({ entry_id: knownEntryId })).map((t) => t.tag);
         assert.deepEqual(knownTags, ["answer", "france"]);
 
-        const [editKnown] = parse("<<EDIT(skill:///france/capital):Paris:EDIT");
+        // The COPY above already created this entry, so the edit needs a marker too.
+        const [editKnown] = parse("<<EDIT(skill:///france/capital)<1,-1>:Paris:EDIT");
         const r4 = await dispatch(editKnown, 4);
         assert.equal(r4.status, 200);
         const knownBody = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: knownEntryId, name: "body" }))?.content;

@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { EditStatement, ReadStatement, LineMarker } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";
@@ -18,12 +18,18 @@ import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
-const fileEditStmt = (pathname: string, body: string): EditStatement => ({
+// {§edit-marker-required-on-existing} (#571) — a marker is required on an EXISTING
+// file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite
+// explicitly. Default null: callers targeting a genuinely NEW path (nothing to
+// scope into) leave it off.
+const fullReplace: LineMarker = { marks: [1, -1] };
+
+const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
     target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
         username: null, password: null, hostname: null, port: null,
         pathname: `/${pathname}`, params: {}, fragment: null },
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
@@ -37,10 +43,10 @@ const fileReadStmt = (pathname: string): ReadStatement => ({
 // Bare-path edit — the form the sysprompt actually trains the model to
 // emit. plurnk.md: "Bare paths (no scheme) default to local relative
 // project file paths." Engine.#schemeNameOf routes LocalPath → 'file'.
-const bareEditStmt = (relPath: string, body: string): EditStatement => ({
+const bareEditStmt = (relPath: string, body: string, marker: LineMarker | null = null): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
     target: { kind: "local", raw: relPath },
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -88,7 +94,9 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
         const seededStat = await stat(join(root, target));
         await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
 
-        const stmt = fileEditStmt(target, "hello world\n");
+        // {§edit-marker-required-on-existing} — the file exists, so the deliberate
+        // full-rewrite escape hatch (<1,-1>) is required; this also proves it works.
+        const stmt = fileEditStmt(target, "hello world\n", fullReplace);
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
@@ -129,7 +137,7 @@ test("[§proposal-outcome-terse-error] file.edit: rejection leaves file untouche
         await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
-        const stmt = fileEditStmt(target, "should-not-land\n");
+        const stmt = fileEditStmt(target, "should-not-land\n", fullReplace);
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
@@ -192,6 +200,29 @@ test("file.edit: an accept into a NOT-YET-EXISTING subtree creates the parent di
     });
 });
 
+test("[§edit-marker-required-on-existing] a markerless EDIT of an EXISTING file is refused, never a silent full replace (#571)", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const target = "src/Engine.ts";
+        await mkdir(join(root, "src"), { recursive: true });
+        const original = "line one\nline two\nline three\n";
+        await writeFile(join(root, target), original, "utf8");
+        const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
+        await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content: original, mimetype: "text/plain", tokens: 0 });
+
+        // The run126 shape: a marker meant for the target landed inside the body text
+        // instead (a model syntax slip), so the dispatched statement carries no marker at all.
+        const stmt = fileEditStmt(target, "<2>:// AUDIT-OK\nline two");
+        const result = await ctx.engine.dispatch({
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 400, "no marker on an existing file is refused outright — never a proposal, never a silent replace");
+        assert.match(String(result.error), /requires a line marker.*<1,-1>/, "the refusal names the law and the escape hatch");
+        const onDisk = await readFile(join(root, target), "utf8");
+        assert.equal(onDisk, original, "disk is untouched — the refusal happens before any proposal, let alone any write");
+    });
+});
+
 test("file.edit: refuses traversal escape", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const stmt = fileEditStmt("../escape.txt", "nope\n");
@@ -206,12 +237,15 @@ test("file.edit: refuses traversal escape", async () => {
 test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "from-bare.txt";
-        // pre-existing file must be a member to be editable (SPEC §membership edit gate)
-        await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
+        // pre-existing file must be a member to be editable (SPEC §membership edit gate);
+        // materialize the body channel too — the marker math below reads `original`.
         await writeFile(join(root, target), "original\n", "utf8");
+        const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
+        await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content: "original\n", mimetype: "text/plain", tokens: 0 });
 
-        // No file:/// prefix — the form the sysprompt teaches.
-        const stmt = bareEditStmt(target, "bare-path edit\n");
+        // No file:/// prefix — the form the sysprompt teaches. The file exists, so the
+        // marker is required (§edit-marker-required-on-existing).
+        const stmt = bareEditStmt(target, "bare-path edit\n", fullReplace);
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,

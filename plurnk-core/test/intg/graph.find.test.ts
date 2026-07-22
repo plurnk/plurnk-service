@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, LineMarker, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
@@ -18,8 +18,9 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
 
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
+const fullReplace: LineMarker = { marks: [1, -1] };
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -95,7 +96,7 @@ test("[#186-graph-rederive] editing foo's referrer away drops it from @<foo", as
     const { db, workspaceId, workerId } = await seed();
     try {
         // b.ts no longer references foo — re-deriving its rows must remove the edge.
-        await new Worker().edit(editStmt(url("b.ts"), "export const x = 1;\n"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Worker().edit(editStmt(url("b.ts"), "export const x = 1;\n", fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId }));  // re-derive at manifest-add
         const r = await find(db, workspaceId, workerId, "@<foo");
         assert.equal(r.status, 200);
@@ -127,7 +128,7 @@ test("[#186-graph-gate] manifest-add re-derives only on content change (the deep
         await EntryManifest.maintainDerivations(gctx);
         assert.equal(parses, 1, "unchanged: deep_hash matches → skip the parse");
 
-        await new Worker().edit(editStmt(url("a.ts"), "export function bar() {}\n"), ctx);
+        await new Worker().edit(editStmt(url("a.ts"), "export function bar() {}\n", fullReplace), ctx);
         await EntryManifest.maintainDerivations(gctx);
         assert.equal(parses, 2, "content changed → re-derive");
     } finally { db.close(); }

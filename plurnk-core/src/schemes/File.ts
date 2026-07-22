@@ -225,11 +225,18 @@ export default class File {
 
         // `<L>` line marker dispatches on file mimetype: JSON →
         // LineMarkerOps.applyJsonItemEdit (structural item edit); otherwise →
-        // LineMarkerOps.applyLineMarkerEdit (line edit). On a non-existent file,
-        // body becomes content regardless of marker (per "Resolved ambiguities" §scheme).
+        // LineMarkerOps.applyLineMarkerEdit (line edit). A CREATE (no existing file) has
+        // nothing to scope into, so a markerless body becomes the new file's content.
+        // {§edit-marker-required-on-existing} (#571) — an EXISTING file has no easy-clobber
+        // path: a marker is REQUIRED, even for a deliberate full rewrite (`<1,-1>` states
+        // that intent explicitly). run126: an omitted marker (a misplaced `<356>` landed
+        // in the body, not the marker slot) silently replaced a 1,693-line file with 2 —
+        // the model's own subsequent reads told it so, repeatedly, and it never noticed.
+        // Refusing the omission converts a silent accident into a loud, immediate one.
         const body = statement.body ?? "";
         let patched: string;
-        if (statement.lineMarker !== null && fileExists) {
+        if (fileExists) {
+            if (statement.lineMarker === null) return { status: 400, error: "EDIT of an existing file requires a line marker — use <1,-1> to replace the whole file deliberately" };
             const result = MimetypeBinary.isJsonMimetype(mimetype)
                 ? LineMarkerOps.applyJsonItemEdit(original, statement.lineMarker, body)
                 : LineMarkerOps.applyLineMarkerEdit(original, statement.lineMarker, body);

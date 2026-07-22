@@ -15,7 +15,7 @@ import { promisify } from "node:util";
 import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -47,9 +47,10 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-const editStmt = (target: ParsedPath | null, body: string): EditStatement => ({
+const fullReplace: LineMarker = { marks: [1, -1] };
+const editStmt = (target: ParsedPath | null, body: string, marker: LineMarker | null = null): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target,
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
 const mockResponse = (ops: PlurnkStatement[]) => ({
@@ -170,7 +171,7 @@ test("[§membership-edit-membership-gate] EDIT of an existing non-member is refu
         // The gate must not break legitimate edits: a tracked member still
         // proposes (202), and a new path still proposes creation (202 — creation
         // is how the model adds to its manifest).
-        const member = await new File().edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nrevised.\n"), ctx);
+        const member = await new File().edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nrevised.\n", fullReplace), ctx);
         assert.equal(member.status, 202, "EDIT of a git-tracked member must still propose (202)");
         const created = await new File().edit(editStmt(urlPath("file", "/new-note.md"), "fresh content\n"), ctx);
         assert.equal(created.status, 202, "EDIT of a new (non-existent) path must still propose creation (202)");
@@ -205,7 +206,7 @@ test("[§membership-edit-write-cas] an out-of-band disk change between propose a
         const file = new File();
 
         // The model proposes an edit against the snapshot it READ.
-        const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nthe model's revision.\n"), ctx);
+        const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nthe model's revision.\n", fullReplace), ctx);
         assert.equal(proposal.status, 202, "edit proposes (202)");
 
         // An ambient writer (the user's editor, a build step, a sibling run) changes the file on
@@ -231,7 +232,7 @@ test("[§membership-edit-write-cas] with no drift the proposal lands and restamp
         const sigBefore = await (db.crud_get_member_sig as PrepMethod).get<{ synced_sig: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}` });
 
         const revised = "# Tracked by git\n\nlanded cleanly.\n";
-        const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), revised), ctx);
+        const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), revised, fullReplace), ctx);
         assert.equal(proposal.status, 202);
 
         const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs }, ctx);

@@ -6,7 +6,7 @@
 import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
@@ -23,8 +23,9 @@ const url = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, params: {}, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
+const fullReplace: LineMarker = { marks: [1, -1] };
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -49,7 +50,7 @@ test("[#186-fts] manifest-add indexes body content into entry_fts; re-indexes on
 
         // Change pay.ts: re-index must drop the old term and add the new one;
         // auth.ts is unchanged (gate skips it) and stays indexed.
-        await new Worker().edit(editStmt(url("pay.ts"), "export function refund() {}\n"), ctx);
+        await new Worker().edit(editStmt(url("pay.ts"), "export function refund() {}\n", fullReplace), ctx);
         await EntryManifest.maintainDerivations(ctx);
         assert.deepEqual(await fts(db, workspaceId, "processPayment"), [], "old term gone after re-index");
         assert.deepEqual(await fts(db, workspaceId, "refund"), ["/pay.ts"], "new term indexed");

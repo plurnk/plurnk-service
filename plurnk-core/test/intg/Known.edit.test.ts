@@ -5,7 +5,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath } from "./_dsl.ts";
+import { urlPath, fullReplace } from "./_dsl.ts";
 
 const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 
@@ -72,7 +72,7 @@ test("[§edit-status-201-200] Known.edit: second EDIT against same path — same
         const k = new Worker();
         const first = await k.edit(editStatement({ target: urlPath("worker", "/x"), body: "initial" }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(first.status, 201);
-        const second = await k.edit(editStatement({ target: urlPath("worker", "/x"), body: "updated" }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const second = await k.edit(editStatement({ target: urlPath("worker", "/x"), body: "updated", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(second.status, 200);
         assert.equal(second.entryId, first.entryId, "entry id is stable across edits");
         const channel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: first.entryId, name: "body" });
@@ -87,14 +87,14 @@ test("[§edit-noop-304] EDIT that changes nothing returns 304; content change or
         const target = urlPath("worker", "/noop");
         const first = await k.edit(editStatement({ target, body: "same" }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(first.status, 201);
-        const reWrite = await k.edit(editStatement({ target, body: "same" }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const reWrite = await k.edit(editStatement({ target, body: "same", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(reWrite.status, 304, "identical content, no tag → no-op");
         assert.equal(reWrite.entryId, first.entryId, "entry id still returned on 304");
-        const changed = await k.edit(editStatement({ target, body: "different" }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const changed = await k.edit(editStatement({ target, body: "different", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(changed.status, 200, "content change is a real update");
-        const newTag = await k.edit(editStatement({ target, body: "different", tags: ["fresh"] }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const newTag = await k.edit(editStatement({ target, body: "different", tags: ["fresh"], lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(newTag.status, 200, "same content but a new tag is a real update");
-        const sameTag = await k.edit(editStatement({ target, body: "different", tags: ["fresh"] }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const sameTag = await k.edit(editStatement({ target, body: "different", tags: ["fresh"], lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(sameTag.status, 304, "same content and an already-present tag → no-op");
     } finally { await db.close(); }
 });
@@ -104,7 +104,7 @@ test("[§edit-null-clears] Known.edit: empty body clears the channel content (do
     try {
         const k = new Worker();
         const r1 = await k.edit(editStatement({ target: urlPath("worker", "/y"), body: "initial body" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        await k.edit(editStatement({ target: urlPath("worker", "/y"), body: null }), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStatement({ target: urlPath("worker", "/y"), body: null, lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         const channel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: r1.entryId, name: "body" });
         assert.equal(channel?.content, "");
         const entryStillThere = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: r1.entryId });
@@ -118,8 +118,8 @@ test("[§edit-tags-additive] Known.edit: tags merge additively across multiple E
         const k = new Worker();
         const target = urlPath("worker", "/z");
         const r = await k.edit(editStatement({ target, tags: ["france"], body: "a" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        await k.edit(editStatement({ target, tags: ["geography"], body: "b" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        await k.edit(editStatement({ target, tags: ["europe", "geography"], body: "c" }), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStatement({ target, tags: ["geography"], body: "b", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStatement({ target, tags: ["europe", "geography"], body: "c", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         const tags = await (db.test_list_entry_tags as PrepMethod).all<{ tag: string }>({ entry_id: r.entryId });
         assert.deepEqual(tags.map((t) => t.tag), ["europe", "france", "geography"]);
     } finally { await db.close(); }
@@ -320,7 +320,7 @@ test("Known.edit result carries the edited span — post-edit state, line-number
         assert.equal(r1.span, "1:alpha\n2:beta\n3:gamma", "new entry → span is the full body, line-numbered");
         // Re-edit changing one line: the diff finds it; span shows the edited region
         // plus context, in its post-edit state — not the input statement.
-        const r2 = await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nBETA\ngamma" }), ctx);
+        const r2 = await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nBETA\ngamma", lineMarker: fullReplace }), ctx);
         assert.equal(r2.status, 200);
         assert.equal(r2.span, "1:alpha\n2:BETA\n3:gamma", "re-edit → span shows the change (BETA) with context, post-edit, line-numbered");
     } finally { await db.close(); }

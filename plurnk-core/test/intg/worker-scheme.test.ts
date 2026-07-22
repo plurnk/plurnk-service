@@ -14,7 +14,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
-import { editStmt, sendStmt, readStmt } from "./_dsl.ts";
+import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
 
 // §worker-scheme — the worker is the AUTHORITY: worker://<name> (name in hostname), worker://self for the current run.
 // worker://self is the self-marker; the control ops (spawn/irc/fork/kill) carry no entry path.
@@ -96,7 +96,7 @@ test("[§worker-scheme-fork-scratch] a fork inherits the parent's worker-scope s
         assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
 
         // Divergence: the fork edits its scratch; the parent's copy is independent + untouched.
-        await run.edit(editStmt(workerEntry("~", "todo.md"), "fork note"), ctxF);
+        await run.edit(editStmt(workerEntry("~", "todo.md"), "fork note", null, fullReplace), ctxF);
         assert.equal((await run.read(readEntry("~", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
         assert.equal((await run.read(readEntry("~", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
     } finally { await db.close(); }

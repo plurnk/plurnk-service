@@ -128,10 +128,14 @@ export default class EntryOps {
         // `<L>` line marker EDIT semantics. Dispatch on effective mimetype:
         // JSON → LineMarkerOps.applyJsonItemEdit (structural item edit, plurnk-grammar 0.13.0);
         // otherwise → LineMarkerOps.applyLineMarkerEdit (line edit, original semantics).
-        // On a non-existent entry, body becomes the content regardless of marker
-        // (per "Resolved ambiguities" §scheme — sentinels/positions only apply to
-        // existing content).
+        // A CREATE (no existing entry) has nothing to scope into, so a markerless body
+        // becomes the new entry's content. {§edit-marker-required-on-existing} (#571) — an
+        // EXISTING entry has no easy-clobber path: a marker is REQUIRED, even for a
+        // deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;
+        if (existing !== undefined && statement.lineMarker === null) {
+            return { status: 400, entryId: existing.id, channel: targetChannel, error: "EDIT of an existing entry requires a line marker — use <1,-1> to replace the whole entry deliberately" };
+        }
         if (statement.lineMarker !== null && existing !== undefined) {
             const result = MimetypeBinary.isJsonMimetype(effectiveMimetype)
                 ? LineMarkerOps.applyJsonItemEdit(originalContent, statement.lineMarker, body)

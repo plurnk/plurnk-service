@@ -4,7 +4,7 @@ import Skill from "../../src/schemes/Skill.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, editStmt, readStmt, openStmt, foldStmt } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt, openStmt, foldStmt, fullReplace } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
@@ -53,7 +53,7 @@ test("Skill.edit + read: idempotent on same path", async () => {
     try {
         const s = new Skill();
         const first = await s.edit(editStmt(urlPath("skill", "/x"), "first"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const second = await s.edit(editStmt(urlPath("skill", "/x"), "second"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const second = await s.edit(editStmt(urlPath("skill", "/x"), "second", null, fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(first.status, 201);
         assert.equal(second.status, 200);
         assert.equal(second.entryId, first.entryId);

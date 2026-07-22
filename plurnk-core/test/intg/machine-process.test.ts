@@ -10,7 +10,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
@@ -22,8 +22,9 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname, params: {}, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
+const fullReplace: LineMarker = { marks: [1, -1] };
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -42,7 +43,7 @@ test("[§machine-processes-one-filesystem] the entries are the workspace's — a
         const b = await spawn();
         const target = urlPath("worker", "/shared.md");
         const ra = await engine.dispatch({ statement: editStmt(target, "from run A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
-        const rb = await engine.dispatch({ statement: editStmt(target, "from run B"), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
+        const rb = await engine.dispatch({ statement: editStmt(target, "from run B", fullReplace), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // A creates the entry (201) in the workspace's one filesystem; B, a different
         // run at the same (scope, scheme, pathname), UPDATES that one entry (200).
         // A per-worker filesystem would have minted a second entry and 201'd again.

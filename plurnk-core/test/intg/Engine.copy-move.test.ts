@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, localPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
@@ -89,7 +89,7 @@ test("[§copy-noop-304] Engine.copy to a destination already holding identical c
         assert.equal((await copy(2)).status, 304, "identical re-copy is a no-op, not a 409");
 
         // Divergent destination is still a real collision; it stays untouched.
-        await k.edit(editStmt(urlPath("worker", "/src"), "changed body"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStmt(urlPath("worker", "/src"), "changed body", null, fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((await copy(3)).status, 409, "divergent content is a collision");
         const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "same body", "collision leaves the destination untouched");

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, LineMarker, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -14,10 +14,16 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, params: {}, fragment: null,
 });
 
-const editStmt = (pathname: string, body: string): EditStatement => ({
+// {§edit-marker-required-on-existing} (#571) — a fixed FULL-REPLACE marker so a
+// repeated EDIT of the same path stays a legal, IDENTICAL-fingerprint 200 across
+// turns (the cycle-detection tests below depend on that repeatability), never a
+// refusal once the first turn has created the path.
+const fullReplace: LineMarker = { marks: [1, -1] };
+
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = fullReplace): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
     target: urlPath("worker", pathname),
-    lineMarker: null, body, position: { line: 1, column: 1 },
+    lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({

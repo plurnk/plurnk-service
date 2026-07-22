@@ -6,13 +6,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-grammar";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (p: string): UrlPath => ({ kind: "url", raw: `worker:///${p}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${p}`, params: {}, fragment: null });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 } });
+const fullReplace: LineMarker = { marks: [1, -1] };
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body, position: { line: 1, column: 1 } });
 
 test("catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest hold their prefix", async () => {
     const db = await openMigrated();
@@ -25,7 +26,7 @@ test("catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest
         await k.edit(editStmt(url("a.md"), "alpha"), ctx); await sleep(10);
         await k.edit(editStmt(url("b.md"), "bravo"), ctx); await sleep(10);
         await k.edit(editStmt(url("c.md"), "charlie"), ctx); await sleep(10);
-        await k.edit(editStmt(url("a.md"), "alpha-2"), ctx); // re-edit a — now most-recently-modified
+        await k.edit(editStmt(url("a.md"), "alpha-2", fullReplace), ctx); // re-edit a — now most-recently-modified
 
         const catalog = await EntryManifest.catalogRowsFor(ctx);
         const known = catalog.map((e) => e.path).filter((p) => p.startsWith("worker:///"));

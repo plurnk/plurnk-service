@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ReadStatement, EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { ReadStatement, EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-grammar";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
@@ -21,7 +21,8 @@ const fileUrl = (pathname: string): UrlPath => ({
     pathname, params: {}, fragment: null,
 });
 const readStmt = (pathname: string): ReadStatement => ({ op: "READ", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: null, body: null, position: { line: 1, column: 1 } });
-const editStmt = (pathname: string, body: string): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: null, body, position: { line: 1, column: 1 } } as unknown as EditStatement);
+const fullReplace: LineMarker = { marks: [1, -1] };
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } } as unknown as EditStatement);
 
 const setup = async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));
@@ -60,7 +61,7 @@ test("[§fs-answer-in-canon] pin 3: EDIT via a slashed spelling answers in bare 
         assert.ok(seeded);
         const before = await (db.test_entries_count_all as PrepMethod).get<{ n: number }>({});
 
-        const r = await new File().edit(editStmt("/note.md", "revised\n"), ctx);
+        const r = await new File().edit(editStmt("/note.md", "revised\n", fullReplace), ctx);
         assert.equal(r.status, 202, "the slashed spelling proposes against the member");
         const attrs = r.attrs as { path: string };
         assert.equal(attrs.path, "note.md", "the engine answers in wire canon — never an echo of the model's spelling");
@@ -136,7 +137,7 @@ test("[§fs-write-surface] the six-row write matrix — grantor-keyed mounts, O_
         const mountKeyGit = `../${outside.split("/").at(-1)}/gitted.md`;
         await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyClient, membership_origin: "client" });
         await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyGit, membership_origin: "git" });
-        const rw = await file.edit(editStmt(mountKeyClient, "revised\n"), ctx);
+        const rw = await file.edit(editStmt(mountKeyClient, "revised\n", fullReplace), ctx);
         assert.equal(rw.status, 202, "a client-granted mount member is read-write — the per-file rw bind mount");
         const ro = await file.edit(editStmt(mountKeyGit, "revised\n"), ctx);
         assert.equal(ro.status, 403, "a git-included mount member is read-only — git grants rw only within the project");

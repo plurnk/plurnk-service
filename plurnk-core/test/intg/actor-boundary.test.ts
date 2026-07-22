@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
@@ -25,8 +25,9 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname, params: {}, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
+const fullReplace: LineMarker = { marks: [1, -1] };
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -45,7 +46,7 @@ test("[§actor-boundary-no-mutex] two workers in one workspace both write the sa
         const b = await spawn();
         const target = urlPath("worker", "/shared.md");
         const ra = await engine.dispatch({ statement: editStmt(target, "from run A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
-        const rb = await engine.dispatch({ statement: editStmt(target, "from run B"), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
+        const rb = await engine.dispatch({ statement: editStmt(target, "from run B", fullReplace), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // Wild west = both writers succeed (no lock rejects the second). A creates
         // the shared entry (201), B updates it (200); neither is a 409/lock refusal.
         assert.ok([200, 201].includes(ra.status), `run A's write to the shared entry succeeds (got ${ra.status})`);

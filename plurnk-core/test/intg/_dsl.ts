@@ -4,7 +4,7 @@
 import type {
     EditStatement, ReadStatement, SendStatement, OpenStatement, FoldStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
-    LocalPath, UrlPath, ParsedPath, MatcherBody,
+    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker,
 } from "@plurnk/plurnk-grammar";
 
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
@@ -15,8 +15,13 @@ export const urlPath = (scheme: string, pathname: string, fragment: string | nul
 
 export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 
-export const editStmt = (target: ParsedPath | null, body: string | null = null, tags: string[] | null = null): EditStatement => ({
-    op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body,
+// {§edit-marker-required-on-existing} (#571) — a marker is required on an EXISTING
+// entry; states a deliberate whole-content rewrite explicitly, resolving through
+// the ordinary marker math to a full replace.
+export const fullReplace: LineMarker = { marks: [1, -1] };
+
+export const editStmt = (target: ParsedPath | null, body: string | null = null, tags: string[] | null = null, marker: LineMarker | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: tags, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 

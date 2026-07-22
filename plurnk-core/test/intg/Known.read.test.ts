@@ -13,11 +13,12 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 
-const editStatement = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null }): EditStatement => ({
+const fullReplace: LineMarker = { marks: [1, -1] };
+const editStatement = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; lineMarker?: LineMarker | null }): EditStatement => ({
     op: "EDIT", suffix: "",
     signal: opts.tags ?? null,
     target: opts.target,
-    lineMarker: null,
+    lineMarker: opts.lineMarker ?? null,
     body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
@@ -167,8 +168,10 @@ test("Known.read: edited entry round-trips through read — content matches what
         const k = new Worker();
         const bodies = ["first", "second", "third"];
         const target = urlPath("worker", "/rt");
-        for (const body of bodies) {
-            await k.edit(editStatement({ target, body }), makeSchemeCtx({ db, workspaceId, workerId }));
+        for (const [i, body] of bodies.entries()) {
+            // First iteration creates (markerless); the rest re-edit an existing entry, which
+            // needs the deliberate full-replace marker (§edit-marker-required-on-existing).
+            await k.edit(editStatement({ target, body, lineMarker: i === 0 ? null : fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
             const result = await k.read(readStatement({ target }), makeSchemeCtx({ db, workspaceId }));
             assert.equal(result.status, 200);
             assert.equal(result.content, body);
