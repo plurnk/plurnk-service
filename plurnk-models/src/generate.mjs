@@ -33,6 +33,10 @@ const prune = (m) => {
     const contextWindow = m?.limit?.context;
     if (typeof contextWindow !== "number" || contextWindow <= 0) return null;
     const info = { contextWindow };
+    // The model's completion cap (#567/defaults-epic): models.dev carries limit.output for
+    // every model — the real per-model max output, not a blind window fraction.
+    const maxOutput = m?.limit?.output;
+    if (typeof maxOutput === "number" && maxOutput > 0) info.maxOutput = maxOutput;
     const c = m?.cost;
     if (c && typeof c.input === "number" && typeof c.output === "number") {
         info.cost = { inputPer1M: c.input, outputPer1M: c.output };

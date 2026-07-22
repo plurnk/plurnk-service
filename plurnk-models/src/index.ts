@@ -19,6 +19,7 @@ export type ModelCost = {
 
 export type ModelInfo = {
     readonly contextWindow: number;     // tokens
+    readonly maxOutput?: number;        // completion cap (tokens); absent when the source had none
     readonly cost?: ModelCost;          // absent when models.dev had no pricing
 };
 
