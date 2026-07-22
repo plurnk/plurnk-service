@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv } from "./env.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
@@ -546,6 +546,12 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", name, 0),
         repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
         frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", name, 0),
+        // #567: llama.cpp loop-breakers — optional, off by default (absent = the box's own
+        // default). The provider sends them only on the llamacpp path; values are operator config.
+        dryMultiplier: parseOptionalFloat(env.PLURNK_PROVIDERS_DRY_MULTIPLIER, "PLURNK_PROVIDERS_DRY_MULTIPLIER", name, 0) ?? undefined,
+        dryBase: parseOptionalFloat(env.PLURNK_PROVIDERS_DRY_BASE, "PLURNK_PROVIDERS_DRY_BASE", name, 0) ?? undefined,
+        dryAllowedLength: parseOptionalInt(env.PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH, "PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH", name) ?? undefined,
+        repeatLastN: parseOptionalInt(env.PLURNK_PROVIDERS_REPEAT_LAST_N, "PLURNK_PROVIDERS_REPEAT_LAST_N", name) ?? undefined,
         // #507: the envelope reserves (window-fraction floor, absolute overrides)
         // + router-owned-tuning suppression (plurnk).
         ...envelopeFromEnv(env, name),

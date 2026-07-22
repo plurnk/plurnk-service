@@ -95,6 +95,15 @@ export type OpenAICompatConfig = {
     // Optional (default 0 = off) so an out-of-date daughter that omits it just runs unguarded
     // rather than failing construction; the standard factory always supplies it.
     frequencyPenalty?: number;
+    // #567: llama.cpp anti-repetition-LOOP controls, off by default (absent = the box's
+    // own default = unchanged). DRY penalizes repeated SEQUENCES with a penalty that
+    // escalates with run length — the tool for a plan-restart loop a single-token
+    // repeat_penalty over a short window can't see. repeatLastN widens that window.
+    // llamacpp path only (DRY is a llama.cpp sampler); values are operator/bench config.
+    dryMultiplier?: number;
+    dryBase?: number;
+    dryAllowedLength?: number;
+    repeatLastN?: number;
     retryDelayMs: number;
     // Transient-failure retry budget — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
@@ -236,6 +245,10 @@ export default class OpenAICompatProvider implements Provider {
     #temperature: number;
     #repeatPenalty: number;
     #frequencyPenalty: number;
+    #dryMultiplier: number | undefined;
+    #dryBase: number | undefined;
+    #dryAllowedLength: number | undefined;
+    #repeatLastN: number | undefined;
     #retryDelayMs: number;
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
@@ -280,6 +293,10 @@ export default class OpenAICompatProvider implements Provider {
         this.#temperature = config.temperature;
         this.#repeatPenalty = config.repeatPenalty;
         this.#frequencyPenalty = typeof config.frequencyPenalty === "number" ? config.frequencyPenalty : 0;
+        this.#dryMultiplier = config.dryMultiplier;
+        this.#dryBase = config.dryBase;
+        this.#dryAllowedLength = config.dryAllowedLength;
+        this.#repeatLastN = config.repeatLastN;
         this.#retryDelayMs = config.retryDelayMs;
         this.#retryAttempts = config.retryAttempts;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
@@ -452,7 +469,18 @@ export default class OpenAICompatProvider implements Provider {
     // live: together/deepinfra/fireworks; it is OpenAI's own param, so real OpenAI takes it too).
     #repetitionPenaltyBody(): Record<string, unknown> {
         switch (this.#grammarStyle) {
-            case "llamacpp": return { repeat_penalty: this.#repeatPenalty };
+            // #567: repeat_penalty + optional DRY (repeated-SEQUENCE penalty) + a wider
+            // repeat_last_n window — the loop-breaking tools a llama.cpp backend serves.
+            // Each rides only when its operator knob is set; absent = the box's default.
+            case "llamacpp": return {
+                repeat_penalty: this.#repeatPenalty,
+                ...(this.#repeatLastN !== undefined ? { repeat_last_n: this.#repeatLastN } : {}),
+                ...(this.#dryMultiplier !== undefined && this.#dryMultiplier > 0 ? {
+                    dry_multiplier: this.#dryMultiplier,
+                    ...(this.#dryBase !== undefined ? { dry_base: this.#dryBase } : {}),
+                    ...(this.#dryAllowedLength !== undefined ? { dry_allowed_length: this.#dryAllowedLength } : {}),
+                } : {}),
+            };
             case "response_format": return { repetition_penalty: this.#repeatPenalty };
             case "none": return this.#frequencyPenalty > 0 ? { frequency_penalty: this.#frequencyPenalty } : {};
         }

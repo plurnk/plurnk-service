@@ -280,6 +280,37 @@ test("the family temperature default rides every request; caller sampling overri
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
 });
 
+test("#567: DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box default; never on cloud", async () => {
+    const base = { model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off" as const, budget: null }, retryAttempts: 0 };
+    // set + llamacpp -> the loop-breakers ride the wire
+    const p = new OpenAICompatProvider({ ...base, grammarStyle: "llamacpp", dryMultiplier: 0.8, dryBase: 1.75, dryAllowedLength: 2, repeatLastN: 512 });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "r", messages: [] });
+    let body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.dry_multiplier, 0.8);
+    assert.equal(body.dry_base, 1.75);
+    assert.equal(body.dry_allowed_length, 2);
+    assert.equal(body.repeat_last_n, 512);
+    assert.equal(body.repeat_penalty, 1.15); // repeat_penalty always rides the llamacpp path
+    mock.restoreAll();
+    // unset -> no dry_*/repeat_last_n on the wire (box keeps its own defaults)
+    const p2 = new OpenAICompatProvider({ ...base, grammarStyle: "llamacpp" });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p2.generate({ workerId: "r", messages: [] });
+    body = JSON.parse(calls[0].init.body as string);
+    assert.equal("dry_multiplier" in body, false);
+    assert.equal("repeat_last_n" in body, false);
+    mock.restoreAll();
+    // DRY is a llama.cpp sampler: a cloud ("none") provider never emits it, even if configured
+    const p3 = new OpenAICompatProvider({ ...base, grammarStyle: "none", dryMultiplier: 0.8, repeatLastN: 512 });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p3.generate({ workerId: "r", messages: [] });
+    body = JSON.parse(calls[0].init.body as string);
+    assert.equal("dry_multiplier" in body, false);
+    assert.equal("repeat_last_n" in body, false);
+    mock.restoreAll();
+});
+
 test("effort_explicit: intent maps IDENTICALLY with and without a grammar — the #32 clamp is lifted (reasoning+rails coexist)", async () => {
     const warned: Array<string | Error> = [];
     mock.method(process, "emitWarning", (msg: string | Error) => { warned.push(msg); });

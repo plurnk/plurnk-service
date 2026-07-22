@@ -23,6 +23,13 @@ export const parseRequiredFloat = (raw: string | undefined, name: string, label:
     return n;
 };
 
+export const parseOptionalFloat = (raw: string | undefined, name: string, label: string, min: number): number | null => {
+    if (raw === undefined || raw.length === 0) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < min) throw new Error(`${label} provider: ${name} must be a finite number >= ${min} (got "${raw}")`);
+    return n;
+};
+
 export const requireEnv = (raw: string | undefined, name: string, label: string): string => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
     return raw;
@@ -160,6 +167,10 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_TEMPERATURE",
     "PLURNK_PROVIDERS_REPEAT_PENALTY",
     "PLURNK_PROVIDERS_FREQUENCY_PENALTY",
+    "PLURNK_PROVIDERS_REPEAT_LAST_N",
+    "PLURNK_PROVIDERS_DRY_MULTIPLIER",
+    "PLURNK_PROVIDERS_DRY_BASE",
+    "PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH",
     "PLURNK_PROVIDERS_RETRY_DELAY",
     "PLURNK_PROVIDERS_PROBE_ATTEMPTS",
     "PLURNK_PROVIDERS_PROBE_DELAY",
