@@ -137,9 +137,9 @@ One or more numbers narrowing the operation, highly contextual and polymorphic b
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
 
-An EDIT with no `<scope>` writes a whole new file or entry. To change content that already exists, always name a `<scope>` - editing it unscoped is refused, not applied.
+YOU MUST include line numbers (e.g. `<356>` or `<42,67>`) when editing an existing file or entry.
 
-Editing by line is exacting work. A line number is a precise, current file position. Read the lines you mean to change in the same turn you EDIT them. Use the numbers from that read, never from memory. Change only the lines you name.
+Editing by line is exacting work. Use the precise, current file or entry positions from recent READ operations.
 
 ```plurnk
 <<FIND(worker:///**)<0.7>:~france:FIND
