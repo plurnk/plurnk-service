@@ -30,6 +30,8 @@ const PROVIDERS = [
     { name: "deepinfra", base: "https://api.deepinfra.com/v1/openai", keyVar: "DEEPINFRA_API_KEY", models: ["Llama-3.1-8B", "Meta-Llama-3.1-8B", "8B"] },
     { name: "xai", base: "https://api.x.ai/v1", keyVar: "XAI_API_KEY", models: ["grok-3-mini", "grok-2", "grok"] },
     { name: "gemini", base: "https://generativelanguage.googleapis.com/v1beta/openai", keyVar: "GEMINI_API_KEY", models: ["gemini-2.5-flash", "gemini-2.*flash", "flash"] },
+    // Cloudflare Workers AI: account-scoped URL (built from CLOUDFLARE_ACCOUNT_ID), token in CLOUDFLARE_API_TOKEN.
+    { name: "cloudflare", base: `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID ?? "NO_ACCOUNT"}/ai/v1`, keyVar: "CLOUDFLARE_API_TOKEN", models: ["@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "llama-3"] },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -70,9 +72,10 @@ const profile = async ({ name, base, keyVar, models }) => {
     const key = process.env[keyVar];
     if (!key) return { name, skipped: `no ${keyVar}` };
     const candidates = await resolveModels(base, key, models);
+    let lastFail = null;
     for (const model of candidates) {
         const baseline = await chat(base, key, { model, messages: [{ role: "user", content: "hi" }], max_tokens: 1 });
-        if (!baseline.ok) continue; // inaccessible/dedicated/invalid — try the next candidate
+        if (!baseline.ok) { lastFail = `${model} -> ${baseline.status} ${baseline.text.slice(0, 70)}`; continue; } // auth/dedicated/invalid — try the next candidate
         const honored = [], rejected = [], anomaly = [];
         for (const [p, v] of CANDIDATES) {
             await sleep(250);
@@ -83,7 +86,7 @@ const profile = async ({ name, base, keyVar, models }) => {
         }
         return { name, model, honored, rejected, ...(anomaly.length ? { anomaly } : {}) };
     }
-    return { name, skipped: "no candidate model baselined" };
+    return { name, skipped: `no model baselined${lastFail ? ` (last: ${lastFail})` : ""}` };
 };
 
 const profiles = {};

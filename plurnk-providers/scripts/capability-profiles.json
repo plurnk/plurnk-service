@@ -23,15 +23,13 @@
       "honored": [
         "temperature",
         "top_p",
+        "top_k",
         "min_p",
         "frequency_penalty",
         "presence_penalty",
         "repetition_penalty"
       ],
-      "rejected": [],
-      "anomaly": [
-        "top_k:503"
-      ]
+      "rejected": []
     },
     "fireworks": {
       "name": "fireworks",
@@ -90,6 +88,10 @@
         "presence_penalty",
         "repetition_penalty"
       ]
+    },
+    "cloudflare": {
+      "name": "cloudflare",
+      "skipped": "no model baselined (last: llama-3 -> 401 {\"result\":null,\"success\":false,\"errors\":[{\"code\":10000,\"message\":\"Auth)"
     }
   }
 }
