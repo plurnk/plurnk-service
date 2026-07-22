@@ -642,6 +642,23 @@ test("misplaced-target advisory: a non-mutating op with a bracketed path does no
     assert.equal(misplacedWarn("<<FIND[functions.go]:x:FIND"), undefined);
 });
 
+// {§unscoped-edit-create-only} (#571): the parser is existence-blind, so it PASSES an unscoped EDIT
+// through (lineMarker null) for core to make the create-or-refuse decision. It must never reject a
+// scopeless edit - that would break file/entry creation. (Core refuses it only for EXISTING targets.)
+test("unscoped EDIT parses through with a null lineMarker (§unscoped-edit-create-only)", () => {
+    for (const src of [
+        "<<EDIT(notes.md):a whole new body:EDIT",
+        "<<EDIT[plan](worker:///plan.md):draft:EDIT",
+        "<<EDIT(empty.md)::EDIT",
+    ]) {
+        const r = PlurnkParser.parseStatements(src);
+        assert.equal(r.items.filter((i) => i.kind === "error").length, 0, `unscoped EDIT must not error: ${src}`);
+        const st = r.items.find((i) => i.kind === "statement");
+        assert.ok(st && st.kind === "statement" && st.statement.op === "EDIT", src);
+        if (st?.kind === "statement") assert.equal((st.statement as any).lineMarker, null, `lineMarker must be null: ${src}`);
+    }
+});
+
 
 test("glob body (no special prefix) skips regex validation", () => {
     const result = PlurnkParser.parseStatements("<<FIND(known://**):Paris*:FIND");

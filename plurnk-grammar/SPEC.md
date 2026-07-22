@@ -134,8 +134,8 @@ inclusive of whatever sequence the OP operates on or produces.
 
 EDIT line-marker semantics (single source of authority):
 
-- No `<L>` + body present: replace entire entry contents with body.
-- No `<L>` + no body: clear entry contents (empty replacement).
+- No `<L>`, target does NOT exist: CREATE — the body becomes the new file/entry contents (an empty body creates an empty resource). This is the ONLY unscoped write.
+- No `<L>`, target EXISTS: REFUSED — an unscoped EDIT must never modify existing content, since it would replace the whole resource (#571, the full-file wipe). Use `<N-M>` to edit a range or `<1,-1>` to replace wholesale. The parser passes an unscoped EDIT through — it cannot know whether the target exists (runtime) — so core owns the create-or-refuse decision. {§unscoped-edit-create-only}
 - `<N>` (single position) + body: replace the single line at `N` with body.
 - `<N-M>` (range) + body: replace lines `N..M` inclusive with body.
 - `<0>` + body: prepend body before line 1.
