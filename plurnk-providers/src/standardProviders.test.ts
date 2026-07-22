@@ -652,6 +652,36 @@ test("anthropic: context + cost come from the catalog (no probe)", async () => {
     assert.equal(p!.contextWindow, info.contextWindow);
 });
 
+// — reasoning reserve derivation (#568) —
+
+test("standard provider: reasoningReserve is half of completionReserve when reasoning=adaptive (#568)", async () => {
+    // claude-opus-4-8: ctx=1M, maxOutput=128K → completionReserve=128K (catalog wins over 25%=250K).
+    // Half-completion heuristic: reasoningReserve=64K. anthropic has no probe.
+    const opus = catalogSnapshot().anthropic?.["claude-opus-4-8"];
+    if (opus?.maxOutput === undefined) return;
+    const env = { ...baseEnv, ANTHROPIC_API_KEY: "k", PLURNK_PROVIDERS_REASONING: "adaptive" };
+    const p = await standardProviderFromEnv("anthropic", env, "claude-opus-4-8");
+    assert.ok(p !== null);
+    assert.equal(p.completionReserve, opus.maxOutput);
+    assert.equal(p.reasoningReserve, Math.round(opus.maxOutput / 2));
+});
+
+test("standard provider: reasoningReserve is exact REASONING_BUDGET when reasoning=on (#568)", async () => {
+    // Even though completionReserve/2 would be 64K, the explicit budget (8K) wins.
+    const env = { ...baseEnv, ANTHROPIC_API_KEY: "k", PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "8192" };
+    const p = await standardProviderFromEnv("anthropic", env, "claude-opus-4-8");
+    assert.ok(p !== null);
+    assert.equal(p.reasoningReserve, 8192);
+});
+
+test("standard provider: operator absolute REASONING_RESERVE overrides all derived paths (#568)", async () => {
+    // Absolute token pin beats both the budget and the half-completion heuristic.
+    const env = { ...baseEnv, ANTHROPIC_API_KEY: "k", PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "8192", PLURNK_PROVIDERS_REASONING_RESERVE: "4096" };
+    const p = await standardProviderFromEnv("anthropic", env, "claude-opus-4-8");
+    assert.ok(p !== null);
+    assert.equal(p.reasoningReserve, 4096);
+});
+
 test("anthropic: frequency_penalty is NOT sent (Claude native API has no such param, DOC #568)", async () => {
     let body = "";
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {

@@ -11,7 +11,7 @@
 
 import type { Provider, ProviderUsage } from "./types.ts";
 import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./OpenAICompat.ts";
-import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv, type ReserveSpec } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv, resolveReserve, type ReserveSpec } from "./env.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { providerSource } from "./telemetry.ts";
 import { computeCost } from "./usage.ts";
@@ -551,11 +551,24 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // 1M ctx → 250K reserved, real cap 128K). The min() preserves the floor on
     // models where maxOutput > 25%*ctx (deepseek 1M/384K, llama 131K/131K).
     // An operator absolute pin (COMPLETION_RESERVE=8192 not "25%") always wins.
-    const { reasoningReserve, completionReserve: envCompletion } = envelopeFromEnv(env, name);
+    const reasoning = reasoningFromEnv(env, name);
+    const { reasoningReserve: envReasoning, completionReserve: envCompletion } = envelopeFromEnv(env, name);
     const completionReserve: ReserveSpec = (() => {
         if ("tokens" in envCompletion) return envCompletion; // operator absolute always wins
         if (fallback?.maxOutput === undefined || contextWindow === null) return envCompletion;
         return { tokens: Math.min(fallback.maxOutput, Math.round(envCompletion.percent * contextWindow)) };
+    })();
+    // #568: reasoning reserve — exact REASONING_BUDGET > half-completion > env%.
+    // Using the budget directly prevents double-counting (half of 250K = 125K when
+    // the actual budget is 8K). Half-completion is the adaptive heuristic when
+    // reasoning=adaptive (budget=null). The env% is the last resort (only reached
+    // when contextWindow is null AND reasoning=adaptive).
+    const resolvedCompletion = resolveReserve(completionReserve, contextWindow);
+    const reasoningReserve: ReserveSpec = (() => {
+        if ("tokens" in envReasoning) return envReasoning; // operator absolute always wins
+        if (reasoning.budget !== null) return { tokens: reasoning.budget }; // exact budget when reasoning=on
+        if (resolvedCompletion !== null) return { tokens: Math.round(resolvedCompletion / 2) }; // half-completion for adaptive
+        return envReasoning; // last resort: env percentage
     })();
 
     return new OpenAICompatProvider({
@@ -564,7 +577,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         headers,
         contextWindow,
         fetchTimeoutMs,
-        reasoning: reasoningFromEnv(env, name),
+        reasoning,
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", name, 0),
         repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
         frequencyPenalty: spec.suppressFrequencyPenalty === true ? 0 : parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", name, 0),

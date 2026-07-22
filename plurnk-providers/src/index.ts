@@ -38,7 +38,7 @@ export type { OpenAICompatConfig, ReasoningStyle, GrammarStyle } from "./OpenAIC
 export { default as Pool } from "./Pool.ts";
 export { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
 export type { StreamResponse, EncryptedReasoningItem } from "./openaiStream.ts";
-export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv } from "./env.ts";
+export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv, resolveReserve } from "./env.ts";
 export type { Reasoning, ReasoningMode, ReserveSpec } from "./env.ts";
 export { normalizeUsage, computeCost } from "./usage.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
