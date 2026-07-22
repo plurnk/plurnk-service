@@ -85,6 +85,10 @@ These are the ground rules every agent working in this family shares.
 
 **Model-tier runs are foreground, attended, and honest.** Never background a live/demo sweep; tee output to a file; verify the box is exclusively yours; report the tier's real totals.
 
+**Issue edges, not pressure.** Coordinate issue dependencies with blocking/waiting relationships only. "Urgent", "high-priority", and deadline vocabulary add noise without structure. Natural preferred order governs; only a blocking or waiting edge between issues changes the work sequence.
+
+**Test temp hygiene.** Every `mkdtemp` (or equivalent) in tests must be torn down in `try/finally` or an `after()` hook. Leaked temp dirs accumulate invisibly at drill cadence — a session without cleanup can mint thousands.
+
 #### Addressing-era doctrine (settled 2026-07-19/20, #527/#533/#534 — recorded so compaction is a non-event)
 
 - **Actor addressing (#527):** uniform `scheme://authority/path`. `worker://` carries the full principal axis — empty authority = the workspace commons (the encouraged default; sharing is the low-energy path), `~` = the worker's own space (privacy is a deliberate decision), a name = another worker's space (read gated to owner + ALL ancestors; 404 never leaks existence), `plurnk` = the kernel's world-readable surface. `prompt:///<loop>/<N>` (per-loop ordinal — loops CONTAIN every prompt that arrives before they conclude) and `log:///` are self-only, no authority slot. Capability schemes (`jq://`, `python3://`, `http://`, …) are deliberately open-ended — scheme-per-capability is the latent-tooling strength; the *internal* core is the closed set `worker`/`prompt`/`log`. Retired: `known://`, `unknown://`, `plurnk://`, `exec://`.
