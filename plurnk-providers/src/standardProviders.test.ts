@@ -624,6 +624,19 @@ test("anthropic: context + cost come from the catalog (no probe)", async () => {
     assert.equal(p!.contextWindow, info.contextWindow);
 });
 
+test("anthropic: frequency_penalty is NOT sent (Claude native API has no such param, DOC #568)", async () => {
+    let body = "";
+    mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 }); }
+        return new Response("{}", { status: 200 });
+    });
+    const env = { ...baseEnv, ANTHROPIC_API_KEY: "k", PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0.4" };
+    const p = await standardProviderFromEnv("anthropic", env, "claude-haiku-4-5-20251001");
+    await p!.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
+    assert.equal(JSON.parse(body).frequency_penalty, undefined);
+    mock.restoreAll();
+});
+
 // — bedrock standard entry (AWS, bearer API key, #19) —
 
 test("bedrock: requires BEDROCK_BASE_URL (region-templated) and AWS_BEARER_TOKEN_BEDROCK", async () => {

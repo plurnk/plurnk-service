@@ -30,6 +30,9 @@ const PROVIDERS = [
     { name: "deepinfra", base: "https://api.deepinfra.com/v1/openai", keyVar: "DEEPINFRA_API_KEY", models: ["Llama-3.1-8B", "Meta-Llama-3.1-8B", "8B"] },
     { name: "xai", base: "https://api.x.ai/v1", keyVar: "XAI_API_KEY", models: ["grok-3-mini", "grok-2", "grok"] },
     { name: "gemini", base: "https://generativelanguage.googleapis.com/v1beta/openai", keyVar: "GEMINI_API_KEY", models: ["gemini-2.5-flash", "gemini-2.*flash", "flash"] },
+    // Anthropic OpenAI-compat. Expected: honors temperature/top_p only (Claude's native param set has no
+    // frequency_penalty, top_k, or repetition_penalty); suppressed in standardProviders.ts (DOC #568).
+    { name: "anthropic", base: "https://api.anthropic.com/v1", keyVar: "ANTHROPIC_API_KEY", models: ["claude-haiku-4-5-20251001", "claude-3-5-haiku-20241022", "claude-haiku"] },
     // Cloudflare Workers AI: account-scoped URL (built from CLOUDFLARE_ACCOUNT_ID), token in CLOUDFLARE_API_TOKEN.
     { name: "cloudflare", base: `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID ?? "NO_ACCOUNT"}/ai/v1`, keyVar: "CLOUDFLARE_API_TOKEN", models: ["@cf/meta/llama-3.1-8b-instruct", "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "llama-3"] },
 ];

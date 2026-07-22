@@ -89,6 +89,10 @@
         "repetition_penalty"
       ]
     },
+    "anthropic": {
+      "name": "anthropic",
+      "skipped": "no ANTHROPIC_API_KEY"
+    },
     "cloudflare": {
       "name": "cloudflare",
       "skipped": "no model baselined (last: llama-3 -> 401 {\"result\":null,\"success\":false,\"errors\":[{\"code\":10000,\"message\":\"Auth)"

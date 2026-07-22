@@ -84,6 +84,11 @@ type StandardProviderSpec = {
     // #507: the plurnk.ai router owns tuning (SPEC §5) — suppress the client-side
     // temperature/penalty floors on this provider; caller sampling still passes.
     suppressTuningFloors?: boolean;
+    // When true, omit frequency_penalty from the request body — the backend's
+    // native param set excludes it and will reject it (DOC-verified). Sets
+    // frequencyPenalty to 0 so #repetitionPenaltyBody's "> 0" gate suppresses
+    // the field. Mirrors the daughter omissions (dba4300 / providers-xai#2).
+    suppressFrequencyPenalty?: boolean;
     // #518: send prompt_cache_key=workerId (serverless replica-cache affinity).
     // Default ON for standard providers (OpenAI-standard field, broadly accepted);
     // set false to opt a backend out (e.g. anthropic's cache_control mechanism).
@@ -240,13 +245,15 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         baseUrlVar: "ANTHROPIC_BASE_URL", chatPath: "/chat/completions",
         reasoningStyle: "anthropic", tokenizerEnvVar: "ANTHROPIC_TOKENIZER",
         promptCacheKey: false, // #518: anthropic caches via cache_control breakpoints, not prompt_cache_key (unverified) — opt out
+        suppressFrequencyPenalty: true, // Claude's native API has no frequency_penalty; the compat endpoint rejects it (DOC #568)
     },
     // AWS Bedrock via its OpenAI-compat endpoint (path is /openai/v1, NOT /v1),
     // bearer-authed with a Bedrock API key (SigV4 optional). Region-templated base
     // (see baseUrlFromEnv); model ids are inference profiles like
     // `us.anthropic.claude-sonnet-4-6` (see catalogContextLookup). Cost stays unknown —
     // bedrock marks up over the native rate, so set PLURNK_PROVIDERS_CONTEXT_WINDOW for
-    // a publisher the catalog lacks (#22).
+    // a publisher the catalog lacks (#22). frequency_penalty suppressed: Bedrock's
+    // OpenAI-compat surfaces Claude's native param set, which excludes it (DOC #568).
     bedrock: {
         apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK", apiKeyRequired: true,
         baseUrlVar: "BEDROCK_BASE_URL", chatPath: "/chat/completions",
@@ -266,6 +273,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
             return lookup(stripped.slice(0, dot), stripped.slice(dot + 1))?.contextWindow;
         },
         reasoningStyle: "none", tokenizerEnvVar: "BEDROCK_TOKENIZER",
+        suppressFrequencyPenalty: true, // Bedrock surfaces Claude's native param set, which has no frequency_penalty (DOC #568)
     },
     // The plurnk hosted model — deliberately the most boring OpenAI-compatible
     // client we can ship: the ecosystem must not know what sits behind
@@ -545,7 +553,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         reasoning: reasoningFromEnv(env, name),
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", name, 0),
         repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
-        frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", name, 0),
+        frequencyPenalty: spec.suppressFrequencyPenalty === true ? 0 : parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", name, 0),
         // #567: llama.cpp loop-breakers — optional, off by default (absent = the box's own
         // default). The provider sends them only on the llamacpp path; values are operator config.
         dryMultiplier: parseOptionalFloat(env.PLURNK_PROVIDERS_DRY_MULTIPLIER, "PLURNK_PROVIDERS_DRY_MULTIPLIER", name, 0) ?? undefined,
