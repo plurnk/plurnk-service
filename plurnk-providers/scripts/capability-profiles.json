@@ -1,0 +1,95 @@
+{
+  "note": "Live-probed per-provider sampling-param support (#568). Refresh: node scripts/probe-capabilities.mjs. MEASURED tier — beats routed catalogs.",
+  "profiles": {
+    "openai": {
+      "name": "openai",
+      "skipped": "no OPENAI_API_KEY"
+    },
+    "groq": {
+      "name": "groq",
+      "skipped": "no GROQ_API_KEY"
+    },
+    "deepseek": {
+      "name": "deepseek",
+      "skipped": "no DEEPSEEK_API_KEY"
+    },
+    "mistral": {
+      "name": "mistral",
+      "skipped": "no MISTRAL_API_KEY"
+    },
+    "together": {
+      "name": "together",
+      "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "honored": [
+        "temperature",
+        "top_p",
+        "min_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "repetition_penalty"
+      ],
+      "rejected": [],
+      "anomaly": [
+        "top_k:503"
+      ]
+    },
+    "fireworks": {
+      "name": "fireworks",
+      "model": "accounts/fireworks/models/kimi-k2p6",
+      "honored": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "repetition_penalty"
+      ],
+      "rejected": []
+    },
+    "deepinfra": {
+      "name": "deepinfra",
+      "model": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+      "honored": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "repetition_penalty"
+      ],
+      "rejected": []
+    },
+    "xai": {
+      "name": "xai",
+      "model": "grok-3-mini",
+      "honored": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "repetition_penalty"
+      ],
+      "rejected": [
+        "frequency_penalty",
+        "presence_penalty"
+      ]
+    },
+    "gemini": {
+      "name": "gemini",
+      "model": "models/gemini-2.5-flash",
+      "honored": [
+        "temperature",
+        "top_p"
+      ],
+      "rejected": [
+        "top_k",
+        "min_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "repetition_penalty"
+      ]
+    }
+  }
+}

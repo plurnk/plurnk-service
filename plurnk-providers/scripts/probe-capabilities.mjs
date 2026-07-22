@@ -1,0 +1,99 @@
+// Capability probe harness (#568). Asks each provider's REAL endpoint which sampling
+// params it honors — the MEASURED tier of the defaults rubric, and the only reliable
+// source for behavioral facts (routed catalogs lie: OpenRouter reports grok honoring
+// frequency_penalty; the direct xai API 400s on it). Run at release/patch-pub:
+//   node scripts/probe-capabilities.mjs        (needs the provider API keys in env)
+// Skips any provider with no key; writes the per-provider profile to
+// scripts/capability-profiles.json (a reference the spec's per-provider defaults cite).
+//
+// A profile is trustworthy ONLY behind a passing BASELINE call (no extra params): an
+// invalid/inaccessible model must never masquerade as param rejection. Candidate models
+// are tried in order until one baselines (skips dedicated-only serverless models).
+
+import { writeFileSync } from "node:fs";
+
+// The sampling params we probe, with a harmless in-range value each.
+const CANDIDATES = [
+    ["temperature", 0.5], ["top_p", 0.9], ["top_k", 40], ["min_p", 0.05],
+    ["frequency_penalty", 0.3], ["presence_penalty", 0.3], ["repetition_penalty", 1.1],
+];
+
+// { name, base (chat-completions root), keyVar, models (tried in order until one baselines) }.
+// Extend as keys/endpoints are added — a keyless provider is skipped, never guessed.
+const PROVIDERS = [
+    { name: "openai", base: "https://api.openai.com/v1", keyVar: "OPENAI_API_KEY", models: ["gpt-4o-mini", "gpt-4.1-mini"] },
+    { name: "groq", base: "https://api.groq.com/openai/v1", keyVar: "GROQ_API_KEY", models: ["llama-3.1-8b-instant", "llama-3.3-70b", "llama"] },
+    { name: "deepseek", base: "https://api.deepseek.com/v1", keyVar: "DEEPSEEK_API_KEY", models: ["deepseek-chat"] },
+    { name: "mistral", base: "https://api.mistral.ai/v1", keyVar: "MISTRAL_API_KEY", models: ["ministral-8b-latest", "mistral-small-latest", "mistral"] },
+    { name: "together", base: "https://api.together.xyz/v1", keyVar: "TOGETHER_API_KEY", models: ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "mistralai/Mistral-7B-Instruct-v0.3", "Qwen/Qwen2.5-7B-Instruct-Turbo", "Meta-Llama-3.1-8B-Instruct-Turbo"] },
+    { name: "fireworks", base: "https://api.fireworks.ai/inference/v1", keyVar: "FIREWORKS_API_KEY", models: ["llama-v3p1-8b", "llama.*8b", "llama"] },
+    { name: "deepinfra", base: "https://api.deepinfra.com/v1/openai", keyVar: "DEEPINFRA_API_KEY", models: ["Llama-3.1-8B", "Meta-Llama-3.1-8B", "8B"] },
+    { name: "xai", base: "https://api.x.ai/v1", keyVar: "XAI_API_KEY", models: ["grok-3-mini", "grok-2", "grok"] },
+    { name: "gemini", base: "https://generativelanguage.googleapis.com/v1beta/openai", keyVar: "GEMINI_API_KEY", models: ["gemini-2.5-flash", "gemini-2.*flash", "flash"] },
+];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const chat = async (base, key, body) => {
+    try {
+        const r = await fetch(`${base}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(30_000),
+        });
+        return { status: r.status, ok: r.ok, text: (await r.text()).replace(/\s+/g, " ") };
+    } catch (e) { return { status: 0, ok: false, text: `fetch: ${e.message}` }; }
+};
+
+// Resolve model candidates against the live /v1/models list (array OR {data:[]}); fall
+// back to the raw candidate strings so a provider without a listable /models still probes.
+const resolveModels = async (base, key, prefer) => {
+    let ids = [];
+    try {
+        const r = await fetch(`${base}/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(20_000) });
+        if (r.ok) { const j = await r.json(); ids = (Array.isArray(j) ? j : j.data ?? []).map((m) => m.id).filter(Boolean); }
+    } catch { /* no listable /models — fall through to raw candidates */ }
+    const out = [];
+    for (const p of prefer) { const hit = ids.find((id) => new RegExp(p, "i").test(id)); if (hit && !out.includes(hit)) out.push(hit); else if (!hit && !out.includes(p)) out.push(p); }
+    // Fallback: if none of the preferred models baseline (dedicated-only, retired), try other
+    // listed chat models so a working serverless one is still found.
+    for (const id of ids) {
+        if (out.length >= prefer.length + 4) break;
+        if (out.includes(id) || /embed|whisper|tts|image|rerank|moderat|guard|vision|audio|speech/i.test(id)) continue;
+        out.push(id);
+    }
+    return out;
+};
+
+const profile = async ({ name, base, keyVar, models }) => {
+    const key = process.env[keyVar];
+    if (!key) return { name, skipped: `no ${keyVar}` };
+    const candidates = await resolveModels(base, key, models);
+    for (const model of candidates) {
+        const baseline = await chat(base, key, { model, messages: [{ role: "user", content: "hi" }], max_tokens: 1 });
+        if (!baseline.ok) continue; // inaccessible/dedicated/invalid — try the next candidate
+        const honored = [], rejected = [], anomaly = [];
+        for (const [p, v] of CANDIDATES) {
+            await sleep(250);
+            const res = await chat(base, key, { model, messages: [{ role: "user", content: "hi" }], max_tokens: 1, [p]: v });
+            if (res.ok) honored.push(p);
+            else if (res.status === 400 || res.status === 422) rejected.push(p);
+            else anomaly.push(`${p}:${res.status}`); // 401/429/5xx — not a clean param verdict
+        }
+        return { name, model, honored, rejected, ...(anomaly.length ? { anomaly } : {}) };
+    }
+    return { name, skipped: "no candidate model baselined" };
+};
+
+const profiles = {};
+for (const p of PROVIDERS) {
+    const r = await profile(p);
+    profiles[r.name] = r;
+    if (r.skipped) console.log(`${r.name}: skipped (${r.skipped})`);
+    else console.log(`${r.name} [${r.model}]  honored: ${r.honored.join(", ")}  rejected: ${r.rejected.join(", ") || "-"}${r.anomaly ? "  anomaly: " + r.anomaly.join(", ") : ""}`);
+}
+
+const outPath = new URL("./capability-profiles.json", import.meta.url);
+writeFileSync(outPath, JSON.stringify({ note: "Live-probed per-provider sampling-param support (#568). Refresh: node scripts/probe-capabilities.mjs. MEASURED tier — beats routed catalogs.", profiles }, null, 2) + "\n");
+console.log(`\nwrote ${Object.values(profiles).filter((p) => !p.skipped).length} profiles -> scripts/capability-profiles.json`);
