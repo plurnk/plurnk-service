@@ -13,12 +13,14 @@ Framework + contract for the `@plurnk/plurnk-mimetypes-*` handler family. Consum
 npm install @plurnk/plurnk-mimetypes
 ```
 
-Node ≥ 26, ESM. The framework ships the **floor** as direct deps — `text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv` — so one install parses those. Everything else is opt-in: add the languages you use, or the whole family at once.
+Node ≥ 26, ESM. The framework ships the **floor** as direct deps — `text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv` — so one install parses those. Everything else is opt-in: install exactly the handlers you use.
 
 ```
 npm install @plurnk/plurnk-mimetypes-grammar-python   # one language
-npm install @plurnk/plurnk-mimetypes-all              # every first-party handler
+npm install @plurnk/plurnk-mimetypes-embeddings       # the embedding channel
 ```
+
+There is no aggregate meta-package — the default bundle is defined in exactly one place (the daemon's own dependency set). Add capability by installing the leaf; discovery lights it up with no code change.
 
 Detection auto-finds installed grammars — no code changes when you add or remove one. A detected mimetype whose grammar isn't installed **degrades**: `ok` stays true, metadata is real, requested channels come back empty, and the missing package is on `ProcessResult.grammarMissing`. Pass `{ strict: true }` to throw `GrammarNotInstalledError` instead.
 
