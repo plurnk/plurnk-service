@@ -1,12 +1,14 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(root, "..", "repo", "plurnk"));
-const stateDir = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-"));
+const benchmarks = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(root, "..", "benchmarks"));
+mkdirSync(benchmarks, { recursive: true });
+const stateDir = mkdtempSync(resolve(benchmarks, "candidate-"));
 const dbPath = resolve(stateDir, "plurnk.db");
+writeFileSync(resolve(stateDir, "command"), `${process.argv.join(" ")}\n`);
 
 const run = (command, args, cwd) => {
     const result = spawnSync(command, args, { cwd, stdio: "inherit", env: process.env });
@@ -34,14 +36,40 @@ const daemon = spawn(
 );
 
 let client;
-const cleanup = () => {
-    if (client !== undefined && client.exitCode === null) client.kill("SIGTERM");
-    if (daemon.exitCode === null) daemon.kill("SIGTERM");
-    rmSync(stateDir, { recursive: true, force: true });
+let finalizing;
+const stop = async (child) => {
+    if (child === undefined || child.exitCode !== null) return;
+    const exited = new Promise((accept) => child.once("exit", accept));
+    child.kill("SIGTERM");
+    const graceful = await Promise.race([
+        exited.then(() => true),
+        new Promise((accept) => setTimeout(() => accept(false), 5_000)),
+    ]);
+    if (!graceful && child.exitCode === null) child.kill("SIGKILL");
+    await exited;
 };
-process.once("SIGINT", cleanup);
-process.once("SIGTERM", cleanup);
-process.once("exit", cleanup);
+const finalize = () => {
+    if (finalizing !== undefined) return finalizing;
+    finalizing = (async () => {
+        await Promise.all([stop(client), stop(daemon)]);
+        run(process.execPath, [
+            "--conditions=plurnk-dev",
+            resolve(root, "plurnk-core", "bin", "digest.ts"),
+            dbPath,
+            resolve(stateDir, "digest"),
+        ], root);
+        process.stderr.write(`candidate artifact: ${stateDir}\n`);
+    })();
+    return finalizing;
+};
+const stopFromSignal = (status) => {
+    void finalize().then(() => process.exit(status), (error) => {
+        process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+        process.exit(1);
+    });
+};
+process.once("SIGINT", () => stopFromSignal(130));
+process.once("SIGTERM", () => stopFromSignal(143));
 
 const address = await new Promise((accept, reject) => {
     let output = "";
@@ -80,5 +108,5 @@ const status = await new Promise((accept, reject) => {
     });
 });
 
-cleanup();
+await finalize();
 process.exit(status);
