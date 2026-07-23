@@ -40,6 +40,23 @@ test("Daemon: listenerless boot — the seam is live with no socket bound (#364)
         assert.ok(Array.isArray(workspaces), "the seam answers");
     });
 });
+
+test("Daemon boot reconciles documentation for existing workspaces once", async () => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `boot-docs-${crypto.randomUUID()}`);
+    const daemon = new Daemon({ db, provider: null });
+    try {
+        await daemon.start();
+        const docs = await (db.test_entries_by_scheme_prefix as PrepMethod).all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/docs/%" });
+        assert.ok(docs.length > 0, "boot publishes the current installed documentation surface into an existing workspace");
+        const plurnkWorker = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        assert.ok(plurnkWorker !== undefined, "boot publication is authored by the workspace's reserved plurnk worker");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("workspace.create returns id+name and emits notification", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -381,6 +398,13 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             const events: Array<{ method: string; params: unknown }> = [];
             daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
+            const docsAtCreation = await (db.test_entries_by_scheme_prefix as PrepMethod).all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/docs/%" });
+            assert.ok(docsAtCreation.length > 0, "workspace creation publishes worker://plurnk/docs/*.md before any model worker or loop exists");
+            const plurnkWorker = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: created.id, name: "plurnk" });
+            assert.ok(plurnkWorker !== undefined);
+            const publicationRows = async () => (db.test_log_entries_by_run as PrepMethod).all<{ op: string; status_rx: number }>({ worker_id: plurnkWorker!.id });
+            const publishedCount = (await publicationRows()).length;
+
             // §machine-processes — loops run in the MODEL run the seam resolves; a client worker is
             // refused loudly (the module's envelope workerId is the client worker — never the loop home).
             const clientWorker = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: created.id }))!;
@@ -397,11 +421,10 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             );
             assert.equal((terminals[0].params as { finalStatus?: number }).finalStatus, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
 
-            // The marquee first-turn feature holds on the seam path: runLoop materialized the
-            // teaching docs BEFORE the loop, so the turn-1 FIND(worker://plurnk/docs/**) foist finds them.
-            // (The gap that shipped: agui-driven workspaces started docless and the foist reported 0.)
+            // The marquee first-turn feature holds on the seam path: workspace creation materialized
+            // the teaching docs before the model loop, so FIND(worker://plurnk/docs/**) finds them.
             const docs = await (db.test_entries_by_scheme_prefix as PrepMethod).all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/docs/%" });
-            assert.ok(docs.length > 0, "runLoop materialized worker://plurnk/docs/*.md — the discovery foist has something to find");
+            assert.deepEqual(docs, docsAtCreation, "model startup consumes the existing documentation surface without republishing it");
 
             const second = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go again" });
             const secondTerminals = await waitFor(
@@ -411,11 +434,9 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             );
             assert.equal((secondTerminals[0].params as { finalStatus?: number }).finalStatus, 200, "reattaching to the workspace runs normally");
 
-            const plurnkWorker = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: created.id, name: "plurnk" });
-            assert.ok(plurnkWorker !== undefined);
-            const materialization = await (db.test_log_entries_by_run as PrepMethod).all<{ op: string; status_rx: number }>({ worker_id: plurnkWorker!.id });
-            assert.equal(materialization.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "repeated documentation materialization produces no error rows");
-            assert.ok(materialization.some((row) => row.op === "EDIT" && row.status_rx === 304), "unchanged documentation is an explicit no-op on reattach");
+            const afterTwoLoops = await publicationRows();
+            assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat workspace documentation publication");
+            assert.equal(afterTwoLoops.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "workspace documentation publication produces no error rows");
         } finally { ws.close(); }
     });
 });

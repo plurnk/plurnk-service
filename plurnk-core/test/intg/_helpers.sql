@@ -251,7 +251,9 @@ INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, close_status)
 VALUES ($worker_id, $entry_id, 'sse', 'h', 200);
 
 -- PREP: test_first_log_entry
-SELECT origin, op, status_rx FROM log_entries LIMIT 1;
+SELECT origin, op, status_rx FROM log_entries
+WHERE origin = 'client'
+ORDER BY id LIMIT 1;
 
 -- PREP: test_get_body_by_pathname
 SELECT ec.content
@@ -263,7 +265,9 @@ WHERE e.pathname = $pathname AND ec.name = 'body';
 SELECT name FROM workspaces;
 
 -- PREP: test_get_run_by_session
-SELECT id FROM workers WHERE workspace_id = $workspace_id LIMIT 1;
+SELECT id FROM workers
+WHERE workspace_id = $workspace_id AND origin = 'client'
+ORDER BY id LIMIT 1;
 
 -- PREP: test_get_loop_by_run
 SELECT id FROM loops WHERE worker_id = $worker_id LIMIT 1;

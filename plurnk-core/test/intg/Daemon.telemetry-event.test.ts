@@ -24,7 +24,8 @@ test("notifyTelemetryEvent broadcasts to clients attached to the loop's workspac
             });
             await flush();
 
-            const events = captured() as Array<{ loopId: number; event: { source: string; kind: string; message: string } }>;
+            const events = (captured() as Array<{ loopId: number; event: { source: string; kind: string; message: string } }>)
+                .filter((item) => item.loopId === 42);
             assert.equal(events.length, 1);
             assert.equal(events[0].loopId, 42);
             assert.equal(events[0].event.source, "grammar");
@@ -52,8 +53,8 @@ test("telemetry/event is workspace-scoped — other workspaces don't see it", as
 
             await flush();
 
-            const aCaptured = aEvents() as Array<{ event: { kind: string } }>;
-            const bCaptured = bEvents() as Array<{ event: { kind: string } }>;
+            const aCaptured = (aEvents() as Array<{ event: { kind: string } }>).filter((item) => item.event.kind === "parse_error");
+            const bCaptured = (bEvents() as Array<{ event: { kind: string } }>).filter((item) => item.event.kind === "max_commands_exceeded");
             assert.equal(aCaptured.length, 1);
             assert.equal(aCaptured[0].event.kind, "parse_error");
             assert.equal(bCaptured.length, 1);

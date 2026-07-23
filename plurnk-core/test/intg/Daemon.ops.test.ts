@@ -144,7 +144,7 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
             assert.equal(result.results[1].status, 201);
 
             const entries = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
-            assert.deepEqual(entries.map((e) => e.pathname), ["/a", "/b"]);
+            assert.deepEqual(entries.map((e) => e.pathname).filter((p) => p === "/a" || p === "/b"), ["/a", "/b"]);
         } finally { ws.close(); }
     });
 });

@@ -234,9 +234,6 @@ export default class Daemon {
         const target = await (this.#db.envelope_get_worker_by_id as PrepMethod).get<{ workspace_id: number; origin: string }>({ id: args.workerId });
         if (target === undefined) throw new Error(`runLoop: run ${args.workerId} not found`);
         if (target.origin === "client") throw new Error(`runLoop: run ${args.workerId} is a client worker — loops run in model workers (§machine-processes); resolve one with ensureModelWorker(workspaceId)`);
-        // Pre-loop docs (both sets: operator/client mdDocs + the teaching docs the turn-1
-        // FIND(plurnk://docs/**) foist discovers) — ONE truth shared with the legacy loop.run route.
-        await LoopDocs.materialize(this.#engine, this.#db, args.workspaceId);
         // §operator-config-max-turns-ceiling — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
@@ -360,6 +357,7 @@ export default class Daemon {
             await (this.#db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: envelope.workspaceId, effect, glob });
         }
         if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.workspaceId, undefined);
+        await LoopDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
         void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
         this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
         return envelope;
@@ -517,6 +515,13 @@ export default class Daemon {
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
+
+        // Reconcile the kernel-published documentation surface once per existing workspace.
+        // Installed capabilities and operator configuration are now fully known; model loops
+        // consume this workspace state but never republish it.
+        for (const workspace of await Envelope.listWorkspaces(this.#db)) {
+            await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
+        }
 
         // #364 — the daemon opens NO transport, ever: plugin modules open theirs via the seam.
         for (const init of this.#moduleInits) await init(this);
