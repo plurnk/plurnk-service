@@ -1,4 +1,4 @@
-// Paired cross-backend tuning sweep (TUNING-EPIC.md Phase 1). Runs the SAME
+// Paired cross-backend tuning sweep. Runs the SAME
 // REAL packet (plurnk-service test/digest packet001) + the REAL plurnk.gbnf
 // through BOTH backends, varying only decode knobs, and grades objectively:
 // conformance (@plurnk/gbnf verdict on content), termination (finish=stop),

@@ -371,7 +371,7 @@ export default class OpenAICompatProvider implements Provider {
     // reasoning channel rides beside it unmasked, and the plurnk grammar's
     // reasoning?/preplan regions absorb any in-band spillover. The old measured
     // failures (low→cycles, high→spirals) were pre-max_tokens-cap; with a bounded
-    // cap the matrix ACCEPTs across efforts (reasoning-rails matrix, TUNING-EPIC
+        // cap the matrix ACCEPTs across efforts (reasoning-rails matrix
     // F9). Clamping was the root of the plan-less regression (service#331).
     #reasoningBody(): Record<string, unknown> {
         const { mode, budget } = this.#reasoning;

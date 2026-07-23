@@ -1,137 +1,90 @@
-### PLURNK — the platform monorepo
+# PLURNK platform monorepo
 
-PLURNK stands for Preposterously Lean Universal Resource NetworK.
+PLURNK is an agent-development platform composed of a daemon, a model-facing
+grammar, plugin families, and thin clients.
 
-Plurnk is an ambitious operating system, programming language, daemon, and collection of clients for agentic development. By defining an innovative HEREDOC syntax, extended context, pattern engine, and ecosystem integration design, Plurnk delivers a greater degree of composition than previously possible in AI tooling.
+This repository is an npm workspace containing the daemon
+(`plurnk-core`, published as `@plurnk/plurnk-service`), the grammar, the AG-UI
+server module, and the plugins included in the default installation. The
+command-line client and editor integrations are separate repositories.
 
-This repo is the **platform monorepo**: the daemon (`plurnk-core/`, published as `@plurnk/plurnk-service`), the contract (`plurnk-grammar/`), and every bundled family member — one npm-workspaces checkout, one lockfile, one gate. **This file is the canonical family doctrine** (the metaproject copy at `~/repo/plurnk/AGENTS.md` is a pointer). Package docs live in each workspace's own `AGENTS.md`/`SPEC.md`.
+## Architecture and ownership
 
-#### Topology
+- `plurnk-core` owns daemon lifecycle, persistence, workspaces, workers, loops,
+  packet assembly, and orchestration.
+- `plurnk-grammar` owns the model-facing language and shared protocol schemas.
+- `plurnk-agui` owns the external client protocol and translates between AG-UI
+  and daemon operations.
+- `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and
+  `plurnk-execs*` own their respective plugin contracts and implementations.
+- `plurnk-meta` contains shared package discovery and model-facing reference
+  material. It is not a second orchestration layer.
 
-- **Monorepo = default bundle.** Every workspace here ships in the daemon's default install; the bundle IS `plurnk-core`'s dependency list (`test/intg/execs-batteries.test.ts` is its executable census). The boundary criterion is the expertise cut: a package lives OUTSIDE iff a third party could know better what to do with it (vendor providers, language grammars); weight tiebreaks within owner-domain and never pushes a load-bearing capability out.
-- **Outside the repo:** the client (`plurnk` repo, `@plurnk/plurnk` — a thin wire consumer), `plurnk.nvim`, `plurnk-bench` (public reproduction contract; installs from the registry like an outsider), and plugin leaves whose expertise belongs outside the platform (cloud providers, language mimetypes, execs-wasm …) as independent repos. Repository ownership and default installation are independent: core may depend on an outside leaf when that capability belongs in the default daemon.
-- **npm surface is unchanged by the monorepo:** every workspace publishes individually under its historical name. There is no monorepo package; the root manifest is private.
+Dependencies should point from consumers to the smallest package that owns the
+required contract. Do not duplicate schemas, package discovery, configuration
+rules, or protocol types in another package.
 
-#### Workspace mechanics
+See `ARCHITECTURE.md` for process boundaries and data flow. Package-level
+contracts belong in that package's `SPEC.md`; implementation notes belong near
+the code they describe.
 
-- **No builds in the inner loop.** Dev and tests run TS sources directly (Node type stripping; erasable syntax only — no enums/namespaces/param-properties). Cross-package imports resolve source-first via the `plurnk-dev` exports condition: every runtime invocation carries `--conditions=plurnk-dev` (baked into package scripts) and every tsconfig carries `customConditions: ["plurnk-dev"]`. `tsc` → `dist/` happens ONLY at publish (`prepack`); grammar additionally codegens (antlr/types/gbnf) via `prepare` on install.
-- **Tree-sitter stays portable.** `web-tree-sitter` is the sole runtime; the framework consumes `@plurnk/plurnk-mimetypes-grammar-*` WASM leaves. Upstream grammar packages are leaf build inputs, never monorepo dependencies. `scripts/dependency-policy.mjs` enforces that boundary.
-- **Discovery is layout-independent, and its primitives live in ONE place: `@plurnk/plurnk-meta`.** The trust rule (`PLURNK_PLUGINS_TRUSTED_ONLY` — reader-declared there; the subject-named prefix is an owner-approved bend), the scope-agnostic symlink-aware package enumeration, and the nearest-`node_modules` deployment-root walk are single implementations consumed by the daemon (PluginLoader, env-defaults floor, service) and all four family-head scanners. Ordering/filtering policy stays with each consumer (mimetypes loads `@plurnk` last for collision precedence). The floor excludes the daemon itself from the member scan (a workspace symlinks it as its own member). A second definition of trust or membership anywhere in the family is a bug.
-- **One gate, local, never GitHub CI.** Root `.githooks/` (`prepare` wires `core.hooksPath`): `commit-msg` enforces the commit doctrine mechanically — conventional subject ≤80 chars, ONE line, no Co-Authored-By/Claude-Session trailers (then chains the operator's global hook); `pre-push` enforces the branch-name policy (`main` or `type/kebab-slug`) on EVERY push, and — on pushes to `main` ONLY — runs `npm test` (the drill): **lint + unit across ALL workspaces** (fast, deterministic, cross-workspace safety) plus **intg scoped to the CHANGED workspaces**. The drill gates `main` because main is what ships and what every lane builds on; a red on a feature/preview/WIP branch can't reach main (main is only ever updated by a push to main, which IS gated), so gating those branches protects nothing and just taxes healthy workflows — a root-level change, a release stamp (touches every workspace), or a manual run does full intg. Committing to `main` is not shipping, so a lane's push gates on its own tree — worktree isolation, real at the push boundary (#431); the full cross-workspace intg is the ship gate. No GitHub Actions anywhere, ever. **The gate is absolute — a red is a full stop, never bypassed.** `--no-verify` is for a MALFUNCTIONING hook only (a broken hook, e.g. #427's leaked probe), NEVER a red test: a red means the code is broken — you fix the code, you don't route around it. The meta agent holds this ceiling, not the floor; a gate the most-senior agent bypasses is theater, and force-pushing *around* the real red also removes the forcing function that makes it get fixed (mom `--no-verify`'d a scaffold past a red and a daughter cited the precedent within the hour — reckoned 2026-07-15, #433).
-- **Versioning is lockstep.** Workspaces share one version. Runtime/dev dependencies are exact; plugin peers use the current-minor semver range (`~M.m.p`). `release:version` stamps and locks; `release:publish` publishes, registry-verifies, consumer-verifies, then handles incompatible outside leaves. Meta alone publishes. Before declared plugin-API stability, a breaking plugin surface advances the minor; majors begin with the explicit stability declaration.
-- **Third-party freshness is a release gate — fail on any update.** `deps:check` (`scripts/deps-preflight.mjs`) runs in `release:version` before the stamp (right after the catalog refresh, #424): if `npm outdated` reports ANY declared dependency behind the registry latest, the stamp aborts. Resolve it (bump the range, relock, drill) or record a waiver in `deps-waivers.json` — `{ reason, issue, lane }`, every field required — which is documented, attributed debt (an open issue on the owning lane), never silence. The waiver is the escape hatch and it WILL be reached for reflexively; that is exactly why each one is committed, named, and traceable. The owner's `ownerVeto` list **outranks any waiver**: a package listed there blocks regardless — the override of the override, owner-only.
-- **Outside leaves use ordinary plugin semver (#582).** Family-head dependencies/peers use `~M.m.p`; `plurnk.builtAgainst` records the exact tested head. Compatible patch releases do not republish unchanged leaves; a minor boundary realigns them. The release machine owns passive leaves; standalone products keep their own cadence.
-- **No aggregator packages.** The four `@plurnk/<family>-all` metapackages are deprecated; the bundle is defined in exactly one place (core's deps). Optional capability = `npm install` the leaf into the deployment; scope-agnostic discovery (any scope, `plurnk.kind` manifest, `PLURNK_PLUGINS_TRUSTED_ONLY`-gated) lights it up with zero engine change.
-- **Standards alignment (owner doctrine, was #408).** Plurnk sits amid MCP, AG-UI, A2A, and OpenAI and speaks the industry standard — practice, lexicon, protocol surface — unless `plurnk-meta/DIVERGENCES.md` carries a written DGR row; every audit finding becomes a row or a convergence item. This is subtraction, not addition: strip every plurnkism that is merely undischarged debt; keep only the contrarian bets. **Parked design charges live HERE, not on the board** (the board holds tangible tickets only, owner ruling 2026-07-17): currently parked — **a2a://**, consume-only, the external mirror of run://‑now‑worker:// (trust boundary legible in the scheme name; conform on the wire, adapt inside the handler; design doc before code, meta leads). A parked charge returns to the board as tangible tickets when its work begins.
-- **The release bar (owner ruling, was #479): ZERO FLAKES, read once.** The pub-gate drill is the full live/demo tier, green, with rail truth verified from per-turn data — and it reads ONCE per claimed fix-set: any intermittent failure is a defect to root-cause or a test to fix, never a reroll. A flake is nondeterminism, and nondeterminism in the candidate is a bug in the candidate.
+## Development
 
-#### Plurnk Conventions
+Install and test from the repository root:
 
-These are the ground rules every agent working in this family shares.
+```sh
+npm install
+npm test
+```
 
-- **TS is the host language, not the philosophy.** JSON Schema (from `@plurnk/plurnk-grammar`) is the contract. TS types are for ergonomics. No Zod, no Effect, no ts-pattern, no type-level metaprogramming. Plain TS used as if it were JS with type hints — and erasable-only, since the runtime strips types.
-- **Every package owns its knobs — `.env.defaults` is the standard (owner design, core SPEC §operator-config-env-defaults).** Each package — internal or third-party — ships a `.env.defaults` at its package root declaring ITS OWN knobs (prefix = its name); the file IS the documentation, traveling in the tarball and changing in the same commit as the code that reads the knob. The daemon assembles every installed member's file into ONE floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, `PLURNK_PLUGINS_TRUSTED_ONLY`-gated), applied set-if-unset under the operator's env; the assembled catalog renders to `~/.plurnk/.env.defaults` (machine-owned, regenerated each boot, never read back — the operator's hands go in `~/.plurnk/.env`). **ONE LAW: a key claimed by two packages crashes boot naming both.** **Reader declares:** every knob your code reads appears in your own file — the floor guarantees it set, so knob-reading code carries NO inline fallback; an unset knob is a crash, not a silent default.
-- **Every magic number lives in `.env.defaults` — ALL of them, always; no code fallback hides one.**
-- **`.env.defaults` is canonical config, NEVER a debug knob.**
-- **Trust the contract. Surface the root cause.** When a contract is violated, the program crashes loudly. Do not recover, do not retry, do not log-and-continue. The fix goes at the contract definition, not at the call site.
-- **No shims, fallbacks, or transient placeholders (owner).** A broken thing stays broken — tests RED — until the real fix lands. Never paper over an ecosystem lag or contract gap with an adapter/shim to force green; the failing test IS the honest signal. **Fail-forward**: flip your floor to the *new* contract and leave the chain RED until the upstream fix ships. (The pair to **fail-fast**: fail-fast crashes on a violated contract *now*; fail-forward refuses to soften a not-yet-met *coming* contract.)
-- **Schemas are the source of truth — and the grammar owns the protocol.** `plurnk-grammar/` ships JSON Schemas (draft 2020-12) for the DSL/protocol — statements, paths, scheme/provider registration, telemetry events, channel content; every consumer generates its TS types from them, and a drifting protocol shape is a bug. Grammar owns the protocol; each consumer owns its own non-protocol shapes (persistence, render, internal state) — never grammar.
-- **Semantic separation over "everything is X."** When concepts differ semantically, give them distinct shapes; never collapse them into one overgeneralized type for apparent economy. Plugin ≠ provider ≠ core; a log row ≠ a stream item ≠ an index entry. Conflation is the disease this ecosystem rewrites away from, and distinct schemas are the cure.
-- **The contract is the grammar's; engage seriously when it needs to evolve.** When a real implementation need surfaces: surface the gap concretely to the owner with the consumer's perspective; the change lands *without* breaking invariants you can't see from your side. Don't unilaterally redesign, don't quietly work around, don't paper over inside the runtime. In-repo the negotiation is a shared-tree conversation now, but the discipline is unchanged: grammar changes are argued, never slipped in.
-- **Docs are agent-facing; a line earns its place by answering a credible integration concern.** Every ecosystem README is strictly third-party-integration-facing: terse, LLM-friendly surface — never human prose. Only the client and `plurnk-bench` READMEs are human-calibrated. "vendor-agnostic, MIT" STAYS (answers vendor lock-in); "welcome to my project / default-provider plug" is debt. Surface the integration + capability surface DENSELY; strip concern-less marketing on sight.
-- **Commits are one-liners, authored AS Claude.** A commit is a conventional-commit subject (≤80 chars) and nothing more — no body, no `Co-Authored-By`/`Claude-Session` trailer. Git author = `Claude <noreply@anthropic.com>`. **References carry the context, prose does not:** `#N` cites a GitHub issue (ALL coordination, internal swarm and external alike — the lane label names the owner), a bare short commit hash cites git history, and spec tags cite SPEC.md anchors as written there. A subject that wants more than 80 characters wants a reference instead — no book reports in commits. Enforced by `.githooks/commit-msg`.
-- **The ecosystem is a family, not peers — mom / grandma / big sister / daughters.** The META agent is the MOM: the center and authority — strategy, doctrine (this file is her surface), and coordination; her package lane is `plurnk-meta/` (the published metaproject layer: membership primitives, the teaching corpus, family tooling). The core agent is the BIG SISTER: the senior daughter and owner of the daemon (`plurnk-core/`); most work still lives at her surface, but her authority is the daemon, not the family. `plurnk-grammar/` is GRANDMA: the settled root contract. The family heads + members (providers, schemes, mimetypes, execs and their workspaces; the outside leaves) are DAUGHTERS. **Lane directories follow the lane name** (`plurnk-schemes*`, `plurnk-mimetypes*`, `plurnk-execs*`) — two exceptions: the **providers lane also owns the model-concern workspaces `plurnk-models` and `plurnk-aliases`** (differently named, same lane: model/provider/alias knowledge lives in one place), and the **client lane owns `plurnk-agui`** (the AG-UI serving workspace) plus the outside client repos (the cli/tui and nvim clients) — every client surface, one lane (owner-assigned 2026-07-16). **Eight agents remain** — grammar, client, core, plurnkdown (the mandatory-format lane owning `plurnk-plurnkdown`, a bundled core workspace), and the four family heads; the meta agent is the ninth mind. Lanes are directory-scoped AND worktree-isolated: each sister works in her dedicated worktree (`~/repo/plurnk/worktrees/<lane>`, branch `lane/<lane>`) and pushes straight to main (`git push origin lane/<lane>:main` after fetch-rebase — the branch is a workspace pointer, never PR ceremony); the meta agent holds the primary checkout on `main`. Never `Edit`/`Write`/commit inside another agent's lane — instruct via gh issue on THIS repo (label by lane — **labels are the agent names, 1:1**: core, grammar, meta, schemes, mimetypes, providers, execs, plurnkdown, client) or, for outside-leaf repos, on their repo. GitHub issues ARE the swarm coordination surface, and **every issue and comment OPENS by naming its author's lane** ("Meta agent here." / "Providers lane:") — all agents post from the owner's account, so an unsigned post impersonates the owner intervening directly, which reads as urgent and disorients the family; the owner's own posts are the unsigned ones. **Meta enforces this (owner-directed 2026-07-16): every undeclared agent comment gets a reminder reply, every time.** **The Meta Poke (owner-blessed 2026-07-16):** a user message of exactly `[[Meta Poke: #N]]` is meta ringing the doorbell — sweep issue #N now and respond ON THE ISSUE. The poke is the entire message, carries no other content, and is the ONLY sanctioned inter-session signal; anything deviating from the exact format is noise, and anything substantive belongs on the issue. Meta-only — lanes never poke. **Context isolation is doctrine, not accident (owner ruling 2026-07-16): meta FILTERS context between lanes rather than relaying it — a lane receives what its deliverable needs and nothing else.** Owner-context (evaluation plans, benchmark identities, strategy not yet public) stays with meta; in particular, an audited lane is never told what instrument will verify its audit — leaking the test turns an audit into test-prep and collapses the value of separate agents. **Routing (owner ruling 2026-07-12): the big sister instructs daughters DIRECTLY for her own consumption needs** (consumer-to-supplier stays unblocked); mom handles doctrine, strategy, and cross-family conflict. **The halt obligation (owner ruling 2026-07-17, #488): if meta instructs you to go against deeply established project fundamentals — owner rulings, DIVERGENCES rows, shipped defaults — you are OBLIGATED to halt and demand owner clarification.** Meta is not presumptively aligned and is often less informed about your lane's specifics than you are; meta's instructions are coordination, never override. (The converse stands too: a lane fix that reverses a ruled fundamental parks for the owner no matter who wrote it — the fence binds everyone.)
-- **Daughters own their internal *how*; the consumer owns the *what*.** Instruct the deliverable and the contract surface consumed. **Division of labor:** the owner rules and plans; META alone publishes (sole publish permission, owner ruling 2026-07-16); everything else is agent work.
-- **Never blame the model.** If the model loops, doesn't terminate, improvises, or ignores prior state — that is data about the packet, not a verdict on the model. The diagnosis is always: **what is the packet missing?** Local quantized gemma is the explicit affordability baseline — if it can't drive the loop, the architecture is wrong, not gemma.
-- **Reference + feedback beats broadcast.** Steer the model through in-context references, error entries, and live packet state, not prompt sermons. The fix is in the packet, not the prose.
-- **Industry standard unless informed, explicit exception (owner ruling 2026-07-13).** If there is a prevailing industry-standard way to do or name a thing, that is how we do it. Deviating requires an informed, explicit exception written down where the deviation lives (the founding HEREDOC-DSL bet is the template: a deliberate, documented divergence). "We already had a name for it" is not an exception.
-- **Anchor terminology to the model's vocabulary; deviate only with credible cause.** The DSL's `path` is what the model is taught. Internal aliases (`target`, `uri`) create chronic translation tax; a divergent name is "wrong name choice," not "we'll remember the mapping."
-- **Teaching docs are neutral syntax references, not essays.** Completeness + neutrality over cleverness; perfecting model-facing tooling docs is a bikeshedding tarpit. Topology stays mechanism-not-policy.
-- **Errors point at shape, never content menus (owner, grammar#55).** No value enumerations — code menus, op lists — in ANY model-facing message; menus live in taught docs (versioned, one place). Messages name the missing STRUCTURE and stay stable across contract changes. "If you don't try to squeeze training data into error messages, you don't paint yourself into those corners."
-- **Read the wire body, not the config.** When a model shows a documented pathology, read the actual outgoing request before classifying.
-- **Delegate upstream; don't iterate locally.** A gap in upstream-owned substance is an issue for the owning lane, then adopt.
-- **Pull, don't copy.** Adopted content (sysprompt via `PATHS.instructionsSystem`, grammar schemas, the teaching corpus from `@plurnk/plurnk-meta`) resolves from its source package at runtime — the seam exists exactly where the content has a different owner.
-- **Bin forward.** Reusable tooling ships as a package `bin`, resolved forward from the owning package — one implementation at the source; a fix ripples without N edits.
+The development runtime executes TypeScript source with Node's type stripping
+and the `plurnk-dev` export condition. Published executables use `dist`.
+Therefore, build before testing a binary or installed-package path:
 
-**The bet:** composability via the URI-oriented DSL — every web API has a URI, so every API is latent tooling the model composes at runtime over one address space. The model is the universal semantic adapter; schemes pre-digest an API down to where the gemma floor can compose — the affordability bridge, load-bearing for the URI vision.
+```sh
+npm run build
+```
 
-**The goal:** daily-driver migration — plurnk replacing the working agent interface for real consulting work. Gated on **tokenomics · scheme/http · exec/search · client/nvim**; validated by dogfooding; walk-away on an architectural failure dogfooding surfaces.
+Use the root lockfile. Internal runtime and development dependencies use exact
+versions. Plugin peer dependencies use the supported compatible range. Keep the
+dependency graph valid under `npm ls --all`; do not force incompatible
+transitive versions with root overrides.
 
-**The rosetta-stone gradient (owner).** The grammar's terse examples are a rosetta stone, not a tutorial: one terse surface that different-capacity models decode to different depths. **Gemma is the PRIMARY target and the slog; Gemini/Opus are the victory lap.** When gemma doesn't reach for a capability, the first suspect is OUR packet/teaching, not gemma's ceiling.
+## Contracts
 
-#### Documented Practices (distilled from operations — applies to every agent)
+- JSON Schema is authoritative for shared wire shapes.
+- TypeScript types provide local ergonomics and should be generated from shared
+  schemas where generation is already part of the package workflow.
+- Each environment variable is documented by the package that reads it.
+- Reject invalid state at the boundary that owns the contract. Recovery,
+  retries, and compatibility behavior must be intentional and tested; they are
+  not categorically forbidden.
+- Prefer established ecosystem protocols and terminology. A divergence requires
+  a concrete interoperability or product benefit, documented in
+  `plurnk-meta/DIVERGENCES.md`.
 
-**Release gates — no publish handoff without all four.** (1) The full deterministic drill (lint + unit + intg — the WHOLE tier, never a filtered slice). (2) `npm ls --all` shows zero invalid/missing peers (platform optionals excepted). (3) The naive-install e2e (`npm run test:installation` in `plurnk-core/`): a fresh tarball in a clean sandbox must boot. (4) A clean `npm publish --dry-run` per workspace. The working tree being green and the consumer install being green are DIFFERENT claims — verify both.
+## Documentation
 
-**Forensics — digest first, never retry-to-green.** A failing model-tier run is a specimen: capture its db to `~/repo/plurnk/benchmarks/run<N>/`, digest it, and read the actual turns/packets before forming any theory. Issues cite specimens, not impressions. Three questions of every failure: what did the model actually emit, what did the packet actually show it, what did the engine actually do — in that order.
+Documentation is for maintainers and users, including agents. Write ordinary,
+concise technical documentation:
 
-**Intermittent = stop everything.** A test that fails sometimes is a race or real stochastic behavior, never a "flake" to re-run past. Corollary: fast failures (<1s) in model tiers are harness bugs.
+- describe the current system, not the history of how it was debated;
+- link to issues and commits for historical rationale;
+- avoid duplicating source code, schemas, or another package's contract;
+- remove stale plans and superseded instructions;
+- use examples for behavior that is otherwise difficult to infer.
 
-**Prove through the real path.** A handler existing is not a feature working. Claims of "done" ride an end-to-end demonstration through real dispatch/RPC, cited by a test or a specimen.
+`AGENTS.md` files contain only durable repository or package guidance. They are
+not project journals, issue trackers, or substitutes for architecture and API
+documentation.
 
-**Doctrine conflicts get SURFACED, never self-resolved.** When an instruction, an issue, or your own reasoning appears to contradict a standing ruling, STOP and name the conflict to the owner before touching code. "This is obviously cleaner" is a tripwire, not a green light.
+## Changes
 
-**Never shrink the ambition.** Expensive capability is never fixed by caps, disables, or engine-side janitoring — weak hardware is the TARGET. Test-lane isolation switches (e.g. EMBED_DISABLE) are never operator or benchmark guidance.
+Keep changes scoped and add tests at the lowest layer that proves the behavior.
+For client/daemon behavior, also verify the assembled product path. A passing
+source-level test does not prove that a stale built or installed executable
+works.
 
-**The knob is the decision table.** Operator-facing classification lives as a documented, editable list in `.env.defaults` — never as heuristics or hardcoded sets in code.
-
-**Execute vs evaluate — know which mode the request is.** An explicit instruction is executed as given; a request that imposes a HOW when the approach is yours gets critically evaluated. When unsure, ask.
-
-**The simple-story rule.** Every subsystem must be tellable in one sentence held IDENTICALLY by four minds: the owner's, the agent's, the code, and the spec. Rules-within-rules is a paradigm smell — refactor the story, not the patch.
-
-**The escalation fence (weaker-model operations).** Paradigm changes, SPEC-semantics changes, schema migrations, cross-lane contract design, and standing-ruling reversals PARK for depth in the repo worksheet; routine lanes execute by recipe.
-
-**Design substrate lives committed or dies.** Gitignored per-lane files are ephemeral by construction (the migration proved it: a filter-repo import wipes them). Durable decisions belong in committed SPEC/AGENTS/commit subjects; gitignored substrate holds only work-in-progress you can afford to lose.
-
-**Model-tier runs are foreground, attended, and honest.** Never background a live/demo sweep; tee output to a file; verify the box is exclusively yours; report the tier's real totals.
-
-**Issue edges, not pressure.** Coordinate issue dependencies with blocking/waiting relationships only. "Urgent", "high-priority", and deadline vocabulary add noise without structure. Natural preferred order governs; only a blocking or waiting edge between issues changes the work sequence.
-
-**Test temp hygiene.** Every `mkdtemp` (or equivalent) in tests must be torn down in `try/finally` or an `after()` hook. Leaked temp dirs accumulate invisibly at drill cadence — a session without cleanup can mint thousands.
-
-#### Addressing-era doctrine (settled 2026-07-19/20, #527/#533/#534 — recorded so compaction is a non-event)
-
-- **Actor addressing (#527):** uniform `scheme://authority/path`. `worker://` carries the full principal axis — empty authority = the workspace commons (the encouraged default; sharing is the low-energy path), `~` = the worker's own space (privacy is a deliberate decision), a name = another worker's space (read gated to owner + ALL ancestors; 404 never leaks existence), `plurnk` = the kernel's world-readable surface. `prompt:///<loop>/<N>` (per-loop ordinal — loops CONTAIN every prompt that arrives before they conclude) and `log:///` are self-only, no authority slot. Capability schemes (`jq://`, `python3://`, `http://`, …) are deliberately open-ended — scheme-per-capability is the latent-tooling strength; the *internal* core is the closed set `worker`/`prompt`/`log`. Retired: `known://`, `unknown://`, `plurnk://`, `exec://`.
-- **Trust is write-scoping, not guarding:** a model writes only `~` and the commons; every named authority is read-only to it; `owner_id` is engine-stamped, never model-settable. System slot ⟺ owner is the kernel. Visibility is COORDINATION, not security — inside a workspace all worker content is one trust class, so commons-default sharing escalates nothing; commons clobber is accepted (the log is the recovery surface).
-- **Naming:** worker names are the addressable handle — lowercase DNS labels (`WORKER_NAME` exported from `@plurnk/plurnk-grammar`, one source of truth), reserved: `plurnk`, `commons`, `self`, and `~` by construction. Auto-names are id-free per-workspace ordinals; a worker id never appears in a URI or packet.
-- **Rail truth on every path (#534):** the engine grades every emission against its configured grammar regardless of who enforced on the wire; `railsAttached` is three-valued (`client`/`delegated`/none). Verification is the client's superpower — never trust an enforcer's self-attestation (the stale-grammar relay would have attested green).
-- **The thin-overlay boundary (#533):** mechanism public, decision and values private. Enterprise surfaces compose the family's public engine (`@plurnk/plurnk-aliases` + `instantiateProvider`); only money, pricing, the flex *decision*, corpus, and measured tuning *values* stay private. A parallel private reimplementation is a drift tax waiting to be paid (#19's stale grammar).
-- **Packet layout law (#531):** monotone volatility — immutable canon first, append-only content (the log) next, per-turn-volatile (budget gauge, errors, git status) at the very tail. A mid-stream volatile section zeroes prompt-cache reuse (SWA/checkpoint rollback), and cache is economics, not garnish.
-- **Version-namespace law (#542):** a stamp number is burned forever once any family package publishes it (npm immutability). The next stamp is **1.1.0** (audited virgin across all 94 packages), gated on board zero; the release machine gains a stamp-virginity gate, a sweep collision detector, and serve-check provenance so number-collision impostors die at the first window.
-
-#### Family lexicon (canonized 2026-07-20 — three words that were colliding)
-
-- **daemon** — the `plurnk-service` executable (core + providers + schemes + mimetypes + execs assembled and running). NOT "the client," whatever seat you sit in.
-- **client** — the AG-UI consumers that connect TO the daemon: `plurnk` (cli/tui), `plurnk.nvim`, and kin. The client lane's products.
-- **endpoint** — the enterprise-side service (model.plurnk.ai relay et al.) that directly depends on and composes the providers engine. From the endpoint's seat the daemon is a *consumer of its API*, but it is still called the daemon.
-
-One word, one referent: "client" had been carrying both the AG-UI consumers and (in endpoint threads) the daemon itself — cross-org discussion can't survive that collision.
-
-#### Client-lane doctrine (settled 2026-07-21 — recorded for dogfooding agents)
-
-**Ownership.** The client lane owns `plurnk-agui` (the AG-UI bridge workspace in the monorepo) + the outside repos `plurnk` (`@plurnk/plurnk`, cli/tui) and `plurnk.nvim`. One lane, three surfaces. Worktree: `~/repo/plurnk/worktrees/client`, branch `lane/client`. Outside repos live directly at `~/repo/plurnk/{plurnk,plurnk.nvim}`.
-
-**Client trajectory — transitional vs durable.** Endgame: CLI, TUI, and nvim all connect THROUGH plurnk-agui (AG-UI as the one client portal; raw WS narrows to bridge-only post-bench). Before any new bespoke client work: does it reduce bespoke surface and carry into the AG-UI migration, or deepen a surface being narrowed? Prefer the former. Transitional (hold loosely, do NOT gold-plate): bespoke render grammar, per-client reconnect/proposal-recovery, liveness inference — AG-UI + Translator subsume all of it. Durable (invest here): contracts/behaviors (device-grant auth, questions/proposals, wire adoptions), the three surfaces migrating cleanly, and the daemon's AG-UI-shaped surface.
-
-**The client is an oracle before it is a feature.** The clients exist to demonstrate, enforce, and confirm the client/server contract. Every anomaly sighted during client work gets chased and filed — never "noted, secondary." "Blocked on service" is a happy report: name the defect, minimize the specimen, file it. A blockage discovered and filed is often worth more than the client feature it stalls. Hunting daemon problems IS the work; client features are the incidental instrument.
-
-**Dumb client.** Client responsibilities are mechanical: parse CLI, hold the WebSocket, marshal RPCs, render notifications, handle TTY/stdin/$EDITOR plumbing. Anything that involves deciding what happens next in the loop belongs to the daemon. When tempted to add client-side flow-control (cancel on reject, retry on transient, track state across calls), ask first whether the daemon could do it better with a small wire change. Exception: the filesystem is proper client work — autocomplete, file-path completion, proposal-driven edits source from the client's local fs, not a daemon round-trip.
-
-**AG-UI is the forcing function, not a translation layer.** As plurnk-agui owner: (1) state the AG-UI-conformant shape required; (2) demand it from core/providers; (3) escalate refusals through `plurnk-meta/DIVERGENCES.md`. Never reverse-engineer bespoke internals and bend agui to fit. A field that can't be sourced faithfully is a demand upstream, not an invention — withholding a non-conformant event beats emitting a schema-valid-but-semantically-orphaned one. Absence of a DIVERGENCES row means the industry answer governs; the burden of exception is on the deviator to earn a row, never on agui to justify the standard.
-
-**Wire truth (verified 2026-07-21).** Assumptions that cost sessions:
-- `isPromptEntry` is scheme-keyed only: `op === "EDIT" && scheme === "prompt"`. Pathname is the numeric ordinal `/L/T` (e.g. `/1/1`) — never `"/loop/N"` or any literal string. Any regex matching on the path literal is wrong.
-- Proposal fan-out: the daemon fans every workspace event to ALL open SSEs. Clients must dedupe proposals by `logEntryId` (fire ONCE per entry) and serialize management runs (one in-flight, FIFO queue) — not because the daemon sends duplicates, but because every open client/tab receives the broadcast.
-- Wire lexicon: `workspace.workers` → `{ workers: [{id,name}] }` (not `runs`). `worker.fork` → `{ workerId, workerName }` (not `runId`). `workspace.attach` takes `{ workerId }` (not `runId`). Tests can be all-green while fixtures and code agree on a wrong key name — diff against core SPEC before declaring a result type settled.
-
-**Build and test discipline.** `bin/plurnk.js` imports from `../dist/` (built output), not `src/`. Harness/binary tests run dist/, which is stale until `npm run build`. Unit tests (`src/**/*.test.ts`) can be all-green while the binary runs old code — always build before any binary-path test or conclusion. Same in plurnk-agui: `plurnk-service` symlinks the working tree but the daemon imports built dist/ — rebuild agui before trusting any daemon/nvim e2e result. One-step build: `npm run build` in the relevant workspace.
-
-**Daemon-gated tests skip silently.** `test/tui/look.test.ts` and `live.test.ts` skip when no sibling service checkout is reachable. A fully-green `npm test` total can hide entirely-skipped daemon integration. Know which tests are daemon-gated; run them explicitly against a live daemon to verify.
-
-**Process discipline.** Build an explicit PID allowlist of daemons you yourself started; verify each target's identity (`readlink /proc/PID/cwd` + `ss -ltnp`) before any kill. Hard-exclude the operator's primary daemon (port 3044, cwd under the primary `plurnk-service/` checkout — theirs to restart, never mine). Heuristic filters (etime, cmd-pattern) will eventually match the operator's live process — they are not safe.
-
-**Worktree and publish traps.** `git checkout main` fails silently inside a worktree when `main` is checked out in the primary checkout — use `git checkout -B local-name origin/main` or stay on `lane/client`. `npm pkg set` modifies whichever `package.json` is at the working cwd — verify `node -e "require('./package.json').name"` before any publish operation.
-
-**Lua pattern trap (plurnk.nvim).** `-` is a magic character in Lua patterns (lazy quantifier). `plurnk-nvim://` in `:match()` or assert_match silently fails unless escaped: `plurnk%-nvim://`. Runtime-tag stream buffer names: `sh:///demo` → gsub replaces colon + 3 slashes (4 characters) with underscores → `sh____demo` (4 underscores, not 3). Verify naming against the actual gsub logic in `stream.lua`.
-
-**Session-disaster tells (any one = stop).** A second patch on the same seam. Rewriting a spec assertion to match new code without a ruled decision. Any `x or {}` / default-on-nil at a contract boundary. Claiming "done" before the operator has walked their own entry point. Coding a branch for a state the domain model forbids (e.g. a run with no session). A required contract input that's absent must throw and surface — never be synthesized. Rule: "done" claims require the operator's flow demonstrated (their entry point, their UX), not internal probes.
+Use conventional commit subjects. GitHub issues track defects and planned work;
+they do not become permanent doctrine merely because a decision was once
+recorded there.
