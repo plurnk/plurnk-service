@@ -55,6 +55,6 @@
         "jsonc-parser": "^3.3.1"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "1.2.0"
+        "@plurnk/plurnk-mimetypes": "~1.2.0"
     }
 }

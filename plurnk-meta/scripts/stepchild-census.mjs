@@ -16,7 +16,7 @@ import { parseArgs } from "node:util";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const META = resolve(HERE, "..");                              // plurnk-meta
 const MONOREPO = resolve(META, "..");                          // plurnk-service
-const ROOT = process.env.PLURNK_STEPCHILD_ROOT ?? resolve(MONOREPO, ".."); // the constellation parent
+const ROOT = process.env.PLURNK_STEPCHILD_ROOT ?? resolve(MONOREPO, "..", "repo");
 const REGISTRY = join(META, "stepchildren.json");
 
 const laneOf = (name) =>
@@ -29,13 +29,9 @@ const laneOf = (name) =>
     name === "plurnk-learn" ? "learn" :
     null; // null lane = a family leaf with no owning lane — the census flags it, the family assigns one
 
-// NIECE vs STEPDAUGHTER (owner taxonomy 2026-07-18) — by ROLE, not family:
-// - NIECE: a standalone product with its own version life, released by its lane on its own cadence
-//   (the cli, nvim, bench). The machine NEVER republishes it — it only guards that its head-pins are
-//   EXACT (an old-but-exact pin is honest; a `^` range is the #512 lie).
-// - STEPDAUGHTER: passive substrate that exists only to track a head (the mimetypes fleet, the provider
-//   daughters, and — as those families grow outside the monorepo — execs-* / schemes-* leaves). The
-//   machine owns its version: lockstep to the stamp, repin the head exact, republish every release.
+// Nieces are standalone products with their own release cadence. Stepdaughters
+// are passive family substrate realigned by the release machine when their
+// current-minor compatibility range no longer includes the platform.
 const NIECES = new Set(["plurnk", "plurnk.nvim", "plurnk-bench"]);
 const kindOf = (dir) => NIECES.has(dir) ? "niece" : "stepdaughter";
 
@@ -53,7 +49,7 @@ export const census = () => {
     }
     const stepchildren = family;
     const nieces = family.filter((s) => s.kind === "niece").length;
-    return { root: ROOT === resolve(MONOREPO, "..") ? "«monorepo parent»" : ROOT, count: stepchildren.length, stepdaughters: stepchildren.length - nieces, nieces, stepchildren };
+    return { root: ROOT === resolve(MONOREPO, "..", "repo") ? "«repo forest»" : ROOT, count: stepchildren.length, stepdaughters: stepchildren.length - nieces, nieces, stepchildren };
 };
 
 const stable = (r) => JSON.stringify(r, null, 4) + "\n";

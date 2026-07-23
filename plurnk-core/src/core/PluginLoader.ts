@@ -16,9 +16,8 @@ export type PluginKind = "provider" | "scheme" | "mimetype";
 export interface PluginManifest {
     kind: PluginKind;
     name: string;
-    // #514 — the stepchild covenant: the exact family-head version the artifact was built
-    // against, stamped at publish. Verified before import; absent = legacy (warn once, proceed).
     builtAgainst?: string;
+    compatibleWith?: string;
 }
 
 export interface DiscoveredPlugin {
@@ -38,7 +37,7 @@ export default class PluginLoader {
         const discovered: DiscoveredPlugin[] = [];
         for (const { dir: packagePath, name } of candidates) {
             if (!Meta.isTrusted(name)) continue;
-            let pkg: { name?: string; plurnk?: unknown };
+            let pkg: { name?: string; plurnk?: unknown; dependencies?: Record<string, string>; peerDependencies?: Record<string, string> };
             try {
                 const content = await readFile(resolve(packagePath, "package.json"), "utf8");
                 pkg = JSON.parse(content);
@@ -51,10 +50,21 @@ export default class PluginLoader {
             if (!PluginLoader.#isValidKind(candidate.kind)) continue;
             if (typeof candidate.name !== "string" || candidate.name.length === 0) continue;
             const builtAgainst = (candidate as { builtAgainst?: unknown }).builtAgainst;
+            const headName = {
+                provider: "@plurnk/plurnk-providers",
+                scheme: "@plurnk/plurnk-schemes",
+                mimetype: "@plurnk/plurnk-mimetypes",
+            }[candidate.kind];
+            const compatibleWith = pkg.peerDependencies?.[headName] ?? pkg.dependencies?.[headName];
             discovered.push({
                 packageName: pkg.name,
                 packagePath,
-                manifest: { kind: candidate.kind, name: candidate.name, ...(typeof builtAgainst === "string" && builtAgainst.length > 0 ? { builtAgainst } : {}) },
+                manifest: {
+                    kind: candidate.kind,
+                    name: candidate.name,
+                    ...(typeof builtAgainst === "string" && builtAgainst.length > 0 ? { builtAgainst } : {}),
+                    ...(compatibleWith !== undefined ? { compatibleWith } : {}),
+                },
             });
         }
 
@@ -77,20 +87,21 @@ export default class PluginLoader {
         return PluginLoader.#headVersion;
     }
     static #legacyWarned = new Set<string>();
+    static #supports(range: string, version: string): boolean {
+        const r = /^~(\d+)\.(\d+)\.(\d+)$/.exec(range);
+        const v = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+        return r !== null && v !== null && r[1] === v[1] && r[2] === v[2] && Number(v[3]) >= Number(r[3]);
+    }
 
     static async loadPlugin(plugin: DiscoveredPlugin): Promise<unknown> {
-        // #514 — skew refuses LEGIBLY at the boundary, BEFORE import: a stepchild built against an
-        // older head detonates mid-import otherwise (#512's SyntaxError on a removed export), which
-        // names neither the cause nor the cure. Absent field = a legacy artifact: warn once, proceed
-        // (the field becomes required once the stepchild phase has stamped the fleet).
         const head = await PluginLoader.headVersion();
-        if (plugin.manifest.builtAgainst !== undefined) {
-            if (plugin.manifest.builtAgainst !== head) {
-                throw new Error(`${plugin.packageName} built against ${plugin.manifest.builtAgainst}; loaded ${head} — republish pending.`);
-            }
-        } else if (!PluginLoader.#legacyWarned.has(plugin.packageName)) {
+        if (plugin.manifest.compatibleWith !== undefined && !PluginLoader.#supports(plugin.manifest.compatibleWith, head)) {
+            throw new Error(`${plugin.packageName} supports ${plugin.manifest.compatibleWith}; loaded ${head}.`);
+        }
+        if ((plugin.manifest.compatibleWith === undefined || plugin.manifest.builtAgainst === undefined)
+            && !PluginLoader.#legacyWarned.has(plugin.packageName)) {
             PluginLoader.#legacyWarned.add(plugin.packageName);
-            process.stderr.write(`plurnk-service: ${plugin.packageName} declares no plurnk.builtAgainst (legacy artifact) — loading unverified against head ${head}\n`);
+            process.stderr.write(`plurnk-service: ${plugin.packageName} has no compatibility/provenance metadata — loading unverified against ${head}\n`);
         }
         const mod = await import(plugin.packageName);
         const PluginClass = mod.default;

@@ -60,6 +60,6 @@
         "prepublishOnly": "npm outdated && npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.2.0"
+        "@plurnk/plurnk-execs": "~1.2.0"
     }
 }

@@ -77,8 +77,8 @@
     },
     "devDependencies": {
         "@plurnk/plurnk-grammar": "1.2.0",
-        "@plurnk/plurnk-mimetypes-grammar-css": "1.1.1",
-        "@plurnk/plurnk-mimetypes-grammar-dart": "1.1.1",
+        "@plurnk/plurnk-mimetypes-grammar-css": "1.2.0",
+        "@plurnk/plurnk-mimetypes-grammar-dart": "1.2.0",
         "@tree-sitter-grammars/tree-sitter-kotlin": "^1.1.0",
         "@tree-sitter-grammars/tree-sitter-lua": "^0.4.1",
         "@tree-sitter-grammars/tree-sitter-toml": "^0.7.0",

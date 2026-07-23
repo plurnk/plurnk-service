@@ -69,6 +69,6 @@
         "wabt": "^1.0.39"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.2.0"
+        "@plurnk/plurnk-execs": "~1.2.0"
     }
 }

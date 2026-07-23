@@ -73,7 +73,7 @@
         "@modelcontextprotocol/sdk": "^1.29.0"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.2.0",
-        "@plurnk/plurnk-schemes": "1.2.0"
+        "@plurnk/plurnk-execs": "~1.2.0",
+        "@plurnk/plurnk-schemes": "~1.2.0"
     }
 }

@@ -1,8 +1,7 @@
 // Lockstep version stamp. Usage: node scripts/release-version.mjs <version>
-// Sets every workspace to <version> and re-pins every internal @plurnk/*
-// dependency and peerDependency to that exact version. The root workspaces
-// array is the authoritative member list; a workspace without a package.json
-// crashes the stamp.
+// Sets every workspace to <version>, pins internal runtime/dev dependencies
+// exactly, and gives plugin-facing peers a current-minor compatibility range.
+// The root workspaces array is authoritative; a missing manifest crashes.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -46,10 +45,13 @@ for (const dir of root.workspaces) {
 
 for (const [file, pkg] of manifests) {
     pkg.version = version;
-    for (const field of ["dependencies", "peerDependencies", "devDependencies"]) {
+    for (const field of ["dependencies", "devDependencies"]) {
         for (const name of Object.keys(pkg[field] ?? {})) {
             if (members.has(name)) pkg[field][name] = version;
         }
+    }
+    for (const name of Object.keys(pkg.peerDependencies ?? {})) {
+        if (members.has(name)) pkg.peerDependencies[name] = `~${version}`;
     }
     await fs.writeFile(file, `${JSON.stringify(pkg, null, 4)}\n`);
 }

@@ -64,6 +64,6 @@
         "@types/turndown": "^5.0.6"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "1.2.0"
+        "@plurnk/plurnk-mimetypes": "~1.2.0"
     }
 }

@@ -44,7 +44,7 @@
         "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm run verify:tokenizers && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "1.2.0"
+        "@plurnk/plurnk-mimetypes": "~1.2.0"
     },
     "dependencies": {
         "@huggingface/tokenizers": "^0.1.3"

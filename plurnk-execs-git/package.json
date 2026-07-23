@@ -63,6 +63,6 @@
         "isomorphic-git": "1.38.10"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.2.0"
+        "@plurnk/plurnk-execs": "~1.2.0"
     }
 }

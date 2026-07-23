@@ -2,8 +2,9 @@
 // (release-publish's consumer-verify green) and BEFORE the announcement — because the publish law
 // (owner, AGENTS §stepchildren) is that a publish means ALL lifecycle is aligned, stepchildren included.
 //
-// Per registry entry (plurnk-meta/stepchildren.json): repin every family head EXACT to the new stamp,
-// then `npm install` (pulls the just-published head from the registry — the honest consumer surface),
+// Per registry entry (plurnk-meta/stepchildren.json): verify current-minor compatibility plus exact
+// builtAgainst provenance. Compatible leaves stay put across patches; an incompatible stepdaughter
+// is realigned to the new minor, then `npm install` pulls the published head from the registry,
 // then `npm publish` (runs the repo's OWN prepublishOnly gate in its own context — a red there halts
 // with the repo's real exit code, #505's lesson), then poll the registry until it serves. Same laws:
 // real exits, halt-on-red naming repo + owning lane, idempotent (a stepchild already serving the stamp
@@ -22,7 +23,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MONOREPO = resolve(HERE, "..");
-const ROOT = process.env.PLURNK_STEPCHILD_ROOT ?? resolve(MONOREPO, "..");
+const ROOT = process.env.PLURNK_STEPCHILD_ROOT ?? resolve(MONOREPO, "..", "repo");
 const DRY = process.argv.includes("--dry-run");
 
 const version = JSON.parse(await readFile(join(MONOREPO, "package.json"), "utf8")).workspaces
@@ -36,58 +37,83 @@ const only = onlyIdx >= 0 ? process.argv[onlyIdx + 1] : null; // re-run a single
 if (only) registry.stepchildren = registry.stepchildren.filter((s) => s.dir === only);
 
 const served = async (name) => { try { return (await run("npm", ["view", name, "version"])).stdout.trim(); } catch { return null; } };
+const registryContractMatches = async (p) => {
+    try {
+        const published = JSON.parse((await run("npm", ["view", `${p.name}@${p.version}`, "--json"])).stdout);
+        return JSON.stringify(familyPins(p)) === JSON.stringify(familyPins(published))
+            && p.plurnk?.builtAgainst === published.plurnk?.builtAgainst;
+    } catch {
+        return false;
+    }
+};
+const exact = (value) => /^(\d+)\.(\d+)\.(\d+)$/.exec(value ?? "");
+const tilde = (value) => /^~(\d+)\.(\d+)\.(\d+)$/.exec(value ?? "");
+const includes = (range, candidate) => {
+    const r = tilde(range); const v = exact(candidate);
+    return r !== null && v !== null && r[1] === v[1] && r[2] === v[2] && Number(v[3]) >= Number(r[3]);
+};
+const familyPins = (p) => ["dependencies", "peerDependencies"].flatMap((field) =>
+    Object.entries(p[field] ?? {}).filter(([name]) => /^@plurnk\//.test(name)).map(([name, range]) => ({ field, name, range })));
+const contract = (p, hostVersion) => {
+    const pins = familyPins(p);
+    const builtAgainst = p.plurnk?.builtAgainst;
+    const errors = [];
+    if (pins.length > 0 && exact(builtAgainst) === null) errors.push(`plurnk.builtAgainst must be an exact version (got ${JSON.stringify(builtAgainst)})`);
+    for (const { field, name, range } of pins) {
+        if (tilde(range) === null) errors.push(`${field}.${name} must use ~M.m.p compatibility (got ${JSON.stringify(range)})`);
+        else if (!includes(range, builtAgainst)) errors.push(`${field}.${name}@${range} excludes builtAgainst ${builtAgainst}`);
+    }
+    return { errors, compatible: pins.every(({ range }) => includes(range, hostVersion)) };
+};
 
-// STEPDAUGHTER edit: lockstep the leaf's OWN version to the stamp AND repin every @plurnk head exact.
-// A stepdaughter's version IS the head it tracks (self-documenting: mimetypes-grammar-rust@1.0.8 pins
-// mimetypes@1.0.8). Only rewrites when something differs — idempotent.
+// STEPDAUGHTER edit at a compatibility boundary: its own artifact takes the stamp, runtime/peer
+// heads move to the new minor range, dev heads remain exact, and provenance names the tested head.
 const alignStepdaughter = async (repoDir) => {
     const pjPath = join(repoDir, "package.json");
     const p = JSON.parse(await readFile(pjPath, "utf8"));
     let changed = p.version !== version;
     p.version = version;
-    // devDependencies included — a leaf's gate installs its devDeps and runs `npm outdated`; a stale
-    // `^1` devDep head resolves behind the just-published stamp and fails the freshness check (#513 maiden).
-    for (const field of ["dependencies", "peerDependencies", "devDependencies"]) {
+    for (const field of ["dependencies", "peerDependencies"]) {
         for (const k of Object.keys(p[field] ?? {})) {
-            if (/^@plurnk\//.test(k) && p[field][k] !== version) { p[field][k] = version; changed = true; }
+            if (/^@plurnk\//.test(k) && p[field][k] !== `~${version}`) { p[field][k] = `~${version}`; changed = true; }
         }
     }
+    for (const k of Object.keys(p.devDependencies ?? {})) {
+        if (/^@plurnk\//.test(k) && p.devDependencies[k] !== version) { p.devDependencies[k] = version; changed = true; }
+    }
+    p.plurnk ??= {};
+    if (p.plurnk.builtAgainst !== version) { p.plurnk.builtAgainst = version; changed = true; }
     if (changed) await writeFile(pjPath, JSON.stringify(p, null, 4) + "\n");
     return changed;
 };
 
-// NIECE guard: a niece is lane-released with its own version — the machine NEVER republishes it. It only
-// enforces the honesty rule: every @plurnk head-pin must be EXACT (a range is the #512 lie). An old-but-
-// exact pin is fine (the niece works against that head; its lane bumps the pin when it ships). Returns the
-// list of dishonest (ranged) head-pins, empty if clean.
-const nieceRangedPins = async (repoDir) => {
-    const p = JSON.parse(await readFile(join(repoDir, "package.json"), "utf8"));
-    const bad = [];
-    for (const field of ["dependencies", "peerDependencies"]) {
-        for (const [k, v] of Object.entries(p[field] ?? {})) {
-            if (/^@plurnk\//.test(k) && /[\^~*x><|\s-]|\.\*/.test(v)) bad.push(`${k}@${v}`);
-        }
-    }
-    return bad;
-};
-
 console.log(`release-stepchildren: ${registry.stepdaughters} stepdaughters + ${registry.nieces} nieces, stamp ${version}${DRY ? " [DRY RUN]" : ""}`);
-let swept = 0, skipped = 0, guarded = 0;
+let swept = 0, guarded = 0;
 for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
     const repo = join(ROOT, dir);
     const tag = `${dir} (${lane})`;
     if (!existsSync(repo)) throw new Error(`${tag}: registry names a repo not on disk — census drift, regenerate`);
+    const manifest = JSON.parse(await readFile(join(repo, "package.json"), "utf8"));
+    const state = contract(manifest, version);
+    if (state.errors.length > 0) throw new Error(`${tag}: invalid compatibility/provenance contract — ${state.errors.join("; ")}`);
 
     if (kind === "niece") {
-        // A niece is lane-released with its own version — the machine only guards pin honesty, never republishes.
-        const bad = await nieceRangedPins(repo);
-        if (bad.length > 0) throw new Error(`${tag} [niece]: dishonest head-pin(s) ${bad.join(", ")} — a range on a fail-forward head is the #512 lie; the lane must pin exact (an old-but-exact pin is fine)`);
-        console.log(`  guard   ${tag} [niece] — pins exact, lane-released`);
+        if (!state.compatible) throw new Error(`${tag} [niece]: family-head range excludes platform ${version}; its lane must release a compatible artifact`);
+        console.log(`  guard   ${tag} [niece] — compatible with ${version}, built against ${manifest.plurnk.builtAgainst}`);
         guarded++;
         continue;
     }
 
-    // STEPDAUGHTER: passive substrate, machine owns the version — lockstep to the stamp, republish.
+    // STEPDAUGHTER: a compatible artifact survives patch stamps unchanged. Crossing its minor
+    // window realigns and republishes it; provenance moves only when the artifact is rebuilt.
+    if (state.compatible && await registryContractMatches(manifest)) {
+        console.log(`  guard   ${tag} — ${manifest.version} supports ${version}, built against ${manifest.plurnk.builtAgainst}`);
+        guarded++;
+        continue;
+    }
+    if (state.compatible) console.log(`  align   ${tag} — local compatibility/provenance is not published at ${manifest.version}`);
+
+    // Incompatible stepdaughter: passive substrate, machine owns the boundary release.
     // COLLISION DETECTOR (#542, the terraform lesson): a leaf whose registry LATEST exceeds the stamp
     // ran an independent version line that burned numbers ahead of the family — align/publish cannot
     // succeed and a silent downgrade-align lies about lineage. Halt naming the leaf at the FIRST
@@ -100,7 +126,9 @@ for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
         const ahead = cmp[0] > stamp[0] || (cmp[0] === stamp[0] && (cmp[1] > stamp[1] || (cmp[1] === stamp[1] && cmp[2] > stamp[2])));
         if (ahead) throw new Error(`${tag}: VERSION-LINE COLLISION — registry latest ${latest} is ahead of the stamp ${version}; this leaf ran an independent line (the terraform class). It cannot wear this stamp; it rejoins lockstep at the next stamp past ${latest}. Do not align, do not publish — rule it on the board.`);
     }
-    if (latest === version) { console.log(`  serves  ${tag}`); skipped++; continue; }
+    if (latest === version) {
+        throw new Error(`${tag}: ${version} is already immutable on npm with a different compatibility/provenance contract; adopt this reform at the next stamp`);
+    }
     // Clean tree — never bundle a lane's uncommitted SOURCE work blindly. A dirty package-lock is NOT
     // source: it's a regenerable artifact the sweep's own `npm install` rewrites and the commit absorbs
     // (dev-env workspace-link churn dirties it across the fleet). Block real changes; ignore the lock.
@@ -133,4 +161,4 @@ for (const { dir, name, kind, lane, heads } of registry.stepchildren) {
     for (let i = 0; ; i++) { if (await served(name) === version) break; if (i >= 12) throw new Error(`${tag}: published but registry never served ${version}`); await sleep(10_000); }
     swept++;
 }
-console.log(`release-stepchildren GREEN: ${swept} swept, ${skipped} already served, ${guarded} nieces pin-verified — the constellation is aligned at ${version}${DRY ? " [DRY]" : ""}`);
+console.log(`release-stepchildren GREEN: ${swept} swept, ${guarded} compatible — the constellation is aligned at ${version}${DRY ? " [DRY]" : ""}`);

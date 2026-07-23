@@ -45,6 +45,6 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "1.2.0"
+        "@plurnk/plurnk-mimetypes": "~1.2.0"
     }
 }
