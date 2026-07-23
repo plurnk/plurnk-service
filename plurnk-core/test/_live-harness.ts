@@ -13,7 +13,6 @@ import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import SchemeRegistry from "../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../src/schemes/Exec.ts";
 import Owner from "../src/core/Owner.ts";
-import { rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type SeamSocket from "./intg/_seam.ts";
@@ -24,6 +23,7 @@ import Daemon from "../src/server/Daemon.ts";
 import type { Db, PrepMethod } from "../src/core/Db.ts";
 import { openMigrated } from "./intg/_helpers.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./intg/_rpc.ts";
+import Digest from "../src/digest/Digest.ts";
 
 export interface LiveWorkspace {
     db: Db;
@@ -33,44 +33,20 @@ export interface LiveWorkspace {
     cleanup: () => Promise<void>;
 }
 
-// §archaeology (#410) — a failed live/demo run must PRESERVE itself, not depend on a human racing
-// the next `.tmp` pre-clean. So a worker's db is BORN in `benchmarks/run<N>-<lane>/` and KEPT by
-// default: a missed cleanup leaves harmless clutter, never a lost specimen — the inverse of
-// copy-on-failure, where a missed hook loses the worker forever. Passing workers are swept at worker exit
-// (best-effort, safe); failures stay, greppable by workspace name (the `workspace` file inside).
+// Every live/demo worker is a self-contained benchmark artifact. The filesystem
+// allocates a unique, human-readable directory; nothing counts, reuses, moves,
+// or conditionally sweeps it. DB, workspace label, and digest stay together.
 const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(import.meta.dirname, "../../..", "benchmarks");
-const LANE = process.env.PLURNK_LANE ?? "core";
-const createdRuns: string[] = [];
 
-// Atomic claim: mkdir fails if the dir exists, so a concurrent worker (or a sibling lane) can never
-// take the same run number — the run46 meta/bench collision the issue names. Numbers are sparse by
-// design (owner ruling): passing workers are swept, so a worker number is a findable id, not a count.
 const claimRunDir = async (workspace: string): Promise<string> => {
     await mkdir(BENCHMARKS, { recursive: true });
-    let n = 1;
-    for (const e of readdirSync(BENCHMARKS)) { const m = /^run(\d+)-/.exec(e); if (m) n = Math.max(n, Number(m[1]) + 1); }
-    for (;;) {
-        const dir = join(BENCHMARKS, `run${n}-${LANE}`);
-        try { await mkdir(dir); await writeFile(join(dir, "workspace"), `${workspace}\n`); return dir; }
-        catch (e) { if ((e as { code?: string }).code !== "EEXIST") throw e; n++; }
-    }
-};
-
-// Delete-on-pass, best-effort: node:test sets process.exitCode truthy iff a test in THIS file
-// failed. All-passed → the file's runs were noise, sweep them; any failure → KEEP every worker this
-// worker created (coarse but SAFE — the point is never to lose a failure; a spare passing run is fine).
-let _sweepArmed = false;
-const armSweep = (): void => {
-    if (_sweepArmed) return;
-    _sweepArmed = true;
-    process.on("exit", () => {
-        if (process.exitCode) return; // a failure occurred — preserve every worker this file created
-        // #488 — a drill is a FORENSIC context: run78 passed its assertions on a FABRICATED answer,
-        // so delete-on-pass swept the one specimen that mattered (a green file is not a clean file
-        // when the rail is in question). PRESERVE_WORKERS=1 keeps everything; the drill sets it.
-        if (process.env.PLURNK_SERVICE_PRESERVE_WORKERS === "1") return;
-        for (const dir of createdRuns) { try { rmSync(dir, { recursive: true, force: true }); } catch { /* leave it — clutter beats loss */ } }
-    });
+    const label = workspace
+        .replace(/-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i, "")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .slice(0, 80) || "worker";
+    const dir = await mkdtemp(join(BENCHMARKS, `${label}-`));
+    await writeFile(join(dir, "workspace"), `${workspace}\n`);
+    return dir;
 };
 
 // Resolve the active env provider the launcher way (PLURNK_MODEL →
@@ -91,12 +67,9 @@ export const liveProvider = async (): Promise<Provider> => {
 // callers drive loop.run from id 2. This owns only the boot + open-db lifecycle.
 export const liveWorkspace = async (opts: { name: string; projectRoot?: string; fetchWeb?: WebFetch }): Promise<LiveWorkspace> => {
     const provider = await liveProvider();
-    armSweep();
-    // §archaeology (#410) — born in benchmarks/, kept by default; the exit sweep reclaims it only if
-    // the file passed. So a failure is preserved with zero capture logic — no racing, no copy.
     const runDir = await claimRunDir(opts.name);
-    const db = await openMigrated(join(runDir, "plurnk.db"));
-    createdRuns.push(runDir);
+    const dbPath = join(runDir, "plurnk.db");
+    const db = await openMigrated(dbPath);
     // #530 — a caller-supplied WebFetch (the canned-web gate fixture) rides the sink's injectable
     // seam; absent, the registry wires the real guarded WebFetcher as in production.
     const daemon = new Daemon({ db, provider, ...(opts.fetchWeb !== undefined ? { schemes: new SchemeRegistry({ fetchWeb: opts.fetchWeb }) } : {}) });
@@ -115,9 +88,8 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string; 
     return {
         db, ws, workspaceId: created.id, runDir,
         cleanup: async () => {
-            // The worker dir is intentionally LEFT on disk (§archaeology preserve-default); the exit
-            // sweep removes it iff this file's tests all passed. Only the ephemeral sandbox is torn down.
             ws.close(); await daemon.stop(); await db.close();
+            Digest.run({ dbPath, digestDir: join(runDir, "digest") });
             if (ownsSandbox) await rm(projectRoot, { recursive: true, force: true });
         },
     };
