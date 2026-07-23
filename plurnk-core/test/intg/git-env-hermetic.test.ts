@@ -31,7 +31,7 @@ test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the v
     try {
         // The victim: a primary repo + a linked worktree — the shape whose hook env poisons.
         await git(["init", "-q", victim], base);
-        await git(["config", "user.email", "v@v"], victim);
+        await git(["config", "user.email", "victim@plurnk.invalid"], victim);
         await git(["config", "user.name", "v"], victim);
         await writeFile(join(victim, "victim-file.md"), "precious\n");
         await git(["add", "victim-file.md"], victim);
@@ -45,7 +45,7 @@ test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the v
         // Fixture class: a sandbox init + seed commit must land in the SANDBOX.
         const sandbox = await mkdtemp(join(tmpdir(), "plurnk-hermetic-sb-"));
         await git(["init", "-q"], sandbox);
-        await git(["config", "user.email", "t@t.t"], sandbox);
+        await git(["config", "user.email", "fixture@plurnk.invalid"], sandbox);
         await git(["config", "user.name", "t"], sandbox);
         await writeFile(join(sandbox, "tracked.md"), "# sandbox truth\n");
         await git(["add", "tracked.md"], sandbox);
@@ -99,7 +99,7 @@ test("a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it
         const commit = async (repo: string, env: NodeJS.ProcessEnv): Promise<void> => {
             await mkdir(repo, { recursive: true });
             const g = (args: string[]) => execFileP("git", args, { cwd: repo, env });
-            await g(["init", "-q"]); await g(["config", "user.email", "t@t"]); await g(["config", "user.name", "t"]);
+            await g(["init", "-q"]); await g(["config", "user.email", "fixture@plurnk.invalid"]); await g(["config", "user.name", "t"]);
             await writeFile(join(repo, "f.md"), "x"); await g(["add", "f.md"]);
             await g(["commit", "-q", "-m", "c"]); // NO --no-verify, NO -c hooksPath — a global hook WOULD fire if read
         };

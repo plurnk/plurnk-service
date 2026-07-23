@@ -96,7 +96,7 @@ test("workspace settings.git:false denies git membership for the workspace (env 
     const db = await openMigrated();
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "tracked.md"), "# tracked by git\n");
         await execFileP("git", ["add", "tracked.md"], { cwd: root, env: hermeticGitEnv() });

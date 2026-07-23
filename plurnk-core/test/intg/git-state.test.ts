@@ -21,7 +21,7 @@ test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWE
     const orig = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "tracked.md"), "# tracked\n");
         await execFileP("git", ["add", "tracked.md"], { cwd: root, env: hermeticGitEnv() });

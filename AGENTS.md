@@ -88,3 +88,9 @@ works.
 Use conventional commit subjects. GitHub issues track defects and planned work;
 they do not become permanent doctrine merely because a decision was once
 recorded there.
+
+Every agent authors commits as itself. Agent work keeps authorship and
+acceptance distinct: use `Claude <noreply@anthropic.com>`,
+`Codex <noreply@openai.com>`, or `Plurnk <plurnk@pm.me>` as appropriate; the
+human operator remains `wikitopian <wikitopian@pm.me>` as committer and signer.
+The pre-push hook rejects unknown identities and invalid signatures.

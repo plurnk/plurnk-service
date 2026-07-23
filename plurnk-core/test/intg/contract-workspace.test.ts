@@ -73,7 +73,7 @@ const withGitWorkspace = async (
     const db = await openMigrated();
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         const trackedPath = "tracked.md";
         await writeFile(join(root, trackedPath), "# Tracked by git\n\nThis file is a git member.\n");
@@ -375,7 +375,7 @@ const seedForest = async (db: Db, repos: Array<{ dir: string; file: string }>): 
         const r = join(parent, dir);
         await mkdir(r, { recursive: true });
         await execFileP("git", ["init", "-q"], { cwd: r, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: r, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: r, env: hermeticGitEnv() });
         await execFileP("git", ["config", "user.name", "t"], { cwd: r, env: hermeticGitEnv() });
         await writeFile(join(r, file), "# member\n");
         await execFileP("git", ["add", file], { cwd: r, env: hermeticGitEnv() });
@@ -431,7 +431,7 @@ test("a `repo` declared OUTSIDE the project root manifests at a relative (..) ad
         try {
             // A git repo entirely outside the project home (a sibling temp dir).
             await execFileP("git", ["init", "-q"], { cwd: external, env: hermeticGitEnv() });
-            await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: external, env: hermeticGitEnv() });
+            await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: external, env: hermeticGitEnv() });
             await execFileP("git", ["config", "user.name", "t"], { cwd: external, env: hermeticGitEnv() });
             await writeFile(join(external, "ext.md"), "# external repo, outside the home\n");
             await execFileP("git", ["add", "ext.md"], { cwd: external, env: hermeticGitEnv() });

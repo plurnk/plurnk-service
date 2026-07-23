@@ -26,7 +26,7 @@ const ENGINE_SRC = fileURLToPath(new URL("../../src/core/Engine.ts", import.meta
 test("demo: locate and edit deep in a real 1,600-line file (Engine.ts) — coordinate held, no corruption", { timeout: TIMEOUT }, async () => {
     const fixture = await mkdtemp(join(tmpdir(), "plurnk-engine-probe-"));
     await copyFile(ENGINE_SRC, join(fixture, "Engine.ts")); // a copy of the real thing; the source is untouched
-    execSync('git init -q && git config user.email "probe@plurnk.test" && git config user.name "probe" && git add . && git commit -q --no-verify -m "fixture"', { cwd: fixture });
+    execSync('git init -q && git config user.email "probe@plurnk.invalid" && git config user.name "probe" && git add . && git commit -q --no-verify -m "fixture"', { cwd: fixture });
     const original = await readFile(join(fixture, "Engine.ts"), "utf8");
     const origLines = original.split("\n");
 

@@ -119,7 +119,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
     const db = await openMigrated();
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "notes.md"), "line1\nline2\n");
         await execFileP("git", ["add", "notes.md"], { cwd: root, env: hermeticGitEnv() });

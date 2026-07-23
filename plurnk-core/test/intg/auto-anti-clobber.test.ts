@@ -24,7 +24,7 @@ test("auto rejects an EDIT to a file that diverged on disk this turn — no sile
     const root = await mkdtemp(join(tmpdir(), "plurnk-clobber-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         await writeFile(join(root, "doc.md"), "V1 original\n");
         await execFileP("git", ["add", "doc.md"], { cwd: root, env: hermeticGitEnv() });

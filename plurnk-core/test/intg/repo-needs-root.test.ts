@@ -31,7 +31,7 @@ test("a 'repo' constraint on a HEADLESS workspace is refused — headless is for
 test("a 'repo' constraint on a ROOTED workspace lands members and returns them via FIND-visible catalog", async () => {
     // a real tiny git repo so ls-files has truth to report
     const root = mkdtempSync(join(tmpdir(), "plurnk-root-"));
-    execSync("git init -q && git config user.email t@t && git config user.name t", { cwd: root, env: hermeticGitEnv() });
+    execSync("git init -q && git config user.email fixture@plurnk.invalid && git config user.name t", { cwd: root, env: hermeticGitEnv() });
     writeFileSync(join(root, "hello.md"), "# hi\n");
     // The suite's fixture-repo convention (contract-workspace.test.ts): hermetic by declaration —
     // no inherited operator hooks (commitlint template) or signing; fixture setup, not a project commit.

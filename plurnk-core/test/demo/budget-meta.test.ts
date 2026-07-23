@@ -103,7 +103,7 @@ const seedLedgerFixture = async (): Promise<{ workspace: string; cleanup: () => 
     }
     lines[316] = "Entry 0317: the emergency shutdown code for the primary reactor core is CRIMSON-MERIDIAN-84, filed by the audit team and paged to no one.";
     await writeFile(join(workspace, "ledger.md"), `${lines.join("\n")}\n`);
-    execSync('git init -q && git config user.email "demo@plurnk.test" && git config user.name "demo" && git add . && git commit -q --no-verify -m "ledger"', { cwd: workspace, env: hermeticGitEnv() });
+    execSync('git init -q && git config user.email "demo@plurnk.invalid" && git config user.name "demo" && git add . && git commit -q --no-verify -m "ledger"', { cwd: workspace, env: hermeticGitEnv() });
     return { workspace, cleanup: async () => { await rm(workspace, { recursive: true, force: true }); } };
 };
 

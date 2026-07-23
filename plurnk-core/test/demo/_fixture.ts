@@ -92,7 +92,7 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
     // git init — some operations rely on the working dir being a git
     // repo for the workspace boundary to make sense. Matches rummy.
     execSync(
-        'git init -q && git config user.email "demo@plurnk.test" && git config user.name "demo" && git add . && git commit -q --no-verify -m "fixture"',
+        'git init -q && git config user.email "demo@plurnk.invalid" && git config user.name "demo" && git add . && git commit -q --no-verify -m "fixture"',
         { cwd: workspace },
     );
 

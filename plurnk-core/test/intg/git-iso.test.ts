@@ -22,7 +22,7 @@ const git = (cwd: string, ...args: string[]): string =>
 const seedRepo = async (prefix: string): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), prefix));
     git(root, "init", "-q");
-    git(root, "config", "user.email", "t@t.t");
+    git(root, "config", "user.email", "fixture@plurnk.invalid");
     git(root, "config", "user.name", "t");
     return root;
 };

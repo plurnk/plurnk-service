@@ -26,7 +26,7 @@ test("soak: N turn boundaries with per-turn membership re-resolution — zero gr
     try {
         // A real git workspace: three tracked members.
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
-        await execFileP("git", ["config", "user.email", "t@t.t"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
         for (const f of ["a.md", "b.md", "sub-c.md"]) await writeFile(join(root, f), `# ${f}\n`);
         await execFileP("git", ["add", "-A"], { cwd: root, env: hermeticGitEnv() });
