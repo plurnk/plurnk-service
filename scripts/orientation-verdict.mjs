@@ -88,14 +88,14 @@ export const evaluateOrientation = (record, digest) => {
                 ["monorepo", "topology", "repository", "repositories"],
                 ["stabil", "housekeeping", "acceptance"],
                 ["missing", "contradiction", "unclear", "gap", "risk"],
-            ]),
+            ]) && response.includes("#583"),
             detail: {
                 required: [
                     "daemon/service",
                     "grammar/DSL",
                     "client/AG-UI",
                     "repository topology",
-                    "current stabilization goal",
+                    "current stabilization goal (#583)",
                     "missing or contradictory context",
                 ],
             },

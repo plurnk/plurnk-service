@@ -3,16 +3,16 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
     appendFileSync,
+    cpSync,
     existsSync,
     mkdirSync,
     mkdtempSync,
     readFileSync,
-    renameSync,
     rmSync,
     writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import { evaluateOrientation } from "./orientation-verdict.mjs";
 
 const serviceRoot = resolve(import.meta.dirname, "..");
@@ -115,7 +115,8 @@ const preserve = (verdict) => {
     }
     const destination = claimRunDir();
     rmSync(destination, { recursive: true, force: true });
-    renameSync(workDir, destination);
+    cpSync(workDir, destination, { recursive: true });
+    rmSync(workDir, { recursive: true, force: true });
     return destination;
 };
 

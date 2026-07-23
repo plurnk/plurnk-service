@@ -68,3 +68,10 @@ test("orientation verdict rejects timeout, missing coverage, and empty delivery"
     assert.ok(verdict.failed.includes("lifecycle"));
     assert.ok(verdict.failed.includes("coverage"));
 });
+
+test("orientation verdict rejects a generic stabilization narrative that misses the live housekeeping epic", () => {
+    const stale = { ...record, response: record.response.replace("#583", "the README") };
+    const verdict = evaluateOrientation(stale, digest);
+    assert.equal(verdict.pass, false);
+    assert.ok(verdict.failed.includes("coverage"));
+});
