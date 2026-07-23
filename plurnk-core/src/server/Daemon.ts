@@ -1,5 +1,5 @@
 // Top-level daemon orchestrator. Owns the DB connection, engine, registries,
-// the daughter-module seam (#364: the daemon owns no transport).
+// the plugin-module seam (#364: the daemon owns no transport).
 // SPEC §rpc.
 
 import { readFile } from "node:fs/promises";
@@ -80,7 +80,7 @@ export default class Daemon {
     #provider: Provider | null;
     #nodeModulesPath: string;
     #discoveryCwd: string;
-    #started = false; // start() runs once — boots discovery + daughter modules (#364: no listener, ever)
+    #started = false; // start() runs once — boots discovery + plugin modules (#364: no listener, ever)
     // The emit half of the broadcast, exposed as an in-process event source (#355). A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never fans out
     // for it. The WS fan-out below is legacy scaffolding that retires at the AG-UI+ cutover.
@@ -488,7 +488,7 @@ export default class Daemon {
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
-    // The boot plug-point (#355 hook D) — register a daughter module before start(); its init runs at
+    // The boot plug-point (#355 hook D) — register a plugin module before start(); its init runs at
     // boot with the curated CoreSeam handle, where it opens its own transport/listener. Direct wiring, no
     // plugin-kind abstraction: a second transport earns one if it ever appears. "Here's your handle."
     // The init's return value is ignored — a module may hand back its instance (or nothing).
@@ -518,7 +518,7 @@ export default class Daemon {
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
 
-        // #364 — the daemon opens NO transport, ever: daughter modules open theirs via the seam.
+        // #364 — the daemon opens NO transport, ever: plugin modules open theirs via the seam.
         for (const init of this.#moduleInits) await init(this);
     }
 
@@ -1271,7 +1271,7 @@ export default class Daemon {
     }
 }
 
-// The curated seam handed to a daughter module at boot (#355 hook D) — the client-interface contract,
+// The curated seam handed to a plugin module at boot (#355 hook D) — the client-interface contract,
 // not the daemon's guts. A module couples to this (or its own structural mirror) and nothing else; the
 // non-seam surface (start/stop/#internals) is not part of the contract. Derived from Daemon so the two
 // never drift.

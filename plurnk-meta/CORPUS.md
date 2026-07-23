@@ -14,7 +14,7 @@ The plurnk teaching corpus. Markdown consumed by [plurnk-service](https://github
 
 ## Contract
 
-plurnk-service resolves these files from this package (`Paths`), pins the version, and validates teaching changes with its live/demo tiers. A teaching change ships as a bump here; the service adopts it like any daughter. File teaching asks and steer-wording issues HERE, not on the daemon.
+plurnk-service resolves these files from this package (`Paths`), pins the version, and validates teaching changes with its live/demo tiers. A teaching change ships as a bump here; the service adopts it like any plugin. File teaching asks and steer-wording issues HERE, not on the daemon.
 
 ## Teaching doctrine (adopted from the grammar lane, #392 — data-backed, evidence cited)
 

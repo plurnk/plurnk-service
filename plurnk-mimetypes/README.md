@@ -1,6 +1,6 @@
 # @plurnk/plurnk-mimetypes
 
-Framework + contract for the `@plurnk/plurnk-mimetypes-*` handler family. Consumed by [plurnk-service](https://github.com/plurnk/plurnk-service): it hands `Mimetypes.process(path | content)` a blob and gets back `mimetype` + the structural channels it asked for. The service stays mimetype-illiterate; this owns detection, discovery, instantiation, channel selection/projection, and the author contract.
+Framework + contract for the `@plurnk/plurnk-mimetypes-*` handler packages. Consumed by [plurnk-service](https://github.com/plurnk/plurnk-service): it hands `Mimetypes.process(path | content)` a blob and gets back `mimetype` + the structural channels it asked for. The service stays mimetype-illiterate; this owns detection, discovery, instantiation, channel selection/projection, and the author contract.
 
 ## Documentation
 

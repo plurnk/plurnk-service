@@ -30,7 +30,7 @@ test("[§agui-daemon-client][§agui-run-endpoint][§agui-thread-is-run] in-proce
     const sandbox = await mkdtemp(join(tmpdir(), "agui-inproc-"));
 
     // Hook D — the plug-point. The daemon hands the module its seam handle at boot;
-    // the module opens its own listener. This IS the daughter-module activation.
+    // the module opens its own listener. This IS the plugin-module activation.
     let module: Module | null = null;
     daemon.registerModule(async (seam: DaemonSeam) => {
         module = await Module.init({ host: "127.0.0.1", port: 0 })(seam);

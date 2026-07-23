@@ -221,7 +221,7 @@ type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "
 - **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`, `extent`), no parse paid. This is the cheap stat call (plurnk-service's manifest uses it for line counts).
 - The default deep-xml projection consumes the deep-json value; when `deepXml` alone is requested the framework computes deep-json internally without exposing it.
 
-Known consumer selections (plurnk-service): manifest → `[]`; body-matcher daughter → `["deepJson", "deepXml"]`; graph/semantic add-time pipeline → `["symbols", "references"]`.
+Known consumer selections (plurnk-service): manifest → `[]`; body-matcher plugin → `["deepJson", "deepXml"]`; graph/semantic add-time pipeline → `["symbols", "references"]`.
 
 There is no token budget, no tokenizer, and no rendered preview anywhere in the pipeline. The pre-0.15 fitting layer (`fitPreview`/`fitSymbols`/`fitContent`, `TokenizeFn`, truncation markers, head/tail orientation) was removed with its only consumer, plurnk-service's index. Rendering structured symbols for humans is `format()` (§4), unbudgeted.
 
@@ -494,7 +494,7 @@ Example: `{ type: "function_definition", line: 5, endLine: 10, name: "greet", pa
 
 ### 12.4 Materialization policy
 
-Channels are built **per request** (§5): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy — plurnk-service's body-matcher daughter re-projects per query (content can't go stale), while its graph/semantic pipeline materializes at manifest-add time and caches in sqlite.
+Channels are built **per request** (§5): a requested channel is computed eagerly within the call; an unrequested channel costs nothing. The caller owns persistence and refresh policy — plurnk-service's body-matcher plugin re-projects per query (content can't go stale), while its graph/semantic pipeline materializes at manifest-add time and caches in sqlite.
 
 The deep channels are **never model-visible**. They are consumed exclusively by the jsonpath and xpath body-matcher tool implementations.
 
@@ -599,7 +599,7 @@ interface MimeRef {
 
 **Extraction mechanism (issue #19).** Tree-sitter-backed languages declare per-language queries in `src/treesitter/queries/{slug}.ts` — the `.scm` S-expression source embedded as an exported string (reviewable query content without a build-time copy step), re-exported as `refsQuery` from the mapping module. One framework engine (`refsEngine.ts`) executes them via web-tree-sitter's Query API and resolves each ref's `container` against the symbols channel by line containment (innermost emitted def; equal spans go to the later emission, i.e. the deeper scope). ANTLR and hand-rolled handlers implement `references()` visitor-side (`withExtractor.addRef` + `gateContainer`, or a direct `MimeRef[]` scan); `withExtractor.refs` returns document order to match the engine. Default everywhere: `[]`.
 
-Coverage: every code language in the registry ships a conformance-gated query (23 in-registry suites), and the standalone handler family (the DSLs — terraform/dockerfile/protobuf/graphql/cmake/SQL — plus the standalone languages — swift/r/nix/perl/erlang/prolog/datalog/clojure/common-lisp/sparql/csharp/vim) emits conformance-gated references too. Data formats (YAML, TOML, CSS, JSON, CSV, INI, dotenv, …) and Redis are refs-free by design — references are a code-graph concept. Languages whose syntax can't honestly support a kind omit it rather than guess (Haskell emits no `instantiate` — constructor application is syntactically identical to pattern deconstruction; Lua emits `call` only).
+Coverage: every code language in the registry ships a conformance-gated query (23 in-registry suites), and the standalone handler packages (the DSLs — terraform/dockerfile/protobuf/graphql/cmake/SQL — plus the standalone languages — swift/r/nix/perl/erlang/prolog/datalog/clojure/common-lisp/sparql/csharp/vim) emits conformance-gated references too. Data formats (YAML, TOML, CSS, JSON, CSV, INI, dotenv, …) and Redis are refs-free by design — references are a code-graph concept. Languages whose syntax can't honestly support a kind omit it rather than guess (Haskell emits no `instantiate` — constructor application is syntactically identical to pattern deconstruction; Lua emits `call` only).
 
 Query conventions:
 - `import` refs capture **bound symbol names** (name-join-resolvable), never module-path strings; aliased imports capture the original exported name. Languages whose imports are paths only (Go) emit no import refs.
@@ -756,7 +756,7 @@ RFC 6648/BCP 178 deprecates minting new `x-` names *for registration contexts* �
 
 | surface | standard neighbor | disposition |
 |---|---|---|
-| positions 1-indexed | LSP is 0-indexed | **DGR**: model/editor/compiler vocabulary is 1-indexed everywhere models read; anchoring to the model's vocabulary is family doctrine. |
+| positions 1-indexed | LSP is 0-indexed | **DGR**: model/editor/compiler vocabulary is 1-indexed everywhere models read; anchoring to the model's vocabulary is project convention. |
 | `container` (full dotted path) | LSP `containerName` (immediate parent) | **DGR**: the full path is the graph join key (§16); the immediate parent would break `@>` resolution. Name deliberately differs from LSP's since the semantics differ. |
 | `SymbolKind` values | LSP SymbolKind | Convergent subset (lowercase); additions `heading` (markdown; LSP has no equivalent) and `type` (aliases; absent from LSP's enum) carry the DGR. |
 | `RefKind` taxonomy | LSP has none; SCIP/Kythe use roles/edges | **DGR**: frozen 2026-06-10 against the service graph schema (§16); LSP references are untyped so there is nothing to converge on. |

@@ -1,9 +1,9 @@
-// Body-matcher filtering. The mimetypes daughter owns dialect dispatch, projection, AND
+// Body-matcher filtering. The mimetypes plugin owns dialect dispatch, projection, AND
 // source-line provenance: we hand it the matcher the GRAMMAR already parsed (as a
 // ParsedBodyMatcher — no second parser, mimetypes#42) plus the content, and it returns
 // QueryMatch[] with each hit's source span(s). READ returns the LINE at each match
 // (plurnk.md:31) — a matcher SELECTS, it never extracts a value. We never reach into the
-// internal deepJson/deepXml projections; that's the daughter's layer.
+// internal deepJson/deepXml projections; that's the plugin's layer.
 //
 // Status: 200 = matches; 204 = matcher applied, zero results; 400 = malformed matcher
 // expression; 203 = source unparseable for its mimetype → raw bytes as text so the model
@@ -18,7 +18,7 @@ export interface MatchResult {
     status: number;
     body?: string;          // N:<line> rows (200) or raw fallback content (203)
     matches?: number;       // hit count (status 200 / 204)
-    // §matcher-selection-signal — each hit's canonical location in the DAUGHTER's own coordinate
+    // §matcher-selection-signal — each hit's canonical location in the plugin's own coordinate
     // system (jsonpath: $['users'][0]['name']; xpath: the node path), when the dialect provides
     // one. The SELECTION SIGNAL that survives the degenerate single-line case: the payload stays
     // the source line (the tent pole — line-oriented matching composes FIND↔READ↔EDIT and admits
@@ -43,7 +43,7 @@ export default class Matcher {
 
     // READ returns LINES of content (plurnk.md:31): a matcher SELECTS, READ delivers the
     // source line(s) at each match — not the extracted value. `m.lines` is each hit's source
-    // span(s), uniform across dialects (the daughter self-provides them). One source-line
+    // span(s), uniform across dialects (the plugin self-provides them). One source-line
     // prefix `N:` (plurnk.md:32), deduped by source line; baseLine shifts slice-relative
     // spans back to source coordinates. A hit with no span (e.g. an xpath computed scalar —
     // count()/sum(), which has no source node) falls back to the matched value.
@@ -88,7 +88,7 @@ export default class Matcher {
         // ever sees content dialects; reaching here with a relation dialect is a routing bug, not a
         // user error — fail hard rather than silently mis-handle.
         if (body.dialect === "semantic" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);
-        // Hand the daughter the matcher the GRAMMAR parsed — no second parser (mimetypes#42).
+        // Hand the plugin the matcher the GRAMMAR parsed — no second parser (mimetypes#42).
         const parsedMatcher: ParsedBodyMatcher = body.dialect === "regex"
             ? { dialect: "regex", pattern: body.pattern, flags: body.flags }
             : { dialect: body.dialect, pattern: body.raw };

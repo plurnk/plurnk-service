@@ -1,5 +1,5 @@
 // `<L>` line-marker slicing + structural edits — single source of truth is
-// @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the daughter's
+// @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the plugin's
 // functions; call sites stay `LineMarkerOps.sliceLines(...)`. Types re-exported.
 //
 // `<L>` semantics (plurnk.md §`<L>`): <N> position, <N,M> range, <0> prepend

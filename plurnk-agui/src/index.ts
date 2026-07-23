@@ -1,4 +1,4 @@
-// The daughter's export surface. Module is what the daemon's boot plug-point
+// The package export surface. Module is what the daemon's boot plug-point
 // activates (registerModule(Module.init(opts))); DaemonSeam is the contract it
 // consumes. The projection pieces (AguiPlus, Translator, EventRouter, ProposalHitl,
 // Portal) export for the daemon's tests and future transports.

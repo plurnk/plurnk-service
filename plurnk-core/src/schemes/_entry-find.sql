@@ -3,7 +3,7 @@
 --
 -- Scope (target) + tag filters ONLY. The body matcher does NOT belong here:
 -- per plurnk.md §"Body matcher dispatch" it runs against entry CONTENT, which
--- needs the mimetypes daughter (xpath/jsonpath/regex/glob over structured
+-- needs the mimetypes plugin (xpath/jsonpath/regex/glob over structured
 -- content) — so the body match runs in JS (Matcher.matchAgainstContent) over
 -- the default-channel content this query returns. Static query handles every
 -- filter combination via IS-NULL guards (per SqlRite LLMS.md §channels).

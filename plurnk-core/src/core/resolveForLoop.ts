@@ -1,5 +1,5 @@
 // Active-scheme resolution under a loop's flags — single source of truth is
-// @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the daughter's
+// @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the plugin's
 // function (mandate: static-method class); call sites stay
 // `ResolveForLoop.resolveForLoop(...)`. Schemes opt into flag affinity via
 // `manifest.flags`; absence = always active.

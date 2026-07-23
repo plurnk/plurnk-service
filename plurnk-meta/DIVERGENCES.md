@@ -1,27 +1,43 @@
-# Divergence table (#400)
+# Intentional interoperability differences
 
-Doctrine (owner, 2026-07-13): industry standard unless informed, explicit exception. This table is the enforcement instrument — every deviation from prevailing agent-ecosystem practice is either a WRITTEN exception or a convergence item. Rulings marked PROPOSED await owner sign-off; rulings citing a date are already owner-ruled.
+PLURNK follows established protocols and conventions by default. This file
+records product-level differences that materially affect interoperability. It
+does not catalog ordinary implementation choices.
 
-| # | Practice | Industry standard (2026) | Plurnk position | Ruling |
-|---|---|---|---|---|
-| 1 | Tool interface | MCP is the de facto standard (AAIF/Linux Foundation-governed, OpenAI+Google adopted; JSON-RPC tools/resources/prompts) with JSON function-calling beneath it | HEREDOC DSL over a URI address space, GBNF-enforced | **EXCEPTION — the founding bet** (AGENTS "the bet"): grammar-constrained composition lets a floor-grade local model drive reliably where free-form JSON emission cannot; every web API is latent tooling via URIs. The exception is hedged, not isolationist: plurnk CONSUMES MCP servers (execs-mcp; hotload #389) and SERVES agents via AG-UI. Walk-away trigger per doctrine: dogfooding surfacing an architectural failure. |
-| 2 | Tool discovery | MCP server registries | Scope-agnostic npm-package scan (`plurnk.kind`, trust-gated) for the platform's own plugins; MCP bridge (#389) for external tools | **EXCEPTION + CONVERGENCE** — plugins are SUBSTRATE (mimetype handlers, URI schemes, providers, execs), not model-facing tools; they expand the ONE coherent DSL surface (URI + op) that MCP has no concept for. External heterogeneous tools ride MCP via the bridge — converged there. Owner-ruled 2026-07-15. |
-| 3 | Reasoning vocabulary | "reasoning" (OpenAI, DeepSeek, llama.cpp, OpenRouter-normalized) | REASONING family-wide | **CONVERGED 2026-07-13** (#399; adaptive default per owner ruling). |
-| 4 | Wire protocol | OpenAI-compat chat completions | OpenAI-compat provider base | **CONVERGED by construction.** |
-| 5 | Config | Layered dotenv + example files | `.env.defaults` assembled floor: reader-declares, ONE-LAW key ownership, set-if-unset under operator env | **EXCEPTION (owner design, core SPEC §operator-config-env-defaults)** — standard dotenv layering PLUS a uniqueness law and self-documenting floor; strictly more disciplined than the standard, same operator surface. |
-| 6 | CI | Hosted CI (GitHub Actions) | Committed local git hooks; the 82s drill is the whole gate | **EXCEPTION (owner doctrine, AGENTS §one-gate)** — supply-chain posture: no write-token attack surface, the gate that cannot be forgotten, failures caught before the remote sees them. |
-| 7 | Monorepo dev loop | Build-based (project references, turbo/nx caches) | No-build source resolution via the `plurnk-dev` exports condition | **EXCEPTION** — a direct consequence of committing fully to Node 26 no-compile TS (type-stripping), which the runtime is not walking back with Bun at its heels. Zero-build inner loop; the one sharp edge (types-condition ordering) found + fixed 2026-07-13. No compat hedge — Node 26 to the bone. Owner-ruled 2026-07-15. |
-| 8 | Internal versioning | Independent package versions | Lockstep workspace versions | **EXCEPTION** — the platform publishes one coherent stamp. Plugin peers use ordinary semver; outside leaves publish only when their artifact or compatibility changes (#582). |
-| 9 | Package naming | `@scope/name` | `@plurnk/plurnk-name` | **EXCEPTION (owner ruling 2026-07-11)** — shipped surface frozen; renames rejected as churn without user-facing gain. |
-| 10 | Commit convention | Conventional Commits | Conventional subjects ≤80, subject-only, no trailers, hook-enforced | **CONVERGED-plus** — standard grammar, stricter brevity; context rides references (#N / hash / SPEC tag), owner-ruled 2026-07-12. |
-| 11 | Test tooling | Vitest/Jest common; node:test rising | node:test + node:assert exclusively | **EXCEPTION (owner mandate, global)** — zero-dep native runner; the direction the ecosystem itself is moving. |
-| 12 | Publish auth | Trusted publishing (OIDC/CI) or staged publishing | Bypass-2FA granular token (window), local publishes | **CONVERGENCE SCHEDULED** — bypass tokens lose publishing Jan 2027; adopt staged publishing (agents stage, owner 2FA-approves) before then. Tracked in meta memory. |
-| 13 | API stability posture | Pre-external-adopter ecosystems churn routinely; stability is DECLARED when outsiders arrive, not performed before | Lockstep 1.0.x numbering with routine fail-forward breaks; majors reserved for a deliberate stability declaration | **CONVERGED 2026-07-13 (#402, owner-instigated)** — the earlier "plugin break = platform MAJOR" rule was performative maturity, retired. |
-| 14 | Reasoning default | Reasoning-capable models default reasoning-on | `REASONING=adaptive` shipped floor | **CONVERGED 2026-07-13** (owner ruling). |
-| 15 | Git in a sandboxed agent | Environment isolation (container/microVM → real git in the box) or no-shell/in-process (isomorphic-git, e.g. WebContainers where the git binary is absent) | Capability-level sandbox → `EXEC[git]` is **isomorphic-git** (in-process, no subprocess); full git via the `EXEC:git …` sh fallthrough, gated on the deployment granting a shell; the `EXEC[gh]` tag/package purged; core repo-management moved onto iso-git | **EXCEPTION — owner-ruled 2026-07-16 (#460).** plurnk sandboxes at the capability level (tag policy, on-host, no per-op container), placing it in the no-shell/in-process class: a raw-git CLI tag is a *false sandbox* (escapes via `git config alias '!sh'`, hooks, `-c core.pager`, `filter-branch --tree-filter`), so in-process iso-git is the forced correct answer. Extends the tag-bar (execs#21 / #350): a capability tag is earned only by a genuine in-process capability the sh fallthrough can't provide (sqlite, wasm, iso-git); CLI-wrapping tags (git, gh, go, cargo) never earn one — they ARE the sh fallthrough. Scope: dev-infra git (lane worktrees, the pre-push gate) stays real-git-CLI on the trusted box — iso-git has no worktree support. |
-| 16 | Management / control plane | AG-UI models agent runs only; servers expose management (list/create/rename/fork threads, constraints, config) via a SEPARATE REST/RPC API alongside the run stream | Management verbs ride the AG-UI run envelope — `forwardedProps.plurnk.action` in, `CUSTOM plurnk.action.result` out; one endpoint, one connection, one auth boundary | **EXCEPTION — owner-ruled 2026-07-18 (#475).** One-wire, no side-channel. Convergence has no target (AG-UI has no management-plane concept), so a separate API is MORE bespoke, not less; the row ratifies the exclusive-portal consolidation that DELETED the WS/`/plurnk/rpc` side-channel. Zero conformance cost — rides the sanctioned `forwardedProps` + `CUSTOM` extension points, invisible to generic clients (no standard event translated away), serves the dumb-client one-socket posture. **Convergence trigger:** if AG-UI adds a native management/control-plane concept, this flips to a convergence item. |
+## Model operation language
 
-| 17 | Internal resource addressing | Agent frameworks address internal state via opaque IDs, file paths, or per-server MCP resource URIs; no prevailing principal model | Actor addressing: one knowledge scheme (`worker://`) with the principal in the URI authority (empty=commons, `~`=self, name=ancestry-read, `plurnk`=kernel); `prompt:///`/`log:///` self-only; open-ended capability schemes | **EXCEPTION — owner-ruled 2026-07-19 (#527).** Ownership rode pathnames and leaked ids (#526); the authority slot is the URL-native principal carrier the model already reads fluently. Trust keys on owner (write-scoping), never on scheme. Retired the `known`/`unknown` epistemology experiment (owner-concluded) and `plurnk://`/`exec://` with it. |
-| 18 | Enterprise/private split | Closed-core or full-SaaS: enterprise features live in private forks/services that reimplement the open engine | Thin private overlay over the public engine — mechanism public, decision and values private; the endpoint composes `@plurnk/plurnk-aliases`/`instantiateProvider`, owns only money/pricing/flex-decision/corpus/tuning-values | **EXCEPTION — owner-ruled 2026-07-19 (#533).** A parallel private engine is a drift tax (endpoint#19: two weeks of stale grammar from a privately-pinned copy). Push everything that isn't genuinely enterprise-secret into the public family, where lockstep, sweeps, and gates reach it by construction. |
+PLURNK models emit a grammar-constrained operation language instead of a list of
+JSON function calls. Operations address resources with URIs and can compose
+across installed schemes and executors.
 
-Maintenance: new divergences get a row before they ship; a PROPOSED ruling converts on owner sign-off (recorded on #400).
+This is the project's primary experiment: determine whether a compact,
+constrained language plus persistent addressable context improves reliability,
+especially for smaller models.
+
+Interoperability:
+
+- PLURNK consumes MCP servers through `plurnk-execs-mcp`.
+- Clients use AG-UI.
+- Provider adapters use established model APIs.
+
+This difference is justified only if whole-product evaluations demonstrate an
+advantage over conventional tool calling.
+
+## Internal resource addressing
+
+Agent-visible state uses URI schemes such as `worker://`, `prompt://`, and
+`log://`. The URI authority identifies the relevant worker namespace where the
+scheme supports one.
+
+This provides one address form for project content, worker state, execution
+results, and external resources. The internal representation does not alter
+MCP, AG-UI, or provider wire protocols.
+
+## AG-UI management extensions
+
+AG-UI defines agent runs but not all workspace-management operations PLURNK
+requires. Management actions therefore use AG-UI's extension fields and custom
+events on the same authenticated endpoint.
+
+These extensions must remain optional to generic AG-UI consumers. If AG-UI
+standardizes equivalent management operations, PLURNK should adopt them.

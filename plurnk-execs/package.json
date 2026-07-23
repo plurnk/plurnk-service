@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-execs",
     "version": "1.2.0",
-    "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor family.",
+    "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor packages.",
     "keywords": [
         "plurnk",
         "exec",

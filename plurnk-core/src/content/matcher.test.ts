@@ -5,7 +5,7 @@
 // call: building the ParsedBodyMatcher from the grammar's MatcherBody, #renderRows
 // (each hit's span → `N:<source line>`, deduped, baseLine-shifted — plurnk.md:31/:32),
 // and the status mapping (200/204/203/400/501). query is stubbed: we hand it the
-// QueryMatch[] the daughter would return and assert how matcher.ts renders it.
+// QueryMatch[] the plugin would return and assert how matcher.ts renders it.
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
@@ -15,8 +15,8 @@ import { InvalidExpressionError, QueryParseFailureError } from "@plurnk/plurnk-m
 import Matcher from "./matcher.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 
-// Stub the one daughter method matcher.ts invokes. The impl receives
-// (input, matcher) and returns (or throws) what the daughter would.
+// Stub the one plugin method matcher.ts invokes. The impl receives
+// (input, matcher) and returns (or throws) what the plugin would.
 const stubQuery = (impl: (input: { content: string; hint: string }, matcher: ParsedBodyMatcher) => Promise<QueryMatch[]>): Mimetypes =>
     ({ query: impl } as unknown as Mimetypes);
 
@@ -105,7 +105,7 @@ test("source unparseable for its mimetype → 203 soft fallback with raw content
     assert.equal(r.status, 203);
     assert.equal(r.body, "{broken json");  // raw bytes handed back so the model can regex/visual-parse
     assert.equal(r.mimetype, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE);
-    assert.ok((r.reason ?? "").includes("Failed to parse content for query"));  // daughter's templated reason
+    assert.ok((r.reason ?? "").includes("Failed to parse content for query"));  // plugin's templated reason
 });
 
 test("malformed matcher expression → 400 (model-facing, not a 500)", async () => {

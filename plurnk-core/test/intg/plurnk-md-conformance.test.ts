@@ -156,13 +156,13 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
 
 // --- FIND with structural dialects (jsonpath/xpath) over native content -------
 // plurnk.md: <<FIND(config/**/*.xml)://user[@role='admin']:FIND — xpath over XML.
-// The dialects route through the daughter's deep-json / deep-xml channels; these
+// The dialects route through the plugin's deep-json / deep-xml channels; these
 // prove they are wired through FIND end-to-end on their native mimetypes (NOT 501).
 
 test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by content structure", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        // `.json` suffix → application/json mimetype → daughter's deep-json channel.
+        // `.json` suffix → application/json mimetype → plugin's deep-json channel.
         await seed(db, workspaceId, workerId, [
             ["alice.json", '{"admin":true}'],
             ["bob.json", '{"guest":true}'],
@@ -176,7 +176,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by
 test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content structure", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        // `.xml` suffix → application/xml mimetype → daughter's deep-xml channel.
+        // `.xml` suffix → application/xml mimetype → plugin's deep-xml channel.
         await seed(db, workspaceId, workerId, [
             ["a.xml", "<root><user>admin</user></root>"],
             ["b.xml", "<root><group>x</group></root>"],
@@ -234,7 +234,7 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         await new Worker().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
         await new Worker().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
-        await EntryManifest.maintainDerivations(ctx);  // store real embeddings via the daughter
+        await EntryManifest.maintainDerivations(ctx);  // store real embeddings via the plugin
         const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a"]);

@@ -233,7 +233,7 @@ test("xpath //user node selection: returns the element's SOURCE LINE, not a re-s
         assert.equal(r.status, 200);
         // Selecting the ELEMENT node returns its verbatim source line — the deep-xml pk: position
         // bookkeeping (plurnk-mimetypes#12) never reaches the model because READ delivers the LINE,
-        // not the daughter's re-serialized node.
+        // not the plugin's re-serialized node.
         assert.deepEqual(rxLineNos(r.content), [2, 3]);
         assert.deepEqual(rxLines(r.content), ["  <user>Alice</user>", "  <user>Bob</user>"]);
     } finally { await db.close(); }

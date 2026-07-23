@@ -1,7 +1,7 @@
 // ~semantic (plurnk-service#186) — the FTS half. Re-indexes an entry's body
 // content into entry_fts (the keyword/narrowing half of the fusion). The cosine
 // rank over embedding vectors — the precise half — lands when the embedding
-// channel does (a daughter projection, per the §mimetype boundary). Called from the
+// channel does (a plugin projection, per the §mimetype boundary). Called from the
 // gated manifest-add hook, so only when body content actually changed.
 
 import type { Db, PrepMethod } from "../core/Db.ts";
@@ -68,7 +68,7 @@ export default class EntrySemantic {
     }
 
     // Project Semantics — derive an entry's chunk embeddings. Probes the embedder
-    // capability (the daughter's window + tokenizer, surfaced via the Mimetypes
+    // capability (the plugin's window + tokenizer, surfaced via the Mimetypes
     // handle): ABSENT → one whole-entry chunk from the fallback vector (today's
     // behavior, no extra embed call); PRESENT → lossless tile, embed each chunk.
     // Returns the chunk list + model for indexEmbedding; never touches the DB.
@@ -144,7 +144,7 @@ export default class EntrySemantic {
         return v;
     }
 
-    // The embedder capability surface (daughter window + tokenizer + model id), probed
+    // The embedder capability surface (plugin window + tokenizer + model id), probed
     // through the Mimetypes handle. null until an embedder is installed.
     static async #embedderInfo(mimetypes: Mimetypes): Promise<EmbedderInfo | null> {
         // PLURNK_SERVICE_EMBED_DISABLE=1 forces the no-embedder path even when the optional embeddings package

@@ -1,9 +1,9 @@
 // Canonical op-result contract — single source of truth is now
 // @plurnk/plurnk-schemes (keystone PR-1). The types re-export from the
-// daughter; the logic delegates to its functions behind a local OO facade
+// plugin; the logic delegates to its functions behind a local OO facade
 // (mandate: stateless transforms are static-method classes), so in-tree call
 // sites stay `Results.schemeError(...)` while the implementation lives in the
-// daughter — "pull, don't copy."
+// plugin — "pull, don't copy."
 //
 // The shape keys on SCHEME-SHAPE, not op: entry (known/unknown/skill/plurnk),
 // proposal (file/exec), passthrough (log, future http). `error` is a grammar

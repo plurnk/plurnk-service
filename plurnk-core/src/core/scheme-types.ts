@@ -1,7 +1,7 @@
 // Per-call scheme context (DB-coupled). Framework-grade types
 // (SchemeManifest, SchemeFlagAffinity, WriterTier, LoopFlags) re-export from
 // the in-tree ./types.ts and ./results.ts — folded in from the former
-// @plurnk/plurnk-schemes daughter; the uniform contract belongs in the service.
+// @plurnk/plurnk-schemes plugin; the uniform contract belongs in the service.
 
 import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";

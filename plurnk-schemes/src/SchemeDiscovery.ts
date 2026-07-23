@@ -16,7 +16,7 @@ import Meta from "@plurnk/plurnk-meta";
 // first-party involvement (plurnk-service#227).
 //
 // Returns DESCRIPTORS, not instantiated handlers: this package is contract-only
-// and must never import a scheme package (that would nest daughters under the
+// and must never import a scheme package (that would nest plugins under the
 // framework and break the top-level scan). The consumer imports each
 // `packageName` and registers `new mod.default()` — exactly as the exec scheme
 // loads executor packages from plurnk-execs' ExecInfo.

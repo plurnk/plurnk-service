@@ -309,7 +309,7 @@ test('trust gate OFF ("0"): every installed package loads, nothing skipped', asy
 });
 
 // Runtime policy (SPEC §3.3): the boot layer, applied at registration across
-// EVERY daughter's tags — a disabled tag is absent, not "Available-off".
+// EVERY plugin's tags — a disabled tag is absent, not "Available-off".
 const withEnv = async (kv: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> => {
     const prev = Object.fromEntries(Object.keys(kv).map((k) => [k, process.env[k]]));
     for (const [k, v] of Object.entries(kv)) v === undefined ? delete process.env[k] : (process.env[k] = v);

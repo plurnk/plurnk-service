@@ -1,6 +1,6 @@
 // Mimetype classifiers used at op-handler boundaries — single source of truth
 // is @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the
-// daughter's functions (mandate: static-method class); call sites stay
+// plugin's functions (mandate: static-method class); call sites stay
 // `MimetypeBinary.isBinaryMimetype(...)`.
 //
 //   isBinaryMimetype       — enforces 415 on binary entries (SPEC §op-invariants)

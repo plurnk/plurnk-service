@@ -87,7 +87,7 @@ type StandardProviderSpec = {
     // When true, omit frequency_penalty from the request body — the backend's
     // native param set excludes it and will reject it (DOC-verified). Sets
     // frequencyPenalty to 0 so #repetitionPenaltyBody's "> 0" gate suppresses
-    // the field. Mirrors the daughter omissions (dba4300 / providers-xai#2).
+    // the field. Mirrors the plugin omissions (dba4300 / providers-xai#2).
     suppressFrequencyPenalty?: boolean;
     // #518: send prompt_cache_key=workerId (serverless replica-cache affinity).
     // Default ON for standard providers (OpenAI-standard field, broadly accepted);

@@ -32,7 +32,7 @@ test("[#267] routeAdvisories routes a transitive advisory to its owning @plurnk/
 });
 
 test("[#267] an advisory rooted in a first-party direct dep is NOT routed upstream", () => {
-    // A vuln pulled directly by a non-@plurnk direct dep (ws) is ours to fix here, not routed to a daughter.
+    // A vuln pulled directly by a non-@plurnk direct dep (ws) is ours to fix here, not routed to a plugin.
     const audit = {
         vulnerabilities: {
             ws: { severity: "high", via: [{ source: 2, name: "ws", title: "ws DoS", url: "https://github.com/advisories/GHSA-aaaa-bbbb-cccc", severity: "high" }], effects: [] },

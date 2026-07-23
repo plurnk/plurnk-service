@@ -76,7 +76,7 @@ export default class Discover {
             for (const info of await Discover.#readExecInfos(dir, manifest)) {
                 // Runtime policy — the operator kill-switch / allowlist
                 // (PLURNK_EXECS_<tag>=0, PLURNK_EXECS_ONLY), the daemon's boot
-                // layer, applied uniformly to EVERY tag regardless of daughter
+                // layer, applied uniformly to EVERY tag regardless of plugin
                 // (SPEC §3.3). A disabled tag is not registered — absent, not
                 // "Available-off" — and recorded for the consumer. The
                 // per-workspace client layer is the consumer's to intersect via

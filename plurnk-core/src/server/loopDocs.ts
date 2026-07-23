@@ -2,7 +2,7 @@
 // seam's runLoop). Two sets, both idempotent EDITs through the plurnk worker (§actor-boundary):
 //   1. operator/client reference docs (PLURNK_SERVICE_MD_* ∪ settings.mdDocs, client wins on
 //      collision) at plurnk:///<alias>.md — Engine.runTurn foists their READs at turn 0 (#231);
-//   2. the daughter scheme/exec reference docs (#note12) at plurnk://docs/<name>.md — discovered
+//   2. the plugin scheme/exec reference docs (#note12) at plurnk://docs/<name>.md — discovered
 //      by the turn-1 FIND(plurnk://docs/**) foist (#270), the marquee first-turn feature.
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";

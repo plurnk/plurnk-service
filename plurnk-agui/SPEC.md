@@ -7,7 +7,7 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
 
 ## Architecture
 
-- **The module is an in-process daughter of the daemon** {§agui-daemon-client} — activated
+- **The module is an in-process plugin of the daemon** {§agui-daemon-client} — activated
   at boot (`registerModule` → the core seam handle); it opens the AG-UI+ listener and owns
   the client interface. No WebSocket, no separate process.
 - **A plurnk SESSION is the world; an AG-UI THREAD is a conversation over it** {§agui-thread-is-run}
@@ -29,7 +29,7 @@ through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
   for edge parsing) are welcome, exact-pinned; third-party runtime deps (e.g. `@ag-ui/core`
   with its Zod) stay out. Event shapes remain hand-defined plain JSON.
   plain JSON (`src/types.ts`); the SSE encoding is `data: <json>\n\n`. The protocol is young;
-  a zero-dep daughter beats tracking SDK churn, and adopting the official SDK later is a
+  a zero-dep plugin beats tracking SDK churn, and adopting the official SDK later is a
   types-only swap.
 
 ## The projection {§agui-projection}

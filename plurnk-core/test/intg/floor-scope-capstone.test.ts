@@ -22,7 +22,7 @@ const parse = (dsl: string): PlurnkStatement[] => {
 test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, "capstone-ws");
-    // FIND body matchers now run content through the mimetypes daughter,
+    // FIND body matchers now run content through the mimetypes plugin,
     // so the end-to-end engine needs a real (discovering) Mimetypes — same as the
     // daemon wires in production; the bare default has no handlers.
     await DEFAULT_MIMETYPES.ready();

@@ -276,7 +276,7 @@ First path segment = provider plugin; rest = provider's own model id.
 
 ### §mock-provider Mock provider (sibling fixture)
 
-`Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextWindow, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this — and being a daughter export, this contract has no service-side `§`-ref. {§mock-provider-mock-fixture}
+`Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextWindow, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this — and being a plugin export, this contract has no service-side `§`-ref. {§mock-provider-mock-fixture}
 
 ---
 
@@ -413,7 +413,7 @@ Author contract owned by plurnk-mimetypes. plurnk-service consumes ONE entry poi
 
 - `Mimetypes.process(input)` — the projection entry point; returns the structural projections (`deepJson` / `deepXml` / `symbols` / `references`) + extent (`totalLines`). {§mimetype-methods-process-entry-point}
 
-**The daughter projects; the service queries.** `Mimetypes.query()` exists in the author contract, but plurnk-service does NOT consume it. The service owns **all** dialect matching — glob, regex, jsonpath, xpath, `@graph`, `~semantic` — resolved in-tree over those projections plus its own indexes (`symbol_defs`/`symbol_refs`, FTS5, vectors). mimetypes is mimetype-*literate* (content→structure); the service is dialect-*literate* (structure→matches). The pattern-matching DSL is plurnk's defining surface — the service's authority, never a daughter's.
+**The plugin projects; the service queries.** `Mimetypes.query()` exists in the author contract, but plurnk-service does NOT consume it. The service owns **all** dialect matching — glob, regex, jsonpath, xpath, `@graph`, `~semantic` — resolved in-tree over those projections plus its own indexes (`symbol_defs`/`symbol_refs`, FTS5, vectors). mimetypes is mimetype-*literate* (content→structure); the service is dialect-*literate* (structure→matches). The pattern-matching DSL is plurnk's defining surface — the service's authority, never a plugin's.
 
 Cross-cutting promises service relies on:
 
@@ -871,7 +871,7 @@ Model selection: separate alias cascade in `ProviderRegistry` (§provider-instan
 |-----|---------|---------|
 | `PLURNK_SERVICE_DB_PATH` | `~/.plurnk/plurnk.db` | SQLite file path. |
 | `PLURNK_HOST` | `127.0.0.1` | Bind address for the listener. Local-only by default. |
-| `PLURNK_PORT` | `3044` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui daughter module binds it at boot). Production is single-listener. |
+| `PLURNK_PORT` | `3044` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
 | `PLURNK_SERVICE_MAX_TURNS` | `-1` | Operator turn **ceiling** — `-1` = no cap; a positive value caps a per-call `loop.run({maxTurns})`. |
 | `PLURNK_SERVICE_MAX_COMMANDS` | `-1` | Per-emission op ceiling; `-1` = no cap (default) — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop silently with one `max_commands_exceeded` telemetry entry on the next packet. Tightened per workspace via `settings.maxCommands` (min wins). |
 | `PLURNK_SERVICE_LOOP_TIMEOUT` | `86400000` | ms wall-clock budget for a single `loop.run`: expiry aborts the loop signal mid-flight (a stuck `generate` included) and the loop terminates `504 loop_timeout` — a legible engine terminal, kin to the exec `<T>` reap's 504 (§exec-timeout). {§operator-config-loop-timeout} |
@@ -918,7 +918,7 @@ plurnk-service runs as a daemon. Clients (TUI/CLI/neovim/web/Telegram/etc.) driv
 
 ### §transport Transport
 
-The client surface is AG-UI+ on `PLURNK_HOST:PLURNK_PORT` (default `127.0.0.1:3044`), bound by the plurnk-agui daughter module at boot — the module owns that protocol (its SPEC lives in plurnk-agui). Production is **single-listener**: the daemon opens no transport of its own; daughter modules open theirs through the seam.
+The client surface is AG-UI+ on `PLURNK_HOST:PLURNK_PORT` (default `127.0.0.1:3044`), bound by the plurnk-agui plugin module at boot — the module owns that protocol (its SPEC lives in plurnk-agui). Production is **single-listener**: the daemon opens no transport of its own; plugin modules open theirs through the seam.
 
 The daemon speaks **no wire protocol of its own**: the intg harness dispatches into the seam directly (a JSON-RPC-shaped in-process mimic, `test/intg/_seam.ts`), certifying the same surface a module consumes.
 
@@ -1398,7 +1398,7 @@ The tools capability sheet renders **titleless**, directly under the `definition
 
 ### §schemes user.schemes — the scheme directory
 
-A `## Schemes` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI schemes exist before it acts. Each scheme that ships a `manifest.example` contributes ONE bare op — its canonical usage (no scheme prefix; the example self-documents) — into a `plurnk` fence (§tools shares the shape, #441). The doc is NOT linked inline (#270) — it is materialized at `plurnk://docs/<scheme>.md` and discovered via the turn-1 `FIND(plurnk://docs/**)` foist, keeping the raw packet free of doc links. The in-tree core schemes author their depth in `docs/<name>.md` (loaded at boot, shipped with the package); daughter schemes ship `manifest.documentation`. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls, the examples fenced like the tools sheet (§tools). A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's line + doc. {§schemes-directory}
+A `## Schemes` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI schemes exist before it acts. Each scheme that ships a `manifest.example` contributes ONE bare op — its canonical usage (no scheme prefix; the example self-documents) — into a `plurnk` fence (§tools shares the shape, #441). The doc is NOT linked inline (#270) — it is materialized at `plurnk://docs/<scheme>.md` and discovered via the turn-1 `FIND(plurnk://docs/**)` foist, keeping the raw packet free of doc links. The in-tree core schemes author their depth in `docs/<name>.md` (loaded at boot, shipped with the package); plugin schemes ship `manifest.documentation`. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls, the examples fenced like the tools sheet (§tools). A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's line + doc. {§schemes-directory}
 
 ### §inject system.inject — the operator injection
 
@@ -1424,9 +1424,9 @@ Rendered at the END of the user packet under `## Recap` {§requirements-requirem
 
 Body matchers and `<L>` both dispatch on entry mimetype. Body matcher: leading-char classification (`//` xpath, `/` regex, `$` jsonpath, otherwise glob). `<L>`: line-navigable → by line, structured → by item.
 
-### §matcher-dispatch Matcher dispatch (service-owned, over daughter primitives)
+### §matcher-dispatch Matcher dispatch (service-owned, over plugin primitives)
 
-`Matcher.matchAgainstContent` (in-tree, `src/content/matcher.ts`) is the **service's own** dialect dispatch — `Mimetypes.query` is NOT consumed (§mimetype-methods). It handles the **content dialects** and switches on each, calling the daughter's individual primitives: `glob → queryGlob` and `regex → queryRegex` over the raw content; `jsonpath → queryJsonpathObject` over the `deepJson` projection and `xpath → queryXpathString` over `deepXml` (both pulled from `mimetypes.process({channels})`, so a structural dialect works over any source type), returning `QueryMatch[]` rendered as `<source-line>:<line>`. `~semantic` and `@graph` are **relation dialects, not content matchers** — FIND resolves them upstream to `(file, span)` items (`~`semantic via `rankSemantic`, `@`graph via `EntryGraph`), so they never reach `matchAgainstContent` (a fail-hard invariant guards the impossible routing). Status mapping (content dialects):
+`Matcher.matchAgainstContent` (in-tree, `src/content/matcher.ts`) is the **service's own** dialect dispatch — `Mimetypes.query` is NOT consumed (§mimetype-methods). It handles the **content dialects** and switches on each, calling the plugin's individual primitives: `glob → queryGlob` and `regex → queryRegex` over the raw content; `jsonpath → queryJsonpathObject` over the `deepJson` projection and `xpath → queryXpathString` over `deepXml` (both pulled from `mimetypes.process({channels})`, so a structural dialect works over any source type), returning `QueryMatch[]` rendered as `<source-line>:<line>`. `~semantic` and `@graph` are **relation dialects, not content matchers** — FIND resolves them upstream to `(file, span)` items (`~`semantic via `rankSemantic`, `@`graph via `EntryGraph`), so they never reach `matchAgainstContent` (a fail-hard invariant guards the impossible routing). Status mapping (content dialects):
 
 | Result | HTTP status |
 |---|---|
@@ -1456,7 +1456,7 @@ The contract is the grammar's: **plurnk.md §"`<Line> / <Result>`" — "FIND ret
 
 **READ honors FIND.** A READ that resolves to more than the single exact entry — a glob/folder scope, OR any matcher — fans out: the engine runs the scheme's FIND, then writes **one log row per MATCH** (not per file), each delivering that match's content — READ is the content retrieval over FIND's survey (§find-result-catalog-rows). A file with N matches → N rows. It costs **one command** (the model emitted one READ) yet writes N rows, each its own concrete `(file, span)` — individually foldable/killable/re-READable. A matcher row carries the source LINES at the match's span, delivered via a **raw line-slice** so a structural mimetype's item-index `<L>` never mis-slices a span that is, by construction, source lines; a body-less folder/glob row carries the whole entry. A **bare entry, body-less** is the single direct read. Zero matches writes a single `204` row (never silence). {§read-multi-file-fanout}
 
-> **Source-line provenance (shipped, every dialect).** Each hit carries a source-line span: regex/glob over raw content; jsonpath/xpath over the parsed `deepJson`/`deepXml` projection (the mimetypes daughter reports each hit's line span); `~`semantic the ranked chunk's span; `@`graph the symbol occurrence's span. So the per-match `(file, span)` item is well-defined for every dialect, and READ returns the line uniformly.
+> **Source-line provenance (shipped, every dialect).** Each hit carries a source-line span: regex/glob over raw content; jsonpath/xpath over the parsed `deepJson`/`deepXml` projection (the mimetypes plugin reports each hit's line span); `~`semantic the ranked chunk's span; `@`graph the symbol occurrence's span. So the per-match `(file, span)` item is well-defined for every dialect, and READ returns the line uniformly.
 
 ### §slice-semantics `<L>` semantics by source mimetype
 

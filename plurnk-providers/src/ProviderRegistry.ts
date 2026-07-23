@@ -5,9 +5,9 @@
 //
 // Two-tier resolution (SPEC §5): tier 1 is the closed standard-provider table;
 // tier 2 is a SCOPE-AGNOSTIC node_modules scan (discover()) for packages
-// declaring `plurnk.kind:"provider"` — first-party daughters (installed flat
+// declaring `plurnk.kind:"provider"` — first-party plugins (installed flat
 // via @plurnk/plurnk-providers-all) AND third-party providers under any scope.
-// The framework is contract-only — it does NOT depend on its daughters; the
+// The framework is contract-only — it does NOT depend on its plugins; the
 // scan is what surfaces them (#12/#14).
 
 import type { Provider, ProviderFactory } from "./types.ts";

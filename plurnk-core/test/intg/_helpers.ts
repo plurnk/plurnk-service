@@ -15,7 +15,7 @@ import GitMembership from "../../src/core/git-membership.ts";
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
 // and registers their handlers — the SAME lookup the runtime uses in production,
-// INCLUDING the embeddings daughter. So intg exercises the real semantic path —
+// INCLUDING the embeddings plugin. So intg exercises the real semantic path —
 // deriveEmbeddings tiling + the embedding channel — on every manifest build, not a
 // degraded stand-in. The harness must not diverge from production by omitting a
 // feature: that omission is exactly what hid the chunk-mimetype crash. Exported for

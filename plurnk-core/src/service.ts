@@ -178,7 +178,7 @@ export default class Service {
     static async #start(): Promise<void> {
         const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
         const host = Service.#requireEnv("PLURNK_HOST");
-        // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui daughter module binds
+        // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui plugin module binds
         // it at boot via the seam). Production is single-listener (#357): no daemon WS port.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
@@ -199,7 +199,7 @@ export default class Service {
         }
         const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
-        // AG-UI daughter module (#355) — THE client surface, always on: its init runs at boot with the
+        // AG-UI plugin module (#355) — THE client surface, always on: its init runs at boot with the
         // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
         const aguiInit = AguiModule.init({
             host, port,

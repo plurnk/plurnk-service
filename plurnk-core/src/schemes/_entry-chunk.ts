@@ -1,12 +1,12 @@
 // The chunker for the `~query` semantic dialect — lossless, structure-preferring,
-// budget-driven. Service-owned: the embedder daughter only embeds text + reports
+// budget-driven. Service-owned: the embedder plugin only embeds text + reports
 // its window/tokenizer; how an entry is sliced to fit that window is the dialect's
 // job, and the dialect is ours.
 //
 // tile() partitions an entry's body into chunks each <= `budget` tokens, COVERING
 // EVERY LINE (losslessness — no truncation, ever), preferring to break at a
 // `boundaries` line (a @graph symbol edge) when one falls within budget. Pure: no
-// I/O, no DB, no daughter — `countTokens` is injected (the embedder's real
+// I/O, no DB, no plugin — `countTokens` is injected (the embedder's real
 // tokenizer in production; a conservative char-count upper bound until it reports
 // one; a stub in tests). Every tunable is a parameter — no constants live here.
 

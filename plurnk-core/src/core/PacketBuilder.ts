@@ -517,7 +517,7 @@ export default class PacketBuilder {
         return parts.join("\n\n");
     }
 
-    // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
+    // #note12 — the plugin-provided reference docs (schemes' + execs' `documentation`),
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs) so the
     // catalogue's doc-links READ and the manifest carries each doc's token weight.
     async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {

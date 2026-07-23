@@ -79,7 +79,7 @@ export default class SubprocessExecutor extends BaseExecutor {
     // interpreter table (e.g. the common-REPL harness) override this — and so
     // inherit run()'s streaming + process-group abort handling rather than
     // reimplementing it. When `target` is set, the body becomes the program's
-    // stdin (plurnk-execs#15) — the daughter maps it; the parent parses nothing.
+    // stdin (plurnk-execs#15) — the plugin maps it; the parent parses nothing.
     protected spawnArgs(runtime: string, command: string, target: string | null): SpawnArgs {
         return Runtime.resolve(runtime, command, target);
     }

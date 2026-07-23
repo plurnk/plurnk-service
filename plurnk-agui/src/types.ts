@@ -1,6 +1,6 @@
 // The AG-UI event vocabulary this bridge emits — hand-defined from the protocol spec
 // (https://docs.ag-ui.com), deliberately WITHOUT the @ag-ui/* SDK dependency: the shapes are
-// plain JSON, the protocol is young, and a zero-dep daughter beats tracking SDK churn. When the
+// plain JSON and the protocol is young. When the
 // official SDK stabilizes, adopting it is a types-only swap (§agui-zero-dep).
 //
 // Plurnk-specific richness the core vocabulary can't hold (fold state, coordinates, tags,

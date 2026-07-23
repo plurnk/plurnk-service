@@ -1,6 +1,6 @@
 // Path-extension mimetype resolver for entry schemes — single source of truth
 // is @plurnk/plurnk-schemes (keystone PR-1). Local OO facade over the
-// daughter's function; call sites stay `PathMimetype.resolveEntryMimetype(...)`.
+// plugin's function; call sites stay `PathMimetype.resolveEntryMimetype(...)`.
 //
 // A pathname's extension drives the effective mimetype (§ext-mimetype-extension-mimetype; via the sibling
 // Mimetypes detect service); the scheme manifest's channel default is the

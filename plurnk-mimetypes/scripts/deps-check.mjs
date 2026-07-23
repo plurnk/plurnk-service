@@ -199,13 +199,13 @@ if (runPins) {
     issues += extStale.length;
     console.log("");
 
-    // PEERS — every daughter's peer range on the core must admit the core TIP,
+    // PEERS — every plugin's peer range on the core must admit the core TIP,
     // where tip = max(npm latest, the LOCAL core version). #45: core 0.17.0
-    // published while every daughter peer topped out at ^0.16.0 — nothing in the
+    // published while every plugin peer topped out at ^0.16.0 — nothing in the
     // family failed until a CONSUMER hit ERESOLVE. Checking against the local
     // version makes a core minor bump turn this section red before the publish,
     // not after: the ripple becomes a gate-enforced part of cutting a minor.
-    console.log("PEERS — daughter peer ranges vs the core tip\n");
+    console.log("PEERS — plugin peer ranges vs the core tip\n");
     const CORE = "@plurnk/plurnk-mimetypes";
     const localCore = pkgs.find((p) => p.pj.name === CORE)?.pj.version;
     const npmCore = npmLatest(CORE);

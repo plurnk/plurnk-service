@@ -21,10 +21,8 @@ export const classify = (outdated, waivers, ownerVeto) => {
     const blockers = [];
     const excused = [];
     for (const [name, info] of Object.entries(outdated)) {
-        // @plurnk/* are family-internal (lockstep workspaces + stepdaughters), version-managed by
-        // release:version's re-pin and the stepchild sweep — NOT a third-party freshness concern. The
-        // gate exists to keep the EXTERNAL ecosystem current; a stepdaughter transiently "outdated"
-        // mid-sweep is the machine's job, not a blocker (#513/#523: sweep published css/dart, head devDeps them).
+        // @plurnk/* are platform packages versioned by the release workflow, not third-party
+        // freshness concerns. Temporary drift while that workflow runs is not a blocker here.
         if (name.startsWith("@plurnk/")) continue;
         const { current, latest } = Array.isArray(info) ? info[0] : info;
         const w = waivers[name];

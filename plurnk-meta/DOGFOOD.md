@@ -7,7 +7,7 @@ The gate belongs to `plurnk-meta` because it crosses family ownership: canonical
 ## Preconditions
 
 - A clean canonical `plurnk-service` checkout with its gate green.
-- The outside `plurnk` client checkout built from its family head.
+- The outside `plurnk` client checkout built from its repository head.
 - Every default-installed optional provider resolvable from the daemon.
 - A project root containing its automatic root `AGENTS.md` and manually declared repository forest.
 - One inexpensive capable model alias and, optionally, one local smoke-test alias.

@@ -148,11 +148,11 @@ test("contract: a glob READ returns whole matching lines with non-sequential sou
     });
 });
 
-// CELL [READ × jsonpath] — GREEN: the daughter reports each structural hit's source-line
+// CELL [READ × jsonpath] — GREEN: the plugin reports each structural hit's source-line
 // provenance. Per §matcher-result, jsonpath SELECTS the line where the path resolves; READ
 // returns that LINE (`  "host": "db.internal",`), not the bare value. Today it returns the
 // value, and the structural match carries no source line — so this can't go green until the
-// daughter reports the line span of each jsonpath hit (the coordination the owner flagged).
+// plugin reports the line span of each jsonpath hit (the coordination the owner flagged).
 test("contract: a jsonpath READ returns the LINE where the path resolves", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');

@@ -92,7 +92,7 @@ export type OpenAICompatConfig = {
     repeatPenalty: number;
     // #426: anti-degeneration guard on the CLOUD path (grammarStyle "none"), where the
     // repeat_penalty multiplier isn't available - the OpenAI-standard frequency_penalty.
-    // Optional (default 0 = off) so an out-of-date daughter that omits it just runs unguarded
+    // Optional (default 0 = off) so an out-of-date plugin that omits it just runs unguarded
     // rather than failing construction; the standard factory always supplies it.
     frequencyPenalty?: number;
     // #567: llama.cpp anti-repetition-LOOP controls, sent on the llamacpp path (DRY is a
@@ -100,7 +100,7 @@ export type OpenAICompatConfig = {
     // length — the tool for a plan-restart loop a single-token repeat_penalty over a short
     // window can't see. The GENERIC DRY defaults (0.8/1.75/2) ship as a floor in .env.defaults
     // like repeatPenalty — applied for a detected llama.cpp backend, customer-overridable;
-    // absent (a daughter omitting them) = the box's own default. repeatLastN widens the window.
+    // absent (a plugin omitting them) = the box's own default. repeatLastN widens the window.
     dryMultiplier?: number;
     dryBase?: number;
     dryAllowedLength?: number;
@@ -285,7 +285,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#headers = config.headers ?? {};
         this.#contextWindow = config.contextWindow ?? null;
         this.#reasoning = config.reasoning;
-        // Loud guard: an out-of-date consumer (stale daughter dist) omitting the
+        // Loud guard: an out-of-date consumer (stale plugin dist) omitting the
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
         if (typeof config.temperature !== "number" || typeof config.repeatPenalty !== "number" || typeof config.retryDelayMs !== "number") {

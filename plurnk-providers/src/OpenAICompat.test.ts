@@ -360,7 +360,7 @@ test("#426: the repeat penalty rides EVERY request rail-off, keyed per backend (
     assert.equal("repetition_penalty" in cloudBody, false);
     assert.equal("repeat_penalty" in cloudBody, false);
     mock.restoreAll();
-    // frequencyPenalty unset (default 0) opts out cleanly - sends nothing (an out-of-date daughter runs unguarded, never breaks)
+    // frequencyPenalty unset (default 0) opts out cleanly - sends nothing (an out-of-date plugin runs unguarded, never breaks)
     const bare = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await bare.generate({ workerId: "r", messages: [] });

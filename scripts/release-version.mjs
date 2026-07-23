@@ -22,16 +22,16 @@ for (const dir of root.workspaces) {
     manifests.set(file, pkg);
 }
 
-// STAMP-VIRGINITY GATE (#542): a version number is burned FOREVER once ANY family package has
+// A registry version cannot be reused once any platform package has published it.
 // published it (npm immutability) — terraform's independent 1.0.9–1.0.11 line proved a burned
 // number wears the stamp as a lie (a pre-train artifact serving under tonight's number). The stamp
-// is legal only on a number NO family package has ever published; this also makes the stepchild
+// is legal only on a number no platform package has ever published; this also makes the external-package
 // sweep's serves-check trustworthy by construction (any leaf serving the stamp mid-train can only
-// have gotten it FROM this train). Checks workspaces + the stepchild registry, fails loud with the
+// have gotten it from this release). Checks workspaces + the external package registry and fails with the
 // full burned list.
 {
-    const reg = JSON.parse(await fs.readFile(path.join("plurnk-meta", "stepchildren.json"), "utf8"));
-    const names = new Set([...members, ...reg.stepchildren.map((s) => s.name)]);
+    const reg = JSON.parse(await fs.readFile(path.join("plurnk-meta", "external-packages.json"), "utf8"));
+    const names = new Set([...members, ...reg.packages.map((entry) => entry.name)]);
     const burned = [];
     await Promise.all([...names].map(async (name) => {
         try {
@@ -39,8 +39,8 @@ for (const dir of root.workspaces) {
             if ((Array.isArray(vs) ? vs : [vs]).includes(version)) burned.push(name);
         } catch { /* unpublished package — virgin by definition */ }
     }));
-    if (burned.length > 0) throw new Error(`stamp-virginity: ${version} is BURNED on the registry by ${burned.length} package(s) — a stamp must be virgin family-wide (pick the next clean number):\n  ${burned.sort().join("\n  ")}`);
-    console.log(`stamp-virginity OK — ${version} unpublished across all ${names.size} family packages`);
+    if (burned.length > 0) throw new Error(`${version} is already published by ${burned.length} package(s):\n  ${burned.sort().join("\n  ")}`);
+    console.log(`${version} is unpublished across ${names.size} platform packages`);
 }
 
 for (const [file, pkg] of manifests) {

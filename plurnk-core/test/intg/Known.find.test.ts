@@ -152,7 +152,7 @@ test("Known.find regex honors flags — case-insensitive (i) on content", async 
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "Alpha"], ["b", "alpine"], ["c", "beta"]]);
         // `i` must match "Alpha" (capital A) against /^al/ — the flag crosses into
-        // the daughter's content regex; without it, `^al` would skip "Alpha".
+        // the plugin's content regex; without it, `^al` would skip "Alpha".
         const ci: MatcherBody = { dialect: "regex", raw: "/^al/i", pattern: "^al", flags: "i" };
         const r = await new Worker().find(findStmt(url(""), ci), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);

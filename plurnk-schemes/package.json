@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-schemes",
     "version": "1.2.0",
-    "description": "Framework + contract for the @plurnk/plurnk-schemes-* URI handler family.",
+    "description": "Framework + contract for the @plurnk/plurnk-schemes-* URI handler packages.",
     "keywords": [
         "plurnk",
         "scheme",

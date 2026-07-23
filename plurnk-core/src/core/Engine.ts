@@ -1416,7 +1416,7 @@ export default class Engine {
         };
     }
 
-    // #note12 — the daughter-provided reference docs (schemes' + execs' `documentation`),
+    // #note12 — the plugin-provided reference docs (schemes' + execs' `documentation`),
     // materialized at plurnk:///docs/<name>.md by loop_run (like operator docs).
     docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
         return this.#packets.docEntries(workspaceId);

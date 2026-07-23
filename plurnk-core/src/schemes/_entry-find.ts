@@ -10,7 +10,7 @@
 //   target  — required scope (path or glob); selects which entries are candidates
 //   body    — matcher (glob/regex/jsonpath/xpath/~semantic/@graph). A content matcher
 //             runs against the entry's default-channel CONTENT (Matcher.matchAgainstContent
-//             → the mimetypes daughter) and INCLUDES/EXCLUDES the entry — e.g.
+//             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
 //             `FIND(log:///**/error):/timeout/i` keeps logs whose content matches.
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — results pagination: select results N..M from the matched list
@@ -29,7 +29,7 @@ import EntrySemantic from "./_entry-semantic.ts";
 
 // A FIND match: an entry and the (file, span) where the matcher hit — ONE per match, so a
 // file with N matches yields N items. span === null for a body-less FIND (the whole entry). #286
-// §matcher-selection-signal — `path` is the hit's canonical coordinate in the DAUGHTER's own
+// §matcher-selection-signal — `path` is the hit's canonical coordinate in the plugin's own
 // dialect ($['users'][0]['name']; an xpath node path), when the dialect provides one. The
 // selection signal that survives the degenerate single-line case: spans stay the line-oriented
 // tent pole; the path tells the model WHICH hit each (identical) span was.
@@ -88,7 +88,7 @@ export default class EntryFind {
     // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
     // tags) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
     // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
-    // daughter) and INCLUDES/EXCLUDES the entry — 200 keeps it, 204/415/203 drop it, 400
+    // plugin) and INCLUDES/EXCLUDES the entry — 200 keeps it, 204/415/203 drop it, 400
     // (malformed matcher) fails the whole op. Path-scoping stays in the (target). Returns the
     // matched pathnames plus `locations` — each content hit's source line(s), keyed by pathname.
     static async #matchPathnames(

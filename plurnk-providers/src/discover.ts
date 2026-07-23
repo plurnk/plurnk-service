@@ -7,7 +7,7 @@ import Meta from "@plurnk/plurnk-meta";
 // under `<cwd>/node_modules` — scoped (`@scope/name`) and unscoped — and keep
 // the ones declaring `plurnk.kind === "provider"`. Scope-agnostic so a THIRD
 // PARTY can publish a provider under their own scope (`@acme/llm-provider-foo`)
-// and have it discovered with no involvement from us; first-party daughters
+// and have it discovered with no involvement from us; first-party plugins
 // hoist flat via @plurnk/plurnk-providers-all so they land in the same scan.
 //
 // A provider package maps ONE name → its package specifier (unlike execs, whose
