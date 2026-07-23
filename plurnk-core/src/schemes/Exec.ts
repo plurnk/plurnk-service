@@ -122,9 +122,16 @@ export default class Exec {
     // guarded WebFetcher over one warm-Chromium pool shared across this handler's sinks; injectable so tests
     // substitute the network (the guard blocks localhost, so no local server can exercise the live path).
     readonly #fetchWeb: WebFetch;
+    readonly #closeWebFetcher: () => Promise<void>;
     constructor(fetchWeb?: WebFetch) {
         const webFetcher = new WebFetcher();
-        this.#fetchWeb = fetchWeb ?? ((url, opts) => webFetcher.fetch(url, opts));
+        if (fetchWeb === undefined) {
+            this.#fetchWeb = (url, opts) => webFetcher.fetch(url, opts);
+            this.#closeWebFetcher = () => webFetcher.close();
+        } else {
+            this.#fetchWeb = fetchWeb;
+            this.#closeWebFetcher = async () => {};
+        }
     }
 
     #activeAborts = new Map<number, { workerId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void }>();
@@ -132,6 +139,7 @@ export default class Exec {
 
     async idle(): Promise<void> {
         await Promise.allSettled([...this.#activeSpawns.values()]);
+        await this.#closeWebFetcher();
     }
 
     // Whether the worker has an in-flight spawn (a background exec). The daemon

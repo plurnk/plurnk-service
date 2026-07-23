@@ -26,6 +26,7 @@ interface Renderer {
         headers?: ReadonlyArray<readonly [string, string]>;
         guard?: (url: string) => Promise<boolean>;
     }): Promise<RenderResult>;
+    close?(): Promise<void>;
 }
 
 export default class WebFetcher {
@@ -34,6 +35,10 @@ export default class WebFetcher {
     readonly #browser: Renderer;
     constructor(browser: Renderer = new Browser()) {
         this.#browser = browser;
+    }
+
+    async close(): Promise<void> {
+        await this.#browser.close?.();
     }
 
     async fetch(url: string, opts?: { signal?: AbortSignal }): Promise<{ body: string; mimetype: string } | null> {

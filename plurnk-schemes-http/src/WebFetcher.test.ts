@@ -40,6 +40,18 @@ test("HTML → rendered DOM (guard passed to the browser)", async () => {
     assert.equal(b.calls[0].guarded, true);
 });
 
+test("close releases the owned renderer", async () => {
+    let closed = 0;
+    const fetcher = new WebFetcher({
+        render: async (): Promise<RenderResult> => ({
+            status: 200, statusText: "OK", headers: [], html: "<html></html>",
+        }),
+        close: async () => { closed += 1; },
+    });
+    await fetcher.close();
+    assert.equal(closed, 1);
+});
+
 test("SSRF-refused target → null, and never fetches", async () => {
     let called = false;
     await withFetch((async () => { called = true; return resp("x", 200); }) as typeof fetch, async () => {
