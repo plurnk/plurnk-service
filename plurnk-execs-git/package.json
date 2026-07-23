@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-git",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "description": "In-process git runtime executor for plurnk-service's exec scheme — isomorphic-git (no subprocess, no shell escape) for EXEC[git]. The sandbox-portable versioning surface.",
     "keywords": [
         "plurnk",
@@ -60,9 +60,9 @@
         "prepublishOnly": "npm outdated && npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "isomorphic-git": "1.38.9"
+        "isomorphic-git": "1.38.10"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "1.1.1"
+        "@plurnk/plurnk-execs": "1.2.0"
     }
 }
