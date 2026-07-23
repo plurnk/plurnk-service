@@ -81,21 +81,22 @@ if (!REMOTE && (process.env.PLURNK_MIMETYPES_EMBED_MAX_TOKENS ?? "").trim() !== 
     );
 }
 
-// embedBatch() pool size (LOCAL mode only — remote has no pool). REQUIRED, no
-// default: each worker holds its own model copy, so the count is a
-// memory↔throughput decision only the operator can make. -1 = match cores
-// (availableParallelism), an explicit directive, not a guess. Unset, empty, 0,
-// or malformed → crash on load. No fallback, ever.
+// embedBatch() pool size (LOCAL mode only — remote has no pool). Each worker
+// holds its own model copy. Unset/empty uses every available core while leaving
+// one free on hosts larger than four cores; -1 explicitly claims every core,
+// and a positive value is an operator-selected resource budget.
 const WORKERS = REMOTE ? null : requireWorkers(process.env.PLURNK_MIMETYPES_EMBED_WORKERS);
 
 function requireWorkers(raw) {
+    if (raw === undefined || raw.trim() === "") {
+        const cores = availableParallelism();
+        return cores <= 4 ? cores : cores - 1;
+    }
     const n = Number(raw);
     if (n === -1) return availableParallelism();
-    if (raw === undefined || raw.trim() === "" || !Number.isInteger(n) || n < 1) {
+    if (!Number.isInteger(n) || n < 1) {
         throw new RangeError(
-            `PLURNK_MIMETYPES_EMBED_WORKERS is required and must be -1 (match cores) or a positive `
-            + `integer; got ${JSON.stringify(raw)}. Set it (see .env.example) — the embedBatch worker `
-            + `count is a memory↔throughput decision the embedder will not make for you.`,
+            `PLURNK_MIMETYPES_EMBED_WORKERS must be -1 (match cores) or a positive integer; got ${JSON.stringify(raw)}.`,
         );
     }
     return n;
@@ -195,12 +196,79 @@ function pool() {
         // and ERR_INPUT_TYPE_NOT_ALLOWED if --input-type leaks through.
         const workers = Array.from({ length: WORKERS }, () => new Worker(url, { execArgv: [] }));
         await Promise.all(workers.map((w) => new Promise((resolve, reject) => {
-            w.once("message", (m) => (m?.ready ? resolve() : reject(new Error(`embed worker failed to load: ${m?.error ?? "unknown"}`))));
+            const ready = (m) => {
+                w.off("error", reject);
+                if (m?.ready) resolve();
+                else reject(new Error(`embed worker failed to load: ${m?.error ?? "unknown"}`));
+            };
+            w.once("message", ready);
             w.once("error", reject);
         })));
-        return workers;
+        const state = { workers, queue: [], active: new Map() };
+        for (const worker of workers) {
+            worker.on("message", (message) => {
+                const job = state.active.get(worker);
+                if (job === undefined) return;
+                state.active.delete(worker);
+                worker.unref();
+                if (!job.settled) {
+                    job.settled = true;
+                    job.cleanup();
+                    if (message.error) job.reject(new Error(message.error));
+                    else job.resolve(new Uint8Array(message.buffer));
+                }
+                dispatchPool(state);
+            });
+            worker.on("error", (error) => {
+                const job = state.active.get(worker);
+                state.active.delete(worker);
+                worker.unref();
+                if (job !== undefined && !job.settled) {
+                    job.settled = true;
+                    job.cleanup();
+                    job.reject(error);
+                }
+                dispatchPool(state);
+            });
+        }
+        return state;
     })();
     return poolPromise;
+}
+
+// One global queue owns each worker's single in-flight message. Multiple callers
+// may overlap singleton embedBatch() calls (the service derivation pump does);
+// per-call listeners would all consume worker zero's first reply and corrupt the
+// text→vector association. The shared scheduler distributes those calls across
+// the pool while preserving each caller's input order.
+function dispatchPool(state) {
+    for (const worker of state.workers) {
+        if (state.active.has(worker)) continue;
+        let job;
+        while ((job = state.queue.shift()) !== undefined && job.settled) { /* skip cancelled queued jobs */ }
+        if (job === undefined) return;
+        state.active.set(worker, job);
+        worker.ref();
+        worker.postMessage({ text: job.text });
+    }
+}
+
+async function enqueueEmbedding(text, signal) {
+    const state = await pool();
+    return new Promise((resolve, reject) => {
+        const job = { text, resolve, reject, settled: false, cleanup: () => {} };
+        const abort = () => {
+            if (job.settled) return;
+            job.settled = true;
+            job.cleanup();
+            reject(new DOMException("embedBatch aborted", "AbortError"));
+        };
+        job.cleanup = () => signal?.removeEventListener("abort", abort);
+        if (signal?.aborted) { abort(); return; }
+        signal?.addEventListener("abort", abort, { once: true });
+        state.queue.push(job);
+        dispatchPool(state);
+    });
 }
 
 // Embed many texts, returning vectors in input order. Local: data-parallel
@@ -216,45 +284,13 @@ export async function embedBatch(texts, { onProgress, signal } = {}) {
         onProgress?.({ completed: texts.length, total: texts.length });
         return out;
     }
-    const workers = await pool();
     const results = new Array(texts.length);
-    let next = 0;
     let completed = 0;
-    workers.forEach((w) => w.ref());
-    const onError = new Map();
-    try {
-        await new Promise((resolve, reject) => {
-            if (signal?.aborted) { reject(new DOMException("embedBatch aborted", "AbortError")); return; }
-            const onAbort = () => reject(new DOMException("embedBatch aborted", "AbortError"));
-            signal?.addEventListener("abort", onAbort, { once: true });
-            const finish = (err) => {
-                signal?.removeEventListener("abort", onAbort);
-                workers.forEach((w) => w.removeListener("error", onError.get(w)));
-                if (err) reject(err); else resolve();
-            };
-            for (const w of workers) {
-                const h = (e) => finish(e);
-                onError.set(w, h);
-                w.on("error", h);
-            }
-            const assign = (w) => {
-                if (next >= texts.length) return;
-                const idx = next++;
-                w.once("message", (msg) => {
-                    if (msg.error) { finish(new Error(`embed failed at index ${idx}: ${msg.error}`)); return; }
-                    results[idx] = new Uint8Array(msg.buffer);
-                    completed += 1;
-                    onProgress?.({ completed, total: texts.length });
-                    if (completed === texts.length) { finish(); return; }
-                    assign(w);
-                });
-                w.postMessage({ index: idx, text: texts[idx] });
-            };
-            workers.forEach(assign);
-        });
-    } finally {
-        workers.forEach((w) => w.unref());
-    }
+    await Promise.all(texts.map(async (text, index) => {
+        results[index] = await enqueueEmbedding(text, signal);
+        completed += 1;
+        onProgress?.({ completed, total: texts.length });
+    }));
     return results;
 }
 
@@ -270,6 +306,17 @@ export async function dispose() {
     if (poolPromise) {
         const pending = poolPromise;
         poolPromise = null;
-        try { await Promise.all((await pending).map((w) => w.terminate())); } catch { /* never started */ }
+        try {
+            const state = await pending;
+            const error = new Error("embedder disposed");
+            for (const job of [...state.queue, ...state.active.values()]) {
+                if (!job.settled) {
+                    job.settled = true;
+                    job.cleanup();
+                    job.reject(error);
+                }
+            }
+            await Promise.all(state.workers.map((w) => w.terminate()));
+        } catch { /* never started */ }
     }
 }

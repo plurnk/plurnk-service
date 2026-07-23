@@ -45,7 +45,7 @@ const bytes = await embed("database connection error"); // Uint8Array(4 × dimen
 ## Exports
 
 - `embed(text) → Promise<Uint8Array>` — the 1536-byte vector (above), computed on the calling thread. The framework's per-entry path.
-- `embedBatch(texts, { onProgress, signal }) → Promise<Uint8Array[]>` — embed many texts across a pool of single-threaded workers, returning vectors **in input order**. Each vector is **bit-identical** to `embed()` of the same text (workers are single-threaded; parallelism is data-parallel across them), so the `model` identity is unchanged. `onProgress({ completed, total })` fires as each finishes — the host's progress signal for a long corpus run. `signal` (`AbortSignal`) cancels in flight. The pool is lazy + persistent, unref'd while idle (the process still drains without `dispose()`), and torn down by `dispose()`. Pool size = `PLURNK_MIMETYPES_EMBED_WORKERS` (**required, no default**; each worker holds its own model copy, so it's a memory↔throughput dial you must set — ~6× at 8 workers, scales toward core count).
+- `embedBatch(texts, { onProgress, signal }) → Promise<Uint8Array[]>` — embed many texts across a shared pool of single-threaded workers, returning vectors **in input order** even when callers overlap. Each vector is **bit-identical** to `embed()` of the same text. `onProgress({ completed, total })` fires as each finishes. `signal` (`AbortSignal`) cancels in flight. The pool is lazy, persistent, unref'd while idle, and torn down by `dispose()`.
 - `dimension` — `384`.
 - `model` — the staleness identity (`Xenova/all-MiniLM-L6-v2@<pin>+q8`), **derived** from `.model-pin` + the quantization, never a hand-synced literal. Store it next to each vector; vectors from a different revision *or* quantization are silently incomparable.
 - `maxTokens` — `512`, the model's token window.
@@ -53,7 +53,7 @@ const bytes = await embed("database connection error"); // Uint8Array(4 × dimen
 
 Input beyond the 512-token window is truncated by `embed()`; `maxTokens` + `countTokens` let a caller (e.g. plurnk-service's chunker) tile a larger body into window-sized chunks instead, losslessly. The framework re-exposes both via `mimetypes.embedderInfo()`.
 
-For bulk corpus generation, feed the tiled chunks to `embedBatch` and forward `onProgress` to your operator surface — a large run becomes visible (N/total, %, ETA) and uses all cores, instead of a single-threaded, opaque freeze.
+For bulk corpus generation, feed tiled chunks to `embedBatch` and forward `onProgress` to the operator surface. A large run remains visible and uses bounded data parallelism instead of becoming a single-threaded, opaque freeze.
 
 ## Environment
 
@@ -61,7 +61,7 @@ For bulk corpus generation, feed the tiled chunks to `embedBatch` and forward `o
 
 Set `PLURNK_MIMETYPES_EMBED_BASE_URL` (OpenAI-convention `/v1` base; `/embeddings` is appended) to swap the bundled WASM embedder for an OpenAI-compatible endpoint — BYO GPU (llama-server, vLLM, hosted). `PLURNK_MIMETYPES_EMBED_MODEL` is **required** with it; `PLURNK_MIMETYPES_EMBED_API_KEY` optional (Bearer). Dimension is probed at load (unreachable endpoint = import crash = boot-time surfacing); identity becomes `remote:<model>@d<dim>` so a swap re-derives the space. No local tokenizer in remote mode: `countTokens` is absent; `maxTokens` comes from `PLURNK_MIMETYPES_EMBED_MAX_TOKENS` when you declare it (the endpoint owner knows their model), else unknown — `embedderInfo()` reports the embedder as PRESENT either way, with the unknown facts explicitly null (mimetypes#50). `embedBatch` sends one request with the whole input array; `PLURNK_MIMETYPES_EMBED_WORKERS` is not required (no pool). Unset BASE_URL = local mode, byte-identical to previous releases.
 
-- `PLURNK_MIMETYPES_EMBED_WORKERS` — **required, no default.** `embedBatch` pool size. A positive integer sets the exact count; **`-1` sizes to the host** (`availableParallelism` — an explicit "match cores" directive, not a fallback). Lower it on a shared or low-RAM host (one model copy per worker). Unset, empty, `0`, or malformed → the embedder crashes on load (it will not guess). See `.env.example`.
+- `PLURNK_MIMETYPES_EMBED_WORKERS` — local `embedBatch` pool size. Unset uses all available cores, leaving one free on hosts larger than four cores; a positive integer sets an exact operator budget; `-1` explicitly claims every core. Each worker holds a model copy, so memory-constrained operators can lower the value.
 
 ## Scripts
 

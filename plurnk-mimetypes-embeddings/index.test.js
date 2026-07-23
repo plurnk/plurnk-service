@@ -172,6 +172,14 @@ describe("embedder duck surface", () => {
         }
     });
 
+    it("overlapping singleton batches preserve each text's vector across the shared pool", async () => {
+        const texts = Array.from({ length: 12 }, (_, i) => `distinct concurrent embedding input ${i}`);
+        const concurrent = await Promise.all(texts.map(async (text) => (await embedBatch([text]))[0]));
+        for (let i = 0; i < texts.length; i += 1) {
+            assert.deepEqual(concurrent[i], await embed(texts[i]), `concurrent singleton ${i} received another job's vector`);
+        }
+    });
+
     it("embedBatch reports progress as completed/total (#2)", async () => {
         const seen = [];
         const texts = ["a", "b", "c", "d", "e"];
@@ -242,10 +250,15 @@ describe("PLURNK_MIMETYPES_EMBED_WORKERS contract (embeddings#2: -1 = match core
         load("4");
     });
 
-    for (const bad of [undefined, "", "0", "-2", "abc", "1.5"]) {
-        it(`still crashes on ${JSON.stringify(bad)} — required, no fallback`, () => {
+    for (const automatic of [undefined, ""]) {
+        it(`${JSON.stringify(automatic)} selects the host-relative default`, () => {
+            load(automatic);
+        });
+    }
+
+    for (const bad of ["0", "-2", "abc", "1.5"]) {
+        it(`crashes on invalid ${JSON.stringify(bad)}`, () => {
             assert.throws(() => load(bad));
         });
     }
 });
-

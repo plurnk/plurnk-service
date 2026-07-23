@@ -257,8 +257,11 @@ export default class EntryManifest {
         const reps = [...groups.values()].map((g) => g[0]);
         const dups = [...groups.values()].flatMap((g) => g.slice(1));
 
-        const rawConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY ?? "-1";
-        const configuredConcurrency = Number(rawConcurrency);
+        const rawConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
+        const cores = availableParallelism();
+        const configuredConcurrency = rawConcurrency === undefined || rawConcurrency.trim() === ""
+            ? (cores <= 4 ? cores : cores - 1)
+            : Number(rawConcurrency);
         if (!Number.isInteger(configuredConcurrency) || configuredConcurrency === 0 || configuredConcurrency < -1) {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
         }
