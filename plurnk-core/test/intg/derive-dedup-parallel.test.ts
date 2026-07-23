@@ -29,9 +29,11 @@ const runPump = async (concurrency: string): Promise<number> => {
     }
 };
 
-test("every pending entry is derived once — identical at concurrency 1 and 4 (#416)", async () => {
+test("every pending entry is derived once — identical at sequential, bounded, and host-sized concurrency (#416)", async () => {
     const seq = await runPump("1");
     const par = await runPump("4");
+    const host = await runPump("-1");
     assert.equal(seq, 11, "concurrency 1: all 11 body entries stamped");
     assert.equal(par, 11, "concurrency 4: identical — bounded concurrency neither skips nor double-derives");
+    assert.equal(host, 11, "concurrency -1: host-sized scheduling preserves the same derivation result");
 });

@@ -18,6 +18,7 @@ import { contentHash } from "../core/content-hash.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
+import { availableParallelism } from "node:os";
 import { MimetypeBinary } from "../content/index.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic from "./_entry-semantic.ts";
@@ -235,7 +236,8 @@ export default class EntryManifest {
         const tick = (): void => {
             completed++;
             if (step > 0 && (completed === total || completed % step === 0)) {
-                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `deriving entries ${completed}/${total}`, completed, total, level: "info" });
+                const percent = Math.floor((completed / total) * 100);
+                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `Indexing repository semantics: ${percent}% (${completed}/${total})`, completed, total, percent, level: "info" });
             }
         };
 
@@ -255,7 +257,12 @@ export default class EntryManifest {
         const reps = [...groups.values()].map((g) => g[0]);
         const dups = [...groups.values()].flatMap((g) => g.slice(1));
 
-        const concurrency = Math.max(1, Number.parseInt(process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY ?? "1", 10));
+        const rawConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY ?? "-1";
+        const configuredConcurrency = Number(rawConcurrency);
+        if (!Number.isInteger(configuredConcurrency) || configuredConcurrency === 0 || configuredConcurrency < -1) {
+            throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
+        }
+        const concurrency = configuredConcurrency === -1 ? availableParallelism() : configuredConcurrency;
         const workerPool = async (work: Array<{ r: ManifestRow; hash: string }>): Promise<void> => {
             let next = 0;
             const worker = async (): Promise<void> => {
