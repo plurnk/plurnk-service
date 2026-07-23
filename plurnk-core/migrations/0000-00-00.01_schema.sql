@@ -49,7 +49,7 @@ CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (p
 CREATE        INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
 
 -- INIT: loops
--- flags: per-loop runtime flags (yolo, noProposals, noWeb, noInteraction,
+-- flags: per-loop runtime flags (auto, noProposals, noWeb, noInteraction,
 -- mode). JSON column, merged over DEFAULT_LOOP_FLAGS in code so missing
 -- keys read as their defaults. SchemeRegistry.resolveForLoop gates schemes
 -- by manifest affinity (proposes / excludedInAsk / requiresWeb / etc).

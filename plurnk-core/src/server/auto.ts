@@ -1,22 +1,21 @@
-// Server-side YOLO listener — in-tree subscriber to Engine.onProposalPending
-// that auto-accepts proposals when the loop's persisted flags.yolo === true.
+// Loop auto-approval listener — resolves proposals when persisted flags.auto is true.
 // No client roundtrip; no human approval; no RPC involvement.
 //
-// === Server-side vs client-side YOLO ===
+// === Loop auto vs client-side YOLO ===
 //
 // These are distinct features. Both have legitimate use cases. Neither
 // replaces the other.
 //
-//   Server-side YOLO (this file)
-//     - Enabled via loops.flags.yolo = true. RPC opt-in:
-//       loop.run({ prompt, flags: { yolo: true } }).
+//   Loop auto (this file)
+//     - Enabled via loops.flags.auto = true. RPC opt-in:
+//       loop.run({ prompt, flags: { auto: true } }).
 //     - Engine auto-accepts in-process; the client need not be connected.
 //     - Use cases: benchmarks (pure model+grammar timing, no RPC roundtrip
 //       in the hot loop), CI runs, ad-hoc internal automation, test
 //       fixtures. Anywhere "just run and tell me the final state" is the
 //       right contract.
 //     - Client apps (@plurnk/plurnk CLI / TUI) intentionally do NOT expose
-//       this flag — server YOLO is not standard end-user ergonomics.
+//       this flag — loop auto is automation authority, not review ergonomics.
 //
 //   Client-side YOLO (@plurnk/plurnk --yolo / PLURNK_YOLO)
 //     - Client receives the loop/proposal notification and immediately
@@ -29,22 +28,22 @@
 // Listener fires BEFORE ProposalLifecycle.awaitResolution awaits the waiter, so a
 // synchronous resolveProposal here is delivered to the awaiting dispatch
 // without yielding. The loop/proposal broadcast still goes out (listeners
-// fan out independently) — clients in server-YOLO runs may see a brief
-// proposed-then-resolved blink in their UI. The carried event.flags.yolo
+// fan out independently) — clients in auto runs may see a brief
+// proposed-then-resolved blink in their UI. The carried event.flags.auto
 // lets clients suppress review-UI rendering for those entries.
 
 import type Engine from "../core/Engine.ts";
 import type { ProposalPendingEvent } from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 
-export default class Yolo {
-    static attachYolo(engine: Engine, _db: Db): void {
-        // §dual-yolo-server-yolo-auto-accept
+export default class Auto {
+    static attach(engine: Engine, _db: Db): void {
+        // §proposal-ownership-loop-auto
         engine.onProposalPending((event: ProposalPendingEvent) => {
-            if (!event.flags.yolo) return;
-            // A [300] question is NOT yolo-able (#346): it exists precisely to stop the world
+            if (!event.flags.auto) return;
+            // A [300] question is NOT automatic (#346): it exists precisely to stop the world
             // for a human — auto-accepting answers nothing. The workspace opted into questions
-            // (settings.questions), so the stop is wanted even under yolo.
+            // (settings.questions), so the stop is wanted even under auto.
             if (event.op === "SEND" && (event.attrs as { question?: string }).question !== undefined) return;
             try {
                 if (event.staleClobberRisk) {

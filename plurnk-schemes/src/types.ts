@@ -53,7 +53,7 @@ export interface SchemeManifest {
 
 export interface LoopFlags {
     readonly mode: "ask" | "act";
-    readonly yolo: boolean;
+    readonly auto: boolean;
     readonly noWeb: boolean;
     readonly noInteraction: boolean;
     readonly noProposals: boolean;
@@ -61,7 +61,7 @@ export interface LoopFlags {
 
 export const DEFAULT_LOOP_FLAGS: LoopFlags = Object.freeze({
     mode: "act",
-    yolo: false,
+    auto: false,
     noWeb: false,
     noInteraction: false,
     noProposals: false,

@@ -37,7 +37,7 @@ test("[§agui-projection][§agui-run-endpoint] the official @ag-ui/client accept
         const agent = new HttpAgent({ url: `http://${addr.host}:${addr.port}/`, threadId: "conformance" });
         agent.messages = [{ id: "m1", role: "user", content: "Reply with exactly one short sentence: say pong." }];
         const seen = new Set<string>();
-        await agent.runAgent({ forwardedProps: { plurnk: { projectRoot: sandbox, flags: { yolo: true }, maxTurns: 6 } } }, {
+        await agent.runAgent({ forwardedProps: { plurnk: { projectRoot: sandbox, flags: { auto: true }, maxTurns: 6 } } }, {
             onEvent: ({ event }: { event: { type: string } }) => { seen.add(event.type); },
         });
         // Their verifier throwing = rejection; reaching here = the stream validated.

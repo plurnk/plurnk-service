@@ -73,7 +73,7 @@ export type InjectWorkerNotify = (args: {
     prompt: string;
     // §worker-delegation-inherits-flags — the SENDING loop's flags. Authority flows down the
     // delegation edge: a spawned/forked child's live loop runs with its delegator's flags,
-    // or a non-YOLO child's every side-effecting op proposes into a resolver-less void
+    // or a non-auto child's every side-effecting op proposes into a resolver-less void
     // (300s auto-cancel per attempt — the fan-out wedge). Resume-in-place ignores this
     // (a parked loop keeps its own flags).
     flags?: LoopFlags;

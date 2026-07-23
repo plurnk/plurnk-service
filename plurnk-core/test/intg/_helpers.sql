@@ -298,7 +298,7 @@ SELECT id, worker_id, flags FROM loops ORDER BY id;
 
 -- PREP: test_edit_states
 -- [§worker-delegation-inherits-flags] — EDIT rows' proposal states: a delegated child's EDIT
--- must land resolved (inherited YOLO), never proposed/cancelled into the void.
+-- must land resolved (inherited auto), never proposed/cancelled into the void.
 SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_all_packets

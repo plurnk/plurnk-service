@@ -1580,7 +1580,7 @@ export default class Engine {
     }
 
     // External API to feed a resolution into a pending proposal — the loop/resolve
-    // RPC handler, the in-tree YOLO listener, or the timeout watcher.
+    // RPC handler, the in-tree auto listener, or the timeout watcher.
     // Shutdown lane: settle every pending proposal with a cancel so a stopped world can never
     // deadlock the stop (§proposal-cancel-aborts; the #344 wedge class).
     cancelAllProposals(outcome: string): void {
@@ -1597,7 +1597,7 @@ export default class Engine {
     }
 
     // Subscribe to proposal-pending events. Daemon registers a listener
-    // that broadcasts the loop/proposal WS notification; YOLO listener
+    // that broadcasts the loop/proposal WS notification; auto listener
     // registers one that auto-resolves.
     onProposalPending(listener: (event: ProposalPendingEvent) => void): void {
         this.#proposals.onPending(listener);

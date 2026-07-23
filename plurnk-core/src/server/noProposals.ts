@@ -1,6 +1,6 @@
-// Server-side noProposals listener — the exact inverse of yolo.ts. When a
+// Server-side noProposals listener — the exact inverse of auto.ts. When a
 // loop's persisted flags.noProposals === true, proposals auto-REJECT
-// in-process, mirroring server-YOLO's auto-ACCEPT. No client roundtrip; no
+// in-process, mirroring loop auto's ACCEPT. No client roundtrip; no
 // human review.
 //
 // Invisibility is the whole point. The model sees only the ordinary
@@ -8,7 +8,7 @@
 // client's no_tty_review reject. The `outcome` reason is forensics-only,
 // never in the rx (see ProposalResolution), so a reject under noProposals is
 // indistinguishable, to the model, from any other reject. How a proposal is
-// handled — manual review, client YOLO, server YOLO, noProposals — leaves no
+// handled — manual review, client YOLO, loop auto, noProposals — leaves no
 // fingerprint in the model's experience.
 //
 // Use case: a client with no review channel (no TTY — piped, scripted,
@@ -17,7 +17,7 @@
 // end-user "edits were blocked, no review channel" messaging; the model is
 // mode-blind.
 //
-// yolo wins if both are (nonsensically) set — the explicit auto-accept
+// auto wins if both are (nonsensically) set — the explicit auto-accept
 // opt-in takes precedence over the auto-reject.
 
 import type Engine from "../core/Engine.ts";
@@ -27,7 +27,7 @@ import type { Db } from "../core/Db.ts";
 export default class NoProposals {
     static attachNoProposals(engine: Engine, _db: Db): void {
         engine.onProposalPending((event: ProposalPendingEvent) => {
-            if (event.flags.yolo || !event.flags.noProposals) return;
+            if (event.flags.auto || !event.flags.noProposals) return;
             try {
                 engine.resolveProposal(event.logEntryId, { decision: "reject", outcome: "no_review_channel" });
             } catch {

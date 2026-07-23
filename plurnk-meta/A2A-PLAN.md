@@ -26,7 +26,7 @@ A2A tasks are plurnk runs wearing a wire format — the delegation breath (spawn
 1. Outbound scheme = **`plurnk-schemes-a2a`**, in-bundle (not optional).
 2. Inbound = **`plurnk-a2a`** workspace — a transport peer beside plurnk-agui; folding INTO plurnk-agui stays open as an implementing-lane assessment.
 3. **Workspace registers as a2a listener; inbound tasks land in that workspace.** No new workspace semantics — a registration, not a redefinition.
-4. Gating: **yolo server = ungated; non-yolo = proposal-gated** via the existing machinery (design below).
+4. Gating: **auto server = ungated; non-auto = proposal-gated** via the existing machinery (design below).
 5. **Internal contract vocabulary is never bent toward A2A's.** WORK stays plurnk's WORK. Translation lives in the scheme/module only.
 6. **Slow.** Checkpoints between phases; paradigm tripwires halt.
 
@@ -35,7 +35,7 @@ A2A tasks are plurnk runs wearing a wire format — the delegation breath (spawn
 
 **Two gates, cleanly separated (the clarity that was missing):**
 - **ADMISSION — who may land a task here at all.** Governed by `PLURNK_A2A_ALLOW`. FAIL-CLOSED: empty allow = inbound refused entirely (the daemon still SERVES its card — discoverable — but accepts zero tasks). No implicit trust, ever.
-- **EFFECT — what an admitted task's ops may do.** Governed by the existing proposal machinery (owner ruling 4): yolo workspace = auto-accept posture inherited from the daemon; non-yolo = host-effecting ops PROPOSE on the registered workspace's normal pending surface, where the OPERATOR accepts. The remote peer is never an approver of host effects — it sees `working` throughout; effect-gating is internal policy, not peer business. Hold-timeout knob fails an unattended proposal with a policy-shaped message (structure, never menus).
+- **EFFECT — what an admitted task's ops may do.** Governed by the existing proposal machinery (owner ruling 4): auto workspace = auto-accept posture inherited from the daemon; non-auto = host-effecting ops PROPOSE on the registered workspace's normal pending surface, where the OPERATOR accepts. The remote peer is never an approver of host effects — it sees `working` throughout; effect-gating is internal policy, not peer business. Hold-timeout knob fails an unattended proposal with a policy-shaped message (structure, never menus).
 
 **The four trust layers (inbound):**
 1. **Transport auth** — the card's `securitySchemes` declares what credential a peer must present to reach us (bearer / API key / OAuth / mTLS). Operator infra call.

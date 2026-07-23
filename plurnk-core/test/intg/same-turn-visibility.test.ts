@@ -19,7 +19,7 @@ test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "probe360" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; rx: string }>({ loop_id: 2 });

@@ -278,16 +278,16 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
     } finally { await db.close(); }
 });
 
-test("proposal: YOLO auto-accepts when loops.flags.yolo === true", async () => {
+test("proposal: loop auto-approval engages when loops.flags.auto === true", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        // Persist loop flags with yolo: true, then attach the YOLO listener.
+        // Persist canonical loop auto-approval, then attach its listener.
         await (db.engine_set_loop_flags as PrepMethod).run({
-            loop_id: ctx.loopId, flags: JSON.stringify({ yolo: true }),
+            loop_id: ctx.loopId, flags: JSON.stringify({ auto: true }),
         });
-        const Yolo = (await import("../../src/server/yolo.ts")).default;
-        Yolo.attachYolo(ctx.engine, db);
+        const Auto = (await import("../../src/server/auto.ts")).default;
+        Auto.attach(ctx.engine, db);
 
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
@@ -297,14 +297,14 @@ test("proposal: YOLO auto-accepts when loops.flags.yolo === true", async () => {
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        assert.equal(result.status, 200, "YOLO accept produces status 200");
+        assert.equal(result.status, 200, "loop auto-approval produces status 200");
         const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "resolved");
         assert.equal(row?.outcome, null);
     } finally { await db.close(); }
 });
 
-test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", async (t) => {
+test("proposal: loop auto-approval does NOT engage when flags.auto is absent / false", async (t) => {
     // Tight timeout so the test doesn't wait the full 5m default.
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
@@ -315,9 +315,8 @@ test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", a
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
-        // Default flags JSON ('{}') — yolo defaults false.
-        const Yolo = (await import("../../src/server/yolo.ts")).default;
-        Yolo.attachYolo(ctx.engine, db);
+        const Auto = (await import("../../src/server/auto.ts")).default;
+        Auto.attach(ctx.engine, db);
 
         const idDeferred = deferred<number>();
         const result = await ctx.engine.dispatch({
@@ -327,7 +326,7 @@ test("proposal: YOLO does NOT engage when loops.flags.yolo is absent / false", a
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        // YOLO doesn't engage → timeout fires → 499/cancelled/timeout.
+        // Auto doesn't engage → timeout fires → 499/cancelled/timeout.
         assert.equal(result.status, 499);
         const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "cancelled");

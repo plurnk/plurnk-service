@@ -159,7 +159,7 @@ test("[§worker-scheme-spawn] WORK(worker://name):task spawns a same-workspace s
         assert.equal(calls.length, 1, "exactly one injectWorker call");
         const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug" }, "the new run is started with the prompt");
-        assert.equal((spawnFlags as { yolo?: boolean } | undefined)?.yolo, false, "the delegating loop's flags ride the injection (§worker-delegation-inherits-flags)");
+        assert.equal((spawnFlags as { auto?: boolean } | undefined)?.auto, false, "the delegating loop's flags ride the injection (§worker-delegation-inherits-flags)");
     } finally { await db.close(); }
 });
 
@@ -281,9 +281,9 @@ test("[§worker-scheme-irc] SEND(worker://name):msg delivers to a sister; a miss
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
-        const { flags: ircFlags, ...ircRest } = calls.at(-1) as { flags?: { yolo?: boolean }; workspaceId: number; workerId: number; prompt: string };
+        const { flags: ircFlags, ...ircRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, prompt: "what's your status?" }, "the message is delivered to the named sister");
-        assert.equal(ircFlags?.yolo, false, "the sender's flags ride the irc (§worker-delegation-inherits-flags)");
+        assert.equal(ircFlags?.auto, false, "the sender's flags ride the irc (§worker-delegation-inherits-flags)");
 
         const missing = await engine.dispatch({
             statement: sendStmt(null, workerPath("ghost"), "anyone there?"),
@@ -352,9 +352,9 @@ test("[§worker-scheme-fork] FORK(worker://name):task forks a NAMED branch — s
         const branch = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch run in the workspace");
         assert.notEqual(branch.id, workerId, "the branch is a distinct run");
-        const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { yolo?: boolean }; workspaceId: number; workerId: number; prompt: string };
+        const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string };
         assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, prompt: "take the other branch" }, "the branch is continued with the fork prompt");
-        assert.equal(forkFlags?.yolo, false, "the forking loop's flags ride the injection (§worker-delegation-inherits-flags)");
+        assert.equal(forkFlags?.auto, false, "the forking loop's flags ride the injection (§worker-delegation-inherits-flags)");
     } finally { await db.close(); }
 });
 

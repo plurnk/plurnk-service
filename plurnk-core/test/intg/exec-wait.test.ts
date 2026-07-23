@@ -28,7 +28,7 @@ test("PLURNK_SERVICE_EXEC_WAIT_MS breathes before the next turn while a spawn is
                 const t0 = Date.now();
                 // loop.run returns immediately (Model 3); runLoopToTerminal awaits the
                 // loop/terminated event, so `elapsed` spans the full loop incl. the breath.
-                const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
+                const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
                 const elapsed = Date.now() - t0;
                 assert.equal(finalStatus, 499);
                 assert.ok(elapsed >= 250, `the 300ms breath fired before turn 2 (backgrounded spawn in flight); elapsed=${elapsed}ms`);

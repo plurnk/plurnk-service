@@ -22,7 +22,7 @@ test("[§exec-poll] a polled EXEC <T,P> wakes a hibernating (202) loop every P s
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-poll" });
             const t0 = Date.now();
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { yolo: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             const elapsed = Date.now() - t0;
             assert.equal(finalStatus, 499, "the loop reached turn 2 and terminated — it was resumed from 202");
             // ~1s (poll) ≪ 30s (conclusion). A non-polled 202 would hang (runLoopToTerminal would time out),

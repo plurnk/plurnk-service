@@ -151,6 +151,6 @@ module OWNS and a client MUST handle:
 ## The worker endpoint {§agui-run-endpoint}
 
 `POST /` (or `/agui`) with an AG-UI `RunAgentInput` body: the last `user` message becomes the
-`loop.run` prompt (`maxTurns`/`flags.yolo` from env); the response is `text/event-stream`,
-one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Yolo never auto-answers
+`loop.run` prompt (`maxTurns`/`flags.auto` from env); the response is `text/event-stream`,
+one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Loop auto never answers
 a question — that's the daemon's own rule; the bridge inherits it.

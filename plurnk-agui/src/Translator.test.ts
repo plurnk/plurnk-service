@@ -131,7 +131,7 @@ test("[§agui-proposal-resolve] a proposal projects with everything the frontend
     const events = tr.proposal({
         logEntryId: 42, workspaceId: 1, workerId: 2, loopId: 3, turnId: 4,
         op: "SEND", target: { scheme: null, pathname: null }, body: "",
-        attrs: { question: "Which environment?", choices: ["prod", "staging"] }, flags: { yolo: true },
+        attrs: { question: "Which environment?", choices: ["prod", "staging"] }, flags: { auto: true },
     });
     assert.equal(events.length, 1);
     const e = events[0] as { name: string; value: { logEntryId: number; attrs: { question?: string; choices?: string[] } } };

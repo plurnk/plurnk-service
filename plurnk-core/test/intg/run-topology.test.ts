@@ -29,7 +29,7 @@ test("[§worker-lifecycle-child-wake] a child worker concluding wakes a parent p
             const terminated = subscribeNotifications(ws, "loop/terminated");
             // runLoopToTerminal awaits the PARENT's loop/terminated. If the child-wake doesn't fire,
             // the parent stays parked at 202 forever and this times out — so reaching 200 IS the proof.
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn a worker and wait for it", flags: { yolo: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn a worker and wait for it", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the parent resumed from 202 (woken by the child) and concluded");
             await flush();
             // Both runs concluded 200 — the worker's terminal and the parent's resumed terminal.
@@ -53,7 +53,7 @@ test("[§worker-lifecycle-child-wake] a child FAILING (499) also wakes the paren
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "child-fail" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn flaky, wait", flags: { yolo: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn flaky, wait", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the parent woke on the child's 499 and concluded — a failed child is still a wake edge");
         } finally { ws.close(); }
     });
@@ -75,7 +75,7 @@ test("[§worker-lifecycle-child-wake] wake propagates UP a grandchild chain (par
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "grandchild" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn a 2-deep chain and wait", flags: { yolo: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn a 2-deep chain and wait", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the wake propagated up two levels — the parent concluded only after the whole subtree did");
         } finally { ws.close(); }
     });
@@ -95,7 +95,7 @@ test("[§worker-lifecycle-child-wake] a parent wakes across SEQUENTIAL children 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "sequential" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "two jobs in sequence", flags: { yolo: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "two jobs in sequence", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the parent parked, woke on w1, spawned+parked again, woke on w2, then concluded");
         } finally { ws.close(); }
     });
@@ -115,7 +115,7 @@ test("[§actor-boundary-passive-wake] an irc (SEND worker://name) wakes a CONCLU
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "irc-wake" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const run = await rpcCall(ws, 2, "loop.run", { prompt: "be a butler; await the entry code", flags: { yolo: true } });
+            const run = await rpcCall(ws, 2, "loop.run", { prompt: "be a butler; await the entry code", flags: { auto: true } });
             const modelWorkerId = (run.result as { modelWorkerId: number }).modelWorkerId;
             const loopId = (run.result as { loopId: number }).loopId;
             // The actor concludes its first (idle) loop — nothing to wait on.
@@ -144,7 +144,7 @@ test("[§worker-lifecycle-idle-is-concluded] an idle wait 409s; the model sees t
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "idle-concludes" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do", flags: { yolo: true } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do", flags: { auto: true } });
             const t = await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
             assert.equal(t.length, 1, "the run concluded — one loop/terminated, no held-open 202");
             assert.equal(t[0].finalStatus, 200, "the model's OWN conclude, one turn after the 409 (§wait-obligation-matrix)");
@@ -154,11 +154,11 @@ test("[§worker-lifecycle-idle-is-concluded] an idle wait 409s; the model sees t
     });
 });
 
-test("[§worker-delegation-inherits-flags] spawn and fork carry the delegating loop's flags — a YOLO parent's child EDITs without proposing", async () => {
+test("[§worker-delegation-inherits-flags] spawn and fork carry the delegating loop's flags — an auto parent's child EDITs without proposing", async () => {
     // The four-sweep fan-out wedge: injectWorker dropped flags, so a delegated child's every
     // side-effecting op proposed into a resolver-less void (300s auto-cancel per attempt).
     // Proof is behavioral AND through the real dispatch path: the child's EDIT must land
-    // state='resolved' (YOLO auto-accept inherited), never state='proposed'/'cancelled'.
+    // state='resolved' (auto resolution inherited), never state='proposed'/'cancelled'.
     // 16Ki (not the 8Ki the sibling tests use): a topology packet carries the child-orientation
     // section for the spawned + forked runs on top of the base system prompt, so it sits well above a
     // single-run packet. At 8Ki it rode the budget edge (a ~50% 413/200 flake) and grammar 0.74.55's
@@ -166,7 +166,7 @@ test("[§worker-delegation-inherits-flags] spawn and fork carry the delegating l
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
         makeMockResponse("<<WORK(worker://worker):edit something and finish:WORK\n<<FORK(worker://mirror):edit something and finish:FORK\n<<SEND[102]<-1>:delegated; waiting:SEND", 10),
-        // Worker turn 1: a SIDE-EFFECTING op (proposes unless YOLO), then conclude.
+        // Worker turn 1: a SIDE-EFFECTING op (proposes unless auto), then conclude.
         makeMockResponse("<<EDIT(worker:///from-worker):payload:EDIT\n<<SEND[200]:worker done:SEND", 10),
         // Fork turn 1: same shape.
         makeMockResponse("<<EDIT(worker:///from-fork):payload:EDIT\n<<SEND[200]:fork done:SEND", 10),
@@ -178,16 +178,16 @@ test("[§worker-delegation-inherits-flags] spawn and fork carry the delegating l
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "delegation-flags" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate everything", flags: { yolo: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate everything", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the whole topology concluded — no child stalled in a proposal void");
-            // The delegated loops' persisted flags carry the parent's yolo.
+            // The delegated loops' persisted flags carry the parent's auto.
             const loops = await (db.test_all_loops as PrepMethod).all<{ id: number; worker_id: number; flags: string }>({});
-            const childLive = loops.filter((l) => JSON.parse(l.flags).yolo === true);
-            assert.ok(childLive.length >= 3, `parent + both delegated live loops carry yolo; got ${JSON.stringify(loops)}`);
+            const childLive = loops.filter((l) => JSON.parse(l.flags).auto === true);
+            assert.ok(childLive.length >= 3, `parent + both delegated live loops carry auto; got ${JSON.stringify(loops)}`);
             // And the children's EDITs resolved — never proposed into the void.
             const edits = await (db.test_edit_states as PrepMethod).all<{ pathname: string; state: string }>({});
             for (const e of edits.filter((x) => /from-(worker|fork)/.test(x.pathname))) {
-                assert.equal(e.state, "resolved", `child EDIT ${e.pathname} auto-accepted under inherited YOLO`);
+                assert.equal(e.state, "resolved", `child EDIT ${e.pathname} auto-accepted under inherited auto`);
             }
         } finally { ws.close(); }
     });
@@ -212,7 +212,7 @@ test("[§worker-lifecycle-wake-requeue-not-terminal] a wake re-queue (100) mid-d
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "wake-requeue" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a helper and await it", flags: { yolo: true } });
+            const accept = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a helper and await it", flags: { auto: true } });
             const loopId = (accept.result as { loopId: number }).loopId;
             // The parent's loop is re-queued in place by the child-wake, then continues to its own terminal.
             const seen = await waitFor(
@@ -241,7 +241,7 @@ test("[§fold-open-meta-operations] OPEN/FOLD are recorded in the DB, suppressed
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "meta-ops" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "curate", flags: { yolo: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "curate", flags: { auto: true } });
             assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
             const rows = await (db.test_ops_by_loop as PrepMethod).all<{ op: string; status_rx: number }>({});
             const folds = rows.filter((r) => r.op === "FOLD");

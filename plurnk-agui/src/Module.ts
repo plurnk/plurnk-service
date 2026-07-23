@@ -259,7 +259,7 @@ export default class Module {
         await this.#portal.run({
             workspaceId, workerId, prompt: lastUser.content,
             ...(typeof forwarded?.maxTurns === "number" ? { maxTurns: forwarded.maxTurns } : this.#opts.maxTurns !== undefined ? { maxTurns: this.#opts.maxTurns } : {}),
-            ...(typeof forwarded?.flags === "object" && forwarded.flags !== null ? { flags: forwarded.flags as { yolo?: boolean } } : {}),
+            ...(typeof forwarded?.flags === "object" && forwarded.flags !== null ? { flags: forwarded.flags as { auto?: boolean } } : {}),
             // #414 — per-loop model selection: the client sends alias+model on every loop
             // (model = client-resolved <provider>/<model>, #90); forward both, the daemon's
             // runLoop applies precedence (model wins) and resolves the provider per loop.

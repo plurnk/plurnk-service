@@ -47,7 +47,7 @@ test("[§agui-daemon-client][§agui-run-endpoint][§agui-thread-is-run] in-proce
                 threadId: "inproc-smoke",
                 workerId: "run-1",
                 messages: [{ role: "user", content: "Reply with exactly one short sentence: say pong." }],
-                forwardedProps: { plurnk: { projectRoot: sandbox, flags: { yolo: true }, maxTurns: 6 } },
+                forwardedProps: { plurnk: { projectRoot: sandbox, flags: { auto: true }, maxTurns: 6 } },
             }),
         });
         assert.equal(res.status, 200);

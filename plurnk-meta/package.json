@@ -11,6 +11,7 @@
         ".env.defaults",
         "dist/**/*",
         "README.md",
+        "DOGFOOD.md",
         "CORPUS.md",
         "PLURNK_PERSONALITY.md",
         "requirements.md",

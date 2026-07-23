@@ -56,7 +56,7 @@ test("[§worker-lifecycle-wake-liveness] wake-on-completion: a slept (202) loop 
             // conclusion; in general a user reply), so loop.run cannot resolve on it without
             // deadlocking the very client that must send that event. Park, resume, and the
             // true terminal all arrive via events. §worker-lifecycle-wake-liveness.
-            const firstWorker = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", flags: { yolo: true } });
+            const firstWorker = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park", flags: { auto: true } });
             const parkedLoop = (firstWorker.result as { loopId: number }).loopId;
             assert.equal((firstWorker.result as { finalStatus: number }).finalStatus, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
 
@@ -128,7 +128,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
             await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-active" });
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
-            await runLoopToTerminal(ws, 2, { prompt: "stay active during exec", flags: { yolo: true } });
+            await runLoopToTerminal(ws, 2, { prompt: "stay active during exec", flags: { auto: true } });
             await flush();
             // Event-driven: wait for the exec to conclude (it finishes while the loop is
             // still emitting SEND[102] continuations), not a fixed sleep racing the spawn.
@@ -169,7 +169,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
             const startedAt = Date.now();
-            const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave", flags: { yolo: true } });
+            const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave", flags: { auto: true } });
             const firstResult = firstResp.result as { loopId: number; finalStatus: number };
             const parkedLoop = firstResult.loopId;
             const firstElapsed = Date.now() - startedAt;
@@ -220,7 +220,7 @@ test("[§worker-lifecycle-exec-epoch-bound] wake-on-completion: loop.cancel mid-
             const workspaceId = (created.result as { id: number }).id;
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream", flags: { yolo: true } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream", flags: { auto: true } });
             await flush();
             // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
             // to open, not a fixed sleep racing the spawn (the flake this replaces).
@@ -270,7 +270,7 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
             const streamEvents = subscribeNotifications(ws, "stream/event");
             const concludedEvents = subscribeNotifications(ws, "stream/concluded");
 
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel after partial output", flags: { yolo: true } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel after partial output", flags: { auto: true } });
 
             // Deterministic: cancel only AFTER the 4 bytes have actually
             // landed in the stdout channel — no fixed sleep racing printf.

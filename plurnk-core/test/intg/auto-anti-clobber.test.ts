@@ -1,9 +1,9 @@
-// note 10 — YOLO stale-read anti-clobber. A server-YOLO loop must NOT auto-accept an
+// note 10 — auto stale-read anti-clobber. A loop auto loop must NOT auto-accept an
 // EDIT to a file that changed on disk after the model's prior turn — that silently
 // clobbers the ambient change. The engine flags the proposal `staleClobberRisk` (the
-// target has a source=file env-delta this turn); YOLO rejects rather than accepts.
+// target has a source=file env-delta this turn); auto rejects rather than accepts.
 //
-// Scenario: turn 1 materializes doc.md=V1; the file changes to V2 out-of-band; the YOLO
+// Scenario: turn 1 materializes doc.md=V1; the file changes to V2 out-of-band; the auto
 // model EDITs (based on its stale V1 view) to V3. The EDIT must be rejected — never
 // written — so the on-disk file keeps V2. (A clobber would write V3 to disk on accept.)
 
@@ -20,7 +20,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 
 const execFileP = promisify(execFile);
 
-test("[§dual-yolo-stale-clobber-reject] YOLO rejects an EDIT to a file that diverged on disk this turn — no silent clobber", async () => {
+test("[§proposal-ownership-auto-stale-clobber] auto rejects an EDIT to a file that diverged on disk this turn — no silent clobber", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-clobber-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
@@ -39,17 +39,17 @@ test("[§dual-yolo-stale-clobber-reject] YOLO rejects an EDIT to a file that div
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "clobber", projectRoot: root });
                 // loop 1 — first sight materializes doc.md = V1 (no divergence).
-                await runLoopToTerminal(ws, 2, { prompt: "look", flags: { yolo: true } });
+                await runLoopToTerminal(ws, 2, { prompt: "look", flags: { auto: true } });
 
                 // The file changes out-of-band between turns.
                 await writeFile(join(root, "doc.md"), "V2 ambient change\n");
 
-                // loop 2 — pre-turn detects the V1→V2 divergence; the YOLO model EDITs based
+                // loop 2 — pre-turn detects the V1→V2 divergence; the auto model EDITs based
                 // on its stale (V1) view. The anti-clobber must reject the EDIT, not apply it.
-                await runLoopToTerminal(ws, 3, { prompt: "edit it", flags: { yolo: true } });
+                await runLoopToTerminal(ws, 3, { prompt: "edit it", flags: { auto: true } });
 
                 const onDisk = await readFile(join(root, "doc.md"), "utf8");
-                assert.match(onDisk, /V2 ambient change/, "the ambient on-disk change survives — the stale YOLO EDIT was rejected, never written");
+                assert.match(onDisk, /V2 ambient change/, "the ambient on-disk change survives — the stale auto EDIT was rejected, never written");
                 assert.doesNotMatch(onDisk, /V3 model clobber/, "the model's stale V3 EDIT did NOT reach disk (no silent clobber)");
             } finally { ws.close(); }
         });

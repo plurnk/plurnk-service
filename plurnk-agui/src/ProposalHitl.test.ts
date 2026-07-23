@@ -60,11 +60,11 @@ test("resurface(): a workspace's pending stopped-worlds come back as tool-calls"
     assert.equal(starts[1].toolCallName, "request_user_input", "the [300] SEND re-surfaces as an input request");
 });
 
-test("a server-owned proposal (flags.yolo / noProposals) emits NO tool-call — the worker must not terminate", () => {
+test("a server-owned proposal (flags.auto / noProposals) emits NO tool-call — the worker must not terminate", () => {
     const m = mockSeam();
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();
-    m.fire(7, "loop/proposal", { logEntryId: 50, op: "EDIT", target: {}, body: "d", attrs: {}, flags: { yolo: true } });
+    m.fire(7, "loop/proposal", { logEntryId: 50, op: "EDIT", target: {}, body: "d", attrs: {}, flags: { auto: true } });
     m.fire(7, "loop/proposal", { logEntryId: 51, op: "EXEC", target: {}, body: "d", attrs: {}, flags: { noProposals: true } });
     assert.equal(emitted.length, 0, "server settles in-process; the stream continues");
     m.fire(7, "loop/proposal", { logEntryId: 52, op: "EDIT", target: {}, body: "d", attrs: {}, flags: {} });

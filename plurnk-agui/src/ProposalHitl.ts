@@ -25,12 +25,12 @@ export default class ProposalHitl {
     start(): void {
         this.#off = this.#seam.subscribeToEvents((workspaceId, method, params) => {
             if (method !== "loop/proposal" || workspaceId === null) return;
-            // Server-owned stopped-worlds (flags.yolo auto-accept / noProposals
+            // Server-owned stopped-worlds (flags.auto / noProposals
             // auto-reject) settle in-process moments later — the loop continues on this
             // same run. Emitting a tool-call would TERMINATE the worker and orphan that
             // continuation, so a tool-call strictly means client-owned.
             const flags = (params as ProposalNotification).flags as Record<string, unknown> | undefined;
-            if (flags?.yolo === true || flags?.noProposals === true) return;
+            if (flags?.auto === true || flags?.noProposals === true) return;
             this.#emit(workspaceId, proposalToolCall(params as ProposalNotification));
         });
     }

@@ -114,7 +114,7 @@ test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), ne
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "passive-wake" });
             // Run a loop to completion → the model worker is now IDLE (one loop).
-            const ran = await runLoopToTerminal(ws, 2, { prompt: "first", flags: { yolo: true } });
+            const ran = await runLoopToTerminal(ws, 2, { prompt: "first", flags: { auto: true } });
             const { loopId } = ran as { loopId: number };
             const modelWorkerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
             const loopsIdle = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;

@@ -102,7 +102,7 @@ export default class SeamSocket {
                     run = await daemon.runLoop({
                         workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt,
                         ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                        ...(p.flags !== undefined ? { flags: p.flags as { yolo?: boolean } } : {}),
+                        ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
                         ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
                     });
                 } catch (err) {
@@ -121,7 +121,7 @@ export default class SeamSocket {
                 const run = await daemon.runLoop({
                     workspaceId: s.workspaceId, workerId: s.modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
-                    ...(p.flags !== undefined ? { flags: p.flags as { yolo?: boolean } } : {}),
+                    ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
                 });
                 return { ...run, modelWorkerId: s.modelWorkerId, finalStatus: 100 };
             }

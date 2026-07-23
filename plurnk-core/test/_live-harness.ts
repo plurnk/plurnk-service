@@ -6,7 +6,7 @@
 // executors, the system prompt, and doc materialization all come from loop.run.
 //
 // liveWorkspace boots + holds the workspace (db stays open for post-loop forensic
-// asserts); liveLoop is the single loop-driver (always server-YOLO, the live/demo
+// asserts); liveLoop is the single loop-driver (always loop-auto, the live/demo
 // stance). Everything funnels through these two so the tier has exactly one path.
 
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
@@ -14,7 +14,7 @@ import SchemeRegistry from "../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../src/schemes/Exec.ts";
 import Owner from "../src/core/Owner.ts";
 import { rmSync, readdirSync } from "node:fs";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type SeamSocket from "./intg/_seam.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-providers";
@@ -38,7 +38,7 @@ export interface LiveWorkspace {
 // default: a missed cleanup leaves harmless clutter, never a lost specimen — the inverse of
 // copy-on-failure, where a missed hook loses the worker forever. Passing workers are swept at worker exit
 // (best-effort, safe); failures stay, greppable by workspace name (the `workspace` file inside).
-const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(homedir(), "repo/plurnk/benchmarks");
+const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(import.meta.dirname, "../../..", "benchmarks");
 const LANE = process.env.PLURNK_LANE ?? "core";
 const createdRuns: string[] = [];
 
@@ -123,7 +123,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string; 
     };
 };
 
-// The single loop-driver for the live/demo tier: fire loop.run (server-YOLO — the
+// The single loop-driver for the live/demo tier: fire loop.run (loop auto — the
 // tier auto-accepts so an unattended model worker isn't blocked on review), await
 // loop/terminated, and return the outcome + the model's final reply. modelWorkerId
 // (the worker the model's ops landed in, for worker-scoped forensic queries) is
@@ -135,7 +135,7 @@ export const liveLoop = async (
     opts: { timeoutMs: number },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
     const term = await runLoopToTerminal(s.ws, id, {
-        prompt: params.prompt, flags: { yolo: true, ...params.flags },
+        prompt: params.prompt, flags: { auto: true, ...params.flags },
         ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
     }, opts);
     if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");

@@ -54,7 +54,7 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
             const created = await rpcCall(ws, 1, "workspace.create", { name: "drain-cancel" });
             const workspaceId = (created.result as { id: number }).id;
             const concluded = subscribeNotifications(ws, "stream/concluded");
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job", flags: { yolo: true } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job", flags: { auto: true } });
             await flush();
             // Wait for the backgrounded exec's subscription to ACTUALLY open before
             // cancelling — a fixed sleep races the spawn (the scheme directory + materialized
@@ -127,7 +127,7 @@ test("[§worker-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run 
             const terminated = subscribeNotifications(ws, "loop/terminated");
 
             const firstPromise = rpcCall(ws, 2, "loop.run", {
-                prompt: "first", flags: { yolo: true },
+                prompt: "first", flags: { auto: true },
             });
             // Wait for the backgrounded exec to ACTUALLY spawn (its entry to exist) before
             // cancelling — a fixed sleep races the spawn (the scheme directory + materialized
@@ -158,7 +158,7 @@ test("[§worker-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run 
 });
 
 test("[§worker-lifecycle-single-drain] loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
-    // Deterministic hold (no 50ms race): a non-yolo EXEC proposal pauses
+    // Deterministic hold (no 50ms race): a non-auto EXEC proposal pauses
     // dispatch at status=202 BEFORE any subprocess spawns, so loop 1 is
     // provably live at status=102 when the second loop.run lands. We REJECT it
     // (no spawn → no stream → no wake side-effect); loop 1 then continues to
@@ -168,7 +168,7 @@ test("[§worker-lifecycle-single-drain] loop.run while a loop is live: second ca
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("<<EXEC[sh]:true:EXEC"),       // proposal → pause (no yolo, no SEND → continue)
+            sendOnly("<<EXEC[sh]:true:EXEC"),       // proposal → pause (no auto, no SEND → continue)
             sendOnly("<<SEND[200]:done:SEND"),      // turn 2 consumes the injected prompt, ends
         ],
     });
@@ -286,7 +286,7 @@ test("[§worker-lifecycle-total-reap] loop.cancel reaps the worker's open stream
             const created = await rpcCall(ws, 1, "workspace.create", { name: "reap-registry" });
             const workspaceId = (created.result as { id: number }).id;
 
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { yolo: true } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { auto: true } });
             // The exec is live + registered open.
             await waitForDb(
                 async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
@@ -327,7 +327,7 @@ test("[§worker-lifecycle-no-resurrection] a cancelled run is not revived by its
             const workspaceId = (created.result as { id: number }).id;
             const concluded = subscribeNotifications(ws, "stream/concluded");
 
-            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { yolo: true } });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { auto: true } });
             await waitForDb(
                 async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 1,

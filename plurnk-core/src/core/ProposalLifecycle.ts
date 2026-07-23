@@ -13,7 +13,7 @@ import { schemeNameOf } from "./plurnk-uri.ts";
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
 // in #pending, and awaits resolution. Resolution arrives via
 // Engine.resolveProposal(id, decision, body?) — from the loop/resolve RPC
-// (Phase E.2), the in-tree YOLO listener (Phase E.3), or a timeout.
+// (Phase E.2), the in-tree auto listener (Phase E.3), or a timeout.
 export type ProposalDecision = "accept" | "reject" | "cancel";
 export interface ProposalResolution {
     decision: ProposalDecision;
@@ -35,7 +35,7 @@ interface ProposalWaiter {
 // External observers of pending-proposal events. workspaceId is included so
 // Daemon can scope its WS broadcast. attrs is the scheme-supplied payload
 // (file diff, exec command, etc.) the client needs to render review UI.
-// flags carries the loop's persisted flags so listeners (YOLO auto-accept,
+// flags carries the loop's persisted flags so listeners (auto resolution,
 // the client-facing notification) can decide policy without a second DB
 // roundtrip — loaded once at dispatch, shared with all listeners.
 export interface ProposalPendingEvent {
@@ -50,8 +50,8 @@ export interface ProposalPendingEvent {
     attrs: object;
     flags: LoopFlags;
     // #note10 — the target entry diverged on disk this turn (ambient change since the
-    // model's prior turn), so the model's EDIT is based on a stale read. A server-YOLO
-    // auto-accept would silently clobber the ambient change; YOLO rejects when set.
+    // model's prior turn), so the model's EDIT is based on a stale read. Loop auto
+    // would silently clobber the ambient change; its listener rejects when set.
     staleClobberRisk: boolean;
 }
 
@@ -70,7 +70,7 @@ const readProposalTimeoutMs = (): number | null => {
 
 // The proposal lifecycle (SPEC.md §engine-rails + §methods loop.resolve): a
 // side-effecting op that returns 202 pauses in dispatch until a resolution
-// arrives — from the loop/resolve RPC, the in-tree YOLO listener, or the
+// arrives — from the loop/resolve RPC, the in-tree auto listener, or the
 // timeout — then the scheme's applyResolution hook applies the accept.
 export default class ProposalLifecycle {
     #db: Db;
@@ -91,7 +91,7 @@ export default class ProposalLifecycle {
     #pending = new Map<number, ProposalWaiter>();
     // External observers of proposal lifecycle events. Daemon subscribes
     // here to push `loop/proposal` notifications when an entry enters
-    // pending state. YOLO listener (Phase E.3) subscribes here too. Lean
+    // pending state. auto listener (Phase E.3) subscribes here too. Lean
     // event emitter — no priority, no veto chain at this layer; filter
     // chains come later if a real consumer needs them.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
@@ -119,7 +119,7 @@ export default class ProposalLifecycle {
     }
 
     // External API to feed a resolution into a pending proposal. Called by
-    // the loop/resolve RPC handler (Phase E.2), the in-tree YOLO listener
+    // the loop/resolve RPC handler (Phase E.2), the in-tree auto listener
     // (Phase E.3), or the timeout watcher. Throws when the logEntryId has no
     // pending waiter — duplicate resolutions, IDs for non-proposed entries,
     // or entries already-resolved are caller errors.
@@ -153,7 +153,7 @@ export default class ProposalLifecycle {
     }
 
     // Subscribe to proposal-pending events. Daemon registers a listener
-    // that broadcasts the loop/proposal WS notification; YOLO listener
+    // that broadcasts the loop/proposal WS notification; auto listener
     // (Phase E.3) registers one that auto-resolves. Listeners fire BEFORE
     // dispatch awaits resolution, so synchronous (or fast-async) handlers
     // can resolve inline.

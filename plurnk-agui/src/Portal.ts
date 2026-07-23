@@ -94,7 +94,7 @@ export default class Portal {
 
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
-    async run(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { yolo?: boolean } }): Promise<{ loopId: number }> {
+    async run(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean } }): Promise<{ loopId: number }> {
         const pending = await this.#hitl.resurface(args.workspaceId);
         this.#fan(args.workspaceId, pending);
         const ack = await this.#seam.runLoop(args);

@@ -163,7 +163,7 @@ export interface SchemeCtx {
 // ── proposals (NOT a capability) ─────────────────────────────────────────
 // A side-effecting scheme proposes by RETURNING a ProposalResult (status
 // 202) from its op handler — no injected capability. The engine owns the
-// resolution lifecycle (await, accept/reject, YOLO/noProposals auto-resolve,
+// resolution lifecycle (await, accept/reject, auto/noProposals auto-resolve,
 // timeout) and it is invisible to the sibling: on reject the actor sees an
 // ordinary 4xx, never the orchestration. The ONLY sibling-side surface is an
 // optional handler hook the engine calls when a proposal is accepted, so the

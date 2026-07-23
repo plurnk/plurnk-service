@@ -8,7 +8,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, runLoopToTerminal } from "./_rpc.ts";
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
-    // A non-yolo EXEC proposal holds loop 1 live (paused at the review) while injects arrive.
+    // A non-auto EXEC proposal holds loop 1 live (paused at the review) while injects arrive.
     makeMockResponse("<<PLAN:hold:PLAN\n<<EXEC[sh]:echo hold:EXEC\n<<SEND[102]:working:SEND", 10),
     makeMockResponse("<<SEND[200]:done:SEND", 10),
     makeMockResponse("<<SEND[200]:done again:SEND", 10),
@@ -20,7 +20,7 @@ test("inject with flags DIFFERING from the live loop's is refused — never a si
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "posture-conflict" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { yolo: false } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { auto: false } });
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
             // Loop 1 is live (held at the proposal). An ask-mode prompt must not fold in as act.
             const conflicted = await rpcCall(ws, 3, "loop.run", { prompt: "? what is the plan", flags: { mode: "ask" } });
@@ -37,16 +37,16 @@ test("inject with MATCHING or ABSENT flags folds into the live loop untouched (#
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "posture-match" });
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { yolo: false } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "start working", flags: { auto: false } });
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
-            const matching = await rpcCall(ws, 3, "loop.run", { prompt: "also do this", flags: { yolo: false } });
+            const matching = await rpcCall(ws, 3, "loop.run", { prompt: "also do this", flags: { auto: false } });
             assert.equal((matching.result as { action: string }).action, "injected_next_turn", "identical flags fold clean");
             const bare = await rpcCall(ws, 4, "loop.run", { prompt: "and this" });
             assert.equal((bare.result as { action: string }).action, "injected_next_turn", "absent flags adopt the loop's posture");
             // Release the held proposal so teardown reaps a settled world.
             const pending = proposals() as Array<{ logEntryId: number }>;
             await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
-            await runLoopToTerminal(ws, 6, { prompt: "wrap up", flags: { yolo: false } }).catch(() => {});
+            await runLoopToTerminal(ws, 6, { prompt: "wrap up", flags: { auto: false } }).catch(() => {});
         } finally { ws.close(); }
     });
 });

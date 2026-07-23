@@ -82,7 +82,7 @@ test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — 
 
 test("[§send-300-choices] e2e: the ask stops the world via loop/proposal; loop.resolve's body IS the answer; the model concludes with it", async () => { await withAsk(async () => {
     // The full client contract through the real daemon (owner ruling: the SAME proposal system
-    // as file edits): the model asks [300] — even under YOLO the question stops the world (yolo
+    // as file edits): the model asks [300] — even under auto the question stops the world (auto
     // never auto-answers a human question) — the client receives loop/proposal carrying
     // {question, choices}, answers via the EXISTING loop.resolve {decision:"accept", body}, the
     // answer lands in the ask's own rx, and the next turn concludes with it.
@@ -97,7 +97,7 @@ test("[§send-300-choices] e2e: the ask stops the world via loop/proposal; loop.
             await rpcCall(ws, 1, "workspace.create", { name: "choices-e2e", settings: { questions: true } });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 2, "loop.run", { prompt: "deploy the service", flags: { yolo: true } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "deploy the service", flags: { auto: true } });
             // The client SEES the ask: a loop/proposal whose attrs carry the question + choices.
             await waitFor(() => proposals() as Array<{ logEntryId?: number; attrs?: { question?: string; choices?: string[] } }>, (items) => items.some((e) => e.attrs?.question === "Which environment?"), { timeoutMs: 15_000 });
             await flush();
@@ -219,7 +219,7 @@ test("[§proposal-list] a reconnecting client DISCOVERS the stopped world — th
             const workspaceId = (created.result as { id: number }).id;
             const proposals = subscribeNotifications(ws, "loop/proposal");
             const terminated = subscribeNotifications(ws, "loop/terminated");
-            await rpcCall(ws, 2, "loop.run", { prompt: "deploy", flags: { yolo: true } });
+            await rpcCall(ws, 2, "loop.run", { prompt: "deploy", flags: { auto: true } });
             await waitFor(() => proposals() as Array<{ attrs?: { question?: string } }>, (items) => items.some((e) => e.attrs?.question !== undefined), { timeoutMs: 15_000 });
             // THE RECONNECT: a fresh connection attaches and discovers the stopped world cold.
             const ws2 = await connect(addr);

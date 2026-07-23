@@ -27,7 +27,7 @@ test("[§exec-stream] regression: a model's EXEC result surfaces in the NEXT tur
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-surface" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command", flags: { yolo: true } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command", flags: { auto: true } });
             assert.equal(finalStatus, 200, "loop terminates on the turn-2 SEND[200]");
             assert.ok((turnIds?.length ?? 0) >= 2, `expected at least 2 turns; got ${turnIds?.length}`);
 
@@ -68,7 +68,7 @@ test("[§exec-stream] the cursor-terminal race: a one-burst stream fully shown F
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "cursor-terminal" });
-            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", flags: { yolo: true } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", flags: { auto: true } });
             assert.equal(finalStatus, 200);
             const last = turnIds![turnIds!.length - 1];
             const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: last });

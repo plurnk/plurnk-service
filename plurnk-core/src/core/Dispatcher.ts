@@ -209,7 +209,7 @@ export default class Dispatcher {
         // speech, not a proposal — #isProposal, #255), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
         // resolution arrives via Engine.resolveProposal (from the loop/resolve RPC,
-        // YOLO listener, or timeout). The post-resolution status replaces 202 in the
+        // auto listener, or timeout). The post-resolution status replaces 202 in the
         // result the caller sees, so runTurn never branches on a pending state.
         if (Dispatcher.#isProposal(statement, result)) {
             // Effect-gated auto-run (read/pure runtimes, plurnk-service#182):
@@ -226,13 +226,13 @@ export default class Dispatcher {
             // and waiter-registration would open a race window.
             const resolutionPromise = this.#proposals.awaitResolution(logEntryId);
             // Notify external listeners (Daemon broadcasts loop/proposal;
-            // YOLO listener auto-resolves) BEFORE awaiting — they may
+            // auto listener auto-resolves) BEFORE awaiting — they may
             // resolve synchronously inside their handlers.
             const target = this.#extractTarget(statement.target);
             await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon} — compare in the same canon the rows store
-            const flags = await this.#loadLoopFlags(loopId); // the loop/proposal notification carries flags (yolo) — §dual-yolo-proposal-carries-flags
+            const flags = await this.#loadLoopFlags(loopId); // the proposal carries loop authority — §proposal-ownership-notification
             // #note10 — if the target diverged on disk this turn, the model's EDIT is based
-            // on a stale read; flag it so a YOLO auto-accept rejects instead of clobbering.
+            // on a stale read; flag it so a auto resolution rejects instead of clobbering.
             const diverged = await (this.#db.engine_target_diverged_this_turn as PrepMethod).get<{ hit: number }>({ worker_id: workerId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
             const event: ProposalPendingEvent = {
                 logEntryId, workspaceId, workerId, loopId, turnId,
@@ -310,7 +310,7 @@ export default class Dispatcher {
     // Loads loops.flags (json column) and merges over DEFAULT_LOOP_FLAGS so
     // missing keys read as their documented defaults. Single read site —
     // ProposalPendingEvent.flags is constructed from this, and listeners
-    // (Daemon broadcast, YOLO auto-accept) share the result.
+    // (Daemon broadcast, loop auto) share the result.
     async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
         const row = await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId });
         if (row === undefined) return DEFAULT_LOOP_FLAGS;
@@ -406,7 +406,7 @@ export default class Dispatcher {
         if (statement.op === "SEND" && statement.target === null) return null;
 
         const flags = await this.#loadLoopFlags(loopId);
-        // Fast path: default flags gate nothing. (yolo never gates.)
+        // Fast path: default flags gate nothing. (auto never gates.)
         if (!flags.noWeb && !flags.noInteraction && flags.mode === "act") return null;
 
         // §mode-ask-read-only — the ancient contract: an ask-mode loop NEVER changes the world. The
@@ -483,7 +483,7 @@ export default class Dispatcher {
         const prompt = typeof statement.body === "string" ? statement.body : "";
 
         // §worker-delegation-inherits-flags — authority flows down the delegation edge: the child's live
-        // loop runs with ITS DELEGATOR'S flags. A flagless (non-YOLO) child's every side-effecting op
+        // loop runs with ITS DELEGATOR'S flags. A flagless (non-auto) child's every side-effecting op
         // proposes into a resolver-less void — 300s auto-cancel per attempt was the fan-out wedge.
         const flags = await this.#loadLoopFlags(ctx.loopId);
 

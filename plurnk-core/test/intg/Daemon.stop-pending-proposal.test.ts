@@ -10,7 +10,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications,
 
 test("Daemon.stop with a PENDING stopped-world proposal terminates — never a shutdown deadlock", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        // A non-yolo host EXEC proposes (202) and stops the world; nobody ever resolves it.
+        // A non-auto host EXEC proposes (202) and stops the world; nobody ever resolves it.
         makeMockResponse("<<PLAN:run:PLAN\n<<EXEC[sh]:echo pending:EXEC\n<<SEND[102]:proposed:SEND", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {

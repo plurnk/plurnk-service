@@ -1,6 +1,6 @@
-// Server-side YOLO wire path (#147). Closes the Phase E.3 deferred TODO:
-// `loop.run` accepts `flags?: { yolo?: boolean }`, persists to loops.flags,
-// the in-tree yolo.ts listener reads ProposalPendingEvent.flags and auto-
+// Server-side auto wire path (#147). Closes the Phase E.3 deferred TODO:
+// `loop.run` accepts `flags?: { auto?: boolean }`, persists to loops.flags,
+// the in-tree auto.ts listener reads ProposalPendingEvent.flags and auto-
 // resolves without any client `loop.resolve` call. The loop/proposal
 // notification also carries flags so connected clients can suppress review
 // UI for entries that will resolve before any human can react.
@@ -17,7 +17,7 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockRe
 // Engine.proposal-lifecycle.test.ts. Lets us trigger the lifecycle from a
 // full Daemon RPC roundtrip without depending on the File scheme (whose
 // File scheme used to require PLURNK_WORKSPACE_ROOT but now reads
-// workspaces.project_root — out of scope for these YOLO tests anyway).
+// workspaces.project_root — out of scope for these auto tests anyway).
 class ProposingTest {
     static manifest: SchemeManifest = {
         name: "proposing-test",
@@ -38,21 +38,21 @@ class ProposingTest {
     }
 }
 
-test("loop.run with flags.yolo=true persists to loops.flags", async () => {
+test("loop.run with flags.auto=true persists to loops.flags", async () => {
     const dsl = "<<EDIT(worker:///x):body:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "yolo-persist" });
-            const response = await rpcCall(ws, 2, "loop.run", { prompt: "test", flags: { yolo: true } });
+            await rpcCall(ws, 1, "workspace.create", { name: "auto-persist" });
+            const response = await rpcCall(ws, 2, "loop.run", { prompt: "test", flags: { auto: true } });
             const result = response.result as { loopId: number };
 
             const row = await (db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: result.loopId });
             assert.ok(row !== undefined);
-            const parsed = JSON.parse(row!.flags) as { yolo: boolean };
-            assert.equal(parsed.yolo, true);
+            const parsed = JSON.parse(row!.flags) as { auto: boolean };
+            assert.equal(parsed.auto, true);
         } finally { ws.close(); }
     });
 });
@@ -74,9 +74,9 @@ test("loop.run without flags leaves loops.flags at default ({})", async () => {
     });
 });
 
-test("[§dual-yolo-server-yolo-auto-accept] loop.run with flags.yolo=true: in-tree yolo listener auto-accepts proposal", async () => {
+test("[§proposal-ownership-loop-auto] loop.run with flags.auto=true: in-tree auto listener resolves proposal", async () => {
     // Model emits EDIT against the proposing-test scheme (status=202), then
-    // SEND[200]. With server YOLO on, the proposal resolves in-process; the
+    // SEND[200]. With loop auto on, the proposal resolves in-process; the
     // loop completes without any client loop.resolve. Assert: final status
     // is 200 and a proposal/resolved log row exists.
     const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
@@ -87,9 +87,9 @@ test("[§dual-yolo-server-yolo-auto-accept] loop.run with flags.yolo=true: in-tr
 
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "yolo-resolve" });
+            await rpcCall(ws, 1, "workspace.create", { name: "auto-resolve" });
             const result = await runLoopToTerminal(ws, 2, {
-                prompt: "trigger proposal", flags: { yolo: true },
+                prompt: "trigger proposal", flags: { auto: true },
             });
             assert.equal(result.finalStatus, 200, "loop completes without external resolution (not maxed — that'd be 429)");
 
@@ -103,14 +103,14 @@ test("[§dual-yolo-server-yolo-auto-accept] loop.run with flags.yolo=true: in-tr
             // final status — ProposingTest has no applyResolution so the engine
             // downgrade-on-throw path leaves the entry resolved at 200/4xx.
             // Either is acceptable here; assert it's NOT still 202.
-            assert.notEqual(edit!.status_rx, 202, "yolo should have resolved the 202");
+            assert.notEqual(edit!.status_rx, 202, "auto should have resolved the 202");
         } finally { ws.close(); }
     });
 });
 
-test("[§dual-yolo-proposal-carries-flags] loop/proposal notification carries flags.yolo", async () => {
-    // Without YOLO active: dispatch pauses awaiting resolution. We capture
-    // the broadcast, confirm flags is present and yolo=false, then send
+test("[§proposal-ownership-notification] loop/proposal notification carries flags.auto", async () => {
+    // Without auto active: dispatch pauses awaiting resolution. We capture
+    // the broadcast, confirm flags is present and auto=false, then send
     // loop.resolve to unblock the dispatch so the loop completes cleanly.
     const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
@@ -136,10 +136,10 @@ test("[§dual-yolo-proposal-carries-flags] loop/proposal notification carries fl
             }
             assert.ok(captured.length > 0, "loop/proposal notification expected");
             const params = captured[0] as {
-                logEntryId: number; flags?: { yolo?: boolean };
+                logEntryId: number; flags?: { auto?: boolean };
             };
             assert.ok(params.flags !== undefined, "flags must be on loop/proposal payload");
-            assert.equal(params.flags!.yolo, false, "yolo defaults to false");
+            assert.equal(params.flags!.auto, false, "auto defaults to false");
 
             // Unblock the dispatch.
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: params.logEntryId, decision: "accept" });
@@ -148,7 +148,7 @@ test("[§dual-yolo-proposal-carries-flags] loop/proposal notification carries fl
     });
 });
 
-test("loop/proposal notification: flags.yolo=true when server YOLO is active", async () => {
+test("loop/proposal notification: flags.auto=true when loop auto is active", async () => {
     const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
@@ -158,27 +158,41 @@ test("loop/proposal notification: flags.yolo=true when server YOLO is active", a
         const ws = await connect(addr);
         try {
             const proposals = subscribeNotifications(ws, "loop/proposal");
-            await rpcCall(ws, 1, "workspace.create", { name: "flags-yolo-notif" });
-            await runLoopToTerminal(ws, 2, { prompt: "trigger", flags: { yolo: true } });
+            await rpcCall(ws, 1, "workspace.create", { name: "flags-auto-notif" });
+            await runLoopToTerminal(ws, 2, { prompt: "trigger", flags: { auto: true } });
             // loop.run returns immediately now; wait for the proposal to broadcast async.
-            const captured = await waitFor(() => proposals() as Array<{ flags?: { yolo?: boolean } }>, (p) => p.length > 0);
-            assert.ok(captured.length > 0, "loop/proposal still broadcasts under server YOLO");
-            const params = captured[0] as { flags?: { yolo?: boolean } };
-            assert.equal(params.flags?.yolo, true, "notification reflects active server YOLO");
+            const captured = await waitFor(() => proposals() as Array<{ flags?: { auto?: boolean } }>, (p) => p.length > 0);
+            assert.ok(captured.length > 0, "loop/proposal still broadcasts under loop auto");
+            const params = captured[0] as { flags?: { auto?: boolean } };
+            assert.equal(params.flags?.auto, true, "notification reflects active loop auto");
         } finally { ws.close(); }
     });
 });
 
-test("loop.run rejects non-boolean flags.yolo", async () => {
+test("loop.run rejects non-boolean flags.auto", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "bad-yolo" });
+            await rpcCall(ws, 1, "workspace.create", { name: "bad-auto" });
             const response = await rpcCall(ws, 2, "loop.run", {
-                prompt: "test", flags: { yolo: "not-a-boolean" },
+                prompt: "test", flags: { auto: "not-a-boolean" },
             });
             assert.equal(response.error?.code, -32603);
-            assert.match(response.error?.message ?? "", /flags\.yolo must be a boolean/);
+            assert.match(response.error?.message ?? "", /flags\.auto must be a boolean/);
+        } finally { ws.close(); }
+    });
+});
+
+test("loop.run rejects unknown flags rather than silently ignoring policy", async () => {
+    await withDaemon(null, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "unknown-flag" });
+            const response = await rpcCall(ws, 2, "loop.run", {
+                prompt: "test", flags: { automatic: true },
+            });
+            assert.equal(response.error?.code, -32603);
+            assert.match(response.error?.message ?? "", /flags\.automatic is not supported/);
         } finally { ws.close(); }
     });
 });
@@ -189,7 +203,7 @@ test("loop.run rejects non-object flags", async () => {
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "bad-flags" });
             const response = await rpcCall(ws, 2, "loop.run", {
-                prompt: "test", flags: "yolo",
+                prompt: "test", flags: "auto",
             });
             assert.equal(response.error?.code, -32603);
             assert.match(response.error?.message ?? "", /flags must be an object/);

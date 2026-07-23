@@ -36,7 +36,7 @@ import type { RuntimeDecl, RuntimeAvailability } from "@plurnk/plurnk-execs";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopAlias } from "./loop-model.ts";
-import Yolo from "./yolo.ts";
+import Auto from "./auto.ts";
 import NoProposals from "./noProposals.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 import type { LoopFlags } from "../core/types.ts";
@@ -178,16 +178,15 @@ export default class Daemon {
                 body: event.body,
                 attrs: event.attrs,
                 // event.flags is carried for discoverability — a client in
-                // server-YOLO mode (event.flags.yolo=true) knows to skip
+                // loop-auto mode (event.flags.auto=true) knows to skip
                 // rendering review UI because the entry will resolve in-
                 // process before any human can react.
                 flags: event.flags,
             });
         });
-        // In-tree YOLO listener — auto-accepts proposals when the loop's
-        // persisted flags.yolo === true. Skips client roundtrip entirely.
-        Yolo.attachYolo(this.#engine, this.#db);
-        // Inverse of YOLO: auto-REJECT proposals in-process when the loop's
+        // In-tree auto listener resolves proposals when persisted flags.auto is true.
+        Auto.attach(this.#engine, this.#db);
+        // Inverse policy: auto-REJECT proposals in-process when the loop's
         // persisted flags.noProposals === true (client has no review channel).
         // The model sees an ordinary 400, never the orchestration reason.
         NoProposals.attachNoProposals(this.#engine, this.#db);
@@ -221,7 +220,7 @@ export default class Daemon {
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
     async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; alias?: string; model?: string }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
-        ClientInput.validateLoopFlags("loop.run", args.flags); // seam fail-hard (#364) — a truthy string must never flip YOLO
+        const flags = ClientInput.normalizeLoopFlags("loop.run", args.flags) as Partial<LoopFlags> | undefined;
         // #414 — per-loop model selection: a client sends its alias/model on every loop, so a
         // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>, #90) wins
         // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
@@ -243,7 +242,8 @@ export default class Daemon {
         const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
         const requested = args.maxTurns ?? ceiling;
         const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
-        const { action, loopId, turnSeq } = await this.inject({ ...args, ...(maxTurns >= 0 ? { maxTurns } : {}), provider, systemPrompt });
+        const { flags: _inputFlags, ...rest } = args;
+        const { action, loopId, turnSeq } = await this.inject({ ...rest, ...(flags !== undefined ? { flags } : {}), ...(maxTurns >= 0 ? { maxTurns } : {}), provider, systemPrompt });
         return { action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
     }
 

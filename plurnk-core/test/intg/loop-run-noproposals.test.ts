@@ -1,4 +1,4 @@
-// Server-side noProposals wire path — the inverse of loop-run-yolo.test.ts.
+// Server-side noProposals wire path — the inverse of loop-run-auto.test.ts.
 // loop.run accepts flags.noProposals; the in-tree noProposals.ts listener
 // reads ProposalPendingEvent.flags and auto-REJECTS in-process without any
 // client loop.resolve. The model sees an ordinary 400 (the action did NOT
@@ -14,7 +14,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-// Minimal always-proposing scheme (mirrors loop-run-yolo.test.ts). Returns
+// Minimal always-proposing scheme (mirrors loop-run-auto.test.ts). Returns
 // 202 so the proposal lifecycle fires from a full Daemon RPC roundtrip.
 class ProposingTest {
     static manifest: SchemeManifest = {

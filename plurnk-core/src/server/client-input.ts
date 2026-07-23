@@ -42,15 +42,20 @@ export default class ClientInput {
         });
     }
 
-    // §wait — loop flags are booleans (mode aside); a truthy string silently flipping YOLO would
+    // §wait — loop flags are booleans (mode aside); a truthy string silently flipping auto-approval would
     // be a review-bypass, so the shape fail-hards at the surface.
-    static validateLoopFlags(context: string, flags: unknown): void {
-        if (flags === undefined) return;
+    static normalizeLoopFlags(context: string, flags: unknown): Record<string, unknown> | undefined {
+        if (flags === undefined) return undefined;
         if (typeof flags !== "object" || flags === null || Array.isArray(flags)) {
             throw new Error(`${context}: flags must be an object`);
         }
         const f = flags as Record<string, unknown>;
-        for (const bool of ["yolo", "noProposals", "noWeb", "noInteraction"]) {
+        const booleanFlags = new Set(["auto", "noProposals", "noWeb", "noInteraction"]);
+        const allowed = new Set([...booleanFlags, "mode"]);
+        for (const key of Object.keys(f)) {
+            if (!allowed.has(key)) throw new Error(`${context}: flags.${key} is not supported`);
+        }
+        for (const bool of booleanFlags) {
             if (f[bool] !== undefined && typeof f[bool] !== "boolean") {
                 throw new Error(`${context}: flags.${bool} must be a boolean`);
             }
@@ -58,6 +63,7 @@ export default class ClientInput {
         if (f.mode !== undefined && f.mode !== "ask" && f.mode !== "act") {
             throw new Error(`${context}: flags.mode must be 'ask' or 'act'`);
         }
+        return f;
     }
 
     // #231 — validate + serialize the client open-context bag. filesItems is a scalar (replace);

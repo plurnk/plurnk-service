@@ -12,4 +12,6 @@ The plurnk metaproject layer, published — what the family shares that no singl
 
 **Family tooling** grows here (scaffolders, meta bins) — the published surface of the metaproject's management layer.
 
+[`DOGFOOD.md`](./DOGFOOD.md) defines the whole-product, outside-client acceptance gate for daily-driver and release readiness.
+
 Third-party plugin authors: your package is discovered by ANY scope + a `plurnk` manifest (`plurnk.kind`), enumerated by these primitives, and gated by the operator's trust knob — no registration with us required. MIT.

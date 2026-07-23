@@ -22,7 +22,7 @@ WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202) LIMIT 1;
 SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id AND status = 102;
 
 -- PREP: engine_get_loop_flags
--- Loads the loop's persisted flags (json). Default '{}'; YOLO listener and
+-- Loads the loop's persisted flags (json). Default '{}'; auto listener and
 -- SchemeRegistry.resolveForLoop merge over DEFAULT_LOOP_FLAGS for missing
 -- fields. Migration 014.
 SELECT flags FROM loops WHERE id = $loop_id;
@@ -106,7 +106,7 @@ SELECT settings FROM workspaces WHERE id = $workspace_id;
 -- PREP: engine_target_diverged_this_turn
 -- #note10 — did this entry diverge on disk THIS turn? A source=file env-delta for the
 -- target, materialized into this worker's log at the current turn, means the model's view
--- predates the ambient change — a YOLO auto-accept of a same-turn EDIT would clobber it.
+-- predates the ambient change — a auto resolution of a same-turn EDIT would clobber it.
 SELECT 1 AS hit
 FROM log_entries
 WHERE worker_id = $worker_id AND turn_id = $turn_id
@@ -471,7 +471,7 @@ RETURNING id;
 
 -- PREP: engine_resolve_log_entry
 -- Transitions a proposed log entry to its terminal state. Used by the
--- proposal lifecycle (loop/resolve RPC, YOLO auto-accept, timeout, abort).
+-- proposal lifecycle (loop/resolve RPC, auto resolution, timeout, abort).
 -- Updates status_rx + rx + state + outcome atomically.
 UPDATE log_entries
    SET state = $state,
