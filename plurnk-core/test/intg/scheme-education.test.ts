@@ -16,7 +16,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-test("[§schemes-directory] scheme directory: the packet's `schemes` section is a terse directory below tools; the catalogue left the definition", async () => {
+test("scheme directory: the packet's `schemes` section is a terse directory below tools; the catalogue left the definition", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `scheme-edu-${crypto.randomUUID()}`);

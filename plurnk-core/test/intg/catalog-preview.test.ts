@@ -15,7 +15,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 type LogRow = { op: string; pathname: string; scheme: string; status_rx: number; rx: string };
 const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
 
-test("[§actor-boundary-catalog-preview] PLURNK_SERVICE_FILES_ITEMS foists the catalog at turn 0 — memory FULL, the files cap never truncates it (none when off)", async () => {
+test("PLURNK_SERVICE_FILES_ITEMS foists the catalog at turn 0 — memory FULL, the files cap never truncates it (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // ON with a cap: =2 → the catalog is foisted at turn 0 (200). The cap is FILES-only; the
@@ -84,7 +84,7 @@ test("no manifest.json entry — the catalog is FIND-served; preview-off foists 
 
 // #231 — a workspace's client-chosen filesItems REPLACES the env default outright,
 // both directions: it can switch the preview off when env says on, and on when off.
-test("[§operator-config-workspace-files-items] workspace.create settings.filesItems replaces the env default at turn 0", async () => {
+test("workspace.create settings.filesItems replaces the env default at turn 0", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // env ON (full) but the client's workspace asks for OFF (0) → no preview foisted.
@@ -161,7 +161,7 @@ test("[#269] turn-0 run-once foists fire on the worker's first loop only, not ev
     }
 });
 
-test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a static print", async () => {
+test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a static print", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
@@ -188,7 +188,7 @@ test("[§model-entry] the turn-0 exemplar mirrors the REAL foisted survey — dy
     }
 });
 
-test("[§actor-boundary-catalog-preview] an EMPTY workspace still foists the bare FIND(**) — 'nothing here' is orienting, not noise (owner)", async () => {
+test("an EMPTY workspace still foists the bare FIND(**) — 'nothing here' is orienting, not noise (owner)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";

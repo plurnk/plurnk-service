@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { withDaemon, connect, rpcCall } from "./_rpc.ts";
 
-test("workspace.constrain / .constraints / .unconstrain round-trip over RPC (SPEC §membership overlay tooling)", async () => {
+test("workspace.constrain / .constraints / .unconstrain round-trip over RPC (SPEC overlay tooling)", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

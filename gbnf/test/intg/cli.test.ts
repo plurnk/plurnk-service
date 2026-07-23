@@ -24,25 +24,25 @@ const run = (args: string[], input = ""): Run => {
     }
 };
 
-test("[§cli_json] prints the verdict as pretty JSON on stdout", () => {
+test("prints the verdict as pretty JSON on stdout", () => {
     const { stdout } = run([ECHO], "<<ECHO:hi:ECHO");
     assert.deepEqual(JSON.parse(stdout), { status: "accept" });
     assert.match(stdout, /\n {2}"status"/); // 2-space indent
 });
 
-test("[§cli_exit] exit 0 on accept, 1 on reject/incomplete", () => {
+test("exit 0 on accept, 1 on reject/incomplete", () => {
     assert.equal(run([ECHO], "<<ECHO:hi:ECHO").code, 0);
     assert.equal(run([ECHO], "oops").code, 1);
     assert.equal(run([ECHO], "<<ECHO:hi").code, 1); // incomplete
 });
 
-test("[§cli_stdin] reads input from stdin when no input-file is given", () => {
+test("reads input from stdin when no input-file is given", () => {
     const { code, stdout } = run([ECHO], "<<ECHO::ECHO");
     assert.equal(code, 0);
     assert.equal(JSON.parse(stdout).status, "accept");
 });
 
-test("[§cli_root] --root selects the start rule", () => {
+test("--root selects the start rule", () => {
     const dir = mkdtempSync(join(tmpdir(), "gbnf-cli-"));
     try {
         const g = join(dir, "g.gbnf");
@@ -54,7 +54,7 @@ test("[§cli_root] --root selects the start rule", () => {
     }
 });
 
-test("[§cli_usage] a missing grammar argument is a usage error (exit 64)", () => {
+test("a missing grammar argument is a usage error (exit 64)", () => {
     const { code, stderr } = run([]);
     assert.equal(code, 64);
     assert.match(stderr, /usage: gbnf/);

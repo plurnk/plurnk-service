@@ -21,7 +21,7 @@ const waitForReply = async (replies: object[]): Promise<{ id: number; result?: u
     return replies[0] as never;
 };
 
-test("[§operator-config-loop-timeout] the wall rules a legible 504 loop_timeout terminal", async () => {
+test("the wall rules a legible 504 loop_timeout terminal", async () => {
     process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "1"; // expires before the first turn settles
     const db = await openMigrated();
     try {
@@ -42,7 +42,7 @@ test("[§operator-config-loop-timeout] the wall rules a legible 504 loop_timeout
     }
 });
 
-test("[§operator-config-loop-timeout] the default wall never intrudes — a short loop concludes 200 untouched", async () => {
+test("the default wall never intrudes — a short loop concludes 200 untouched", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-wall-off-${crypto.randomUUID()}`);

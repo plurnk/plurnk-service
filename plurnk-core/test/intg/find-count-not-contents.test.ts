@@ -15,7 +15,7 @@ const findAll = (): FindStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("[§find-count-not-contents] over the budget, FIND returns a count + narrow steer, not the enumerated rows (#418)", async () => {
+test("over the budget, FIND returns a count + narrow steer, not the enumerated rows (#418)", async () => {
     const prev = process.env.PLURNK_SERVICE_FIND_MAX_MATCHES;
     process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = "3";
     const db = await openMigrated();
@@ -36,7 +36,7 @@ test("[§find-count-not-contents] over the budget, FIND returns a count + narrow
     }
 });
 
-test("[§find-count-not-contents] under the budget, FIND enumerates the catalog rows as before (#418)", async () => {
+test("under the budget, FIND enumerates the catalog rows as before (#418)", async () => {
     const prev = process.env.PLURNK_SERVICE_FIND_MAX_MATCHES;
     process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = "500";
     const db = await openMigrated();

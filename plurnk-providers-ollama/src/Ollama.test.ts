@@ -103,7 +103,7 @@ test("fromEnv: trailing slash on base URL is stripped before /api/show", async (
 
 // — tokenizer dispatch on the constructed Provider —
 
-test("generate failure carries the provider:ollama telemetry source (SPEC §12)", async () => {
+test("generate failure carries the provider:ollama telemetry source (SPEC )", async () => {
     const { ProviderError } = await import("@plurnk/plurnk-providers");
     mock.method(globalThis, "fetch", async (url: string) => {
         if (String(url).endsWith("/api/show")) {

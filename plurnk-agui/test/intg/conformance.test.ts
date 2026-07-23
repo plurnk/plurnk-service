@@ -15,7 +15,7 @@ import type { DaemonSeam } from "../../src/DaemonSeam.ts";
 const SERVICE = resolve(import.meta.dirname, "../../../plurnk-service");
 const gated = (process.env.PLURNK_MODEL ?? "") === "" || (process.env.PLURNK_PROVIDERS_FETCH_TIMEOUT ?? "") === "";
 
-test("[§agui-projection][§agui-run-endpoint] the official @ag-ui/client accepts the full stream (create-ag-ui-app conformance)", { skip: gated, timeout: 180_000 }, async () => {
+test("the official @ag-ui/client accepts the full stream (create-ag-ui-app conformance)", { skip: gated, timeout: 180_000 }, async () => {
     const { openMigrated } = await import(join(SERVICE, "test/intg/_helpers.ts"));
     const { liveProvider } = await import(join(SERVICE, "test/_live-harness.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));

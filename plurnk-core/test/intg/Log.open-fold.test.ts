@@ -189,7 +189,7 @@ test("KILL erases an op='error' log item exactly like any other — errors ARE n
     } finally { await db.close(); }
 });
 
-test("[§log-curation-folder-idiom] FOLD(log:///1/1/) folds the turn's rows — the trailing slash means the contents, uniform with READ(folder/)", async () => {
+test("FOLD(log:///1/1/) folds the turn's rows — the trailing slash means the contents, uniform with READ(folder/)", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
@@ -202,7 +202,7 @@ test("[§log-curation-folder-idiom] FOLD(log:///1/1/) folds the turn's rows — 
     } finally { await db.close(); }
 });
 
-test("[§log-curation-folder-idiom] a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an error (owner ruling)", async () => {
+test("a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an error (owner ruling)", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
@@ -219,7 +219,7 @@ test("[§log-curation-folder-idiom] a zero-match sweep is a NO-OP SUCCESS — 20
     } finally { await db.close(); }
 });
 
-test("[§log-coordinate-hierarchy] a PARTIAL coordinate is a prefix, slash OPTIONAL — FOLD(log:///1/1) ≡ FOLD(log:///1/1/) folds the turn (#353-jumbo)", async () => {
+test("a PARTIAL coordinate is a prefix, slash OPTIONAL — FOLD(log:///1/1) ≡ FOLD(log:///1/1/) folds the turn (#353-jumbo)", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         // The natural whole-turn fold the jumbo model reached for (no trailing slash) now resolves.
@@ -241,7 +241,7 @@ test("[§log-coordinate-hierarchy] a PARTIAL coordinate is a prefix, slash OPTIO
     } finally { await db.close(); }
 });
 
-test("[§log-region-tagging] FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — named working-set curation", async () => {
+test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — named working-set curation", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup(); // seeds 1/1/1 EDIT
     try {
         const seedRead = async (sequence: number): Promise<void> => {
@@ -291,7 +291,7 @@ test("[§log-region-tagging] FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filt
     } finally { await db.close(); }
 });
 
-test("[§log-coordinate-hierarchy] FOLD/OPEN curate ENGINE-MINTED rows — the lowercase op suffix (error/model) parses, not just model ops (jumbo root cause)", async () => {
+test("FOLD/OPEN curate ENGINE-MINTED rows — the lowercase op suffix (error/model) parses, not just model ops (jumbo root cause)", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         // An engine-minted ERROR row (op='error', LOWERCASE) at seq=2 — the kind that bloats the log

@@ -32,7 +32,7 @@ const captureClient = async (clientId: string | null): Promise<string | undefine
     return captured;
 };
 
-test("[§client-telemetry] the workspace's client id reaches generate() (#249)", async () => {
+test("the workspace's client id reaches generate() (#249)", async () => {
     assert.equal(await captureClient("plurnk.nvim/1.4.0"), "plurnk.nvim/1.4.0", "the workspace-stable client id reaches the provider wire");
 });
 

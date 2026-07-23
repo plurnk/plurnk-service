@@ -8,7 +8,7 @@ import Namespace from "./namespace.ts";
 
 const ROOT = "/home/bob/project";
 
-test("[§fs-namei] every spelling of a member resolves to its one canonical key — slash rule, dot resolution, out-and-back-in aliasing", () => {
+test("every spelling of a member resolves to its one canonical key — slash rule, dot resolution, out-and-back-in aliasing", () => {
     const cases: Array<[string, string | null]> = [
         // the slash rule (CWD=/): bare and slashed are one name
         ["example.md", "example.md"],
@@ -50,7 +50,7 @@ test("[§fs-namei] every spelling of a member resolves to its one canonical key 
     }
 });
 
-test("[§fs-canonical-name] canon is a fixpoint — the world-state invariant's predicate", () => {
+test("canon is a fixpoint — the world-state invariant's predicate", () => {
     for (const key of ["example.md", "src/main.js", "../lib/x.md", "../../shared/y.md", "a-b_c.d/e f.md"]) {
         assert.equal(Namespace.canonicalize(key, ROOT), key, `${key} is its own canon`);
         assert.ok(Namespace.isCanonical(key, ROOT), `isCanonical(${key})`);
@@ -60,7 +60,7 @@ test("[§fs-canonical-name] canon is a fixpoint — the world-state invariant's 
     }
 });
 
-test("[§fs-namespace] the root-mount degenerate: at project_root=/ the jail is the whole filesystem — no mounts can exist, host-style spellings ARE member keys", () => {
+test("the root-mount degenerate: at project_root=/ the jail is the whole filesystem — no mounts can exist, host-style spellings ARE member keys", () => {
     // The benchmark topology: /text.md on disk IS the member text.md. Same two rules,
     // no special case — and every '..' escape re-enters the tree by construction.
     assert.equal(Namespace.canonicalize("/text.md", "/"), "text.md");

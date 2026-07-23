@@ -77,7 +77,7 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
     }
 };
 
-test("[§proposal-accept-applies] file.edit: writes file on accept via applyResolution", async () => {
+test("file.edit: writes file on accept via applyResolution", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         // Pre-seed an existing file so the EDIT computes a real diff.
         const target = "src/hello.txt";
@@ -130,7 +130,7 @@ test("[§proposal-accept-applies] file.edit: writes file on accept via applyReso
     });
 });
 
-test("[§proposal-outcome-terse-error] file.edit: rejection leaves file untouched; the rx carries the outcome as its terse error token", async () => {
+test("file.edit: rejection leaves file untouched; the rx carries the outcome as its terse error token", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
@@ -200,7 +200,7 @@ test("file.edit: an accept into a NOT-YET-EXISTING subtree creates the parent di
     });
 });
 
-test("[§edit-marker-required-on-existing] a markerless EDIT of an EXISTING file is refused, never a silent full replace (#571)", async () => {
+test("a markerless EDIT of an EXISTING file is refused, never a silent full replace (#571)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "src/Engine.ts";
         await mkdir(join(root, "src"), { recursive: true });

@@ -20,7 +20,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, rootWorkspace,
 
 const execFileP = promisify(execFile);
 
-test("[§fs-world-state] soak: N turn boundaries with per-turn membership re-resolution — zero growth, zero violations, every boundary", { timeout: 120_000 }, async () => {
+test("soak: N turn boundaries with per-turn membership re-resolution — zero growth, zero violations, every boundary", { timeout: 120_000 }, async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-soak-"));
     const db = await openMigrated();
     try {

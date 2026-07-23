@@ -66,7 +66,7 @@ const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number
     return { workspaceId, workerId, loopId };
 };
 
-test("[§grinder-overflow-only] under the ceiling the grinder never fires — nothing is hidden", async () => {
+test("under the ceiling the grinder never fires — nothing is hidden", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -81,7 +81,7 @@ test("[§grinder-overflow-only] under the ceiling the grinder never fires — no
     } finally { await db.close(); }
 });
 
-test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are folded to their coordinate", async () => {
+test("on overflow the prior turn's log entries are folded to their coordinate", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -103,7 +103,7 @@ test("[§grinder-layer1-rollback] on overflow the prior turn's log entries are f
     } finally { await db.close(); }
 });
 
-test("[§grinder-errors-exempt] a PLAN row at the newest boundary survives the overflow fold — the checklist steers the recovery (#465)", async () => {
+test("a PLAN row at the newest boundary survives the overflow fold — the checklist steers the recovery (#465)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -126,7 +126,7 @@ test("[§grinder-errors-exempt] a PLAN row at the newest boundary survives the o
     } finally { await db.close(); }
 });
 
-test("[§grinder-layer1-rollback] THE DOCTRINE: older history is NEVER grinder-folded — the model alone curates it", async () => {
+test("THE DOCTRINE: older history is NEVER grinder-folded — the model alone curates it", async () => {
     // The guard whose absence once let a fold-everything variant run green. Three turns; turn 1's
     // rows are OLD history by turn 3. Overflow at turn 3 folds the newest boundary (turn 2 + turn
     // 3's pre-model rows) and MUST leave turn 1's open rows untouched — even though folding them
@@ -152,7 +152,7 @@ test("[§grinder-layer1-rollback] THE DOCTRINE: older history is NEVER grinder-f
     } finally { await db.close(); }
 });
 
-test("[§grinder-hard-413-abort] a DECLINED recovery abandons at 413 (budget_overflow) — the terminal that follows being told", async () => {
+test("a DECLINED recovery abandons at 413 (budget_overflow) — the terminal that follows being told", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -165,7 +165,7 @@ test("[§grinder-hard-413-abort] a DECLINED recovery abandons at 413 (budget_ove
     } finally { await db.close(); }
 });
 
-test("[§grinder-hard-413-recovery] a recovery turn that CONCLUDES is a legitimate 200 — finishing IS a way to stop overflowing", async () => {
+test("a recovery turn that CONCLUDES is a legitimate 200 — finishing IS a way to stop overflowing", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -178,7 +178,7 @@ test("[§grinder-hard-413-recovery] a recovery turn that CONCLUDES is a legitima
     } finally { await db.close(); }
 });
 
-test("[§grinder-strike-coupling] a grinder fire past the first turn counts toward the strike streak", async () => {
+test("a grinder fire past the first turn counts toward the strike streak", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -188,7 +188,7 @@ test("[§grinder-strike-coupling] a grinder fire past the first turn counts towa
     } finally { await db.close(); }
 });
 
-test("[§grinder-compaction-strikes] turn-1 overflow folds the turn's own foists and STRIKES — no soft exemption", async () => {
+test("turn-1 overflow folds the turn's own foists and STRIKES — no soft exemption", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -203,7 +203,7 @@ test("[§grinder-compaction-strikes] turn-1 overflow folds the turn's own foists
     } finally { await db.close(); }
 });
 
-test("[§grinder-overflow-error-row] overflow is a terse op='error' log row (413) surfaced THIS turn as a LogCoordinate — not a by-scheme JSON event", async () => {
+test("overflow is a terse op='error' log row (413) surfaced THIS turn as a LogCoordinate — not a by-scheme JSON event", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -224,7 +224,7 @@ test("[§grinder-overflow-error-row] overflow is a terse op='error' log row (413
     } finally { await db.close(); }
 });
 
-test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn is part of the newest boundary — folds, never a needless 413 (#332)", async () => {
+test("a huge ENGINE-WRITTEN row on the current turn is part of the newest boundary — folds, never a needless 413 (#332)", async () => {
     // The run14 shape: the prior turn is tiny, and the overflow lives in THIS turn's pre-model
     // rows (a wake turn's auto-surfaced stream conclusion — 68KB of search results). The current
     // turn's pre-model rows are part of the newest turn boundary, so they fold with it and the
@@ -272,7 +272,7 @@ test("[§grinder-layer1-rollback] a huge ENGINE-WRITTEN row on the current turn 
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-agnostic-ruler] the ceiling is the real window partition (window − reserves), no calibration ratio", async () => {
+test("the ceiling is the real window partition (window − reserves), no calibration ratio", async () => {
     const db = await openMigrated();
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
@@ -287,7 +287,7 @@ test("[§tokenomics-agnostic-ruler] the ceiling is the real window partition (wi
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-fetch-fits-free] the 413 row states the pressure law — fold history first, fetch within the room", async () => {
+test("the 413 row states the pressure law — fold history first, fetch within the room", async () => {
     // run24/jumbo forensics: the read→grind→re-read spiral happens because the model is never
     // TOLD that an oversized retrieval arrives pre-folded. The 413 is the right slot: the signal
     // fires exactly when the lesson applies. Terse, causal, factual — not an essay.
@@ -310,7 +310,7 @@ test("[§tokenomics-fetch-fits-free] the 413 row states the pressure law — fol
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-output-truncated] a finish=length turn's parse errors are led by the CAUSE — truncation, not syntax (run29)", async () => {
+test("a finish=length turn's parse errors are led by the CAUSE — truncation, not syntax (run29)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -331,7 +331,7 @@ test("[§tokenomics-output-truncated] a finish=length turn's parse errors are le
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-output-truncated] a finish=length turn that emitted NOTHING — reasoning ran away — is led by the empty-emission cause, not a syntax lie (run52)", async () => {
+test("a finish=length turn that emitted NOTHING — reasoning ran away — is led by the empty-emission cause, not a syntax lie (run52)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -353,7 +353,7 @@ test("[§tokenomics-output-truncated] a finish=length turn that emitted NOTHING 
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-window-partition] SAFETY resolves PER ALIAS — the suffix wins over the bare fallback (#352, #507)", async () => {
+test("SAFETY resolves PER ALIAS — the suffix wins over the bare fallback (#352, #507)", async () => {
     // #507 — the envelope (window + reserves) is provider-owned and its per-alias resolution is
     // the provider tier's (tested there). Core's per-alias surface is ONE knob: SAFETY, the ruler's
     // packing margin. Driven through the REAL alias resolution: a Mock carries no provider→alias
@@ -382,7 +382,7 @@ test("[§tokenomics-window-partition] SAFETY resolves PER ALIAS — the suffix w
     } finally { await db.close(); }
 });
 
-test("[§grinder-hard-413-recovery] the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs, strike counted; the SECOND terminates 413", async () => {
+test("the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs, strike counted; the SECOND terminates 413", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -404,7 +404,7 @@ test("[§grinder-hard-413-recovery] the FIRST hard overflow is a RECOVERY TURN �
     } finally { await db.close(); }
 });
 
-test("[§grinder-hard-413-recovery] physically unsendable → 413 IMMEDIATELY, no recovery generate — physics doesn't negotiate", async () => {
+test("physically unsendable → 413 IMMEDIATELY, no recovery generate — physics doesn't negotiate", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);

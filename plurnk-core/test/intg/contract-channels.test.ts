@@ -41,7 +41,7 @@ const seedExecEntry = async (
     return entryId;
 };
 
-test("[§channel-selection-fragment-selects-named-channel] fragment targets the named channel; fragment-less targets default", async () => {
+test("fragment targets the named channel; fragment-less targets default", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
@@ -61,7 +61,7 @@ test("[§channel-selection-fragment-selects-named-channel] fragment targets the 
     } finally { await db.close(); }
 });
 
-test("[§channel-selection-unknown-channel-400] an unknown fragment 400s WITH the fact naming the declared universe", async () => {
+test("an unknown fragment 400s WITH the fact naming the declared universe", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
@@ -80,7 +80,7 @@ test("[§channel-selection-unknown-channel-400] an unknown fragment 400s WITH th
     } finally { await db.close(); }
 });
 
-test("[§channel-selection-fragment-on-nonexistent-404] fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
+test("fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const k = new Worker();
@@ -101,7 +101,7 @@ test("[§channel-selection-fragment-on-nonexistent-404] fragment EDIT on absent 
     } finally { await db.close(); }
 });
 
-test("[§channels-channels-append-only] channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
+test("channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Two distinct channel names on one entry are two rows under the same key space.
@@ -121,7 +121,7 @@ test("[§channels-channels-append-only] channels are keyed by (entry_id, name); 
     } finally { await db.close(); }
 });
 
-test("[§channel-state-schemes-own-state-transitions] the exec scheme transitions channel state across the connection lifecycle", async () => {
+test("the exec scheme transitions channel state across the connection lifecycle", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const exec = new Exec();
@@ -150,7 +150,7 @@ test("[§channel-state-schemes-own-state-transitions] the exec scheme transition
     } finally { await db.close(); }
 });
 
-test("[§channel-state-state-is-metadata] channel state does not gate reads — errored/closed channels still return content", async () => {
+test("channel state does not gate reads — errored/closed channels still return content", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Seed an entry whose channel is in the 'errored' terminal state with

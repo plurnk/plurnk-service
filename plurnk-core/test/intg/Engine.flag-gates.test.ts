@@ -53,7 +53,7 @@ const setLoopFlags = async (db: Awaited<ReturnType<typeof openMigrated>>, loopId
     await (db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify(flags) });
 };
 
-test("[§mode-ask-read-only] ask mode refuses EVERY filesystem write — EDIT/COPY-dest/MOVE/KILL on the workspace (the ancient read-only contract, uncovered until now)", async () => {
+test("ask mode refuses EVERY filesystem write — EDIT/COPY-dest/MOVE/KILL on the workspace (the ancient read-only contract, uncovered until now)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await setLoopFlags(db, loopId, { mode: "ask" });

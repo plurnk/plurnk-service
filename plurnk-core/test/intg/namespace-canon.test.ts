@@ -34,7 +34,7 @@ const setup = async () => {
     return { root, db, workspaceId, ctx };
 };
 
-test("[§fs-namei] pin 1+2: every spelling of one member resolves to the ONE row — bare, slashed, dotted, out-and-back-in", async () => {
+test("pin 1+2: every spelling of one member resolves to the ONE row — bare, slashed, dotted, out-and-back-in", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await mkdir(join(root, "src"), { recursive: true });
@@ -53,7 +53,7 @@ test("[§fs-namei] pin 1+2: every spelling of one member resolves to the ONE row
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§fs-answer-in-canon] pin 3: EDIT via a slashed spelling answers in bare canon and mints NO shadow row", async () => {
+test("pin 3: EDIT via a slashed spelling answers in bare canon and mints NO shadow row", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "note.md"), "original\n");
@@ -72,7 +72,7 @@ test("[§fs-answer-in-canon] pin 3: EDIT via a slashed spelling answers in bare 
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§fs-canonical-name] the storage fixpoint: every file-class row is its own canon", async () => {
+test("the storage fixpoint: every file-class row is its own canon", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "a.md"), "a\n");
@@ -85,7 +85,7 @@ test("[§fs-canonical-name] the storage fixpoint: every file-class row is its ow
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§fs-answer-in-canon] the log row: address COLUMNS speak canon, tx keeps the model's verbatim spelling — both halves of the line", async () => {
+test("the log row: address COLUMNS speak canon, tx keeps the model's verbatim spelling — both halves of the line", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "readme.md"), "hello\n");
@@ -109,7 +109,7 @@ test("[§fs-answer-in-canon] the log row: address COLUMNS speak canon, tx keeps 
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§fs-write-surface] the six-row write matrix — grantor-keyed mounts, O_EXCL create, the blind-write closure", async () => {
+test("the six-row write matrix — grantor-keyed mounts, O_EXCL create, the blind-write closure", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     const outside = await mkdtemp(join(tmpdir(), "plurnk-mount-"));
     try {
@@ -148,7 +148,7 @@ test("[§fs-write-surface] the six-row write matrix — grantor-keyed mounts, O_
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
-test("[§fs-errno] pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by the strings alone", async () => {
+test("pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by the strings alone", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "real.md"), "content\n");
@@ -181,7 +181,7 @@ test("[§fs-errno] pins 6+8: facts distinguish wrong-address / occupancy / empty
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§fs-write-surface] the accept stamps the grantor the closure proved — provenance never waits for the reconcile", async () => {
+test("the accept stamps the grantor the closure proved — provenance never waits for the reconcile", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
@@ -196,7 +196,7 @@ test("[§fs-write-surface] the accept stamps the grantor the closure proved — 
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§fs-visibility-grantors] an in-root file no grantor admits DOES NOT EXIST; a client pick brings it into existence", async () => {
+test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it into existence", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
         // A real file, physically in the root — non-git root, no pick: NO grantor admits it.

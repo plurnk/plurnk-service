@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
-test("[§methods-op-mirror] op.edit creates an entry via engine.dispatch (origin=client)", async () => {
+test("op.edit creates an entry via engine.dispatch (origin=client)", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -73,7 +73,7 @@ test("op.read on nonexistent entry returns 404", async () => {
     });
 });
 
-test("[§op-look] op.look (#283) resolves a target like op.read but writes NO log entry", async () => {
+test("op.look (#283) resolves a target like op.read but writes NO log entry", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -167,7 +167,7 @@ test("op.parse surfaces a parse failure as a 400 result with its line:col — no
     });
 });
 
-test("[§notifications-log-entry-notify] op.* fires log/entry notification with the entry shape", async () => {
+test("op.* fires log/entry notification with the entry shape", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

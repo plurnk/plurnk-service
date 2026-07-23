@@ -65,7 +65,7 @@ const nativeTracked = (root: string): string[] =>
 const nativeUntracked = (root: string): string[] =>
     git(root, "ls-files", "--others", "--exclude-standard", "-z").split("\0").filter((e) => e.length > 0).sort();
 
-test("[§git-portable-default] iso tracked/untracked match native ls-files on the same repo — gitlinks filtered, gitignore honored, untracked dirs descended", async () => {
+test("iso tracked/untracked match native ls-files on the same repo — gitlinks filtered, gitignore honored, untracked dirs descended", async () => {
     const { root } = await seedRich();
     try {
         const cache = {};
@@ -80,7 +80,7 @@ test("[§git-portable-default] iso tracked/untracked match native ls-files on th
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§git-portable-default] GitState.status via iso: branch + staged/unstaged/untracked counts match the working tree", async () => {
+test("GitState.status via iso: branch + staged/unstaged/untracked counts match the working tree", async () => {
     const { root } = await seedRich();
     const db = await openMigrated();
     try {
@@ -97,7 +97,7 @@ test("[§git-portable-default] GitState.status via iso: branch + staged/unstaged
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§git-portable-default] ahead/behind vs the configured upstream — exact counts via merge-base walk", async () => {
+test("ahead/behind vs the configured upstream — exact counts via merge-base walk", async () => {
     const root = await seedRepo("iso-ab-");
     const db = await openMigrated();
     try {
@@ -125,7 +125,7 @@ test("[§git-portable-default] ahead/behind vs the configured upstream — exact
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§git-portable-default] a linked worktree workspace root resolves membership + status through iso (the gitdir-file shape)", async () => {
+test("a linked worktree workspace root resolves membership + status through iso (the gitdir-file shape)", async () => {
     const main = await seedRepo("iso-wt-main-");
     const db = await openMigrated();
     const linked = join(main, "..", `iso-wt-linked-${crypto.randomUUID()}`);
@@ -150,7 +150,7 @@ test("[§git-portable-default] a linked worktree workspace root resolves members
 // byte-for-byte across: negations, anchored patterns, dir-vs-glob patterns (`build/**` + re-include
 // vs `node_modules/` prune), NESTED .gitignore precedence, `.git/info/exclude`, a submodule
 // boundary (gitlink — never descended), and an embedded plain repo (its own .git, not a submodule).
-test("[§git-portable-default] untracked scan reproduces native --exclude-standard across the gitignore edge-case corpus (#463)", async () => {
+test("untracked scan reproduces native --exclude-standard across the gitignore edge-case corpus (#463)", async () => {
     const inner = await seedRepo("iso-corpus-sub-");
     await writeFile(join(inner, "inner.txt"), "i\n"); git(inner, "add", "."); commit(inner, "sub seed");
     const root = await seedRepo("iso-corpus-");
@@ -206,7 +206,7 @@ test("[§git-portable-default] untracked scan reproduces native --exclude-standa
     }
 });
 
-test("[§git-native-flag] PLURNK_SERVICE_GIT_NATIVE=1 routes to system git — same membership, same status", async () => {
+test("PLURNK_SERVICE_GIT_NATIVE=1 routes to system git — same membership, same status", async () => {
     const { root } = await seedRich();
     const db = await openMigrated();
     const prior = process.env.PLURNK_SERVICE_GIT_NATIVE;

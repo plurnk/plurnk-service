@@ -12,7 +12,7 @@ import { sendStmt } from "./_dsl.ts";
 // list through transformSections — the in-process seam that lets a third-party
 // plugin add / remove / reorder packet sections without forking the engine. The
 // client wire never reaches the packet; this does.
-test("[§packet-plugin-transform] plugin packet control: a scheme adds, removes, and reorders packet sections", async () => {
+test("plugin packet control: a scheme adds, removes, and reorders packet sections", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-plugin-${crypto.randomUUID()}`);

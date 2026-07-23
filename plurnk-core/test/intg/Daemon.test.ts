@@ -82,7 +82,7 @@ test("workspace.create with no name auto-generates a unique name", async () => {
     });
 });
 
-test("[§methods-rebind] workspace.create on an already-attached connection re-binds in place (no reject)", async () => {
+test("workspace.create on an already-attached connection re-binds in place (no reject)", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -111,7 +111,7 @@ test("workspace.list returns workspaces most-recent-first", async () => {
     });
 });
 
-test("[§methods-workspace-attach] workspace.attach binds to existing workspace", async () => {
+test("workspace.attach binds to existing workspace", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const existing = await (db.test_insert_workspace as PrepMethod).get<{ id: number }>({ name: "existing" });
 

@@ -70,7 +70,7 @@ test("Engine.dispatch: KILL against worker:/// permanently deletes the entry (20
     } finally { await db.close(); }
 });
 
-test("[§scheme-address-namespace-fold] worker:///x (authority form) folds to the same entry as worker:///x", async () => {
+test("worker:///x (authority form) folds to the same entry as worker:///x", async () => {
     const { db, engine, env } = await setup();
     try {
         // create via the path form: skill:///config.json => /config.json
@@ -140,7 +140,7 @@ test("Engine.dispatch: KILL against log:/// is allowed (erases the row) — a mi
     } finally { await db.close(); }
 });
 
-test("[§model-entry-log-curation] MODEL-origin KILL(log:///…) clears the writableBy gate and erases the row — the taught curation lever, through the REAL dispatch path", async () => {
+test("MODEL-origin KILL(log:///…) clears the writableBy gate and erases the row — the taught curation lever, through the REAL dispatch path", async () => {
     // Log.kill worked when called directly, but writableBy gated KILL ∈ MUTATING_OPS to plurnk-only —
     // the model's own budget-recovery lever 403'd at dispatch (surfaced by the budget-grind digests:
     // the model reaches for KILL(log:///…) under a pinned ceiling and was refused).
@@ -188,7 +188,7 @@ const setup = async () => {
     return { db, engine, env };
 };
 
-test("[§op-methods-op-dispatch] Engine.dispatch: EDIT against worker:/// routes to Known.edit, returns 201, writes entry", async () => {
+test("Engine.dispatch: EDIT against worker:/// routes to Known.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -345,7 +345,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy or dispatch
 // returns 403 without invoking the handler.
 
-test("[§scheme-surface-writableby-403] Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
+test("Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
     const { db, engine, env } = await setup();
     try {
         // worker://'s writableBy is ['model','client','plurnk'] — a plugin-origin EDIT 403s at the gate.
@@ -390,7 +390,7 @@ test("Engine.dispatch: model EDIT prompt:/// rejected with 403 (engine/client ow
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT worker://plurnk/ is 403 — only the kernel authors its surface ({§worker-write-scoping})", async () => {
+test("Engine.dispatch: model EDIT worker://plurnk/ is 403 — only the kernel authors its surface ({})", async () => {
     const { db, engine, env } = await setup();
     try {
         await Owner.commonsId(db, env.workspaceId); // ensure reserved rows resolvable
@@ -446,7 +446,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
 // SPEC §scheme-surface / plurnk-schemes#1: action-entry-as-outcome — scheme-handler
 // exceptions finalize the action-entry at 500, not bubble up.
 
-test("[§scheme-surface-exception-500] Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
+test("Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();

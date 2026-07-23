@@ -30,7 +30,7 @@ test("telemetry → plurnk.telemetry custom; loop/proposal deferred to ProposalH
     assert.deepEqual(r.route("loop/proposal", { logEntryId: 42 }), [], "the router yields proposals to ProposalHitl");
 });
 
-test("[§agui-projection] stream events serve the standard ACTIVITY channel AND plurnk.stream (§475 complete-support)", () => {
+test("stream events serve the standard ACTIVITY channel AND plurnk.stream (complete-support)", () => {
     const r = router();
     const ev = r.route("stream/event", { entryId: 9, target: "search:///1/1/9", scheme: "search", state: "active" });
     const activity = ev.find((e) => e.type === "ACTIVITY_SNAPSHOT") as { messageId: string; activityType: string; content: unknown; replace?: boolean } | undefined;
@@ -46,7 +46,7 @@ test("[§agui-projection] stream events serve the standard ACTIVITY channel AND 
     assert.equal(dact?.activityType, "STREAM", "no scheme → STREAM fallback");
 });
 
-test("[§agui-projection] terminated serves the standard RAW channel — the provider's native completion frame (§475)", () => {
+test("terminated serves the standard RAW channel — the provider's native completion frame ()", () => {
     const meta = { model: "gemma-4-26B.gguf", finish_reason: "stop", timings: { predicted_ms: 900 } };
     const ev = router().route("loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 5, completionTokens: 6, costPico: 0, contextTokens: 11, contextSize: 200000, meta } });
     const raw = ev.find((e) => e.type === "RAW") as { event: unknown; source?: string } | undefined;

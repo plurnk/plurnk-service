@@ -115,7 +115,7 @@ test("instantiateProvider: an untrusted (skipped) provider gives a precise error
     assert.deepEqual(imports, []); // never imported an untrusted package
 });
 
-test("instantiateProvider: discovered package without a fromEnv factory throws (factory shape, SPEC §10.1)", async () => {
+test("instantiateProvider: discovered package without a fromEnv factory throws (factory shape, SPEC )", async () => {
     resetDiscoveryCache();
     await assert.rejects(
         () => instantiateProvider("broken", { ...fullEnv }, "m",

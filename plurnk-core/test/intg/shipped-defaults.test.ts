@@ -28,7 +28,7 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
     return env;
 };
 
-test("[§operator-config-shipped-defaults] the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
+test("the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
     const env = await shippedEnv();
     // The operating policy is a packet SECTION (readSystemPolicy) — a PLURNK_SERVICE_MD_* default pointing
     // at the same file injects it twice (once as ## Plurnk Service Policy, once as a foisted
@@ -54,7 +54,7 @@ test("[§operator-config-shipped-defaults] the template ships no double policy, 
     // is the 64Ki-prompt gemma envelope). Prompt budget stays well above the decode envelope.
 });
 
-test("[§operator-config-shipped-defaults] under the shipped policy wiring, the personality renders in the packet exactly once", async () => {
+test("under the shipped policy wiring, the personality renders in the packet exactly once", async () => {
     // Mirror a fresh install: PLURNK_SERVICE_POLICY → the seed file itself (ensureHome copies
     // PLURNK_PERSONALITY.md to ~/.plurnk/AGENTS.md); no PLURNK_SERVICE_MD_* docs.
     const prevPolicy = process.env.PLURNK_SERVICE_POLICY;

@@ -587,7 +587,7 @@ test("observation: empty content under a non-empty grammar returns with the verd
     assert.equal(res.telemetry?.[0].kind, "grammar_unenforced");
 });
 
-test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated — no wire fields, no error (SPEC §10.13)", async () => {
+test("enforcement: when no grammar is sent (grammarStyle 'none'), output is NOT validated — no wire fields, no error (SPEC )", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
     streamingContent("anything goes");
     const { assistant } = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' }); // grammar passed but never transported
@@ -900,7 +900,7 @@ test("retry: retryAttempts 0 surfaces the first transient failure immediately", 
     assert.equal(calls.length, 1); // no retry budget
 });
 
-test("retry: a caller abort during backoff rejects promptly with no further attempt (mid-flight abort, SPEC §10.9)", async () => {
+test("retry: a caller abort during backoff rejects promptly with no further attempt (mid-flight abort, SPEC )", async () => {
     const ac = new AbortController();
     const calls = installFetchScript([{ status: 503, retryAfter: 5 }]); // 5s backoff we never wait out
     const p = new OpenAICompatProvider({ ...retryCfg, retryAttempts: 3 });

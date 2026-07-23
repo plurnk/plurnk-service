@@ -28,7 +28,7 @@ const costs = async (db: Db, workspaceId: number, workerId: number) => ({
     workspace: (await (db.test_cost_session as PrepMethod).get<{ cost_pico: number }>({ id: workspaceId }))?.cost_pico ?? 0,
 });
 
-test("[§provider-surface-costfor] cost rollups: turn insert propagates to run AND workspace", async () => {
+test("cost rollups: turn insert propagates to run AND workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-cost-single");

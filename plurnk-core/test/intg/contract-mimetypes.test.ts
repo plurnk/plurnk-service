@@ -50,7 +50,7 @@ const setup = async () => {
 // handler's parseTree fails → QueryParseFailureError → Matcher.matchAgainstContent
 // maps to 203, returning the RAW bytes as the text primitive plus `reason`.
 
-test("[§matcher-dispatch-203-soft-fallback] jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
+test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const k = new Worker();
@@ -84,7 +84,7 @@ test("[§matcher-dispatch-203-soft-fallback] jsonpath on malformed-JSON entry re
 // an application/json result), then structural <L><P> over that log entry
 // picks the P-th match — matcher rx is application/json, <L> selects the item.
 
-test("[§slice-semantics-compose-pattern] a matcher READ fans out per match — the Nth match is log:///<l>/<t>/N, addressed directly (#286)", async () => {
+test("a matcher READ fans out per match — the Nth match is log:///<l>/<t>/N, addressed directly (#286)", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "compose");
@@ -162,7 +162,7 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
 // post-0.15. Assert the shape against the real auto-discovered service for a
 // known mimetype (markdown → symbols) and an unknown one (ok:false).
 
-test("[§mimetype-methods-process-entry-point] Mimetypes.process returns the structural projections + extent", async () => {
+test("Mimetypes.process returns the structural projections + extent", async () => {
     const md = "# Title\n\nbody paragraph\n\n## Sub\n\nmore";
     const known = await DEFAULT_MIMETYPES.process({ content: md, hint: "text/markdown" }, { channels: ["symbols"] });
     assert.equal(known.mimetype, "text/markdown", "process echoes the resolved mimetype");
@@ -182,7 +182,7 @@ test("[§mimetype-methods-process-entry-point] Mimetypes.process returns the str
 // (the manifest build → Mimetypes.process) MUST fire it. Same handler, two
 // phases: 0 firings after write, >0 after render.
 
-test("[§mimetype-schemes-do-not-invoke-handlers] write resolves mimetype without firing the handler; render fires it", async () => {
+test("write resolves mimetype without firing the handler; render fires it", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-fire-${crypto.randomUUID()}`);

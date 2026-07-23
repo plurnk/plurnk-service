@@ -121,7 +121,7 @@ test("[#488] a configured-but-unloadable variant fails LOUD — a broken rail is
 // contract on every path; a provider that never transported the grammar (constrainsOutput unset —
 // the delegated/hosted shape) still gets per-turn rail truth in turns.meta. Provider self-
 // attestation shares a failure domain with the enforcer; the engine's verdict does not.
-test("[§rail-truth-engine-verdict] delegated path: the engine stamps railsAttached + railsVerdict from its own grading (#534)", async () => {
+test("delegated path: the engine stamps railsAttached + railsVerdict from its own grading (#534)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "verdict.gbnf");
     await writeFile(gbnfPath, 'root ::= "OK"\n');

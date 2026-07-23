@@ -25,7 +25,7 @@ test("prompt:// scheme manifest: engine-authored, model-READ-ONLY, body channel,
     assert.ok(Prompt.manifest.writableBy.includes("plurnk"));
 });
 
-test("[§prompt-self-only] the engine writes prompt:///<loop>/<N> owner-keyed; each worker READs only ITS OWN frame at the shared coordinate", async () => {
+test("the engine writes prompt:///<loop>/<N> owner-keyed; each worker READs only ITS OWN frame at the shared coordinate", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const sister = await insertWorker(db, workspaceId);
@@ -46,7 +46,7 @@ test("[§prompt-self-only] the engine writes prompt:///<loop>/<N> owner-keyed; e
     } finally { await db.close(); }
 });
 
-test("[§prompt-self-only] a frame the worker doesn't hold is 404 — no cross-worker prompt address exists", async () => {
+test("a frame the worker doesn't hold is 404 — no cross-worker prompt address exists", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });

@@ -40,7 +40,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 // subscription; dispatching SEND[499] through the Engine must reach that
 // scheme's send(), resolve the registry to the stored handle, fire teardown
 // with that exact handle, and close the registry row at 499.
-test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] resolves the registry to the owning scheme + stored handle and tears down", async () => {
+test("SEND[499] resolves the registry to the owning scheme + stored handle and tears down", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(db, `sub-route-${crypto.randomUUID()}`);
@@ -110,7 +110,7 @@ test("[§subscriptions-subscription-registry-routes-cancellation] SEND[499] reso
 // lifecycle ONLY (open/close), never one row per chunk. A real streaming exec
 // emits ≥5 stdout chunks (one per line) yet produces exactly ONE EXEC log row,
 // resolved at status 200 — proving chunks live on the channel, not in the log.
-test("[§no-chunk-rows-log-captures-lifecycle-only] multi-chunk exec writes ONE lifecycle log row, not one per chunk", async () => {
+test("multi-chunk exec writes ONE lifecycle log row, not one per chunk", async () => {
     const db = await openMigrated();
     try {
         const chunkEvents: Array<{ channel: string; state: string }> = [];
@@ -159,7 +159,7 @@ test("[§no-chunk-rows-log-captures-lifecycle-only] multi-chunk exec writes ONE 
 // body, enforced by CHECK on entry_channels.content. Over-cap → SQLITE_CONSTRAINT.
 // And NOTHING else is capped: a write well under the cap (1 MiB here) is stored
 // verbatim, un-truncated/un-throttled — the engine doesn't impose any smaller limit.
-test("[§stream-constraints-engine-one-cap] 100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
+test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
@@ -197,7 +197,7 @@ test("[§stream-constraints-engine-one-cap] 100 MiB channel-body CHECK rejects o
 // render live waterfalls without polling. Driving appendToChannel with the
 // daemon's notify callback must fire one event PER chunk (not just at close),
 // each carrying the new (growing) contentLength.
-test("[§live-updates-stream-event-fires-on-chunk] daemon fires stream/event per chunk with growing contentLength", async () => {
+test("daemon fires stream/event per chunk with growing contentLength", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -228,7 +228,7 @@ test("[§live-updates-stream-event-fires-on-chunk] daemon fires stream/event per
 // connection/transaction surface (begin/commit/rollback/open/close). And
 // to the engine, channels are static storage — content arrives by a scheme
 // calling appendToChannel directly, with zero engine brokering.
-test("[§stream-no-engine-transaction-abstraction] engine has no connection/transaction surface; channel growth is scheme-direct", async () => {
+test("engine has no connection/transaction surface; channel growth is scheme-direct", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -263,7 +263,7 @@ test("[§stream-no-engine-transaction-abstraction] engine has no connection/tran
 // content grows OR state transitions"), and the payload is metadata-only:
 // { entryId, channel, state, contentLength } — the new state, the existing
 // content length, and never any content body.
-test("[§notifications-stream-event-on-channel-change] state transition fires metadata-only stream/event with new state", async () => {
+test("state transition fires metadata-only stream/event with new state", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

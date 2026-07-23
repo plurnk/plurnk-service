@@ -266,7 +266,7 @@ test("budget: the grinder folds the immediately-prior turn each time, never olde
 
 // 8b — error rows are grinder-exempt: turn 3's grinder folds turn 2's content but NEVER turn 2's
 // own op='error' overflow row, so the overflow trail stays OPEN and accumulates across turns.
-test("[§grinder-errors-exempt] the grinder folds turn-2's content but never its op='error' overflow row", async () => {
+test("the grinder folds turn-2's content but never its op='error' overflow row", async () => {
     const db = await openMigrated();
     try {
         const { floor, expanded } = await measure(db);
@@ -336,7 +336,7 @@ test("budget: the provider window governs the partition — ceiling = window −
     } finally { await db.close(); }
 });
 
-test("[§budget-mermaid] toggle on: two budget-scaled mermaid diagrams, placeholders resolved, headline preserved, never truncated at low usage", async () => {
+test("toggle on: two budget-scaled mermaid diagrams, placeholders resolved, headline preserved, never truncated at low usage", async () => {
     // #440 — the visual layer, measured against the tabular baseline (default off). Under a WIDE ceiling
     // usage is <50%, where the TABLES would truncate; the diagrams must stay (calm view is the point).
     process.env.PLURNK_SERVICE_BUDGET_MERMAID = "on";
@@ -371,7 +371,7 @@ test("[§budget-mermaid] toggle on: two budget-scaled mermaid diagrams, placehol
     }
 });
 
-test("[§budget-mermaid] set off: the tabular readout renders — the A/B baseline (#440 before/after)", async () => {
+test("set off: the tabular readout renders — the A/B baseline (#440 before/after)", async () => {
     process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
     const db = await openMigrated();
     try {

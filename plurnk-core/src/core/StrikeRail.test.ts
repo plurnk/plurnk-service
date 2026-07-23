@@ -4,7 +4,7 @@ import StrikeRail from "./StrikeRail.ts";
 
 const base = { fingerprint: "READ(x)", noOps: false, budgetStruck: false, steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 
-test("[§send-premature-terminate] a retrieval-only 409 (steerStruck=false) does NOT strike — 409 is soft (#346 gap, firefast)", () => {
+test("a retrieval-only 409 (steerStruck=false) does NOT strike — 409 is soft (#346 gap, firefast)", () => {
     const rail = new StrikeRail();
     // Three consecutive retrieval-preemie refusals: distinct fingerprints (varied targets, so no
     // cycle), status 409, steerStruck FALSE. The ruling: never a strike. Before the 409-soft fix,
@@ -16,7 +16,7 @@ test("[§send-premature-terminate] a retrieval-only 409 (steerStruck=false) does
     assert.equal(rail.streak(1), 0, "no strikes accrued — retrieval preemies teach without striking");
 });
 
-test("[§send-premature-terminate] a stream/child 409 STILL strikes — via steerStruck, the authority", () => {
+test("a stream/child 409 STILL strikes — via steerStruck, the authority", () => {
     const rail = new StrikeRail();
     // Same 409 status, but steerStruck TRUE (Engine sets it for a live-work refusal). Strikes.
     let crossed = false;
@@ -24,7 +24,7 @@ test("[§send-premature-terminate] a stream/child 409 STILL strikes — via stee
     assert.equal(crossed, true, "discarding live work strikes out — steerStruck decides, not the raw 409");
 });
 
-test("[§grinder-strike-coupling] a genuinely-spinning model is still caught — identical turns cycle-strike (508 backstop)", () => {
+test("a genuinely-spinning model is still caught — identical turns cycle-strike (508 backstop)", () => {
     const rail = new StrikeRail();
     // The retrieval-preemie no-strike leaves the cycle detector as the backstop: a model repeating
     // the IDENTICAL read+conclude turn is loop-detected even with 409 soft.

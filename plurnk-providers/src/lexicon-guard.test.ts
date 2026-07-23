@@ -42,7 +42,7 @@ const BANNED: Array<{ label: string; re: RegExp; canon: string; exempt?: RegExp 
     { label: "run/session (retired noun — coordinate or wire header)", re: /\b(sessionId|runId)\b|Plurnk-(Run|Session)-Id/, canon: "workerId/workspaceId, Plurnk-Worker-Id/Plurnk-Workspace-Id (#486/#511)" },
 ];
 
-test("[§lexicon] retired provider terms never reappear in src or SPEC — drift fails CI, not the next audit", () => {
+test("retired provider terms never reappear in src or SPEC — drift fails CI, not the next audit", () => {
     const files = [...walk(join(ROOT, "src")), join(ROOT, "SPEC.md")];
     const violations: string[] = [];
     for (const f of files) {

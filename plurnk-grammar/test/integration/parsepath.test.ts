@@ -267,7 +267,7 @@ test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses
 // #527 (§worker-name): the mintable worker-name contract — a lowercase DNS label. The single
 // source core's auto-namer and schemes' registry derive from. The parser stays permissive
 // (any authority decomposes); this pins the CONTRACT constant, not ingestion behavior.
-test("worker-name contract (§worker-name): WORKER_NAME is a lowercase DNS label", () => {
+test("worker-name contract (): WORKER_NAME is a lowercase DNS label", () => {
     for (const ok of ["alice", "child3", "brisk-otter", "3com", "a", "plurnk"]) {
         assert.ok(WORKER_NAME.test(ok), `${ok} must be mintable`);
     }

@@ -34,7 +34,7 @@ Config + state live in `~/.plurnk/` (created on first run): put your config in `
 
 ## Contract & siblings
 
-- [`SPEC.md`](./SPEC.md) — canonical specification. One `§<tag>` namespace; anchors `{§<tag>}` bind 1:1 to `test/intg/spec-anchors.test.ts`.
+- [`SPEC.md`](./SPEC.md) — detailed behavioral reference.
 - [plurnk-providers](https://github.com/plurnk/plurnk-providers) §provider · [plurnk-schemes](https://github.com/plurnk/plurnk-schemes) §scheme-surface · [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) §mimetype-surface · [plurnk-execs](https://github.com/plurnk/plurnk-execs) §bundled-set.
 
 ## Semantic search

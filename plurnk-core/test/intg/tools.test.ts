@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import PacketWire from "../../src/core/packet-wire.ts";
 
-test("[§tools-capability-sheet] tools capability lines render titleless (flowing from plurnk.md) above Requirements; omitted when empty", () => {
+test("tools capability lines render titleless (flowing from plurnk.md) above Requirements; omitted when empty", () => {
     // Parameterized tools body (empty ⇒ section omitted). The tools section is header-less now —
     // its lines follow the definition (plurnk.md) directly, no `## Plurnk Service Tools` title.
     const userSections = (tools: string) => [

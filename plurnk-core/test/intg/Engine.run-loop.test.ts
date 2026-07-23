@@ -88,7 +88,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
     } finally { await db.close(); }
 });
 
-test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap", async () => {
+test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Four non-terminal turns then SEND[200]. A positive cap of 3 would
@@ -117,7 +117,7 @@ test("[§operator-config-max-turns-ceiling] maxTurns=-1 disables the turn termin
     } finally { await db.close(); }
 });
 
-test("[§send-idle-turn] Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
+test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins out to the engine's 500", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // A bare SEND[102] is a continue that did no work — an idle turn (§send the terminal contract).
@@ -139,7 +139,7 @@ test("[§send-idle-turn] Engine.runLoop: idle turn (102, no work op) steers and 
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] Engine.runLoop: premature terminate (200 over a live stream) downgrades to a continue + steers", async () => {
+test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to a continue + steers", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Seed a live stream the worker holds: an open subscription (closed_at NULL) against a real entry.
@@ -222,7 +222,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
     } finally { await db.close(); }
 });
 
-test("[§provider-guarantees-signal-wired] Engine.runLoop: signal abort between turns throws AbortError", async () => {
+test("Engine.runLoop: signal abort between turns throws AbortError", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const controller = new AbortController();
@@ -255,7 +255,7 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
     } finally { await db.close(); }
 });
 
-test("[§loop-terminals] a strike-threshold abandonment NAMES ITSELF — a legible error telemetry event fires, never a silent 500 (run60/#555)", async () => {
+test("a strike-threshold abandonment NAMES ITSELF — a legible error telemetry event fires, never a silent 500 (run60/#555)", async () => {
     const db = await openMigrated();
     // Capture the live telemetry fan-out — the strike terminal returns a clean finalStatus
     // (no throw), so the drain's loop_error catch never sees it; the self-naming must ride here.
@@ -279,7 +279,7 @@ test("[§loop-terminals] a strike-threshold abandonment NAMES ITSELF — a legib
     } finally { await db.close(); }
 });
 
-test("[§loop-terminals] the FULL terminal enumeration names itself — max_turns included; no deliberate terminal is silent (#555 complete)", async () => {
+test("the FULL terminal enumeration names itself — max_turns included; no deliberate terminal is silent (#555 complete)", async () => {
     const db = await openMigrated();
     const events: Array<{ loopId: number; event: { kind?: string; level?: string } }> = [];
     const engine = new Engine({ db, schemes: new SchemeRegistry(), telemetryEventNotify: (_ws, e) => events.push(e as never) });

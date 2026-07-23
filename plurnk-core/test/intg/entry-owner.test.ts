@@ -25,7 +25,7 @@ const streamRead = (scheme: string, hostname: string | null, pathname: string): 
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("[§stream-owner-scoped] fan-out: two sisters EXEC[jq] at the same coordinate; each READ resolves ITS OWN output (#526)", async () => {
+test("fan-out: two sisters EXEC[jq] at the same coordinate; each READ resolves ITS OWN output (#526)", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -71,7 +71,7 @@ test("[§stream-owner-scoped] fan-out: two sisters EXEC[jq] at the same coordina
     } finally { await db.close(); }
 });
 
-test("[§entry-owner] the commons is a real reserved row — shared-content identity cannot fragment", async () => {
+test("the commons is a real reserved row — shared-content identity cannot fragment", async () => {
     const db = await openMigrated();
     try {
         const ws = await insertWorkspace(db, `owner-commons-${crypto.randomUUID()}`);
@@ -95,7 +95,7 @@ test("[§entry-owner] the commons is a real reserved row — shared-content iden
     } finally { await db.close(); }
 });
 
-test("[§worker-auto-name] auto-names are id-free per-workspace ordinals; reserved names refused", async () => {
+test("auto-names are id-free per-workspace ordinals; reserved names refused", async () => {
     const db = await openMigrated();
     try {
         const ws = await insertWorkspace(db, `owner-name-${crypto.randomUUID()}`);

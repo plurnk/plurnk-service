@@ -38,7 +38,7 @@ const BANNED: Array<{ label: string; re: RegExp; canon: string }> = [
     { label: "retired wire header", re: /Plurnk-Run-Id/, canon: "Plurnk-Worker-Id (#486/#511)" },
 ];
 
-test("[§lexicon] retired terms never reappear in src or SPEC — drift fails CI, not the next audit", () => {
+test("retired terms never reappear in src or SPEC — drift fails CI, not the next audit", () => {
     const files = [...walk(join(ROOT, "src")), join(ROOT, "SPEC.md")];
     const violations: string[] = [];
     for (const f of files) {

@@ -8,7 +8,7 @@ const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotificati
     entry: { id: 7, op: "READ", origin: "model", coordinate: "1/1/3/READ", turn_id: 1, ...over },
 });
 
-test("[§agui-projection][§agui-row-channel] a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
+test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
     const events = tr.logEntry(entry({ op: "READ", scheme: "known", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200 }));
@@ -21,7 +21,7 @@ test("[§agui-projection][§agui-row-channel] a model op row is a TOOL_CALL trip
     assert.match(args.delta, /known:\/\/\/notes\.md/, "the target rides the args");
 });
 
-test("[§agui-projection] PLAN is thinking; SEND is assistant speech with the signal on plurnk.send", () => {
+test("PLAN is thinking; SEND is assistant speech with the signal on plurnk.send", () => {
     const tr = t();
     const plan = tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: { raw: "do the thing" } }) }));
     assert.deepEqual(plan.map((e) => e.type), ["CUSTOM", "STEP_STARTED", "REASONING_START", "REASONING_MESSAGE_START", "REASONING_MESSAGE_CONTENT", "REASONING_MESSAGE_END", "REASONING_END"]);
@@ -32,7 +32,7 @@ test("[§agui-projection] PLAN is thinking; SEND is assistant speech with the si
     assert.equal(custom.value.signal, 200, "the signal rides the namespaced custom — never lost, never masquerading");
 });
 
-test("[§agui-custom-namespace] ambient (origin plurnk) rows ride plurnk.ambient; the model mirror row emits nothing", () => {
+test("ambient (origin plurnk) rows ride plurnk.ambient; the model mirror row emits nothing", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
     const ambient = tr.logEntry(entry({ op: "EDIT", origin: "plurnk", pathname: "/prompt/1/1" }));
@@ -42,7 +42,7 @@ test("[§agui-custom-namespace] ambient (origin plurnk) rows ride plurnk.ambient
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
-test("[§agui-sealed-reasoning] core's single reasoning-item projects a correlated REASONING_ENCRYPTED_VALUE span (#482)", () => {
+test("core's single reasoning-item projects a correlated REASONING_ENCRYPTED_VALUE span (#482)", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" })); // consume the turn boundary
     // core's actual write (Dispatcher.writeModelEntry): attrs = { reasoning: <single item> }.
@@ -60,7 +60,7 @@ test("[§agui-sealed-reasoning] core's single reasoning-item projects a correlat
     assert.equal(ev.value, undefined, "encryptedValue, not value");
 });
 
-test("[§agui-sealed-reasoning] the STANDARD array of items projects ONE correlated span per item (#482)", () => {
+test("the STANDARD array of items projects ONE correlated span per item (#482)", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
     // The standard: a turn CAN carry N reasoning entities (distinct ids) — each its own span.
@@ -75,7 +75,7 @@ test("[§agui-sealed-reasoning] the STANDARD array of items projects ONE correla
     assert.equal((events[5] as { entityId: string }).entityId, "rs_b", "item B's value correlates to item B's id — never cross-wired");
 });
 
-test("[§agui-sealed-reasoning] a NULL-id item stays dark — agui never coins an id to fake correlation (#482)", () => {
+test("a NULL-id item stays dark — agui never coins an id to fake correlation (#482)", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
     // core allows `id: string | null`; a null id is uncorrelatable, so the standard event can't
@@ -85,7 +85,7 @@ test("[§agui-sealed-reasoning] a NULL-id item stays dark — agui never coins a
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM"], "null id → plurnk.row only; no coined id");
 });
 
-test("[§agui-sealed-reasoning] the LEGACY {reasoningEncrypted} carrier stays DARK — no id/subtype means unserved, never guessed (#482)", () => {
+test("the LEGACY {reasoningEncrypted} carrier stays DARK — no id/subtype means unserved, never guessed (#482)", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
     // The bespoke pre-convergence shape agui deliberately does NOT consume: no reasoning-item
@@ -96,7 +96,7 @@ test("[§agui-sealed-reasoning] the LEGACY {reasoningEncrypted} carrier stays DA
     assert.deepEqual(legacy.map((e) => e.type), ["CUSTOM"], "legacy carrier → plurnk.row only; the standard event is unserved until core aligns");
 });
 
-test("[§agui-projection] turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
+test("turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
     const tr = t();
     const first = tr.logEntry(entry({ op: "PLAN", turn_id: 1, tx: "{}" }));
     assert.equal(first[1]?.type, "STEP_STARTED");
@@ -107,7 +107,7 @@ test("[§agui-projection] turn boundaries are STEPs; termination closes the step
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
 });
 
-test("[§agui-numbers-passthrough] plurnk.terminated carries the full terminal truth (workspaceId, loopId, turnIds, costPico) for a client's json record", () => {
+test("plurnk.terminated carries the full terminal truth (workspaceId, loopId, turnIds, costPico) for a client's json record", () => {
     const tr = new Translator({ threadId: "th-1", runId: "run-1", workspaceId: 512 });
     const term: TerminatedNotification = { loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3], usage: { promptTokens: 10, completionTokens: 5, costPico: 4200, contextTokens: 10, promptBudget: 6848, meta: { balancePico: 99 } } };
     const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification & { workspaceId: number | null } };
@@ -118,7 +118,7 @@ test("[§agui-numbers-passthrough] plurnk.terminated carries the full terminal t
     assert.deepEqual(custom.value.usage.meta, { balancePico: 99 }, "opaque provider meta, verbatim");
 });
 
-test("[§agui-numbers-passthrough] the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
+test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     const tr = t();
     const term: TerminatedNotification = { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3, 4], usage: { promptTokens: 4321, completionTokens: 99, costPico: 0, contextTokens: 4321, promptBudget: 35840, meta: {} } };
     const delta = tr.terminated(term).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
@@ -126,7 +126,7 @@ test("[§agui-numbers-passthrough] the budget STATE_DELTA carries the daemon's n
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
 });
 
-test("[§agui-proposal-resolve] a proposal projects with everything the frontend needs to answer", () => {
+test("a proposal projects with everything the frontend needs to answer", () => {
     const tr = t();
     const events = tr.proposal({
         logEntryId: 42, workspaceId: 1, workerId: 2, loopId: 3, turnId: 4,
@@ -140,7 +140,7 @@ test("[§agui-proposal-resolve] a proposal projects with everything the frontend
     assert.deepEqual(e.value.attrs.choices, ["prod", "staging"], "the chooser payload — POST /resolve answers it");
 });
 
-test("[§agui-projection] a non-200 termination is RUN_ERROR carrying the status", () => {
+test("a non-200 termination is RUN_ERROR carrying the status", () => {
     const tr = t();
     const term: TerminatedNotification = { loopId: 1, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage: { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: null, meta: {} } };
     const events = tr.terminated(term);
@@ -148,7 +148,7 @@ test("[§agui-projection] a non-200 termination is RUN_ERROR carrying the status
     assert.equal(error?.code, "500");
 });
 
-test("[§agui-topology-scope] a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
+test("a FOREIGN worker's rows never enter the core stream — plurnk.row/ambient only", () => {
     const tr = new Translator({ threadId: "th", runId: "r", modelWorkerId: 2 });
     const own = tr.logEntry({ entry: { id: 1, op: "PLAN", origin: "model", turn_id: 1, tx: JSON.stringify({ body: "mine" }), ...( { worker_id: 2 } as object) } as never });
     assert.ok(own.some((e) => e.type === "REASONING_MESSAGE_START"), "the thread's model worker projects");
@@ -157,7 +157,7 @@ test("[§agui-topology-scope] a FOREIGN worker's rows never enter the core strea
     assert.ok(!worker.some((e) => e.type === "TEXT_MESSAGE_START"), "a worker's SEND never masquerades as the assistant speaking");
 });
 
-test("[§agui-replay] the workspace log replays as MESSAGES_SNAPSHOT — model SENDs are the conversation spine", () => {
+test("the workspace log replays as MESSAGES_SNAPSHOT — model SENDs are the conversation spine", () => {
     const tr = new Translator({ threadId: "th", runId: "r" });
     const events = tr.replay([
         { id: 1, op: "PLAN", origin: "model", tx: { body: "think" } },
@@ -172,7 +172,7 @@ test("[§agui-replay] the workspace log replays as MESSAGES_SNAPSHOT — model S
     assert.ok(snap.messages.every((m) => m.role === "assistant"));
 });
 
-test("[§agui-zero-dep] zero runtime dependencies — the standing decision, enforced", async () => {
+test("zero runtime dependencies — the standing decision, enforced", async () => {
     const { readFile } = await import("node:fs/promises");
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { dependencies?: Record<string, string> };
     const deps = Object.keys(pkg.dependencies ?? {});

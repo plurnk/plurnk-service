@@ -60,7 +60,7 @@ const openStream = (port: number, body: object): Promise<AguiEvent[]> =>
         .then((res) => res.text())
         .then((text) => text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent));
 
-test("[§agui-broadcast-fan] a workspace's stream events FAN to every open run (never last-binder-wins) — svc#504", async () => {
+test("a workspace's stream events FAN to every open run (never last-binder-wins) — svc#504", async () => {
     const { seam, emit } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
@@ -86,7 +86,7 @@ test("[§agui-broadcast-fan] a workspace's stream events FAN to every open run (
     } finally { await mod.close(); }
 });
 
-test("[§agui-management-plane] an action run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
+test("an action run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
@@ -108,7 +108,7 @@ test("[§agui-management-plane] an action run executes via the seam: result cust
     } finally { await mod.close(); }
 });
 
-test("[§agui-proposal-resolve] a resume tool-result resolves the paused proposal without driving a loop", async () => {
+test("a resume tool-result resolves the paused proposal without driving a loop", async () => {
     const { seam, resolves } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
@@ -150,7 +150,7 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     } finally { await mod.close(); }
 });
 
-test("[§agui-thread-is-run] SESSION=WORKSPACE, THREAD=CONVERSATION: the workspace prop selects the world; the thread is a worker over it (svc#366 landed — the interim bind-the-model-run behavior is retired)", async () => {
+test("SESSION=WORKSPACE, THREAD=CONVERSATION: the workspace prop selects the world; the thread is a worker over it (svc#366 landed — the interim bind-the-model-run behavior is retired)", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const ensured: number[] = [];
@@ -258,7 +258,7 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
 // name if it exists, minted via createConversationWorker if it doesn't — the name is
 // the identity at BOTH levels. Forks (named workers) are addressable as threads.
 
-test("[§agui-thread-is-run] a distinct threadId MINTS a conversation worker named for it, and the loop drives there", async () => {
+test("a distinct threadId MINTS a conversation worker named for it, and the loop drives there", async () => {
     const created: Array<{ workspaceId: number; name?: string }> = [];
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
@@ -275,7 +275,7 @@ test("[§agui-thread-is-run] a distinct threadId MINTS a conversation worker nam
     } finally { await mod.close(); }
 });
 
-test("[§agui-thread-is-run] a threadId naming an EXISTING run (a fork, a prior conversation) binds it — no mint", async () => {
+test("a threadId naming an EXISTING run (a fork, a prior conversation) binds it — no mint", async () => {
     let created = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
@@ -292,7 +292,7 @@ test("[§agui-thread-is-run] a threadId naming an EXISTING run (a fork, a prior 
     } finally { await mod.close(); }
 });
 
-test("[§agui-thread-is-run] threadId == workspace name stays the MODEL run (the default conversation)", async () => {
+test("threadId == workspace name stays the MODEL run (the default conversation)", async () => {
     let minted = 0;
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
@@ -309,7 +309,7 @@ test("[§agui-thread-is-run] threadId == workspace name stays the MODEL run (the
     } finally { await mod.close(); }
 });
 
-test("[§agui-thread-is-run] loop.inject on a distinct thread folds into THAT conversation, never the model worker", async () => {
+test("loop.inject on a distinct thread folds into THAT conversation, never the model worker", async () => {
     const driven: number[] = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "workspace" }];
@@ -323,7 +323,7 @@ test("[§agui-thread-is-run] loop.inject on a distinct thread folds into THAT co
     } finally { await mod.close(); }
 });
 
-test("[§agui-run-endpoint] SSE heartbeat: a silent run stays alive — comment frames flow between events (agui#3: undici bodyTimeout kills silent streams)", async () => {
+test("SSE heartbeat: a silent run stays alive — comment frames flow between events (agui#3: undici bodyTimeout kills silent streams)", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });
@@ -383,7 +383,7 @@ test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a sile
     } finally { await mod.close(); }
 });
 
-test("[§agui-run-endpoint] the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISHED echo RunAgentInput.runId (never plurnk's workerId) — ungated, so a lexicon sweep can't silently break conformance", async () => {
+test("the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISHED echo RunAgentInput.runId (never plurnk's workerId) — ungated, so a lexicon sweep can't silently break conformance", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 3, name: "w" }];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c", modelWorkerId: 20, clientLoopId: null });

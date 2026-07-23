@@ -46,7 +46,7 @@ const wire = async () => {
     return { db, engine, exec, workspaceId, workerId, loopId, turnId };
 };
 
-test("[§exec-readpure-ungated] effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, no in-band body", async () => {
+test("effect-gating: sqlite :memory: (pure) auto-runs ungated — no proposal, no in-band body", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         // No target → :memory: → pure → auto. dispatch resolves WITHOUT any
@@ -85,7 +85,7 @@ test("sqlite EXEC in a workspace workspace: a project_root cwd no longer 500s th
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§exec-host-proposes] effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
+test("effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const idDeferred = deferred<number>();
@@ -140,7 +140,7 @@ test("effect is command-aware (#289): the EXEC command body is passed to effect(
     } finally { await db.close(); }
 });
 
-test("[§exec-registry-resolves] fall-through-INELIGIBLE dispatch → 501 — the refusal lane survives §exec-runtime-fallthrough", async () => {
+test("fall-through-INELIGIBLE dispatch → 501 — the refusal lane survives ", async () => {
     // #350 changed the unknown-tag contract: with sh available, an unregistered tag falls
     // through to the shell (§exec-runtime-fallthrough, cited in execs-batteries). The 501
     // remains for the ineligible case: sh itself workspace-disabled — a client that turned the

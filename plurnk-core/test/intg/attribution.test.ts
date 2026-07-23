@@ -59,7 +59,7 @@ test("#249 — no declared attribution → the wire field is omitted (undefined)
     assert.equal(captured, undefined, "a workspace with no attributing plugins sends no attributions field");
 });
 
-test("[§attribution-plurnk-namespace-reserved] @plurnk/ is reserved to @plurnk/-scoped packages", () => {
+test("@plurnk/ is reserved to @plurnk/-scoped packages", () => {
     // Exhaustive cases live in the unit test src/core/plugin-attribution.test.ts; this carries the SPEC anchor.
     assert.throws(
         () => PluginAttribution.normalize("@plurnk/creators/johnny-cash", "squatter-pkg"),

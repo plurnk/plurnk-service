@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { seedEntryWithChannel } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
-test("[§notifications-envelope-carries-workspaceid] notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
+test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

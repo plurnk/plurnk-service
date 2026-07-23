@@ -68,7 +68,7 @@ const seed = async (db: Awaited<ReturnType<typeof openMigrated>>, opts: { fail?:
 const dispatchSearch = (engine: Engine, ids: { workspaceId: number; workerId: number; loopId: number; turnId: number }, command: string, sequence: number) =>
     engine.dispatch({ statement: execStmt(command), ...ids, sequence, origin: "model" });
 
-test("[§search-gate] an identical duplicate strikes and serves — 409 carrying the prior digest, executor not re-run (#406)", async () => {
+test("an identical duplicate strikes and serves — 409 carrying the prior digest, executor not re-run (#406)", async () => {
     const db = await openMigrated();
     const { workspaceId, workerId, loopId, turnId, engine } = await seed(db);
     try {
@@ -87,7 +87,7 @@ test("[§search-gate] an identical duplicate strikes and serves — 409 carrying
     } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }
 });
 
-test("[§search-gate] the per-turn cap 429s the overflow search; a failed spawn never poisons the retry (#406)", async () => {
+test("the per-turn cap 429s the overflow search; a failed spawn never poisons the retry (#406)", async () => {
     const db = await openMigrated();
     // cap knob ships =3 (.env.defaults floor, loaded by the test cascade)
     const { workspaceId, workerId, loopId, turnId, engine } = await seed(db);
@@ -102,7 +102,7 @@ test("[§search-gate] the per-turn cap 429s the overflow search; a failed spawn 
     } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }
 });
 
-test("[§search-gate] a failed search does not register — the retry runs for real (#406)", async () => {
+test("a failed search does not register — the retry runs for real (#406)", async () => {
     const db = await openMigrated();
     const { workspaceId, workerId, loopId, turnId, engine } = await seed(db, { fail: true });
     try {

@@ -97,7 +97,7 @@ test("Engine.dispatch: KILL on an unknown exec coordinate → 404 (#203 matrix)"
     } finally { await db.close(); }
 });
 
-test("[§fs-answer-in-canon] a stream KILL error answers in the model's runtime-tag scheme, never the internal exec:// (#553)", async () => {
+test("a stream KILL error answers in the model's runtime-tag scheme, never the internal exec:// (#553)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-canon-${crypto.randomUUID()}`);

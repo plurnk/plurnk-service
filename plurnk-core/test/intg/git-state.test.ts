@@ -15,7 +15,7 @@ import { openMigrated, insertWorkspace, rootWorkspace } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
-test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWED (§telemetry git telemetry)", async () => {
+test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWED (git telemetry)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-gitstate-"));
     const db = await openMigrated();
     const orig = process.env.PLURNK_SERVICE_GIT_ALLOWED;

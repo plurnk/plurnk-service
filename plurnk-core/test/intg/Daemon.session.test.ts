@@ -38,7 +38,7 @@ const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T
 
 const connect = (addr: { daemon: Daemon }): Promise<SeamSocket> => Promise.resolve(new SeamSocket(addr.daemon));
 
-test("[§methods-workspace-create] workspace.create returns the auto-created worker's identity (workerId + workerName) — #199", async () => {
+test("workspace.create returns the auto-created worker's identity (workerId + workerName) — #199", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -71,7 +71,7 @@ test("#196 a bound connection re-binds to a different workspace in place (no rec
     });
 });
 
-test("[§methods-workspace-rename] workspace.rename mutates the workspace name; rejects collision + empty (#248)", async () => {
+test("workspace.rename mutates the workspace name; rejects collision + empty (#248)", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {

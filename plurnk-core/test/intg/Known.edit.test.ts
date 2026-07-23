@@ -66,7 +66,7 @@ test("Known.edit: new entry — inserts entries row, body channel, tags", async 
     } finally { await db.close(); }
 });
 
-test("[§edit-status-201-200] Known.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
+test("Known.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -80,7 +80,7 @@ test("[§edit-status-201-200] Known.edit: second EDIT against same path — same
     } finally { await db.close(); }
 });
 
-test("[§edit-noop-304] EDIT that changes nothing returns 304; content change or new tag is still 200", async () => {
+test("EDIT that changes nothing returns 304; content change or new tag is still 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -99,7 +99,7 @@ test("[§edit-noop-304] EDIT that changes nothing returns 304; content change or
     } finally { await db.close(); }
 });
 
-test("[§edit-null-clears] Known.edit: empty body clears the channel content (does not delete the entry)", async () => {
+test("Known.edit: empty body clears the channel content (does not delete the entry)", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -112,7 +112,7 @@ test("[§edit-null-clears] Known.edit: empty body clears the channel content (do
     } finally { await db.close(); }
 });
 
-test("[§edit-tags-additive] Known.edit: tags merge additively across multiple EDITs", async () => {
+test("Known.edit: tags merge additively across multiple EDITs", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -218,7 +218,7 @@ test("Known.edit: null path returns 400", async () => {
 
 // --- Structural <L> EDIT on JSON (M.8 / grammar 0.13.0 + 0.14.0) ---
 
-test("[§json-edit-structural-json-edit] Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.14.0 example)", async () => {
+test("Known.edit: <-1> on `.json` path appends an item structurally (grammar 0.14.0 example)", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -291,7 +291,7 @@ test("Known.edit: <L> on no-suffix path is line-based; .json siblings get struct
     } finally { await db.close(); }
 });
 
-test("[§json-edit-json-parse-fail-400] Known.edit: <L> on JSON path with malformed body → 400", async () => {
+test("Known.edit: <L> on JSON path with malformed body → 400", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -309,7 +309,7 @@ test("[§json-edit-json-parse-fail-400] Known.edit: <L> on JSON path with malfor
     } finally { await db.close(); }
 });
 
-test("Known.edit result carries the edited span — post-edit state, line-numbered (§edit-result-render)", async () => {
+test("Known.edit result carries the edited span — post-edit state, line-numbered ()", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });

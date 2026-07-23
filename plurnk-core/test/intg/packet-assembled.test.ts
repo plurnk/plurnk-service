@@ -20,7 +20,7 @@ import { sendStmt } from "./_dsl.ts";
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string }> }> =>
     JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId }))!.packet);
 
-test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
+test("assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist the full per-scheme catalog at turn 0
     const db = await openMigrated();
@@ -48,7 +48,7 @@ test("[§render-rule-find-renders-result] assembled packet: the turn-0 catalog f
     }
 });
 
-test("[§packet-cache-monotone] the wire is monotone in volatility — byte-stable system; user: log → status clump → recap", async () => {
+test("the wire is monotone in volatility — byte-stable system; user: log → status clump → recap", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-monotone-${crypto.randomUUID()}`);
@@ -99,7 +99,7 @@ test("assembled packet: the docs foist — FIND(worker://plurnk/docs/**) surface
     }
 });
 
-test("[§policy-sections] assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVICE_PROJECT render as privileged system-slot policy sections", async () => {
+test("assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVICE_PROJECT render as privileged system-slot policy sections", async () => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const priorProject = process.env.PLURNK_SERVICE_PROJECT;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-"));
@@ -135,7 +135,7 @@ test("[§policy-sections] assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVI
     }
 });
 
-test("[§child-orientation] the live things a worker holds — child workers — surface as terse pointers in the status clump", async () => {
+test("the live things a worker holds — child workers — surface as terse pointers in the status clump", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-${crypto.randomUUID()}`);
@@ -159,7 +159,7 @@ test("[§child-orientation] the live things a worker holds — child workers —
     } finally { await db.close(); }
 });
 
-test("[§child-orientation] no live children or streams → the orientation sections are omitted (like errors)", async () => {
+test("no live children or streams → the orientation sections are omitted (like errors)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-empty-${crypto.randomUUID()}`);

@@ -41,7 +41,7 @@ const setupContext = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("[§read-read-content] Known.read: existing entry — returns body content and mimetype with status 200", async () => {
+test("Known.read: existing entry — returns body content and mimetype with status 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -53,7 +53,7 @@ test("[§read-read-content] Known.read: existing entry — returns body content 
     } finally { db.close(); }
 });
 
-test("[§read-read-404] Known.read: nonexistent path returns 404 with null content/mimetype", async () => {
+test("Known.read: nonexistent path returns 404 with null content/mimetype", async () => {
     const { db, workspaceId } = await setupContext();
     try {
         const result = await new Worker().read(readStatement({ target: urlPath("worker", "/nope") }), makeSchemeCtx({ db, workspaceId }));
@@ -73,7 +73,7 @@ test("Known.read: null path returns 400", async () => {
     } finally { db.close(); }
 });
 
-test("[§markdown-primitive-text-markdown-normalize] Known.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
+test("Known.read: lineMarker <N> on text source returns raw line + text/markdown mimetype", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -214,7 +214,7 @@ test("Known.read: read against workspace A doesn't surface workspace B's entry",
 
 // --- Extension-based mimetype (plurnk-grammar 0.14.0) ---------------
 
-test("[§ext-mimetype-extension-mimetype] Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
+test("Known: path suffix `.json` declares mimetype; READ returns application/json", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();

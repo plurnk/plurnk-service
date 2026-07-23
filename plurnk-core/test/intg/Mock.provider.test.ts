@@ -19,18 +19,18 @@ const response = (content: string, ops: MockResponse["assistant"]["ops"]): MockR
     assistant: { content, ops, reasoning: null },
 });
 
-test("[§provider-surface-identity] Mock.provider: contextWindow exposed", () => {
+test("Mock.provider: contextWindow exposed", () => {
     const mock = new Mock({ contextWindow: 200000, responses: [] });
     assert.equal(mock.contextWindow, 200000);
 });
 
-test("[§provider-surface-counttokens] Mock.provider: countTokens returns a non-negative integer", () => {
+test("Mock.provider: countTokens returns a non-negative integer", () => {
     const mock = new Mock({ contextWindow: 200000, responses: [] });
     const n = mock.countTokens("alpha beta gamma");
     assert.ok(Number.isInteger(n) && n >= 0, `countTokens returns a non-negative integer; got ${n}`);
 });
 
-test("[§mock-provider-mock-fixture] Mock.provider: returns queued responses in order", async () => {
+test("Mock.provider: returns queued responses in order", async () => {
     const r1 = response("first", [editStmt("a", "1")]);
     const r2 = response("second", [editStmt("b", "2")]);
     const mock = new Mock({ contextWindow: 100, responses: [r1, r2] });
@@ -46,7 +46,7 @@ test("Mock.provider: exhausted queue throws", async () => {
     await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
 });
 
-test("[§provider-surface-generate] Mock.provider: assistant shape carries content + ops + reasoning + usage", async () => {
+test("Mock.provider: assistant shape carries content + ops + reasoning + usage", async () => {
     const r: MockResponse = {
         assistant: {
             content: "<<SEND[200]:done:SEND",
@@ -90,7 +90,7 @@ test("Mock.provider: prompt is ignored — same input doesn't influence output",
     assert.equal(b.assistant.content, "alpha");
 });
 
-test("[§provider-guarantees-assistantraw-opaque] Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
+test("Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
     const r1: MockResponse = { assistant: { content: "x", ops: [], reasoning: null } };
     const r2: MockResponse = { assistant: { content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
     const mock = new Mock({ contextWindow: 100, responses: [r1, r2] });

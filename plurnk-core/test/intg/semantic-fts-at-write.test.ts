@@ -24,7 +24,7 @@ const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement 
     position: { line: 1, column: 1 },
 });
 
-test("[§semantic-fts-at-write] a cold workspace's first keyword ~query finds what was just written — no pump ever ran", async () => {
+test("a cold workspace's first keyword ~query finds what was just written — no pump ever ran", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ftsw-${crypto.randomUUID()}`);

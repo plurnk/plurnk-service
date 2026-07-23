@@ -19,7 +19,7 @@ const emptyTurn = { assistant: { content: "", ops: [] as PlurnkStatement[], reas
 
 type CatalogItem = { path: string; shown?: unknown; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
 
-test("[§packet-catalog] the catalog is the complete, unranked directory — every entry, no `shown`, never itself", async () => {
+test("the catalog is the complete, unranked directory — every entry, no `shown`, never itself", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-${crypto.randomUUID()}`);

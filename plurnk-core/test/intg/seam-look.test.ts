@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, parseDsl } from "./_rpc.ts";
 
-test("[§op-look] seam look: resolves a READ's content and mints NO log row (#358)", async () => {
+test("seam look: resolves a READ's content and mints NO log row (#358)", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {

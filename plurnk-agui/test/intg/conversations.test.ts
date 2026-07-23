@@ -28,7 +28,7 @@ const action = async (port: number, threadId: string, workspace: string, kind: s
     return r.value;
 };
 
-test("[§agui-thread-is-run] two threads, one world: distinct runs, shared filesystem (the environment door)", { skip: gated, timeout: 60_000 }, async () => {
+test("two threads, one world: distinct runs, shared filesystem (the environment door)", { skip: gated, timeout: 60_000 }, async () => {
     // The service's shipped env floor (partition integers etc.) — the daemon fails
     // hard without it, and this test boots one in-process.
     process.loadEnvFile(join(SERVICE, ".env.defaults"));

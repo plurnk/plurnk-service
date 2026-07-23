@@ -38,7 +38,7 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
-test("[§log-uniform-query] FIND(log:///**):#regex# matches log rows by CONTENT — the jumbo gesture works", async () => {
+test("FIND(log:///**):#regex# matches log rows by CONTENT — the jumbo gesture works", async () => {
     const { db, workerId } = await setup();
     try {
         const r = await new Log().find(
@@ -56,7 +56,7 @@ test("[§log-uniform-query] FIND(log:///**):#regex# matches log rows by CONTENT 
     } finally { await db.close(); }
 });
 
-test("[§log-uniform-query] a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is the scope", async () => {
+test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is the scope", async () => {
     const { db, workerId } = await setup();
     try {
         const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }));
@@ -67,7 +67,7 @@ test("[§log-uniform-query] a body-less FIND(log:///1/1) lists the turn's rows �
     } finally { await db.close(); }
 });
 
-test("[§log-uniform-query] READ(log:///**):#pattern# fans out — FIND locates, per-row READs deliver, uniform with entries", async () => {
+test("READ(log:///**):#pattern# fans out — FIND locates, per-row READs deliver, uniform with entries", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const result = await engine.dispatch({
@@ -81,7 +81,7 @@ test("[§log-uniform-query] READ(log:///**):#pattern# fans out — FIND locates,
     } finally { await db.close(); }
 });
 
-test("[§log-uniform-query] zero content matches → 204; ~semantic → 501 until the pump embeds log rows (S5)", async () => {
+test("zero content matches → 204; ~semantic → 501 until the pump embeds log rows (S5)", async () => {
     const { db, workerId } = await setup();
     try {
         const none = await new Log().find(

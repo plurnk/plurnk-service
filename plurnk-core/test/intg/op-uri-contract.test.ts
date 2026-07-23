@@ -124,7 +124,7 @@ test("contract: FIND(/leading-slash) resolves the member — isolates the missin
 // {§matcher-result-read-returns-lines} — DEFERRED-RED until Stage 2. A regex SELECTS the
 // lines it occurs in; READ returns the LINE, not the matched substring. Today the matcher
 // renders `<line>:<matched-value>` (the token `phoenix`); the contract wants the line.
-test("[§matcher-result-read-returns-lines] a regex READ returns the matching LINE, not the substring", async () => {
+test("a regex READ returns the matching LINE, not the substring", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
@@ -136,7 +136,7 @@ test("[§matcher-result-read-returns-lines] a regex READ returns the matching LI
 
 // COVERAGE — glob already meets the contract (proof the uniform line-return is achievable):
 // it returns whole matching lines with their non-sequential source numbers. GREEN today.
-test("contract: a glob READ returns whole matching lines with non-sequential source numbers (§matcher-result)", async () => {
+test("contract: a glob READ returns whole matching lines with non-sequential source numbers ()", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");

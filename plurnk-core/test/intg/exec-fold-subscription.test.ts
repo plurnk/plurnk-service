@@ -24,7 +24,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-test("[§subscriptions-fold-keeps-subscription] FOLD on a streaming exec's log row keeps the subscription live", async () => {
+test("FOLD on a streaming exec's log row keeps the subscription live", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();

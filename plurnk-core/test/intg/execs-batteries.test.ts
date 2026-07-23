@@ -200,7 +200,7 @@ test("execs batteries: EXEC[git] init→status — in-process, self-contained, h
     assert.equal(status.mimetype, "application/json", "git results channel carries JSON");
 });
 
-test("[§exec-runtime-fallthrough] an unregistered tag falls through to the shell — EXEC[echo]:hello runs as `sh: echo hello` (#350)", async () => {
+test("an unregistered tag falls through to the shell — EXEC[echo]:hello runs as `sh: echo hello` (#350)", async () => {
     // The execs architect's resolution to the go-501 saga: per-tool runtimes never earn tags
     // (owner, execs#21); the dispatch automates the principle. The output lands under sh://
     // (it ran on sh, not a phantom echo://), and the registry stays exactly as-is.

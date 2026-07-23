@@ -135,7 +135,7 @@ test("closeSubscription: idempotent — already-closed subscription is a no-op",
     } finally { await db.close(); }
 });
 
-test("[§exec-poll] findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) subs; closed ones drop out", async () => {
+test("findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) subs; closed ones drop out", async () => {
     const { db, workspaceId, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since

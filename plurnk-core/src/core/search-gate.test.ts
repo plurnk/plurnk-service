@@ -15,7 +15,7 @@ const withKnobs = (fn: () => void): void => {
     }
 };
 
-test("[§search-gate] non-search runtimes pass untouched, always", () => {
+test("non-search runtimes pass untouched, always", () => {
     withKnobs(() => {
         const g = new SearchGate();
         assert.deepEqual(g.check(1, 1, "sh", "ls"), { verdict: "pass" });
@@ -24,7 +24,7 @@ test("[§search-gate] non-search runtimes pass untouched, always", () => {
     });
 });
 
-test("[§search-gate] an identical duplicate in the same loop yields the prior coordinate; a fresh loop starts clean", () => {
+test("an identical duplicate in the same loop yields the prior coordinate; a fresh loop starts clean", () => {
     withKnobs(() => {
         const g = new SearchGate();
         assert.deepEqual(g.check(1, 1, "search", "capital of france"), { verdict: "pass" });
@@ -35,7 +35,7 @@ test("[§search-gate] an identical duplicate in the same loop yields the prior c
     });
 });
 
-test("[§search-gate] the per-turn cap refuses the (N+1)th DISTINCT search; the next turn resets", () => {
+test("the per-turn cap refuses the (N+1)th DISTINCT search; the next turn resets", () => {
     withKnobs(() => {
         const g = new SearchGate();
         g.registerPending(1, 7, "search", "q1", "/1/1/1"); g.settle("/1/1/1", 200);
@@ -46,7 +46,7 @@ test("[§search-gate] the per-turn cap refuses the (N+1)th DISTINCT search; the 
     });
 });
 
-test("[§search-gate] duplicate outranks the cap — served results never burn cap headroom", () => {
+test("duplicate outranks the cap — served results never burn cap headroom", () => {
     withKnobs(() => {
         const g = new SearchGate();
         g.registerPending(1, 7, "search", "q1", "/1/1/1"); g.settle("/1/1/1", 200);
@@ -55,7 +55,7 @@ test("[§search-gate] duplicate outranks the cap — served results never burn c
     });
 });
 
-test("[§search-gate] cleanup drops a loop's state at the rail seam", () => {
+test("cleanup drops a loop's state at the rail seam", () => {
     withKnobs(() => {
         const g = new SearchGate();
         g.registerPending(1, 1, "search", "q", "/1/1/1"); g.settle("/1/1/1", 200);

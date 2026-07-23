@@ -11,7 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_help
 
 const TERMINAL = new Set([200, 413, 429, 499, 500, 508]);
 
-test("[§worker-scheme-fork] N self-forks of one parent get UNIQUE, individually-addressable names", async () => {
+test("N self-forks of one parent get UNIQUE, individually-addressable names", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-uniq-${crypto.randomUUID()}`);
@@ -33,7 +33,7 @@ test("[§worker-scheme-fork] N self-forks of one parent get UNIQUE, individually
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-fork] a fork inherits the parent's loops as HISTORY (clamped terminal), never frozen-live", async () => {
+test("a fork inherits the parent's loops as HISTORY (clamped terminal), never frozen-live", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-clamp-${crypto.randomUUID()}`);
@@ -46,7 +46,7 @@ test("[§worker-scheme-fork] a fork inherits the parent's loops as HISTORY (clam
     } finally { await db.close(); }
 });
 
-test("[§child-orientation] the 409 liveness gate and the Child Runs orientation AGREE — never refused for an invisible child", async () => {
+test("the 409 liveness gate and the Child Runs orientation AGREE — never refused for an invisible child", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `gate-orient-${crypto.randomUUID()}`);

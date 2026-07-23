@@ -107,7 +107,7 @@ const withGitWorkspace = async (
     }
 };
 
-test("[§membership-auto-add] an untracked-but-not-ignored file is a member the moment it exists; .gitignore still filters", async () => {
+test("an untracked-but-not-ignored file is a member the moment it exists; .gitignore still filters", async () => {
     await withGitWorkspace(async (root, ctx, db) => {
         // A model-created file: on disk, untracked, never `git add`ed.
         await writeFile(join(root, "draft.md"), "# A model-created draft\n");
@@ -128,7 +128,7 @@ test("[§membership-auto-add] an untracked-but-not-ignored file is a member the 
     });
 });
 
-test("[§membership-git-membership] git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
+test("git-tracked file (never client-added) is a workspace member via git ls-files", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // The file is committed in git but NO crud_insert_workspace_entry was
         // issued for it. Under §membership D4 (git present → ls-files membership),
@@ -154,7 +154,7 @@ test("[§membership-git-membership] git-tracked file (never client-added) is a w
     });
 });
 
-test("[§membership-edit-membership-gate] EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
+test("EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         // A gitignored/untracked secret on disk: it EXISTS but is never a member
         // (not in `git ls-files`, never client-added), so the model can't see it.
@@ -178,7 +178,7 @@ test("[§membership-edit-membership-gate] EDIT of an existing non-member is refu
     });
 });
 
-test("[§fs-namespace] a host-absolute spelling names its literal jail path — READ 404s, EDIT proposes a nested CREATE, never a fold", async () => {
+test("a host-absolute spelling names its literal jail path — READ 404s, EDIT proposes a nested CREATE, never a fold", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx); // materialize the tracked member
         const abs = `${root}/${trackedPath}`; // the path an exec/build tool would print
@@ -200,7 +200,7 @@ test("[§fs-namespace] a host-absolute spelling names its literal jail path — 
 
 type WriteAttrs = { path: string; canonical: string; patched: string; baseSig: string | null };
 
-test("[§membership-edit-write-cas] an out-of-band disk change between propose and accept is a write conflict, never a clobber", async () => {
+test("an out-of-band disk change between propose and accept is a write conflict, never a clobber", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx); // snapshot: body channel + synced_sig, both from disk
         const file = new File();
@@ -225,7 +225,7 @@ test("[§membership-edit-write-cas] an out-of-band disk change between propose a
     });
 });
 
-test("[§membership-edit-write-cas] with no drift the proposal lands and restamps the snapshot signature", async () => {
+test("with no drift the proposal lands and restamps the snapshot signature", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx);
         const file = new File();
@@ -247,7 +247,7 @@ test("[§membership-edit-write-cas] with no drift the proposal lands and restamp
     });
 });
 
-test("[§membership-resolved-effects] resolveMembershipEffects tags each file member / view / hidden", async () => {
+test("resolveMembershipEffects tags each file member / view / hidden", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         // Two more tracked files so we can view one and hide one.
         await writeFile(join(root, "readme.md"), "# readme\n");
@@ -267,7 +267,7 @@ test("[§membership-resolved-effects] resolveMembershipEffects tags each file me
     });
 });
 
-test("[§machine-processes-one-overlay] membership is the workspace's — one overlay, identical for every worker", async () => {
+test("membership is the workspace's — one overlay, identical for every worker", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // ctx.workerId is run A. Spin a SECOND run on the same workspace.
         const workerB = await insertWorker(db, ctx.workspaceId);
@@ -291,7 +291,7 @@ test("[§machine-processes-one-overlay] membership is the workspace's — one ov
 // false green; it FLIPS to a flagged passing-todo the day the feature lands. That
 // keeps CI a live gate instead of red-forever noise. Don't weaken to a real pass.
 
-test("[§membership-overlay-hide] a hide-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
+test("a hide-glob drops a tracked file from membership, reconciling already-registered ones", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // trackedPath is already a git member (withGitWorkspace established it).
         const before = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}`});
@@ -309,7 +309,7 @@ test("[§membership-overlay-hide] a hide-glob drops a tracked file from membersh
     });
 });
 
-test("[§membership-overlay-pick] a pick-glob admits an untracked file git misses", async () => {
+test("a pick-glob admits an untracked file git misses", async () => {
     await withGitWorkspace(async (root, ctx, db) => {
         // untracked.md is NOT in git; an add-glob admits it as a member via the scan.
         await writeFile(join(root, "untracked.md"), "# git misses me\n");
@@ -323,7 +323,7 @@ test("[§membership-overlay-pick] a pick-glob admits an untracked file git misse
     });
 });
 
-test("[§membership-overlay-view] a view-glob keeps a member readable but refuses edits", async () => {
+test("a view-glob keeps a member readable but refuses edits", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: ctx.workspaceId, effect: "view", glob: trackedPath });
         await GitMembership.indexGitMembership(ctx);  // materialize the member (read-only gates edits, not membership)
@@ -336,7 +336,7 @@ test("[§membership-overlay-view] a view-glob keeps a member readable but refuse
     });
 });
 
-test("[§membership-emi-divergence-signal] out-of-band change to a member surfaces as a system delta-EDIT", async () => {
+test("out-of-band change to a member surfaces as a system delta-EDIT", async () => {
     await withGitWorkspace(async (root, ctx, db, trackedPath) => {
         // EMI re-reads disk each turn (git materialization); the build-time delta
         // detector turns an out-of-band member change into a system EDIT naming the
@@ -394,7 +394,7 @@ const seedForest = async (db: Db, repos: Array<{ dir: string; file: string }>): 
     return { parent, ctx };
 };
 
-test("[§membership-forest] membership unions a workspace's declared repos under a non-git root", async () => {
+test("membership unions a workspace's declared repos under a non-git root", async () => {
     const db = await openMigrated();
     try {
         const { parent, ctx } = await seedForest(db, [{ dir: "alpha", file: "a.md" }, { dir: "beta", file: "b.md" }]);
@@ -410,7 +410,7 @@ test("[§membership-forest] membership unions a workspace's declared repos under
     } finally { await db.close(); }
 });
 
-test("[§membership-overlay-repo] a `repo` declaration admits that repo's ls-files as members", async () => {
+test("a `repo` declaration admits that repo's ls-files as members", async () => {
     const db = await openMigrated();
     try {
         const { parent, ctx } = await seedForest(db, [{ dir: "lib", file: "x.md" }]);
@@ -453,7 +453,7 @@ test("a `repo` declared OUTSIDE the project root manifests at a relative (..) ad
     } finally { await rm(external, { recursive: true, force: true }); await db.close(); }
 });
 
-test("[§membership-overlay-repo] a `repo *` glob declares every immediate child repo, skipping non-git dirs", async () => {
+test("a `repo *` glob declares every immediate child repo, skipping non-git dirs", async () => {
     const db = await openMigrated();
     try {
         const { parent, ctx } = await seedForest(db, [{ dir: "alpha", file: "a.md" }, { dir: "beta", file: "b.md" }]);
@@ -475,7 +475,7 @@ test("[§membership-overlay-repo] a `repo *` glob declares every immediate child
     } finally { await db.close(); }
 });
 
-test("[§membership-change-gated-sync] a member unchanged on disk is not re-tokenized on the next pass", async () => {
+test("a member unchanged on disk is not re-tokenized on the next pass", async () => {
     await withGitWorkspace(async (_root, ctx) => {
         let calls = 0;
         const counting: PlurnkSchemeContext = { ...ctx, tokenize: (t: string) => { calls += 1; return Math.ceil(t.length / 4); } };
@@ -487,7 +487,7 @@ test("[§membership-change-gated-sync] a member unchanged on disk is not re-toke
     });
 });
 
-test("[§membership-git-flags] PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
+test("PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         const prev = process.env.PLURNK_SERVICE_GIT_ALLOWED;
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
@@ -501,7 +501,7 @@ test("[§membership-git-flags] PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membe
     });
 });
 
-test("[§membership-binary-sniff] NUL-headed content is a binary marker regardless of the extension's lying label", async () => {
+test("NUL-headed content is a binary marker regardless of the extension's lying label", async () => {
     // #320 — extension detection fell through to the markdown default for .wasm and a
     // 3.3MB blob entered the corpus as prose. The sniff reads bytes, not labels: a .md
     // file whose head carries NUL materializes as the empty octet-stream marker (READ-415

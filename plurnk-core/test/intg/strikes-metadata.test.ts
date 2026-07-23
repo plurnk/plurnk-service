@@ -17,7 +17,7 @@ class CapturingMock extends Mock {
     }
 }
 
-test("[§strikes-first-party-metadata] generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
+test("generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
         makeMockResponse("<<SEND[102]:working:SEND", 10),   // IDLE — a bare continue with no work op takes the idle steer strike
         makeMockResponse("no ops at all", 10),               // 422 no_ops → struck

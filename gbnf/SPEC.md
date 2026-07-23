@@ -1,11 +1,6 @@
 # gbnf — Specification
 
-The contract of the `gbnf` tool: what `validateGbnf` and the `gbnf` CLI guarantee. Each
-promise below is tagged with a **squiggle anchor** rendered as a markdown link, e.g.
-`[§verdict_accept](#verdict)`. Every anchor has at least one test named `[§verdict_accept]`,
-and every such test anchor exists here — a script enforces the bijection both ways
-(`scriptify/spec-coverage.ts`, asserted by `test/intg/spec-coverage.test.ts`). See AGENTS.md
-§5/§9.
+The contract of the `gbnf` tool: what `validateGbnf` and the `gbnf` CLI guarantee.
 
 `gbnf` answers one question: **is this input a sentence in this GBNF grammar?** The engine is
 a faithful TypeScript port of llama.cpp's grammar engine and is differentially tested against

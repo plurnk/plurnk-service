@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 
-test("[§methods-loop-run] loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
+test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "<<EDIT(worker:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142)] });
 

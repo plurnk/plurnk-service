@@ -27,7 +27,7 @@ const runOneTurn = async (mock: Mock, name: string): Promise<void> => {
 // PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant (#189/#225): a variant name
 // resolves to that grammar and reaches the provider verbatim; 0/empty → nothing
 // does. The service resolves + plumbs it; the provider applies-or-drops per backend.
-test("[§gbnf-per-alias] PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias's suffix wins over the bare fallback (#353)", async () => {
+test("PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias's suffix wins over the bare fallback (#353)", async () => {
     // The daemon test's active alias (whatever the local .env selects) decides via its suffixed
     // knob. Bare is the fallback: GBNF only helps sampling-constraining backends, so it ships OFF
     // by default and each GBNF-capable alias opts in via a PLURNK_PROVIDERS_GBNF_<alias> suffix.

@@ -252,7 +252,7 @@ test("File.read: long content round-trips", async () => {
     });
 });
 
-test("[§fs-namespace] File.read: a host-absolute spelling does not exist in the jail — no fold, deterministic 404", async () => {
+test("File.read: a host-absolute spelling does not exist in the jail — no fold, deterministic 404", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "abs.txt"), "abs content");
         const absolutePath = resolve(root, "abs.txt");
@@ -308,7 +308,7 @@ test("File.read: absolute path OUTSIDE workspace → 404 (never a member)", asyn
 // that — the stale post-write length, born of the identity fragmentation ({§entry-identity-no-null}:
 // one .get() hitting an arbitrary duplicate row). With one row per identity, the re-materialize
 // updates THE row and the read sees fresh length. The 981-416 disease, pinned as a named guard.
-test("[§fs-world-state] a write that grows a file — the newly-valid tail READs 200, the over-EOF fact carries the POST-write count (run59 #545)", async () => {
+test("a write that grows a file — the newly-valid tail READs 200, the over-EOF fact carries the POST-write count (run59 #545)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "grow.txt"), "l1\nl2\nl3\n");
         await addMember(ctx, "grow.txt");

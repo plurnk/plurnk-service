@@ -17,7 +17,7 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const DYNAMIC_READS = new Set(["PLURNK_SERVICE_SAFETY"]); // #507 — the envelope knobs moved to the provider tier
 const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_MD_", "PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_SAFETY_"]; // MD_<alias> + sqlite knobs; SAFETY_<alias> is the per-alias margin (scopeEnvToAlias) + the #510 zero-pin scrub prefix
 
-test("[§operator-config-flag-parity] every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa", () => {
+test("every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa", () => {
     const template = readFileSync(`${root}/.env.defaults`, "utf8");
     // Declared: active `PLURNK_SERVICE_X=` and commented `# PLURNK_SERVICE_X=` lines.
     const declared = new Set(

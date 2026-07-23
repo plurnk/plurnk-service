@@ -40,7 +40,7 @@ test("Engine.copy same-scheme (known → known)", async () => {
     } finally { await db.close(); }
 });
 
-test("[§copy-cross-scheme-copy] Engine.copy cross-scheme (worker commons → skill)", async () => {
+test("Engine.copy cross-scheme (worker commons → skill)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -55,7 +55,7 @@ test("[§copy-cross-scheme-copy] Engine.copy cross-scheme (worker commons → sk
     } finally { await db.close(); }
 });
 
-test("[§copy-missing-source-404] Engine.copy missing source returns 404", async () => {
+test("Engine.copy missing source returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/nope"), urlPath("worker", "/elsewhere")));
@@ -63,7 +63,7 @@ test("[§copy-missing-source-404] Engine.copy missing source returns 404", async
     } finally { await db.close(); }
 });
 
-test("[§copy-conflict-409] Engine.copy conflicting destination returns 409", async () => {
+test("Engine.copy conflicting destination returns 409", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const k = new Worker();
@@ -77,7 +77,7 @@ test("[§copy-conflict-409] Engine.copy conflicting destination returns 409", as
     } finally { await db.close(); }
 });
 
-test("[§copy-noop-304] Engine.copy to a destination already holding identical content returns 304", async () => {
+test("Engine.copy to a destination already holding identical content returns 304", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const k = new Worker();
@@ -96,7 +96,7 @@ test("[§copy-noop-304] Engine.copy to a destination already holding identical c
     } finally { await db.close(); }
 });
 
-test("[§copy-signal-replaces-source-tags] Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
+test("Engine.copy tag policy — signal present REPLACES source tags on dest", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "x", ["original", "tags"]), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -109,7 +109,7 @@ test("[§copy-signal-replaces-source-tags] Engine.copy tag policy — signal pre
     } finally { await db.close(); }
 });
 
-test("[§copy-no-signal-carries-source-tags] Engine.copy tag policy — no signal CARRIES source tags", async () => {
+test("Engine.copy tag policy — no signal CARRIES source tags", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "x", ["a", "b"]), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -122,7 +122,7 @@ test("[§copy-no-signal-carries-source-tags] Engine.copy tag policy — no signa
     } finally { await db.close(); }
 });
 
-test("[§move-relocation-deletes-source] Engine.move relocates: source deleted, dest created", async () => {
+test("Engine.move relocates: source deleted, dest created", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "movable"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -138,7 +138,7 @@ test("[§move-relocation-deletes-source] Engine.move relocates: source deleted, 
     } finally { await db.close(); }
 });
 
-test("[§move-null-body-400] Engine.move with no destination → 400, source survives", async () => {
+test("Engine.move with no destination → 400, source survives", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/trash-me"), "stale"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -152,7 +152,7 @@ test("[§move-null-body-400] Engine.move with no destination → 400, source sur
     } finally { await db.close(); }
 });
 
-test("[§move-dev-null-not-special] Engine.move to /dev/null no longer deletes — source survives", async () => {
+test("Engine.move to /dev/null no longer deletes — source survives", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/obsolete"), "stale"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -167,7 +167,7 @@ test("[§move-dev-null-not-special] Engine.move to /dev/null no longer deletes �
     } finally { await db.close(); }
 });
 
-test("[§move-missing-source-404] Engine.move missing source returns 404", async () => {
+test("Engine.move missing source returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/nope"), urlPath("worker", "/elsewhere")));
@@ -175,7 +175,7 @@ test("[§move-missing-source-404] Engine.move missing source returns 404", async
     } finally { await db.close(); }
 });
 
-test("[§move-cross-scheme-move] Engine.move cross-scheme (worker commons → skill) deletes source, creates dest", async () => {
+test("Engine.move cross-scheme (worker commons → skill) deletes source, creates dest", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/draft"), "answer"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -191,7 +191,7 @@ test("[§move-cross-scheme-move] Engine.move cross-scheme (worker commons → sk
     } finally { await db.close(); }
 });
 
-test("[§copy-l-source-range] Engine.copy with <L> slices the source range into the dest, no N:\\t prefix", async () => {
+test("Engine.copy with <L> slices the source range into the dest, no N:\\t prefix", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -206,7 +206,7 @@ test("[§copy-l-source-range] Engine.copy with <L> slices the source range into 
     } finally { await db.close(); }
 });
 
-test("[§copy-l-source-range] Engine.copy with <L> out of range returns 416", async () => {
+test("Engine.copy with <L> out of range returns 416", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/src"), "only one line"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -216,7 +216,7 @@ test("[§copy-l-source-range] Engine.copy with <L> out of range returns 416", as
     } finally { await db.close(); }
 });
 
-test("[§copy-l-source-range] Engine.move with <L> slices the source range, then deletes the whole source", async () => {
+test("Engine.move with <L> slices the source range, then deletes the whole source", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, workspaceId, workerId }));

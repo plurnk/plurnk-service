@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { openMigrated } from "./_helpers.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
-test("[§db-schema-version-stamp] a migrated DB is stamped with the current schema version", async () => {
+test("a migrated DB is stamped with the current schema version", async () => {
     const db = await openMigrated();
     try {
         const row = await (db.test_schema_version as PrepMethod).get<{ v: number }>({});

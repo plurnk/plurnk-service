@@ -2,8 +2,6 @@
 
 Canonical contracts plurnk-service exposes, architecture it implements, promises it makes to the constellation (`plurnk-grammar`, `plurnk-providers`, `plurnk-schemes`, `plurnk-mimetypes`, `plurnk-execs`, the user-facing `plurnk` CLI). `AGENTS.md` covers process; this file covers contract.
 
-The `§` sigil marks one thing: a stable terse tag. A section is a tag (`§discovery`); a promise under it is a child tag (`§discovery-discover`) whose prefix names its section. Headings, prose cross-refs, and promise anchors all use this one namespace — no digits, so renumbering is a non-event. Promise anchors `{§<tag>}` mark individual assertions; tests cite them in their names (`test("[§<tag>] …", …)`). `test/intg/spec-anchors.test.ts` fails on orphan citations and reports gaps. Anchors are drift-grounding, not a forcing function.
-
 ---
 
 ## §glossary Glossary

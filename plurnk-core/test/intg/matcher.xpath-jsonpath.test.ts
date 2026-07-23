@@ -311,7 +311,7 @@ test("jsonpath compose-chain: matcher-then-<L> picks the Nth match from log:///"
     } finally { await db.close(); }
 });
 
-test("[§matcher-selection-signal] THE REAL PATH: a matcher READ's FIND row carries each hit's canonical path in the STORED rx (run30)", async () => {
+test("THE REAL PATH: a matcher READ's FIND row carries each hit's canonical path in the STORED rx (run30)", async () => {
     // Through engine.dispatch — the fanout path production takes (a matcher READ becomes
     // FIND → per-match body-less READs), asserting on the rx AS STORED, which is what the
     // packet renders. The prior citation proved a direct-call seam dispatch never takes;
@@ -338,7 +338,7 @@ test("[§matcher-selection-signal] THE REAL PATH: a matcher READ's FIND row carr
     } finally { await db.close(); }
 });
 
-test("[§find-source-agnostic] Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY identity — a pathname OR a log coordinate", async () => {
+test("Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY identity — a pathname OR a log coordinate", async () => {
     const mimetypes = new Mimetypes(); await mimetypes.ready();
     const candidates = [
         { key: "worker:///a.md", content: "the engine is fast", mimetype: "text/markdown" },

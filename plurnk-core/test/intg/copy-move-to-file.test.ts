@@ -128,7 +128,7 @@ test("[#2-move-file-to-file] MOVE file:/// → file:/// into a NEW subdir lands 
     });
 });
 
-test("[§membership-edit-membership-gate] EDIT onto an existing NON-member file is refused (403) and never clobbers it", async () => {
+test("EDIT onto an existing NON-member file is refused (403) and never clobbers it", async () => {
     // The unfair edge: a file exists on disk but was never tracked (git/client left it out), so it's
     // INVISIBLE to the model. The model, blind to it, tries to "create" it — and MUST NOT be able to
     // overwrite it. The refusal is opaque (never reveals the file exists) so the model can't probe the

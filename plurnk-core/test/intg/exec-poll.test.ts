@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-test("[§exec-poll] a polled EXEC <T,P> wakes a hibernating (202) loop every P seconds", async () => {
+test("a polled EXEC <T,P> wakes a hibernating (202) loop every P seconds", async () => {
     // 16384: base-packet growth (grammar 0.76.5 + sibling teaching) crested this accumulation's 8192 edge — headroom scaffolding, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: background a long spawn with a 1s poll, then hibernate.

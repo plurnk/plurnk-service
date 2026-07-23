@@ -49,7 +49,7 @@ test("a client op.* never enters the model's packet — the client writes to its
     });
 });
 
-test("[§machine-processes-model-worker-readable] a connection reads the model worker by id — loop.run returns modelWorkerId, log.read targets it, ownership-gated", async () => {
+test("a connection reads the model worker by id — loop.run returns modelWorkerId, log.read targets it, ownership-gated", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -88,7 +88,7 @@ test("[§machine-processes-model-worker-readable] a connection reads the model w
     });
 });
 
-test("[§machine-processes-worker-origin] workspace.workers tags each worker with its actor — the model worker is found by origin, not name", async () => {
+test("workspace.workers tags each worker with its actor — the model worker is found by origin, not name", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

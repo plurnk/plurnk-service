@@ -8,7 +8,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
-test("[§send-200-failed-ops] a failed op + SEND[200] same turn → 409; the NEXT turn's [200] concludes", async () => {
+test("a failed op + SEND[200] same turn → 409; the NEXT turn's [200] concludes", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         // KILL of a nonexistent entry → 404 (a failure that is NOT a retrieval, isolating this gate
         // from the retrievals leg); the same-turn [200] must be refused.
@@ -32,7 +32,7 @@ test("[§send-200-failed-ops] a failed op + SEND[200] same turn → 409; the NEX
     });
 });
 
-test("[§send-200-failed-ops] this emission's PARSE errors gate the same-turn [200] (they mint as rows only after dispatch)", async () => {
+test("this emission's PARSE errors gate the same-turn [200] (they mint as rows only after dispatch)", async () => {
     // makeMockResponse pre-parses (ops:) and the engine SKIPS parsing pre-parsed responses — so
     // the parse-error leg needs a CONTENT-ONLY response the engine parses for real. An unclosed
     // body (the truncation shape) yields an unparsedTail parse error while the terminal SEND
@@ -60,7 +60,7 @@ test("[§send-200-failed-ops] this emission's PARSE errors gate the same-turn [2
     });
 });
 
-test("[§send-200-failed-ops] SEND[499] over a same-turn failure abandons unimpeded — declaring failure IS weighing it", async () => {
+test("SEND[499] over a same-turn failure abandons unimpeded — declaring failure IS weighing it", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<PLAN:abort:PLAN\n<<KILL(worker:///no-such-entry)::KILL\n<<SEND[499]:giving up:SEND", 10),
     ] });

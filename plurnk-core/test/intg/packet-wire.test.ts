@@ -11,7 +11,7 @@ const tok = (s: string): number => Math.ceil(s.length / 4);
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
 
-test("[§jsonplurnk] log entry: a no-body row renders as a jsonplurnk object with display:none — path is log URI, target is action operand", () => {
+test("log entry: a no-body row renders as a jsonplurnk object with display:none — path is log URI, target is action operand", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -68,7 +68,7 @@ test("EDIT with an accept-path span (rx.body from a proposed file edit) renders 
     assert.match(out, /<<:::src\/app\.js\n3:app\.listen\(8080\);\n4:\/\/ error handler configured\n:::src\/app\.js/, "the proposed file EDIT's accept-path span renders as the line-numbered diff — parity with the inline rx.span");
 });
 
-test("log entry: a worker:// spawn renders the worker NAME in the target — authority survives (§worker-scheme)", () => {
+test("log entry: a worker:// spawn renders the worker NAME in the target — authority survives ()", () => {
     // The spawn-blindness root cause: the worker name lives in the URI authority (worker://<name>),
     // not the path. Rendering scheme+path alone collapsed every spawn to a bare `worker://`, so the
     // model could not tell worker_db from worker_pool in its own log and re-spawned. The authority
@@ -90,7 +90,7 @@ test("log entry: a web host survives into the target — http://host/path, not h
     assert.match(out, /"target":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the web host reaches the rendered target");
 });
 
-test("[§render-rule-line-navigable-prefix] log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
+test("log render: READ@200 with text/markdown rx body → line-numbered heredoc", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -124,7 +124,7 @@ test("log render: READ@200 matcher result (startLine null) renders VERBATIM — 
     assert.doesNotMatch(out, /1:143:/);
 });
 
-test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
+test("log render: READ@200 with application/json rx body → verbatim heredoc (no N:\\t)", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -148,7 +148,7 @@ test("[§render-rule-tree-navigable-verbatim] log render: READ@200 with applicat
 // packet (that format belongs in client communication, where humans want
 // colored before/after rendering).
 
-test("[§edit-result-render] log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim (editedSpan owns the offsets)", () => {
+test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim (editedSpan owns the offsets)", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "model",
@@ -235,7 +235,7 @@ test("measureLogBudget: log subtotals (entries, tokens, byTurn, largest) from th
     assert.equal(two.largest[0].tokens, rowTokens, "largest carries the SAME number the row's own meta shows");
 });
 
-test("[§tokenomics-largest-entries] largest never advertises a FOLD the law refuses or the state already pulled", () => {
+test("largest never advertises a FOLD the law refuses or the state already pulled", () => {
     const tk = (s: string) => s.length;
     const entries = [
         // A PRIOR loop's foisted preview: open, bodied, and ordinary memory now (the refusal
@@ -300,7 +300,7 @@ test("telemetry render: a log-coordinate error → a terse <status> log:/// link
     assert.doesNotMatch(out, /\{"/, "no JSON dump — the row holds the detail, the section a link");
 });
 
-test("[§telemetry-uniform-error-channel] heterogeneous failures render through ONE channel — uniform <status> log:/// links, no per-kind shape", () => {
+test("heterogeneous failures render through ONE channel — uniform <status> log:/// links, no per-kind shape", () => {
     // A parse failure (400), an action failure (403), a budget overflow (413): three categories, one
     // channel. Each is a LogCoordinate-positioned event rendered as the same terse link — the section
     // never restates the term or carries per-kind JSON. The detail lives on each row, READ via the link.
@@ -314,7 +314,7 @@ test("[§telemetry-uniform-error-channel] heterogeneous failures render through 
     assert.doesNotMatch(out, /\{"/, "no JSON — every category is the same terse link");
 });
 
-test("[§requirements-requirements-render-last] requirements renders LAST in the user slot, under its own header", () => {
+test("requirements renders LAST in the user slot, under its own header", () => {
     // The default packet orders the user slot prompt → budget → errors → … →
     // requirements; renderSlot preserves that order, so requirements lands last.
     const out = PacketWire.renderSlot([
@@ -334,7 +334,7 @@ test("[§requirements-requirements-render-last] requirements renders LAST in the
     assert.ok(reqIdx > out.indexOf("## Plurnk Service Errors"), "requirements follows the errors section");
 });
 
-test("[§requirements-requirements-omitted-when-empty] empty requirements section emits no header", () => {
+test("empty requirements section emits no header", () => {
     const out = PacketWire.renderSlot([
         { name: "prompt", slot: "user", header: "Plurnk Service Active User Prompts", content: "P", tokens: 0 },
         { name: "requirements", slot: "user", header: "Plurnk Service Requirements", content: "", tokens: 0 },
@@ -342,7 +342,7 @@ test("[§requirements-requirements-omitted-when-empty] empty requirements sectio
     assert.doesNotMatch(out, /## Plurnk Service Requirements/, "no requirements section when the content is empty");
 });
 
-test("[§render-rule-find-renders-result] log render: FIND@200 renders its result catalog, not just the echoed query", () => {
+test("log render: FIND@200 renders its result catalog, not just the echoed query", () => {
     // The turn-0 foisted FIND(scheme:///**) is how a worker's opening catalog reaches
     // the packet. If the renderer only re-emits the query statement (the regression),
     // the model is shown its own question and zero entries.
@@ -379,7 +379,7 @@ test("log render: READ@200 with text/html rx body → verbatim heredoc (tree-nav
     assert.doesNotMatch(out, /1:/);
 });
 
-test("[§model-entry] a folded model row renders meta-only — the verbatim hides until OPEN", () => {
+test("a folded model row renders meta-only — the verbatim hides until OPEN", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: true,
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
@@ -388,7 +388,7 @@ test("[§model-entry] a folded model row renders meta-only — the verbatim hide
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
 
-test("[§model-entry] an open model row mirrors the model's own emission back, line-numbered", () => {
+test("an open model row mirrors the model's own emission back, line-numbered", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: false,
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
@@ -398,7 +398,7 @@ test("[§model-entry] an open model row mirrors the model's own emission back, l
     assert.match(out, /2:<<SEND\[102\]:Initialized:SEND/, "line 2, referenceable when reasoning through a syntax error");
 });
 
-test("[§jsonplurnk] the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
+test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true, target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
@@ -414,7 +414,7 @@ test("[§jsonplurnk] the Log renders as a fenced jsonplurnk array that strips to
     assert.equal(arr[2].body, "", "the open row's heredoc body — the one deviation — strips to a string, recovering valid JSON");
 });
 
-test("[§jsonplurnk-dynamic-fence] the opening fence outgrows any backtick run a body carries — a code sample can't close the block", () => {
+test("the opening fence outgrows any backtick run a body carries — a code sample can't close the block", () => {
     // A body whose own text opens a triple-backtick fence (a READ of a doc with a code sample). The
     // jsonplurnk opener must be LONGER, so the body can never close the block early.
     const out = PacketWire.renderLog([{
@@ -426,7 +426,7 @@ test("[§jsonplurnk-dynamic-fence] the opening fence outgrows any backtick run a
     assert.ok(opener.length >= 4, `fence opens with ${opener.length} backticks — longer than the body's 3-run, so the body cannot close it`);
 });
 
-test("[§arrival-law-authored-bodies] a runaway authored body renders preview-bounded; READ/FIND stay full (#566)", () => {
+test("a runaway authored body renders preview-bounded; READ/FIND stay full (#566)", () => {
     const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1} of a runaway emission`).join("\n");
 
     // A short PLAN renders whole — no behavior change for a well-formed op.

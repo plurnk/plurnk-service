@@ -29,7 +29,7 @@ const runPump = async (concurrency: string): Promise<number> => {
     }
 };
 
-test("[§derivation-dedup-parallel] every pending entry is derived once — identical at concurrency 1 and 4 (#416)", async () => {
+test("every pending entry is derived once — identical at concurrency 1 and 4 (#416)", async () => {
     const seq = await runPump("1");
     const par = await runPump("4");
     assert.equal(seq, 11, "concurrency 1: all 11 body entries stamped");

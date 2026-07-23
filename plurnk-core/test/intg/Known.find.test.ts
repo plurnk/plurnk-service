@@ -39,7 +39,7 @@ const seedEntries = async (db: import("../../src/core/Db.ts").Db, workspaceId: n
     }
 };
 
-test("[§find-result-catalog-rows] Known.find returns the scheme's catalog rows (JSON), filtered to matches", async () => {
+test("Known.find returns the scheme's catalog rows (JSON), filtered to matches", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -62,7 +62,7 @@ test("[§find-result-catalog-rows] Known.find returns the scheme's catalog rows 
     } finally { db.close(); }
 });
 
-test("[§find-scope-prefix-filter] Known.find with scope prefix filters to that subtree", async () => {
+test("Known.find with scope prefix filters to that subtree", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -74,7 +74,7 @@ test("[§find-scope-prefix-filter] Known.find with scope prefix filters to that 
     } finally { db.close(); }
 });
 
-test("[§find-glob-filter-on-content] Known.find with glob matcher filters by CONTENT", async () => {
+test("Known.find with glob matcher filters by CONTENT", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Pathnames are neutral (a/b/c); the matchable token lives in the content.
@@ -87,7 +87,7 @@ test("[§find-glob-filter-on-content] Known.find with glob matcher filters by CO
     } finally { db.close(); }
 });
 
-test("[§find-result-catalog-rows] a content match emits one item per match, each carrying its (file, span) (#286)", async () => {
+test("a content match emits one item per match, each carrying its (file, span) (#286)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Multi-line content: the match sits on line 3 of a, line 2 of b; c never matches.
@@ -106,7 +106,7 @@ test("[§find-result-catalog-rows] a content match emits one item per match, eac
     } finally { db.close(); }
 });
 
-test("[§find-tag-filter-and-semantics] Known.find with tag filter — AND semantics", async () => {
+test("Known.find with tag filter — AND semantics", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -218,7 +218,7 @@ test("Known.find with no matches returns 200 with empty results", async () => {
     } finally { db.close(); }
 });
 
-test("[§find-scoped-isolation] Known.find is scoped to the workspace (doesn't leak across workspaces)", async () => {
+test("Known.find is scoped to the workspace (doesn't leak across workspaces)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Seed in this workspace

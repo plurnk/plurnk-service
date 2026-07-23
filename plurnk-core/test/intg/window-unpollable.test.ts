@@ -13,7 +13,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETY
 import { makeMockResponse } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
-test("[§tokenomics-window-unpollable-deliberate] null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline (#421)", async () => {
+test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline (#421)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `unpollable-${crypto.randomUUID()}`);
@@ -33,7 +33,7 @@ test("[§tokenomics-window-unpollable-deliberate] null window + no per-alias kno
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-window-unpollable-deliberate] the retired per-alias window knob FAILS HARD naming its provider-tier successor (#507)", async () => {
+test("the retired per-alias window knob FAILS HARD naming its provider-tier successor (#507)", async () => {
     // The deliberate-stand-in arm moved to the provider tier (PLURNK_PROVIDERS_CONTEXT_WINDOW_<alias>);
     // a stale core-prefixed pin must never silently lose the operator's window to the move.
     process.env.PLURNK_SERVICE_CONTEXT_WINDOW_mocktest = "8192";

@@ -77,7 +77,7 @@ const killEntry = (owner: string, path: string): KillStatement => ({
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("[§worker-scheme-fork-scratch] a fork inherits the parent's worker-scope scratch (owner-remapped), then diverges", async () => {
+test("a fork inherits the parent's worker-scope scratch (owner-remapped), then diverges", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-scratch-${crypto.randomUUID()}`);
@@ -102,7 +102,7 @@ test("[§worker-scheme-fork-scratch] a fork inherits the parent's worker-scope s
     } finally { await db.close(); }
 });
 
-test("[§worker-authority-carving] FIND draws from the resolved principal alone — ~ is own space, a name is ancestry-gated, perspectives never bleed", async () => {
+test("FIND draws from the resolved principal alone — ~ is own space, a name is ancestry-gated, perspectives never bleed", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `run-find-${crypto.randomUUID()}`);
@@ -134,7 +134,7 @@ test("[§worker-authority-carving] FIND draws from the resolved principal alone 
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-spawn] WORK(worker://name):task spawns a same-workspace sister, seeded via injectWorker", async () => {
+test("WORK(worker://name):task spawns a same-workspace sister, seeded via injectWorker", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -163,7 +163,7 @@ test("[§worker-scheme-spawn] WORK(worker://name):task spawns a same-workspace s
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-spawn] WORK-spawning a name a LIVE sister holds is refused 409 — legible, never a raw UNIQUE 500", async () => {
+test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never a raw UNIQUE 500", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -186,7 +186,7 @@ test("[§worker-scheme-spawn] WORK-spawning a name a LIVE sister holds is refuse
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-spawn] a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", async () => {
+test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -214,7 +214,7 @@ test("[§worker-scheme-spawn] a TERMINATED sister's name is reclaimed — spawn 
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-collect] READ(worker://name) collects the deliverable — message done, 425 running, 404 absent", async () => {
+test("READ(worker://name) collects the deliverable — message done, 425 running, 404 absent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `run-collect-${crypto.randomUUID()}`);
@@ -241,7 +241,7 @@ test("[§worker-scheme-collect] READ(worker://name) collects the deliverable —
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-spawn] EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400, no inject)", async () => {
+test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400, no inject)", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -265,7 +265,7 @@ test("[§worker-scheme-spawn] EDIT on the bare worker entity is rejected — WOR
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-irc] SEND(worker://name):msg delivers to a sister; a missing sister is 404", async () => {
+test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -297,7 +297,7 @@ test("[§worker-scheme-irc] SEND(worker://name):msg delivers to a sister; a miss
 // Dispatch-path coverage (#282): KILL of a worker-scope ENTRY must DELETE the entry, NOT
 // cancel the worker — and stay self-only. Driven through engine.dispatch (the real routing),
 // not a bare Run instance, because the bug lived in Engine.#handleKill's run branch.
-test("[§worker-read-scope] entry KILL: a child naming upward is 404 (no existence leak); an ancestor sees but cannot write (403); the worker survives — #282", async () => {
+test("entry KILL: a child naming upward is 404 (no existence leak); an ancestor sees but cannot write (403); the worker survives — #282", async () => {
     const db = await openMigrated();
     try {
         const { injectWorker } = recordingInjectWorker();
@@ -331,7 +331,7 @@ test("[§worker-read-scope] entry KILL: a child naming upward is 404 (no existen
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-fork] FORK(worker://name):task forks a NAMED branch — started via injectWorker", async () => {
+test("FORK(worker://name):task forks a NAMED branch — started via injectWorker", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
@@ -358,7 +358,7 @@ test("[§worker-scheme-fork] FORK(worker://name):task forks a NAMED branch — s
     } finally { await db.close(); }
 });
 
-test("[§worker-scheme-cap] spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard (508), create nothing", async () => {
+test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard (508), create nothing", async () => {
     const db = await openMigrated();
     const prior = process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE;
     process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "1"; // ceiling of 1 active run
@@ -391,7 +391,7 @@ test("[§worker-scheme-cap] spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS
     }
 });
 
-test("[§worker-scheme-terminate] KILL(worker://name) aborts a sister by address; a missing sister is 404", async () => {
+test("KILL(worker://name) aborts a sister by address; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const killed: number[] = [];
@@ -415,7 +415,7 @@ test("[§worker-scheme-terminate] KILL(worker://name) aborts a sister by address
     } finally { await db.close(); }
 });
 
-test("[§worker-write-scoping] own-space EDIT lands owner-keyed; an ancestor READs the child's space; every named authority refuses model writes (403)", async () => {
+test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; every named authority refuses model writes (403)", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize });
@@ -444,7 +444,7 @@ test("[§worker-write-scoping] own-space EDIT lands owner-keyed; an ancestor REA
     } finally { await db.close(); }
 });
 
-test("[§worker-write-scoping] the kernel's published surface worker://plurnk/ refuses model writes (403) — the read-only host authority", async () => {
+test("the kernel's published surface worker://plurnk/ refuses model writes (403) — the read-only host authority", async () => {
     // The docs library (worker://plurnk/docs/x.md) is world-READABLE and kernel-authored: the
     // engine seeds it AS the plurnk worker (loopDocs.ts). A model naming that authority must be
     // refused — the `authority === "plurnk"` branch is a DISTINCT early-return (writable:false)
@@ -466,7 +466,7 @@ test("[§worker-write-scoping] the kernel's published surface worker://plurnk/ r
     } finally { await db.close(); }
 });
 
-test("[§join-blocking-collect] READ(worker://running-child) arms a join — the turn's bare SEND[102] PARKS, never spins (#354)", async () => {
+test("READ(worker://running-child) arms a join — the turn's bare SEND[102] PARKS, never spins (#354)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-collect-${crypto.randomUUID()}`);
@@ -488,7 +488,7 @@ test("[§join-blocking-collect] READ(worker://running-child) arms a join — the
     } finally { await db.close(); }
 });
 
-test("[§join-blocking-collect] a bare SEND[102] with NO armed join continues normally — the park is join-driven, not blanket (#354)", async () => {
+test("a bare SEND[102] with NO armed join continues normally — the park is join-driven, not blanket (#354)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-none-${crypto.randomUUID()}`);
@@ -503,7 +503,7 @@ test("[§join-blocking-collect] a bare SEND[102] with NO armed join continues no
     } finally { await db.close(); }
 });
 
-test("[§op-synchronous] KILL(run) is decisive — a same-turn KILL then SEND[200] concludes, no premature-terminate 409 (#354)", async () => {
+test("KILL(run) is decisive — a same-turn KILL then SEND[200] concludes, no premature-terminate 409 (#354)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `kill-sync-${crypto.randomUUID()}`);
@@ -526,7 +526,7 @@ test("[§op-synchronous] KILL(run) is decisive — a same-turn KILL then SEND[20
     } finally { await db.close(); }
 });
 
-test("[§wait-obligation-matrix] SEND[202]: a live obligation BLOCKS; ∅ (bare or <-1>) is the 409 contradiction — never a hang, never a silent conclude", async () => {
+test("SEND[202]: a live obligation BLOCKS; ∅ (bare or <-1>) is the 409 contradiction — never a hang, never a silent conclude", async () => {
     const db = await openMigrated();
     try {
         // 202 + J (a live child) → the loop BLOCKS at 202, to be reawakened when the child concludes.
@@ -564,7 +564,7 @@ test("[§wait-obligation-matrix] SEND[202]: a live obligation BLOCKS; ∅ (bare 
     } finally { await db.close(); }
 });
 
-test("[§wait-collapse-marked] a ∅ wait is 409 — the contradiction returns to the model; a historical collapse row still renders both truth layers (#379, #502)", async () => {
+test("a ∅ wait is 409 — the contradiction returns to the model; a historical collapse row still renders both truth layers (#379, #502)", async () => {
     // run113: a worker waited on an EXEC that never dispatched; the old ∅-collapse concluded it
     // CLEAN and the confusion vanished. The flip: dispatch 409s the ∅ wait (the recovery rail);
     // the collapse MARKER render survives for rows history already carries (run42's class).
@@ -592,7 +592,7 @@ test("[§wait-collapse-marked] a ∅ wait is 409 — the contradiction returns t
     } finally { await db.close(); }
 });
 
-test("[§worker-lifecycle-idle-is-concluded] an idle wait is 409; the worker concludes by SAYING so next turn — never a held-open 202, never a silent conclude", async () => {
+test("an idle wait is 409; the worker concludes by SAYING so next turn — never a held-open 202, never a silent conclude", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `idle-concludes-${crypto.randomUUID()}`);

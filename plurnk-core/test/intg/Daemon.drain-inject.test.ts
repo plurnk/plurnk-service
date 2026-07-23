@@ -29,7 +29,7 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
     });
 });
 
-test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded exec; the stream concludes 499", async () => {
+test("loop.cancel terminates a backgrounded exec; the stream concludes 499", async () => {
     // A fire-and-forget exec outlives the loop that spawned it (SEND[102] keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
     // must ACTUALLY terminate it — proven by the exec stream concluding 499,
@@ -91,7 +91,7 @@ test("[§notifications-stream-concluded] loop.cancel terminates a backgrounded e
     });
 });
 
-test("[§methods-loop-cancel] loop.cancel: no active drain → cancelled=false", async () => {
+test("loop.cancel: no active drain → cancelled=false", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("<<SEND[200]:done:SEND")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -104,7 +104,7 @@ test("[§methods-loop-cancel] loop.cancel: no active drain → cancelled=false",
     });
 });
 
-test("[§worker-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
+test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     // Generous response queue so neither loop exhausts Mock regardless
     // of how many turns each runs before cancel/termination.
     // 16384: the cancel-then-restart drain accumulates the exec entry across turns, cresting at the 8192 edge;
@@ -157,7 +157,7 @@ test("[§worker-lifecycle-no-lost-loop] loop.run: post-cancel, a fresh loop.run 
     });
 });
 
-test("[§worker-lifecycle-single-drain] loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
+test("loop.run while a loop is live: second call injects into its next-turn slot (no parallel drain)", async () => {
     // Deterministic hold (no 50ms race): a non-auto EXEC proposal pauses
     // dispatch at status=202 BEFORE any subprocess spawns, so loop 1 is
     // provably live at status=102 when the second loop.run lands. We REJECT it
@@ -268,7 +268,7 @@ test("loop ends before consuming an injected prompt → reconciled into a fresh 
     });
 });
 
-test("[§worker-lifecycle-total-reap] loop.cancel reaps the worker's open streams by the subscription registry (closed 499)", async () => {
+test("loop.cancel reaps the worker's open streams by the subscription registry (closed 499)", async () => {
     // A backgrounded sleep registers an OPEN exec subscription; loop.cancel must reap
     // it THROUGH the registry — the open row closes at 499 — not merely fire a
     // notification. Asserted against the registry directly: open→0 + close_status=499.
@@ -307,7 +307,7 @@ test("[§worker-lifecycle-total-reap] loop.cancel reaps the worker's open stream
     });
 });
 
-test("[§worker-lifecycle-no-resurrection] a cancelled run is not revived by its straggler stream's conclusion", async () => {
+test("a cancelled run is not revived by its straggler stream's conclusion", async () => {
     // After loop.cancel, the backgrounded exec's conclusion must NOT open a fresh loop
     // in the worker — the cancel was deliberate. Proven by the worker's loop count staying at
     // its single model loop after the conclusion lands (a resurrection would add a

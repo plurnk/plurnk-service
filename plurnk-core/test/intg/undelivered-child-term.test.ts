@@ -30,7 +30,7 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, parent, parentLoop, parentTurn, engine };
 }
 
-test("[§send-undelivered-child-term] a bare SEND[202] over a just-concluded child CONTINUES — never the ∅-collapse", async () => {
+test("a bare SEND[202] over a just-concluded child CONTINUES — never the ∅-collapse", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
@@ -41,7 +41,7 @@ test("[§send-undelivered-child-term] a bare SEND[202] over a just-concluded chi
     } finally { await db.close(); }
 });
 
-test("[§send-undelivered-child-term] a SEND[200] over a just-concluded child is refused with the steer", async () => {
+test("a SEND[200] over a just-concluded child is refused with the steer", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);

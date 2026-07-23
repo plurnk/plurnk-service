@@ -28,7 +28,7 @@ const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = nul
     position: { line: 1, column: 1 },
 });
 
-test("[§machine-processes-one-filesystem] the entries are the workspace's — a second run writing the same path updates the one shared entry, it does not mint a second", async () => {
+test("the entries are the workspace's — a second run writing the same path updates the one shared entry, it does not mint a second", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -56,7 +56,7 @@ test("[§machine-processes-one-filesystem] the entries are the workspace's — a
 // workspace resolve the IDENTICAL git-member overlay — membership is workspace-keyed, no worker_id). It lives
 // there for the git-fixture deps (withGitWorkspace); the stub here is retired.
 
-test("[§machine-processes-fork-copies-the-log] a fork copies the parent's log (rows + their fold-state)", async () => {
+test("a fork copies the parent's log (rows + their fold-state)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -80,7 +80,7 @@ test("[§machine-processes-fork-copies-the-log] a fork copies the parent's log (
     } finally { db.close(); }
 });
 
-test("[§log-region-tagging] a fork carries a log row's region tags along with its fold-state", async () => {
+test("a fork carries a log row's region tags along with its fold-state", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -100,7 +100,7 @@ test("[§log-region-tagging] a fork carries a log row's region tags along with i
     } finally { db.close(); }
 });
 
-test("[§machine-processes-fork-shares-the-world] a fork shares the workspace's filesystem and overlay, live and uncopied", async () => {
+test("a fork shares the workspace's filesystem and overlay, live and uncopied", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -120,7 +120,7 @@ test("[§machine-processes-fork-shares-the-world] a fork shares the workspace's 
     } finally { db.close(); }
 });
 
-test("[§machine-processes-no-fork-workspace] a workspace cannot be forked; the fork is worker-scoped", async () => {
+test("a workspace cannot be forked; the fork is worker-scoped", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

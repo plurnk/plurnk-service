@@ -25,7 +25,7 @@ const projectThroughAgui = (workerId: number, attrs: string) => {
     return tr.logEntry({ entry: { id: 9, op: "model", origin: "model", coordinate: "1/1/9/model", turn_id: 1, tx: "", attrs, worker_id: workerId } as never });
 };
 
-test("[§sealed-reasoning-carrier] the item list lands verbatim on attrs.reasoning AND agui projects a correlated span; the packet never carries the blob", async () => {
+test("the item list lands verbatim on attrs.reasoning AND agui projects a correlated span; the packet never carries the blob", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `sealed-${crypto.randomUUID()}`);
@@ -63,7 +63,7 @@ test("[§sealed-reasoning-carrier] the item list lands verbatim on attrs.reasoni
     } finally { await db.close(); }
 });
 
-test("[§sealed-reasoning-carrier] a MULTI-item turn serves N correlated spans — the array residual is closed (#482)", async () => {
+test("a MULTI-item turn serves N correlated spans — the array residual is closed (#482)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `sealed-multi-${crypto.randomUUID()}`);

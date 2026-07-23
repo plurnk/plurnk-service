@@ -73,7 +73,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
     } finally { await db.close(); }
 };
 
-test("[§exec-hold-until-concluded] a HOLD runtime pauses the cycle — turn 2 assembles AFTER the stream concludes", async () => {
+test("a HOLD runtime pauses the cycle — turn 2 assembles AFTER the stream concludes", async () => {
     const prevHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "holdstub1";
     try {
@@ -86,7 +86,7 @@ test("[§exec-hold-until-concluded] a HOLD runtime pauses the cycle — turn 2 a
     }
 });
 
-test("[§exec-hold-until-concluded] a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees the live stream", async () => {
+test("a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees the live stream", async () => {
     const prevHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "some-other-runtime";
     try {
@@ -103,7 +103,7 @@ test("[§exec-hold-until-concluded] a runtime OUTSIDE the hold set keeps the sta
 // §exec-hold-until-concluded per-tool refinement (#485) — a suffixed hold entry `<runtime>:<effect>`
 // holds only that effect-class. An MCP server is one runtime whose tools split (a read `get_issue`
 // vs a host `run_migration`); the operator opts the read-class in without parking on the mutation.
-test("[§exec-hold-until-concluded] a `:read` suffix holds a read-effect spawn — the effect-class opt-in (#485)", async () => {
+test("a `:read` suffix holds a read-effect spawn — the effect-class opt-in (#485)", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
     try {
         const { elapsed, streams } = await driveLoop(400, 0, "read", ":read");
@@ -112,7 +112,7 @@ test("[§exec-hold-until-concluded] a `:read` suffix holds a read-effect spawn �
     } finally { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prior; }
 });
 
-test("[§exec-hold-until-concluded] a `:host` suffix does NOT hold a read-effect spawn — the class must match (#485)", async () => {
+test("a `:host` suffix does NOT hold a read-effect spawn — the class must match (#485)", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
     try {
         const { streams } = await driveLoop(2000, 1, "read", ":host");

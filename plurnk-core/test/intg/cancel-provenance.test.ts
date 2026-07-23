@@ -11,7 +11,7 @@ import type { PrepMethod } from "../../src/core/Db.ts";
 
 type LoopRow = { id: number; status: number; terminal_message: string | null; terminated_by: string | null };
 
-test("[§methods-loop-cancel] cancelling a LIVE loop writes the provenanced 499 row — who/why on the record (#380)", async () => {
+test("cancelling a LIVE loop writes the provenanced 499 row — who/why on the record (#380)", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
         makeMockResponse("<<SEND[200]:done:SEND"),
@@ -47,7 +47,7 @@ test("[§methods-loop-cancel] cancelling a LIVE loop writes the provenanced 499 
     });
 });
 
-test("[§methods-loop-cancel] cancelling a PARKED (202) loop terminalizes it — no dead-park at 202 forever (#380)", async () => {
+test("cancelling a PARKED (202) loop terminalizes it — no dead-park at 202 forever (#380)", async () => {
     // A worker parked on a live obligation (a 30s exec + SEND[202]) has NO active drain — the
     // drain tears down on 202. Before #380 an external cancel left the row 202 forever (the
     // no-resurrection guard blocks wakes): a zombie neither live nor terminal.

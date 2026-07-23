@@ -9,7 +9,7 @@ import { openMigrated, insertWorkspace } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 
-test("[§entry-identity-no-null] the per-turn membership upsert converges to ONE row — the run59 fragmentation is structurally impossible", async () => {
+test("the per-turn membership upsert converges to ONE row — the run59 fragmentation is structurally impossible", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `identity-${crypto.randomUUID()}`);
@@ -23,7 +23,7 @@ test("[§entry-identity-no-null] the per-turn membership upsert converges to ONE
     } finally { await db.close(); }
 });
 
-test("[§entry-identity-no-null] a NULL-scheme insert is refused by the schema wall", async () => {
+test("a NULL-scheme insert is refused by the schema wall", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `identity-null-${crypto.randomUUID()}`);

@@ -74,7 +74,7 @@ test("loop.run without flags leaves loops.flags at default ({})", async () => {
     });
 });
 
-test("[§proposal-ownership-loop-auto] loop.run with flags.auto=true: in-tree auto listener resolves proposal", async () => {
+test("loop.run with flags.auto=true: in-tree auto listener resolves proposal", async () => {
     // Model emits EDIT against the proposing-test scheme (status=202), then
     // SEND[200]. With loop auto on, the proposal resolves in-process; the
     // loop completes without any client loop.resolve. Assert: final status
@@ -108,7 +108,7 @@ test("[§proposal-ownership-loop-auto] loop.run with flags.auto=true: in-tree au
     });
 });
 
-test("[§proposal-ownership-notification] loop/proposal notification carries flags.auto", async () => {
+test("loop/proposal notification carries flags.auto", async () => {
     // Without auto active: dispatch pauses awaiting resolution. We capture
     // the broadcast, confirm flags is present and auto=false, then send
     // loop.resolve to unblock the dispatch so the loop completes cleanly.

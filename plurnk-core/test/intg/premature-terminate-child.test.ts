@@ -17,7 +17,7 @@ const knownPath = (pathname: string): ParsedPath => ({
     username: null, password: null, hostname: null, port: null, pathname, params: {}, fragment: null,
 });
 
-test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 409 on the record (no erasure) + steers", async () => {
+test("SEND[200] with a live CHILD run is refused 409 on the record (no erasure) + steers", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-child-${crypto.randomUUID()}`);
@@ -53,7 +53,7 @@ test("[§send-premature-terminate] SEND[200] with a live CHILD run is refused 40
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] a CONCLUDED child carrying an inherited non-terminal loop does NOT block terminate (the fanout 508 bug)", async () => {
+test("a CONCLUDED child carrying an inherited non-terminal loop does NOT block terminate (the fanout 508 bug)", async () => {
     // The fork-fanout failure: a fork inherits the parent's loops, so a child whose OWN (latest) loop
     // concluded at 200 still carried a frozen seq-1 loop at 102. The any-loop 409 gate read it as
     // forever-live and refused SEND[200] — while the child-orientation (latest-loop) showed nothing, so
@@ -84,7 +84,7 @@ test("[§send-premature-terminate] a CONCLUDED child carrying an inherited non-t
 // The unified PENDING SET (grammar 0.75.0 / the terminal redesign): a [200] is judged at its own
 // dispatch, post-batch — streams, live children, and this turn's retrievals are ONE rule.
 
-test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
+test("READ + SEND[200] same turn is refused 409 — the pending set includes this turn's retrievals", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pend-read-${crypto.randomUUID()}`);
@@ -108,7 +108,7 @@ test("[§send-premature-terminate] READ + SEND[200] same turn is refused 409 —
     } finally { await db.close(); }
 });
 
-test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run is the ∅ 409 — refused with the fact, never a hang, never a silent conclude", async () => {
+test("a legacy [102]<-1> emission on an idle run is the ∅ 409 — refused with the fact, never a hang, never a silent conclude", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
@@ -130,7 +130,7 @@ test("[§wait-obligation-matrix] a legacy [102]<-1> emission on an idle run is t
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] a READ + non-terminal SEND[102] continue does not strike — the live-thing gate is [200]-only", async () => {
+test("a READ + non-terminal SEND[102] continue does not strike — the live-thing gate is [200]-only", async () => {
     // The correct shape stays clean: submit the READ, SEND[102] to receive it next turn. A continue is
     // never gated — only a terminal [200] over a live thing is.
     const db = await openMigrated();
@@ -149,7 +149,7 @@ test("[§send-premature-terminate] a READ + non-terminal SEND[102] continue does
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] a model that won't stop premature-200ing with a live child STRIKES OUT (500)", async () => {
+test("a model that won't stop premature-200ing with a live child STRIKES OUT (500)", async () => {
     // The 200-vs-202 robustness: a confused model that keeps declaring done while its child workers is
     // not allowed to falsely complete — each premature 200 strikes, and it abandons at 500. It can't
     // hang the runtime, and it can't lie about being done.
@@ -173,7 +173,7 @@ test("[§send-premature-terminate] a model that won't stop premature-200ing with
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] GUARD: 499 is NEVER gated — abandon-by-intent discards pending work legally", async () => {
+test("GUARD: 499 is NEVER gated — abandon-by-intent discards pending work legally", async () => {
     // Doctrine guard (weaker-model protection): the pending set gates [200] only. A model
     // abandoning (499) with live children AND unreceived retrievals terminates cleanly — discard
     // by stated intent is the one legitimate discard. If this test reddens, someone widened the
@@ -200,7 +200,7 @@ test("[§send-premature-terminate] GUARD: 499 is NEVER gated — abandon-by-inte
 });
 
 
-test("[§send-premature-terminate] a retrievals-ONLY refusal states the continuation, not a remedy menu (owner wording)", async () => {
+test("a retrievals-ONLY refusal states the continuation, not a remedy menu (owner wording)", async () => {
     // xpath/topo forensics: gemma's read-and-conclude idiom hit the KILL/park steer three turns
     // straight and never adapted — there is no lever to pull for a this-turn retrieval; the
     // results simply arrive. The steer now says exactly that. Streams/children keep the menu.
@@ -224,7 +224,7 @@ test("[§send-premature-terminate] a retrievals-ONLY refusal states the continua
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] retrieval preemies NEVER strike — repeated refusals teach without executing (owner ruling)", async () => {
+test("retrieval preemies NEVER strike — repeated refusals teach without executing (owner ruling)", async () => {
     // Atomic-turn pretraining pairs fetch-and-answer in one emission; each refusal is correct,
     // and maxTurns bounds the walk. FOUR consecutive read-and-conclude turns: every one refused
     // 409, the loop still ALIVE after all of them — never a strike-out. A live-child refusal
@@ -247,7 +247,7 @@ test("[§send-premature-terminate] retrieval preemies NEVER strike — repeated 
     } finally { await db.close(); }
 });
 
-test("[§send-premature-terminate] one idle-grace turn after a retrieval-409 — obeying the steer never strikes; a second idle does", async () => {
+test("one idle-grace turn after a retrieval-409 — obeying the steer never strikes; a second idle does", async () => {
     // The admins specimen: the steer says 'continuing in order to receive results', the model
     // waits one bare [102] turn, and the idle rail struck it for obeying. Turn 1: READ+[200]
     // (refused, grace armed). Turn 2: bare PLAN+[102] (the obedient wait — GRACED). Turns 3-5:
@@ -301,7 +301,7 @@ test("a parse-emptied turn is FAILED RETRIEVAL, not idle — the root 400 speaks
     } finally { await db.close(); }
 });
 
-test("[§log-row-self-explains] a FAILED op row carries its failure message on its META LINE — the record states its why, folded or open", async () => {
+test("a FAILED op row carries its failure message on its META LINE — the record states its why, folded or open", async () => {
     // The wildcard specimen: the refused SEND's rx held the steer, the row folded, and the model
     // theorized 'SEND[409] probably means bad request?' for 201s. The jumbo specimen: a minted
     // message-less item read as an "engine error" and bred a 10-turn phantom hunt. The rule now:

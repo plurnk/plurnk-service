@@ -23,7 +23,7 @@ const execFileP = promisify(execFile);
 const git = (args: string[], cwd: string) => execFileP("git", args, { cwd, env: hermeticGitEnv() });
 const seed = (cwd: string) => execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd, env: hermeticGitEnv() });
 
-test("[§membership-git-hermetic] fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched (#401)", async () => {
+test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched (#401)", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-hermetic-"));
     const victim = join(base, "victim");
     const priorGitDir = process.env.GIT_DIR;
@@ -83,7 +83,7 @@ test("[§membership-git-hermetic] fixture + production git spawns ignore a hook'
     }
 });
 
-test("[§membership-git-hermetic] a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it never fires or escapes (#428)", async () => {
+test("a spawn under hermeticGitEnv severs a hostile GLOBAL core.hooksPath — it never fires or escapes (#428)", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-hooksesc-"));
     const priorGlobal = process.env.GIT_CONFIG_GLOBAL;
     try {

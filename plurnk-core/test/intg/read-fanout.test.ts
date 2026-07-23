@@ -50,7 +50,7 @@ const rowBody = async (db: Db, workerId: number, mimetypes: Mimetypes, seq: numb
     return { status: r.status, content: r.content, startLine: r.startLine };
 };
 
-test("[§read-multi-file-fanout] a matcher READ fans out to one row per MATCH, each at its (file, span) (#286)", async () => {
+test("a matcher READ fans out to one row per MATCH, each at its (file, span) (#286)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         // france sits on a line of a (line 2) and b (line 1); c never matches.

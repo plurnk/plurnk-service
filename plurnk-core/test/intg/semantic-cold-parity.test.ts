@@ -53,14 +53,14 @@ const seedAndQuery = async (warm: boolean): Promise<string[]> => {
     } finally { await db.close(); }
 };
 
-test("[§semantic-cold-query-full-fidelity] a cold workspace's first ~query equals the fully-warmed corpus, real embedder end to end", async () => {
+test("a cold workspace's first ~query equals the fully-warmed corpus, real embedder end to end", async () => {
     const warm = await seedAndQuery(true);
     const cold = await seedAndQuery(false);
     assert.deepEqual(cold, warm, "cold-vs-warm parity: the inline slice IS full fidelity");
     assert.deepEqual([...cold].sort(), ["worker:///db.md", "worker:///sql.md"], "and the ranking is the real semantic one");
 });
 
-test("[§derivation-off-hot-path] the queued pump completes on the background chain — drainDerivations awaits it", async () => {
+test("the queued pump completes on the background chain — drainDerivations awaits it", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();
@@ -78,7 +78,7 @@ test("[§derivation-off-hot-path] the queued pump completes on the background ch
     } finally { await db.close(); }
 });
 
-test("[§semantic-entry-chunk-cap] the chunk cap is a latency stage — capped inline, complete in the pump, never a coverage bound", async () => {
+test("the chunk cap is a latency stage — capped inline, complete in the pump, never a coverage bound", async () => {
     // The flat cap silently foreclosed legitimate large texts (a 300-page book: head-only
     // vectors, permanently). Now: an inline (maxChunks) pass caps and reports capped=true —
     // and deriveOne skips the hash stamp on a capped pass so the pump re-derives to FULL

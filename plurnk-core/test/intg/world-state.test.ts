@@ -13,7 +13,7 @@ import Owner from "../../src/core/Owner.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace } from "./_helpers.ts";
 
-test("[§fs-world-state] a lawful world reports ZERO violations after real lifecycle traffic", async () => {
+test("a lawful world reports ZERO violations after real lifecycle traffic", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ws-"));
     const db = await openMigrated();
     try {
@@ -30,7 +30,7 @@ test("[§fs-world-state] a lawful world reports ZERO violations after real lifec
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("[§fs-world-state] the detector CATCHES: a non-canon stored key and an alien grantor both self-name", async () => {
+test("the detector CATCHES: a non-canon stored key and an alien grantor both self-name", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ws-bad-"));
     const db = await openMigrated();
     try {

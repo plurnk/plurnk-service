@@ -240,7 +240,7 @@ test("GBNF: PLAN-anchored root — PLAN mandatory & first, SEND-closed", () => {
 // PLAN+SEND[200]; a zero-op [202] is the ENGINE's obligation check (a wait on nothing
 // resolves like 200); 300/499 need no ops by nature. ANTLR stays tolerant (forgiving
 // ingester — old logs, cloud paths, Script); the rail is the strict side, per the split.
-test("GBNF: no idle turns (§no-idle-102) — a zero-op [102] does not derive; one statement restores it", () => {
+test("GBNF: no idle turns () — a zero-op [102] does not derive; one statement restores it", () => {
     // The idle turn: PLAN straight into a [102] terminal. Not derivable.
     assert.equal(derives("root-turn", "<<PLAN:think:PLAN\n<<SEND[102]:working:SEND"), false);
     // Targeted changes nothing — still idle.
@@ -264,7 +264,7 @@ test("GBNF: no idle turns (§no-idle-102) — a zero-op [102] does not derive; o
 // MID-BATCH CHANNEL (#497): think → act → think → act has a legal home. One optional channel
 // rides with each step; a standalone channel step does not exist, so think-spam (the run104
 // draft-loop) cannot become rail-legal. Nothing follows the terminal SEND but EOS, unchanged.
-test("GBNF: mid-batch channel (§mid-batch-channel, #497) — one think per step derives; think-loops and post-terminal thought do not", () => {
+test("GBNF: mid-batch channel (, #497) — one think per step derives; think-loops and post-terminal thought do not", () => {
     const CH = (t: string) => `<|channel>thought\n${t}<channel|>`;
     // think between ops.
     assert.equal(derives("root-turn", `<<PLAN:p:PLAN\n<<READ(worker:///x)::READ\n${CH("the result lands next turn")}<<SEND[102]:waiting:SEND`), true);
@@ -593,7 +593,7 @@ test("GBNF: PLAN has no numeric suffix — the malformed <<PLAN1 is not derivabl
 // begins. run113: an omitted `:PLAN` let the body swallow EXEC+SEND to the NEXT plan's closer,
 // silently and in-rail. With `<<` unsampleable in-body, the mask denies the trap at one token
 // and the shortest legal path to the intended op is emitting `:PLAN` first.
-test("GBNF: PLAN body excludes `<<` (§plan-body-no-openers) — the run113 capture is underivable", () => {
+test("GBNF: PLAN body excludes `<<` () — the run113 capture is underivable", () => {
     // An op opener inside the plan body: NOT derivable.
     assert.equal(derives("root-turn", "<<PLAN:plan text\n<<READ(worker:///x)::READ more plan:PLAN\n<<SEND[200]:x:SEND"), false);
     // The run113 shape itself (omitted :PLAN, ops swallowed to the second plan's closer): NOT derivable.

@@ -19,7 +19,7 @@ test("Known declares static channels manifest + defaultChannel", () => {
     assert.equal(Worker.manifest.defaultChannel, "body");
 });
 
-test("[§per-entry-channels-edit-writes-only-body] Known.edit writes only the body channel; preview is render-time", async () => {
+test("Known.edit writes only the body channel; preview is render-time", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const r = await new Worker().edit(editStmt(urlPath("worker", "/x"), "hello"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -34,7 +34,7 @@ test("[§per-entry-channels-edit-writes-only-body] Known.edit writes only the bo
     } finally { await db.close(); }
 });
 
-test("[§channel-selection-unknown-channel-400] Known.edit with unknown channel returns 400", async () => {
+test("Known.edit with unknown channel returns 400", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const r = await new Worker().edit(editStmt(urlPath("worker", "/x", "not-a-channel"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -43,7 +43,7 @@ test("[§channel-selection-unknown-channel-400] Known.edit with unknown channel 
     } finally { await db.close(); }
 });
 
-test("[§channel-selection-fragmentless-targets-default-channel] Known.read with no fragment returns body channel (default)", async () => {
+test("Known.read with no fragment returns body channel (default)", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const k = new Worker();

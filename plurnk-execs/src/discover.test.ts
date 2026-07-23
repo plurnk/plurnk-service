@@ -26,7 +26,7 @@ const makePkg = async (pkg: unknown): Promise<string> => {
     return dir;
 };
 
-test("§3 discover: registers each runtime tag of an exec package", async () => {
+test("discover: registers each runtime tag of an exec package", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-search",
         plurnk: {
@@ -50,7 +50,7 @@ test("§3 discover: registers each runtime tag of an exec package", async () => 
     });
 });
 
-test("§3 discover: documentation is sourced from docs/<tag>.md, inline field as fallback (#12)", async () => {
+test("discover: documentation is sourced from docs/<tag>.md, inline field as fallback (#12)", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [
@@ -68,7 +68,7 @@ test("§3 discover: documentation is sourced from docs/<tag>.md, inline field as
     assert.equal(registry.get("bc")?.documentation, "", "neither file nor inline → empty");
 });
 
-test("§3.2 discover: surfaces raw plurnk.attribution (string | string[]) on each tag (#11)", async () => {
+test("discover: surfaces raw plurnk.attribution (string | string[]) on each tag (#11)", async () => {
     const strDir = await makePkg({
         name: "@acme/acme-execs-multi",
         plurnk: { kind: "exec", attribution: "acme-multi", runtimes: [{ name: "alpha" }, { name: "beta" }] },
@@ -89,7 +89,7 @@ test("§3.2 discover: surfaces raw plurnk.attribution (string | string[]) on eac
     assert.ok(!("attribution" in (registry.get("bare") as object)), "no attribution key when omitted");
 });
 
-test("§3 discover: a dual-kind package (kind array including 'exec') registers its tags (#483)", async () => {
+test("discover: a dual-kind package (kind array including 'exec') registers its tags (#483)", async () => {
     const dualDir = await makePkg({
         name: "@plurnk/plurnk-execs-mcp",
         plurnk: { kind: ["exec", "scheme"], runtimes: [{ name: "dual", glyph: "🔌" }] },
@@ -117,7 +117,7 @@ const makeDynamicPkg = async (name: string, hookSrc: string, rel = "runtimes.mjs
     return dir;
 };
 
-test("§3.1 discover: dynamic runtimesModule hook materializes per-deployment tags (#10)", async () => {
+test("discover: dynamic runtimesModule hook materializes per-deployment tags (#10)", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-mcp",
         `export async function runtimes() {
@@ -139,7 +139,7 @@ test("§3.1 discover: dynamic runtimesModule hook materializes per-deployment ta
     });
 });
 
-test("§3.1 discover: the dynamic hook accepts a default export and a sync return", async () => {
+test("discover: the dynamic hook accepts a default export and a sync return", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-mcp",
         `export default () => [{ name: "slack" }];`,
@@ -148,7 +148,7 @@ test("§3.1 discover: the dynamic hook accepts a default export and a sync retur
     assert.deepEqual([...registry.keys()], ["slack"]);
 });
 
-test("§3.1 discover: a broken dynamic hook is fail-hard (trusted-package contract)", async () => {
+test("discover: a broken dynamic hook is fail-hard (trusted-package contract)", async () => {
     const missing = await makeDynamicPkg("@plurnk/plurnk-execs-mcp", "// no exports", "gone.mjs");
     // Point at a file that doesn't exist on disk → unloadable.
     await fs.rm(path.join(missing, "gone.mjs"));
@@ -164,7 +164,7 @@ test("§3.1 discover: a broken dynamic hook is fail-hard (trusted-package contra
     await assert.rejects(Discover.scan({ packageDirs: [nonArray] }), /runtimes hook returned a non-array/);
 });
 
-test("§3.1 discover: an UNTRUSTED package's dynamic hook is NEVER executed (gate before import)", async () => {
+test("discover: an UNTRUSTED package's dynamic hook is NEVER executed (gate before import)", async () => {
     // If the gate failed to guard the import, this hook would throw and the
     // rejection would surface — proving execution. Under the gate it must be
     // skipped silently instead.
@@ -179,7 +179,7 @@ test("§3.1 discover: an UNTRUSTED package's dynamic hook is NEVER executed (gat
     });
 });
 
-test("§3.1 discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
+test("discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
     const dir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
         name: "@plurnk/plurnk-execs-both",
@@ -190,7 +190,7 @@ test("§3.1 discover: static runtimes[] wins when both it and runtimesModule are
     assert.deepEqual([...registry.keys()], ["static"], "static array short-circuits the hook");
 });
 
-test("§3 discover: ignores non-exec packages and missing glyphs default to empty", async () => {
+test("discover: ignores non-exec packages and missing glyphs default to empty", async () => {
     const execDir = await makePkg({
         name: "@plurnk/plurnk-execs-sh",
         plurnk: { kind: "exec", runtimes: [{ name: "sh" }] },
@@ -209,7 +209,7 @@ test("§3 discover: ignores non-exec packages and missing glyphs default to empt
     });
 });
 
-test("§3 discover: tag collision across packages is fail-hard", async () => {
+test("discover: tag collision across packages is fail-hard", async () => {
     const a = await makePkg({
         name: "@plurnk/plurnk-execs-search",
         plurnk: { kind: "exec", runtimes: [{ name: "search" }] },
@@ -225,7 +225,7 @@ test("§3 discover: tag collision across packages is fail-hard", async () => {
     );
 });
 
-test("§3 discover: skips entries with no/empty name and malformed package.json", async () => {
+test("discover: skips entries with no/empty name and malformed package.json", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-mixed",
         plurnk: { kind: "exec", runtimes: [{ glyph: "❓" }, { name: "" }, { name: "ok" }] },
@@ -240,12 +240,12 @@ test("§3 discover: skips entries with no/empty name and malformed package.json"
     assert.ok(registry.has("ok"));
 });
 
-test("§3 discover: empty scan of a nonexistent node_modules yields an empty registry", async () => {
+test("discover: empty scan of a nonexistent node_modules yields an empty registry", async () => {
     const { registry } = await Discover.scan({ cwd: path.join(os.tmpdir(), "execs-no-such-root-xyz") });
     assert.equal(registry.size, 0);
 });
 
-test("§3 discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
+test("discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
     // Build a real <cwd>/node_modules with packages under @plurnk, a third-party
     // scope, an unscoped name, and a non-exec package that must be ignored.
     const root = await mkTmp("execs-scan-");
@@ -279,7 +279,7 @@ const withGate = async (value: string | undefined, fn: () => Promise<void>): Pro
     }
 };
 
-test("§3 trust gate ON: untrusted third-party is skipped (not registered); @plurnk stays trusted", async () => {
+test("trust gate ON: untrusted third-party is skipped (not registered); @plurnk stays trusted", async () => {
     const plurnk = await makePkg({ name: "@plurnk/plurnk-execs-sh", plurnk: { kind: "exec", runtimes: [{ name: "sh" }] } });
     const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
     await withGate("1", async () => {
@@ -289,7 +289,7 @@ test("§3 trust gate ON: untrusted third-party is skipped (not registered); @plu
     });
 });
 
-test("§3 trust gate ON with an allowlist: a named third-party package is trusted", async () => {
+test("trust gate ON with an allowlist: a named third-party package is trusted", async () => {
     const cobol = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
     const fortran = await makePkg({ name: "execs-fortran", plurnk: { kind: "exec", runtimes: [{ name: "fortran" }] } });
     await withGate("@acme/acme-execs-cobol", async () => {
@@ -318,7 +318,7 @@ const withEnv = async (kv: Record<string, string | undefined>, fn: () => Promise
     }
 };
 
-test("§3.3 runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the rest land in `disabled`", async () => {
+test("runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the rest land in `disabled`", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [{ name: "search" }, { name: "node" }, { name: "sqlite" }] },
@@ -330,7 +330,7 @@ test("§3.3 runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the 
     });
 });
 
-test("§3.3 runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
+test("runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [{ name: "node" }, { name: "sh" }] },

@@ -23,7 +23,7 @@ const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnI
     return row.id;
 };
 
-test("[§methods-log-coordinate] fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", async () => {
+test("fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

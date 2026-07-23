@@ -68,7 +68,7 @@ test("SEND[410] with #fragment on missing channel returns 404", async () => {
     } finally { await db.close(); }
 });
 
-test("[§send-dispatch-entry-schemes-501-on-non-410] SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 directly)", async () => {
+test("SEND[200] on entry scheme returns 501 (entry schemes don't interpret 200 directly)", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -82,7 +82,7 @@ test("[§send-dispatch-entry-schemes-501-on-non-410] SEND[200] on entry scheme r
 // Every other status code returns 501 by default. New per-scheme overrides
 // land when concrete use cases arise; the default stays 501.
 for (const status of [201, 204, 304, 400, 404, 418, 422, 500, 503]) {
-    test(`[§send-dispatch-entry-schemes-501-on-non-410] SEND[${status}](worker:///x) returns 501 (default policy)`, async () => {
+    test(`SEND[${status}](worker:///x) returns 501 (default policy)`, async () => {
         const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
         try {
             await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));

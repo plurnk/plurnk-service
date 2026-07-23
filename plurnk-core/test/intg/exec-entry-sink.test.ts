@@ -71,7 +71,7 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
     return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
 };
 
-test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIONS tags) and the plurnk worker narrates it", async () => {
+test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plurnk worker narrates it", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
@@ -133,7 +133,7 @@ test("[§exec-entry-sink] entry() materializes a tagged https entry (upsert UNIO
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
 
-test("[§exec-entry-sink] entry(content:null) fetches through the guarded sink — live materializes, dead prunes (#455)", async () => {
+test("entry(content:null) fetches through the guarded sink — live materializes, dead prunes (#455)", async () => {
     // The sink's WebFetch is faked: the SSRF guard blocks localhost, so no live server can stand in for
     // the fetch. A /dead URL resolves null (dead); anything else resolves rendered html bytes.
     const fetchWeb: WebFetch = async (url) =>

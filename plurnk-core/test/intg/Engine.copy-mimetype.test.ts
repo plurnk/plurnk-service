@@ -21,7 +21,7 @@ const copyStmt = (src: UrlPath, dst: UrlPath): CopyStatement => ({
     op: "COPY", suffix: "", signal: null, target: src, lineMarker: null, body: dst.raw, position: { line: 1, column: 1 },
 });
 
-test("[§channel-mimetype-cross-mimetype-415] COPY a json-bodied source into a markdown-fixed worker:/// dst returns 415", async () => {
+test("COPY a json-bodied source into a markdown-fixed worker:/// dst returns 415", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `copy-415-${crypto.randomUUID()}`);

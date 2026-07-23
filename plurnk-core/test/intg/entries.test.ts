@@ -94,7 +94,7 @@ test("entries: ON DELETE CASCADE via workspace", async () => {
     } finally { await db.close(); }
 });
 
-test("[§entry-identity-no-null] entries: a NULL scheme is refused — no identity component may be NULL", async () => {
+test("entries: a NULL scheme is refused — no identity component may be NULL", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(() => insertEntry(db, null, "config/foo.json"), /NOT NULL constraint failed: entries\.scheme/);
@@ -224,7 +224,7 @@ test("entry_channels: (entry_id, name) UNIQUE", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC §stream-constraints)", async () => {
+test("entry_channels: content length CHECK enforces 100 MiB char cap (SPEC )", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "worker", "big");

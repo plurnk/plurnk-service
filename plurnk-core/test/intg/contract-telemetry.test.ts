@@ -91,7 +91,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     };
 };
 
-test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
+test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
     // A NOTICE points the model at a line in its own emission; the mirror row is ALWAYS folded
     // (§model-entry) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -123,7 +123,7 @@ test("[§telemetry-content-offset-pointer] a content-offset NOTICE (grammar_unen
     } finally { await db.close(); }
 });
 
-test("[§telemetry-event-level] a drained TelemetryEvent carries level — defaulted when the producer omits it, forwarded verbatim when present (#276)", async () => {
+test("a drained TelemetryEvent carries level — defaulted when the producer omits it, forwarded verbatim when present (#276)", async () => {
     // Case A — a provider event WITHOUT level is defaulted (never dropped; grammar 0.74.29 requires it).
     {
         const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -159,7 +159,7 @@ test("[§telemetry-event-level] a drained TelemetryEvent carries level — defau
     }
 });
 
-test("[§telemetry-drain-on-read] the NOTICE telemetry buffer drains — a notice appears on exactly one packet, then is gone", async () => {
+test("the NOTICE telemetry buffer drains — a notice appears on exactly one packet, then is gone", async () => {
     // Errors persist (log items); engine NOTICES are ephemeral — drain-on-read, one packet only.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
@@ -178,7 +178,7 @@ test("[§telemetry-drain-on-read] the NOTICE telemetry buffer drains — a notic
     } finally { await db.close(); }
 });
 
-test("[§turn-never-blank] a thrown ProviderError is an infrastructure failure — no turn is fabricated, the loop dies carrying the cause", async () => {
+test("a thrown ProviderError is an infrastructure failure — no turn is fabricated, the loop dies carrying the cause", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Providers 0.32 retired the constrained-path throw: a completed exchange ALWAYS
@@ -284,7 +284,7 @@ test("provider error: a terminal kind (network_failure) telemetries live, then e
     } finally { await db.close(); }
 });
 
-test("[§turn-lifecycle] engine brackets generate() with turn_awaiting_model → turn_generated notices (liveness heartbeat)", async () => {
+test("engine brackets generate() with turn_awaiting_model → turn_generated notices (liveness heartbeat)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -310,7 +310,7 @@ test("[§turn-lifecycle] engine brackets generate() with turn_awaiting_model →
     } finally { await db.close(); }
 });
 
-test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (op='error', status 400) — queryable + foldable, not a bespoke error:// scheme", async () => {
+test("an actionless parse failure is a LOG ITEM (op='error', status 400) — queryable + foldable, not a bespoke error:// scheme", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -350,7 +350,7 @@ test("[§telemetry-no-error-scheme] an actionless parse failure is a LOG ITEM (o
 // §model-entry — the per-turn `model` echo (origin=model, distinct from the born-OPEN turn-0
 // exemplar at origin=plurnk) is ALWAYS born FOLDED (auto-OPEN on error is retired; the model READs its
 // malformed emission, line-numbered, to fix it) and FOLDED on a clean turn (budget-neutral).
-test("[§model-entry] the model echo is ALWAYS born FOLDED — errored and clean turns alike (the model READs it when it cares)", async () => {
+test("the model echo is ALWAYS born FOLDED — errored and clean turns alike (the model READs it when it cares)", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -377,7 +377,7 @@ test("[§model-entry] the model echo is ALWAYS born FOLDED — errored and clean
     } finally { await db.close(); }
 });
 
-test("[§telemetry-telemetry-event-notify] every pushed event broadcasts live with the same envelope the model later drains", async () => {
+test("every pushed event broadcasts live with the same envelope the model later drains", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

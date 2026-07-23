@@ -82,7 +82,7 @@ const dispatchAndResolve = async (engine: Engine, ctx: {
     return { status: result.status, logEntryId };
 };
 
-test("[§proposal-202-pauses] proposal: 202 scheme result pauses; accept resolves to 200", async () => {
+test("proposal: 202 scheme result pauses; accept resolves to 200", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -96,7 +96,7 @@ test("[§proposal-202-pauses] proposal: 202 scheme result pauses; accept resolve
     } finally { await db.close(); }
 });
 
-test("[§proposal-reject-fails] proposal: reject transitions to state='failed', status=400, outcome='rejected'", async () => {
+test("proposal: reject transitions to state='failed', status=400, outcome='rejected'", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -109,7 +109,7 @@ test("[§proposal-reject-fails] proposal: reject transitions to state='failed', 
     } finally { await db.close(); }
 });
 
-test("[§proposal-cancel-aborts] proposal: cancel transitions to state='cancelled', status=499, outcome='loop_aborted'", async () => {
+test("proposal: cancel transitions to state='cancelled', status=499, outcome='loop_aborted'", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -146,7 +146,7 @@ test("proposal: attrs from scheme persist into log_entries.attrs JSON", async ()
     } finally { await db.close(); }
 });
 
-test("[§proposal-proposed-hidden] proposal: status=202 + state='proposed' rows hidden from the log section render", async () => {
+test("proposal: status=202 + state='proposed' rows hidden from the log section render", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -334,7 +334,7 @@ test("proposal: loop auto-approval does NOT engage when flags.auto is absent / f
     } finally { await db.close(); }
 });
 
-test("[§proposal-timeout-cancels] proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (t) => {
+test("proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (t) => {
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
@@ -361,7 +361,7 @@ test("[§proposal-timeout-cancels] proposal: timeout fires after PLURNK_SERVICE_
     } finally { await db.close(); }
 });
 
-test("[§proposal-timeout-cancels] the SHIPPED default is INDEFINITE — a stopped world waits for its human (owner ruling)", async (t) => {
+test("the SHIPPED default is INDEFINITE — a stopped world waits for its human (owner ruling)", async (t) => {
     // The AG-UI migration's first surfaced decision: absence is not an answer. With the knob
     // unset, a pending proposal outlives any would-be window and resolves only when the human
     // does — the [102]<-1> doctrine's sibling. The operator-bounded lane above keeps its test.

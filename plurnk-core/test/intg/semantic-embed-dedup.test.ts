@@ -9,7 +9,7 @@ import { openMigrated, insertWorkspace } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
 import { contentHash } from "../../src/core/content-hash.ts";
 
-test("[§semantic-embed-dedup] the dedup source query returns a sibling's chunks for identical content (#416)", async () => {
+test("the dedup source query returns a sibling's chunks for identical content (#416)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `dedup-${crypto.randomUUID()}`);

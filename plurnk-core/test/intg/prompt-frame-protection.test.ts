@@ -29,7 +29,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, workerId, loopId, engine, curationTurn };
 }
 
-test("[§prompt-fold-illegal] a FOLD of the prompt auto-READ is refused with the KILL steer (#382)", async () => {
+test("a FOLD of the prompt auto-READ is refused with the KILL steer (#382)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -43,7 +43,7 @@ test("[§prompt-fold-illegal] a FOLD of the prompt auto-READ is refused with the
     } finally { await db.close(); }
 });
 
-test("[§prompt-fold-illegal] the EDIT foist is ordinary memory — OPEN then fold-back is legal curation", async () => {
+test("the EDIT foist is ordinary memory — OPEN then fold-back is legal curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -58,7 +58,7 @@ test("[§prompt-fold-illegal] the EDIT foist is ordinary memory — OPEN then fo
     } finally { await db.close(); }
 });
 
-test("[§prompt-fold-illegal] a prior loop's preview is ordinary memory — the refusal binds only the current frame", async () => {
+test("a prior loop's preview is ordinary memory — the refusal binds only the current frame", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, engine } = await seedPromptWorker(db);
@@ -78,7 +78,7 @@ test("[§prompt-fold-illegal] a prior loop's preview is ordinary memory — the 
     } finally { await db.close(); }
 });
 
-test("[§prompt-fold-illegal] KILL of the prompt is still allowed — deliberate curation preserved (#382)", async () => {
+test("KILL of the prompt is still allowed — deliberate curation preserved (#382)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
@@ -87,7 +87,7 @@ test("[§prompt-fold-illegal] KILL of the prompt is still allowed — deliberate
     } finally { await db.close(); }
 });
 
-test("[§grinder-errors-exempt] the grinder never folds the prompt frame — even on overflow (#382)", async () => {
+test("the grinder never folds the prompt frame — even on overflow (#382)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await seedPromptWorker(db);
@@ -99,7 +99,7 @@ test("[§grinder-errors-exempt] the grinder never folds the prompt frame — eve
     } finally { await db.close(); }
 });
 
-test("[§prompt-self-only] sister workers' turn-1 prompts are DISTINCT rows at the same coordinate — owner-keyed, no clobber (#382 fault-1)", async () => {
+test("sister workers' turn-1 prompts are DISTINCT rows at the same coordinate — owner-keyed, no clobber (#382 fault-1)", async () => {
     // run43: exactly two writes hit /1/1 — the model worker's task foist and a WORK-spawned
     // worker's — and the worker's DESTROYED the parent's task. Run-qualified paths keep one
     // filesystem with collision-free coordinates (/proc/<pid>-style).
@@ -140,7 +140,7 @@ test("OPEN/FOLD are recorded in the DB but suppressed from the packet render (#3
     } finally { await db.close(); }
 });
 
-test("[§kill-log-receipt-suppressed] a successful KILL of a log item is suppressed from the render; a KILL of a non-log target renders (#561)", async () => {
+test("a successful KILL of a log item is suppressed from the render; a KILL of a non-log target renders (#561)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);

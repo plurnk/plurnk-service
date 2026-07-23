@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
 
-test("a 'repo' constraint on a HEADLESS workspace is refused — headless is forever, it could never resolve (§membership)", async () => {
+test("a 'repo' constraint on a HEADLESS workspace is refused — headless is forever, it could never resolve ()", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {

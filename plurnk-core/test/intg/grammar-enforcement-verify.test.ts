@@ -14,12 +14,12 @@ const fakeProvider = (content: string): Provider => ({
     countTokens: () => 1, costFor: () => 0,
 }) as unknown as Provider;
 
-test("[§grammar-enforcement-verified-at-boot] an enforcing backend passes verification", async () => {
+test("an enforcing backend passes verification", async () => {
     await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("PLURNK-RAILS-LIVE"), { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" });
     // no throw = pass
 });
 
-test("[§grammar-enforcement-verified-at-boot] an UNCONSTRAINED backend fails hard — never a silent unconstrained boot", async () => {
+test("an UNCONSTRAINED backend fails hard — never a silent unconstrained boot", async () => {
     await assert.rejects(
         () => ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("hello, I am unconstrained"), { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" }),
         (err: Error) => /grammar enforcement is OFF/.test(err.message) && /never transported|grammarStyle/.test(err.message),
@@ -27,13 +27,13 @@ test("[§grammar-enforcement-verified-at-boot] an UNCONSTRAINED backend fails ha
     );
 });
 
-test("[§grammar-enforcement-verified-at-boot] no grammar requested → verification is a no-op", async () => {
+test("no grammar requested → verification is a no-op", async () => {
     await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("anything at all"), {});
     await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("anything"), { PLURNK_PROVIDERS_GBNF: "0" });
     // no throw = unconstrained is a legitimate deliberate mode
 });
 
-test("[§grammar-enforcement-verified-at-boot] a NON-CLAIMING backend (constrainsOutput:false) boots with a notice — the global default is safe (#336)", async () => {
+test("a NON-CLAIMING backend (constrainsOutput:false) boots with a notice — the global default is safe (#336)", async () => {
     // A grammarStyle-'none' provider drops the grammar cleanly (never on the wire), so a global
     // GBNF default must not refuse boot against it. The probe is SKIPPED entirely — generate()
     // here would return garbage, proving the gate fired before any probe.
@@ -51,7 +51,7 @@ test("[§grammar-enforcement-verified-at-boot] a NON-CLAIMING backend (constrain
     );
 });
 
-test("[§grammar-enforcement-verified-at-boot] a PER-ALIAS grammar (bare empty) STILL verifies — the #353 regression guard", async () => {
+test("a PER-ALIAS grammar (bare empty) STILL verifies — the #353 regression guard", async () => {
     // The bug this pins: after GBNF went per-alias (#352), the verify read the BARE knob (now
     // empty), so a grammar riding a suffix (turboderp) SKIPPED verification — enforced but
     // unconfirmed, the #34 hole reopened. The env below is the shape live/demo actually ships:

@@ -11,7 +11,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection 
 // These pin the TABULAR budget baseline; #440's default is the mermaid form (covered by [§budget-mermaid]).
 process.env.PLURNK_SERVICE_BUDGET_MERMAID = "off";
 
-test("[§tokenomics-window-partition] the prompt ceiling derives from the provider window minus reserves — reserves over the window fail hard", async () => {
+test("the prompt ceiling derives from the provider window minus reserves — reserves over the window fail hard", async () => {
     // #507 — the envelope is PROVIDER-owned: the window is the provider's own (Mock ctor), the
     // reserves ride the bare PLURNK_PROVIDERS_*_RESERVE knobs Mock reads, SAFETY stays core's.
     // 1000+2000 reserves + 500 safety: a 10000 window → promptBudget 6500; a 5000 window → 1500;
@@ -78,7 +78,7 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-window-partition] an intermediate operator cap tightens the PROMPT alone — reserves stay natural, maxTokens untouched (#528)", async () => {
+test("an intermediate operator cap tightens the PROMPT alone — reserves stay natural, maxTokens untouched (#528)", async () => {
     // The conflation this pins against: folding the cap into the window shrank the reserves, so
     // capping the log also throttled reasoning + response length. Natural window 49152, absolute
     // reserves via the bare env knobs (Mock resolves them against ITS window); a 32000 cap must

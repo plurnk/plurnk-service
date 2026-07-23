@@ -39,7 +39,7 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
-test("[§tokenomics-tokens-stored-at-write] EDIT stores entry_channels.tokens from the model-agnostic ruler", async () => {
+test("EDIT stores entry_channels.tokens from the model-agnostic ruler", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const content = "alpha beta gamma delta";
@@ -56,7 +56,7 @@ test("[§tokenomics-tokens-stored-at-write] EDIT stores entry_channels.tokens fr
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-tokens-stored-at-write] dispatched op stores log_entries.tokens from tx+rx", async () => {
+test("dispatched op stores log_entries.tokens from tx+rx", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         let logEntryId = 0;
@@ -71,7 +71,7 @@ test("[§tokenomics-tokens-stored-at-write] dispatched op stores log_entries.tok
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-tokens-stored-at-write] entry_channels.tokens honors an injected ruler override (test seam)", async () => {
+test("entry_channels.tokens honors an injected ruler override (test seam)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-prov-${crypto.randomUUID()}`);
@@ -89,7 +89,7 @@ test("[§tokenomics-tokens-stored-at-write] entry_channels.tokens honors an inje
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-render-weight-budget] budget headline shows ceiling/usage/free, measured from the assembled packet", async () => {
+test("budget headline shows ceiling/usage/free, measured from the assembled packet", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-bud-${crypto.randomUUID()}`);
@@ -108,7 +108,7 @@ test("[§tokenomics-render-weight-budget] budget headline shows ceiling/usage/fr
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-turn-totals] budget groups render-weight by turn, oldest first", async () => {
+test("budget groups render-weight by turn, oldest first", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-turn-${crypto.randomUUID()}`);
@@ -130,7 +130,7 @@ test("[§tokenomics-turn-totals] budget groups render-weight by turn, oldest fir
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-largest-entries] budget lists the heaviest log entries by their log:/// handle, heaviest first", async () => {
+test("budget lists the heaviest log entries by their log:/// handle, heaviest first", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-heavy-${crypto.randomUUID()}`);
@@ -159,7 +159,7 @@ test("[§tokenomics-largest-entries] budget lists the heaviest log entries by th
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-context-percent] budget headline shows usage as a percent of the ceiling", async () => {
+test("budget headline shows usage as a percent of the ceiling", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-pct-${crypto.randomUUID()}`);
@@ -182,7 +182,7 @@ test("[§tokenomics-context-percent] budget headline shows usage as a percent of
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-over-budget-floor] the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floors at 0, percent passes 100) — never delivered to the model", async () => {
+test("the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floors at 0, percent passes 100) — never delivered to the model", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-over-${crypto.randomUUID()}`);
@@ -214,7 +214,7 @@ test("[§tokenomics-over-budget-floor] the UN-FOLDABLE hard-413 record renders t
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-pressure-gates-on-occupancy] a high-headroom window renders NO curation tables — headline only", async () => {
+test("a high-headroom window renders NO curation tables — headline only", async () => {
     // #308 (the bench grok run): the Turns/Heaviest tables are a standing FOLD-target list; a
     // model with 75%+ free burned turns on token hygiene. Below half the ceiling, numbers only.
     const db = await openMigrated();
@@ -234,7 +234,7 @@ test("[§tokenomics-pressure-gates-on-occupancy] a high-headroom window renders 
     } finally { await db.close(); }
 });
 
-test("[§tokenomics-content-hash-identity] content_hash is a stable per-content identity — identical content, identical hash; no per-model keying", async () => {
+test("content_hash is a stable per-content identity — identical content, identical hash; no per-model keying", async () => {
     const { contentHash } = await import("../../src/core/content-hash.ts");
     const h = contentHash("same bytes");
     assert.equal(h, contentHash("same bytes"), "deterministic: identical content → identical hash");

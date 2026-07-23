@@ -45,7 +45,7 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("[§machine-processes-worker-is-its-log] a worker learns a sibling's edit through its own log — pulled from the shared log, no per-worker snapshot", async () => {
+test("a worker learns a sibling's edit through its own log — pulled from the shared log, no per-worker snapshot", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `xrun-${crypto.randomUUID()}`);
@@ -78,7 +78,7 @@ test("[§machine-processes-worker-is-its-log] a worker learns a sibling's edit t
     }
 });
 
-test("[§actor-boundary-two-doors] exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
+test("exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
     // Both doors in one place. (Was a stale `unbuilt` todo stub — the voice door IS built: inject,
     // and irc through it, resume parked runs in place, #55.) No third channel — by design.
     const db = await openMigrated();
@@ -114,7 +114,7 @@ test("[§actor-boundary-two-doors] exactly two cross-worker channels — state v
     }
 });
 
-test("an out-of-band disk change surfaces as a source=file delta — the plurnk worker narrates the fs fiction (§env-delta)", async () => {
+test("an out-of-band disk change surfaces as a source=file delta — the plurnk worker narrates the fs fiction ()", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-"));
     const db = await openMigrated();
     try {
@@ -160,7 +160,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
 // worker://<name> carrying the loop's deliverable — the SEND[200] body or, for an
 // abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,
 // so a graceful 200 and a grinder 499 surface the same way.
-test("[§worker-scheme-collect] a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, an abandonment folded", async () => {
+test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, an abandonment folded", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);

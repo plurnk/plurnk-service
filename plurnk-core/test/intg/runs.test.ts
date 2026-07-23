@@ -7,7 +7,7 @@ import Envelope from "../../src/server/envelope.ts";
 let nameCounter = 0;
 const n = (suffix: string): string => `run-${suffix}-${++nameCounter}`;
 
-test("[§methods-worker-name-reserved] a client cannot create or resume a worker named 'plurnk' (runtime impersonation)", async () => {
+test("a client cannot create or resume a worker named 'plurnk' (runtime impersonation)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-reserved");
@@ -172,7 +172,7 @@ test("runs: index workers_parent_worker_id exists", async () => {
     } finally { await db.close(); }
 });
 
-test("runs: a name repeats within a workspace — reclamation across time, NOT store-unique (§machine-processes-worker-origin)", async () => {
+test("runs: a name repeats within a workspace — reclamation across time, NOT store-unique ()", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-reclaim");

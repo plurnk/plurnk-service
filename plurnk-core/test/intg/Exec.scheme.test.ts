@@ -143,7 +143,7 @@ test("EXEC: the (target) slot lands in attrs.target (the data source), NOT attrs
     });
 });
 
-test("[§exec-target-routing] file (target) + empty body runs the file, not the old empty-body 400 (#462)", async () => {
+test("file (target) + empty body runs the file, not the old empty-body 400 (#462)", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec462-file-"));
         try {
@@ -167,7 +167,7 @@ test("[§exec-target-routing] file (target) + empty body runs the file, not the 
     });
 });
 
-test("[§exec-target-routing] directory (target) overrides cwd; the body is the command run there (#462)", async () => {
+test("directory (target) overrides cwd; the body is the command run there (#462)", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec462-dir-"));
         try {
@@ -191,7 +191,7 @@ test("[§exec-target-routing] directory (target) overrides cwd; the body is the 
     });
 });
 
-test("[§exec-target-routing] directory (target) + empty body → 400 — a directory has nothing to run (#462)", async () => {
+test("directory (target) + empty body → 400 — a directory has nothing to run (#462)", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec462-diremp-"));
         try {

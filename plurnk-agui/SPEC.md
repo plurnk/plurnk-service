@@ -3,7 +3,7 @@
 The bridge is **a client of the plurnk daemon and a server of AG-UI**: it consumes the same
 JSON-RPC-over-WebSocket wire every plurnk client speaks, and emits the Agent-User Interaction
 Protocol's SSE event stream. Zero daemon changes; the daemon's numbers and semantics pass
-through, never recomputed. Every `{§}` anchor below is cited by a `[§]` test.
+through, never recomputed.
 
 ## Architecture
 

@@ -31,7 +31,7 @@ const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = nul
     position: { line: 1, column: 1 },
 });
 
-test("[§actor-boundary-no-mutex] two workers in one workspace both write the same shared entry — no lock", async () => {
+test("two workers in one workspace both write the same shared entry — no lock", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -54,7 +54,7 @@ test("[§actor-boundary-no-mutex] two workers in one workspace both write the sa
     } finally { db.close(); }
 });
 
-test("[§actor-boundary-isolation] a packet renders one worker's log; a sibling worker's log is absent", async () => {
+test("a packet renders one worker's log; a sibling worker's log is absent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -77,7 +77,7 @@ test("[§actor-boundary-isolation] a packet renders one worker's log; a sibling 
     } finally { db.close(); }
 });
 
-test("[§actor-boundary-origin-not-filter] origin is attribution (provenance), never read to hide a row at render", async () => {
+test("origin is attribution (provenance), never read to hide a row at render", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -103,7 +103,7 @@ test("[§actor-boundary-origin-not-filter] origin is attribution (provenance), n
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
 // an active loop folds the conclusion into its next turn — is locked in
 // Daemon.exec-wake.test.ts. Together they discharge §actor-boundary-passive-wake's two-trigger contract.
-test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
+test("an idle run wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
         makeMockResponse("<<SEND[200]:first done:SEND", 10),
         makeMockResponse("<<SEND[200]:woke done:SEND", 10),
@@ -136,7 +136,7 @@ test("[§actor-boundary-passive-wake] an idle run wakes on an inject (voice), ne
     });
 });
 
-test("[§actor-boundary-self-hosting] runtime work is an ephemeral plurnk worker firing ops — the EDIT lands in the plurnk worker's log; a sibling reaches the result through the environment door", async () => {
+test("runtime work is an ephemeral plurnk worker firing ops — the EDIT lands in the plurnk worker's log; a sibling reaches the result through the environment door", async () => {
     // The keystone (dispatchAsPlurnk) is BUILT, and its proven use — materializing a PLURNK_SERVICE_MD_<ALIAS>
     // doc — IS the self-hosting contract: a runtime op runs as the reserved `plurnk` actor, not a
     // privileged engine write. doc-injection.test.ts pins the negatives (the EDIT is absent from the

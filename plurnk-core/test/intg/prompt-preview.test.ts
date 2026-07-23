@@ -14,7 +14,7 @@ const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockR
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
 
-test("[§prompt-auto-read] a short prompt foists READ(prompt)<1,-1> — whole, the teaching form", async () => {
+test("a short prompt foists READ(prompt)<1,-1> — whole, the teaching form", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -31,7 +31,7 @@ test("[§prompt-auto-read] a short prompt foists READ(prompt)<1,-1> — whole, t
     });
 });
 
-test("[§prompt-auto-read] an over-preview prompt foists READ(prompt)<1,16> — the arrival-law knob — and the section lists the PATH only", async () => {
+test("an over-preview prompt foists READ(prompt)<1,16> — the arrival-law knob — and the section lists the PATH only", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -59,7 +59,7 @@ test("[§prompt-auto-read] an over-preview prompt foists READ(prompt)<1,16> — 
 // rides OPEN only up to the knob (16 lines AND 80×16 chars); over, the head + the cut statement +
 // the worker address ride instead. run111 entry 56: a 19,363-token deliverable landed whole in
 // its parent and cascaded down the pipeline. The render is the law's teeth — test it directly.
-test("[§arrival-law] an oversized deliverable arrival renders the bounded head + the pull address, never the whole bomb", () => {
+test("an oversized deliverable arrival renders the bounded head + the pull address, never the whole bomb", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = Array.from({ length: 400 }, (_, i) => `deranged output line ${i + 1}`).join("\n");
     const row = {
@@ -73,7 +73,7 @@ test("[§arrival-law] an oversized deliverable arrival renders the bounded head 
     assert.match(rendered, /arrival preview — the full deliverable is 400 lines: READ worker:\/\/comparison-checker/, "the cut states itself with the pull address");
 });
 
-test("[§arrival-law] a single-line char bomb is cut by the 80×N fallback", () => {
+test("a single-line char bomb is cut by the 80×N fallback", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = "x".repeat(20_000); // one line, run111-scale
     const row = {
@@ -87,7 +87,7 @@ test("[§arrival-law] a single-line char bomb is cut by the 80×N fallback", () 
     assert.match(rendered, /arrival preview/, "the cut states itself");
 });
 
-test("[§arrival-law] a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
+test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const row = {
         coordinate: "1/2/1", origin: "plurnk", op: "SEND", suffix: "", signal: null, source: "5",
@@ -99,7 +99,7 @@ test("[§arrival-law] a small deliverable rides whole — whole-when-small is th
     assert.ok(!rendered.includes("arrival preview"), "no cut statement on an in-bounds arrival");
 });
 
-test("[§arrival-law] a single-line char-bomb PROMPT renders bounded — the render cap cuts what the line-slice cannot", async () => {
+test("a single-line char-bomb PROMPT renders bounded — the render cap cuts what the line-slice cannot", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

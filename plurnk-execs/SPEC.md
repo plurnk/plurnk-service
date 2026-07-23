@@ -2,8 +2,6 @@
 
 Contract for `@plurnk/plurnk-execs-*` sibling packages — runtime executors that plurnk-service's `exec://` scheme dispatches to. Audience: implementer of a runtime executor. Consumer: [plurnk-service](https://github.com/plurnk/plurnk-service) (SPEC.md §6.8, §10). Contract shape settled in plurnk-service#174.
 
-**Traceability.** Section tags (`§N`, `§N.M`) are load-bearing: implementation comments cite the governing section, and every non-prose section is pinned by at least one test whose *title* carries its tag (`test("§2.2 probe: …")`). The binding is enforced both directions by `test/spec-coverage.test.ts` — an unpinned section or an orphaned citation fails the suite. Prose-only sections are exempt by an explicit, justified list in that gate.
-
 ## §1 Role
 
 A runtime executor handles one or more EXEC `runtime` slot values (`sh`, `node`, `python`, `search`, `news`, …). It is a `BaseExecutor` subclass that declares its output channels and implements `run()`; the framework discovers it from its `package.json` `plurnk` block. The consuming scheme owns all I/O and lifecycle machinery (db, channels, subscriptions, AbortController bridging, wake-on-completion) and hands the executor sinks — the executor stays stateless across runs beyond its construction metadata.

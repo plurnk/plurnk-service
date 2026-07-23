@@ -9,7 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
 
-test("[§worker-primary] a 3-level lineage all resolves to the true root; the root is its own primary", async () => {
+test("a 3-level lineage all resolves to the true root; the root is its own primary", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `primary-${crypto.randomUUID()}`);
@@ -26,7 +26,7 @@ test("[§worker-primary] a 3-level lineage all resolves to the true root; the ro
     } finally { await db.close(); }
 });
 
-test("[§worker-primary] two sibling subtrees resolve to their shared root — the grouping key", async () => {
+test("two sibling subtrees resolve to their shared root — the grouping key", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `primary-sib-${crypto.randomUUID()}`);

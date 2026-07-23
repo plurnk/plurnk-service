@@ -15,7 +15,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-test("[§actor-boundary-doc-injection] PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ into the model's turn 0", async () => {
+test("PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ into the model's turn 0", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-"));
     const docPath = join(dir, "agents.md");
     const docBody = "# Project rules\nBe excellent.\n";
@@ -92,7 +92,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — 
 // #231 — a client's workspace.create settings.mdDocs UNION with the server's PLURNK_SERVICE_MD_*
 // docs: the operator's policy doc rides into every workspace, the client adds its own on
 // top, and on an alias collision the client deliberately shadows the server's.
-test("[§operator-config-workspace-md-docs] workspace.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — env rides, client adds, client wins a collision", async () => {
+test("workspace.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — env rides, client adds, client wins a collision", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-md-union-"));
     const policyPath = join(dir, "policy.md");
     const guidePath = join(dir, "guide.md");

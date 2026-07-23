@@ -568,7 +568,7 @@ test("#494: RFC 9535 bare filter form ($[?@.role==\"admin\"]) is accepted", () =
 // own invention (bash-heredoc prior); the body legally swallows it and the emission runs to
 // the cap. The cut tail's unparsedTail reason must name the imposter so the recovery turn
 // learns WHAT happened, not just that something did.
-test("invented closer (§invented-closer-advisory): unparsedTail names the imposter tag", () => {
+test("invented closer (): unparsedTail names the imposter tag", () => {
     const cut = "<<PLAN:p:PLAN\n<<WORK(worker://compare):Is 3 > 2? Return 'yes' or 'no':COMPARISON_TASK\nfabricated narration continues until the cap";
     const result = PlurnkParser.parse(cut);
     assert.ok(result.unparsedTail, "the unclosed WORK must surface as unparsedTail");
@@ -587,7 +587,7 @@ test("invented closer: a never-closed body with NO imposter tag keeps the plain 
 // #502 (§plan-body-op-advisory): the ingest-side twin of the GBNF `<<`-exclusion. An omitted
 // `:PLAN` swallows the turn's ops into the plan body and the parse SUCCEEDS (run113) — the
 // advisory makes the silent swallow visible on unrailed paths.
-test("plan-body advisory (§plan-body-op-advisory): op-shaped text in a parsed PLAN body warns", () => {
+test("plan-body advisory (): op-shaped text in a parsed PLAN body warns", () => {
     // The run113 shape: :PLAN omitted, body swallows to the second plan's closer.
     const emission = "<<PLAN:Execute hostname.\n<<EXEC:hostname::EXEC\n<<SEND[102]:executing:SEND\n<<PLAN:Awaiting.:PLAN\n<<SEND[202]:waiting:SEND";
     const result = PlurnkParser.parse(emission);
@@ -612,7 +612,7 @@ const misplacedWarn = (op: string) => {
         && /has no `\(target\)`/.test(i.error.message));
 };
 
-test("misplaced-target advisory (§misplaced-target-advisory): path in [signal] with null target redirects to (…)", () => {
+test("misplaced-target advisory (): path in [signal] with null target redirects to (…)", () => {
     for (const [op, echoed] of [
         ["<<EDIT[evaluator/functions.go]<38,61>:package x:EDIT", "EDIT(evaluator/functions.go)"],
         ["<<COPY[src/a.go]:x:COPY", "COPY(src/a.go)"],
@@ -645,7 +645,7 @@ test("misplaced-target advisory: a non-mutating op with a bracketed path does no
 // {§unscoped-edit-create-only} (#571): the parser is existence-blind, so it PASSES an unscoped EDIT
 // through (lineMarker null) for core to make the create-or-refuse decision. It must never reject a
 // scopeless edit - that would break file/entry creation. (Core refuses it only for EXISTING targets.)
-test("unscoped EDIT parses through with a null lineMarker (§unscoped-edit-create-only)", () => {
+test("unscoped EDIT parses through with a null lineMarker ()", () => {
     for (const src of [
         "<<EDIT(notes.md):a whole new body:EDIT",
         "<<EDIT[plan](worker:///plan.md):draft:EDIT",
@@ -1206,7 +1206,7 @@ test("error message: stray char in slot region names what's allowed", () => {
 // #516 (run56 T13): a model that has the `<timeout,poll>` vocabulary but puts it in the
 // executor slot (`EXEC[-1,300]`) gets a redirect to the `<scope>` slot AT THE PARSE, not a raw
 // `unrecognized character` dead-end. SIGNAL_IDENT is EXEC-exclusive, so the redirect is op-correct.
-test("error message: mark-shaped EXEC signal redirects to <scope> (§signal-scope-redirect)", () => {
+test("error message: mark-shaped EXEC signal redirects to <scope> ()", () => {
     for (const src of ["<<EXEC[-1,300]:make:EXEC", "<<EXEC[1,300]:make:EXEC", "<<EXEC[30,5]:make:EXEC"]) {
         const e = firstError(src);
         assert.match(e.message, /timeout\/poll ride the `<scope>` slot; try `EXEC<-1,300>`/, src);
@@ -1240,7 +1240,7 @@ test("error message: the redirect's suggested spelling actually parses (EXEC<-1,
 // matcher after the path instead of in the `:body:` - gets a redirect to the body slot AT THE
 // PARSE, not a generic slot list. The four unambiguous matcher prefixes (#, $, ~, @) commit
 // their dialect and nothing legal in the slot region starts with them.
-test("error message: matcher-shaped char in the slot region redirects to :body: (§matcher-body-redirect)", () => {
+test("error message: matcher-shaped char in the slot region redirects to :body: ()", () => {
     for (const src of [
         "<<FIND(functions.go)#require#:FIND",
         "<<FIND(data.json)$.role:FIND",

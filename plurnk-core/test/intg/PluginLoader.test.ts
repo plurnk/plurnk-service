@@ -163,7 +163,7 @@ test("discoverPlugins skips packages with unparseable package.json", async () =>
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("[§plugin-built-against] an incompatible peer range refuses before import", async () => {
+test("an incompatible peer range refuses before import", async () => {
     const head = await PluginLoader.headVersion();
     const skewed: DiscoveredPlugin = {
         packageName: "@plurnk/plurnk-providers-nonexistent-skewed",  // unimportable — the throw MUST precede import
@@ -181,7 +181,7 @@ test("[§plugin-built-against] an incompatible peer range refuses before import"
     );
 });
 
-test("[§plugin-built-against] absent compatibility metadata warns once and proceeds", async () => {
+test("absent compatibility metadata warns once and proceeds", async () => {
     const logged: string[] = [];
     const realWrite = process.stderr.write.bind(process.stderr);
     (process.stderr as { write: unknown }).write = (s: string | Uint8Array) => { logged.push(String(s)); return realWrite(s); };
@@ -199,7 +199,7 @@ test("[§plugin-built-against] absent compatibility metadata warns once and proc
     } finally { (process.stderr as { write: unknown }).write = realWrite; }
 });
 
-test("[§plugin-built-against] discovery extracts compatibility and provenance", async () => {
+test("discovery extracts compatibility and provenance", async () => {
     const dir = await makeTempNodeModules();
     try {
         await seedPackage(dir, "plurnk-providers-stamped", { kind: "provider", name: "stamped", builtAgainst: "1.2.0" } as never, {

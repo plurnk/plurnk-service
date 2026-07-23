@@ -187,7 +187,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
     } finally { await db.close(); }
 });
 
-test("[§provider-guarantees-single-call] Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
+test("Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async () => {
     // Turn-as-container model, 1-based. The worker's first turn opens with sequence=1
     // reserved for the turn-0 `model` exemplar (§model-entry), the prompt EDIT at 2,
     // its auto-READ at 3 (§prompt-auto-read), then the 3 model ops and the terminal
@@ -373,7 +373,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
 // Rail #40: sudden-death soft warning fires in the last maxStrikes-sized
 // window before maxTurns. Soft: no strike, no loop-status change.
 
-test("[§loop-terminals] Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
+test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Every turn continues (SEND[102], never terminal), so the turn ceiling is what stops it.
@@ -1002,7 +1002,7 @@ test("Engine.runTurn: a prose-only turn strikes as no-ops (422) — free text dr
     } finally { await db.close(); }
 });
 
-test("[§broken-packet-no-dispatch] a truncated emission (finish=length + parse errors) dispatches NOTHING (#566)", async () => {
+test("a truncated emission (finish=length + parse errors) dispatches NOTHING (#566)", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // The run42 shape: the provider guillotined the emission at the completion cap. It has a

@@ -30,7 +30,7 @@ class MetaProvider implements Provider {
     }
 }
 
-test("[§meta-passthrough] a provider's opaque meta blob rides through to the loop usage payload, unenforced (#252)", async () => {
+test("a provider's opaque meta blob rides through to the loop usage payload, unenforced (#252)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `meta-${crypto.randomUUID()}`);
@@ -48,7 +48,7 @@ test("[§meta-passthrough] a provider's opaque meta blob rides through to the lo
     } finally { await db.close(); }
 });
 
-test("[§meta-passthrough] no provider meta → empty {} (never null, never fabricated)", async () => {
+test("no provider meta → empty {} (never null, never fabricated)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `meta-empty-${crypto.randomUUID()}`);

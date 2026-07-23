@@ -20,7 +20,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 
 const execFileP = promisify(execFile);
 
-test("[§proposal-ownership-auto-stale-clobber] auto rejects an EDIT to a file that diverged on disk this turn — no silent clobber", async () => {
+test("auto rejects an EDIT to a file that diverged on disk this turn — no silent clobber", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-clobber-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });

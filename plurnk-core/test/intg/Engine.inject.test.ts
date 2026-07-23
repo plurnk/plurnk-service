@@ -40,7 +40,7 @@ test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, 
     } finally { await db.close(); }
 });
 
-test("[§prompt-loop-containment] rapid injects are BOTH contained — distinct frames, nothing superseded (owner: a loop holds every prompt sent before it concludes)", async () => {
+test("rapid injects are BOTH contained — distinct frames, nothing superseded (owner: a loop holds every prompt sent before it concludes)", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });

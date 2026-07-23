@@ -20,7 +20,7 @@ const withAsk = async <T>(fn: () => Promise<T>): Promise<T> => fn(); // enabled 
 
 const send300 = (body: string) => ({ ...sendStmt(300, null, body) });
 
-test("[§send-300-choices] SEND[300] is a PROPOSAL — stop the world; the accept body IS the answer, in the ask's own rx", async () => { await withAsk(async () => {
+test("SEND[300] is a PROPOSAL — stop the world; the accept body IS the answer, in the ask's own rx", async () => { await withAsk(async () => {
     // Owner ruling (#346): the question rides the SAME proposal system as file edits/MCP auths.
     const db = await openMigrated();
     try {
@@ -54,7 +54,7 @@ test("[§send-300-choices] SEND[300] is a PROPOSAL — stop the world; the accep
     } finally { await db.close(); }
 }); });
 
-test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — same proposal, never malformed", async () => { await withAsk(async () => {
+test("a bare [300] with no choices is an OPEN QUESTION — same proposal, never malformed", async () => { await withAsk(async () => {
     // Owner ruling: choices are optional chooser sugar; a choiceless [300] simply asks freeform.
     const db = await openMigrated();
     try {
@@ -80,7 +80,7 @@ test("[§send-300-choices] a bare [300] with no choices is an OPEN QUESTION — 
     } finally { await db.close(); }
 }); });
 
-test("[§send-300-choices] e2e: the ask stops the world via loop/proposal; loop.resolve's body IS the answer; the model concludes with it", async () => { await withAsk(async () => {
+test("e2e: the ask stops the world via loop/proposal; loop.resolve's body IS the answer; the model concludes with it", async () => { await withAsk(async () => {
     // The full client contract through the real daemon (owner ruling: the SAME proposal system
     // as file edits): the model asks [300] — even under auto the question stops the world (auto
     // never auto-answers a human question) — the client receives loop/proposal carrying
@@ -114,7 +114,7 @@ test("[§send-300-choices] e2e: the ask stops the world via loop/proposal; loop.
 }); });
 
 
-test("[§send-300-choices] not enabled by default — a [300] without the client's request is refused with a self-decide steer", async () => {
+test("not enabled by default — a [300] without the client's request is refused with a self-decide steer", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `c300off-${crypto.randomUUID()}`);
@@ -133,7 +133,7 @@ test("[§send-300-choices] not enabled by default — a [300] without the client
     } finally { await db.close(); }
 });
 
-test("[§send-300-choices] settings.questions=true (the client's affirmative request) enables the workspace", async () => {
+test("settings.questions=true (the client's affirmative request) enables the workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `c300on-${crypto.randomUUID()}`);
@@ -154,7 +154,7 @@ test("[§send-300-choices] settings.questions=true (the client's affirmative req
     } finally { await db.close(); }
 });
 
-test("[§send-300-choices] PLURNK_QUESTIONS=0 is a servicewide ceiling — the client's request cannot override it", async () => {
+test("PLURNK_QUESTIONS=0 is a servicewide ceiling — the client's request cannot override it", async () => {
     const prev = process.env.PLURNK_QUESTIONS;
     process.env.PLURNK_QUESTIONS = "0";
     const db = await openMigrated();
@@ -177,7 +177,7 @@ test("[§send-300-choices] PLURNK_QUESTIONS=0 is a servicewide ceiling — the c
     }
 });
 
-test("[§send-300-choices] the teaching injects ONLY where enabled — docEntries carries questions.md for the requesting workspace, not the default one", async () => {
+test("the teaching injects ONLY where enabled — docEntries carries questions.md for the requesting workspace, not the default one", async () => {
     // The installed docs package (0.1.1) predates questions.md — seed the REAL read location so
     // the mechanism is exercised on the real path; restored after. Redundant-but-harmless once
     // docs 0.1.2 ships the file.
@@ -204,7 +204,7 @@ test("[§send-300-choices] the teaching injects ONLY where enabled — docEntrie
     }
 });
 
-test("[§proposal-list] a reconnecting client DISCOVERS the stopped world — the pending question, then answers it via loop.resolve", async () => { await withAsk(async () => {
+test("a reconnecting client DISCOVERS the stopped world — the pending question, then answers it via loop.resolve", async () => { await withAsk(async () => {
     // The indefinite-wait ruling's companion: the ask stops the world; a SECOND connection
     // (the reconnect) lists the pending proposal cold — no notification needed — and answers.
     const { withDaemon, connect, rpcCall, makeMockResponse, subscribeNotifications, waitFor, flush } = await import("./_rpc.ts");

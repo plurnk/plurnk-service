@@ -15,7 +15,7 @@ const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotificatio
     ...over,
 });
 
-test("§1 proposalToolCall: emits START/ARGS/END with the correlating id + the op in args", () => {
+test("proposalToolCall: emits START/ARGS/END with the correlating id + the op in args", () => {
     const evs = proposalToolCall(proposal());
     assert.equal(evs.length, 3);
     assert.deepEqual(evs[0], { type: "TOOL_CALL_START", toolCallId: "prop:42", toolCallName: "request_approval" });
@@ -27,13 +27,13 @@ test("§1 proposalToolCall: emits START/ARGS/END with the correlating id + the o
     assert.deepEqual(evs[2], { type: "TOOL_CALL_END", toolCallId: "prop:42" });
 });
 
-test("§1 AG-UI-conventional names: a [300] question elicits input, a side-effect requests approval", () => {
+test("AG-UI-conventional names: a [300] question elicits input, a side-effect requests approval", () => {
     assert.equal(proposalToolName("SEND"), "request_user_input");
     assert.equal(proposalToolName("EDIT"), "request_approval");
     assert.equal((proposalToolCall(proposal({ op: "SEND" }))[0] as { toolCallName: string }).toolCallName, "request_user_input");
 });
 
-test("§1 THE round-trip: run N's tool-call → run N+1's tool-result maps back to the exact proposal", () => {
+test("THE round-trip: run N's tool-call → run N+1's tool-result maps back to the exact proposal", () => {
     // Run N: two concurrent stopped worlds terminate their runs as tool-calls.
     const a = proposalToolCall(proposal({ logEntryId: 42, op: "EDIT" }));
     const b = proposalToolCall(proposal({ logEntryId: 99, op: "EXEC" }));
@@ -48,20 +48,20 @@ test("§1 THE round-trip: run N's tool-call → run N+1's tool-result maps back 
     assert.deepEqual(resB, { logEntryId: 99, decision: "reject" }, "the other id → the other proposal, rejected");
 });
 
-test("§1 an edited-body approval carries the frontend's body through to resolveProposal", () => {
+test("an edited-body approval carries the frontend's body through to resolveProposal", () => {
     const id = proposalToolCallId(7);
     const res = resolutionFromToolResult({ toolCallId: id, content: JSON.stringify({ decision: "accept", body: "the human's edit" }) });
     assert.deepEqual(res, { logEntryId: 7, decision: "accept", body: "the human's edit" });
 });
 
-test("§1 resolutionFromToolResult: tolerant of a bare decision, strict on garbage", () => {
+test("resolutionFromToolResult: tolerant of a bare decision, strict on garbage", () => {
     assert.deepEqual(resolutionFromToolResult({ toolCallId: "prop:5", content: "cancel" }), { logEntryId: 5, decision: "cancel" });
     assert.equal(resolutionFromToolResult({ toolCallId: "call_openai_xyz", content: "accept" }), null, "a non-plurnk toolCallId isn't a proposal resolution");
     assert.equal(resolutionFromToolResult({ toolCallId: "prop:5", content: JSON.stringify({ decision: "maybe" }) }), null, "an invalid decision is rejected, not coerced");
     assert.equal(resolutionFromToolResult({ content: "accept" }), null, "no toolCallId → not a resolution");
 });
 
-test("§2 reads → STATE: snapshot nests under plurnk; delta passes patches through", () => {
+test("reads → STATE: snapshot nests under plurnk; delta passes patches through", () => {
     const snap = stateSnapshot({
         providers: [{ alias: "opus", model: "anthropic/claude-opus", active: true, promptBudget: 200000 }],
         workspace: { id: 1, name: "agui-tui", projectRoot: "/w", budget: 200000 },
@@ -74,7 +74,7 @@ test("§2 reads → STATE: snapshot nests under plurnk; delta passes patches thr
     assert.equal((delta as { delta: Array<{ path: string }> }).delta[0].path, "/plurnk/providers/0/active");
 });
 
-test("§3 actions: parse a forwardedProps request, project the outcome", () => {
+test("actions: parse a forwardedProps request, project the outcome", () => {
     assert.deepEqual(parseAction({ plurnk: { action: { kind: "workspace.rename", name: "new-name" } } }), { kind: "workspace.rename", params: { name: "new-name" } });
     assert.equal(parseAction({ plurnk: {} }), null, "no action → null");
     assert.equal(parseAction({ plurnk: { action: { name: "x" } } }), null, "an action without a kind → null");

@@ -153,7 +153,7 @@ test("Log.read: regex body matcher on rx returns N:\\t<value> rows", async () =>
     } finally { db.close(); }
 });
 
-test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/FIND[tag]'s job, §log-region-tagging)", async () => {
+test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/FIND[tag]'s job, )", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });

@@ -37,7 +37,7 @@ const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T
 
 const connect = (addr: { daemon: Daemon }): Promise<SeamSocket> => Promise.resolve(new SeamSocket(addr.daemon));
 
-test("[§methods-entry-read] entry.read returns full entry shape (channels + tags + metadata)", async () => {
+test("entry.read returns full entry shape (channels + tags + metadata)", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -136,7 +136,7 @@ test("entry.read with fragment strips fragment (channel selection is per-op conc
     });
 });
 
-test("[§methods-log-read] log.read returns recent entries from the attached workspace", async () => {
+test("log.read returns recent entries from the attached workspace", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -209,7 +209,7 @@ test("log.read entries have hydrated JSON columns", async () => {
     });
 });
 
-test("[§methods-log-read] log.read by full L/T/S coordinate resolves the single entry's full shape (#271)", async () => {
+test("log.read by full L/T/S coordinate resolves the single entry's full shape (#271)", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
