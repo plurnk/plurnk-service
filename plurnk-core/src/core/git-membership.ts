@@ -58,9 +58,9 @@ export default class GitMembership {
     // Workspace creation starts a background warm while the first model turn
     // performs its own eager membership refresh. Both are legitimate callers,
     // but materialization is a delete-then-insert channel write: overlapping
-    // passes can race on the same (entry_id, body). Serialize only the same
-    // workspace in the same DB; different workspaces remain independent.
-    static #indexChains = new WeakMap<Db, Map<number, Promise<void>>>();
+    // passes can race on the same (entry_id, body). Coalesce overlapping calls for
+    // the same workspace into one pass; different workspaces remain independent.
+    static #indexPasses = new WeakMap<Db, Map<number, Promise<FsDivergence[]>>>();
 
     static #execFileP = promisify(execFile);
 
@@ -420,17 +420,17 @@ export default class GitMembership {
     // through writeEntry. Called at packet-composition time (Engine.runTurn) per
     // D5. No-ops on headless / non-git workspaces.
     static async indexGitMembership(ctx: PlurnkSchemeContext): Promise<FsDivergence[]> {
-        let chains = GitMembership.#indexChains.get(ctx.db);
-        if (chains === undefined) {
-            chains = new Map();
-            GitMembership.#indexChains.set(ctx.db, chains);
+        let passes = GitMembership.#indexPasses.get(ctx.db);
+        if (passes === undefined) {
+            passes = new Map();
+            GitMembership.#indexPasses.set(ctx.db, passes);
         }
-        const prior = chains.get(ctx.workspaceId) ?? Promise.resolve();
-        const run = prior.then(() => GitMembership.#indexGitMembershipUnlocked(ctx));
-        const tail = run.then(() => {}, () => {});
-        chains.set(ctx.workspaceId, tail);
-        void tail.finally(() => {
-            if (chains?.get(ctx.workspaceId) === tail) chains.delete(ctx.workspaceId);
+        const existing = passes.get(ctx.workspaceId);
+        if (existing !== undefined) return existing;
+        const run = GitMembership.#indexGitMembershipUnlocked(ctx);
+        passes.set(ctx.workspaceId, run);
+        void run.finally(() => {
+            if (passes?.get(ctx.workspaceId) === run) passes.delete(ctx.workspaceId);
         });
         return run;
     }

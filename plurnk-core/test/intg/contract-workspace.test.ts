@@ -487,7 +487,7 @@ test("a member unchanged on disk is not re-tokenized on the next pass", async ()
     });
 });
 
-test("overlapping startup and turn membership passes serialize per workspace", async () => {
+test("overlapping startup and turn membership requests coalesce into one workspace pass", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         let calls = 0;
         const slow: PlurnkSchemeContext = {
@@ -510,7 +510,7 @@ test("overlapping startup and turn membership passes serialize per workspace", a
         assert.ok(entry !== undefined);
         const channels = await (db.crud_read_channels as PrepMethod).all<{ name: string }>({ entry_id: entry.id });
         assert.deepEqual(channels.map((row) => row.name), ["body"]);
-        assert.equal(calls, 1, "the queued second pass observes the first pass's synced signature");
+        assert.equal(calls, 1, "both callers share one materialization pass instead of queueing a redundant forest scan");
     });
 });
 

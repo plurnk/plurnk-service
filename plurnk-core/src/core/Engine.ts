@@ -869,7 +869,14 @@ export default class Engine {
         // (disk → body channel) so they appear in the catalog. No-ops
         // on headless / non-git workspaces. Runs BEFORE the derivation pump so
         // this turn's packet reflects them.
-        const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
+        // A workspace warm reaches "indexing" only after its membership snapshot has completed.
+        // Do not rescan the entire forest on a turn arriving during that semantic pass: the warm
+        // already materialized exactly the entries this packet reads, and a redundant 2,500-file
+        // stat/DB sweep can delay the provider until indexing is nearly finished.
+        const warmStatus = this.#workspaceWarmStatus.get(workspaceId);
+        const fsDivergences = warmStatus?.phase === "indexing"
+            ? []
+            : await GitMembership.indexGitMembership(systemCtx);
         await this.#logFsFictions(workspaceId, fsDivergences);
 
         this.#queueDerivation(() => EntryManifest.maintainDerivations(systemCtx)); // §derivation-off-hot-path — the turn proceeds; ~queries warm their own slice

@@ -85,7 +85,17 @@ interface DigestModel {
     workersById: Map<number, WorkerRow>;
     workerRollups: Map<number, WorkerRollupRow>;
     opMixByWorker: Map<number, OpMixRow[]>;
-    embeddings: { entries: number; entries_embedded: number; chunk_rows: number; models: number; token_derivations: number };
+    embeddings: {
+        body_entries: number;
+        derivation_complete: number;
+        vector_complete: number;
+        fts_only: number;
+        unfinished: number;
+        partial: number;
+        chunk_rows: number;
+        models: number;
+        token_derivations: number;
+    };
 }
 
 // Programmatic entry options (#264 — plurnk-bench reuses Digest without the CLI).
@@ -200,7 +210,7 @@ export default class Digest {
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
         lines.push(`Workspaces: ${m.workspaces.length}  Runs: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Log entries: ${m.logEntries.length}`);
-        lines.push(`Semantic:  entries=${m.embeddings.entries} embedded=${m.embeddings.entries_embedded} chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
+        lines.push(`Semantic:  body=${m.embeddings.body_entries} complete=${m.embeddings.derivation_complete} (vectors=${m.embeddings.vector_complete} fts-only=${m.embeddings.fts_only}) unfinished=${m.embeddings.unfinished} (partial=${m.embeddings.partial}) chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         // Triage rollup up top: how many conversations limped vs died vs ran clean, and the total
         // error/strike load. The whole point of the "degenerate win" lens — see it before scrolling.
         const health = m.loops.map((l) => Digest.#loopHealth(l, m));
@@ -450,10 +460,22 @@ export default class Digest {
         // eager prepare would refuse the whole open over one missing optional table).
         const probe = new DatabaseSync(dbPath, { readOnly: true });
         const has = (t: string): boolean => probe.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t) !== undefined;
+        const hasColumn = (table: string, column: string): boolean => probe.prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name=?`).get(table, column) !== undefined;
         const one = (q: string): number => Number((probe.prepare(q).get() as { n: number }).n);
+        const semanticStateAvailable = has("entries") && has("entry_channels") && hasColumn("entries", "deep_hash");
+        const body = semanticStateAvailable
+            ? "FROM entries e JOIN entry_channels ec ON ec.entry_id=e.id AND ec.name='body'"
+            : "";
+        const withVector = has("entry_embeddings")
+            ? "EXISTS (SELECT 1 FROM entry_embeddings em WHERE em.entry_id=e.id)"
+            : "0";
         const embeddings = {
-            entries: has("entries") ? one("SELECT count(*) n FROM entries") : -1,
-            entries_embedded: has("entry_embeddings") ? one("SELECT count(DISTINCT entry_id) n FROM entry_embeddings") : -1,
+            body_entries: semanticStateAvailable ? one(`SELECT count(*) n ${body}`) : -1,
+            derivation_complete: semanticStateAvailable ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL`) : -1,
+            vector_complete: semanticStateAvailable && has("entry_embeddings") ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL AND ${withVector}`) : -1,
+            fts_only: semanticStateAvailable && has("entry_embeddings") ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL AND NOT ${withVector}`) : -1,
+            unfinished: semanticStateAvailable ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NULL`) : -1,
+            partial: semanticStateAvailable && has("entry_embeddings") ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NULL AND ${withVector}`) : -1,
             chunk_rows: has("entry_embeddings") ? one("SELECT count(*) n FROM entry_embeddings") : -1,
             models: has("entry_embeddings") ? one("SELECT count(DISTINCT embedding_model) n FROM entry_embeddings") : -1,
             token_derivations: has("token_counts") ? one("SELECT count(*) n FROM token_counts") : -1,

@@ -1,8 +1,7 @@
 // [§derivation-dedup-parallel] #416 — the pump groups pending entries by content_hash so each
-// unique content derives once (dedup preserved under concurrency), and runs the unique reps with
-// bounded concurrency so their embeds overlap and saturate the embedder pool. This pins the
-// SCHEDULING contract: every pending entry is fully derived (deep_hash stamped) exactly once,
-// identical at concurrency 1 and >1 — no entry skipped, no double-stamp, order-independent.
+// unique content derives once (dedup preserved under concurrency), runs unique reps with bounded
+// concurrency, and releases each rep's duplicates immediately. This pins the SCHEDULING contract:
+// every pending entry is fully derived exactly once, without a global tail barrier.
 import test from "node:test";
 import assert from "node:assert/strict";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
@@ -55,4 +54,69 @@ test("every pending entry is derived once — identical at sequential, bounded, 
     assert.equal(par.maxActive, 4, "different entries actually overlap at the configured bound");
     assert.equal(host.stamped, 11, "concurrency -1: host-sized scheduling preserves the same derivation result");
     assert.ok(host.maxActive > 1, "host-sized scheduling is genuinely parallel");
+});
+
+test("a completed representative releases its duplicates while an unrelated representative is still blocked (#588)", async () => {
+    const previousConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
+    const previousDisable = process.env.PLURNK_SERVICE_EMBED_DISABLE;
+    process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = "2";
+    process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
+    const db = await openMigrated();
+    let releaseSlow!: () => void;
+    const slowGate = new Promise<void>((accept) => { releaseSlow = accept; });
+    try {
+        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const mimetypes = new Proxy(DEFAULT_MIMETYPES, {
+            get(target, property, receiver) {
+                if (property === "embedderInfo") return async () => ({
+                    dimension: 2,
+                    maxTokens: 512,
+                    countTokens: async (text: string) => Math.ceil(text.length / 4),
+                    model: "progressive-dedup-test",
+                });
+                if (property === "embedBatch") return async (texts: readonly string[]) => texts.map(() => vector);
+                if (property === "process") {
+                    return async (...args: Parameters<typeof DEFAULT_MIMETYPES.process>) => {
+                        if (typeof args[0]?.content === "string" && args[0].content.startsWith("slow unique")) await slowGate;
+                        return target.process(...args);
+                    };
+                }
+                const value = Reflect.get(target, property, receiver) as unknown;
+                return typeof value === "function" ? value.bind(target) : value;
+            },
+        });
+        const workspaceId = await insertWorkspace(db, `progressive-dedup-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        for (let i = 0; i < 3; i++) {
+            await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: `/dup${i}`, channel: "body", content: "same", mimetype: "text/markdown" });
+        }
+        await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: "/slow", channel: "body", content: `slow unique ${"content ".repeat(40)}`, mimetype: "text/markdown" });
+
+        let twoCompleted!: () => void;
+        const reachedTwo = new Promise<void>((accept) => { twoCompleted = accept; });
+        const pump = EntryManifest.maintainDerivations(makeSchemeCtx({
+            db,
+            workspaceId,
+            workerId,
+            mimetypes,
+            pushTelemetry: (event) => {
+                if (event.kind === "embed_progress" && event.completed === 2) twoCompleted();
+            },
+        }));
+        await Promise.race([
+            reachedTwo,
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("duplicates remained behind the slow representative")), 2_000)),
+        ]);
+        const duringSlow = await (db.test_count_stamped_deep_hash as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId });
+        assert.ok((duringSlow?.n ?? 0) >= 2, "the fast representative and a sibling stamp before the slow group completes");
+        releaseSlow();
+        await pump;
+        const final = await (db.test_count_stamped_deep_hash as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId });
+        assert.equal(final?.n, 4, "all entries complete after the slow representative is released");
+    } finally {
+        releaseSlow();
+        if (previousConcurrency === undefined) delete process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY; else process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = previousConcurrency;
+        if (previousDisable === undefined) delete process.env.PLURNK_SERVICE_EMBED_DISABLE; else process.env.PLURNK_SERVICE_EMBED_DISABLE = previousDisable;
+        await db.close();
+    }
 });

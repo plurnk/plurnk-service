@@ -247,22 +247,16 @@ export default class EntryManifest {
             }
         };
 
-        // §derivation-dedup-parallel (#416) — unify the two ingest wins. FIRST-of-content embeds,
-        // the REST reuse (§semantic-embed-dedup): grouping pending by content_hash means each
-        // unique content embeds exactly once, and a naive concurrent loop can't run identical
-        // siblings simultaneously (which would defeat the dedup — they're adjacent after the
-        // smallest-first sort). SECOND, the unique reps run with bounded concurrency so their
-        // (mostly 1-chunk) embedBatch calls OVERLAP and saturate the embedder's worker pool
-        // (mimetypes#420: the pool is data-parallel; sequential per-entry await was starving it).
+        // §derivation-dedup-parallel (#416) — grouping by content_hash means each unique body
+        // embeds exactly once while distinct representatives run with bounded concurrency. Each
+        // representative releases its own siblings immediately after commit: no global barrier
+        // leaves cheap worktree copies pending behind an unrelated slow tail entry.
         const groups = new Map<string, Array<{ r: ManifestRow; hash: string }>>();
         for (const p of pending) {
             const key = embedActive ? contentHash(p.r.content) : String(p.r.entry_id); // no dedup when embeddings are off
             const g = groups.get(key);
             if (g === undefined) groups.set(key, [p]); else g.push(p);
         }
-        const reps = [...groups.values()].map((g) => g[0]);
-        const dups = [...groups.values()].flatMap((g) => g.slice(1));
-
         const rawConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
         const cores = availableParallelism();
         const configuredConcurrency = rawConcurrency === undefined || rawConcurrency.trim() === ""
@@ -272,41 +266,48 @@ export default class EntryManifest {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
         }
         const concurrency = configuredConcurrency === -1 ? availableParallelism() : configuredConcurrency;
-        const workerPool = async (work: Array<{ r: ManifestRow; hash: string }>): Promise<void> => {
+        let lastDetailAt = 0;
+        const workerPool = async (work: Array<Array<{ r: ManifestRow; hash: string }>>): Promise<void> => {
             let next = 0;
             const worker = async (): Promise<void> => {
                 while (next < work.length) {
                     if (ctx.signal?.aborted === true) return;
-                    const { r, hash } = work[next++];
-                    let lastProgress = "";
-                    await EntryManifest.deriveOne(ctx, r, hash, embedActive, undefined, (progress) => {
-                        if (step === 0 || progress.total <= 1) return;
-                        const milestone = progress.completed === progress.total
-                            || progress.completed % Math.max(1, Math.floor(progress.total / 10)) === 0;
-                        if (!milestone) return;
-                        const detail = `${progress.phase}:${progress.completed}/${progress.total}`;
-                        if (detail === lastProgress) return;
-                        lastProgress = detail;
-                        const percent = Math.floor((completed / total) * 100);
-                        ctx.pushTelemetry?.({
-                            source: "engine:derivation",
-                            kind: "embed_progress",
-                            message: `Indexing repository semantics: ${percent}% (${completed}/${total}); ${r.pathname}: ${progress.phase} ${progress.completed}/${progress.total}`,
-                            completed,
-                            total,
-                            percent,
-                            level: "info",
+                    const group = work[next++];
+                    for (const { r, hash } of group) {
+                        if (Boolean(ctx.signal?.aborted)) return;
+                        let lastProgress = "";
+                        await EntryManifest.deriveOne(ctx, r, hash, embedActive, undefined, (progress) => {
+                            if (step === 0 || progress.total <= 1) return;
+                            const milestone = progress.completed === progress.total
+                                || progress.completed % Math.max(1, Math.floor(progress.total / 10)) === 0;
+                            if (!milestone) return;
+                            const now = Date.now();
+                            if (now - lastDetailAt < 250) return;
+                            lastDetailAt = now;
+                            const detail = `${progress.phase}:${progress.completed}/${progress.total}`;
+                            if (detail === lastProgress) return;
+                            lastProgress = detail;
+                            const percent = Math.floor((completed / total) * 100);
+                            ctx.pushTelemetry?.({
+                                source: "engine:derivation",
+                                kind: "embed_progress",
+                                message: `Indexing repository semantics: ${percent}% (${completed}/${total}); ${r.pathname}: ${progress.phase} ${progress.completed}/${progress.total}`,
+                                completed,
+                                total,
+                                percent,
+                                level: "info",
+                            });
                         });
-                    });
-                    tick();
+                        tick();
+                    }
                 }
             };
             await Promise.all(Array.from({ length: Math.min(concurrency, work.length || 1) }, () => worker()));
         };
-        // Reps first (the embeds, parallel), then dups (cheap content_hash-reuse copies — the rep
-        // has committed, so tryReuseEmbeddings is a guaranteed hit).
-        await workerPool(reps);
-        await workerPool(dups);
+        // Each group stays on one worker: its representative commits first, then every sibling
+        // immediately reuses that result. A global reps→dups barrier made one slow tail entry
+        // leave hundreds of already-reusable worktree duplicates falsely pending.
+        await workerPool([...groups.values()]);
     }
 
 }

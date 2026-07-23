@@ -391,10 +391,10 @@ export default class Daemon {
         }
         await (this.#db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
-        // Members may have just landed — warm their derivations NOW (fire-and-forget, off the hot
-        // path), exactly like createWorkspace does (dogfood catch: '/repo' embeddings waited for a
-        // later turn's pump).
-        await this.#engine.warmWorkspaceDerivations(workspaceId);
+        // Members may have just landed — begin warming now, but return the constraint response
+        // immediately. Awaiting the whole corpus here kept `/repo **` at the head of the client's
+        // command queue, so prompts appeared accepted while no turn could start until 100%.
+        void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
         return { effect, glob };
     }
 
