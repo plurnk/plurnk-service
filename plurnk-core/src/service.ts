@@ -15,6 +15,7 @@ import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import Meta from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
+import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 
 // The `plurnk-service` executable: launches the daemon (start) or runs migrations.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -279,13 +280,19 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
   --env-file=<path>            layer env from <path> (repeatable; errors if missing)
   --env-file-if-exists=<path>  layer env from <path> if present (repeatable)
   --config=<path>              layer additional env from <path>
+  -v, --version                show executable provenance
   -h, --help                   show this help
 `;
 
         const { positionals, values } = parseArgs({
             allowPositionals: true,
             strict: false,
-            options: { help: { type: "boolean", short: "h" }, config: { type: "string" }, ...flagOptions },
+            options: {
+                help: { type: "boolean", short: "h" },
+                version: { type: "boolean", short: "v" },
+                config: { type: "string" },
+                ...flagOptions,
+            },
         });
 
         for (const f of flagDescriptors) {
@@ -295,6 +302,11 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
         }
 
         if (values.help) { process.stdout.write(usage); process.exit(0); }
+        const buildInfo = await getBuildInfo();
+        if (values.version) {
+            process.stdout.write(`${formatBuildInfo(buildInfo)}\n`);
+            process.exit(0);
+        }
 
         const dispatch: Record<string, () => Promise<void>> = { migrate: Service.#migrate, start: Service.#start };
         const subcommand = typeof positionals[0] === "string" ? positionals[0] : "start";
@@ -302,6 +314,7 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
         if (handler === undefined) Service.#die(64, `unknown subcommand: ${subcommand}\n\n${usage}`);
         if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
 
+        process.stderr.write(`plurnk-service: ${formatBuildInfo(buildInfo)}\n`);
         try { await handler(); }
         catch (cause) {
             process.stderr.write(`${subcommand}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
