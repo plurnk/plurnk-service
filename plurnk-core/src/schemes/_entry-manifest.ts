@@ -107,9 +107,9 @@ export default class EntryManifest {
     // Different entries remain independent and may occupy the embedding pool concurrently.
     static #deriveChains = new Map<number, Promise<void>>();
 
-    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
+    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const prior = EntryManifest.#deriveChains.get(r.entry_id) ?? Promise.resolve();
-        const run = prior.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks));
+        const run = prior.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks, onProgress));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         EntryManifest.#deriveChains.set(r.entry_id, tail);
         void tail.finally(() => {
@@ -118,7 +118,7 @@ export default class EntryManifest {
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const { db, workspaceId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         try {
@@ -165,7 +165,7 @@ export default class EntryManifest {
                 await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 return;
             }
-            const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, maxChunks);
+            const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, maxChunks, onProgress);
             await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
             // §semantic-entry-chunk-cap — a CAPPED (inline, latency-staged) pass does NOT stamp:
             // the hash stays stale so the background pump completes the entry to full depth.
@@ -278,7 +278,26 @@ export default class EntryManifest {
                 while (next < work.length) {
                     if (ctx.signal?.aborted === true) return;
                     const { r, hash } = work[next++];
-                    await EntryManifest.deriveOne(ctx, r, hash, embedActive);
+                    let lastProgress = "";
+                    await EntryManifest.deriveOne(ctx, r, hash, embedActive, undefined, (progress) => {
+                        if (step === 0 || progress.total <= 1) return;
+                        const milestone = progress.completed === progress.total
+                            || progress.completed % Math.max(1, Math.floor(progress.total / 10)) === 0;
+                        if (!milestone) return;
+                        const detail = `${progress.phase}:${progress.completed}/${progress.total}`;
+                        if (detail === lastProgress) return;
+                        lastProgress = detail;
+                        const percent = Math.floor((completed / total) * 100);
+                        ctx.pushTelemetry?.({
+                            source: "engine:derivation",
+                            kind: "embed_progress",
+                            message: `Indexing repository semantics: ${percent}% (${completed}/${total}); ${r.pathname}: ${progress.phase} ${progress.completed}/${progress.total}`,
+                            completed,
+                            total,
+                            percent,
+                            level: "info",
+                        });
+                    });
                     tick();
                 }
             };

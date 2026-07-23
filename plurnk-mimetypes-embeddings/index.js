@@ -27,7 +27,7 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
-    loadRuntime, embedText, countTokensWith, releaseRuntime,
+    loadRuntime, embedText, releaseRuntime,
     dimension as localDimension, maxTokens as localMaxTokens,
 } from "./embed-core.js";
 
@@ -177,14 +177,15 @@ export async function embed(text) {
 }
 
 // Untruncated token count in the bundled model's own tokenizer (CLS/SEP
-// included). LOCAL only — in remote mode the export is UNDEFINED, not a
+// included), scheduled through the same host-adaptive worker pool as batches.
+// LOCAL only — in remote mode the export is UNDEFINED, not a
 // throwing function: the seam duck-checks `typeof countTokens === "function"`
 // to distinguish "has a counter" from "hasn't" (mimetypes#50), and a throwing
 // decoy would read as the former.
 export const countTokens = REMOTE
     ? undefined
     : async function countTokens(text) {
-        return countTokensWith((await runtime()).tokenizer, text);
+        return enqueueWorkerJob("count", text);
     };
 
 let poolPromise = null;
@@ -215,6 +216,7 @@ function pool() {
                     job.settled = true;
                     job.cleanup();
                     if (message.error) job.reject(new Error(message.error));
+                    else if (job.kind === "count") job.resolve(message.count);
                     else job.resolve(new Uint8Array(message.buffer));
                 }
                 dispatchPool(state);
@@ -249,14 +251,14 @@ function dispatchPool(state) {
         if (job === undefined) return;
         state.active.set(worker, job);
         worker.ref();
-        worker.postMessage({ text: job.text });
+        worker.postMessage({ kind: job.kind, text: job.text });
     }
 }
 
-async function enqueueEmbedding(text, signal) {
+async function enqueueWorkerJob(kind, text, signal) {
     const state = await pool();
     return new Promise((resolve, reject) => {
-        const job = { text, resolve, reject, settled: false, cleanup: () => {} };
+        const job = { kind, text, resolve, reject, settled: false, cleanup: () => {} };
         const abort = () => {
             if (job.settled) return;
             job.settled = true;
@@ -287,7 +289,7 @@ export async function embedBatch(texts, { onProgress, signal } = {}) {
     const results = new Array(texts.length);
     let completed = 0;
     await Promise.all(texts.map(async (text, index) => {
-        results[index] = await enqueueEmbedding(text, signal);
+        results[index] = await enqueueWorkerJob("embed", text, signal);
         completed += 1;
         onProgress?.({ completed, total: texts.length });
     }));

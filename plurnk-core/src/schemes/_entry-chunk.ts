@@ -24,6 +24,7 @@ export default class EntryChunk {
         budget: number,
         overlap: number,
         countTokens: (text: string) => Promise<number>,
+        onPlanningProgress?: (progress: { completed: number; total: number }) => void,
     ): Promise<ChunkSpec[]> {
         if (!(budget >= 1)) throw new Error(`EntryChunk.tile: budget must be >= 1, got ${budget}`);
         if (!(overlap >= 0 && overlap < 1)) throw new Error(`EntryChunk.tile: overlap must be in [0,1), got ${overlap}`);
@@ -35,7 +36,13 @@ export default class EntryChunk {
         // merges only ever shrink the true token count, so the sum is a safe upper
         // bound: a chunk that passes the sum check is guaranteed <= budget in the
         // real tokenizer. Lossless, and only O(n) countTokens calls.
-        const lineTokens = await Promise.all(lines.map(countTokens));
+        let planned = 0;
+        const lineTokens = await Promise.all(lines.map(async (line) => {
+            const tokens = await countTokens(line);
+            planned++;
+            onPlanningProgress?.({ completed: planned, total: lines.length });
+            return tokens;
+        }));
 
         const chunks: ChunkSpec[] = [];
         let start = 0;

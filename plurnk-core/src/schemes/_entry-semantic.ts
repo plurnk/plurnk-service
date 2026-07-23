@@ -80,6 +80,7 @@ export default class EntrySemantic {
         fallbackModel: string | undefined,
         signal?: AbortSignal,
         maxChunks?: number,
+        onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void,
     ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined; capped: boolean }> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) {
@@ -109,7 +110,14 @@ export default class EntrySemantic {
         if (info.maxTokens === null) throw new Error("remote embedder reports no token window — set PLURNK_MIMETYPES_EMBED_MAX_TOKENS to the endpoint's limit");
         const counter = info.countTokens ?? (await mimetypes.tokenizer(info.model ?? "")).countTokens;
         const budget = EntrySemantic.#chunkBudget(info.maxTokens);
-        let specs = await EntryChunk.tile(content, boundaries, budget, EntrySemantic.#chunkOverlap(), counter);
+        let specs = await EntryChunk.tile(
+            content,
+            boundaries,
+            budget,
+            EntrySemantic.#chunkOverlap(),
+            counter,
+            (progress) => onProgress?.({ phase: "planning", ...progress }),
+        );
         if (specs.length === 0) return { chunks: [], model: undefined, capped: false };
         const capped = specs.length > CHUNK_CAP;
         if (capped) specs = specs.slice(0, CHUNK_CAP); // §semantic-entry-chunk-cap — inline latency stage; the pump completes
@@ -118,7 +126,10 @@ export default class EntrySemantic {
         // so no re-embed). Each tile embeds as PLAIN TEXT: a chunk is a fragment, not a
         // standalone document, so embedding under the entry's mimetype (e.g. application/json)
         // re-validates the partial and throws — embedBatch embeds raw text directly.
-        const vectors = await mimetypes.embedBatch(specs.map((s) => s.text), { signal });
+        const vectors = await mimetypes.embedBatch(specs.map((s) => s.text), {
+            signal,
+            onProgress: (progress) => onProgress?.({ phase: "embedding", ...progress }),
+        });
         const chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[] = [];
         for (const [i, spec] of specs.entries()) {
             const vector = vectors[i];

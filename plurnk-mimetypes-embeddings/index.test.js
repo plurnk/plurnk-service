@@ -78,6 +78,17 @@ describe("embedder duck surface", () => {
         assert.ok(n > maxTokens, `expected overflow count > ${maxTokens}, got ${n}`);
     });
 
+    it("overlapping token counts preserve each input across the shared pool", async () => {
+        const texts = Array.from(
+            { length: 48 },
+            (_, i) => `${"token ".repeat(i + 1)}distinct-${i}`,
+        );
+        const concurrent = await Promise.all(texts.map((text) => countTokens(text)));
+        const sequential = [];
+        for (const text of texts) sequential.push(await countTokens(text));
+        assert.deepEqual(concurrent, sequential);
+    });
+
     it("vector-preserving: output matches the native (onnxruntime-node) baseline", async () => {
         // The identity-stability contract for the WASM-runtime switch
         // (plurnk-mimetypes#36): these first-6 floats were captured from the old

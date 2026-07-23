@@ -49,7 +49,7 @@ const bytes = await embed("database connection error"); // Uint8Array(4 × dimen
 - `dimension` — `384`.
 - `model` — the staleness identity (`Xenova/all-MiniLM-L6-v2@<pin>+q8`), **derived** from `.model-pin` + the quantization, never a hand-synced literal. Store it next to each vector; vectors from a different revision *or* quantization are silently incomparable.
 - `maxTokens` — `512`, the model's token window.
-- `countTokens(text) → Promise<number>` — token count in the model's **own** tokenizer, special tokens (CLS/SEP) included, **untruncated**. The losslessness primitive: a chunk embeds without truncation iff `countTokens(chunk) <= maxTokens`. A char/word proxy can't make that guarantee.
+- `countTokens(text) → Promise<number>` — token count in the model's **own** tokenizer, special tokens (CLS/SEP) included, **untruncated**. Local counts use the same host-adaptive worker pool as `embedBatch`, so exact chunk planning scales across cores instead of blocking the daemon thread. The losslessness primitive: a chunk embeds without truncation iff `countTokens(chunk) <= maxTokens`. A char/word proxy can't make that guarantee.
 
 Input beyond the 512-token window is truncated by `embed()`; `maxTokens` + `countTokens` let a caller (e.g. plurnk-service's chunker) tile a larger body into window-sized chunks instead, losslessly. The framework re-exposes both via `mimetypes.embedderInfo()`.
 

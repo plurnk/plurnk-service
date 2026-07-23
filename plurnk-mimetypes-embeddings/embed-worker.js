@@ -3,7 +3,7 @@
 // never assigns work before the model is up, and surfaces a load failure instead
 // of hanging. Result bytes are transferred (zero-copy) back to the main thread.
 import { parentPort } from "node:worker_threads";
-import { loadRuntime, embedText } from "./embed-core.js";
+import { loadRuntime, embedText, countTokensWith } from "./embed-core.js";
 
 let runtime;
 try {
@@ -13,11 +13,15 @@ try {
     parentPort.postMessage({ ready: false, error: e.message });
 }
 
-parentPort.on("message", async ({ index, text }) => {
+parentPort.on("message", async ({ kind = "embed", text }) => {
     try {
+        if (kind === "count") {
+            parentPort.postMessage({ count: countTokensWith(runtime.tokenizer, text) });
+            return;
+        }
         const bytes = await embedText(runtime, text);
-        parentPort.postMessage({ index, buffer: bytes.buffer }, [bytes.buffer]);
+        parentPort.postMessage({ buffer: bytes.buffer }, [bytes.buffer]);
     } catch (e) {
-        parentPort.postMessage({ index, error: e.message });
+        parentPort.postMessage({ error: e.message });
     }
 });

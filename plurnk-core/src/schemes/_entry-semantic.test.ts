@@ -59,6 +59,44 @@ test("EntrySemantic.deriveEmbeddings: batches all tiled chunks into ONE embedBat
     }
 });
 
+test("EntrySemantic.deriveEmbeddings reports planning and embedding progress within one large entry (#588)", async () => {
+    const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
+    process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "4";
+    try {
+        const events: Array<{ phase: "planning" | "embedding"; completed: number; total: number }> = [];
+        const reporting = {
+            embedderInfo: () => ({ maxTokens: 10000, countTokens: wordCount, model: "stub@1" }),
+            embedBatch: async (texts: readonly string[], options: { onProgress?: (progress: { completed: number; total: number }) => void }) => {
+                const vectors = [];
+                for (let i = 0; i < texts.length; i++) {
+                    vectors.push(fakeVector(texts[i]));
+                    options.onProgress?.({ completed: i + 1, total: texts.length });
+                }
+                return vectors;
+            },
+        } as unknown as Mimetypes;
+        const content = Array.from({ length: 12 }, (_, i) => `line ${i} alpha`).join("\n");
+        await EntrySemantic.deriveEmbeddings(
+            reporting,
+            content,
+            [],
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            (progress) => events.push(progress),
+        );
+        const planning = events.filter((event) => event.phase === "planning");
+        const embedding = events.filter((event) => event.phase === "embedding");
+        assert.deepEqual(planning.at(-1), { phase: "planning", completed: 12, total: 12 });
+        assert.equal(embedding.at(-1)?.completed, embedding.at(-1)?.total);
+        assert.ok((embedding.at(-1)?.total ?? 0) > 1);
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
+        else process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = prev;
+    }
+});
+
 test("EntrySemantic.deriveEmbeddings: no embedder capability → one whole-entry chunk from the fallback vector", async () => {
     const fallback = new Uint8Array(new Float32Array([1, 2, 3]).buffer);
     const { chunks, model } = await EntrySemantic.deriveEmbeddings(dormant, "a\nb\nc", [], fallback, "real@1");
