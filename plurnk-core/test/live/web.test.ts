@@ -74,8 +74,6 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
         // streaming its SearXNG JSON into the `results` channel of a search:/// output entry. We dispatch
         // a real EXEC[search] through a real Engine + ExecutorRegistry and read the results back — no mock.
         const db = await openMigrated();
-        const priorLimit = process.env.PLURNK_EXECS_SEARCH_LIMIT;
-        process.env.PLURNK_EXECS_SEARCH_LIMIT = "1";
         try {
             const schemes = new SchemeRegistry();
             const exec = schemes.get("exec") as Exec;
@@ -88,10 +86,7 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
             const loopId = await insertLoop(db, workerId, 1, "search");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
-            // The query deliberately targets a stable text/plain resource, so
-            // this gates SearXNG + survivor prefetch without depending on
-            // Chromium availability or whichever arbitrary result ranks today.
-            const parsed = PlurnkParser.parse("<<PLAN::PLAN\n<<EXEC[search]:site:google.com/robots.txt User-agent:EXEC");
+            const parsed = PlurnkParser.parse("<<PLAN::PLAN\n<<EXEC[search]:plurnk agent runtime:EXEC");
             const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "EXEC") as { statement: PlurnkStatement } | undefined;
             if (item === undefined) throw new Error("parse produced no statement");
 
@@ -109,9 +104,5 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
             const results = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entry.id, name: "results" });
             const rows = JSON.parse(results?.content ?? "[]") as unknown[];
             assert.ok(Array.isArray(rows) && rows.length > 0, "the SearXNG query returned a non-empty JSON results array");
-        } finally {
-            if (priorLimit === undefined) delete process.env.PLURNK_EXECS_SEARCH_LIMIT;
-            else process.env.PLURNK_EXECS_SEARCH_LIMIT = priorLimit;
-            await db.close();
-        }
+        } finally { await db.close(); }
     });
