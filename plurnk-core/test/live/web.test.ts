@@ -1,7 +1,8 @@
 // NETWORK-gated web functionality (the `live` tier — deliberately run, never CI; non-deterministic,
 // specific-thing tests, not e2e stories). Proves the boot-DISCOVERED web stack works end-to-end:
 //   - http://  (@plurnk/plurnk-schemes-http) — a real fetch, no API key.
-//   - exec[search] (@plurnk/plurnk-execs-search) — a real SearXNG query, gated on its URL.
+//   - exec[search] (@plurnk/plurnk-execs-search) — a real SearXNG query using
+//     the operator's normal environment.
 //
 // NO-MOCK: the http test dispatches a parsed READ straight through a real Engine against the real
 // http scheme and real network, then polls the REAL db channel for the fetched bytes. Nothing is
@@ -10,7 +11,7 @@
 //  - http: RUNS. The `ctx.subscriptions` (SubscriptionCaps) streaming capability is wired in
 //    SchemeCtxImpl (#180) — the http plugin's `ctx.subscriptions.open/.notifyChunk/.close` drives
 //    the real fetch into a streamed entry, validated end-to-end here against real network.
-//  - search: env-gated — needs PLURNK_EXECS_SEARCH_SEARXNG_URL (a SearXNG endpoint; no API key).
+//  - search: REQUIRED in this tier. An unavailable endpoint fails the live gate.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -64,12 +65,17 @@ test("live web: a discovered http:// READ fetches a real URL into a streamed ent
     });
 
 test("live web: exec[search] queries a real SearXNG instance into a results entry (no model, no mock)",
-    { skip: process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL ? false : "set PLURNK_EXECS_SEARCH_SEARXNG_URL (a SearXNG endpoint, no API key) to run" },
     async () => {
+        assert.ok(
+            process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL?.trim(),
+            "live search coverage requires PLURNK_EXECS_SEARCH_SEARXNG_URL in the operator environment",
+        );
         // search is an EXEC runtime (in-tree exec scheme + ctx.executors), effect="read" → auto-runs,
         // streaming its SearXNG JSON into the `results` channel of a search:/// output entry. We dispatch
         // a real EXEC[search] through a real Engine + ExecutorRegistry and read the results back — no mock.
         const db = await openMigrated();
+        const priorLimit = process.env.PLURNK_EXECS_SEARCH_LIMIT;
+        process.env.PLURNK_EXECS_SEARCH_LIMIT = "1";
         try {
             const schemes = new SchemeRegistry();
             const exec = schemes.get("exec") as Exec;
@@ -82,7 +88,10 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
             const loopId = await insertLoop(db, workerId, 1, "search");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
-            const parsed = PlurnkParser.parse("<<PLAN::PLAN\n<<EXEC[search]:plurnk agent runtime:EXEC");
+            // The query deliberately targets a stable text/plain resource, so
+            // this gates SearXNG + survivor prefetch without depending on
+            // Chromium availability or whichever arbitrary result ranks today.
+            const parsed = PlurnkParser.parse("<<PLAN::PLAN\n<<EXEC[search]:site:google.com/robots.txt User-agent:EXEC");
             const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "EXEC") as { statement: PlurnkStatement } | undefined;
             if (item === undefined) throw new Error("parse produced no statement");
 
@@ -100,5 +109,9 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
             const results = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entry.id, name: "results" });
             const rows = JSON.parse(results?.content ?? "[]") as unknown[];
             assert.ok(Array.isArray(rows) && rows.length > 0, "the SearXNG query returned a non-empty JSON results array");
-        } finally { await db.close(); }
+        } finally {
+            if (priorLimit === undefined) delete process.env.PLURNK_EXECS_SEARCH_LIMIT;
+            else process.env.PLURNK_EXECS_SEARCH_LIMIT = priorLimit;
+            await db.close();
+        }
     });
