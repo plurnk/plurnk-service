@@ -32,6 +32,10 @@ function walk(node: TreeSitterNode, out: MimeSymbol[], container: string): void 
 
 function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): void {
     switch (node.type) {
+        case "block": {
+            walk(node, out, container);
+            return;
+        }
         case "module_definition":
         case "bare_module_definition": {
             const name = childFieldText(node, "name") ?? firstIdentifierText(node);

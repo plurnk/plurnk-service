@@ -131,7 +131,6 @@ describe("GrammarNotInstalledError", () => {
         const entry = {
             mimetype: "text/x-go",
             slug: "go",
-            wasmPackage: "tree-sitter-go",
         } as unknown as TreeSitterLanguageEntry;
         const err = new GrammarNotInstalledError(entry, "@plurnk/plurnk-mimetypes-grammar-go");
         const ev = err.toTelemetryEvent();

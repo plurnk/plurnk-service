@@ -43,30 +43,17 @@
 // Parents in which a call_expression is a USE, never a definition head.
 const CALL_CONTEXTS = [
     "source_file",
-    "module_definition",
-    "function_definition",
-    "macro_definition",
-    "if_statement",
-    "elseif_clause",
-    "else_clause",
-    "for_statement",
-    "while_statement",
-    "try_statement",
-    "catch_clause",
-    "finally_clause",
+    "block",
     "let_statement",
     "do_clause",
-    "compound_statement",
     "return_statement",
     "argument_list",
     "macro_argument_list",
-    "named_argument",
     "binary_expression",
     "unary_expression",
     "parenthesized_expression",
     "tuple_expression",
     "vector_expression",
-    "index_expression",
     "range_expression",
     "ternary_expression",
     "comprehension_expression",
@@ -77,15 +64,13 @@ const CALLEE = "[(identifier) @ref.call (field_expression (identifier) @ref.call
 export const refsQuery = `
 (using_statement (identifier) @ref.import)
 (import_statement (identifier) @ref.import)
-(using_statement (scoped_identifier (identifier) @ref.import .))
-(import_statement (scoped_identifier (identifier) @ref.import .))
 (using_statement (import_path (identifier) @ref.import .))
 (import_statement (import_path (identifier) @ref.import .))
 (selected_import (identifier) @ref.import)
-(selected_import (scoped_identifier (identifier) @ref.import .))
+(selected_import (import_path (identifier) @ref.import .))
 (selected_import (macro_identifier (identifier) @ref.import))
 (import_alias . (identifier) @ref.import)
-(import_alias . (scoped_identifier (identifier) @ref.import .))
+(import_alias . (import_path (identifier) @ref.import .))
 (import_alias . (macro_identifier (identifier) @ref.import))
 
 (type_head (binary_expression (operator) (identifier) @ref.inherit .))
@@ -101,5 +86,6 @@ export const refsQuery = `
 (macrocall_expression (macro_identifier (identifier) @ref.call))
 
 (assignment (operator) (call_expression . ${CALLEE}))
+(index_expression (call_expression . ${CALLEE}))
 ${CALL_CONTEXTS.map((ctx) => `(${ctx} (call_expression . ${CALLEE}))`).join("\n")}
 `;

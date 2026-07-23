@@ -73,10 +73,10 @@ function dispatch(node: TreeSitterNode, out: MimeSymbol[], container: string): v
             return;
         }
         case "type_extension_elements":
-        case "interface_implementation": {
+        case "interface_implementation":
+        case "declaration_expression": {
             // Member groups inside a type body — walk so member_defn and
-            // let-bound function_or_value_defn children dispatch with the
-            // owning type's container.
+            // let-bound declarations dispatch with the owning container.
             walk(node, out, container);
             return;
         }

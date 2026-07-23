@@ -47,7 +47,7 @@
     ],
     "scripts": {
         "prepare": "git config core.hooksPath .githooks",
-        "test:lint": "npm run test:lint --workspaces --if-present",
+        "test:lint": "node scripts/dependency-policy.mjs && npm run test:lint --workspaces --if-present",
         "test:unit": "npm run test:unit --workspaces --if-present",
         "test:intg": "npm run test:intg --workspaces --if-present",
         "test": "node scripts/drill.mjs",
@@ -64,7 +64,6 @@
         "typescript": "^7.0.2"
     },
     "overrides": {
-        "tree-sitter": "^0.25.0",
         "@hono/node-server": "^2.0.11"
     }
 }

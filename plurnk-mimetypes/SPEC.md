@@ -242,7 +242,7 @@ interface ProcessResult {
     ok: boolean;
     totalLines: number;
     extent: number;            // §12.5
-    grammarMissing?: string;   // §13.5
+    grammarMissing?: string;   // §13.4
     noEmbed?: string;          // §21 — matched NO_EMBED pattern (derivation-eligibility)
     telemetry?: readonly TelemetryEvent[]; // warn events for hidden degradations — §11.5
     // channels — present iff requested (§5)
@@ -291,8 +291,8 @@ Returns the resolved mimetype string or `null`.
 
 Handler authors choose a parser backend in this strict order. **The hierarchy is mechanical — if a higher-tier option exists and meets the quality bar, use it.**
 
-1. **Tier 1 — clean WASM in framework registry.** Languages whose upstream `tree-sitter-{lang}` package on npm ships a pre-built `.wasm` at the package root. These live in `TREE_SITTER_REGISTRY` inside `@plurnk/plurnk-mimetypes` itself (`src/treesitter/{lang}.ts`). Zero per-language package needed. Mechanical qualifying check: after `npm install tree-sitter-{lang}`, `find node_modules/tree-sitter-{lang} -name "*.wasm"` returns the file at package root.
-2. **Tier 2 — dirty WASM in `@plurnk/plurnk-mimetypes-{lang}` package.** Languages where a complete, faithful tree-sitter grammar exists upstream but the npm distribution does not ship `.wasm`. The handler package owns a reproducible build step (pinned source-grammar commit + `tree-sitter build --wasm` in CI via emscripten) and commits the resulting `.wasm` into its own source tree. Consumer-side install remains pure WASM, no toolchain. Quality bar matches Tier 1: we only promote a language to Tier 2 when the upstream grammar is itself faithful — building a half-grammar to WASM does not earn registry inclusion.
+1. **Tree-sitter registry.** Languages with a complete, faithful upstream grammar live in `TREE_SITTER_REGISTRY`; the corresponding `@plurnk/plurnk-mimetypes-grammar-{slug}` leaf supplies its reproducibly built WASM.
+2. **Dedicated handler.** Languages without a faithful Tree-sitter grammar use a separate handler package only when another parser can satisfy the same quality bar.
 3. **Tier 3 — `antlr4ng` + grammars-v4 in `@plurnk/plurnk-mimetypes-{lang}` package.** When no tree-sitter grammar exists at all (Tier 1 and Tier 2 both unavailable). Pure JS, no native deps. Follows the existing AntlrExtractor pattern.
 4. **Tier 4 — hand-rolled scanner in `@plurnk/plurnk-mimetypes-{lang}` package.** True last resort, only when none of the above has the language and the syntax is simple enough that a focused scanner is honestly cleaner than vendoring an alternative grammar. Handler README must justify why Tiers 1–3 weren't viable. Zero deps.
 
@@ -338,7 +338,7 @@ Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRa
 For tree-sitter-backed handlers:
 
 1. The `web-tree-sitter` runtime ships with the framework as a direct dependency; no handler-side install needed.
-2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit (Tier 2 pattern, §13.6-style reproducible build).
+2. Own the language's WASM: a pre-built `.wasm` committed in the handler package from a pinned upstream commit (§13.5).
 3. Extend `TreeSitterExtractor` instead of `BaseHandler`.
 4. Implement `loadParser()` (async; init web-tree-sitter, load the language WASM, return a ready parser) and `extractFromTree(tree, content)` (return `MimeSymbol[]` from the parsed tree). The base class handles parser lifecycle and async coordination via a primed-promise cache.
 
@@ -504,31 +504,24 @@ Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` 
 
 ## 13. Per-grammar package architecture <!-- coverage: policy -->
 
-### 13.1 The split
+### 13.1 Runtime boundary
 
-Tree-sitter grammars (Tier 1 in §9.1) are no longer pulled from upstream `tree-sitter-{lang}` packages. Each grammar lives in its own plurnk package shipping only the pre-built WASM:
+Each Tree-sitter grammar lives in a PLURNK package that ships only its pre-built WASM:
 
 ```
 @plurnk/plurnk-mimetypes                          (framework: floor handlers + loaders)
 @plurnk/plurnk-mimetypes-grammar-{slug}           (per-grammar, one each)
 ```
 
-The framework's `TreeSitterLanguageHandler.loadParser()` resolves WASMs by trying `@plurnk/plurnk-mimetypes-grammar-{slug}/{slug}.wasm` first, falling back to the legacy upstream `{wasmPackage}/{wasmFile}` for compatibility with consumers mid-transition. Neither resolved → throws `GrammarNotInstalledError` (exported from `index.ts`) with the plurnk package name as the install hint.
+`TreeSitterLanguageHandler.loadParser()` resolves only `@plurnk/plurnk-mimetypes-grammar-{slug}/{slug}.wasm`. An absent leaf throws `GrammarNotInstalledError` with its package name.
 
-### 13.2 Why
+Grammar leaves declare only `web-tree-sitter` as a peer. Upstream grammar packages are build inputs to those leaves, never dependencies of the framework.
 
-The previous architecture depended on upstream `tree-sitter-{lang}` packages, each of which declared `peerOptional tree-sitter@^X.Y` for the native node-gyp binding. Two consequences:
+### 13.2 Grammar leaf contract
 
-1. **Peer-dep conflicts** when multiple grammars with mismatched peer ranges were installed together (forced `--legacy-peer-deps` everywhere).
-2. **Implicit invitation to install native tree-sitter**, dragging node-gyp + Python + a C compiler into the build chain — breaks Alpine, Lambda, Cloudflare Workers, the original portability premise.
+A leaf contains `{slug}.wasm` at its package root. The framework owns mappings and registry metadata; the leaf owns its upstream pin and reproducible build.
 
-Our grammar packages declare only `web-tree-sitter` as a peer. No conflicts. No node-gyp. Ever.
-
-### 13.3 What each grammar package contains
-
-Just data — no handler code, no mapping (the framework's `TREE_SITTER_REGISTRY` owns those; the grammar package is interchangeable plumbing). The **only** contract the framework depends on is: **a pre-built `{slug}.wasm` at the package root**, resolved by `resolveWasmPath` (§13.1) via the package's `package.json` location — read directly from disk, not through any `index.js` export. Grammar packages are independent repos (outside the monorepo); their build/pin/verify tooling is their own concern (§13.6), not framework-enforced.
-
-### 13.4 Registry entry shape
+### 13.3 Registry entry shape
 
 ```ts
 interface TreeSitterLanguageEntry {
@@ -536,24 +529,20 @@ interface TreeSitterLanguageEntry {
     readonly glyph: string;
     readonly extensions: readonly string[];
     readonly slug: string;                           // → @plurnk/.../grammar-{slug}/{slug}.wasm
-    readonly wasmPackage: string | null;             // legacy upstream fallback
-    readonly wasmFile: string | null;                // legacy upstream fallback path
     readonly importMapping: () => Promise<TreeSitterLanguageMapping>;
 }
 ```
 
-The legacy `wasmPackage`/`wasmFile` fields are deprecated but kept populated for the transition. New languages can set both to null — the framework will resolve exclusively via the plurnk grammar package.
-
-### 13.5 Install patterns
+### 13.4 Install patterns
 
 - **Floor:** `npm i @plurnk/plurnk-mimetypes` alone gives a working framework for the floor types (`text/plain`, `text/markdown`, `application/json`, `application/xml`, `text/html`, `text/csv`) — the floor handler packages and both parser loaders are direct dependencies (issue #14).
 - **Slim:** add only the grammars you need (e.g. `npm i @plurnk/plurnk-mimetypes-grammar-python @plurnk/plurnk-mimetypes-grammar-rust`).
 - **Kitchen sink:** the README carries a copy-paste `npm install` block listing every published grammar. (A `grammars-all` meta package was considered and rejected — a layer of indirection that does nothing.)
 - **Degrade, not throw (issue #14):** `detect()` is install-state-blind — it returns the source mimetype regardless of whether the grammar package is installed. When `process()` then finds the grammar missing, it degrades to a text-plain fallback with `ok: true` and surfaces the missing package name on `ProcessResult.grammarMissing` so consumers can show an actionable install hint. `process(input, { strict: true })` opts into throwing `GrammarNotInstalledError` instead.
 
-### 13.6 Reproducibility
+### 13.5 Reproducibility
 
-Grammar packages are expected to rebuild their WASM from a pinned upstream commit (`tree-sitter-cli`'s bundled wasi-sdk) and verify the committed WASM is byte-identical to a fresh rebuild — so grammar updates flow through pin bumps, not ad-hoc rebuilds. This is the grammar repo's own discipline (each ships its own build/verify scripts); the framework consumes only the resulting `{slug}.wasm` (§13.3) and cannot enforce it.
+Each leaf rebuilds from a pinned upstream commit and verifies that the committed WASM is byte-identical.
 
 ## 14. Testing discipline (issue-driven test files)
 

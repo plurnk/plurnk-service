@@ -15,7 +15,7 @@ describe("TreeSitter registry", () => {
         const entry = lookupTreeSitterLanguage("text/x-python");
         assert.ok(entry);
         assert.equal(entry.mimetype, "text/x-python");
-        assert.equal(entry.wasmPackage, "tree-sitter-python");
+        assert.equal(entry.slug, "python");
     });
 
     it("lookupTreeSitterLanguage returns null for unknown mimetype", () => {
@@ -36,13 +36,6 @@ describe("TreeSitter registry", () => {
                 assert.ok(canonical, `alias without an extension-bearing canonical entry: ${entry.mimetype}`);
             }
             assert.equal(typeof entry.importMapping, "function");
-            // wasmPackage / wasmFile are optional legacy fallback fields;
-            // either both are populated or both are null (matched-pair invariant).
-            assert.equal(
-                entry.wasmPackage === null,
-                entry.wasmFile === null,
-                `wasmPackage/wasmFile null mismatch: ${entry.mimetype}`,
-            );
         }
     });
 

@@ -9,7 +9,7 @@ describe("tree-sitter registry — dispatch wiring", () => {
         const py = result.handlers.get("text/x-python");
         assert.ok(py);
         assert.equal(py.source, "treesitter");
-        assert.equal(py.packageName, "tree-sitter-python");
+        assert.equal(py.packageName, "@plurnk/plurnk-mimetypes-grammar-python");
         assert.equal(py.glyph, "🐍");
     });
 

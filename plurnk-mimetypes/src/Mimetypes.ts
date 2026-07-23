@@ -65,7 +65,7 @@ export interface ProcessOptions {
     // Channels to materialize on this call (SPEC §5, #17). Default: all.
     // Absent fields = not requested; `[]` = metadata only, no parse paid.
     channels?: readonly Channel[];
-    // SPEC §7 / §13.5 (#14): when set, a missing grammar throws
+    // SPEC §7 / §13.4 (#14): when set, a missing grammar throws
     // GrammarNotInstalledError instead of degrading to text-plain. Default
     // false — in the a-la-carte world a missing grammar is the normal state.
     strict?: boolean;
@@ -81,7 +81,7 @@ export interface ProcessResult {
     // Addressable extent for navigation bounds (SPEC §12.5, #9): line count
     // for text, item count for structured.
     extent: number;
-    // SPEC §7 / §13.5 (#14): missing grammar package name when process()
+    // SPEC §7 / §13.4 (#14): missing grammar package name when process()
     // degrades to text-plain. Absent on the happy path; independent of `ok`.
     grammarMissing?: string;
     // SPEC §21 (#47): the PLURNK_MIMETYPES_NO_EMBED pattern this entry's
@@ -404,7 +404,7 @@ export default class Mimetypes {
         return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
     }
 
-    // Degraded ProcessResult when the grammar isn't installed (SPEC §7/§13.5,
+    // Degraded ProcessResult when the grammar isn't installed (SPEC §7/§13.4,
     // #14): honest metadata (line count, extent) + empty requested channels +
     // grammarMissing install hint. ok stays true — a missing grammar is a
     // normal a-la-carte state, not an error.

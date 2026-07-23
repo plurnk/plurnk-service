@@ -6,7 +6,7 @@ import type { TreeSitterLanguageEntry, TreeSitterLanguageMapping } from "./regis
 
 // Bridges a registry entry to a runtime handler. The framework instantiates
 // one of these per mimetype lookup. WASM grammar + mapping module are both
-// lazy-loaded via the entry's importMapping + dynamic wasmPackage resolve.
+// lazy-loaded.
 //
 // Constructed by the framework's handler-routing path; not exported as a
 // public class (consumers don't author these — they author per-language
@@ -148,63 +148,32 @@ export default class TreeSitterLanguageHandler extends TreeSitterExtractor {
     }
 }
 
-// Resolve the WASM grammar file path for a registry entry. Strategy:
-//
-//   1. Try `@plurnk/plurnk-mimetypes-grammar-{slug}` first. This is our own
-//      per-grammar package that ships the WASM pre-built from a pinned
-//      upstream commit. Peer-dep clean (declares only web-tree-sitter, no
-//      native tree-sitter) so it doesn't conflict with anything else and
-//      doesn't invite node-gyp into the dep tree.
-//
-//   2. Fall back to the upstream tree-sitter-{lang} package via
-//      `entry.wasmPackage` for compatibility while consumers transition. If
-//      neither resolves, throw a structured GrammarNotInstalledError that
-//      plurnk-service can surface as an install hint.
-//
-// Resolves the wasm file location by walking from package.json — the bare
-// wasm path doesn't work as a require.resolve target because most
-// tree-sitter packages don't list .wasm in their `exports` map.
+// Grammar leaves are the portability boundary: upstream source is compiled
+// there, and the framework consumes only their pre-built WASM.
 async function resolveWasmPath(entry: TreeSitterLanguageEntry): Promise<string> {
     const { createRequire } = await import("node:module");
     const require = createRequire(import.meta.url);
     const path = await import("node:path");
 
-    // 1. Prefer the plurnk grammar package.
     const plurnkPackage = `@plurnk/plurnk-mimetypes-grammar-${entry.slug}`;
     try {
         const pkgJsonPath = require.resolve(`${plurnkPackage}/package.json`);
         return path.join(path.dirname(pkgJsonPath), `${entry.slug}.wasm`);
     } catch {
-        // Not installed — fall through.
+        throw new GrammarNotInstalledError(entry, plurnkPackage);
     }
-
-    // 2. Fall back to the upstream package, if the entry still declares one.
-    if (entry.wasmPackage !== null && entry.wasmFile !== null) {
-        try {
-            const pkgJsonPath = require.resolve(`${entry.wasmPackage}/package.json`);
-            return path.join(path.dirname(pkgJsonPath), entry.wasmFile);
-        } catch {
-            // Upstream not installed either.
-        }
-    }
-
-    // Neither path resolved — surface an actionable error.
-    throw new GrammarNotInstalledError(entry, plurnkPackage);
 }
 
-// Thrown when neither the preferred plurnk grammar package nor the upstream
-// fallback resolves at runtime. Caller (TreeSitterExtractor.extractRaw)
-// catches this and routes to the empty-symbols error policy; plurnk-service
-// can surface the package name as an install hint.
+// Thrown when the grammar leaf is absent. Caller
+// (TreeSitterExtractor.extractRaw) catches this and routes to the
+// empty-symbols error policy; plurnk-service can surface the install hint.
 export class GrammarNotInstalledError extends Error {
     readonly mimetype: string;
     readonly slug: string;
     readonly plurnkPackage: string;
 
     constructor(entry: TreeSitterLanguageEntry, plurnkPackage: string) {
-        super(
-            `No grammar installed for ${entry.mimetype}. Install ${plurnkPackage} (or the legacy ${entry.wasmPackage ?? "upstream tree-sitter-*"} package) to enable this language.`,
-        );
+        super(`No grammar installed for ${entry.mimetype}. Install ${plurnkPackage} to enable this language.`);
         this.name = "GrammarNotInstalledError";
         this.mimetype = entry.mimetype;
         this.slug = entry.slug;
