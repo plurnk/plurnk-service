@@ -1,5 +1,8 @@
-import { discoverOAuthServerInfo, registerClient } from "@modelcontextprotocol/sdk/client/auth.js";
-import type { AuthorizationServerMetadata } from "@modelcontextprotocol/sdk/shared/auth.js";
+import {
+    discoverOAuthServerInfo,
+    registerClient,
+    type AuthorizationServerMetadata,
+} from "@modelcontextprotocol/client";
 import { serverConfig } from "./config.ts";
 
 // Device Authorization Grant (RFC 8628) OAuth for http MCP servers

@@ -1,8 +1,14 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
-import type { Prompt, Resource, ResourceTemplate, Tool } from "@modelcontextprotocol/sdk/types.js";
+import {
+    Client,
+    SdkHttpError,
+    StreamableHTTPClientTransport,
+    UnauthorizedError,
+    type Prompt,
+    type Resource,
+    type ResourceTemplateType,
+    type Tool,
+} from "@modelcontextprotocol/client";
+import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import { setAuthHeaders, type ServerConfig } from "./config.ts";
 
 const CLIENT_VERSION = "0.1.0";
@@ -60,10 +66,10 @@ export const msg = (err: unknown): string => (err instanceof Error ? err.message
 
 // A connect failure that means "this server wants OAuth". With no authProvider
 // wired (the consumer owns the flow), the SDK surfaces a 401 as an
-// `UnauthorizedError` on the auth-start path OR a `StreamableHTTPError` carrying
-// `code: 401` on a plain request — catch both.
+// `UnauthorizedError` on the auth-start path or `SdkHttpError.data.status=401`
+// on a plain request.
 export const isAuthRequired = (err: unknown): boolean =>
-    err instanceof UnauthorizedError || (err as { code?: unknown })?.code === 401;
+    err instanceof UnauthorizedError || (err instanceof SdkHttpError && err.data.status === 401);
 
 // Per-tool `readOnlyHint`, cached from `listTools` (probe + catalog). effect()
 // is a sync/cheap/no-I/O hook, so it can't fetch the catalog itself — it reads
@@ -87,7 +93,7 @@ export interface Catalog {
     capabilities: { tools: boolean; resources: boolean; prompts: boolean };
     tools?: Tool[];
     resources?: Resource[];
-    resourceTemplates?: ResourceTemplate[];
+    resourceTemplates?: ResourceTemplateType[];
     prompts?: Prompt[];
 }
 
@@ -137,7 +143,7 @@ export const allTools = (client: Client, opts?: { signal?: AbortSignal }): Promi
 // commonly omit the handler — a JSON-RPC -32601 there is the server saying
 // "none", not a failure worth killing the whole catalog for. Anything else
 // surfaces.
-const templatesOrNone = async (client: Client, opts?: { signal?: AbortSignal }): Promise<ResourceTemplate[] | null> => {
+const templatesOrNone = async (client: Client, opts?: { signal?: AbortSignal }): Promise<ResourceTemplateType[] | null> => {
     try {
         return await paginate(opts, (p, o) => client.listResourceTemplates(p, o), (r) => r.resourceTemplates);
     } catch (err) {

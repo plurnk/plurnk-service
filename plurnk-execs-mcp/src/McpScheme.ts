@@ -20,7 +20,7 @@
 // content lands through the streaming caps exactly as http's does.
 
 import { readFile } from "node:fs/promises";
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { Client } from "@modelcontextprotocol/client";
 import type {
     PassthroughResult,
     ReadStatement,

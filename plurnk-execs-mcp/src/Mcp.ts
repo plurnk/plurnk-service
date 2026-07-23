@@ -1,4 +1,4 @@
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { Client } from "@modelcontextprotocol/client";
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
 import { serverConfig, isInjected, installAllowed, registerServer, deregisterServer, parseTarget } from "./config.ts";
@@ -123,7 +123,7 @@ export default class Mcp extends BaseExecutor {
         }
 
         try {
-            const result = await client.callTool({ name: tool, arguments: toolArgs }, undefined, { signal });
+            const result = await client.callTool({ name: tool, arguments: toolArgs }, { signal });
             write("results", JSON.stringify(result), "application/json");
             // An MCP tool reports its own failure via `isError` rather than
             // throwing; honor it as an errored close with a 500.

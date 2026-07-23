@@ -10,7 +10,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) bridge for [plurn
 
 Whoever owns the state names the address (plurnk-service#484): a tool **result** is a plurnk event and lands behind the *tag's* address like every runtime's output; a **resource** is the *server's* state and lives behind `mcp://`.
 
-Built on the plurnk-execs framework, using the official [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk).
+Built on the plurnk-execs framework using the official [`@modelcontextprotocol/client`](https://www.npmjs.com/package/@modelcontextprotocol/client).
 
 > **Heavy + inert until configured.** This sibling pulls the MCP SDK's full dependency tree and does nothing until you configure a server — no tags register and no code runs until a `PLURNK_EXECS_MCP_<server>` exists.
 

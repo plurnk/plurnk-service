@@ -70,7 +70,10 @@
         "prepublishOnly": "npm outdated && npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.29.0"
+        "@modelcontextprotocol/client": "2.0.0-beta.5"
+    },
+    "devDependencies": {
+        "@modelcontextprotocol/server": "2.0.0-beta.5"
     },
     "peerDependencies": {
         "@plurnk/plurnk-execs": "~1.2.0",
