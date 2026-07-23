@@ -370,7 +370,10 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     // 200, so the full system prompt (law/definition) + the materialized docs must fit the prompt
     // budget. An 8192 mock window left only ~6.8k after reserves — under the packet — so the loop
     // concluded 413, not 200 (#433/#355). This test verifies the seam path, not small-window viability.
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [
+        makeMockResponse("<<SEND[200]:done:SEND", 50),
+        makeMockResponse("<<SEND[200]:done again:SEND", 50),
+    ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -399,6 +402,20 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             // (The gap that shipped: agui-driven workspaces started docless and the foist reported 0.)
             const docs = await (db.test_entries_by_scheme_prefix as PrepMethod).all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/docs/%" });
             assert.ok(docs.length > 0, "runLoop materialized worker://plurnk/docs/*.md — the discovery foist has something to find");
+
+            const second = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go again" });
+            const secondTerminals = await waitFor(
+                () => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === second.loopId),
+                (ts) => ts.length > 0,
+                { timeoutMs: 8000 },
+            );
+            assert.equal((secondTerminals[0].params as { finalStatus?: number }).finalStatus, 200, "reattaching to the workspace runs normally");
+
+            const plurnkWorker = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: created.id, name: "plurnk" });
+            assert.ok(plurnkWorker !== undefined);
+            const materialization = await (db.test_log_entries_by_run as PrepMethod).all<{ op: string; status_rx: number }>({ worker_id: plurnkWorker!.id });
+            assert.equal(materialization.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "repeated documentation materialization produces no error rows");
+            assert.ok(materialization.some((row) => row.op === "EDIT" && row.status_rx === 304), "unchanged documentation is an explicit no-op on reattach");
         } finally { ws.close(); }
     });
 });
