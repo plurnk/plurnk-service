@@ -1,6 +1,9 @@
 # plurnk-service
 
-LLM agent runtime engine. Consumes [plurnk-grammar](https://github.com/plurnk/plurnk-grammar); exposes WebSocket JSON-RPC. User-facing CLI: [plurnk](https://github.com/plurnk/plurnk). Provider-agnostic, MIT — no vendor or model lock-in.
+The PLURNK daemon: persistent agent state, model loops, packet assembly, and
+operation dispatch. Its client surface is AG-UI over HTTP/SSE through
+`@plurnk/plurnk-agui`. The user-facing CLI lives in
+[plurnk](https://github.com/plurnk/plurnk).
 
 ## What an agent can do
 
@@ -12,16 +15,11 @@ Over schemes: `file://` project files · `exec://` command output · `http(s)://
 
 Workspace = the shared world (one filesystem + membership overlay). Run = one agent's private log. Loop = one `prompt → ops → SEND[terminal]` cycle; every turn leads with `PLAN`. Runs fork and message each other — many clients, many runs, one workspace.
 
-## Integration (WebSocket JSON-RPC)
+## Integration
 
-Methods: `workspace.*` (create / attach / constrain / list…) · `loop.run` / `loop.inject` / `loop.resolve` · `op.*` (read / edit / find / exec / send…) · `log.read` · `run.fork`. Streams: `log/entry` → … → `loop/terminated`, plus `loop/proposal`, `telemetry/event`. Full live catalog: the `discover` RPC.
-
-```
-ws connect → workspace.create({ projectRoot }) → loop.run({ prompt })
-           → read log/entry notifications until loop/terminated
-```
-
-The human CLI over this surface is [plurnk](https://github.com/plurnk/plurnk).
+Clients use AG-UI management actions and run streams exposed by
+`@plurnk/plurnk-agui`. Core supplies an in-process daemon seam; it does not open
+a second client transport.
 
 ## Run
 
@@ -35,7 +33,10 @@ Config + state live in `~/.plurnk/` (created on first run): put your config in `
 ## Contract & siblings
 
 - [`SPEC.md`](./SPEC.md) — detailed behavioral reference.
-- [plurnk-providers](https://github.com/plurnk/plurnk-providers) §provider · [plurnk-schemes](https://github.com/plurnk/plurnk-schemes) §scheme-surface · [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes) §mimetype-surface · [plurnk-execs](https://github.com/plurnk/plurnk-execs) §bundled-set.
+- `@plurnk/plurnk-providers` — model endpoint contract.
+- `@plurnk/plurnk-schemes` — addressable resource contract.
+- `@plurnk/plurnk-mimetypes` — content handling contract.
+- `@plurnk/plurnk-execs` — executable capability contract.
 
 ## Semantic search
 
@@ -47,4 +48,6 @@ Plurnk sees what git sees. The model's file surface is defined by three external
 
 ## Tests
 
-`test:lint`, `test:unit`, `test:intg`, `test:live`, `test:demo`; off-hot-path `test:installation`.
+Run the root monorepo commands for deterministic lint, unit, and integration
+coverage. Live-model, demo, and installation tests declare their external
+requirements separately.
