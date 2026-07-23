@@ -55,6 +55,13 @@ export interface FsDivergence {
 const nativeGit = (): boolean => process.env.PLURNK_SERVICE_GIT_NATIVE === "1";
 
 export default class GitMembership {
+    // Workspace creation starts a background warm while the first model turn
+    // performs its own eager membership refresh. Both are legitimate callers,
+    // but materialization is a delete-then-insert channel write: overlapping
+    // passes can race on the same (entry_id, body). Serialize only the same
+    // workspace in the same DB; different workspaces remain independent.
+    static #indexChains = new WeakMap<Db, Map<number, Promise<void>>>();
+
     static #execFileP = promisify(execFile);
 
     // {§fs-write-surface} — the blind-write closure git half: would git ADMIT a create at
@@ -413,6 +420,22 @@ export default class GitMembership {
     // through writeEntry. Called at packet-composition time (Engine.runTurn) per
     // D5. No-ops on headless / non-git workspaces.
     static async indexGitMembership(ctx: PlurnkSchemeContext): Promise<FsDivergence[]> {
+        let chains = GitMembership.#indexChains.get(ctx.db);
+        if (chains === undefined) {
+            chains = new Map();
+            GitMembership.#indexChains.set(ctx.db, chains);
+        }
+        const prior = chains.get(ctx.workspaceId) ?? Promise.resolve();
+        const run = prior.then(() => GitMembership.#indexGitMembershipUnlocked(ctx));
+        const tail = run.then(() => {}, () => {});
+        chains.set(ctx.workspaceId, tail);
+        void tail.finally(() => {
+            if (chains?.get(ctx.workspaceId) === tail) chains.delete(ctx.workspaceId);
+        });
+        return run;
+    }
+
+    static async #indexGitMembershipUnlocked(ctx: PlurnkSchemeContext): Promise<FsDivergence[]> {
         const root = await GitMembership.#loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) return [];
         const tracked = await GitMembership.resolveGitMembership(ctx.db, ctx.workspaceId, ctx.signal);

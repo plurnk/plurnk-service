@@ -487,6 +487,33 @@ test("a member unchanged on disk is not re-tokenized on the next pass", async ()
     });
 });
 
+test("overlapping startup and turn membership passes serialize per workspace", async () => {
+    await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
+        let calls = 0;
+        const slow: PlurnkSchemeContext = {
+            ...ctx,
+            tokenize: (text: string) => {
+                calls += 1;
+                return Math.ceil(text.length / 4);
+            },
+        };
+        await Promise.all([
+            GitMembership.indexGitMembership(slow),
+            GitMembership.indexGitMembership(slow),
+        ]);
+        const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+            workspace_id: ctx.workspaceId,
+            owner_id: await Owner.commonsId(db, ctx.workspaceId),
+            scheme: "file",
+            pathname: trackedPath,
+        });
+        assert.ok(entry !== undefined);
+        const channels = await (db.crud_read_channels as PrepMethod).all<{ name: string }>({ entry_id: entry.id });
+        assert.deepEqual(channels.map((row) => row.name), ["body"]);
+        assert.equal(calls, 1, "the queued second pass observes the first pass's synced signature");
+    });
+});
+
 test("PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         const prev = process.env.PLURNK_SERVICE_GIT_ALLOWED;
