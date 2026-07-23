@@ -39,10 +39,11 @@
         "constrained-generation"
     ],
     "scripts": {
-        "build:fetchLlamaGrammar": "scripts/fetchLlamaGrammar.sh",
-        "build:llama": "scripts/buildLlama.sh",
-        "build": "npm run build:fetchLlamaGrammar && npm run build:llama",
         "build:dist": "rm -rf dist && tsc -p tsconfig.build.json",
+        "build": "npm run build:dist",
+        "oracle:fetch": "scripts/fetchLlamaGrammar.sh",
+        "oracle:build": "scripts/buildLlama.sh",
+        "oracle:check": "scripts/checkLlamaGrammar.sh",
         "test:lint": "tsc --noEmit",
         "test:intg": "node --conditions=plurnk-dev --test test/intg/*.test.ts",
         "test:e2e": "node --conditions=plurnk-dev --test test/e2e/*.test.ts",

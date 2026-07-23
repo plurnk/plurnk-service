@@ -16,7 +16,7 @@ TESTS="$ROOT/llama/tests"
 OUT="$ROOT/build"
 
 [ -f "$SRC/llama-grammar.cpp" ] || {
-  echo "buildLlama: llama/src is missing — run \`npm run build:fetchLlamaGrammar\` first." >&2
+  echo "buildLlama: llama/src is missing — run \`npm run oracle:fetch\` first." >&2
   exit 1
 }
 

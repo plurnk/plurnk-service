@@ -36,7 +36,7 @@ const parse = (out: string): Verdict => {
 
 export const runOracle = (grammarPath: string, input: string): Verdict => {
     if (!existsSync(ORACLE))
-        throw new Error(`oracle missing at ${ORACLE} — run \`npm run build:llama\` first`);
+        throw new Error(`oracle missing at ${ORACLE} — run \`npm run oracle:build\` first`);
     const dir = mkdtempSync(join(tmpdir(), "gbnf-e2e-"));
     try {
         const inputPath = join(dir, "input");

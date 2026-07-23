@@ -57,7 +57,8 @@
         "release:order": "node scripts/release-order.mjs",
         "release:publish": "node scripts/release-publish.mjs",
         "release:stepchildren": "node scripts/release-stepchildren.mjs",
-        "stepchild:census": "node plurnk-meta/scripts/stepchild-census.mjs"
+        "stepchild:census": "node plurnk-meta/scripts/stepchild-census.mjs",
+        "candidate": "node scripts/candidate.mjs"
     },
     "devDependencies": {
         "@types/node": "^26.1.1",
