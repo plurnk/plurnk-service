@@ -76,6 +76,10 @@ export interface DaemonSeam {
     constrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
     unconstrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }>;
     listConstraints(workspaceId: number): Promise<Array<{ effect: string; glob: string }>> | Array<{ effect: string; glob: string }>;
+    workspaceDerivationStatus(workspaceId: number): {
+        phase: "preparing" | "indexing" | "complete" | "failed";
+        completed: number; total: number; percent: number; message: string; level: "info" | "error";
+    } | null;
     // Workspace membership (gutter signs / the /members verb).
     listMembers(workspaceId: number): Promise<{ members: Array<{ path: string; effect: string }>; hidden: string[] }>;
     // The pure READ-projection query (svc#358): parse at the module's edge, rewrite

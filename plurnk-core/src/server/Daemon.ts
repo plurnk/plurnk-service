@@ -339,6 +339,9 @@ export default class Daemon {
     listConstraints(workspaceId: number) {
         return (this.#db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
     }
+    workspaceDerivationStatus(workspaceId: number) {
+        return this.#engine.workspaceDerivationStatus(workspaceId);
+    }
 
     // Workspace lifecycle (#355): the module's workspace-management surface. Inputs arrive already validated
     // at the module's edge ("I am the wall" — settings as the stored JSON string, constraints as a typed
@@ -391,7 +394,7 @@ export default class Daemon {
         // Members may have just landed — warm their derivations NOW (fire-and-forget, off the hot
         // path), exactly like createWorkspace does (dogfood catch: '/repo' embeddings waited for a
         // later turn's pump).
-        void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
+        await this.#engine.warmWorkspaceDerivations(workspaceId);
         return { effect, glob };
     }
 
@@ -1285,7 +1288,7 @@ export type CoreSeam = Pick<Daemon,
     | "pendingProposals" | "resolveProposal"
     | "runLoop" | "cancelDrain" | "dispatchAsClient" | "ensureModelWorker"
     | "readLog" | "readEntry" | "look"
-    | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints"
+    | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"
     | "createWorkspace" | "attachWorkspace" | "createConversationWorker" | "renameWorkspace" | "constrain" | "unconstrain"
     | "forkWorker"
     | "hotloadRuntime"

@@ -35,6 +35,7 @@ const mockSeam = () => {
         constrain: async (_id, effect, glob) => ({ effect, glob }),
         unconstrain: async (_id, effect, glob) => ({ effect, glob }),
         listConstraints: async () => [{ effect: "pick", glob: "src/**" }],
+        workspaceDerivationStatus: () => null,
         readEntry: async () => ({ status: 200, entry: { body: "x" } }),
         forkWorker: async () => ({ workerId: 11, workerName: "fork-1", parentWorkerId: 10 }),
         createConversationWorker: async (a) => ({ workerId: 77, workerName: a.name ?? "model-fresh" }),

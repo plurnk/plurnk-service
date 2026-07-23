@@ -6,12 +6,18 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { TelemetryEvent } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
+import Owner from "../../src/core/Owner.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const tokenize = (text: string): number => Math.ceil(text.length / 4);
@@ -63,7 +69,56 @@ test("[#290] Engine.warmWorkspaceDerivations derives deep channels at workspace 
         const progress = telemetry.filter((t) => t.event.kind === "embed_progress");
         assert.ok(progress.length > 0, "warm fans out embed_progress for the multi-entry ingest");
         assert.ok(progress.every((p) => p.loopId === 0), "workspace-scope progress carries loopId 0 (no turn yet)");
-        assert.equal((progress.at(-1)?.event as { total?: number } | undefined)?.total, 3, "progress totals the whole corpus");
+        const indexing = progress.filter((p) => (p.event as { phase?: unknown }).phase === undefined);
+        assert.equal((indexing.at(-1)?.event as { total?: number } | undefined)?.total, 3, "indexing progress totals the whole corpus");
+        assert.equal((progress.at(-1)?.event as { phase?: unknown } | undefined)?.phase, "complete", "warm emits an explicit terminal state");
+    } finally {
+        await db.close();
+    }
+});
+
+test("[#587] workspace warm materializes a fresh repository before deriving it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "plurnk-warm-repo-"));
+    execSync("git init -q && git config user.email fixture@plurnk.invalid && git config user.name fixture", { cwd: root, env: hermeticGitEnv() });
+    writeFileSync(join(root, "orientation.md"), "repository orientation evidence\n");
+    execSync("git add orientation.md && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit --no-verify -qm seed", { cwd: root, env: hermeticGitEnv() });
+
+    const db = await openMigrated();
+    try {
+        const telemetry: Array<{ event: TelemetryEvent }> = [];
+        let rescan: Promise<void> | undefined;
+        let requestedRescan = false;
+        let workspaceId = 0;
+        const engine = new Engine({
+            db, schemes: new SchemeRegistry(), tokenize,
+            telemetryEventNotify: (_workspaceId, payload) => {
+                const event = payload.event as TelemetryEvent;
+                telemetry.push({ event });
+                if (event.phase === "preparing" && !requestedRescan) {
+                    assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "preparing", "latest state is queryable while no event stream is attached");
+                    requestedRescan = true;
+                    rescan = engine.warmWorkspaceDerivations(workspaceId);
+                }
+            },
+        });
+        const workspace = await (db.envelope_insert_workspace as PrepMethod).get<{ id: number }>({
+            name: `warm-repo-${crypto.randomUUID()}`, project_root: root, settings: "{}",
+        });
+        assert.ok(workspace);
+        workspaceId = workspace.id;
+        await Owner.commonsId(db, workspaceId);
+
+        await engine.warmWorkspaceDerivations(workspaceId);
+        await rescan;
+
+        const body = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({
+            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId),
+            scheme: "file", pathname: "orientation.md", channel: "body",
+        });
+        assert.equal(body?.content, "repository orientation evidence\n", "warm reads repository members from disk before deriving");
+        const phases = telemetry.filter((t) => t.event.kind === "embed_progress").map((t) => t.event.phase);
+        assert.deepEqual(phases, ["preparing", "preparing", "complete"], "overlapping warms coalesce, rescan once, and emit one terminal state");
+        assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "complete", "terminal state remains queryable for a late client");
     } finally {
         await db.close();
     }

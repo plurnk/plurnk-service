@@ -42,7 +42,7 @@ export default class Module {
     static #WORLD_SCOPED = Object.freeze(new Set([
         "workspace.workers", "log.read", "loop.inject", "loop.cancel", "workspace.prompts", "workspace.rename",
         "workspace.constrain", "workspace.unconstrain", "workspace.constraints", "entry.read",
-        "op.exec", "op.parse", "workspace.members", "op.look", "run.fork",
+        "workspace.derivation", "op.exec", "op.parse", "workspace.members", "op.look", "run.fork",
     ]));
 
     constructor(seam: DaemonSeam, opts: ModuleOptions) {
@@ -393,6 +393,7 @@ export default class Module {
                     return { ok: true, result: await this.#seam.unconstrain(env.workspaceId, p.effect, p.glob) };
                 }
                 case "workspace.constraints": return { ok: true, result: { constraints: await this.#seam.listConstraints(env.workspaceId) } };
+                case "workspace.derivation": return { ok: true, result: { status: this.#seam.workspaceDerivationStatus(env.workspaceId) } };
                 case "entry.read": {
                     if (typeof p.target !== "string") return { ok: false, error: "entry.read requires target" };
                     return { ok: true, result: await this.#seam.readEntry({ workspaceId: env.workspaceId, target: p.target, ...(typeof p.channel === "string" ? { channel: p.channel } : {}), ...(typeof p.offset === "number" ? { offset: p.offset } : {}) }) };

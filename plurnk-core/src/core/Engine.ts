@@ -46,6 +46,14 @@ import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
 export type { ProposalDecision, ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
+export type WorkspaceDerivationStatus = {
+    phase: "preparing" | "indexing" | "complete" | "failed";
+    completed: number;
+    total: number;
+    percent: number;
+    message: string;
+    level: "info" | "error";
+};
 
 const DEFAULT_MAX_STRIKES = 3;
 
@@ -193,6 +201,12 @@ export default class Engine {
     // A turn never waits on an embedding; a ~query warms its own candidate slice inline
     // (§semantic-cold-query-full-fidelity), so cold workspaces still get full-fidelity search.
     #derivationChain: Promise<void> = Promise.resolve();
+    #workspaceWarms = new Map<number, {
+        dirty: boolean;
+        ctx: PlurnkSchemeContext;
+        promise: Promise<void>;
+    }>();
+    #workspaceWarmStatus = new Map<number, WorkspaceDerivationStatus>();
 
     #queueDerivation(job: () => Promise<void>): Promise<void> {
         const run = this.#derivationChain.then(job).catch((err: unknown) => {
@@ -200,6 +214,79 @@ export default class Engine {
         });
         this.#derivationChain = run;
         return run;
+    }
+
+    #queueWorkspaceWarm(ctx: PlurnkSchemeContext): Promise<void> {
+        const workspaceId = ctx.workspaceId;
+        const existing = this.#workspaceWarms.get(workspaceId);
+        if (existing !== undefined) {
+            existing.dirty = true;
+            existing.ctx = ctx;
+            return existing.promise;
+        }
+
+        const state = { dirty: false, ctx, promise: Promise.resolve() };
+        const publish = (current: PlurnkSchemeContext, status: WorkspaceDerivationStatus): void => {
+            this.#workspaceWarmStatus.set(workspaceId, status);
+            current.pushTelemetry?.({
+                source: "engine:derivation", kind: "embed_progress", ...status,
+            });
+        };
+        const promise = this.#queueDerivation(async () => {
+            do {
+                state.dirty = false;
+                const current = state.ctx;
+                publish(current, {
+                    phase: "preparing",
+                    message: "Preparing repository content for semantic indexing",
+                    completed: 0, total: 1, percent: 0, level: "info",
+                });
+                try {
+                    await GitMembership.indexGitMembership(current);
+                    await EntryManifest.maintainDerivations({
+                        ...current,
+                        pushTelemetry: (event) => {
+                            if (event.kind === "embed_progress"
+                                && typeof event.completed === "number"
+                                && typeof event.total === "number"
+                                && typeof event.percent === "number") {
+                                this.#workspaceWarmStatus.set(workspaceId, {
+                                    phase: "indexing",
+                                    completed: event.completed,
+                                    total: event.total,
+                                    percent: event.percent,
+                                    message: event.message ?? "Indexing repository semantics",
+                                    level: event.level === "error" ? "error" : "info",
+                                });
+                            }
+                            current.pushTelemetry?.(event);
+                        },
+                    });
+                } catch (error) {
+                    publish(current, {
+                        phase: "failed",
+                        message: `Semantic indexing failed: ${error instanceof Error ? error.message : String(error)}`,
+                        completed: 0, total: 1, percent: 0, level: "error",
+                    });
+                    throw error;
+                }
+            } while (state.dirty);
+
+            publish(state.ctx, {
+                phase: "complete",
+                message: "Repository semantic index is ready",
+                completed: 1, total: 1, percent: 100, level: "info",
+            });
+        }).finally(() => {
+            if (this.#workspaceWarms.get(workspaceId) === state) this.#workspaceWarms.delete(workspaceId);
+        });
+        state.promise = promise;
+        this.#workspaceWarms.set(workspaceId, state);
+        return promise;
+    }
+
+    workspaceDerivationStatus(workspaceId: number): WorkspaceDerivationStatus | null {
+        return this.#workspaceWarmStatus.get(workspaceId) ?? null;
     }
 
     // Awaited by Daemon.stop before the db closes.
@@ -1631,7 +1718,7 @@ export default class Engine {
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
             pushTelemetry: (event) => this.#telemetry.notify(workspaceId, 0, event),
         };
-        await this.#queueDerivation(() => EntryManifest.maintainDerivations(ctx)); // §derivation-off-hot-path
+        await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan
     }
 
     // Inject a prompt into the worker's currently-executing loop. Writes a

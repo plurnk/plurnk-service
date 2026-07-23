@@ -101,14 +101,20 @@ export default class EntryManifest {
     // One entry's full derivation (graph + FTS + embeddings + hash stamp), containment
     // included — shared by the pump and the ~query inline slice (§semantic-cold-query-full-fidelity
     // full-fidelity). Failure clears the deep channels and stamps the hash (no re-attempt).
-    // Every derivation write funnels through one chain: the background pump and a ~query's
-    // inline slice may target the SAME entry concurrently, and indexFts/indexEmbedding are
-    // delete-then-insert — interleaved writers would duplicate chunk rows.
-    static #deriveChain: Promise<void> = Promise.resolve();
+    // Every derivation write funnels through an entry-keyed chain: the background pump and a
+    // ~query's inline slice may target the SAME entry concurrently, and indexFts/indexEmbedding
+    // are delete-then-insert — interleaved same-entry writers would duplicate chunk rows.
+    // Different entries remain independent and may occupy the embedding pool concurrently.
+    static #deriveChains = new Map<number, Promise<void>>();
 
     static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number): Promise<void> {
-        const run = EntryManifest.#deriveChain.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks));
-        EntryManifest.#deriveChain = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
+        const prior = EntryManifest.#deriveChains.get(r.entry_id) ?? Promise.resolve();
+        const run = prior.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks));
+        const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
+        EntryManifest.#deriveChains.set(r.entry_id, tail);
+        void tail.finally(() => {
+            if (EntryManifest.#deriveChains.get(r.entry_id) === tail) EntryManifest.#deriveChains.delete(r.entry_id);
+        });
         return run;
     }
 
@@ -120,7 +126,7 @@ export default class EntryManifest {
             let result: ProcessResult;
             if (wantGraph) {
                 try {
-                    result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: embedActive ? ["symbols", "references", "embedding", "content"] : ["symbols", "references", "content"] }); // §mimetype-methods-process-entry-point — "content" = the readable projection (mimetypes#48): FTS/embeddings consume it when the handler offers one
+                    result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: ["symbols", "references", "content"] }); // §mimetype-methods-process-entry-point — "content" = the readable projection (mimetypes#48): FTS/embeddings consume it when the handler offers one. Embeddings have one path below: tiled embedBatch, never a discarded whole-file pre-pass.
                     await EntryGraph.populateFrom(db, workspaceId, r.entry_id, result.symbols ?? [], result.references ?? []);
                 } catch {
                     // A handler predating the references channel throws → metadata-only, clear graph.
@@ -133,7 +139,7 @@ export default class EntryManifest {
             }
             // The other two deep channels: re-index the body into entry_fts (~semantic's keyword
             // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
-            // cleared, not stored. result.embedding is the fallback whole-entry vector.
+            // cleared, not stored.
             // The SEMANTIC SOURCE: when the handler returns a readable projection
             // (ProcessResult.content — e.g. text/html's Readability→markdown), FTS and the
             // embedder consume THAT, not the raw body. A 424k-token raw page becomes a few-k
@@ -159,7 +165,7 @@ export default class EntryManifest {
                 await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
                 return;
             }
-            const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], result.embedding, result.embeddingModel, ctx.signal, maxChunks);
+            const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, maxChunks);
             await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
             // §semantic-entry-chunk-cap — a CAPPED (inline, latency-staged) pass does NOT stamp:
             // the hash stays stale so the background pump completes the entry to full depth.
