@@ -48,7 +48,7 @@
     "scripts": {
         "prepare": "git config core.hooksPath .githooks",
         "test:lint": "node scripts/dependency-policy.mjs && npm run test:lint --workspaces --if-present",
-        "test:unit": "npm run test:unit --workspaces --if-present",
+        "test:unit": "node --test 'scripts/*.test.mjs' && npm run test:unit --workspaces --if-present",
         "test:intg": "npm run test:intg --workspaces --if-present",
         "test": "node scripts/drill.mjs",
         "build": "npm run build --workspaces --if-present",
