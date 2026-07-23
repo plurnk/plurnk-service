@@ -9,7 +9,7 @@ This repo is the **platform monorepo**: the daemon (`plurnk-core/`, published as
 #### Topology
 
 - **Monorepo = default bundle.** Every workspace here ships in the daemon's default install; the bundle IS `plurnk-core`'s dependency list (`test/intg/execs-batteries.test.ts` is its executable census). The boundary criterion is the expertise cut: a package lives OUTSIDE iff a third party could know better what to do with it (vendor providers, language grammars); weight tiebreaks within owner-domain and never pushes a load-bearing capability out.
-- **Outside the repo:** the client (`plurnk` repo, `@plurnk/plurnk` — a thin wire consumer), `plurnk.nvim`, `plurnk-bench` (public reproduction contract; installs from the registry like an outsider), and every optional plugin leaf (cloud providers, language mimetypes, execs-wasm …) as independent repos.
+- **Outside the repo:** the client (`plurnk` repo, `@plurnk/plurnk` — a thin wire consumer), `plurnk.nvim`, `plurnk-bench` (public reproduction contract; installs from the registry like an outsider), and plugin leaves whose expertise belongs outside the platform (cloud providers, language mimetypes, execs-wasm …) as independent repos. Repository ownership and default installation are independent: core may depend on an outside leaf when that capability belongs in the default daemon.
 - **npm surface is unchanged by the monorepo:** every workspace publishes individually under its historical name. There is no monorepo package; the root manifest is private.
 
 #### Workspace mechanics

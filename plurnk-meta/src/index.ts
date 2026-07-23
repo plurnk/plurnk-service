@@ -3,10 +3,11 @@
 // §plugin-discovery / §operator-config-env-defaults):
 //   - isTrusted:          THE trust rule. One implementation; a second definition
 //                         of membership trust anywhere in the family is a bug.
-//   - packageDirs:        scope-agnostic, symlink-aware enumeration of installed
-//                         packages. Returns candidates; ORDERING AND FILTERING ARE
-//                         THE CALLER'S POLICY (mimetypes loads @plurnk last for
-//                         collision precedence; others sort by name).
+//   - packageDirs:        scope-agnostic, symlink-aware enumeration of the Node
+//                         resolution chain. Nearest package wins when npm splits
+//                         a deployment across nested node_modules directories.
+//                         Returns candidates; ORDERING AND FILTERING ARE THE
+//                         CALLER'S POLICY.
 //   - nearestNodeModules: deployment-root resolution — walk up to the nearest
 //                         node_modules holding the ecosystem (witness: @plurnk).
 //                         Registry installs hit the install root; workspace
@@ -34,11 +35,7 @@ export default class Meta {
         return value.split(",").map((s) => s.trim()).includes(packageName);
     }
 
-    // Every installed package dir under nodeModulesDir — unscoped (`name`) and scoped
-    // (`@scope/name`) alike. Symlinks included: workspace checkouts link every sibling
-    // into node_modules, and a dirent-only isDirectory() reads them as non-dirs.
-    // Non-package entries (.bin, .cache, dotfiles) are skipped. No node_modules → [].
-    static async packageDirs(nodeModulesDir: string): Promise<PackageCandidate[]> {
+    static async #packageDirsOne(nodeModulesDir: string): Promise<PackageCandidate[]> {
         let entries: Array<{ name: string; isDirectory(): boolean; isSymbolicLink(): boolean }>;
         try {
             entries = await readdir(nodeModulesDir, { withFileTypes: true });
@@ -62,6 +59,37 @@ export default class Meta {
             } else {
                 candidates.push({ dir: path.join(nodeModulesDir, entry.name), name: entry.name });
             }
+        }
+        return candidates;
+    }
+
+    // Every package resolvable from nodeModulesDir — unscoped (`name`) and scoped
+    // (`@scope/name`) alike. npm may place one peer set beside a workspace package
+    // and the rest at an ancestor; Node resolves through both, so discovery does too.
+    // Nearest wins by package name. Symlinks are included; dot entries are skipped.
+    static async packageDirs(nodeModulesDir: string): Promise<PackageCandidate[]> {
+        const candidates: PackageCandidate[] = [];
+        const seenNames = new Set<string>();
+        const seenDirs = new Set<string>();
+        let dir = path.resolve(nodeModulesDir);
+        while (!seenDirs.has(dir)) {
+            seenDirs.add(dir);
+            for (const candidate of await Meta.#packageDirsOne(dir)) {
+                if (seenNames.has(candidate.name)) continue;
+                seenNames.add(candidate.name);
+                candidates.push(candidate);
+            }
+            let cursor = path.dirname(dir);
+            let next: string | null = null;
+            while (true) {
+                const parent = path.dirname(cursor);
+                if (parent === cursor) break;
+                cursor = parent;
+                const candidate = path.basename(cursor) === "node_modules" ? cursor : path.join(cursor, "node_modules");
+                if (!seenDirs.has(candidate) && existsSync(candidate)) { next = candidate; break; }
+            }
+            if (next === null) break;
+            dir = next;
         }
         return candidates;
     }

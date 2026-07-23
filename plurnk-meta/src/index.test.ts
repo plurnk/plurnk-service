@@ -42,6 +42,29 @@ test("packageDirs: missing node_modules yields []", async () => {
     assert.deepEqual(await Meta.packageDirs("/no/such/dir/node_modules"), []);
 });
 
+test("packageDirs: merges npm's nested peer graph with ancestor packages, nearest name wins", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plugins-chain-"));
+    try {
+        const outer = join(root, "node_modules");
+        const inner = join(root, "packages", "service", "node_modules");
+        await mkdir(join(outer, "@plurnk", "plurnk-schemes-http"), { recursive: true });
+        await mkdir(join(outer, "@plurnk", "plurnk-providers"), { recursive: true });
+        await mkdir(join(inner, "@plurnk", "plurnk-providers"), { recursive: true });
+        await mkdir(join(inner, "@plurnk", "plurnk-providers-cloudflare"), { recursive: true });
+
+        const candidates = await Meta.packageDirs(inner);
+        assert.deepEqual(candidates.map((candidate) => candidate.name).toSorted(), [
+            "@plurnk/plurnk-providers",
+            "@plurnk/plurnk-providers-cloudflare",
+            "@plurnk/plurnk-schemes-http",
+        ]);
+        assert.equal(candidates.find((candidate) => candidate.name === "@plurnk/plurnk-providers")?.dir,
+            join(inner, "@plurnk", "plurnk-providers"));
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
 test("nearestNodeModules: finds the ancestor holding @plurnk; null when absent", async () => {
     const root = await mkdtemp(join(tmpdir(), "plugins-walk-"));
     try {
