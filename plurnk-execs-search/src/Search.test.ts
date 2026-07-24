@@ -199,7 +199,7 @@ test("entry(): the executor hands each unique candidate url to the sink as a pre
     assert.equal(calls[0].opts.mimetype, undefined, "no mimetype supplied — the consumer determines it");
 });
 
-test("#596: a rejected entry() preserves ranked discovery and reports materialization separately", async () => {
+test("#596: a rejected entry() is scrubbed from the model-facing digest", async () => {
     routes([
         { title: "a", url: "https://8.8.8.8/a" },
         { title: "b", url: "https://8.8.8.9/b" },
@@ -209,8 +209,7 @@ test("#596: a rejected entry() preserves ranked discovery and reports materializ
     });
     assert.deepEqual(JSON.parse(writes[0].chunk), [
         { title: "a", url: "https://8.8.8.8/a", materialized: true },
-        { title: "b", url: "https://8.8.8.9/b", materialized: false },
-    ], "successful materialization advertises the canonical READ target; rejection preserves discovery without claiming a readable page");
+    ], "only successfully materialized resources reach the model");
 });
 
 test("search acquisition emits bounded aggregate progress with no candidate URLs", async () => {
@@ -236,7 +235,7 @@ test("search acquisition emits bounded aggregate progress with no candidate URLs
     assert.ok(progress.every((event) => !JSON.stringify(event).includes("example3.test")), "telemetry never becomes a candidate URL ledger");
 });
 
-test("#596: every rejecting entry() still leaves the complete discovery digest", async () => {
+test("#596: every rejecting entry() leaves an empty model-facing digest", async () => {
     routes([
         { title: "x", url: "https://8.8.8.8/x" },
         { title: "y", url: "https://8.8.8.9/y" },
@@ -245,10 +244,7 @@ test("#596: every rejecting entry() still leaves the complete discovery digest",
     const { writes } = await invoke("search", "q", {
         entry: async (path) => { requested.push(path); throw new Error("all dead"); },
     });
-    assert.deepEqual(JSON.parse(writes[0].chunk), [
-        { title: "x", url: "https://8.8.8.8/x", materialized: false },
-        { title: "y", url: "https://8.8.8.9/y", materialized: false },
-    ], "all candidates remain usable as title/url/snippet evidence");
+    assert.deepEqual(JSON.parse(writes[0].chunk), [], "unreadable candidates are scrubbed");
     assert.deepEqual(requested.sort(), ["https://8.8.8.8/x", "https://8.8.8.9/y"], "each candidate was still handed to the sink");
 });
 
@@ -263,7 +259,7 @@ test("dedupe: two candidates with the same url request the prefetch once and lis
     assert.deepEqual(requested, ["https://8.8.8.8/a"], "the duplicate url is handed to entry() exactly once");
 });
 
-test("#596 regression: inaccessible authoritative hits stay ahead of accessible irrelevant hits", async () => {
+test("#596 regression: materialization scrubbing preserves the upstream order of survivors", async () => {
     routes([
         { title: "Bessent discusses AI", url: "https://news.example/bessent-ai", content: "Authoritative report." },
         { title: "Scott Credit Union", url: "https://scu.example/", content: "Banking." },
@@ -276,7 +272,6 @@ test("#596 regression: inaccessible authoritative hits stay ahead of accessible 
     });
     const rows = JSON.parse(writes[0].chunk) as { title: string; materialized: boolean }[];
     assert.deepEqual(rows.map(({ title, materialized }) => ({ title, materialized })), [
-        { title: "Bessent discusses AI", materialized: false },
         { title: "Scott Credit Union", materialized: true },
         { title: "SCOTT Bikes", materialized: true },
     ]);

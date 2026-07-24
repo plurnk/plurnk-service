@@ -258,7 +258,7 @@ export default class Search extends BaseExecutor {
             snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
             ...(publishedDate ? { publishedDate } : {}),
             ...(entry ? { materialized: verdicts[i] } : {}),
-        }));
+        })).filter((result) => !entry || result.materialized);
         write("results", JSON.stringify(results));
         setState("results", "closed");
         return { status: 200 };
