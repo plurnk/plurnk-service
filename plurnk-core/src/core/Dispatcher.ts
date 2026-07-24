@@ -651,6 +651,22 @@ export default class Dispatcher {
         const schemeName = schemeNameOf(statement.target);
         const found = await this.#run(schemeName, { ...statement, op: "FIND" } as PlurnkStatement, ctx);
         const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number } | null }> | undefined) ?? [];
+        const overflow = typeof found.overflow === "number" ? found.overflow : null;
+        // §find-count-not-contents applies to WORK as well as rendering. A READ
+        // over an over-budget selection writes the bounded FIND summary plus one
+        // loud refusal; it never silently truncates and never materializes a
+        // hidden prefix/suffix of the set.
+        if (overflow !== null) {
+            const findRowId = await this.#writeLog({ statement: { ...statement, op: "FIND" } as PlurnkStatement, result: found, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
+            onDispatch?.(findRowId);
+            const result: DispatchResult = {
+                status: 413,
+                error: `${overflow} matches exceed the READ materialization budget — narrow the target or matcher.`,
+            };
+            const readRowId = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + 1, origin });
+            onDispatch?.(readRowId);
+            return { ...result, rowsWritten: 2 };
+        }
         // Find-less scheme, a matcher/scope error, or zero matches → a single row carrying the
         // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
         if (found.status !== 200 || matches.length === 0) {
@@ -675,6 +691,7 @@ export default class Dispatcher {
         const fannedStatuses: number[] = [];
         let written = 1;
         for (const m of matches) {
+            ctx.signal?.throwIfAborted();
             let whole = wholeByPath.get(m.pathname);
             if (whole === undefined) {
                 whole = await this.#run(schemeName, Dispatcher.#retargetRead(statement, m.pathname, null), ctx);

@@ -166,6 +166,25 @@ export default class Log {
             matches = page.items ?? [];
         }
         if (matches.length === 0) return empty(204);
+        // §find-count-not-contents is source-agnostic. Log used the shared
+        // matcher but skipped its cardinality gate, allowing one matcher over a
+        // large READ projection to retain and later fan out tens of thousands
+        // of rows. Count-forward here before catalog materialization.
+        const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
+        if (budget > 0 && matches.length > budget) {
+            const unique = new Set(matches.map((m) => m.pathname));
+            const itemsTokenTotal = [...unique].reduce((sum, pathname) => sum + (byCoord.get(pathname)?.tokens ?? 0), 0);
+            return {
+                status: 200,
+                content: `${matches.length} entries match, exceeding the render budget (${budget}) — not enumerated.`,
+                mimetype: "text/markdown",
+                results: [],
+                itemsTokenTotal,
+                pathnames: [],
+                matches: [],
+                overflow: matches.length,
+            };
+        }
 
         // The result rows mirror the catalog-row shape (§find-result-catalog-rows): one item per
         // match, keyed by the row's self-documenting path, carrying {mimetype, tokens, lines} so

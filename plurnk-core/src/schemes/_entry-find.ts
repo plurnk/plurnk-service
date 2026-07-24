@@ -239,7 +239,11 @@ export default class EntryFind {
         const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
         if (budget > 0 && results.length > budget) {
             const steer = `${results.length} entries match, exceeding the render budget (${budget}) — not enumerated.`;
-            return { status: 200, content: steer, mimetype: "text/markdown", results, itemsTokenTotal, pathnames: [...seenPath], matches, overflow: results.length };
+            // Count-forward means COUNT ONLY. Retaining the enumerated arrays behind a
+            // terse rendered steer defeated the contract twice: callers could still fan
+            // every hidden match into work, and the full objects stayed resident. The
+            // overflow count + aggregate weight are the complete bounded result.
+            return { status: 200, content: steer, mimetype: "text/markdown", results: [], itemsTokenTotal, pathnames: [], matches: [], overflow: results.length };
         }
         // Compact JSON — the model parses it natively; the `null, 2` pretty-print was ~36%
         // whitespace of the catalog body, tokens the wire doesn't need.

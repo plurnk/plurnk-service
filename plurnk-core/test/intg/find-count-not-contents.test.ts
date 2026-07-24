@@ -30,6 +30,9 @@ test("over the budget, FIND returns a count + narrow steer, not the enumerated r
         assert.equal(r.mimetype, "text/markdown", "the content is a steer, not the JSON catalog");
         assert.match(String(r.content), /6 entries match.*render budget/i, "the model is told the fact: how many matched, over budget, not enumerated");
         assert.doesNotMatch(String(r.content), /\{"path"/, "no catalog rows were materialized into the body");
+        assert.deepEqual(r.results, [], "count-forward retains no hidden enumerated result objects");
+        assert.deepEqual(r.matches, [], "count-forward cannot be fanned out by a caller");
+        assert.deepEqual(r.pathnames, [], "count-forward retains no hidden pathname list");
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FIND_MAX_MATCHES; else process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = prev;
         await db.close();

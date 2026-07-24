@@ -95,6 +95,38 @@ test("a glob READ with zero matches writes a single 204 row, not silence", async
     } finally { await db.close(); }
 });
 
+test("an over-budget matcher READ writes a bounded FIND + 413 and zero deliveries", async () => {
+    const prev = process.env.PLURNK_SERVICE_FIND_MAX_MATCHES;
+    process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = "2";
+    const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
+    try {
+        await seed(db, workspaceId, workerId, mimetypes, "/a", "france one");
+        await seed(db, workspaceId, workerId, mimetypes, "/b", "france two");
+        await seed(db, workspaceId, workerId, mimetypes, "/c", "france three");
+        const r = await engine.dispatch({
+            statement: readStmt(urlPath("worker", "/**"), { dialect: "glob", raw: "france*" } as MatcherBody),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(r.status, 413);
+        assert.equal(r.rowsWritten, 2, "one count-bearing FIND summary + one loud READ refusal");
+        const rows = await Promise.all([1, 2].map((sequence) =>
+            (db.log_read_by_coordinate as PrepMethod).get<{ op: string; status_rx: number; rx: string }>({
+                worker_id: workerId,
+                loop_seq: 1,
+                turn_seq: 1,
+                sequence,
+            }),
+        ));
+        assert.ok(rows[0] !== undefined && rows[1] !== undefined);
+        assert.deepEqual(rows.map((x) => [x?.op, x?.status_rx]), [["FIND", 200], ["READ", 413]]);
+        assert.match(rows[0].rx, /3 entries match.*not enumerated/i);
+        assert.match(rows[1].rx, /3 matches exceed.*narrow/i);
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_FIND_MAX_MATCHES; else process.env.PLURNK_SERVICE_FIND_MAX_MATCHES = prev;
+        await db.close();
+    }
+});
+
 test("the running sequence counter advances past the fan-out — a later op lands after all N rows", async () => {
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
     try {
