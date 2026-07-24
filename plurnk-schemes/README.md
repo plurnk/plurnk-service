@@ -79,7 +79,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - Manifest/flags: `SchemeManifest` (incl. `example` / `documentation` / `glyph` self-doc), `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
 - Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSection`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
 - Result families: `SchemeResult` / `EntryResult` / `ProposalResult` / `PassthroughResult` / `SchemeResultBase` / `TelemetryEvent`.
-- Capability ctx: `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `ProjectionCaps` / `SubscriptionCaps`, plus `EntryData` / `ChannelState` / `SubscriptionHandle` / `ProposalAware`.
+- Capability ctx: `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `ProjectionCaps` / `SubscriptionCaps`, plus `EntryData` / `ChannelState` / `SubscriptionHandle` / `ProposalAware` / `ProposalApplyRequest` / `ProposalApplyResult`.
 
 ### Helpers (`export default class`, static methods)
 

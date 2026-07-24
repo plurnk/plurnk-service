@@ -75,6 +75,7 @@ export interface SchemeHandler {
     fork?(statement: ForkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     plan?(statement: PlanStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 }
 ```
 
@@ -82,7 +83,7 @@ A sibling does `export default class X implements SchemeHandler` (with `static m
 
 `close?()` is the process-lifecycle hook for pooled resources such as browser processes, sockets, and client connections. The consumer calls it once per unique handler instance after in-flight scheme work drains and before backing stores close. Stateless handlers omit it.
 
-Two surfaces are NOT yet in `SchemeHandler`, pending their result types migrating here from plurnk-service v0: the **CRUD primitives** (`readEntry`/`writeEntry`/`deleteEntry`, required for entry-bearing schemes) and the **proposal lifecycle** (the optional `ProposalAware.applyResolution` hook, already exported via §3.bis). Until then a scheme declares those methods directly.
+The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use `ctx.entries`. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
 
 ## §3 Helpers exported by this repo
 
@@ -94,7 +95,7 @@ Two surfaces are NOT yet in `SchemeHandler`, pending their result types migratin
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - Executor-scheme (RFC schemes#20 — "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` → `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`); `Summarize.summarize(content, mimetype)` → `OrientIndex` is the structural-only EXEC-receipt index (no content — universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Result families: `SchemeResult` (`EntryResult` | `ProposalResult` | `PassthroughResult`), `SchemeResultBase`, `TelemetryEvent`. Keyed on scheme-shape, not op. `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`; builders `schemeError(scheme, kind, message?, position?)`, `logCoordinate(coordinate, op?)`.
-- Capability ctx (see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `ProjectionCaps` / `SubscriptionCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`.
+- Capability ctx (see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `ProjectionCaps` / `SubscriptionCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`, `ProposalApplyRequest`, and `ProposalApplyResult`.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
 
@@ -153,7 +154,7 @@ The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be autho
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in plurnk-service's index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set (plurnk-service#180).
 
-**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle (await/accept/reject, auto/noProposals auto-resolve, timeout) and it is invisible to the sibling. The only sibling-side surface is the optional `ProposalAware.applyResolution(pathname, proposal, ctx)` hook the engine calls on accept.
+**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns `{ status, outcome?, body? }`: a status below 400 completes the accept; a failure rejects it with the returned outcome.
 
 ## §4 What's NOT in this repo
 

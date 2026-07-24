@@ -15,8 +15,6 @@
 // helpers, cut over scheme-by-scheme.
 
 import type { WriterTier } from "./types.ts";
-import type { ProposalResult, SchemeResult } from "./Results.ts";
-
 // Channel streaming-lifecycle state (mirrors plurnk-service's ChannelState /
 // grammar ChannelContent.state). Metadata, not an engine gate (service SPEC: channel lifecycle state).
 export type ChannelState = "static" | "active" | "closed" | "errored";
@@ -172,8 +170,20 @@ export interface SchemeCtx {
 // resolution lifecycle (await, accept/reject, auto/noProposals auto-resolve,
 // timeout) and it is invisible to the sibling: on reject the actor sees an
 // ordinary 4xx, never the orchestration. The ONLY sibling-side surface is an
-// optional handler hook the engine calls when a proposal is accepted, so the
-// scheme can apply the deferred side effect.
+// optional handler hook the engine calls when a proposal is accepted. Its
+// request carries the persisted scheme attrs and resolver-approved body; its
+// result reports the applied outcome.
+export interface ProposalApplyRequest {
+    readonly attrs: object;
+    readonly body?: string;
+}
+
+export interface ProposalApplyResult {
+    readonly status: number;
+    readonly outcome?: string;
+    readonly body?: string;
+}
+
 export interface ProposalAware {
-    applyResolution(pathname: string, proposal: ProposalResult, ctx: SchemeCtx): Promise<SchemeResult>;
+    applyResolution(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 }

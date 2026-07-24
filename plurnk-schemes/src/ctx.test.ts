@@ -21,7 +21,6 @@ import type {
     EntryData,
     ChannelState,
 } from "./ctx.ts";
-import type { ProposalResult, SchemeResult } from "./Results.ts";
 
 // ── a minimal in-memory conformant implementation ─────────────────────────
 // Backs `entries`/`channels` with a Map so the assertions are real, not
@@ -181,13 +180,13 @@ test("ctx: ProposalAware hook applies a resolution and returns a result", async 
     // proposals are NOT an injected cap — a scheme implements this hook and
     // the engine calls it on accept. Minimal conformant scheme:
     const scheme: ProposalAware = {
-        async applyResolution(pathname, _proposal: ProposalResult, c): Promise<SchemeResult> {
-            await c.entries.write(pathname, { channels: { body: { content: "applied", mimetype: "text/markdown" } }, tags: [] });
-            return { shape: "entry", status: 200, entryId: 1, channel: "body" };
+        async applyResolution(request, c) {
+            assert.deepEqual(request, { attrs: { pathname: "file://x" }, body: "applied" });
+            await c.entries.write("file://x", { channels: { body: { content: request.body ?? "", mimetype: "text/markdown" } }, tags: [] });
+            return { status: 200, outcome: "applied" };
         },
     };
-    const proposal: ProposalResult = { shape: "proposal", status: 202, diff: "@@ +applied @@" };
-    const out = await scheme.applyResolution("file://x", proposal, ctx);
+    const out = await scheme.applyResolution({ attrs: { pathname: "file://x" }, body: "applied" }, ctx);
     assert.equal(out.status, 200);
     assert.equal((await ctx.entries.read("file://x")).entry?.channels.body.content, "applied");
 });

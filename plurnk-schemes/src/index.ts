@@ -49,6 +49,8 @@ export type {
     EntryData,
     ProjectionCaps,
     NotifyCaps,
+    ProposalApplyRequest,
+    ProposalApplyResult,
     ProposalAware,
     SchemeCtx,
     SubscriptionCaps,

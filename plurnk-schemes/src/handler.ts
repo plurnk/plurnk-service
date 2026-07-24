@@ -36,7 +36,7 @@ import type {
     KillStatement,
     PlanStatement,
 } from "@plurnk/plurnk-grammar";
-import type { SchemeCtx } from "./ctx.ts";
+import type { ProposalApplyRequest, ProposalApplyResult, SchemeCtx } from "./ctx.ts";
 import type { SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
 
@@ -52,6 +52,7 @@ export interface SchemeHandler {
     // (browser processes, sockets, client connections). The consumer calls this
     // once after in-flight scheme work drains and before its backing stores close.
     close?(): Promise<void>;
+    applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
