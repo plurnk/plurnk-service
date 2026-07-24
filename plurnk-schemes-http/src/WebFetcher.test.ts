@@ -32,10 +32,14 @@ test("live public textual URL → { body, mimetype }", async () => {
     });
 });
 
-test("HTML → rendered DOM (guard passed to the browser)", async () => {
+test("HTML → byte response first; guarded browser render is a lazy fallback", async () => {
     const b = fakeBrowser("<html><body>rendered</body></html>");
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html; charset=utf-8" })) as typeof fetch, async () => {
-        assert.deepEqual(await new WebFetcher(b).fetch(PUB), { body: "<html><body>rendered</body></html>", mimetype: "text/html" });
+        const fetched = await new WebFetcher(b).fetch(PUB);
+        assert.equal(fetched?.body, "<html></html>");
+        assert.equal(fetched?.mimetype, "text/html");
+        assert.equal(b.calls.length, 0, "a valid byte response does not launch the browser eagerly");
+        assert.deepEqual(await fetched?.render?.(), { body: "<html><body>rendered</body></html>", mimetype: "text/html" });
     });
     assert.equal(b.calls[0].guarded, true);
     assert.equal(b.calls[0].signal, undefined,
@@ -46,7 +50,8 @@ test("#596: caller cancellation still spans byte probe and render", async () => 
     const b = fakeBrowser("<html><body>rendered</body></html>");
     const caller = new AbortController();
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
-        await new WebFetcher(b).fetch(PUB, { signal: caller.signal });
+        const fetched = await new WebFetcher(b).fetch(PUB, { signal: caller.signal });
+        await fetched?.render?.();
     });
     assert.equal(b.calls[0].signal, caller.signal);
 });
@@ -91,7 +96,8 @@ test("empty textual body → null", async () => {
 
 test("render yielding empty DOM → null", async () => {
     await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher(fakeBrowser("")).fetch(PUB), null);
+        const fetched = await new WebFetcher(fakeBrowser("")).fetch(PUB);
+        assert.equal(await fetched?.render?.(), null);
     });
 });
 

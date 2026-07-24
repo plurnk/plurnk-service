@@ -1,7 +1,7 @@
 import { parsePath } from "@plurnk/plurnk-grammar";
 import type { ExecStatement, FindStatement, ReadStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
-import { WebFetcher } from "@plurnk/plurnk-schemes-http";
+import { WebFetcher, type WebFetchResult } from "@plurnk/plurnk-schemes-http";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
@@ -97,9 +97,9 @@ export const resolveStreamStatement = async <S extends { target: ReadStatement["
 };
 
 // §exec-entry-sink / #455 — the guarded web-fetch the sink calls when the executor hands content:null:
-// schemes-http's WebFetcher (SSRF-guarded fetch+render, dead-as-null). Injectable because the guard
-// refuses localhost — a fake stands in for both the live { body, mimetype } and the null-dead verdict.
-export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<{ body: string; mimetype: string } | null>;
+// schemes-http's WebFetcher (SSRF-guarded byte acquisition + lazy browser
+// fallback, dead-as-null). Injectable because the guard refuses localhost.
+export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
 export default class Exec {
     static manifest: SchemeManifest = {
@@ -119,8 +119,8 @@ export default class Exec {
     };
 
     // The web-fetch the entry sink calls on content:null (§exec-entry-sink / #455). Default = schemes-http's
-    // guarded WebFetcher over one warm-Chromium pool shared across this handler's sinks; injectable so tests
-    // substitute the network (the guard blocks localhost, so no local server can exercise the live path).
+    // guarded WebFetcher over one warm-Chromium pool shared across this handler's
+    // fallback renders; injectable so tests substitute the network.
     readonly #fetchWeb: WebFetch;
     readonly #closeWebFetcher: () => Promise<void>;
     constructor(fetchWeb?: WebFetch) {
@@ -467,13 +467,13 @@ export default class Exec {
             // serializes on entryChain (db-write ordering). A null fetch is dead (guard-refused / unreachable /
             // non-2xx / non-textual / empty) and REJECTS, so the executor prunes that survivor. Non-null content
             // is the materialize-given-body path — the caller already holds the bytes and states their mimetype.
-            const materialized: Promise<{ body: string; mimetype: string } | null> = content === null
+            const materialized: Promise<WebFetchResult | null> = content === null
                 ? this.#fetchWeb(path, { signal })
                 : Promise.resolve({ body: content, mimetype: opts.mimetype as string });
             const op = async (): Promise<void> => {
                 const fetched = await materialized;
                 if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
-                const { body, mimetype } = fetched;
+                let { body, mimetype } = fetched;
                 const pathname = foldAuthorityIntoPath(parsed.hostname, parsed.pathname);
                 const prior = await EntryCrud.readEntry(pathname, ctx, parsed.scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
@@ -484,12 +484,22 @@ export default class Exec {
                 // stay verbatim (a `<user email=…>` roster's attribute data must survive a default READ).
                 let channels: EntryData["channels"] = { body: { content: body, mimetype } };
                 let decisive = body;
-                if (mimetype === "text/html" && ctx.mimetypes !== undefined) {
-                    const projected = (await ctx.mimetypes.process({ content: body, hint: "text/html" }, { channels: ["content"] })).content;
-                    if (typeof projected === "string" && projected.length > 0) {
-                        channels = { body: { content: projected, mimetype: "text/markdown" }, html: { content: body, mimetype } };
-                        decisive = projected;
+                if (mimetype === "text/html") {
+                    if (ctx.mimetypes === undefined) throw new Error("entry(): HTML materialization requires the mimetype registry");
+                    let projected = (await ctx.mimetypes.process({ content: body, hint: "text/html" }, { channels: ["content"] })).content;
+                    if ((typeof projected !== "string" || projected.length === 0) && fetched.render !== undefined) {
+                        const rendered = await fetched.render();
+                        if (rendered !== null) {
+                            body = rendered.body;
+                            mimetype = rendered.mimetype;
+                            projected = (await ctx.mimetypes.process({ content: body, hint: "text/html" }, { channels: ["content"] })).content;
+                        }
                     }
+                    if (typeof projected !== "string" || projected.length === 0) {
+                        throw new Error(`entry(): '${path.slice(0, 80)}' has no readable HTML projection`);
+                    }
+                    channels = { body: { content: projected, mimetype: "text/markdown" }, html: { content: body, mimetype } };
+                    decisive = projected;
                 }
                 const written = await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme);
                 if (narration === null) {

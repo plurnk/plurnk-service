@@ -14,7 +14,7 @@ export { default as Ws } from "./Ws.ts";
 export { default as Browser } from "./Browser.ts";
 export type { ChromiumEngine, ChromiumFactory, RenderResult } from "./Browser.ts";
 
-// The guarded fetch/render prefetch seam core's entrySink calls (#454):
-// `new WebFetcher().fetch(url) → { body, mimetype } | null`.
+// The guarded prefetch acquisition seam core's entrySink calls (#454).
 export { default as WebFetcher } from "./WebFetcher.ts";
+export type { WebFetchResult } from "./WebFetcher.ts";
 export { default as Guard, GuardBlockedError } from "./Guard.ts";

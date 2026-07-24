@@ -1,8 +1,7 @@
-// The guarded fetch/render prefetch primitive core's entrySink calls (#454).
-// ONE seam (SPEC §prefetch): `fetch(url) → { body, mimetype } | null`. Dead-ness is a VALUE,
-// never a throw — null covers SSRF-refused, unreachable, non-2xx, non-textual,
-// and empty. Everything behind it (plain fetch vs playwright/salvage, redirect
-// hops, per-page timeout, the SSRF guard) is ours.
+// The guarded acquisition primitive core's entrySink calls (#454). The byte
+// response is primary; HTML carries a lazy guarded browser fallback for core
+// to invoke only when MIME projection is empty. Dead-ness is a value, never a
+// throw — null covers SSRF-refused, unreachable, non-2xx, non-textual, and empty.
 
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
@@ -29,6 +28,15 @@ interface Renderer {
     close?(): Promise<void>;
 }
 
+export interface WebFetchResult {
+    body: string;
+    mimetype: string;
+    // HTML byte responses are authoritative when their model-facing MIME
+    // projection is useful. Core calls this guarded browser acquisition only
+    // when that projection is empty.
+    render?: () => Promise<{ body: string; mimetype: string } | null>;
+}
+
 export default class WebFetcher {
     // One warm-Chromium pool shared across prefetches (render context keyed 0 —
     // prefetch is public-page acquisition, no per-worker cookie isolation to keep).
@@ -41,7 +49,7 @@ export default class WebFetcher {
         await this.#browser.close?.();
     }
 
-    async fetch(url: string, opts?: { signal?: AbortSignal }): Promise<{ body: string; mimetype: string } | null> {
+    async fetch(url: string, opts?: { signal?: AbortSignal }): Promise<WebFetchResult | null> {
         // Bound the byte probe independently. Browser.render owns its own
         // navigation timeout and must be allowed to observe Playwright's
         // TimeoutError so Browser.#safeGoto can salvage an already-rendered DOM.
@@ -60,24 +68,33 @@ export default class WebFetcher {
         const mimetype = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
         if (!response.ok) { await response.body?.cancel(); return null; } // non-2xx dead
 
-        // HTML → render (playwright/salvage); the guard re-checks every navigation
-        // and subresource, so a public page redirecting into private space is
-        // refused at the browser too, not just the probe fetch.
+        // Preserve server-rendered HTML as the primary acquisition. The MIME
+        // layer decides whether its model-facing projection is useful; only an
+        // empty projection invokes the lazy browser fallback. Unconditionally
+        // rendering valid SSR pages is slower and can mutate the DOM until
+        // Readability selects unrelated feed/chrome content (#596).
         if (isHtml(mimetype)) {
-            await response.body?.cancel();
-            try {
-                const rendered = await this.#browser.render(url, {
-                    workerId: 0,
-                    // Caller cancellation still spans the whole operation.
-                    // The renderer supplies its own per-navigation deadline.
-                    signal: opts?.signal,
-                    headers: [["User-Agent", BROWSER_UA]],
-                    guard: Guard.isPublicUrl,
-                });
-                return rendered.html.length > 0 ? { body: rendered.html, mimetype: "text/html" } : null;
-            } catch {
-                return null; // render failure (nav error, timeout, guard-aborted) is dead
-            }
+            const body = await response.text();
+            if (body.length === 0) return null;
+            return {
+                body,
+                mimetype,
+                render: async () => {
+                    try {
+                        const rendered = await this.#browser.render(url, {
+                            workerId: 0,
+                            // Caller cancellation still spans the whole operation.
+                            // The renderer supplies its own per-navigation deadline.
+                            signal: opts?.signal,
+                            headers: [["User-Agent", BROWSER_UA]],
+                            guard: Guard.isPublicUrl,
+                        });
+                        return rendered.html.length > 0 ? { body: rendered.html, mimetype: "text/html" } : null;
+                    } catch {
+                        return null;
+                    }
+                },
+            };
         }
 
         if (!isTextual(mimetype)) { await response.body?.cancel(); return null; } // binary pruned

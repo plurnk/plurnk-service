@@ -135,9 +135,17 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
 
 test("entry(content:null) fetches through the guarded sink — live materializes, unavailable does not (#455)", async () => {
     // The sink's WebFetch is faked: the SSRF guard blocks localhost, so no live server can stand in for
-    // the fetch. A /dead URL resolves null (dead); anything else resolves rendered html bytes.
+    // the fetch. A /dead URL resolves null; anything else returns useful server HTML.
+    let browserFallbacks = 0;
     const fetchWeb: WebFetch = async (url) =>
-        url.includes("/dead") ? null : { body: "<p>fetched live turkeys</p>", mimetype: "text/html" };
+        url.includes("/dead") ? null : {
+            body: "<p>fetched live turkeys</p>",
+            mimetype: "text/html",
+            render: async () => {
+                browserFallbacks += 1;
+                return { body: "<p>wrong fallback</p>", mimetype: "text/html" };
+            },
+        };
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ fetchWeb, nullContent: true, tag: "stubsearch2" });
     try {
         const result = await engine.dispatch({
@@ -155,10 +163,47 @@ test("entry(content:null) fetches through the guarded sink — live materializes
         const body = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
         assert.equal(body?.mimetype, "text/markdown", "the fetched html projected to the decisive markdown body");
         assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
+        assert.equal(browserFallbacks, 0, "a useful byte-response projection never invokes browser rendering");
 
         // The unavailable URL: the fake returned null, so the sink rejected and no HTTP entry materialized.
         // Search discovery membership is independently preserved by the search executor (#596).
         const dead = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/example.org/dead" });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
+    } finally { await quiesceExecs(schemes); await db.close(); }
+});
+
+test("#596: an empty byte-response projection renders once, then stores only useful fallback markdown", async () => {
+    let browserFallbacks = 0;
+    const fetchWeb: WebFetch = async (url) =>
+        url.includes("/dead") ? null : {
+            body: "<html><body><div></div></body></html>",
+            mimetype: "text/html",
+            render: async () => {
+                browserFallbacks += 1;
+                return {
+                    body: "<html><body><h1>Hydrated headline</h1><p>useful client-rendered article</p></body></html>",
+                    mimetype: "text/html",
+                };
+            },
+        };
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+        fetchWeb, nullContent: true, tag: "stubsearch3",
+    });
+    try {
+        await engine.dispatch({
+            statement: execStmt(tag, "turkeys"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        await quiesceExecs(schemes);
+
+        const live = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/example.org/live" });
+        assert.ok(live !== undefined);
+        const body = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string }>({
+            entry_id: live.id, name: "body",
+        });
+        assert.equal(browserFallbacks, 1);
+        assert.equal(body?.mimetype, "text/markdown");
+        assert.match(body?.content ?? "", /useful client-rendered article/);
+        assert.ok(!(body?.content ?? "").includes("<html>"), "raw HTML never becomes the decisive model/embed body");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });

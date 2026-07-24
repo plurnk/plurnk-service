@@ -82,13 +82,22 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 
 ## §7 Prefetch primitive {§prefetch}
 
-`WebFetcher` is the guarded fetch/render seam core's entry-materialization calls (#454):
+`WebFetcher` is the guarded acquisition seam core's entry-materialization calls (#454):
 
 ```ts
-new WebFetcher().fetch(url: string, opts?: { signal?: AbortSignal }): Promise<{ body: string; mimetype: string } | null>
+new WebFetcher().fetch(url, opts): Promise<{
+  body: string;
+  mimetype: string;
+  render?: () => Promise<{ body: string; mimetype: string } | null>;
+} | null>
 ```
 
-- **`{ body, mimetype }`** — the rendered (HTML → playwright/salvage) or raw (textual) body of a live, public, textual URL.
+- **Primary body** — the guarded HTTP response. Core projects HTML through
+  the MIME handler first; a useful model-facing projection wins.
+- **Lazy `render()`** — present for HTML. Core invokes guarded
+  Playwright/salvage only when the primary MIME projection is empty, then
+  projects the rendered DOM through the same handler. Browser mutation must
+  not replace already-useful server-rendered content (#596).
 - **`null`** — dead: SSRF-refused, unreachable, non-2xx, non-textual (binary pruned), or empty. Dead-ness is a **value, not a throw** — the liveness verdict core prunes on.
 - **SSRF guard** (`Guard`): http(s) only, no localhost, every resolved address public (RFC-reserved v4/v6 ranges blocked), with **manual per-hop redirect re-guarding**; the chromium render is guarded too via request interception. Hops capped by `PLURNK_SCHEMES_HTTP_REDIRECTS`. Residual DNS-rebinding sliver (runtime re-resolves after the check) accepted day-one.
 - **Textual set**: `text/*`, `application/{json,xml,xhtml+xml}`, `+json`/`+xml` suffixes.

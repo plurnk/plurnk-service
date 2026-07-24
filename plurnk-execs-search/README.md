@@ -41,7 +41,7 @@ The page-fetch knobs (per-page timeout, redirect hops) moved to the consumer wit
 
 ## Page prefetch (plurnk-execs#18, service#596, SPEC §2.6)
 
-The executor emits the digest but **never fetches** (ruling #5). It hands each unique candidate url to the consumer's `ExecArgs.entry()` sink as a **prefetch request** — `entry(url, null, { tags: [slug] })`, content consumer-sourced — and the consumer (schemes-http) fetches, renders, and materializes the `https://` entry behind its own SSRF/redirect guards (schemes-http's guarded fetch, #456):
+The executor emits the digest but **never fetches** (ruling #5). It hands each unique candidate url to the consumer's `ExecArgs.entry()` sink as a **prefetch request** — `entry(url, null, { tags: [slug] })`, content consumer-sourced — and the consumer acquires, MIME-projects, and materializes the `https://` entry behind its own SSRF/redirect guards. Useful server-rendered HTML is projected directly; guarded browser rendering is attempted only when that model-facing projection is empty:
 
 - **Materialized:** `entry()` resolves — the row carries `materialized: true`; its body lives in the ordinary HTTP entry.
 - **Unavailable body:** `entry()` rejects (unreachable / guard-refused / empty) — the discovery row remains in rank order with `materialized: false`.
