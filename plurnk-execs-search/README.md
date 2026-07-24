@@ -31,6 +31,7 @@ Every tunable is an **optional env override** — no code default hides a magic 
 |---|---|---|
 | `PLURNK_EXECS_SEARCH_SEARXNG_URL` | **yes** | search is unavailable — base URL of the instance (`/search` must allow `format=json`); URL userinfo is sent as HTTP Basic auth and redacted from diagnostics |
 | `PLURNK_EXECS_SEARCH_LANGUAGE` | no | SearXNG's own default |
+| `PLURNK_EXECS_SEARCH_ENGINES` | no | SearXNG's own enabled engines |
 | `PLURNK_EXECS_SEARCH_LIMIT` | no | `.env.defaults` sets 12 candidates |
 | `PLURNK_EXECS_SEARCH_TIMEOUT` | no | the consumer's signal is the deadline (SPEC §2.5); this is an extra ceiling (ms) |
 | `PLURNK_EXECS_SEARCH_SAFESEARCH` | no | instance default — `0` / `1` / `2` |

@@ -137,6 +137,7 @@ export default class Search extends BaseExecutor {
         // All tunables are optional env overrides — no code default hides a
         // magic number (suggested values live in the consumer's .env.example).
         const language = process.env.PLURNK_EXECS_SEARCH_LANGUAGE;
+        const engines = process.env.PLURNK_EXECS_SEARCH_ENGINES;
         const limitRaw = process.env.PLURNK_EXECS_SEARCH_LIMIT;
         const timeoutRaw = process.env.PLURNK_EXECS_SEARCH_TIMEOUT;
         const safesearch = process.env.PLURNK_EXECS_SEARCH_SAFESEARCH;
@@ -146,6 +147,7 @@ export default class Search extends BaseExecutor {
         url.searchParams.set("format", "json");
         url.searchParams.set("categories", category);
         if (language) url.searchParams.set("language", language);
+        if (engines) url.searchParams.set("engines", engines);
         if (safesearch) url.searchParams.set("safesearch", safesearch);
 
         // The consumer's signal is the deadline (SPEC §2.5); an optional search

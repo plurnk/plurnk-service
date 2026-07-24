@@ -240,17 +240,17 @@ test("story: answer a question with a web search (LIVE — #530, in the default 
     // deterministic REGRESSION pin; this discovers NEW fragility. A red is a finding, not a light.
     const story = await runStory({
         label: "web-search-live",
-        prompt: "Search the web for the latest stable Node.js version, retrieve the authoritative page, and tell me in one sentence.",
+        prompt: "Who was the spouse of President Igor Nikolaevich Smirnov?",
         maxTurns: 8,
     });
     try {
         const searchEntries = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "search" });
-        const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && /\d{2}/.test(story.lastContent);
+        const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && /(Zhannetta|Lotnik)/i.test(story.lastContent);
         if (!ok) await story.dump();
         assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
         await assertRetrievedWebBody(story);
         assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /\d{2}/, `the answer carries a version number; got: ${story.lastContent.slice(0, 200)}`);
+        assert.match(story.lastContent, /(Zhannetta|Lotnik)/i, `the answer names Zhannetta Nikolaevna Lotnik; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 

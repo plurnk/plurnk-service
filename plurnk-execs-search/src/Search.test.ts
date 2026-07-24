@@ -346,6 +346,18 @@ test("tag → categories mapping (news, social→'social media', downloadable→
     assert.equal(seen.qi, "images");
 });
 
+test("ENGINES passes the operator's SearXNG engine selection through", async () => {
+    let seen: string | null = null;
+    setFetch(async (u) => {
+        seen = new URL(String(u)).searchParams.get("engines");
+        return { ok: true, status: 200, json: async () => ({ results: [] }) };
+    });
+    process.env.PLURNK_EXECS_SEARCH_ENGINES = "braveapi";
+    await invoke("search", "q");
+    delete process.env.PLURNK_EXECS_SEARCH_ENGINES;
+    assert.equal(seen, "braveapi");
+});
+
 test("non-ok response → searxng_http_<n>, errored channel, status 500", async () => {
     setFetch(async () => ({ ok: false, status: 502, statusText: "Bad Gateway", json: async () => ({}) }));
     const { result, states, events } = await invoke("news", "q");
