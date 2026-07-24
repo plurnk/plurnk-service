@@ -21,9 +21,9 @@ The HTTP method is the **op**:
 - `EDIT(http(s)://…):body:` — PUT the body (replaces the whole resource; no `<L>`).
 - `KILL(http(s)://…)` — DELETE the resource.
 
-Diagnostic channels (explicit access only):
+The ordinary URL is the model-facing markdown for HTML, or readable response
+content for other textual types. Diagnostic channels require explicit access:
 
-- `#body` — model-facing markdown for HTML; otherwise the response under its `Content-Type`
 - `#html` — faithful rendered DOM for HTML (`text/html`)
 - `#header` — response status line + headers (`text/plain`)
 

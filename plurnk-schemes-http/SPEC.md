@@ -37,7 +37,7 @@ Results use the `passthrough` family (read-only / network shape) — http entrie
 
 All verbs share one streaming core:
 
-1. `ctx.subscriptions.open(pathname, handle)` — registers the subscription for cancel routing; returns the worker+teardown-composed `AbortSignal`. The handle's `cancel()` aborts a local `AbortController` wired to the `fetch`/render.
+1. `ctx.subscriptions.open(pathname, handle, { publishedChannel })` — registers the subscription for cancel routing and selects the one channel published to the requesting loop; returns the worker+teardown-composed `AbortSignal`. The handle's `cancel()` aborts a local `AbortController` wired to the `fetch`/render.
 2. `fetch(url, { signal })` — GET (READ) or POST (SEND[200], body from `SendBody.raw`); read the response `Content-Type`.
 3. **Render gate ({§render-lifecycle}):** a GET whose response is HTML routes to the render path; a GET whose response is `text/event-stream` routes to the SSE path ({§sse}); everything else (POST responses, non-HTML bodies) streams raw.
 4. Response status + headers are persisted in `header`.
@@ -46,7 +46,7 @@ All verbs share one streaming core:
 
 Returns `102 Processing` on success (the subscription drives the channel content). The composed signal aborting (loop.cancel) and the local handle (SEND[499]) both tear the fetch/render down.
 
-Channel publication follows the manifest contract: a fragmentless READ publishes only `defaultChannel` (`body`). An explicit fragment publishes that named channel. All channels still persist, but auxiliary transport metadata and faithful DOM do not become ambient model results merely because they were acquired alongside the readable projection.
+Channel publication follows the manifest contract: a fragmentless READ publishes only `defaultChannel` (`body`) and renders under the exact fragmentless URL. An explicit fragment publishes that named channel. All channels still persist, but auxiliary transport metadata and faithful DOM do not become ambient model results merely because they were acquired alongside the readable projection. Unit and core integration coverage pin both publication filtering and durable auxiliary persistence.
 
 ## §4 Status mapping
 

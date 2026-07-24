@@ -23,7 +23,7 @@ FROM turns ORDER BY loop_id, sequence;
 -- PREP: digest_log_entries
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin,
        op, suffix, signal,
-       scheme, pathname,
+       scheme, hostname, port, pathname, fragment,
        tx, rx, status_rx, mimetype_rx,
        state, outcome, attrs
 FROM log_entries ORDER BY loop_id, turn_id, sequence;

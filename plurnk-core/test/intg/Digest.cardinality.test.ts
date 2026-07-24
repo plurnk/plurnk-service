@@ -17,11 +17,18 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "amplify");
         const turnId = await insertTurn(db, loopId, 1, 200);
-        const insert = async (sequence: number, origin: "model" | "plurnk", op: "READ" | "EDIT", pathname: string, attrs: object): Promise<void> => {
+        const insert = async (
+            sequence: number,
+            origin: "model" | "plurnk",
+            op: "READ" | "EDIT",
+            pathname: string,
+            attrs: object,
+            hostname: string | null = null,
+        ): Promise<void> => {
             await (db.engine_insert_log_entry as PrepMethod).run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin, source: null, op, suffix: "", signal: null,
-                scheme: "https", username: null, password: null, hostname: null, port: null,
+                scheme: "https", username: null, password: null, hostname, port: null,
                 pathname, params: null, fragment: null, lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",
                 rx: JSON.stringify({ status: 200, content: "x" }), mimetype_rx: "application/json",
@@ -31,6 +38,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         };
         for (let i = 1; i <= 50; i++) await insert(i, "model", "READ", "/example.test/whale", {});
         for (let i = 51; i <= 62; i++) await insert(i, "plurnk", "EDIT", `/result${i}.test/`, { kind: "entry_materialized" });
+        await insert(63, "model", "READ", "/wiki/Paris", {}, "en.wikipedia.org");
     } finally {
         await db.close();
     }
@@ -38,10 +46,12 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
     try {
         Digest.run({ dbPath, digestDir });
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
-        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { log_entries: unknown[] };
-        assert.match(markdown, /READ\[200\] https:\/\/\/example\.test\/whale ×50 \(seq 1–50\)/);
+        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { log_entries: Array<{ target: string | null }> };
+        assert.match(markdown, /READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
+        assert.match(markdown, /READ\[200\] https:\/\/en\.wikipedia\.org\/wiki\/Paris/);
         assert.match(markdown, /materialized entries\[200\] ×12 \(seq 51–62\)/);
-        assert.equal(json.log_entries.length, 62, "machine-readable evidence remains lossless");
+        assert.equal(json.log_entries.length, 63, "machine-readable evidence remains lossless");
+        assert.equal(json.log_entries.at(-1)?.target, "https://en.wikipedia.org/wiki/Paris", "JSON preserves an explicit URL authority");
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

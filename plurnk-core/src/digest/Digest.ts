@@ -36,6 +36,7 @@ import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 // block accessor to the shipped generic statement shape at the site (#535).
 type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
 import PacketWire from "../core/packet-wire.ts";
+import { renderAddress } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
 
@@ -58,7 +59,8 @@ interface TurnRow {
 interface LogRow {
     id: number; turn_id: number; sequence: number;
     origin: string; attrs: string;
-    op: string; scheme: string | null; pathname: string | null;
+    op: string; scheme: string | null; hostname: string | null; port: number | null;
+    pathname: string | null; fragment: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
 }
 interface WorkerRollupRow {
@@ -127,10 +129,17 @@ export default class Digest {
         try { return JSON.parse(String(s)); } catch { return fallback; }
     }
 
+    static #renderTarget(le: LogRow): string | null {
+        if (le.pathname === null) return null;
+        if (le.scheme === null) return le.pathname.replace(/^\//, "");
+        const base = le.hostname !== null && le.hostname.length > 0
+            ? `${le.scheme}://${le.hostname}${le.port === null ? "" : `:${le.port}`}${le.pathname}`
+            : renderAddress(le.scheme, le.pathname);
+        return le.fragment === null || le.fragment.length === 0 ? base : `${base}#${le.fragment}`;
+    }
+
     static #renderOpLine(le: LogRow): string {
-        const target = le.scheme !== null && le.pathname !== null
-            ? `${le.scheme}://${le.pathname}`
-            : le.pathname ?? "—";
+        const target = Digest.#renderTarget(le) ?? "—";
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
         const outcome = le.outcome !== null ? ` outcome=${le.outcome}` : "";
         const fail = le.status_rx >= 400 ? " ✗" : "";
@@ -158,7 +167,10 @@ export default class Digest {
             const materialized = row.origin === "plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
             const key = materialized
                 ? `materialized\0${row.status_rx}\0${row.state}\0${row.outcome ?? ""}`
-                : [row.op, row.scheme ?? "", row.pathname ?? "", row.status_rx, row.state, row.outcome ?? ""].join("\0");
+                : [
+                    row.op, row.scheme ?? "", row.hostname ?? "", row.port ?? "",
+                    row.pathname ?? "", row.fragment ?? "", row.status_rx, row.state, row.outcome ?? "",
+                ].join("\0");
             const group = groups.get(key);
             if (group === undefined) {
                 groups.set(key, { first: row, count: 1, firstSeq: row.sequence, lastSeq: row.sequence });
@@ -381,7 +393,7 @@ export default class Digest {
             })),
             log_entries: m.logEntries.map((le) => ({
                 id: le.id, turn_id: le.turn_id, sequence: le.sequence,
-                op: le.op, target: `${le.scheme ?? ""}://${le.pathname ?? ""}`,
+                op: le.op, target: Digest.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,
             })),
         }, null, 2);
