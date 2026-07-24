@@ -34,7 +34,8 @@
             {
                 "name": "search",
                 "glyph": "🔎",
-                "example": "<<EXEC[search]:france population:EXEC"
+                "example": "<<EXEC[search]:france population:EXEC",
+                "documentation": "Returns ranked discovery JSON. A row with `materialized:true` also carries `readTarget`; READ that HTTPS target for authoritative page evidence before answering. A row with `materialized:false` is discovery metadata only."
             },
             {
                 "name": "images",

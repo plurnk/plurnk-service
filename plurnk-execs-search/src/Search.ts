@@ -257,7 +257,14 @@ export default class Search extends BaseExecutor {
             url,
             snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
             ...(publishedDate ? { publishedDate } : {}),
-            ...(entry ? { materialized: verdicts[i] } : {}),
+            ...(entry ? {
+                materialized: verdicts[i],
+                // `url` is already the canonical substrate address. Spell out
+                // its successful next operation so a weak model does not treat
+                // materialization as an opaque implementation verdict and
+                // answer from the discovery snippet instead of the page.
+                ...(verdicts[i] ? { readTarget: url } : {}),
+            } : {}),
         }));
         write("results", JSON.stringify(results));
         setState("results", "closed");
