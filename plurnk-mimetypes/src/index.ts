@@ -73,9 +73,9 @@ export type {
 export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
 
-// Embedding-eligibility suppression (SPEC §21, #47) — the
-// PLURNK_MIMETYPES_NO_EMBED matcher, also surfaced as ProcessResult.noEmbed.
-export { matchNoEmbed } from "./noEmbed.ts";
+// Search-index exclusion (SPEC §21, #47) — the
+// PLURNK_MIMETYPES_SEARCH_EXCLUDE matcher, also surfaced as ProcessResult.searchExcluded.
+export { matchSearchExclusion } from "./searchExcluded.ts";
 
 // Embedder seam types (SPEC §17, #50/#51) — the contract front door; consumers
 // import EmbedderInfo instead of projecting it off the method signature.

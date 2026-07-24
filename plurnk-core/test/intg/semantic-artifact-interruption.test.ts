@@ -57,3 +57,28 @@ test("an interrupted artifact stays building and unattached; retry completes and
         await db.close();
     }
 });
+
+test("an entry-local derivation failure is terminal, explicit, and does not block readiness", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `failed-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+
+        const mimetypes = {
+            process: async () => { throw new Error("fixture reader exploded"); },
+            embedderInfo: () => ({ maxTokens: 128, countTokens: async () => 1, model: "stub@failure" }),
+        } as unknown as Mimetypes;
+
+        await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        const entry = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/interrupted.md" });
+        const disposition = await (db.test_derivation_disposition as PrepMethod).get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
+        assert.equal(disposition?.disposition, "failed");
+        assert.equal(disposition?.reason, "fixture reader exploded");
+        const state = await (db.test_derivation_interruption_state as PrepMethod).get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        assert.ok(state?.deep_hash, "the terminal failure attaches an explicit artifact");
+        assert.deepEqual({ building: state?.building, complete: state?.complete }, { building: 0, complete: 1 });
+    } finally {
+        await db.close();
+    }
+});

@@ -89,7 +89,11 @@ interface DigestModel {
         body_entries: number;
         derivation_complete: number;
         vector_complete: number;
-        fts_only: number;
+        lexical: number;
+        excluded: number;
+        nonsemantic: number;
+        failed: number;
+        dispositions: Array<{ pathname: string; disposition: string; reason: string | null }>;
         unfinished: number;
         derivation_artifacts_complete: number;
         derivation_artifacts_building: number;
@@ -211,7 +215,13 @@ export default class Digest {
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
         lines.push(`Workspaces: ${m.workspaces.length}  Runs: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Log entries: ${m.logEntries.length}`);
-        lines.push(`Semantic:  body=${m.embeddings.body_entries} attached=${m.embeddings.derivation_complete} (vectors=${m.embeddings.vector_complete} fts-only=${m.embeddings.fts_only}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
+        lines.push(`Semantic:  body=${m.embeddings.body_entries} attached=${m.embeddings.derivation_complete} (vector=${m.embeddings.vector_complete} lexical=${m.embeddings.lexical} excluded=${m.embeddings.excluded} nonsemantic=${m.embeddings.nonsemantic} failed=${m.embeddings.failed}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
+        if (m.embeddings.dispositions.length > 0) {
+            lines.push("Semantic dispositions:");
+            for (const row of m.embeddings.dispositions) {
+                lines.push(`  ${row.disposition} ${row.pathname}${row.reason === null ? "" : ` — ${row.reason}`}`);
+            }
+        }
         // Triage rollup up top: how many conversations limped vs died vs ran clean, and the total
         // error/strike load. The whole point of the "degenerate win" lens — see it before scrolling.
         const health = m.loops.map((l) => Digest.#loopHealth(l, m));
@@ -468,14 +478,22 @@ export default class Digest {
         const body = semanticStateAvailable
             ? "FROM entries e JOIN entry_channels ec ON ec.entry_id=e.id AND ec.name='body'"
             : "";
-        const withVector = has("entry_embeddings")
-            ? "EXISTS (SELECT 1 FROM derivations d JOIN entry_embeddings em ON em.derivation_id=d.id WHERE d.deep_hash=e.deep_hash)"
-            : "0";
+        const hasDisposition = has("derivations") && hasColumn("derivations", "disposition");
+        const dispositionCount = (value: string): number => hasDisposition
+            ? one(`SELECT count(*) n ${body} JOIN derivations d ON d.deep_hash=e.deep_hash WHERE d.disposition='${value}'`)
+            : -1;
+        const dispositions = hasDisposition
+            ? probe.prepare(`SELECT e.pathname, d.disposition, d.reason ${body} JOIN derivations d ON d.deep_hash=e.deep_hash WHERE d.disposition <> 'vector' ORDER BY d.disposition, e.pathname`).all() as Array<{ pathname: string; disposition: string; reason: string | null }>
+            : [];
         const embeddings = {
             body_entries: semanticStateAvailable ? one(`SELECT count(*) n ${body}`) : -1,
             derivation_complete: semanticStateAvailable ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL`) : -1,
-            vector_complete: semanticStateAvailable && has("entry_embeddings") ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL AND ${withVector}`) : -1,
-            fts_only: semanticStateAvailable && has("entry_embeddings") ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL AND NOT ${withVector}`) : -1,
+            vector_complete: dispositionCount("vector"),
+            lexical: dispositionCount("lexical"),
+            excluded: dispositionCount("excluded"),
+            nonsemantic: dispositionCount("nonsemantic"),
+            failed: dispositionCount("failed"),
+            dispositions,
             unfinished: semanticStateAvailable ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NULL`) : -1,
             derivation_artifacts_complete: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='complete'") : -1,
             derivation_artifacts_building: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='building'") : -1,

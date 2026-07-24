@@ -362,6 +362,12 @@ FROM entries e
 JOIN derivations d ON d.deep_hash = e.deep_hash
 WHERE e.id = $entry_id;
 
+-- PREP: test_derivation_disposition
+SELECT d.disposition, d.reason, e.deep_hash
+FROM entries e
+JOIN derivations d ON d.deep_hash = e.deep_hash
+WHERE e.id = $entry_id;
+
 -- PREP: test_get_log_entry_attrs_by_turn
 SELECT attrs FROM log_entries WHERE turn_id = $turn_id AND op = $op ORDER BY id DESC LIMIT 1;
 

@@ -1,9 +1,6 @@
-// Embedding-eligibility suppression (SPEC §21, #47): PLURNK_MIMETYPES_NO_EMBED
-// is a comma-separated list of basename patterns naming content that should
-// never be semantically derived — lockfiles, minified bundles, sourcemaps.
-// Embedding 2,162 chunks of a vuepress bundle is pure waste (service#337);
-// consumers read ProcessResult.noEmbed and skip derivation (zero vectors +
-// FTS-only is the honest treatment).
+// Search-index exclusion (SPEC §21, #47): PLURNK_MIMETYPES_SEARCH_EXCLUDE is a
+// comma-separated list of path patterns naming generated/noisy content that
+// remains directly readable but must not pollute graph, lexical, or vector recall.
 //
 // The knob IS the classification — owner paradigm: the decision table lives in
 // .env.example (sane defaults shipped there, operator-tunable per deployment,
@@ -38,12 +35,12 @@ function compile(raw: string): { source: string; regex: RegExp }[] {
     return patterns;
 }
 
-// The matched pattern for a path under the current PLURNK_MIMETYPES_NO_EMBED,
+// The matched pattern for a path under the current PLURNK_MIMETYPES_SEARCH_EXCLUDE,
 // or undefined (no path / knob unset or empty / no match). Read at call time,
 // like the pdf caps — the host's env is the contract.
-export function matchNoEmbed(path: string | undefined): string | undefined {
+export function matchSearchExclusion(path: string | undefined): string | undefined {
     if (path === undefined) return undefined;
-    const raw = process.env.PLURNK_MIMETYPES_NO_EMBED;
+    const raw = process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE;
     if (raw === undefined || raw.trim() === "") return undefined;
     const base = path.slice(path.lastIndexOf("/") + 1);
     return compile(raw).find((p) => p.regex.test(p.source.includes("/") ? path : base))?.source;

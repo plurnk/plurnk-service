@@ -74,6 +74,23 @@ test("EntryChunk: a single over-budget line is sub-split losslessly (no truncati
     assertWithinBudget(chunks, 10);
 });
 
+test("EntryChunk: one giant line fans token validation across the host pool", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const parallelCounter = async (text: string): Promise<number> => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        active--;
+        return text.length;
+    };
+    const line = "x".repeat(10_000);
+    const chunks = await EntryChunk.tile(line, new Set(), 100, 0, parallelCounter);
+    assert.equal(chunks.map((chunk) => chunk.text).join(""), line, "parallel pieces concatenate to the exact input");
+    assert.ok(chunks.every((chunk) => chunk.text.length <= 100), "every validated piece respects the hard budget");
+    assert.ok(maxActive > 1, "a single giant line occupies more than one tokenizer worker");
+});
+
 test("EntryChunk: a normal line followed by a giant line — both covered, all within budget", async () => {
     const content = "small\n" + Array.from({ length: 30 }, (_, i) => `b${i}`).join(" ");
     const chunks = await EntryChunk.tile(content, new Set(), 5, 0, countTokens);

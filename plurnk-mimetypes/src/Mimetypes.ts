@@ -8,7 +8,7 @@ import BaseHandler from "./BaseHandler.ts";
 import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddings.ts";
 import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
-import { matchNoEmbed } from "./noEmbed.ts";
+import { matchSearchExclusion } from "./searchExcluded.ts";
 import { mimetypeSource, type TelemetryEvent } from "./TelemetryEvent.ts";
 import type {
     DetectInput,
@@ -84,11 +84,11 @@ export interface ProcessResult {
     // SPEC §7 / §13.4 (#14): missing grammar package name when process()
     // degrades to text-plain. Absent on the happy path; independent of `ok`.
     grammarMissing?: string;
-    // SPEC §21 (#47): the PLURNK_MIMETYPES_NO_EMBED pattern this entry's
-    // basename matched — the derivation-eligibility signal. Present iff
-    // matched; consumers skip semantic derivation (zero vectors + FTS-only).
+    // SPEC §21 (#47): the PLURNK_MIMETYPES_SEARCH_EXCLUDE pattern this entry's
+    // path matched. Present iff matched; consumers keep the entry readable but
+    // exclude it from graph, lexical, and vector search.
     // The matched pattern is the observable reason.
-    noEmbed?: string;
+    searchExcluded?: string;
 
     // ——— Channels (SPEC §12.1, #17/#24): present iff requested ———
     // Structured definitions — symbol_defs raw material; outline source via
@@ -260,9 +260,9 @@ export default class Mimetypes {
             return errorResult(mimetype);
         }
 
-        // Derivation-eligibility signal (SPEC §21, #47), from the operator's
-        // PLURNK_MIMETYPES_NO_EMBED pattern list.
-        const noEmbed = matchNoEmbed(input.path);
+        // Search-index exclusion signal (SPEC §21, #47), from the operator's
+        // PLURNK_MIMETYPES_SEARCH_EXCLUDE pattern list.
+        const searchExcluded = matchSearchExclusion(input.path);
 
         // Validate errors propagate per error policy — caller's contract.
         // Await in case the handler returns a Promise (async validators).
@@ -317,7 +317,7 @@ export default class Mimetypes {
                     content,
                     channels,
                     (err as { plurnkPackage?: string }).plurnkPackage ?? "",
-                    noEmbed,
+                    searchExcluded,
                 );
             }
             throw err;
@@ -332,7 +332,7 @@ export default class Mimetypes {
             ok: true,
             totalLines,
             extent: extentValue,
-            ...(noEmbed !== undefined && { noEmbed }),
+            ...(searchExcluded !== undefined && { searchExcluded }),
             ...(channels.has("symbols") && { symbols }),
             ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
             ...(channels.has("deepXml") && { deepXml }),
@@ -413,7 +413,7 @@ export default class Mimetypes {
         content: string | Uint8Array,
         channels: ReadonlySet<Channel>,
         plurnkPackage: string,
-        noEmbed: string | undefined,
+        searchExcluded: string | undefined,
     ): Promise<ProcessResult> {
         const totalLines = typeof content === "string" ? countLines(content) : 0;
         // The embedding channel does not need the grammar — a degraded entry
@@ -428,7 +428,7 @@ export default class Mimetypes {
             totalLines,
             extent: totalLines,
             grammarMissing: plurnkPackage,
-            ...(noEmbed !== undefined && { noEmbed }),
+            ...(searchExcluded !== undefined && { searchExcluded }),
             ...(channels.has("symbols") && { symbols: [] }),
             ...(channels.has("deepJson") && { deepJson: null }),
             ...(channels.has("deepXml") && { deepXml: "" }),

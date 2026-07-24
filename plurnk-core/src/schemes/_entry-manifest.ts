@@ -15,7 +15,7 @@
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import type { PrepMethod } from "../core/Db.ts";
-import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
+import { matchSearchExclusion, type ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import { MimetypeBinary } from "../content/index.ts";
@@ -90,16 +90,16 @@ export default class EntryManifest {
     // The derivation pump (§mimetype) materializes one immutable artifact per
     // content+mimetype+reader+embedder identity, then atomically attaches entries to
     // it. The artifact contains graph, reader-projected FTS, and vectors; identical
-    // entries share it without copying. Malformed content degrades to a complete
-    // empty projection so one bad entry cannot stop the corpus. Cancellation leaves
-    // a building artifact unattached and retry rebuilds it before attachment.
+    // entries share it without copying. Cancellation leaves a building artifact
+    // unattached for retry; an entry-local failure is terminal and observable so
+    // one malformed specimen cannot hold workspace readiness hostage.
     // Hash-keyed chains serialize concurrent workspace warm requests for the same
     // artifact while distinct artifacts remain parallel.
     static #deriveChains = new Map<string, Promise<void>>();
 
-    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const prior = EntryManifest.#deriveChains.get(hash) ?? Promise.resolve();
-        const run = prior.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, onProgress));
+        const run = prior.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, searchExcluded, onProgress));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         EntryManifest.#deriveChains.set(hash, tail);
         void tail.finally(() => {
@@ -108,7 +108,7 @@ export default class EntryManifest {
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         let artifact = await (db.derivation_get as PrepMethod).get<{ id: number; state: "building" | "complete" }>({ deep_hash: hash });
@@ -121,23 +121,32 @@ export default class EntryManifest {
         }
         if (artifact === undefined) throw new Error(`failed to create derivation artifact ${hash}`);
         const derivationId = artifact.id;
-        const attachComplete = async (): Promise<void> => {
-            await (db.derivation_complete as PrepMethod).run({ derivation_id: derivationId });
+        const attachComplete = async (disposition: "vector" | "lexical" | "excluded" | "nonsemantic" | "failed", reason: string | null = null): Promise<void> => {
+            await (db.derivation_complete as PrepMethod).run({ derivation_id: derivationId, disposition, reason });
             await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
         };
+        const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
+        if (searchExcluded !== undefined) {
+            await EntryGraph.populateFrom(db, derivationId, [], []);
+            await EntrySemantic.indexFts(db, derivationId, "");
+            await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
+            await attachComplete("excluded", searchExcluded);
+            return;
+        }
+        if (!wantGraph) {
+            await EntryGraph.populateFrom(db, derivationId, [], []);
+            await EntrySemantic.indexFts(db, derivationId, "");
+            await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
+            await attachComplete("nonsemantic", r.content.length === 0 ? "empty" : "binary");
+            return;
+        }
         try {
-            const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
             let result: ProcessResult;
-            if (wantGraph) {
-                try {
-                    result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: ["symbols", "references", "content"] }); // §mimetype-methods-process-entry-point — "content" = the readable projection (mimetypes#48): FTS/embeddings consume it when the handler offers one. Embeddings have one path below: tiled embedBatch, never a discarded whole-file pre-pass.
-                    await EntryGraph.populateFrom(db, derivationId, result.symbols ?? [], result.references ?? []);
-                } catch {
-                    // A handler predating the references channel throws → metadata-only, clear graph.
-                    result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: [] });
-                    await EntryGraph.populateFrom(db, derivationId, [], []);
-                }
-            } else {
+            try {
+                result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: ["symbols", "references", "content"] }); // §mimetype-methods-process-entry-point — "content" = the readable projection (mimetypes#48): FTS/embeddings consume it when the handler offers one. Embeddings have one path below: tiled embedBatch, never a discarded whole-file pre-pass.
+                await EntryGraph.populateFrom(db, derivationId, result.symbols ?? [], result.references ?? []);
+            } catch {
+                // A handler predating the references channel throws → metadata-only, clear graph.
                 result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: [] });
                 await EntryGraph.populateFrom(db, derivationId, [], []);
             }
@@ -151,33 +160,26 @@ export default class EntryManifest {
             // no projection keep today's raw-body behavior exactly.
             const semanticSource = result.content ?? r.content;
             await EntrySemantic.indexFts(db, derivationId, semanticSource);
-            // mimetypes SPEC 21 / #47 — the operator's PLURNK_MIMETYPES_NO_EMBED classification: a matched entry
-            // (lockfile, minified bundle, sourcemap) is never semantically derived — zero vectors,
-            // FTS-only is the honest treatment. The knob IS the decision table; no code heuristics.
-            if (result.noEmbed !== undefined) {
+            // Size rejection is vector-only: membership, READ, graph, and FTS remain exhaustive.
+            if (EntrySemantic.embedSizeRejection(semanticSource) !== null) {
                 await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
-                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} (${r.pathname}) matched no-embed pattern '${result.noEmbed}' — FTS-only, no vectors`, level: "info" });
-                await attachComplete();
+                await attachComplete("lexical", "max_embed_size");
                 return;
             }
-            // Size rejection is vector-only: membership, READ, graph, and FTS remain exhaustive.
-            if (EntrySemantic.embedSizeRejection(r.content) !== null) {
+            if (!embedActive) {
                 await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
-                await attachComplete();
+                await attachComplete("lexical", "embedder_unavailable");
                 return;
             }
             const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, onProgress);
             await EntrySemantic.indexEmbedding(db, derivationId, chunks, model);
-            await attachComplete();
+            await attachComplete(chunks.length > 0 ? "vector" : "nonsemantic", chunks.length > 0 ? null : "no_embedding_content");
         } catch (error) {
-            // Interruption is not a completed degradation. Leave the artifact in
-            // building state and the entry on its prior complete pointer; the next
-            // pass clears/rebuilds the partial projections before attaching.
             if (ctx.signal?.aborted === true) throw error;
             await EntryGraph.populateFrom(db, derivationId, [], []);
             await EntrySemantic.indexFts(db, derivationId, "");
             await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
-            await attachComplete();
+            await attachComplete("failed", error instanceof Error ? error.message : String(error));
         }
     }
 
@@ -195,36 +197,19 @@ export default class EntryManifest {
         // The changed-entry worklist (body channel, deep_hash stale), computed up front so the
         // corpus total is known — a multi-entry pass (the initial ingest, which otherwise looks
         // frozen) emits a throttled progress signal; a normal turn (0-1 entries) stays silent. #272
-        const pending: Array<{ r: ManifestRow; hash: string }> = [];
+        const pending: Array<{ r: ManifestRow; hash: string; searchExcluded: string | undefined }> = [];
         for (const r of rows) {
             if (r.channel !== "body") continue; // derivation fires on the body channel only
-            const hash = createHash("sha256").update(r.content).update("\0").update(r.mimetype).update("\0").update(deepCfgSig).digest("hex");
-            if (hash !== r.deep_hash) pending.push({ r, hash }); // unchanged since last derivation → deep rows persist
+            const searchExcluded = matchSearchExclusion(r.pathname);
+            const dispositionIdentity = searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`;
+            const hash = createHash("sha256").update(r.content).update("\0").update(r.mimetype).update("\0").update(deepCfgSig).update("\0").update(dispositionIdentity).digest("hex");
+            if (hash !== r.deep_hash) pending.push({ r, hash, searchExcluded }); // unchanged since last derivation → deep rows persist
         }
         // Smallest-first (owner ruling, service#337 follow-up): a fat outlier (a minified bundle,
         // a lockfile that slipped classification) derives LAST, so the corpus is mostly-warm early
         // and the hot path never queues behind the whale. Pure scheduling — nothing is skipped,
         // nothing is lazy; the whale still derives to full depth, just at the back of the line.
         pending.sort((a, b) => a.r.content.length - b.r.content.length);
-        const oversized = pending.flatMap(({ r }) => {
-            const rejection = EntrySemantic.embedSizeRejection(r.content);
-            return rejection === null ? [] : [{
-                pathname: r.pathname,
-                actualBytes: rejection.actualBytes,
-                maxBytes: rejection.maxBytes,
-            }];
-        });
-        if (oversized.length > 0) {
-            ctx.pushTelemetry?.({
-                source: "engine:derivation",
-                kind: "embed_size_rejections",
-                level: "warn",
-                message: `${oversized.length} workspace entr${oversized.length === 1 ? "y exceeds" : "ies exceed"} PLURNK_SERVICE_MAX_EMBED_SIZE and will remain FTS-only: ${oversized.map((entry) => entry.pathname).join(", ")}`,
-                entries: oversized,
-                count: oversized.length,
-                maxBytes: oversized[0].maxBytes,
-            });
-        }
         const total = pending.length;
         const step = total > 1 ? Math.max(1, Math.floor(total / 10)) : 0; // ~10 milestones, or silent for 0-1
         let completed = 0;
@@ -238,7 +223,7 @@ export default class EntryManifest {
 
         // §derivation-dedup-parallel (#416) — each content+mimetype+configuration identity builds
         // one shared artifact while distinct artifacts run with bounded concurrency.
-        const groups = new Map<string, Array<{ r: ManifestRow; hash: string }>>();
+        const groups = new Map<string, Array<{ r: ManifestRow; hash: string; searchExcluded: string | undefined }>>();
         for (const p of pending) {
             const g = groups.get(p.hash);
             if (g === undefined) groups.set(p.hash, [p]); else g.push(p);
@@ -256,16 +241,16 @@ export default class EntryManifest {
         }
         const concurrency = configuredConcurrency === -1 ? availableParallelism() : configuredConcurrency;
         let lastDetailAt = 0;
-        const workerPool = async (work: Array<Array<{ r: ManifestRow; hash: string }>>): Promise<void> => {
+        const workerPool = async (work: Array<Array<{ r: ManifestRow; hash: string; searchExcluded: string | undefined }>>): Promise<void> => {
             let next = 0;
             const worker = async (): Promise<void> => {
                 while (next < work.length) {
                     if (ctx.signal?.aborted === true) return;
                     const group = work[next++];
-                    for (const { r, hash } of group) {
+                    for (const { r, hash, searchExcluded } of group) {
                         if (Boolean(ctx.signal?.aborted)) return;
                         let lastProgress = "";
-                        await EntryManifest.deriveOne(ctx, r, hash, embedActive, (progress) => {
+                        await EntryManifest.deriveOne(ctx, r, hash, embedActive, searchExcluded, (progress) => {
                             if (step === 0 || progress.total <= 1) return;
                             const milestone = progress.completed === progress.total
                                 || progress.completed % Math.max(1, Math.floor(progress.total / 10)) === 0;

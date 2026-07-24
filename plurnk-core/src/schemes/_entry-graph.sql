@@ -43,7 +43,9 @@ VALUES ($deep_hash, 'building')
 RETURNING id, state;
 
 -- PREP: derivation_complete
-UPDATE derivations SET state = 'complete' WHERE id = $derivation_id;
+UPDATE derivations
+SET state = 'complete', disposition = $disposition, reason = $reason
+WHERE id = $derivation_id;
 
 -- PREP: graph_referrers
 -- @<sym — entries (scheme-scoped) that reference sym, with each reference's line

@@ -136,9 +136,12 @@ CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 -- workspace/worktree paths carry identical content under the same reader/config.
 -- A building row is unattached and safely replaceable after interruption.
 CREATE TABLE IF NOT EXISTS derivations (
-    id        INTEGER NOT NULL PRIMARY KEY,
-    deep_hash TEXT    NOT NULL UNIQUE CHECK (length(deep_hash) > 0),
-    state     TEXT    NOT NULL DEFAULT 'building' CHECK (state IN ('building', 'complete'))
+    id          INTEGER NOT NULL PRIMARY KEY,
+    deep_hash   TEXT    NOT NULL UNIQUE CHECK (length(deep_hash) > 0),
+    state       TEXT    NOT NULL DEFAULT 'building' CHECK (state IN ('building', 'complete')),
+    disposition TEXT    CHECK (disposition IN ('vector', 'lexical', 'excluded', 'nonsemantic', 'failed')),
+    reason      TEXT,
+    CHECK ((state = 'building' AND disposition IS NULL) OR (state = 'complete' AND disposition IS NOT NULL))
 ) STRICT;
 
 -- INIT: entries

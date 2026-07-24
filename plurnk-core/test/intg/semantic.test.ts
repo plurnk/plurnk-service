@@ -129,12 +129,12 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
 });
 
 
-test("[#47] PLURNK_MIMETYPES_NO_EMBED: a matched entry derives FTS-only — zero vectors, stamped, never re-attempted; unmatched embeds fully", async () => {
+test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE: a matched path is excluded from every search index", async () => {
     // The operator's decision table (mimetypes 0.18.1 §21) consumed in the pump: the knob IS the
-    // classification — a lockfile-class entry is never semantically derived (zero vectors, FTS
-    // stays), a normal entry embeds fully. No caps, no heuristics in code.
-    const prev = process.env.PLURNK_MIMETYPES_NO_EMBED;
-    process.env.PLURNK_MIMETYPES_NO_EMBED = "package-lock.json,*.min.*";
+    // classification — a lockfile-class entry remains directly readable but
+    // contributes no graph, FTS, or vectors. No caps, no heuristics in code.
+    const prev = process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE;
+    process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = "package-lock.json,*.min.*";
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();
@@ -142,22 +142,32 @@ test("[#47] PLURNK_MIMETYPES_NO_EMBED: a matched entry derives FTS-only — zero
         const workspaceId = await insertWorkspace(db, `noembed-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Worker().edit(editStmt(url("package-lock.json"), '{"name":"x","lockfileVersion":3,"packages":{"":{"deps":{"y":"1.0.0"}}}}'), ctx);
+        const identical = '{"name":"x","lockfileVersion":3,"packages":{"":{"deps":{"y":"1.0.0"}}}}';
+        await new Worker().edit(editStmt(url("package-lock.json"), identical), ctx);
+        await new Worker().edit(editStmt(url("fixture.json"), identical), ctx);
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await EntryManifest.maintainDerivations(ctx);
         const lock = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/package-lock.json" });
         const notes = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/notes.md" });
+        const fixture = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/fixture.json" });
         const lockVecs = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: lock?.id ?? -1 });
         const noteVecs = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: notes?.id ?? -1 });
         assert.equal(lockVecs?.n, 0, "the lockfile matched the pattern — zero vectors");
         assert.ok((noteVecs?.n ?? 0) > 0, "the unmatched entry embeds fully");
+        const lockFts = await (db.test_fts_search as PrepMethod).all({ workspace_id: workspaceId, query: "lockfileVersion" });
+        assert.ok(!lockFts.some((row) => (row as { pathname: string }).pathname === "/package-lock.json"), "excluded content contributes no lexical result");
+        const disposition = await (db.test_derivation_disposition as PrepMethod).get<{ disposition: string; reason: string }>({ entry_id: lock?.id ?? -1 });
+        const includedDisposition = await (db.test_derivation_disposition as PrepMethod).get<{ disposition: string; reason: string | null; deep_hash: string }>({ entry_id: fixture?.id ?? -1 });
+        assert.equal(disposition?.disposition, "excluded");
+        assert.equal(disposition?.reason, "package-lock.json");
+        assert.equal(includedDisposition?.disposition, "vector", "identical bytes at an included path remain searchable");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
         await EntryManifest.maintainDerivations(ctx);
         const lockVecs2 = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: lock?.id ?? -1 });
-        assert.equal(lockVecs2?.n, 0, "still zero after a second pump pass — stamped, skipped");
+        assert.equal(lockVecs2?.n, 0, "still zero after a second pump pass — classified once, skipped");
     } finally {
         db.close();
-        if (prev === undefined) delete process.env.PLURNK_MIMETYPES_NO_EMBED; else process.env.PLURNK_MIMETYPES_NO_EMBED = prev;
+        if (prev === undefined) delete process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE; else process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = prev;
     }
 });
 

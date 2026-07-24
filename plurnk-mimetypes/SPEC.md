@@ -243,7 +243,7 @@ interface ProcessResult {
     totalLines: number;
     extent: number;            // §12.5
     grammarMissing?: string;   // §13.4
-    noEmbed?: string;          // §21 — matched NO_EMBED pattern (derivation-eligibility)
+    searchExcluded?: string;          // §21 — matched SEARCH_EXCLUDE pattern
     telemetry?: readonly TelemetryEvent[]; // warn events for hidden degradations — §11.5
     // channels — present iff requested (§5)
     symbols?: MimeSymbol[];    // structured definitions; render via format() if needed
@@ -725,10 +725,10 @@ plurnk-schemes retires `TEXT_APPLICATION_MIMETYPES` / `TREE_NAVIGABLE_MIMETYPES`
 
 ## 21. Embedding-eligibility suppression (issue #47)
 
-Machine-generated content (minified bundles, lockfiles, sourcemaps) is honest bytes but semantic-derivation waste — a minified vuepress bundle chunked to 2,162 embeddings wall-clocked a CPU run (service#337). The eligibility decision is **operator configuration, not code**: `PLURNK_MIMETYPES_NO_EMBED` is a comma-separated pattern list — an entry without `/` matches the **basename**, an entry with `/` matches the **full path** (directory drawers like `*/dist/*`; hashed bundle names defeat basename rules — the run18 offender was `dist/assets/js/12.5188bb.js`). glob syntax is the body-matcher dialect's engine (§11.3 `globToRegex` — `*` crosses `/`, `?`, `[...]`; one glob engine per family, never a second variant); no wildcard = exact; first match wins. The sane default ships in this package's `.env.defaults` (the shipped operator floor, #52). The knob IS the classification — tunable per deployment, extensible without a release, and the matched pattern is the observable reason.
+Machine-generated content (minified bundles, lockfiles, sourcemaps) is honest bytes but semantic-derivation waste — a minified vuepress bundle chunked to 2,162 embeddings wall-clocked a CPU run (service#337). The eligibility decision is **operator configuration, not code**: `PLURNK_MIMETYPES_SEARCH_EXCLUDE` is a comma-separated pattern list — an entry without `/` matches the **basename**, an entry with `/` matches the **full path** (directory drawers like `*/dist/*`; hashed bundle names defeat basename rules — the run18 offender was `dist/assets/js/12.5188bb.js`). glob syntax is the body-matcher dialect's engine (§11.3 `globToRegex` — `*` crosses `/`, `?`, `[...]`; one glob engine per family, never a second variant); no wildcard = exact; first match wins. The sane default ships in this package's `.env.defaults` (the shipped operator floor, #52). The knob IS the classification — tunable per deployment, extensible without a release, and the matched pattern is the observable reason.
 
-- `ProcessResult.noEmbed?: string` — the matched pattern, present iff matched (also on the grammar-degraded path); consumers skip semantic derivation and stay FTS-only for these entries.
-- `matchNoEmbed(path)` — the exported matcher, read at call time from the host env like the pdf caps. Unset/empty → nothing suppressed; **no code fallback carries a hidden default**.
+- `ProcessResult.searchExcluded?: string` — the matched pattern, present iff matched (also on the grammar-degraded path); consumers keep the entry directly readable but exclude it from graph, lexical, and vector search.
+- `matchSearchExclusion(path)` — the exported matcher, read at call time from the host env like the pdf caps. Unset/empty → nothing suppressed; **no code fallback carries a hidden default**.
 - A content heuristic (line-length mass ratios) was evaluated and **rejected**: it false-positives on line-record data (large-record JSONL, wide-row CSV), silently excluding real searchable content — a worse failure than the waste it prevents — and its thresholds would be hidden magic. Name-based misses a generated file with an innocent name; the operator adds a pattern, which is the paradigm working, not failing.
 - Name-based suppression remains this framework's reader-declared mechanism. A host may additionally impose an explicit, observable vector-workload size ceiling; that is host policy, not a mimetype content classification.
 

@@ -64,7 +64,7 @@ export default class EntryChunk {
             // it (the one place we ever cut mid-line). This is what makes "no
             // truncation, ever" hold even for a minified blob or a giant literal.
             if (lineTokens[start] > budget) {
-                for (const piece of await EntryChunk.#splitLine(lines[start], budget, countTokens)) {
+                for (const piece of await EntryChunk.#splitLine(lines[start], lineTokens[start], budget, countTokens)) {
                     chunks.push({ seq: chunks.length, lineStart: start + 1, lineEnd: start + 1, text: piece });
                 }
                 start += 1;
@@ -106,21 +106,70 @@ export default class EntryChunk {
         return next;
     }
 
-    // Split one over-budget line into contiguous <= budget pieces. Binary-search
-    // the longest prefix that fits, repeat. Pieces concatenate back to the line.
-    static async #splitLine(line: string, budget: number, countTokens: (t: string) => Promise<number>): Promise<string[]> {
-        const pieces: string[] = [];
-        let i = 0;
-        while (i < line.length) {
-            let lo = i + 1, hi = line.length, best = i + 1;
-            while (lo <= hi) {
-                const mid = (lo + hi) >> 1;
-                if (await countTokens(line.slice(i, mid)) <= budget) { best = mid; lo = mid + 1; }
-                else hi = mid - 1;
+    // Split one over-budget line into contiguous <= budget pieces. The former
+    // longest-prefix loop awaited every tokenizer probe serially, leaving one
+    // core hot for hours on a giant one-line JSON document. Partition from the
+    // already-known whole-line token count, validate every candidate through a
+    // bounded parallel counter, and recursively repartition only candidates
+    // whose local token density still exceeds the ceiling.
+    static async #splitLine(
+        line: string,
+        totalTokens: number,
+        budget: number,
+        countTokens: (t: string) => Promise<number>,
+    ): Promise<string[]> {
+        const partition = (text: string, count: number): string[] => {
+            const n = Math.min(text.length, Math.max(2, count));
+            const out: string[] = [];
+            let start = 0;
+            for (let i = 1; i <= n; i++) {
+                let end = i === n ? text.length : Math.floor((text.length * i) / n);
+                // Never split a UTF-16 surrogate pair across independently
+                // tokenized pieces; concatenation and embedding both stay exact.
+                const prior = text.charCodeAt(end - 1);
+                const next = text.charCodeAt(end);
+                if (prior >= 0xD800 && prior <= 0xDBFF && next >= 0xDC00 && next <= 0xDFFF) end++;
+                if (end > start) out.push(text.slice(start, end));
+                start = end;
             }
-            pieces.push(line.slice(i, best));
-            i = best;
+            return out;
+        };
+        const countAll = async (items: string[]): Promise<number[]> => {
+            const counts = new Array<number>(items.length);
+            let next = 0;
+            const worker = async (): Promise<void> => {
+                while (next < items.length) {
+                    const index = next++;
+                    counts[index] = await countTokens(items[index]);
+                }
+            };
+            await Promise.all(Array.from(
+                { length: Math.min(items.length, availableParallelism() * 2) },
+                () => worker(),
+            ));
+            return counts;
+        };
+
+        let pieces = partition(line, Math.ceil(totalTokens / budget));
+        while (true) {
+            const counts = await countAll(pieces);
+            let changed = false;
+            const next: string[] = [];
+            for (let i = 0; i < pieces.length; i++) {
+                const piece = pieces[i];
+                const tokens = counts[i];
+                if (tokens <= budget) {
+                    next.push(piece);
+                    continue;
+                }
+                if (piece.length <= 1) {
+                    throw new RangeError(`one code unit tokenizes to ${tokens} tokens, exceeding chunk budget ${budget}`);
+                }
+                next.push(...partition(piece, Math.ceil(tokens / budget)));
+                changed = true;
+            }
+            pieces = next;
+            if (!changed) return pieces;
         }
-        return pieces;
     }
 }
