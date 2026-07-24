@@ -28,7 +28,11 @@ const resp = (body: string | null, status: number, headers: Record<string, strin
 
 test("live public textual URL → { body, mimetype }", async () => {
     await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })) as typeof fetch, async () => {
-        assert.deepEqual(await new WebFetcher().fetch(PUB), { body: '{"a":1}', mimetype: "application/json" });
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.equal(fetched?.body, '{"a":1}');
+        assert.equal(fetched?.mimetype, "application/json");
+        assert.match(fetched?.header ?? "", /^HTTP 200 /);
+        assert.match(fetched?.header ?? "", /^x-plurnk-fetched-at:/m);
     });
 });
 

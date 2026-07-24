@@ -15,6 +15,7 @@ import type {
     ChannelCaps,
     TagCaps,
     NotifyCaps,
+    ProjectionCaps,
     SubscriptionCaps,
     CrossSchemeCaps,
 } from "@plurnk/plurnk-schemes";
@@ -60,6 +61,7 @@ const makeCtx = () => {
         async list() { return { status: 200, tags: [] }; },
     };
     const notify: NotifyCaps = { streamEvent() {} };
+    const projection: ProjectionCaps = { async readable(content) { return { content, mimetype: "text/markdown" }; } };
     const subscriptions: SubscriptionCaps = {
         async open(pathname) { opened = { pathname }; return localAbort.signal; },
         async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
@@ -68,7 +70,7 @@ const makeCtx = () => {
     const crossScheme: CrossSchemeCaps = { _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape" };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, tags, notify, subscriptions, crossScheme,
+        entries, channels, tags, notify, projection, subscriptions, crossScheme,
     };
     return { ctx, localAbort, inspect: () => ({ chunks, opened, closed, wrote }) };
 };

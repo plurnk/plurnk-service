@@ -483,6 +483,7 @@ export default class Exec {
                 // Scoped HERE, not writeEntry: only auto-fetched web content projects; authored files
                 // stay verbatim (a `<user email=…>` roster's attribute data must survive a default READ).
                 let channels: EntryData["channels"] = { body: { content: body, mimetype } };
+                if (fetched.header !== undefined) channels.header = { content: fetched.header, mimetype: "text/plain" };
                 let decisive = body;
                 if (mimetype === "text/html") {
                     if (ctx.mimetypes === undefined) throw new Error("entry(): HTML materialization requires the mimetype registry");
@@ -498,7 +499,11 @@ export default class Exec {
                     if (typeof projected !== "string" || projected.length === 0) {
                         throw new Error(`entry(): '${path.slice(0, 80)}' has no readable HTML projection`);
                     }
-                    channels = { body: { content: projected, mimetype: "text/markdown" }, html: { content: body, mimetype } };
+                    channels = {
+                        body: { content: projected, mimetype: "text/markdown" },
+                        html: { content: body, mimetype },
+                        ...(fetched.header === undefined ? {} : { header: { content: fetched.header, mimetype: "text/plain" } }),
+                    };
                     decisive = projected;
                 }
                 const written = await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme);

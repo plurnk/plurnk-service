@@ -8,7 +8,7 @@ import ResolveForLoop from "./resolveForLoop.ts";
 import type { LoopFlags } from "./types.ts";
 import { SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type { PacketSection } from "./packet-wire.ts";
-import type { PacketSectionTransformer } from "./scheme-types.ts";
+import type { PacketSectionTransformer, SchemeManifest } from "./scheme-types.ts";
 import PluginAttribution from "./plugin-attribution.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -100,11 +100,26 @@ export default class SchemeRegistry {
 
     has(name: string): boolean { return this.#handlers.has(name); }
 
+    manifestFor(name: string): SchemeManifest | undefined {
+        const handler = this.#handlers.get(name) as { manifest?: SchemeManifest; constructor?: { manifest?: SchemeManifest } } | undefined;
+        return handler?.manifest ?? handler?.constructor?.manifest;
+    }
+
     // True for schemes registered via discoverExternal — they receive the
     // DB-free SchemeCtx (caps), not the in-tree PlurnkSchemeContext.
     isExternal(name: string): boolean { return this.#external.has(name); }
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
+
+    // Process-lifecycle boundary for plugin-owned pools/sockets/connections. Runtime
+    // aliases may share a handler, so close each object identity exactly once.
+    async close(): Promise<void> {
+        const handlers = new Set(this.#handlers.values());
+        await Promise.all([...handlers].map(async (handler) => {
+            const close = (handler as { close?: () => Promise<void> }).close;
+            if (close !== undefined) await close.call(handler);
+        }));
+    }
 
     // A scheme's default channel (manifest.defaultChannel) — the channel a fragment-less
     // address targets. Drives the manifest's address-keyed channels (note 4); null → file (body).

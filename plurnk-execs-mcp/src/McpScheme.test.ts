@@ -42,6 +42,7 @@ const makeCtx = () => {
             async list() { return { status: 200, tags: [] }; },
         },
         notify: { streamEvent() {} },
+        projection: { async readable(content) { return { content, mimetype: "text/markdown" }; } },
         subscriptions: {
             async open(pathname: string, _handle: SubscriptionHandle) { state.opened = pathname; return localAbort.signal; },
             async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },

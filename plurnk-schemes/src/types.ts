@@ -31,6 +31,10 @@ export interface SchemeManifest {
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;
+    // A trailing slash on READ denotes a collection scope only when declared.
+    // Explicit globs and matcher bodies remain queries everywhere. Absent/false
+    // means `/` is ordinary resource syntax and dispatches directly.
+    readonly folderScopes?: boolean;
     // Entries land FOLDED, off the ranked manifest surface (READable by address,
     // not poured into the ranked view). Absent/false → first-class ranked.
     // Full contract + containment rationale: SPEC §manifest (foldedByDefault).

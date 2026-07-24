@@ -20,6 +20,8 @@ import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWor
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
+import EntryFind from "../schemes/_entry-find.ts";
+import EntryOps from "../schemes/_entry-ops.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
@@ -147,7 +149,7 @@ export default class Dispatcher {
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
             result = denial;
-        } else if (Dispatcher.#readFansOut(statement)) {
+        } else if (this.#readFansOut(statement)) {
             // READ honors FIND: a glob/folder scope or a matcher fans out to one log row per MATCH
             // (its own writeLogs), returning early. A READ never proposes, so it bypasses the
             // single-row path below. A bare entry, body-less, falls through to the direct read. #286
@@ -622,12 +624,14 @@ export default class Dispatcher {
     // A READ fans out (honors FIND) when it resolves to more than the single exact entry: a glob
     // or folder scope, OR a matcher (which selects per-match within whatever the target resolved).
     // A bare entry, body-less, is the one direct read. #286
-    static #readFansOut(statement: PlurnkStatement): boolean {
+    #readFansOut(statement: PlurnkStatement): boolean {
         if (statement.op !== "READ") return false;
         if ("body" in statement && (statement as ReadStatement).body !== null) return true;  // a matcher → per-match fan-out
         const t = statement.target;
         const p = t === null ? "" : (t.kind === "url" ? t.pathname : t.raw);
-        return p.includes("*") || p.endsWith("/");  // glob/folder scope → fan out its contents
+        if (p.includes("*")) return true;
+        const schemeName = schemeNameOf(t);
+        return p.endsWith("/") && schemeName !== null && this.#schemes.manifestFor(schemeName)?.folderScopes === true;
     }
 
     // Clone the READ onto one concrete match — the FIND already matched, so the per-match READ
@@ -642,6 +646,42 @@ export default class Dispatcher {
         return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body: null } as PlurnkStatement;
     }
 
+    #externalEntryManifest(schemeName: string, statement: PlurnkStatement): SchemeManifest | null {
+        if (!this.#schemes.isExternal(schemeName)) return null;
+        const target = statement.target;
+        if (target === null || target.kind !== "url" || target.scheme === null) return null;
+        const manifest = this.#schemes.manifestFor(schemeName);
+        return manifest === undefined ? null : { ...manifest, name: target.scheme };
+    }
+
+    static #foldExternalAuthority(statement: PlurnkStatement): PlurnkStatement {
+        const target = statement.target;
+        if (target === null || target.kind !== "url") return statement;
+        const pathname = foldAuthorityIntoPath(target.hostname, target.pathname);
+        return {
+            ...statement,
+            target: { ...target, hostname: null, pathname, raw: `${target.scheme}://${pathname}` },
+        } as PlurnkStatement;
+    }
+
+    static #externalMatchRead(statement: PlurnkStatement, pathname: string, span: { lineStart: number; lineEnd: number } | null, storage: boolean): PlurnkStatement {
+        const target = statement.target;
+        if (target === null || target.kind !== "url") return Dispatcher.#retargetRead(statement, pathname, span);
+        const hostPrefix = target.hostname === null ? null : `/${target.hostname}`;
+        const displayPath = hostPrefix !== null && pathname.startsWith(`${hostPrefix}/`)
+            ? pathname.slice(hostPrefix.length)
+            : pathname;
+        const lineMarker = span === null ? null : { marks: [span.lineStart, span.lineEnd] };
+        return {
+            ...statement,
+            target: storage
+                ? { ...target, hostname: null, pathname, raw: `${target.scheme}://${pathname}` }
+                : { ...target, pathname: displayPath, raw: `${target.scheme}://${target.hostname ?? ""}${displayPath}` },
+            lineMarker,
+            body: null,
+        } as PlurnkStatement;
+    }
+
     async #handleReadFanout(
         statement: PlurnkStatement,
         ctx: PlurnkSchemeContext,
@@ -649,7 +689,11 @@ export default class Dispatcher {
     ): Promise<DispatchResult> {
         const { workerId, loopId, turnId, sequence, origin, onDispatch } = ids;
         const schemeName = schemeNameOf(statement.target);
-        const found = await this.#run(schemeName, { ...statement, op: "FIND" } as PlurnkStatement, ctx);
+        const findStatement = { ...statement, op: "FIND" } as PlurnkStatement;
+        const externalManifest = schemeName === null ? null : this.#externalEntryManifest(schemeName, statement);
+        const found = externalManifest === null
+            ? await this.#run(schemeName, findStatement, ctx)
+            : await EntryFind.findWorkspaceEntries(Dispatcher.#foldExternalAuthority(findStatement) as Extract<PlurnkStatement, { op: "FIND" }>, ctx, externalManifest) as unknown as DispatchResult;
         const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number } | null }> | undefined) ?? [];
         const overflow = typeof found.overflow === "number" ? found.overflow : null;
         // §find-count-not-contents applies to WORK as well as rendering. A READ
@@ -694,11 +738,23 @@ export default class Dispatcher {
             ctx.signal?.throwIfAborted();
             let whole = wholeByPath.get(m.pathname);
             if (whole === undefined) {
-                whole = await this.#run(schemeName, Dispatcher.#retargetRead(statement, m.pathname, null), ctx);
+                const retargeted = externalManifest === null
+                    ? Dispatcher.#retargetRead(statement, m.pathname, null)
+                    : Dispatcher.#externalMatchRead(statement, m.pathname, null, true);
+                whole = externalManifest === null
+                    ? await this.#run(schemeName, retargeted, ctx)
+                    : await EntryOps.readWorkspaceEntry(
+                        retargeted as ReadStatement,
+                        ctx,
+                        externalManifest,
+                    ) as DispatchResult;
                 wholeByPath.set(m.pathname, whole);
             }
             const result = Dispatcher.#sliceMatch(whole, m.span);
-            const id = await this.#writeLog({ statement: Dispatcher.#retargetRead(statement, m.pathname, m.span), result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + written, origin });
+            const deliveredStatement = externalManifest === null
+                ? Dispatcher.#retargetRead(statement, m.pathname, m.span)
+                : Dispatcher.#externalMatchRead(statement, m.pathname, m.span, false);
+            const id = await this.#writeLog({ statement: deliveredStatement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + written, origin });
             onDispatch?.(id);
             fannedStatuses.push(result.status);
             written++;
@@ -1021,7 +1077,8 @@ export default class Dispatcher {
         // dispatch is typed for in-tree schemes; the cast bridges the ctx shapes —
         // the sibling reads caps, the in-tree handler reads db.
         if (this.#schemes.isExternal(schemeName)) {
-            return method.call(handler, statement, new SchemeCtxImpl(ctx, schemeName) as unknown as PlurnkSchemeContext);
+            const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
+            return method.call(handler, statement, new SchemeCtxImpl(ctx, addressedScheme ?? schemeName) as unknown as PlurnkSchemeContext);
         }
         return method.call(handler, statement, ctx);
     }

@@ -74,6 +74,7 @@ export default class File {
         writableBy: ["model", "client", "plugin"],
         volatile: false,
         modelVisible: true,
+        folderScopes: true,
         example: "<<READ(README.md)::READ",
         documentation: "The project's workspace files (git-tracked members, shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Non-members are invisible, so you can't read or clobber a file outside the tracked surface.",
     };

@@ -40,8 +40,9 @@ const setup = async () => {
     const turnId = await insertTurn(db, loopId, 1, 102);
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
-    return { db, workspaceId, workerId, loopId, turnId, mimetypes, engine };
+    const schemes = new SchemeRegistry();
+    const engine = new Engine({ db, schemes, mimetypes });
+    return { db, workspaceId, workerId, loopId, turnId, mimetypes, schemes, engine };
 };
 
 // Read a fanned log row's body by its turn coordinate (log:///1/1/<seq>).
@@ -92,6 +93,44 @@ test("a glob READ with zero matches writes a single 204 row, not silence", async
         });
         assert.equal(r.status, 204);
         assert.equal(r.rowsWritten, 1, "no matches still mints one row the model can see");
+    } finally { await db.close(); }
+});
+
+test("trailing slash is ordinary resource syntax unless the scheme declares folder scopes", async () => {
+    class OpaqueResource {
+        static manifest = {
+            name: "opaque", channels: { body: "text/markdown" }, defaultChannel: "body",
+            category: "data" as const, scope: "workspace" as const, writableBy: ["plugin"] as const,
+            volatile: false, modelVisible: true,
+        };
+        async read() { return { status: 200, content: "opaque root resource", mimetype: "text/markdown" }; }
+        async find() { throw new Error("undeclared folder scope must never invoke FIND"); }
+    }
+    const { db, workspaceId, workerId, loopId, turnId, schemes, engine } = await setup();
+    try {
+        schemes.register("opaque", new OpaqueResource());
+        const result = await engine.dispatch({
+            statement: readStmt(urlPath("opaque", "/")),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 200);
+        const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+        assert.match(row?.rx ?? "", /opaque root resource/);
+    } finally { await db.close(); }
+});
+
+test("a declared folder scope still fans out on trailing slash", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
+    try {
+        await seed(db, workspaceId, workerId, mimetypes, "/notes/a", "alpha");
+        await seed(db, workspaceId, workerId, mimetypes, "/notes/b", "beta");
+        const result = await engine.dispatch({
+            statement: readStmt(urlPath("worker", "/notes/")),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 200);
+        assert.equal(result.rowsWritten, 3, "one FIND summary + both declared folder members");
+        assert.deepEqual(result.fannedStatuses, [200, 200]);
     } finally { await db.close(); }
 });
 

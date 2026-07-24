@@ -59,6 +59,7 @@ const documentation = await readFile(new URL("../docs/http.md", import.meta.url)
 // What Http needs from the render foundation — narrow, so tests inject a fake.
 interface Renderer {
     render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult>;
+    close?(): Promise<void>;
 }
 
 export default class Http implements SchemeHandler {
@@ -66,10 +67,10 @@ export default class Http implements SchemeHandler {
         name: "http",
         // Channel mimetypes here are SEED DEFAULTS (pre-fetch placeholders).
         // body is retyped per-call via notifyChunk's mimetype arg — to the real
-        // response Content-Type, or text/html for a rendered page; octet-stream
+        // response Content-Type, or projected markdown for a rendered page; octet-stream
         // is the honest "unknown until fetched". header is always the status
         // line + headers (text/plain).
-        channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain" },
+        channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", html: "text/html" },
         defaultChannel: BODY,
         category: "data",
         scope: "workspace",
@@ -89,6 +90,10 @@ export default class Http implements SchemeHandler {
     readonly #browser: Renderer;
     constructor(browser: Renderer = new Browser()) {
         this.#browser = browser;
+    }
+
+    async close(): Promise<void> {
+        await this.#browser.close?.();
     }
 
     // READ → fetch; an HTML page is rendered, everything else streams raw.
@@ -138,7 +143,7 @@ export default class Http implements SchemeHandler {
             return this.#fetchStream(statement.target, ctx, "POST", body);
         }
         if (status === 410) {
-            const { status: delStatus } = await ctx.entries.delete(statement.target.pathname);
+            const { status: delStatus } = await ctx.entries.delete(Http.#pathname(statement.target));
             return { shape: "passthrough", status: delStatus };
         }
         if (status === 499) {
@@ -153,14 +158,14 @@ export default class Http implements SchemeHandler {
 
     // The streaming core, shared by every verb. Opens the subscription
     // (registering the abort handle for SEND[499] routing), fetches, then EITHER
-    // renders (a GET of an HTML page is re-acquired through the browser and its
-    // final DOM becomes the body) OR streams the raw bytes (every non-GET
+    // renders (a GET of an HTML page is re-acquired through the browser, its
+    // readable projection becomes body, and its final DOM is archived) OR streams the raw bytes (every non-GET
     // response and every non-HTML body). Request headers from the target's `{…}`
     // blocks (grammar#46) ride into both the fetch and the render. Each chunk is
     // labelled with its real mimetype via notifyChunk. Settles via close().
     async #fetchStream(target: UrlPath, ctx: SchemeCtx, method: string, body: string | undefined): Promise<PassthroughResult> {
         const url = Http.#rewriteHostileHost(Http.#urlFrom(target));
-        const pathname = target.pathname;
+        const pathname = Http.#pathname(target);
         const headers = target.headers ?? [];  // [key,value][] — opaque to grammar, honored here
 
         // Conditional revalidation (GET only, service#341): recover the prior
@@ -171,14 +176,19 @@ export default class Http implements SchemeHandler {
         // window the stored copy serves with zero round-trips; past it, the
         // conditional GET revalidates (service#333/#405 landed the TTL). Captured
         // BEFORE the seed write below overwrites the entry.
-        let cached: { header: string; body: { content: string; mimetype: string } } | undefined;
+        let cached: { header: string; body: { content: string; mimetype: string }; html?: { content: string; mimetype: string } } | undefined;
         const conditional: Array<[string, string]> = [];
         if (method === "GET") {
             const prior = await ctx.entries.read(pathname);
             const pb = prior.entry?.channels[BODY];
             if (pb !== undefined && pb.content.length > 0) {
                 const ph = prior.entry?.channels[HEADER]?.content ?? "";
-                cached = { header: ph, body: { content: pb.content, mimetype: pb.mimetype } };
+                const html = prior.entry?.channels.html;
+                cached = {
+                    header: ph,
+                    body: { content: pb.content, mimetype: pb.mimetype },
+                    ...(html === undefined || html.content.length === 0 ? {} : { html: { content: html.content, mimetype: html.mimetype } }),
+                };
                 conditional.push(...Http.#validators(ph));
             }
         }
@@ -192,6 +202,7 @@ export default class Http implements SchemeHandler {
             await ctx.entries.write(pathname, Http.#seedEntry());
             await ctx.subscriptions.open(pathname, { cancel: () => {} });
             await ctx.subscriptions.notifyChunk(HEADER, cached.header, "text/plain");
+            if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
             await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
             await ctx.subscriptions.close("done", `ttl-fresh; ${cached.body.content.length} chars from cache`);
             return { shape: "passthrough", status: 102 };
@@ -236,6 +247,7 @@ export default class Http implements SchemeHandler {
             // channels, restoring the cached header + body.
             if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), response)) {
                 await ctx.subscriptions.notifyChunk(HEADER, Http.#stamp(cached.header), "text/plain");
+                if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
                 await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
                 await ctx.subscriptions.close("done", `revalidated 304; ${cached.body.content.length} chars from cache`);
                 return { shape: "passthrough", status: 102 };
@@ -244,7 +256,7 @@ export default class Http implements SchemeHandler {
             const contentType = response.headers.get("content-type") ?? "";
 
             // Always-render: a GET of an HTML page is re-acquired through the
-            // browser so the body is the final rendered DOM. The probe-fetch
+            // browser so the body is projected from the final rendered DOM. The probe-fetch
             // body is discarded — the browser does its own navigation. Only GET
             // renders; POST/PUT/DELETE can't be replayed as a browser navigation.
             const isHtml = method === "GET"
@@ -252,9 +264,12 @@ export default class Http implements SchemeHandler {
             if (isHtml) {
                 await response.body?.cancel();
                 const result = await this.#browser.render(url, { workerId: ctx.workerId, signal: local.signal, headers });
+                const projected = await ctx.projection.readable(result.html, "text/html");
+                if (projected === null) throw new Error("rendered HTML has no readable projection");
                 await Http.#writeHeader(ctx, result.status, result.statusText, result.headers);
-                await ctx.subscriptions.notifyChunk(BODY, result.html, "text/html");
-                await ctx.subscriptions.close("done", `rendered HTTP ${result.status}; ${result.html.length} chars`);
+                await ctx.subscriptions.notifyChunk("html", result.html, "text/html");
+                await ctx.subscriptions.notifyChunk(BODY, projected.content, projected.mimetype);
+                await ctx.subscriptions.close("done", `rendered HTTP ${result.status}; ${projected.content.length} readable chars`);
                 return { shape: "passthrough", status: 102 };
             }
 
@@ -362,6 +377,14 @@ export default class Http implements SchemeHandler {
     // convenience. Use raw so query strings / auth / port survive exactly.
     static #urlFrom(target: UrlPath): string {
         return target.raw;
+    }
+
+    // Entry storage has no authority column. The host is part of a web
+    // resource's identity, so fold it into the pathname exactly as the search
+    // prefetch sink does. Routing (`https` rides the HTTP handler) remains
+    // separate from storage (`https` remains https).
+    static #pathname(target: UrlPath): string {
+        return target.hostname ? `/${target.hostname}${target.pathname}` : target.pathname;
     }
 
     // Known-hostile-host rewrite — the ONE bounded, first-party exception

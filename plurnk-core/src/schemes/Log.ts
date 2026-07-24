@@ -88,6 +88,7 @@ export default class Log {
         writableBy: ["plurnk", "model"],
         volatile: false,
         modelVisible: true,
+        folderScopes: true,
         example: "<<READ(log:///1/2/3)::READ",
     };
 

@@ -64,6 +64,19 @@ test("registerRuntimeSchemes: re-scanning the same runtime tag is idempotent, no
     assert.ok(registry.has("sh"));
 });
 
+test("close: closes each unique resource-owning handler exactly once", async () => {
+    const registry = new SchemeRegistry();
+    let closes = 0;
+    const shared = { async close() { closes++; } };
+    registry.register("resource-a", shared);
+    registry.register("resource-alias", shared);
+    registry.register("stateless", {});
+
+    await registry.close();
+
+    assert.equal(closes, 1, "aliases sharing a handler must not double-close its resources");
+});
+
 // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops a name from BOTH the teaching oneliner and the materialized
 // pull-doc, on load. A non-listed name is untouched; a stray name is inert (a filter, not a contract).
 test("teach()/docs(): PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc; stray names inert (#240)", () => {

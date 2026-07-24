@@ -48,6 +48,11 @@ export interface SchemeHandler {
     // when present, else the static one. (executor-is-a-scheme RFC, schemes#20.)
     readonly manifest?: SchemeManifest;
 
+    // Optional process-lifecycle hook for handlers that own pooled resources
+    // (browser processes, sockets, client connections). The consumer calls this
+    // once after in-flight scheme work drains and before its backing stores close.
+    close?(): Promise<void>;
+
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;

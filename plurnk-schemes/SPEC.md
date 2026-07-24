@@ -41,6 +41,7 @@ class Known {
 | `writableBy` | Subset of `["model", "client", "system", "plugin"]`. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
+| `folderScopes?` | `true` declares that a trailing slash on READ is a collection scope. Absent/false means `/` is ordinary resource syntax. Matcher bodies and explicit globs remain queries independently. |
 | `flags?` | Optional `SchemeFlagAffinity`. |
 | `example?` | The scheme's terse **hot-path** one-liner (e.g. `"READ(foo://thing/42)"`) — renders in the live catalogue every turn, so keep it to one canonical usage line. Omit → not advertised. Depth goes in `documentation`. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation` (schemes#25). |
@@ -60,6 +61,7 @@ Sister scheme handlers implement op methods consumed by plurnk-service via dispa
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 
 export interface SchemeHandler {
+    close?(): Promise<void>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -77,6 +79,8 @@ export interface SchemeHandler {
 ```
 
 A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set is exactly grammar's `PlurnkStatement` dispatch union and moves with the framework's grammar bump (0.74.57 added `work?`/`fork?`; `LOOK`/`BUFF` are grammar `ClientStatement` ops, client-facing and never dispatched to a scheme, so they're intentionally absent here). **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
+
+`close?()` is the process-lifecycle hook for pooled resources such as browser processes, sockets, and client connections. The consumer calls it once per unique handler instance after in-flight scheme work drains and before backing stores close. Stateless handlers omit it.
 
 Two surfaces are NOT yet in `SchemeHandler`, pending their result types migrating here from plurnk-service v0: the **CRUD primitives** (`readEntry`/`writeEntry`/`deleteEntry`, required for entry-bearing schemes) and the **proposal lifecycle** (the optional `ProposalAware.applyResolution` hook, already exported via §3.bis). Until then a scheme declares those methods directly.
 
@@ -138,12 +142,13 @@ Behavior ships as `export default class` (one class per file, static methods) �
 
 The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be authored without importing `@plurnk/plurnk-service` or touching a raw DB handle (forbidden by §5). **Interfaces only**: this repo exports the shapes; the consumer (`plurnk-core`) injects a db-backed implementation behind them. Design converged on [plurnk-service#180](https://github.com/plurnk/plurnk-service/issues/180).
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **five live capability namespaces** replacing raw `db`:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
 
 - `entries` — CRUD over the scheme's own namespace (`read`/`write`/`delete`).
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the run-wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
+- `projection` — `readable(content, mimetype)` asks the consumer's configured mimetype family for the model-facing text projection. Acquisition schemes own bytes/DOM; they do not instantiate or second-guess the reader family. `null` means no readable projection.
 - `subscriptions` — streaming lifecycle: `open(pathname, handle)` returns a worker+teardown-composed `AbortSignal` and takes a force-cancel `SubscriptionHandle`; `notifyChunk(channel, chunk, mimetype?)` is **fused** (append + stream/event in one call), with an optional per-call `mimetype` that retypes the channel to the content's actual type (passed statelessly per chunk; the impl writes only on change; the manifest channel mimetype is the pre-fetch seed default — plurnk-service#226); `close(reason, outcome?)` composites channel state + registry close + run wake. Designed against Exec (two-channel, cancel-tested).
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in plurnk-service's index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set (plurnk-service#180).

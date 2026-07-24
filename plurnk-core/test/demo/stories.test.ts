@@ -20,7 +20,7 @@
 //   - Outcome assertions only: file content, response text. Not op shapes.
 
 import test from "node:test";
-import { cannedWeb, CANNED_VERSION } from "./_web-fixture.ts";
+import { cannedWeb, CANNED_QUOTE, CANNED_SAVINGS, CANNED_VERSION } from "./_web-fixture.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -169,6 +169,56 @@ test("story: answer a question with a web search (canned gate — #530)", { time
         } finally { await story.cleanup(); }
     } finally {
         if (prevSearx === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = prevSearx;
+        await web.close();
+    }
+});
+
+test("story: search, retrieve, and report a measured claim from a page (canned)", { timeout: TIMEOUT }, async () => {
+    const web = await cannedWeb();
+    const previous = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
+    process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = web.searxngUrl;
+    try {
+        const story = await runStory({
+            label: "web-research-claim",
+            prompt: "Search the web for Project Aurora's inference report. By how much did it reduce inference cost?",
+            maxTurns: 8,
+            fetchWeb: web.fetchWeb,
+        });
+        try {
+            const pages = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "https" });
+            const ok = story.finalStatus === 200 && story.lastContent.toLowerCase().includes(CANNED_SAVINGS);
+            if (!ok) await story.dump();
+            assert.ok((pages?.n ?? 0) > 0, "search materialized retrievable web pages");
+            assert.equal(story.finalStatus, 200);
+            assert.match(story.lastContent, /37\s*(?:percent|%)/i);
+        } finally { await story.cleanup(); }
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = previous;
+        await web.close();
+    }
+});
+
+test("story: search and recover an exact statement from a transcript page (canned)", { timeout: TIMEOUT }, async () => {
+    const web = await cannedWeb();
+    const previous = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
+    process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = web.searxngUrl;
+    try {
+        const story = await runStory({
+            label: "web-transcript-quote",
+            prompt: "Search the web for Secretary Rowan's recent AI infrastructure interview. What did Rowan say was the bottleneck?",
+            maxTurns: 8,
+            fetchWeb: web.fetchWeb,
+        });
+        try {
+            const searchEntries = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "search" });
+            const ok = story.finalStatus === 200 && story.lastContent.toLowerCase().includes(CANNED_QUOTE);
+            if (!ok) await story.dump();
+            assert.ok((searchEntries?.n ?? 0) > 0, "the model used web search rather than answering from fixture files");
+            assert.equal(story.finalStatus, 200);
+            assert.match(story.lastContent, /power,\s*not demand/i);
+        } finally { await story.cleanup(); }
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = previous;
         await web.close();
     }
 });

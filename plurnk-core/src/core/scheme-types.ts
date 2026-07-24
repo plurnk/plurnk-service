@@ -47,7 +47,7 @@ export type SchemeReadResult = {
 // db. plurnk-service injects the db-backed impl behind that seam
 // (`core/caps/Db*Caps.ts`), one cap at a time, over the same
 // _entry-*/ChannelWrite helpers the in-tree schemes use during transition.
-// All five caps are wired in SchemeCtxImpl (#180 met) and plurnk-schemes-http
+// All six caps are wired in SchemeCtxImpl (#180 met) and plurnk-schemes-http
 // validates the seam end-to-end; the in-tree schemes still read ctx.db, so
 // migrating them onto the caps is the remaining (non-blocking) transition.
 // `visibility` is dropped — entry visibility is gone post-teardown

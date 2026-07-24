@@ -31,6 +31,9 @@ interface Renderer {
 export interface WebFetchResult {
     body: string;
     mimetype: string;
+    // Canonical response metadata channel, including the materialization stamp
+    // direct Http READ uses for TTL/conditional revalidation.
+    header?: string;
     // HTML byte responses are authoritative when their model-facing MIME
     // projection is useful. Core calls this guarded browser acquisition only
     // when that projection is empty.
@@ -67,6 +70,7 @@ export default class WebFetcher {
         }
         const mimetype = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
         if (!response.ok) { await response.body?.cancel(); return null; } // non-2xx dead
+        const header = WebFetcher.#header(response);
 
         // Preserve server-rendered HTML as the primary acquisition. The MIME
         // layer decides whether its model-facing projection is useful; only an
@@ -79,6 +83,7 @@ export default class WebFetcher {
             return {
                 body,
                 mimetype,
+                header,
                 render: async () => {
                     try {
                         const rendered = await this.#browser.render(url, {
@@ -99,6 +104,14 @@ export default class WebFetcher {
 
         if (!isTextual(mimetype)) { await response.body?.cancel(); return null; } // binary pruned
         const body = await response.text();
-        return body.length > 0 ? { body, mimetype } : null; // empty is dead
+        return body.length > 0 ? { body, mimetype, header } : null; // empty is dead
+    }
+
+    static #header(response: Response): string {
+        return [
+            `HTTP ${response.status} ${response.statusText}`,
+            ...[...response.headers].map(([key, value]) => `${key}: ${value}`),
+            `x-plurnk-fetched-at: ${new Date().toISOString()}`,
+        ].join("\n");
     }
 }

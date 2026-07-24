@@ -8,9 +8,9 @@
 static manifest: SchemeManifest = {
     name: "http",
     // Seed defaults (pre-fetch placeholders). `body` is retyped per-call via
-    // notifyChunk's mimetype arg — to the response Content-Type, or text/html
-    // for a rendered page. `header` is always text/plain.
-    channels: { body: "application/octet-stream", header: "text/plain" },
+    // notifyChunk's mimetype arg. Rendered HTML projects into body while the
+    // faithful DOM is archived in html. `header` is always text/plain.
+    channels: { body: "application/octet-stream", header: "text/plain", html: "text/html" },
     defaultChannel: "body",
     category: "data",
     scope: "workspace",
@@ -23,7 +23,7 @@ static manifest: SchemeManifest = {
 
 `package.json#plurnk`: `{ "kind": "scheme", "name": "http" }`.
 
-**Open question — dual prefix.** plurnk-service's `SchemeRegistry` keys handlers by a single name (`register("http", …)`); there is no alias mechanism today. This package serves both `http://` and `https://`. How the second prefix registers (registry alias, the handler claiming both, or a convention) is a plurnk-service concern — tracked with the consumer, not resolved here.
+`https` routes through the registered `http` handler, but routing is not identity: entries retain the addressed protocol and fold authority into their storage pathname (`https` + `/example.com/page`). Thus two hosts never collide and `http://` never aliases `https://`.
 
 ## §2 Op surface {§op-surface}
 
@@ -41,7 +41,7 @@ All verbs share one streaming core:
 2. `fetch(url, { signal })` — GET (READ) or POST (SEND[200], body from `SendBody.raw`); read the response `Content-Type`.
 3. **Render gate ({§render-lifecycle}):** a GET whose response is HTML routes to the render path; a GET whose response is `text/event-stream` routes to the SSE path ({§sse}); everything else (POST responses, non-HTML bodies) streams raw.
 4. Response status + headers → `notifyChunk("header", …, "text/plain")`.
-5. Body → `notifyChunk("body", chunk, mimetype)` — labelled with its real type (the response Content-Type, or `text/html` rendered). Byte path streams chunks as they arrive; render path writes the serialized DOM in one chunk.
+5. Non-HTML body → `notifyChunk("body", chunk, mimetype)` under its response type. Rendered HTML → `projection.readable(finalDom, "text/html")`, then the readable result goes to `body` and the faithful DOM to `html`. A page with no readable projection fails; raw DOM never silently becomes the model-facing body.
 6. `close("done", …)` on clean end; `close("error", reason)` on failure.
 
 Returns `102 Processing` on success (the subscription drives the channel content). The composed signal aborting (loop.cancel) and the local handle (SEND[499]) both tear the fetch/render down.
@@ -72,7 +72,7 @@ The **render path** takes one runtime dependency, `playwright`, **lazy-imported*
 
 - **Gate:** a GET whose response `Content-Type` is `text/html` / `application/xhtml+xml` renders; the probe-fetch body is discarded and the browser does its own navigation. POST never renders.
 - **Render:** warm chromium (one per `Browser`), per-worker `BrowserContext` keyed on `ctx.workerId`, **mobile-emulated by default** (Pixel-5-class viewport + UA — responsive sites serve lighter layouts; `PLURNK_SCHEMES_HTTP_MOBILE=0` renders desktop), navigate with `waitUntil: "networkidle"` + a salvage path (timed-out-but-rendered pages with substantive body text), serialize the final DOM via `page.content()`.
-- **Body:** the serialized DOM is delivered as one `body` chunk labelled `text/html`; the mimetype layer projects everything (`content`/`symbols`/`deepXml`/embedding) off it. http never cleans or extracts — the body is the faithful, final page (schemes-http#1).
+- **Body:** the consumer's configured mimetype family projects the serialized DOM. Its readable markdown is the decisive `body` used by READ, FIND, embeddings, weights, and the model; the faithful final DOM is archived under `html` for XPath and inspection. Direct READ and search prefetch therefore expose the same kind of model-facing content.
 - **Host rewrite (bounded, first-party):** {§host-rewrite} a GitHub `…/blob/…` URL is fetched as its `raw.githubusercontent.com` source (line-navigable, exact) — the blob page is a CSP-locked JS SPA and code wants source, not a rendered viewer. This is the ONLY host rewrite; Wikipedia was measured through the extractor and deliberately gets none (desktop already extracts the full clean article; rewrites regressed it — schemes-http#4).
 - **Config:** `.env.defaults` at the package root is the authoritative list (family-namespaced `PLURNK_SCHEMES_HTTP_*`), shipped in the tarball; the daemon assembles it into the boot floor set-if-unset (service SPEC §operator-config-env-defaults, schemes#31). Required render-path numerics — `FETCH_TIMEOUT`, `SALVAGE_MIN_BODY_CHARS`, `IDLE_TIMEOUT` — fail hard when unset (no in-code defaults). `MOBILE` is floor-defaulted to `1` and a required read (unset crashes). Absence-is-a-mode knobs: `PLAYWRIGHT_WS`, `NO_SANDBOX`, `CHROMIUM_HEAP_MB`.
 - **Freshness (READ):** {§revalidation} one predicate (`#storedCopyServable`), two phases. Pre-fetch: a stored copy whose materialization stamp (`x-plurnk-fetched-at`, HEADER channel) is inside `PLURNK_SCHEMES_HTTP_TTL_MS` serves with zero round-trips — identical for model READs and lane-1 prefetch (#405); `0` disables the window. The stamp resets only when the origin vouches (fetch or 304), never on a cache serve. Past the window a repeat READ recovers the prior fetch's validators from its own stored entry (`ETag`→`If-None-Match`, `Last-Modified`→`If-Modified-Since`) and revalidates. A `304` re-serves the stored body and **skips the render** — a first-class READ (the model sees an ordinary streaming result, never a cache status; `revalidated 304` rides the close summary). The TTL is the #333 milestone landed at that same one-predicate boundary (blessed by service#341; delivered per #405). `SEND[410]` drops the stored copy, forcing the next READ to full-fetch.

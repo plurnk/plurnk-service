@@ -615,6 +615,7 @@ export default class Daemon {
         await Promise.allSettled(drainPromises);
         await this.#drainStreamingSchemes();
         await this.#engine.drainDerivations(); // active workspace warms finish before the db closes upstream
+        await this.#schemes.close();
     }
 
     // Per-scheme idle awaits for clean shutdown. New streaming schemes

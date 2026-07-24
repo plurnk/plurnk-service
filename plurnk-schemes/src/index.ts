@@ -48,6 +48,7 @@ export type {
     CrossSchemeCaps,
     EntryCaps,
     EntryData,
+    ProjectionCaps,
     NotifyCaps,
     ProposalAware,
     SchemeCtx,

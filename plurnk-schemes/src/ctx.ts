@@ -82,6 +82,16 @@ export interface NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void;
 }
 
+// ── projection ───────────────────────────────────────────────────────────
+// Ask the consumer's configured mimetype family for the model-facing text
+// projection of acquired content. Network schemes acquire bytes/DOM; they do
+// not select or instantiate the reader family. Keeping that reader capability
+// on the consumer makes direct READ and executor-prefetch use the same
+// configured projection instead of shipping raw HTML down one path.
+export interface ProjectionCaps {
+    readable(content: string, mimetype: string): Promise<{ content: string; mimetype: string } | null>;
+}
+
 // ── subscriptions ────────────────────────────────────────────────────────
 // The streaming lifecycle (service SPEC: streaming). The hard namespace; designed against
 // Exec (the proven two-channel, cancel-tested case — if it serves exec it
@@ -156,6 +166,7 @@ export interface SchemeCtx {
     readonly channels: ChannelCaps;
     readonly tags: TagCaps;
     readonly notify: NotifyCaps;
+    readonly projection: ProjectionCaps;
     readonly subscriptions: SubscriptionCaps;
     readonly crossScheme: CrossSchemeCaps;
 }

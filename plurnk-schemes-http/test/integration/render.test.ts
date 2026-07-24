@@ -60,6 +60,11 @@ const makeCtx = () => {
         channels: { append: ok, replace: ok, setState: ok },
         tags: { add: ok, remove: ok, list: async () => ({ status: 200, tags: [] }) },
         notify: { streamEvent() {} },
+        projection: {
+            async readable(content) {
+                return { content: content.replace(/<[^>]+>/g, " "), mimetype: "text/markdown" };
+            },
+        },
         subscriptions: {
             async open(_p: string, _h: SubscriptionHandle) { return new AbortController().signal; },
             async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
@@ -76,7 +81,7 @@ const readStmt = (raw: string): ReadStatement => ({
     target: { kind: "url", raw, scheme: "http", username: null, password: null, hostname: "127.0.0.1", port: null, pathname: "/", params: {}, fragment: null } as UrlPath,
 });
 
-test("Http.read: full render path against real chromium — body is the rendered DOM, labelled text/html", async () => {
+test("Http.read: full render path against real chromium — readable body + faithful DOM", async () => {
     const server = await startServer();
     const browser = new Browser();          // injected so the test owns teardown
     const { ctx, inspect } = makeCtx();
@@ -84,10 +89,13 @@ test("Http.read: full render path against real chromium — body is the rendered
         const r = await new Http(browser).read(readStmt(urlOf(server)), ctx);
         assert.equal(r.status, 102);
         const body = inspect().chunks.filter((c) => c.channel === "body");
-        assert.equal(body.length, 1);                    // single-shot rendered DOM
+        assert.equal(body.length, 1);
         assert.match(body[0].chunk, /RENDERED_BY_JS/);   // real render, real JS
         assert.doesNotMatch(body[0].chunk, /SHIM/);
-        assert.equal(body[0].mimetype, "text/html");     // labelled for the mime layer
+        assert.equal(body[0].mimetype, "text/markdown");
+        const html = inspect().chunks.filter((c) => c.channel === "html");
+        assert.match(html[0]?.chunk ?? "", /RENDERED_BY_JS/);
+        assert.equal(html[0]?.mimetype, "text/html");
         assert.equal(inspect().closed?.reason, "done");
     } finally {
         await browser.close();

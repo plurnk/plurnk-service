@@ -5,7 +5,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ExecStatement } from "@plurnk/plurnk-grammar";
+import { PlurnkParser } from "@plurnk/plurnk-grammar";
+import type { ExecStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
@@ -22,12 +23,20 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 // null (fetch-through), so the null-content stub casts args.entry to the widened shape to drive that path.
 type WidenedEntry = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<void>;
 
-const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string }) => {
+const parseOne = (input: string): PlurnkStatement => {
+    const parsed = PlurnkParser.parse(`<<PLAN::PLAN\n${input}`);
+    const item = parsed.items.find((x) => x.kind === "statement" && x.statement.op !== "PLAN");
+    if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
+    return item.statement;
+};
+
+const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string; webScheme?: boolean }) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
     // "one name, one owner" (#289) rejects a second hotload of the same tag onto the shared registry.
     const tag = opts?.tag ?? "stubsearch";
     const db = await openMigrated();
     const schemes = new SchemeRegistry(opts?.fetchWeb ? { fetchWeb: opts.fetchWeb } : undefined);
+    if (opts?.webScheme) await schemes.discoverExternal(process.cwd());
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     engine.setExecutors(await testExecutors());
     schemes.registerRuntimeSchemes(await testExecutors());
@@ -131,6 +140,62 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await quiesceExecs(schemes); await db.close(); }
+});
+
+test("search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-query", webScheme: true });
+    try {
+        const search = await engine.dispatch({
+            statement: execStmt(tag, "turkeys"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(search.status < 400);
+        await quiesceExecs(schemes);
+
+        // This must query the decisive markdown entry search already
+        // materialized. Calling Http.read here would hit the network and make a
+        // deterministic integration test impossible by construction.
+        const queried = await engine.dispatch({
+            statement: parseOne("<<READ(https://example.org/turkeys):*large birds*:READ") as ReadStatement,
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(queried.status, 200);
+        assert.equal(queried.rowsWritten, 2, "one bounded FIND summary + one stored match delivery");
+        assert.deepEqual(queried.fannedStatuses, [200]);
+
+        const delivered = await (db.log_read_by_coordinate as PrepMethod).get<{ scheme: string; pathname: string; rx: string }>({
+            worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 3,
+        });
+        assert.equal(delivered?.scheme, "https");
+        assert.equal(delivered?.pathname, "/turkeys");
+        assert.match(delivered?.rx ?? "", /wild turkeys are large birds, revised/);
+        const stored = await (db.test_entries_by_pathname as PrepMethod).get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
+        assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
+    } finally { await quiesceExecs(schemes); await db.close(); }
+});
+
+test("an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire({ tag: "stubsearch-web-root", webScheme: true });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("publisher home", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+    })) as typeof fetch;
+    try {
+        const result = await engine.dispatch({
+            statement: parseOne("<<READ(https://example.org/)::READ") as ReadStatement,
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 102, "the HTTP handler fetched the resource; Dispatcher never synthesized FIND");
+        const stored = await (db.test_entries_by_pathname as PrepMethod).get<{ scheme: string; id: number }>({ pathname: "/example.org/" });
+        assert.equal(stored?.scheme, "https");
+        const body = stored === undefined ? undefined : await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: stored.id, name: "body" });
+        assert.equal(body?.content, "publisher home");
+    } finally {
+        globalThis.fetch = originalFetch;
+        await quiesceExecs(schemes);
+        await db.close();
+    }
 });
 
 test("entry(content:null) fetches through the guarded sink — live materializes, unavailable does not (#455)", async () => {

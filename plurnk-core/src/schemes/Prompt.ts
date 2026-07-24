@@ -25,6 +25,7 @@ export default class Prompt {
         writableBy: ["client", "plurnk"],
         volatile: false,
         modelVisible: true,
+        folderScopes: true,
         example: "<<READ(prompt:///1/1)::READ",
         documentation: "Your task frames — each loop's prompt at `prompt:///<loop>/<N>` (READ the address the User Prompts section lists). READ-ONLY: the engine writes these for you; your scratch lives at `worker://~/` and the shared blackboard at `worker:///`.",
     };

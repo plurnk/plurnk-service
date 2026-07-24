@@ -14,6 +14,7 @@ import type {
     ChannelCaps,
     TagCaps,
     NotifyCaps,
+    ProjectionCaps,
     SubscriptionCaps,
     CrossSchemeCaps,
     SubscriptionHandle,
@@ -83,6 +84,11 @@ const makeCtx = () => {
             events.push(`${pathname}#${channel}:${state}:${contentLength}`);
         },
     };
+    const projection: ProjectionCaps = {
+        async readable(content) {
+            return content.length > 0 ? { content, mimetype: "text/markdown" } : null;
+        },
+    };
 
     const subscriptions: SubscriptionCaps = {
         async open(_pathname, _handle: SubscriptionHandle) {
@@ -105,7 +111,7 @@ const makeCtx = () => {
 
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, tags, notify, subscriptions, crossScheme,
+        entries, channels, tags, notify, projection, subscriptions, crossScheme,
     };
 
     return { ctx, inspect: () => ({ events, chunks, woken, closed }) };

@@ -21,7 +21,8 @@ The HTTP method is the **op**:
 
 Channels:
 
-- `#body` — response body (rendered HTML as `text/html`, else raw under its `Content-Type`)
+- `#body` — model-facing markdown for HTML; otherwise the response under its `Content-Type`
+- `#html` — faithful rendered DOM for HTML (`text/html`)
 - `#header` — response status line + headers (`text/plain`)
 
 Request headers ride **inside the target** as trailing `{Key: value}` blocks —

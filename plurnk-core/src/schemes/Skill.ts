@@ -22,6 +22,7 @@ export default class Skill {
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
+        folderScopes: true,
     };
 
     async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {

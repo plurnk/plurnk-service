@@ -35,6 +35,7 @@ export default class OutputScheme {
             writableBy: ["plugin"],
             volatile: true,
             modelVisible: true,
+            folderScopes: true,
             foldedByDefault: true,
             glyph: decl.glyph,
             example: decl.example,

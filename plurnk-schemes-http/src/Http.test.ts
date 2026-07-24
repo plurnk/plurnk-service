@@ -13,6 +13,7 @@ import type {
     ChannelCaps,
     TagCaps,
     NotifyCaps,
+    ProjectionCaps,
     SubscriptionCaps,
     CrossSchemeCaps,
     EntryData,
@@ -64,6 +65,12 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
         async list() { return { status: 200, tags: [] }; },
     };
     const notify: NotifyCaps = { streamEvent() {} };
+    const projection: ProjectionCaps = {
+        async readable(content) {
+            const text = content.replace(/<[^>]+>/g, "").trim();
+            return text.length > 0 ? { content: text, mimetype: "text/markdown" } : null;
+        },
+    };
     const subscriptions: SubscriptionCaps = {
         async open(pathname, handle) { opened = { pathname, handle }; seq.push("open"); return localAbort.signal; },
         async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
@@ -73,7 +80,7 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
 
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, tags, notify, subscriptions, crossScheme,
+        entries, channels, tags, notify, projection, subscriptions, crossScheme,
     };
     return {
         ctx,
@@ -131,7 +138,7 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.equal(Http.manifest.defaultChannel, "body");
     assert.equal(Http.manifest.flags?.requiresWeb, true);
     assert.equal(Http.manifest.volatile, true);
-    assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header"]);
+    assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
     // Self-doc for the model's packet listing (deep docs ride plurnk://schemes/http.md).
     assert.equal(Http.manifest.glyph, "🌐");
     // example must be a complete, copy-pasteable op (http#2): the service renders
@@ -162,9 +169,9 @@ test("READ: materializes the entry (manifest channels) BEFORE subscribing", asyn
     const { wrote, seq } = inspect();
     // write must precede open — open() binds an existing entry; it can't seed channels.
     assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
-    assert.equal(wrote?.pathname, "/robots.txt");
+    assert.equal(wrote?.pathname, "/example.com/robots.txt");
     // Seeded channels mirror the manifest: empty content + the seed mimetypes.
-    assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header"]);
+    assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header", "html"]);
     assert.deepEqual(wrote!.entry.channels.body, { content: "", mimetype: "application/octet-stream" });
     assert.deepEqual(wrote!.entry.channels.header, { content: "", mimetype: "text/plain" });
     assert.deepEqual(wrote!.entry.tags, []);
@@ -177,7 +184,7 @@ test("SEND[200]: also materializes the entry before subscribing (shares #fetchSt
     });
     const { wrote, seq } = inspect();
     assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
-    assert.equal(wrote?.pathname, "/p");
+    assert.equal(wrote?.pathname, "/example.com/p");
 });
 
 // ── READ streaming ────────────────────────────────────────────────────────
@@ -188,7 +195,7 @@ test("READ: streams response body into the body channel and closes done", async 
         assert.equal(r.status, 102); // Processing — streaming subscription
     });
     const { chunks, opened, closed } = inspect();
-    assert.equal(opened?.pathname, "/x");
+    assert.equal(opened?.pathname, "/example.com/x");
     const body = chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "hello world");
     // Byte path labels the body with its real content type (not the seed default).
@@ -258,7 +265,7 @@ test("READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
     assert.deepEqual(sseBody(inspect().chunks), ["crlf\n"]);
 });
 
-test("READ: an HTML page is rendered — body is the final DOM, labelled text/html", async () => {
+test("READ: rendered HTML archives the DOM while body carries the model-facing projection", async () => {
     const { ctx, inspect } = makeCtx();
     const browser = fakeBrowser("<html><body>rendered</body></html>");
     // The probe-fetch returns an HTML content-type (a SPA shim); render takes over.
@@ -269,11 +276,14 @@ test("READ: an HTML page is rendered — body is the final DOM, labelled text/ht
     const { chunks, closed } = inspect();
     assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", workerId: 1, headers: [] }]);
     const bodyChunks = chunks.filter((c) => c.channel === "body");
-    assert.equal(bodyChunks.length, 1); // single-shot: the whole rendered DOM
-    assert.equal(bodyChunks[0].chunk, "<html><body>rendered</body></html>");
-    assert.equal(bodyChunks[0].mimetype, "text/html");
+    assert.equal(bodyChunks.length, 1);
+    assert.equal(bodyChunks[0].chunk, "rendered");
+    assert.equal(bodyChunks[0].mimetype, "text/markdown");
+    const htmlChunks = chunks.filter((c) => c.channel === "html");
+    assert.equal(htmlChunks[0]?.chunk, "<html><body>rendered</body></html>");
+    assert.equal(htmlChunks[0]?.mimetype, "text/html");
     assert.equal(closed?.reason, "done");
-    assert.match(closed?.outcome ?? "", /rendered HTTP 200; \d+ chars/);
+    assert.match(closed?.outcome ?? "", /rendered HTTP 200; \d+ readable chars/);
 });
 
 test("SEND[200]: an HTML response is NOT rendered (POST can't be a navigation)", async () => {
@@ -336,7 +346,7 @@ test("SEND[410]: deletes the cached entry", async () => {
     const { ctx, inspect } = makeCtx();
     const r = await new Http().send(sendStmt(410, urlTarget("http://example.com/x", "/x")), ctx);
     assert.equal(r.status, 200);
-    assert.equal(inspect().deleted, "/x");
+    assert.equal(inspect().deleted, "/example.com/x");
 });
 
 test("SEND[499]: scheme-level no-op (engine routes cancel to the handle)", async () => {
@@ -453,13 +463,17 @@ test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
 });
 
 // ── conditional revalidation (service#341) ─────────────────────────────────
-const priorEntry = (body: string, mimetype: string, header: string): EntryData => ({
-    channels: { body: { content: body, mimetype }, header: { content: header, mimetype: "text/plain" } },
+const priorEntry = (body: string, mimetype: string, header: string, html?: string): EntryData => ({
+    channels: {
+        body: { content: body, mimetype },
+        header: { content: header, mimetype: "text/plain" },
+        ...(html === undefined ? {} : { html: { content: html, mimetype: "text/html" } }),
+    },
     tags: [],
 });
 
-test("READ revalidation: prior ETag → If-None-Match → 304 serves cached body, skips render", async () => {
-    const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/html", "HTTP 200 OK\netag: \"v1\""));
+test("READ revalidation: prior ETag → If-None-Match → 304 serves cached projection + DOM, skips render", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("cached page", "text/markdown", "HTTP 200 OK\netag: \"v1\"", "<html>cached page</html>"));
     const browser = fakeBrowser("<html>SHOULD NOT RENDER</html>");
     let seenINM = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -474,6 +488,7 @@ test("READ revalidation: prior ETag → If-None-Match → 304 serves cached body
     assert.equal(browser.calls.length, 0);                  // 304 → no render
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "cached page");                      // cached body re-served
+    assert.equal(inspect().chunks.find((c) => c.channel === "html")?.chunk, "<html>cached page</html>");
     assert.match(inspect().closed?.outcome ?? "", /revalidated 304/); // honest in the close summary
 });
 

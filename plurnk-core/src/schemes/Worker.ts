@@ -43,6 +43,7 @@ export default class Worker {
         writableBy: ["model", "client", "plurnk"], // the kernel authors worker://plurnk/ (docs); write-scoping still gates principals
         volatile: false,
         modelVisible: true,
+        folderScopes: true,
         example: "<<EDIT(worker:///plan.md):- [ ] investigate the timeout:EDIT",
     };
 
