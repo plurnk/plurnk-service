@@ -259,11 +259,11 @@ export default class Search extends BaseExecutor {
             ...(publishedDate ? { publishedDate } : {}),
             ...(entry ? {
                 materialized: verdicts[i],
-                // `url` is already the canonical substrate address. Spell out
-                // its successful next operation so a weak model does not treat
-                // materialization as an opaque implementation verdict and
-                // answer from the discovery snippet instead of the page.
-                ...(verdicts[i] ? { readTarget: url } : {}),
+                // `url` is the canonical substrate identity; `#body` selects
+                // its preferred model-facing projection. Point at that channel
+                // explicitly so retrieval does not fan out into response
+                // headers and archival HTML before the model sees evidence.
+                ...(verdicts[i] ? { readTarget: `${url}#body` } : {}),
             } : {}),
         }));
         write("results", JSON.stringify(results));

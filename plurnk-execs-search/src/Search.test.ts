@@ -213,7 +213,7 @@ test("#596: a rejected entry() preserves ranked discovery and reports materializ
         entry: async (path) => { if (path.includes("8.8.8.9")) throw new Error("consumer fetch refused — body unavailable"); },
     });
     assert.deepEqual(JSON.parse(writes[0].chunk), [
-        { title: "a", url: "https://8.8.8.8/a", materialized: true, readTarget: "https://8.8.8.8/a" },
+        { title: "a", url: "https://8.8.8.8/a", materialized: true, readTarget: "https://8.8.8.8/a#body" },
         { title: "b", url: "https://8.8.8.9/b", materialized: false },
     ], "successful materialization advertises the canonical READ target; rejection preserves discovery without claiming a readable page");
 });
