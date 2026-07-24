@@ -267,7 +267,7 @@ Each line is a standalone op example — a valid statement on its own, never a t
 <<READ(worker:///users.json):$[?(@.role=="admin")]:READ
 <<READ(log:///1/2/3)<0.8>:~high-signal findings:READ
 <<READ(node:///3/1/2#stdout)<1,40>::READ
-<<READ(../../../../etc/hosts)<2>::READ
+<<READ(../AGENTS.md)<2>::READ
 <<READ(https://en.wikipedia.org/wiki/Paris)<426,465>::READ
 <<EDIT[philosophy,existentialism](worker:///philosophy/existentialism/meaning.md):The meaning of life is 42:EDIT
 <<EDIT[france,geography](worker:///countries/france/capital.md):What is the capital of France?:EDIT
