@@ -254,6 +254,21 @@ test("story: answer a question with a web search (LIVE — #530, in the default 
     } finally { await story.cleanup(); }
 });
 
+test("story: retrieve and summarize a live web page", { timeout: TIMEOUT }, async () => {
+    const story = await runStory({
+        label: "web-retrieve-live",
+        prompt: "Summarize the fifth paragraph of Marilyn Monroe's Wikipedia entry.",
+        maxTurns: 8,
+    });
+    try {
+        const ok = story.finalStatus === 200 && story.lastContent.trim().length > 20;
+        if (!ok) await story.dump();
+        await assertRetrievedWebBody(story);
+        assert.equal(story.finalStatus, 200);
+        assert.ok(story.lastContent.trim().length > 20, `the answer contains a substantive summary; got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
+});
+
 test("story: read the codename from notes.md", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "codename",
