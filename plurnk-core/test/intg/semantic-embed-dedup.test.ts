@@ -37,7 +37,7 @@ test("identical entries attach one complete semantic artifact and both remain ad
                 embeddedTexts += texts.length;
                 return texts.map(() => vector);
             },
-            embedderInfo: () => ({ maxTokens: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@shared" }),
+            embedderInfo: () => ({ contextWindow: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@shared" }),
         } as unknown as Mimetypes;
         const writeCtx = makeSchemeCtx({ db, workspaceId, workerId });
         const deriveCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });

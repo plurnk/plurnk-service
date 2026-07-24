@@ -70,7 +70,7 @@ test("a completed representative releases its duplicates while an unrelated repr
             get(target, property, receiver) {
                 if (property === "embedderInfo") return async () => ({
                     dimension: 2,
-                    maxTokens: 512,
+                    contextWindow: 512,
                     countTokens: async (text: string) => Math.ceil(text.length / 4),
                     model: "progressive-dedup-test",
                 });

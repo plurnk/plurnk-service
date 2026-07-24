@@ -54,8 +54,8 @@ async function inRemote(snippet, envExtra = {}) {
 
 describe("remote mode (#46)", () => {
     it("probes the dimension at load and folds model+dimension into the identity", async () => {
-        const out = await inRemote(`console.log(JSON.stringify({ d: e.dimension, m: e.model, mt: e.maxTokens ?? null }));`);
-        assert.deepEqual(JSON.parse(out), { d: DIM, m: `remote:test-model@d${DIM}`, mt: null });
+        const out = await inRemote(`console.log(JSON.stringify({ d: e.dimension, m: e.model, cw: e.contextWindow ?? null }));`);
+        assert.deepEqual(JSON.parse(out), { d: DIM, m: `remote:test-model@d${DIM}`, cw: null });
     });
 
     it("embed() returns 4×dimension bytes from the endpoint; API key rides as Bearer", async () => {
@@ -108,19 +108,19 @@ describe("remote mode — embedderInfo contract facts (#50)", () => {
         const out = await inRemote(`console.log(JSON.stringify(typeof e.countTokens));`);
         assert.equal(JSON.parse(out), "undefined");
     });
-    it("PLURNK_MIMETYPES_EMBED_MAX_TOKENS declares the window (operator fact)", async () => {
+    it("PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW declares the window (operator fact)", async () => {
         const out = await inRemote(
-            `console.log(JSON.stringify({ mt: e.maxTokens ?? null }));`,
-            { PLURNK_MIMETYPES_EMBED_MAX_TOKENS: "8192" },
+            `console.log(JSON.stringify({ cw: e.contextWindow ?? null }));`,
+            { PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW: "8192" },
         );
-        assert.deepEqual(JSON.parse(out), { mt: 8192 });
+        assert.deepEqual(JSON.parse(out), { cw: 8192 });
     });
     it("a malformed window crashes; unset stays unknown", async () => {
         await assert.rejects(
-            () => inRemote(`console.log("loaded");`, { PLURNK_MIMETYPES_EMBED_MAX_TOKENS: "lots" }),
+            () => inRemote(`console.log("loaded");`, { PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW: "lots" }),
             /must be a positive integer/,
         );
-        const out = await inRemote(`console.log(JSON.stringify(e.maxTokens ?? null));`);
+        const out = await inRemote(`console.log(JSON.stringify(e.contextWindow ?? null));`);
         assert.equal(JSON.parse(out), null);
     });
 });

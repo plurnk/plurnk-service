@@ -1,13 +1,11 @@
 // Coverage: SPEC §17 (embedderInfo contract).
 // embeddings#1: mimetypes.embedderInfo() surfaces the embedder's pure model
-// facts (token window + the model's own counter) for plurnk-service's lossless
-// chunker. The activation key — null keeps the host on whole-entry behavior;
-// non-null lets it tile.
+// facts (input context window + the model's own counter) for plurnk-service's
+// lossless chunker.
 //
 //   E1. null when no embedder package is installed.
-//   E2. null when the installed embedder predates the surface (no
-//       maxTokens/countTokens) — back-compat, host stays on whole-entry.
-//   E3. {maxTokens, countTokens} when the embedder exposes them; countTokens
+//   E2. Unknown optional facts are explicit nulls on a present embedder.
+//   E3. {contextWindow, countTokens} when the embedder exposes them; countTokens
 //       delegates to the embedder's own tokenizer.
 
 import { describe, it } from "node:test";
@@ -40,7 +38,7 @@ function makeDiscovery(): Discovery {
 const fullEmbedder = {
     dimension: 4,
     model: "fake@1",
-    maxTokens: 512,
+    contextWindow: 512,
     async embed(): Promise<Uint8Array> {
         return new Uint8Array(new Float32Array(4).buffer);
     },
@@ -49,8 +47,8 @@ const fullEmbedder = {
     },
 };
 
-// Legacy surface: embed + dimension only, no maxTokens/countTokens.
-const legacyEmbedder = {
+// Minimal valid surface: embed + dimension only, no chunk-planning facts.
+const minimalEmbedder = {
     dimension: 4,
     async embed(): Promise<Uint8Array> {
         return new Uint8Array(new Float32Array(4).buffer);
@@ -75,22 +73,19 @@ describe("embeddings#1 — embedderInfo()", () => {
         assert.equal(await mk(null).embedderInfo(), null);
     });
 
-    it("E2 (recontracted by #50): a legacy embedder is PRESENT with null facts — never null-the-info", async () => {
-        // The old contract returned null here, conflating "present, window
-        // unknown" with "absent" — which silently FTS-degraded working remote
-        // embedders at the host's presence gate (#50 / service#343).
-        const info = await mk(legacyEmbedder).embedderInfo();
+    it("E2: a present embedder reports unknown optional facts as null", async () => {
+        const info = await mk(minimalEmbedder).embedderInfo();
         assert.ok(info, "present embedder must never report as absent");
         assert.equal(info.dimension, 4);
-        assert.equal(info.maxTokens, null, "unknown window is explicitly null");
+        assert.equal(info.contextWindow, null, "unknown window is explicitly null");
         assert.equal(info.countTokens, null, "no counter is explicitly null");
     });
 
-    it("E3: surfaces dimension + maxTokens + a delegating countTokens", async () => {
+    it("E3: surfaces dimension + contextWindow + a delegating countTokens", async () => {
         const info = await mk(fullEmbedder).embedderInfo();
         assert.ok(info, "expected non-null info");
         assert.equal(info.dimension, 4);
-        assert.equal(info.maxTokens, 512);
+        assert.equal(info.contextWindow, 512);
         assert.ok(info.countTokens, "full surface has a counter");
         assert.equal(await info.countTokens("hello"), 5, "delegates to the embedder's counter");
     });
@@ -101,7 +96,7 @@ describe("embeddings#1 — embedderInfo()", () => {
     });
 
     it("E5: omits model when the embedder doesn't export one", async () => {
-        // A full chunking surface (maxTokens + countTokens) but no model id.
+        // A full chunking surface (contextWindow + countTokens) but no model id.
         const { model: _drop, ...noModel } = fullEmbedder;
         const info = await mk(noModel).embedderInfo();
         assert.ok(info, "still non-null — model is independent of the chunking facts");

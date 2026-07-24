@@ -38,7 +38,7 @@ const result = await mimetypes.process(
 Direct surface, if you want it without the framework:
 
 ```js
-import { embed, dimension, model, maxTokens, countTokens } from "@plurnk/plurnk-mimetypes-embeddings";
+import { embed, dimension, model, contextWindow, countTokens } from "@plurnk/plurnk-mimetypes-embeddings";
 const bytes = await embed("database connection error"); // Uint8Array(4 × dimension)
 ```
 
@@ -48,10 +48,10 @@ const bytes = await embed("database connection error"); // Uint8Array(4 × dimen
 - `embedBatch(texts, { onProgress, signal }) → Promise<Uint8Array[]>` — embed many texts across a shared pool of single-threaded workers, returning vectors **in input order** even when callers overlap. Each vector is **bit-identical** to `embed()` of the same text. `onProgress({ completed, total })` fires as each finishes. `signal` (`AbortSignal`) cancels in flight. The pool is lazy, persistent, unref'd while idle, and torn down by `dispose()`.
 - `dimension` — `384`.
 - `model` — the staleness identity (`Xenova/all-MiniLM-L6-v2@<pin>+q8`), **derived** from `.model-pin` + the quantization, never a hand-synced literal. Store it next to each vector; vectors from a different revision *or* quantization are silently incomparable.
-- `maxTokens` — `512`, the model's token window.
-- `countTokens(text) → Promise<number>` — token count in the model's **own** tokenizer, special tokens (CLS/SEP) included, **untruncated**. Local counts use the same host-adaptive worker pool as `embedBatch`, so exact chunk planning scales across cores instead of blocking the daemon thread. The losslessness primitive: a chunk embeds without truncation iff `countTokens(chunk) <= maxTokens`. A char/word proxy can't make that guarantee.
+- `contextWindow` — `512`, the model's input context window.
+- `countTokens(text) → Promise<number>` — token count in the model's **own** tokenizer, special tokens (CLS/SEP) included, **untruncated**. Local counts use the same host-adaptive worker pool as `embedBatch`, so exact chunk planning scales across cores instead of blocking the daemon thread. The losslessness primitive: a chunk embeds without truncation iff `countTokens(chunk) <= contextWindow`. A char/word proxy can't make that guarantee.
 
-Input beyond the 512-token window is truncated by `embed()`; `maxTokens` + `countTokens` let a caller (e.g. plurnk-service's chunker) tile a larger body into window-sized chunks instead, losslessly. The framework re-exposes both via `mimetypes.embedderInfo()`.
+Input beyond the 512-token window is truncated by `embed()`; `contextWindow` + `countTokens` let a caller (e.g. plurnk-service's chunker) tile a larger body into window-sized chunks instead, losslessly. The framework re-exposes both via `mimetypes.embedderInfo()`.
 
 For bulk corpus generation, feed tiled chunks to `embedBatch` and forward `onProgress` to the operator surface. A large run remains visible and uses bounded data parallelism instead of becoming a single-threaded, opaque freeze.
 
@@ -59,7 +59,7 @@ For bulk corpus generation, feed tiled chunks to `embedBatch` and forward `onPro
 
 ### Remote mode (#46)
 
-Set `PLURNK_MIMETYPES_EMBED_BASE_URL` (OpenAI-convention `/v1` base; `/embeddings` is appended) to swap the bundled WASM embedder for an OpenAI-compatible endpoint — BYO GPU (llama-server, vLLM, hosted). `PLURNK_MIMETYPES_EMBED_MODEL` is **required** with it; `PLURNK_MIMETYPES_EMBED_API_KEY` optional (Bearer). Dimension is probed at load (unreachable endpoint = import crash = boot-time surfacing); identity becomes `remote:<model>@d<dim>` so a swap re-derives the space. No local tokenizer in remote mode: `countTokens` is absent; `maxTokens` comes from `PLURNK_MIMETYPES_EMBED_MAX_TOKENS` when you declare it (the endpoint owner knows their model), else unknown — `embedderInfo()` reports the embedder as PRESENT either way, with the unknown facts explicitly null (mimetypes#50). `embedBatch` sends one request with the whole input array; `PLURNK_MIMETYPES_EMBED_WORKERS` is not required (no pool). Unset BASE_URL = local mode, byte-identical to previous releases.
+Set `PLURNK_MIMETYPES_EMBED_BASE_URL` (OpenAI-convention `/v1` base; `/embeddings` is appended) to swap the bundled WASM embedder for an OpenAI-compatible endpoint — BYO GPU (llama-server, vLLM, hosted). `PLURNK_MIMETYPES_EMBED_MODEL` is **required** with it; `PLURNK_MIMETYPES_EMBED_API_KEY` optional (Bearer). Dimension is probed at load (unreachable endpoint = import crash = boot-time surfacing); identity becomes `remote:<model>@d<dim>` so a swap re-derives the space. No local tokenizer in remote mode: `countTokens` is absent; `contextWindow` comes from `PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW` when you declare it (the endpoint owner knows their model), else unknown — `embedderInfo()` reports the embedder as PRESENT either way, with the unknown facts explicitly null. `embedBatch` sends one request with the whole input array; `PLURNK_MIMETYPES_EMBED_WORKERS` is not required (no pool). Unset BASE_URL = local mode.
 
 - `PLURNK_MIMETYPES_EMBED_WORKERS` — local `embedBatch` pool size. Unset uses all available cores, leaving one free on hosts larger than four cores; a positive integer sets an exact operator budget; `-1` explicitly claims every core. Each worker holds a model copy, so memory-constrained operators can lower the value.
 

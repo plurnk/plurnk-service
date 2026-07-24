@@ -18,9 +18,8 @@
 //   at boot, never mid-query. The identity folds model + dimension
 //   (`remote:<model>@d<dim>`), so an embedder swap re-derives the vector space
 //   (service folds it into deep_hash). No local tokenizer in remote mode →
-//   maxTokens/countTokens are absent → embedderInfo() reports null and the host
-//   stays on whole-entry chunks (honest; the window is the endpoint's fact, not
-//   ours to invent).
+//   contextWindow may be operator-declared; countTokens is absent because the
+//   endpoint does not expose its tokenizer.
 import { Worker } from "node:worker_threads";
 import { availableParallelism } from "node:os";
 import path from "node:path";
@@ -28,7 +27,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
     loadRuntime, embedText, releaseRuntime,
-    dimension as localDimension, maxTokens as localMaxTokens,
+    dimension as localDimension, contextWindow as localContextWindow,
 } from "./embed-core.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -52,21 +51,21 @@ function resolveRemote() {
         url: `${base.trim().replace(/\/+$/, "")}/embeddings`,
         model: modelName.trim(),
         key: process.env.PLURNK_MIMETYPES_EMBED_API_KEY,
-        maxTokens: remoteMaxTokens(),
+        contextWindow: remoteContextWindow(),
     };
 }
 
-// PLURNK_MIMETYPES_EMBED_MAX_TOKENS — the remote model's token window, an
+// PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW — the remote model's input window, an
 // OPERATOR-DECLARED fact (mimetypes#50): the endpoint owner knows their model.
 // Optional: unset → window unknown (hosts take their null-window lane).
 // Malformed → crash. Remote-only by nature — the bundled model's window is a
 // model fact the operator cannot re-declare (checked in local mode below).
-function remoteMaxTokens() {
-    const raw = process.env.PLURNK_MIMETYPES_EMBED_MAX_TOKENS;
+function remoteContextWindow() {
+    const raw = process.env.PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW;
     if (raw === undefined || raw.trim() === "") return undefined;
     const n = Number(raw);
     if (!Number.isInteger(n) || n < 1) {
-        throw new RangeError(`PLURNK_MIMETYPES_EMBED_MAX_TOKENS must be a positive integer; got ${JSON.stringify(raw)}.`);
+        throw new RangeError(`PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW must be a positive integer; got ${JSON.stringify(raw)}.`);
     }
     return n;
 }
@@ -74,9 +73,9 @@ const REMOTE = resolveRemote();
 // Set-to-EMPTY equals unset (the .env.defaults assembled floor sets every key,
 // empty when no default — mimetypes#52); only a non-empty value in local mode
 // is the contradiction that crashes.
-if (!REMOTE && (process.env.PLURNK_MIMETYPES_EMBED_MAX_TOKENS ?? "").trim() !== "") {
+if (!REMOTE && (process.env.PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW ?? "").trim() !== "") {
     throw new RangeError(
-        "PLURNK_MIMETYPES_EMBED_MAX_TOKENS is remote-only: the bundled model's window is a "
+        "PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW is remote-only: the bundled model's window is a "
         + "model fact (512), not operator config. Unset it, or set PLURNK_MIMETYPES_EMBED_BASE_URL.",
     );
 }
@@ -140,25 +139,24 @@ async function remoteEmbedMany(texts, signal) {
 // Mode-resolved identity facts. Remote: dimension PROBED at load (one request;
 // unreachable endpoint = crash the import = boot-time surfacing); identity
 // folds model + dimension so an embedder swap re-derives the space; no
-// maxTokens/countTokens (no local tokenizer — embedderInfo() → null → the host
-// stays on whole-entry chunks). Local: the bundled model's facts, identity
-// string byte-identical to every previously stored id.
+// countTokens (no local tokenizer); contextWindow is operator-declared or
+// undefined. Local mode exposes the bundled model's facts.
 export let dimension;
-export let maxTokens;
+export let contextWindow;
 export let model;
 if (REMOTE) {
     const [probe] = await remoteEmbedMany(["plurnk dimension probe"]);
     const dim = probe.byteLength / 4;
     if (!Number.isInteger(dim) || dim < 1) throw new Error(`remote embeddings: probe returned invalid dimension ${dim} from ${REMOTE.url}`);
     dimension = dim;
-    maxTokens = REMOTE.maxTokens;
+    contextWindow = REMOTE.contextWindow;
     model = `remote:${REMOTE.model}@d${dimension}`;
 } else {
     const REPO = "Xenova/all-MiniLM-L6-v2";
     const DTYPE = "q8";
     const PIN = readFileSync(path.join(here, ".model-pin"), "utf-8").trim();
     dimension = localDimension;
-    maxTokens = localMaxTokens;
+    contextWindow = localContextWindow;
     model = `${REPO}@${PIN.slice(0, 8)}+${DTYPE}`;
 }
 

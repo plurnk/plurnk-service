@@ -217,8 +217,8 @@ export default class Service {
         const embedInfo = await daemon.mimetypes.embedderInfo();
         if (embedInfo === null) {
             process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Install @plurnk/plurnk-mimetypes-embeddings for vector search, or see README.md#semantic-search\n");
-        } else if (embedInfo.maxTokens === null) {
-            process.stderr.write("plurnk-service: remote embedder active but reports no token window — set PLURNK_MIMETYPES_EMBED_MAX_TOKENS to the endpoint's limit or embedding derivations will refuse\n");
+        } else if (embedInfo.contextWindow === null) {
+            process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
         }
         // §tokenomics-window-partition coupling (F7): per-request numeric reasoning budgets are
         // IGNORED by llama-server — when reasoning is on, only the box's --reasoning-budget launch

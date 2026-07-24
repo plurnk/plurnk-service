@@ -29,9 +29,8 @@ interface Embedder {
     // Model identity (e.g. "Xenova/all-MiniLM-L6-v2@751bff37+q8"); surfaced on
     // ProcessResult.embeddingModel (SPEC §17, #31).
     readonly model?: string;
-    // Lossless-chunking facts for the host (SPEC §17, embeddings#1); absent on
-    // an embedder predating the chunking surface → info() reports null.
-    readonly maxTokens?: number;
+    // Optional lossless-chunking facts for the host (SPEC §17).
+    readonly contextWindow?: number;
     countTokens?(text: string): Promise<number>;
     // Release the native runtime (onnxruntime worker pool); absent → untearable.
     dispose?(): Promise<void> | void;
@@ -40,14 +39,14 @@ interface Embedder {
 // What info() hands the host (SPEC §17, reshaped by #50): PRESENCE facts,
 // with unknowns explicitly null. null-the-whole-info means exactly one thing —
 // NO embedder resolves. A working embedder with an incomplete self-report (a
-// remote endpoint with no local tokenizer, a legacy embedder predating the
-// chunking surface) returns info with maxTokens/countTokens null: "present,
+// remote endpoint with no local tokenizer) returns info with
+// contextWindow/countTokens null: "present,
 // window unknown" and "absent" are different facts and the contract never
 // conflates them again.
 export interface EmbedderInfo {
     dimension: number;
-    // The token window, or null = unknown (host takes its null-window lane).
-    maxTokens: number | null;
+    // The input context window, or null = unknown.
+    contextWindow: number | null;
     // The model's own counter, or null = no counter available.
     countTokens: ((text: string) => Promise<number>) | null;
     // Model identity (SPEC §17, #31) — the host folds it into each entry's
@@ -150,10 +149,10 @@ export default class Embeddings {
     async info(): Promise<EmbedderInfo | null> {
         const embedder = await this.#resolve();
         if (!embedder) return null;
-        const { dimension, maxTokens, countTokens, model } = embedder;
+        const { dimension, contextWindow, countTokens, model } = embedder;
         return {
             dimension,
-            maxTokens: typeof maxTokens === "number" ? maxTokens : null,
+            contextWindow: typeof contextWindow === "number" ? contextWindow : null,
             countTokens: typeof countTokens === "function"
                 ? (text) => countTokens.call(embedder, text)
                 : null,

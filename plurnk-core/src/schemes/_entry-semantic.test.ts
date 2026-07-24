@@ -14,7 +14,7 @@ const fakeVector = (s: string): Uint8Array => new Uint8Array(new Float32Array([s
 // A capable embedder: reports a window + a word-count tokenizer + model id, batch-"embeds"
 // any texts (the framework embedBatch seam — #272; vectors map 1:1 to inputs, in order).
 const capable = {
-    embedderInfo: () => ({ maxTokens: 10000, countTokens: wordCount, model: "stub@1" }),
+    embedderInfo: () => ({ contextWindow: 10000, countTokens: wordCount, model: "stub@1" }),
     embedBatch: async (texts: readonly string[]) => texts.map(fakeVector),
 } as unknown as Mimetypes;
 
@@ -45,7 +45,7 @@ test("EntrySemantic.deriveEmbeddings: batches all tiled chunks into ONE embedBat
     try {
         const batchSizes: number[] = [];
         const spy = {
-            embedderInfo: () => ({ maxTokens: 10000, countTokens: wordCount, model: "stub@1" }),
+            embedderInfo: () => ({ contextWindow: 10000, countTokens: wordCount, model: "stub@1" }),
             embedBatch: async (texts: readonly string[]) => { batchSizes.push(texts.length); return texts.map(fakeVector); },
         } as unknown as Mimetypes;
         const content = Array.from({ length: 40 }, (_, i) => `line ${i} alpha beta gamma`).join("\n");
@@ -65,7 +65,7 @@ test("EntrySemantic.deriveEmbeddings reports planning and embedding progress wit
     try {
         const events: Array<{ phase: "planning" | "embedding"; completed: number; total: number }> = [];
         const reporting = {
-            embedderInfo: () => ({ maxTokens: 10000, countTokens: wordCount, model: "stub@1" }),
+            embedderInfo: () => ({ contextWindow: 10000, countTokens: wordCount, model: "stub@1" }),
             embedBatch: async (texts: readonly string[], options: { onProgress?: (progress: { completed: number; total: number }) => void }) => {
                 const vectors = [];
                 for (let i = 0; i < texts.length; i++) {
@@ -116,7 +116,7 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS
         // from THAT window, not a hardcoded default — so ~80 words tiles into many chunks.
         // (Pre-fix, an empty knob fail-harded; this locks the scalable path.)
         const smallWindow = {
-            embedderInfo: () => ({ maxTokens: 5, countTokens: wordCount, model: "small@1" }),
+            embedderInfo: () => ({ contextWindow: 5, countTokens: wordCount, model: "small@1" }),
             embedBatch: async (texts: readonly string[]) => texts.map(fakeVector),
         } as unknown as Mimetypes;
         const content = Array.from({ length: 20 }, (_, i) => `line ${i} a b`).join("\n");
@@ -129,7 +129,7 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS
 });
 
 test("EntrySemantic.deepConfigSignature: folds the embedder model id — a same-window model swap re-derives (#31)", async () => {
-    const mk = (model: string) => ({ embedderInfo: async () => ({ dimension: 3, maxTokens: 1000, countTokens: wordCount, model }) }) as unknown as Mimetypes;
+    const mk = (model: string) => ({ embedderInfo: async () => ({ dimension: 3, contextWindow: 1000, countTokens: wordCount, model }) }) as unknown as Mimetypes;
     const a = await EntrySemantic.deepConfigSignature(mk("e5@1"));
     const b = await EntrySemantic.deepConfigSignature(mk("e5@2")); // identical window + knobs, different model
     assert.notEqual(a, b, "a same-window model swap changes the signature → the deep_hash gate re-derives every entry");

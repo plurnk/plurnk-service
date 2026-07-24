@@ -31,7 +31,7 @@ test("an interrupted artifact stays building and unattached; retry completes and
         const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
         const mimetypes = {
             process: async (input: { content: string }) => ({ content: input.content, embedding: vector, embeddingModel: "stub@interrupt" }),
-            embedderInfo: () => ({ maxTokens: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@interrupt" }),
+            embedderInfo: () => ({ contextWindow: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@interrupt" }),
             embedBatch: async (texts: readonly string[]) => {
                 if (failOnce) {
                     failOnce = false;
@@ -67,7 +67,7 @@ test("an entry-local derivation failure is terminal, explicit, and does not bloc
 
         const mimetypes = {
             process: async () => { throw new Error("fixture reader exploded"); },
-            embedderInfo: () => ({ maxTokens: 128, countTokens: async () => 1, model: "stub@failure" }),
+            embedderInfo: () => ({ contextWindow: 128, countTokens: async () => 1, model: "stub@failure" }),
         } as unknown as Mimetypes;
 
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));

@@ -94,9 +94,9 @@ export default class EntrySemantic {
         // is the operator's to declare (their knob), and the counter resolves through the seam's
         // tokenizers by the embedder's model name — the chars/2 upper bound when inexact is the
         // surfaced conservative fallback (smaller chunks are correct chunks).
-        if (info.maxTokens === null) throw new Error("remote embedder reports no token window — set PLURNK_MIMETYPES_EMBED_MAX_TOKENS to the endpoint's limit");
+        if (info.contextWindow === null) throw new Error("remote embedder reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit");
         const counter = info.countTokens ?? (await mimetypes.tokenizer(info.model ?? "")).countTokens;
-        const budget = EntrySemantic.#chunkBudget(info.maxTokens);
+        const budget = EntrySemantic.#chunkBudget(info.contextWindow);
         let specs = await EntryChunk.tile(
             content,
             boundaries,
@@ -126,12 +126,12 @@ export default class EntrySemantic {
     // Chunk budget in tokens — `.env.defaults` is the law, no code fallback. EMPTY =
     // the embedder's reported window (scalable — NO model-specific number baked in);
     // a positive value caps BELOW the window (e.g. to sweep granularity).
-    static #chunkBudget(maxTokens: number): number {
+    static #chunkBudget(contextWindow: number): number {
         const raw = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
-        if (raw === undefined || raw.trim() === "") return maxTokens;
+        if (raw === undefined || raw.trim() === "") return contextWindow;
         const v = Number(raw);
         if (!Number.isInteger(v) || v < 1) throw new Error(`PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS must be empty (= the embedder's window) or a positive integer, got ${JSON.stringify(raw)}`);
-        return Math.min(v, maxTokens);
+        return Math.min(v, contextWindow);
     }
 
     static #chunkOverlap(): number {
@@ -159,7 +159,7 @@ export default class EntrySemantic {
     static async deepConfigSignature(mimetypes: Mimetypes): Promise<string> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) return "embed:none";
-        const base = `embed:${info.model ?? "?"}:${info.maxTokens}:${info.maxTokens === null ? "?" : EntrySemantic.#chunkBudget(info.maxTokens)}:${EntrySemantic.#chunkOverlap()}`;
+        const base = `embed:${info.model ?? "?"}:${info.contextWindow}:${info.contextWindow === null ? "?" : EntrySemantic.#chunkBudget(info.contextWindow)}:${EntrySemantic.#chunkOverlap()}`;
         const maxBytes = EntrySemantic.maxEmbedSize();
         return maxBytes === 0 ? base : `${base}:max-bytes=${maxBytes}`;
     }

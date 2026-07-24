@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { countTokens, dimension, dispose, embed, embedBatch, maxTokens, model } from "./index.js";
+import { contextWindow, countTokens, dimension, dispose, embed, embedBatch, model } from "./index.js";
 
 function toVector(bytes) {
     return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
@@ -59,8 +59,8 @@ describe("embedder duck surface", () => {
         assert.equal(bytes.length, 1536);
     });
 
-    it("maxTokens is the model window (512)", () => {
-        assert.equal(maxTokens, 512);
+    it("contextWindow is the model input window (512)", () => {
+        assert.equal(contextWindow, 512);
     });
 
     it("countTokens counts in the model tokenizer, including special tokens", async () => {
@@ -68,14 +68,14 @@ describe("embedder duck surface", () => {
         assert.equal(await countTokens(""), 2);
         // A short phrase is more than empty but well under the window.
         const five = await countTokens("the quick brown fox jumps");
-        assert.ok(five > 2 && five < maxTokens, `expected 2 < ${five} < ${maxTokens}`);
+        assert.ok(five > 2 && five < contextWindow, `expected 2 < ${five} < ${contextWindow}`);
     });
 
     it("countTokens is untruncated — reports overflow past the window", async () => {
         // The losslessness guarantee: a body that overflows must report its
-        // TRUE count, not a clamp at maxTokens, or the chunker can't tile it.
+        // TRUE count, not a clamp at contextWindow, or the chunker can't tile it.
         const n = await countTokens("database connection retry ".repeat(400));
-        assert.ok(n > maxTokens, `expected overflow count > ${maxTokens}, got ${n}`);
+        assert.ok(n > contextWindow, `expected overflow count > ${contextWindow}, got ${n}`);
     });
 
     it("overlapping token counts preserve each input across the shared pool", async () => {

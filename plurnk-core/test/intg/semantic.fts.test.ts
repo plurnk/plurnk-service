@@ -161,7 +161,7 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
             // process embeds the QUERY vector (rankSemantic); embedBatch embeds the chunk corpus (deriveEmbeddings, #272).
             process: async (input: { content: string }) => ({ embedding: vec(input.content), embeddingModel: "stub@e2e" }),
             embedBatch: async (texts: readonly string[]) => texts.map(vec),
-            embedderInfo: () => ({ maxTokens: 30, countTokens: wc, model: "stub@e2e" }),
+            embedderInfo: () => ({ contextWindow: 30, countTokens: wc, model: "stub@e2e" }),
         } as unknown as Mimetypes;
         // Filler, then a distinctive late line → the concept lands in a NON-first chunk.
         const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
@@ -193,7 +193,7 @@ test("[#semantic-json-tile] deriveEmbeddings embeds tiled chunks via embedBatch 
             return { embedding: new Uint8Array(new Float32Array([1, 0]).buffer), embeddingModel: "stub" };
         },
         embedBatch: async (texts: readonly string[]) => { batched.push([...texts]); return texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer)); },
-        embedderInfo: () => ({ maxTokens: 20, countTokens: wc, model: "stub" }),
+        embedderInfo: () => ({ contextWindow: 20, countTokens: wc, model: "stub" }),
     } as unknown as Mimetypes;
 
     const json = JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, items: [1, 2, 3, 4, 5, 6, 7, 8] }, null, 2);

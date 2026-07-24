@@ -25,7 +25,7 @@ export const dimension = 384;
 
 // The model's token window — past this embed() truncates (keeping [CLS] … [SEP])
 // so the position table never overflows. all-MiniLM-L6-v2 = 512.
-export const maxTokens = 512;
+export const contextWindow = 512;
 
 // Load the tokenizer + onnx session from the bundled model/ directory. Hermetic:
 // only local files are read. Returned handle is passed to embedText/countTokens.
@@ -47,11 +47,11 @@ const toI64 = (a) => BigInt64Array.from(a, BigInt);
 export async function embedText({ tokenizer, sepId, session }, text) {
     const enc = tokenizer.encode(text, { add_special_tokens: true, return_token_type_ids: true });
     let { ids, attention_mask: mask, token_type_ids: types } = enc;
-    if (ids.length > maxTokens) {
-        ids = ids.slice(0, maxTokens);
-        mask = mask.slice(0, maxTokens);
-        types = types.slice(0, maxTokens);
-        ids[maxTokens - 1] = sepId;
+    if (ids.length > contextWindow) {
+        ids = ids.slice(0, contextWindow);
+        mask = mask.slice(0, contextWindow);
+        types = types.slice(0, contextWindow);
+        ids[contextWindow - 1] = sepId;
     }
     const seq = ids.length;
     const { last_hidden_state: lhs } = await session.run({
