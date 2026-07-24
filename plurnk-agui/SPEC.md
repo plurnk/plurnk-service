@@ -63,18 +63,11 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   turn can carry N reasoning entities (distinct ids), each its own span (the OpenAI Responses
   model). `id` is the entity's identity (the SAME id its open reasoning carries, so open text and
   sealed value are two faces of one entity). agui projects, per item, `REASONING_ENCRYPTED_VALUE`
-  (@ag-ui/core shape: `subtype`/`entityId`/`encryptedValue`, never `messageId`/`value`) with
+  (`subtype`/`entityId`/`encryptedValue`) with
   `entityId` = the item `id`, correlated to a `REASONING_START/END` span keyed by that same `id`.
-  `format` has no AG-UI slot; it rides `plurnk.row` losslessly. A single item object is accepted
-  as a one-element list (core's transitional single-object write, #482 residual — core must relay
-  the full array to serve multi-item turns). An item with a null/absent `id` or an unknown
+  `format` has no AG-UI slot; it rides `plurnk.row` losslessly. A non-array carrier is invalid.
+  An item with a null/absent `id` or an unknown
   `subtype` is DROPPED (uncorrelatable → agui never coins an id or coerces a subtype).
-- **Deliberately broken until core delivers the shape** — the interface fails CLOSED: any row
-  lacking a well-formed reasoning-item (including the pre-convergence `{ reasoningEncrypted:
-  [{ data, format }] }` carrier, which has no `id`/`subtype`) projects NOTHING. agui never
-  synthesizes an id or guesses a subtype to manufacture a schema-valid event. The gap is the
-  forcing function: `REASONING_ENCRYPTED_VALUE` is unserved until the seam carries the reasoning-
-  item, and closing it is core's convergence obligation (#482), not agui's to translate around.
 - **The custom namespace** {§agui-custom-namespace} — everything plurnk-specific rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`, `plurnk.proposal`,
   `plurnk.telemetry`, `plurnk.stream`, `plurnk.quiesced`, `plurnk.terminated` — the full loop

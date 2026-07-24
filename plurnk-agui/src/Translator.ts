@@ -191,17 +191,13 @@ export default class Translator {
         return [{ type: "CUSTOM", name: "plurnk.telemetry", value: event }];
     }
 
-    // The reasoning-item LIST agui REQUIRES on the model row's attrs — the OpenAI/AG-UI shape:
-    // reasoning items { id, subtype: "message"|"tool-call", encrypted:[{data,format}] }, an ARRAY
-    // (a turn can carry N reasoning entities). A single object is tolerated as a one-element list
-    // (core's transitional write, #482 residual). Items lacking a correlatable id or a known
-    // subtype are DROPPED — never a guessed id/subtype; the legacy {reasoningEncrypted:[...]}
-    // carrier (no id/subtype) yields []. Empty = honestly unserved; the gap is pressure on core.
+    // Core carries an array of OpenAI/AG-UI reasoning items because a turn can
+    // contain multiple reasoning entities. Invalid shapes and uncorrelatable
+    // items are dropped; the projection never invents an id or subtype.
     static #reasoningItems(attrs: unknown): Array<{ id: string; subtype: "message" | "tool-call"; encrypted: Array<{ data: string }> }> {
         const parsed = typeof attrs === "string" ? (() => { try { return JSON.parse(attrs); } catch { return null; } })() : attrs;
         const raw = (parsed as { reasoning?: unknown } | null)?.reasoning;
-        // Array = the standard (N items); a single object = the transitional single-item write.
-        const list = Array.isArray(raw) ? raw : raw !== undefined && raw !== null ? [raw] : [];
+        const list = Array.isArray(raw) ? raw : [];
         const out: Array<{ id: string; subtype: "message" | "tool-call"; encrypted: Array<{ data: string }> }> = [];
         for (const e of list) {
             const r = e as { id?: unknown; subtype?: unknown; encrypted?: unknown };

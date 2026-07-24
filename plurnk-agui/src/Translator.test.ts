@@ -42,22 +42,12 @@ test("ambient (origin plurnk) rows ride plurnk.ambient; the model mirror row emi
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 
-test("core's single reasoning-item projects a correlated REASONING_ENCRYPTED_VALUE span (#482)", () => {
+test("a non-array reasoning carrier is rejected", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" })); // consume the turn boundary
-    // core's actual write (Dispatcher.writeModelEntry): attrs = { reasoning: <single item> }.
     const events = tr.logEntry(entry({ op: "model", coordinate: "1/1/9/model", tx: "<<PLAN:x:PLAN",
         attrs: JSON.stringify({ reasoning: { id: "reason-42", subtype: "message", encrypted: [{ data: "SEALED-1", format: "openai-responses-v1" }, { data: "SEALED-2", format: "openai-responses-v1" }] } }) }));
-    assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "REASONING_START", "REASONING_ENCRYPTED_VALUE", "REASONING_ENCRYPTED_VALUE", "REASONING_END"],
-        "plurnk.row (forensic) + a reasoning span correlated by the item id");
-    assert.equal((events[1] as { messageId: string }).messageId, "reason-42", "START keys off the SEAM's item id");
-    assert.equal((events[4] as { messageId: string }).messageId, "reason-42", "END shares the item id");
-    const ev = events[2] as { subtype: string; entityId: string; encryptedValue: string; value?: unknown; messageId?: unknown };
-    assert.equal(ev.subtype, "message", "subtype comes FROM the seam, never guessed");
-    assert.equal(ev.entityId, "reason-42", "entityId === the item id — correlates, never an orphan");
-    assert.equal(ev.encryptedValue, "SEALED-1", "blob verbatim");
-    assert.equal(ev.messageId, undefined, "the @ag-ui/core nouns, not messageId/value");
-    assert.equal(ev.value, undefined, "encryptedValue, not value");
+    assert.deepEqual(events.map((e) => e.type), ["CUSTOM"]);
 });
 
 test("the STANDARD array of items projects ONE correlated span per item (#482)", () => {
@@ -85,15 +75,12 @@ test("a NULL-id item stays dark — agui never coins an id to fake correlation (
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM"], "null id → plurnk.row only; no coined id");
 });
 
-test("the LEGACY {reasoningEncrypted} carrier stays DARK — no id/subtype means unserved, never guessed (#482)", () => {
+test("an unknown reasoning carrier is ignored", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
-    // The bespoke pre-convergence shape agui deliberately does NOT consume: no reasoning-item
-    // id, no subtype. agui projects nothing (honestly unserved) rather than synthesize an id or
-    // guess a subtype — the forcing function: core must deliver the standard shape.
     const legacy = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN",
         attrs: JSON.stringify({ reasoningEncrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }) }));
-    assert.deepEqual(legacy.map((e) => e.type), ["CUSTOM"], "legacy carrier → plurnk.row only; the standard event is unserved until core aligns");
+    assert.deepEqual(legacy.map((e) => e.type), ["CUSTOM"]);
 });
 
 test("turn boundaries are STEPs; termination closes the step and flags the outcome", () => {
