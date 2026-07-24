@@ -1,7 +1,7 @@
 // Capability context — the DB-free authoring surface for
 // `@plurnk/plurnk-schemes-*` siblings (keystone PR-2; design converged on
-// plurnk-service#180). The full contract — the five live namespaces, why
-// `visibility` is absent, why `proposals` / `crossScheme` are NOT namespaces —
+// plurnk-service#180). The full contract — the live namespaces and why
+// `visibility` and `proposals` are not namespaces —
 // is SPEC §capability-ctx. This module is its typed mirror.
 //
 // WHY it exists: today a sibling receives plurnk-service's raw `Db` handle on
@@ -144,16 +144,6 @@ export interface SubscriptionHandle {
     cancel(): void | Promise<void>;
 }
 
-// ── crossScheme (DEFERRED) ───────────────────────────────────────────────
-// Intentionally empty. Cross-scheme COPY/MOVE is engine-orchestrated over
-// CRUD today (service SPEC: cross-scheme COPY/MOVE); whether a sibling needs a FROM/TO capability — and
-// its shape — waits for the first real cross-scheme implementation to force
-// it. Present as a named placeholder so the slot exists without committing a
-// guessed interface.
-export interface CrossSchemeCaps {
-    readonly _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape";
-}
-
 // ── the context ──────────────────────────────────────────────────────────
 // Fresh per op-call. A sibling MUST NOT retain it past the handler return
 // (SPEC §forbidden). Identity/lifecycle fields carry the engine's per-dispatch
@@ -174,7 +164,6 @@ export interface SchemeCtx {
     readonly notify: NotifyCaps;
     readonly projection: ProjectionCaps;
     readonly subscriptions: SubscriptionCaps;
-    readonly crossScheme: CrossSchemeCaps;
 }
 
 // ── proposals (NOT a capability) ─────────────────────────────────────────

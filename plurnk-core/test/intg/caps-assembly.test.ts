@@ -1,14 +1,14 @@
 // Conformance: SchemeCtxImpl (keystone PR-2, #180) assembles the full capability
-// surface a sibling receives — identity off the PlurnkSchemeContext, the six
-// consumer-backed caps wired + functional through the seam, and the deferred
-// crossScheme stub. `visibility` is intentionally absent (dropped in schemes 0.4.3).
+// surface a sibling receives — identity off the PlurnkSchemeContext and the six
+// consumer-backed caps wired + functional through the seam. `visibility` is
+// intentionally absent.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
 import { openMigrated, insertWorkspace, makeSchemeCtx } from "./_helpers.ts";
 
-test("SchemeCtxImpl: identity + the six caps wired + crossScheme deferred stub", async () => {
+test("SchemeCtxImpl: identity and the six capabilities are wired", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-asm-${crypto.randomUUID()}`);
@@ -33,8 +33,6 @@ test("SchemeCtxImpl: identity + the six caps wired + crossScheme deferred stub",
         assert.equal((await sctx.entries.read("/e.md")).entry?.channels.body.content, "x");
         assert.deepEqual([...(await sctx.tags.list("/e.md")).tags], ["t"]);
 
-        // crossScheme is the deferred stub, not a live cap
-        assert.match(sctx.crossScheme._deferred, /#180/);
         // visibility was dropped — it is not on the assembled ctx
         assert.equal((sctx as unknown as Record<string, unknown>).visibility, undefined);
     } finally { await db.close(); }

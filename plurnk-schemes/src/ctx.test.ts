@@ -16,7 +16,6 @@ import type {
     NotifyCaps,
     ProjectionCaps,
     SubscriptionCaps,
-    CrossSchemeCaps,
     SubscriptionHandle,
     ProposalAware,
     EntryData,
@@ -105,13 +104,9 @@ const makeCtx = () => {
         async close(reason, outcome) { closed = { reason, outcome }; woken += 1; },
     };
 
-    const crossScheme: CrossSchemeCaps = {
-        _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape",
-    };
-
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, tags, notify, projection, subscriptions, crossScheme,
+        entries, channels, tags, notify, projection, subscriptions,
     };
 
     return { ctx, inspect: () => ({ events, chunks, woken, closed }) };
@@ -179,12 +174,6 @@ test("ctx: subscriptions.close composites state + wake (stream concluded)", asyn
     const { closed, woken } = inspect();
     assert.deepEqual(closed, { reason: "done", outcome: "exit=0 bytes=42" });
     assert.equal(woken, 1); // close fires the worker wake
-});
-
-test("ctx: crossScheme is a deferred placeholder, not an active cap", () => {
-    const { ctx } = makeCtx();
-    // The only member is the deferral marker — no FROM/TO methods committed.
-    assert.deepEqual(Object.keys(ctx.crossScheme), ["_deferred"]);
 });
 
 test("ctx: ProposalAware hook applies a resolution and returns a result", async () => {

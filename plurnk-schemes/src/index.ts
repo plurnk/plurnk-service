@@ -45,7 +45,6 @@ export type {
 export type {
     ChannelCaps,
     ChannelState,
-    CrossSchemeCaps,
     EntryCaps,
     EntryData,
     ProjectionCaps,

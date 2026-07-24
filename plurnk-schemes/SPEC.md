@@ -94,7 +94,7 @@ Two surfaces are NOT yet in `SchemeHandler`, pending their result types migratin
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - Executor-scheme (RFC schemes#20 — "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` → `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`); `Summarize.summarize(content, mimetype)` → `OrientIndex` is the structural-only EXEC-receipt index (no content — universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Result families: `SchemeResult` (`EntryResult` | `ProposalResult` | `PassthroughResult`), `SchemeResultBase`, `TelemetryEvent`. Keyed on scheme-shape, not op. `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`; builders `schemeError(scheme, kind, message?, position?)`, `logCoordinate(coordinate, op?)`.
-- Capability ctx (PR-2, see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `SubscriptionCaps` / `CrossSchemeCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`.
+- Capability ctx (see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `ProjectionCaps` / `SubscriptionCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
 
@@ -152,8 +152,6 @@ The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be autho
 - `subscriptions` — streaming lifecycle: `open(pathname, handle)` returns a worker+teardown-composed `AbortSignal` and takes a force-cancel `SubscriptionHandle`; `notifyChunk(channel, chunk, mimetype?)` is **fused** (append + stream/event in one call), with an optional per-call `mimetype` that retypes the channel to the content's actual type (passed statelessly per chunk; the impl writes only on change; the manifest channel mimetype is the pre-fetch seed default — plurnk-service#226); `close(reason, outcome?)` composites channel state + registry close + run wake. Designed against Exec (two-channel, cancel-tested).
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in plurnk-service's index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set (plurnk-service#180).
-
-`crossScheme` is a **deferred** placeholder — no FROM/TO methods committed until the first real cross-scheme COPY/MOVE forces the shape.
 
 **Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle (await/accept/reject, auto/noProposals auto-resolve, timeout) and it is invisible to the sibling. The only sibling-side surface is the optional `ProposalAware.applyResolution(pathname, proposal, ctx)` hook the engine calls on accept.
 

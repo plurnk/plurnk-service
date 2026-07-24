@@ -51,8 +51,7 @@ export type SchemeReadResult = {
 // validates the seam end-to-end; the in-tree schemes still read ctx.db, so
 // migrating them onto the caps is the remaining (non-blocking) transition.
 // `visibility` is dropped — entry visibility is gone post-teardown
-// (OPEN/FOLD is log-only). crossScheme stays the deferred stub until a
-// cross-scheme COPY/MOVE forces the FROM/TO shape.
+// (OPEN/FOLD is log-only).
 export interface PlurnkSchemeContext {
     readonly db: Db;
     readonly workspaceId: number;

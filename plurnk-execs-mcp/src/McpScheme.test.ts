@@ -9,7 +9,6 @@ import type {
     ReadStatement,
     UrlPath,
     EntryData,
-    CrossSchemeCaps,
 } from "@plurnk/plurnk-schemes";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
@@ -48,7 +47,6 @@ const makeCtx = () => {
             async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
             async close(reason, outcome) { state.closed = { reason, outcome }; },
         },
-        crossScheme: {} as CrossSchemeCaps,
     };
     return { ctx, chunks, state };
 };

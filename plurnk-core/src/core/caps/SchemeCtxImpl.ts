@@ -1,12 +1,12 @@
 // db-backed SchemeCtx (@plurnk/plurnk-schemes) — keystone PR-2 (#180). Assembles
 // the capability surface a third-party @plurnk/plurnk-schemes-* sibling receives:
-// identity fields lifted off the PlurnkSchemeContext, the six consumer-backed caps,
-// and the deferred crossScheme stub. A sibling reaches the substrate ONLY through
+// identity fields lifted off the PlurnkSchemeContext and the consumer-backed caps.
+// A sibling reaches the substrate ONLY through
 // this — never the raw ctx.db (schemes SPEC §channels). `visibility` is absent: entry
 // visibility is gone post-teardown, so schemes dropped the cap (0.4.3).
 
 import type {
-    SchemeCtx, EntryCaps, ChannelCaps, TagCaps, NotifyCaps, ProjectionCaps, SubscriptionCaps, CrossSchemeCaps, WriterTier,
+    SchemeCtx, EntryCaps, ChannelCaps, TagCaps, NotifyCaps, ProjectionCaps, SubscriptionCaps, WriterTier,
 } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import DbEntryCaps from "./DbEntryCaps.ts";
@@ -15,10 +15,6 @@ import DbTagCaps from "./DbTagCaps.ts";
 import DbNotifyCaps from "./DbNotifyCaps.ts";
 import DbSubscriptionCaps from "./DbSubscriptionCaps.ts";
 import DbProjectionCaps from "./DbProjectionCaps.ts";
-
-const CROSS_SCHEME_STUB: CrossSchemeCaps = {
-    _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape",
-};
 
 export default class SchemeCtxImpl implements SchemeCtx {
     readonly workspaceId: number;
@@ -33,8 +29,6 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly notify: NotifyCaps;
     readonly projection: ProjectionCaps;
     readonly subscriptions: SubscriptionCaps;
-    readonly crossScheme: CrossSchemeCaps = CROSS_SCHEME_STUB;
-
     constructor(ctx: PlurnkSchemeContext, scheme: string) {
         this.workspaceId = ctx.workspaceId;
         this.workerId = ctx.workerId;

@@ -70,7 +70,6 @@ const makeCtx = () => {
             async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
             async close(reason, outcome) { closed = { reason, outcome }; },
         },
-        crossScheme: { _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape" },
     };
     return { ctx, inspect: () => ({ chunks, closed }) };
 };

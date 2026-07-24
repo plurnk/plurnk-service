@@ -17,7 +17,6 @@ import type {
     NotifyCaps,
     ProjectionCaps,
     SubscriptionCaps,
-    CrossSchemeCaps,
 } from "@plurnk/plurnk-schemes";
 
 const PUB = "wss://93.184.216.34/feed"; // public IP literal — skips DNS
@@ -67,10 +66,9 @@ const makeCtx = () => {
         async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
         async close(reason, outcome) { closed = { reason, outcome }; },
     };
-    const crossScheme: CrossSchemeCaps = { _deferred: "see plurnk-service#180 — designed when first cross-scheme COPY/MOVE forces the FROM/TO shape" };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, tags, notify, projection, subscriptions, crossScheme,
+        entries, channels, tags, notify, projection, subscriptions,
     };
     return { ctx, localAbort, inspect: () => ({ chunks, opened, closed, wrote }) };
 };
