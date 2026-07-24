@@ -27,22 +27,31 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         const entries = new DbEntryCaps(ctx, "exec");
         const subs = new DbSubscriptionCaps(ctx, "exec");
 
-        const seeded = await entries.write("/run", { channels: { stdout: { content: "", mimetype: "text/plain", state: "active" } }, tags: [] });
+        const seeded = await entries.write("/run", { channels: {
+            stdout: { content: "", mimetype: "text/plain", state: "active" },
+            stderr: { content: "", mimetype: "text/plain", state: "active" },
+        }, tags: [] });
         const entryId = seeded.entryId as number;
 
         // open → a live (un-aborted) signal
         let cancelled = false;
-        const signal = await subs.open("/run", { cancel: () => { cancelled = true; } });
+        const signal = await subs.open("/run", { cancel: () => { cancelled = true; } }, { publishedChannel: "stdout" });
         assert.equal(signal.aborted, false);
+        const subscription = await (db.find_active_subscription as PrepMethod).get<{ id: number }>({ worker_id: workerId, entry_id: entryId });
+        const publication = await (db.test_subscription_published_channel as PrepMethod).get<{ published_channel: string | null }>({ id: subscription?.id });
+        assert.equal(publication?.published_channel, "stdout", "the model-facing selection persists through the completion wake");
 
         // notifyChunk → content appends + each fires a stream/event
         await subs.notifyChunk("stdout", "hello ");
+        await subs.notifyChunk("stderr", "diagnostic");
         await subs.notifyChunk("stdout", "world");
         assert.equal((await entries.read("/run")).entry?.channels.stdout.content, "hello world");
+        assert.equal((await entries.read("/run")).entry?.channels.stderr.content, "diagnostic", "unpublished auxiliary content is still durable");
         assert.ok(streamEvents.length >= 2, "each chunk fired a stream/event");
 
         // close("done") → channel terminal, registry closed, run woken with the summary
         await subs.close("done", "exit 0; 11 bytes");
+        assert.ok(streamEvents.every((event) => event.channel === "stdout"), "only the selected default channel is published");
         const meta = await (db.channel_meta as PrepMethod).get<{ state: string }>({ entry_id: entryId, channel: "stdout" });
         assert.equal(meta?.state, "closed");
         assert.equal(wakes.length, 1);

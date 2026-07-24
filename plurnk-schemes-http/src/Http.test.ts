@@ -42,7 +42,7 @@ const fakeBrowser = (html: string) => {
 // ── conformant ctx + recorder ─────────────────────────────────────────────
 const makeCtx = (priorEntry: EntryData | null = null) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
-    let opened: { pathname: string; handle: SubscriptionHandle } | null = null;
+    let opened: { pathname: string; handle: SubscriptionHandle; publishedChannel?: string } | null = null;
     let closed: { reason: string; outcome?: string } | null = null;
     let deleted: string | null = null;
     let wrote: { pathname: string; entry: EntryData } | null = null;
@@ -72,7 +72,7 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
         },
     };
     const subscriptions: SubscriptionCaps = {
-        async open(pathname, handle) { opened = { pathname, handle }; seq.push("open"); return localAbort.signal; },
+        async open(pathname, handle, options) { opened = { pathname, handle, ...options }; seq.push("open"); return localAbort.signal; },
         async notifyChunk(channel, chunk, mimetype) { chunks.push({ channel, chunk, mimetype }); },
         async close(reason, outcome) { closed = { reason, outcome }; },
     };
@@ -89,10 +89,10 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
     };
 };
 
-const urlTarget = (raw: string, pathname: string, headers?: [string, string][]): UrlPath => ({
+const urlTarget = (raw: string, pathname: string, headers?: [string, string][], fragment: string | null = null): UrlPath => ({
     kind: "url", raw, scheme: raw.startsWith("https") ? "https" : "http",
     username: null, password: null, hostname: "example.com", port: null,
-    pathname, params: {}, fragment: null,
+    pathname, params: {}, fragment,
     ...(headers === undefined ? {} : { headers }),
 });
 
@@ -196,6 +196,7 @@ test("READ: streams response body into the body channel and closes done", async 
     });
     const { chunks, opened, closed } = inspect();
     assert.equal(opened?.pathname, "/example.com/x");
+    assert.equal(opened?.publishedChannel, "body", "fragmentless READ publishes only the manifest default");
     const body = chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "hello world");
     // Byte path labels the body with its real content type (not the seed default).
@@ -203,6 +204,25 @@ test("READ: streams response body into the body channel and closes done", async 
     assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
     assert.equal(closed?.reason, "done");
     assert.match(closed?.outcome ?? "", /HTTP 200; \d+ bytes/);
+});
+
+test("READ: an explicit auxiliary fragment publishes that channel instead", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["body"], { "content-type": "text/plain" }), async () => {
+        await new Http().read(readStmt(urlTarget("https://example.com/x", "/x", undefined, "header")), ctx);
+    });
+    assert.equal(inspect().opened?.publishedChannel, "header");
+});
+
+test("READ: an unknown channel fails before fetching or subscribing", async () => {
+    const { ctx, inspect } = makeCtx();
+    let fetched = false;
+    await withFetch(async () => { fetched = true; return new Response("no"); }, async () => {
+        const result = await new Http().read(readStmt(urlTarget("https://example.com/x", "/x", undefined, "raw")), ctx);
+        assert.equal(result.status, 400);
+    });
+    assert.equal(fetched, false);
+    assert.equal(inspect().opened, null);
 });
 
 test("READ: non-HTML body is labelled with its real content-type", async () => {
@@ -571,7 +591,7 @@ test("TTL: stampless prior entry (execs-materialized) never TTL-serves — reval
     assert.equal(fetched, true);
 });
 
-test("TTL: 0 disables the window — fresh stamp still revalidates (no-regression default)", async () => {
+test("TTL: explicit 0 disables the window — fresh stamp still revalidates", async () => {
     const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000, "\netag: \"v1\"")));
     let fetched = false;
     const probe = async () => { fetched = true; return new Response(null, { status: 304 }); };

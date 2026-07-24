@@ -70,11 +70,6 @@ test("manifest declares the ten search tags", async () => {
         pkg.plurnk.runtimes.map((r: { name: string }) => r.name),
         ["search", "images", "videos", "news", "map", "music", "it", "science", "social", "downloadable"],
     );
-    assert.match(
-        pkg.plurnk.runtimes[0].documentation,
-        /materialized:true.*readTarget.*READ/s,
-        "the general search tag teaches how discovery becomes page retrieval",
-    );
 });
 
 test("declares a results channel (application/json)", () => {
@@ -213,7 +208,7 @@ test("#596: a rejected entry() preserves ranked discovery and reports materializ
         entry: async (path) => { if (path.includes("8.8.8.9")) throw new Error("consumer fetch refused — body unavailable"); },
     });
     assert.deepEqual(JSON.parse(writes[0].chunk), [
-        { title: "a", url: "https://8.8.8.8/a", materialized: true, readTarget: "https://8.8.8.8/a#body" },
+        { title: "a", url: "https://8.8.8.8/a", materialized: true },
         { title: "b", url: "https://8.8.8.9/b", materialized: false },
     ], "successful materialization advertises the canonical READ target; rejection preserves discovery without claiming a readable page");
 });

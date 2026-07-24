@@ -278,11 +278,13 @@ INSERT INTO log_entries (
 -- runtime-tag entry), with content + state + coordinate, so the per-turn injector can emit the
 -- channel's unshown byte-delta. Stays listed until its last delta is shown (cursor == content len).
 SELECT s.id AS subscription_id, e.scheme AS runtime, e.pathname AS coord,
-    ec.name AS channel, ec.content AS content, ec.state AS state, s.close_status AS close_status
+    ec.name AS channel, ec.content AS content, ec.state AS state, s.close_status AS close_status,
+    s.published_channel AS published_channel
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN entry_channels ec ON ec.entry_id = s.entry_id
 WHERE s.worker_id = $worker_id
+  AND (s.published_channel IS NULL OR ec.name = s.published_channel)
 ORDER BY s.id, ec.name;
 
 -- PREP: engine_stream_cursor
@@ -291,7 +293,7 @@ ORDER BY s.id, ec.name;
 SELECT attrs
 FROM log_entries
 WHERE worker_id = $worker_id AND origin = 'plurnk' AND op = 'READ'
-    AND scheme = $scheme AND pathname = $pathname AND fragment = $fragment
+    AND scheme = $scheme AND pathname = $pathname AND fragment IS $fragment
 ORDER BY id DESC LIMIT 1;
 
 -- PREP: engine_insert_stream_delta

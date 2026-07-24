@@ -1583,12 +1583,21 @@ export default class Engine {
     }): Promise<number> {
         const { workerId, loopId, turnId, fromSequence } = args;
         const channels = await (this.#db.engine_worker_stream_channels as PrepMethod).all<{
-            subscription_id: number; runtime: string; coord: string; channel: string; content: string; state: string; close_status: number | null;
+            subscription_id: number; runtime: string; coord: string; channel: string; content: string;
+            state: string; close_status: number | null; published_channel: string | null;
         }>({ worker_id: workerId });
         let written = 0;
         for (const ch of channels) {
+            // Default channels are an implementation detail. Preserve the
+            // channel internally on the entry/subscription, but present the
+            // ordinary address to the model; only an explicitly non-default
+            // channel earns a fragment in the log.
+            const visibleFragment = ch.published_channel !== null
+                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime)
+                ? null
+                : ch.channel;
             const prior = await (this.#db.engine_stream_cursor as PrepMethod).get<{ attrs: string }>({
-                worker_id: workerId, scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
+                worker_id: workerId, scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
             });
             const priorAttrs = prior !== undefined ? (JSON.parse(prior.attrs) as { streamEnd?: number; terminal?: boolean }) : {};
             const cursor = priorAttrs.streamEnd ?? 0;
@@ -1603,8 +1612,12 @@ export default class Engine {
                 if (closed && priorAttrs.terminal !== true && cursor > 0) {
                     await (this.#db.engine_insert_stream_delta as PrepMethod).run({
                         worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
-                        scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
-                        rx: JSON.stringify({ status: ch.close_status ?? 200, content: `[ stream closed (${ch.close_status ?? 200}) — full output already delivered above; READ ${ch.runtime}://${ch.coord}#${ch.channel} to revisit ]`, mimetype: "text/stream" }),
+                        scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
+                        rx: JSON.stringify({
+                            status: ch.close_status ?? 200,
+                            content: `[ stream closed (${ch.close_status ?? 200}) — full output already delivered above; READ ${ch.runtime}://${ch.coord}${visibleFragment === null ? "" : `#${visibleFragment}`} to revisit ]`,
+                            mimetype: "text/stream",
+                        }),
                         attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
                         expanded: 1,
                     });
@@ -1617,7 +1630,7 @@ export default class Engine {
             const startLine = (ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0) + 1;
             await (this.#db.engine_insert_stream_delta as PrepMethod).run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
-                scheme: ch.runtime, pathname: ch.coord, fragment: ch.channel,
+                scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
                 rx: JSON.stringify({ status: 200, content: ch.content.slice(cursor), mimetype: "text/stream", startLine }),
                 attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: closed }),
                 expanded: closed ? 1 : 0,  // §exec-stream — terminal delta auto-OPENs; ongoing folds

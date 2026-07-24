@@ -257,14 +257,7 @@ export default class Search extends BaseExecutor {
             url,
             snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
             ...(publishedDate ? { publishedDate } : {}),
-            ...(entry ? {
-                materialized: verdicts[i],
-                // `url` is the canonical substrate identity; `#body` selects
-                // its preferred model-facing projection. Point at that channel
-                // explicitly so retrieval does not fan out into response
-                // headers and archival HTML before the model sees evidence.
-                ...(verdicts[i] ? { readTarget: `${url}#body` } : {}),
-            } : {}),
+            ...(entry ? { materialized: verdicts[i] } : {}),
         }));
         write("results", JSON.stringify(results));
         setState("results", "closed");

@@ -108,7 +108,13 @@ export interface SubscriptionCaps {
     // engine's cancel router invokes to tear the subscription down from
     // OUTSIDE (exec's kill handle; http's socket-abort) — the active
     // counterpart to the passive signal.
-    open(pathname: string, handle: SubscriptionHandle): Promise<AbortSignal>;
+    open(pathname: string, handle: SubscriptionHandle, options?: {
+        // Persist every channel the producer writes, but publish live stream
+        // events only for this selected channel. A fragmentless multi-channel
+        // READ passes its manifest default here; auxiliary/raw channels remain
+        // implementation detail unless explicitly addressed.
+        publishedChannel?: string;
+    }): Promise<AbortSignal>;
 
     // FUSED append-and-notify: write the chunk to the named channel AND fire
     // stream/event in one call. Kept composite by contract — a streaming

@@ -384,6 +384,14 @@ SELECT pathname, source, tokens, attrs FROM log_entries WHERE worker_id = $worke
 -- PREP: test_count_entries_by_scheme
 SELECT count(*) AS n FROM entries WHERE scheme = $scheme;
 
+-- PREP: test_count_model_https_default_reads
+SELECT count(*) AS n
+FROM log_entries
+WHERE origin = 'model' AND op = 'READ' AND scheme = 'https' AND fragment IS NULL;
+
+-- PREP: test_subscription_published_channel
+SELECT published_channel FROM subscriptions WHERE id = $id;
+
 -- PREP: test_log_entries_by_run_op_signal
 SELECT signal FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 

@@ -50,6 +50,11 @@ interface StoryResult {
     dump: () => Promise<void>;
 }
 
+const assertRetrievedWebBody = async (story: StoryResult): Promise<void> => {
+    const reads = await (story.db.test_count_model_https_default_reads as PrepMethod).get<{ n: number }>();
+    assert.ok((reads?.n ?? 0) > 0, "the model READ a materialized HTTPS entry without channel knowledge — discovery alone is not retrieval");
+};
+
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const fixture = await seedDemoFixture(opts.label);
     const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace, ...(opts.fetchWeb !== undefined ? { fetchWeb: opts.fetchWeb } : {}) });
@@ -155,7 +160,7 @@ test("story: answer a question with a web search (canned gate — #530)", { time
     try {
         const story = await runStory({
             label: "web-search",
-            prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
+            prompt: "Search the web for the latest stable Node.js version, retrieve the authoritative page, and tell me in one sentence.",
             maxTurns: 8,
             fetchWeb: web.fetchWeb,
         });
@@ -164,6 +169,7 @@ test("story: answer a question with a web search (canned gate — #530)", { time
             const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && story.lastContent.includes(CANNED_VERSION);
             if (!ok) await story.dump();
             assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
+            await assertRetrievedWebBody(story);
             assert.equal(story.finalStatus, 200);
             assert.ok(story.lastContent.includes(CANNED_VERSION), `the answer carries the CANNED version ${CANNED_VERSION} — retrieved, not recalled; got: ${story.lastContent.slice(0, 200)}`);
         } finally { await story.cleanup(); }
@@ -189,6 +195,7 @@ test("story: search, retrieve, and report a measured claim from a page (canned)"
             const ok = story.finalStatus === 200 && story.lastContent.toLowerCase().includes(CANNED_SAVINGS);
             if (!ok) await story.dump();
             assert.ok((pages?.n ?? 0) > 0, "search materialized retrievable web pages");
+            await assertRetrievedWebBody(story);
             assert.equal(story.finalStatus, 200);
             assert.match(story.lastContent, /37\s*(?:percent|%)/i);
         } finally { await story.cleanup(); }
@@ -214,6 +221,7 @@ test("story: search and recover an exact statement from a transcript page (canne
             const ok = story.finalStatus === 200 && story.lastContent.toLowerCase().includes(CANNED_QUOTE);
             if (!ok) await story.dump();
             assert.ok((searchEntries?.n ?? 0) > 0, "the model used web search rather than answering from fixture files");
+            await assertRetrievedWebBody(story);
             assert.equal(story.finalStatus, 200);
             assert.match(story.lastContent, /power,\s*not demand/i);
         } finally { await story.cleanup(); }
@@ -232,7 +240,7 @@ test("story: answer a question with a web search (LIVE — #530, in the default 
     // deterministic REGRESSION pin; this discovers NEW fragility. A red is a finding, not a light.
     const story = await runStory({
         label: "web-search-live",
-        prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
+        prompt: "Search the web for the latest stable Node.js version, retrieve the authoritative page, and tell me in one sentence.",
         maxTurns: 8,
     });
     try {
@@ -240,6 +248,7 @@ test("story: answer a question with a web search (LIVE — #530, in the default 
         const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && /\d{2}/.test(story.lastContent);
         if (!ok) await story.dump();
         assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
+        await assertRetrievedWebBody(story);
         assert.equal(story.finalStatus, 200);
         assert.match(story.lastContent, /\d{2}/, `the answer carries a version number; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }

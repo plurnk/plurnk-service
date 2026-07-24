@@ -11,6 +11,6 @@ test("a migrated DB is stamped with the current schema version", async () => {
     const db = await openMigrated();
     try {
         const row = await (db.test_schema_version as PrepMethod).get<{ v: number }>({});
-        assert.equal(row?.v, 4, "PRAGMA user_version carries the current migration stamp (v4: durable loop provider selection) — external consumers gate on it");
+        assert.equal(row?.v, 5, "PRAGMA user_version carries the current migration stamp (v5: subscription publication selection) — external consumers gate on it");
     } finally { await db.close(); }
 });

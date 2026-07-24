@@ -2,8 +2,10 @@
 
 Fetch a URL. HTML is rendered (headless browser, post-JS) and returned as
 **markdown by default** (main content; nav/ads/chrome stripped). Non-HTML
-returns raw bytes under its `Content-Type`. Every request streams its response:
-status `102` now, the body/header channels fill, you READ the entry next turn.
+returns its readable content under the response `Content-Type`. Every request
+streams its response: status `102` now, then an ordinary fragmentless READ
+returns the sanitized body. Auxiliary transport/archive channels are never
+presented by default.
 
 Re-reading a URL **revalidates** it: the prior fetch's validators (`ETag`/
 `Last-Modified`) go out on the next READ, and if the page is unchanged the
@@ -19,7 +21,7 @@ The HTTP method is the **op**:
 - `EDIT(http(s)://…):body:` — PUT the body (replaces the whole resource; no `<L>`).
 - `KILL(http(s)://…)` — DELETE the resource.
 
-Channels:
+Diagnostic channels (explicit access only):
 
 - `#body` — model-facing markdown for HTML; otherwise the response under its `Content-Type`
 - `#html` — faithful rendered DOM for HTML (`text/html`)

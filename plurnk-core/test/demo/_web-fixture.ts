@@ -20,6 +20,13 @@ const PAGES: Record<string, string> = {
     "https://finance.example/interview": `# Treasury interview transcript\n\nAsked about AI infrastructure, Secretary Rowan said “${CANNED_QUOTE}.” The transcript was published Tuesday.`,
 };
 
+const RESULTS = [
+    { title: "Official Node.js release page", url: "https://nodejs.example/blog/release", content: "The authoritative release page contains the current stable version." },
+    { title: "Node.js news roundup", url: "https://devnews.example/node-latest", content: "A secondary report discusses the current stable release." },
+    { title: "Project Aurora inference report", url: "https://research.example/aurora", content: "The report contains a measured inference-cost result." },
+    { title: "Treasury AI infrastructure interview", url: "https://finance.example/interview", content: "The transcript contains Secretary Rowan's exact answer." },
+];
+
 export interface CannedWeb {
     searxngUrl: string;
     fetchWeb: WebFetch;
@@ -32,10 +39,8 @@ export const cannedWeb = async (): Promise<CannedWeb> => {
         if (url.pathname !== "/search") { res.writeHead(404); res.end(); return; }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
-            results: Object.entries(PAGES).map(([pageUrl, body], i) => ({
-                title: body.split("\n")[0].replace(/^#\s*/, ""),
-                url: pageUrl,
-                content: body.slice(0, 160),
+            results: RESULTS.map((result, i) => ({
+                ...result,
                 publishedDate: `2026-07-${10 + i}`,
             })),
         }));
@@ -47,7 +52,14 @@ export const cannedWeb = async (): Promise<CannedWeb> => {
         searxngUrl: `http://127.0.0.1:${address.port}`,
         fetchWeb: async (pageUrl: string) => {
             const body = PAGES[pageUrl];
-            return body === undefined ? null : { body, mimetype: "text/markdown" };
+            return body === undefined ? null : {
+                body,
+                mimetype: "text/markdown",
+                // Match the production WebFetcher contract: a page fetched
+                // moments ago is immediately readable from the stored entry,
+                // not re-fetched from the reserved .example hostname.
+                header: `HTTP 200 OK\ncontent-type: text/markdown\nx-plurnk-fetched-at: ${new Date().toISOString()}`,
+            };
         },
         close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
     };

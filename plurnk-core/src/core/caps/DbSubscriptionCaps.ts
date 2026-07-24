@@ -22,6 +22,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     #pathname: string | null = null;
     #entryId: number | null = null;
     #subscriptionId: number | null = null;
+    #publishedChannel: string | null = null;
     #unlink: () => void = () => {};
 
     constructor(ctx: PlurnkSchemeContext, scheme: string | null) {
@@ -29,11 +30,12 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         this.#scheme = scheme;
     }
 
-    async open(pathname: string, handle: SubscriptionHandle): Promise<AbortSignal> {
+    async open(pathname: string, handle: SubscriptionHandle, options?: { publishedChannel?: string }): Promise<AbortSignal> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
         if (entryId === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
         const subscriptionId = await ChannelWrite.openSubscription(this.#ctx.db, {
             workerId: this.#ctx.workerId, entryId, scheme: this.#scheme ?? "file", handle: pathname,
+            publishedChannel: options?.publishedChannel ?? null,
         });
         // Compose the worker signal with a fresh controller; a worker abort also
         // force-cancels the sibling's handle.
@@ -50,13 +52,16 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         this.#pathname = pathname;
         this.#entryId = entryId;
         this.#subscriptionId = subscriptionId;
+        this.#publishedChannel = options?.publishedChannel ?? null;
         return controller.signal;
     }
 
     async notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void> {
         if (this.#entryId === null) throw new Error("subscriptions.notifyChunk: no open subscription");
         await ChannelWrite.appendToChannel(this.#ctx.db, {
-            entryId: this.#entryId, channel, chunk, notify: this.#ctx.streamEventNotify, mimetype,
+            entryId: this.#entryId, channel, chunk,
+            ...(this.#publishedChannel === null || this.#publishedChannel === channel ? { notify: this.#ctx.streamEventNotify } : {}),
+            mimetype,
         });
     }
 
@@ -70,7 +75,10 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         // closes, then the worker wakes with the scheme's summary.
         const channels = await (this.#ctx.db.crud_read_channels as PrepMethod).all<{ name: string }>({ entry_id: entryId });
         for (const { name } of channels) {
-            await ChannelWrite.setChannelState(this.#ctx.db, { entryId, channel: name, state, notify: this.#ctx.streamEventNotify });
+            await ChannelWrite.setChannelState(this.#ctx.db, {
+                entryId, channel: name, state,
+                ...(this.#publishedChannel === null || this.#publishedChannel === name ? { notify: this.#ctx.streamEventNotify } : {}),
+            });
         }
         await ChannelWrite.closeSubscription(this.#ctx.db, { subscriptionId, status: closeStatus });
         this.#unlink();
@@ -83,6 +91,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         this.#pathname = null;
         this.#entryId = null;
         this.#subscriptionId = null;
+        this.#publishedChannel = null;
         this.#unlink = (): void => {};
     }
 }

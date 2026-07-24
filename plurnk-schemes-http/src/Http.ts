@@ -167,6 +167,10 @@ export default class Http implements SchemeHandler {
         const url = Http.#rewriteHostileHost(Http.#urlFrom(target));
         const pathname = Http.#pathname(target);
         const headers = target.headers ?? [];  // [key,value][] — opaque to grammar, honored here
+        const publishedChannel = target.fragment ?? Http.manifest.defaultChannel;
+        if (!(publishedChannel in Http.manifest.channels)) {
+            return Http.#bad(400, "http", "unknown_channel", `no channel #${publishedChannel}; channels: ${Object.keys(Http.manifest.channels).join(", ")}`);
+        }
 
         // Conditional revalidation (GET only, service#341): recover the prior
         // fetch's validators + body from THIS scheme's own stored entry (entries
@@ -200,7 +204,7 @@ export default class Http implements SchemeHandler {
         // serving from cache.
         if (cached !== undefined && Http.#storedCopyServable(Http.#fetchedAt(cached.header), null)) {
             await ctx.entries.write(pathname, Http.#seedEntry());
-            await ctx.subscriptions.open(pathname, { cancel: () => {} });
+            await ctx.subscriptions.open(pathname, { cancel: () => {} }, { publishedChannel });
             await ctx.subscriptions.notifyChunk(HEADER, cached.header, "text/plain");
             if (cached.html !== undefined) await ctx.subscriptions.notifyChunk("html", cached.html.content, cached.html.mimetype);
             await ctx.subscriptions.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
@@ -221,7 +225,7 @@ export default class Http implements SchemeHandler {
 
         // open() returns the worker+teardown-composed signal — fires on loop.cancel
         // OR our local teardown. Wire it so either path aborts the fetch/render.
-        const composed = await ctx.subscriptions.open(pathname, handle);
+        const composed = await ctx.subscriptions.open(pathname, handle, { publishedChannel });
         const onAbort = () => local.abort();
         composed.addEventListener("abort", onAbort, { once: true });
 
