@@ -1,12 +1,9 @@
-// ~semantic (plurnk-service#186) — the FTS half. Re-indexes an entry's body
-// content into entry_fts (the keyword/narrowing half of the fusion). The cosine
-// rank over embedding vectors — the precise half — lands when the embedding
-// channel does (a plugin projection, per the §mimetype boundary). Called from the
-// gated manifest-add hook, so only when body content actually changed.
+// ~semantic storage and ranking. Complete content-addressed derivations own the
+// reader-projected FTS, graph, and vectors. Vector search ranks every eligible
+// vector in scope; FTS is only the explicit no-embedder fallback.
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { contentHash } from "../core/content-hash.ts";
 
 // mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it
 // from the contract method itself so this stays the REAL type, never a local fiction.
@@ -14,11 +11,27 @@ type EmbedderInfo = NonNullable<Awaited<ReturnType<Mimetypes["embedderInfo"]>>>;
 import EntryChunk from "./_entry-chunk.ts";
 
 export default class EntrySemantic {
-    // Replace an entry's FTS row with its current body content (rowid = entryId).
+    static maxEmbedSize(): number {
+        const raw = process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
+        const value = Number(raw);
+        if (!Number.isSafeInteger(value) || value < 0) {
+            throw new Error(`PLURNK_SERVICE_MAX_EMBED_SIZE must be a non-negative safe integer byte count (0 = unlimited), got ${JSON.stringify(raw)}`);
+        }
+        return value;
+    }
+
+    static embedSizeRejection(content: string): { actualBytes: number; maxBytes: number } | null {
+        const maxBytes = EntrySemantic.maxEmbedSize();
+        if (maxBytes === 0) return null;
+        const actualBytes = Buffer.byteLength(content, "utf8");
+        return actualBytes > maxBytes ? { actualBytes, maxBytes } : null;
+    }
+
+    // Replace a derivation artifact's FTS row with its readable content.
     // Empty content (binary member / cleared entry) → no FTS row (delete only).
-    static async indexFts(db: Db, entryId: number, content: string): Promise<void> {
-        await (db.fts_delete as PrepMethod).run({ entry_id: entryId });
-        if (content.length > 0) await (db.fts_insert as PrepMethod).run({ entry_id: entryId, content });
+    static async indexFts(db: Db, derivationId: number, content: string): Promise<void> {
+        await (db.fts_delete as PrepMethod).run({ derivation_id: derivationId });
+        if (content.length > 0) await (db.fts_insert as PrepMethod).run({ derivation_id: derivationId, content });
     }
 
     // Cosine similarity over two Float32 vectors stored as BLOBs — the SqlRite
@@ -34,37 +47,20 @@ export default class EntrySemantic {
         return denom === 0 ? 0 : dot / denom;
     }
 
-    // Store an entry's embedding vector + the model that produced it, or clear the
+    // Store a derivation's embedding vectors + model, or clear them.
     // row (binary/empty entry, or a degraded `embeddingMissing` projection). Called
     // from the gated manifest-add hook beside indexFts / the symbol index.
-    static async indexEmbedding(db: Db, entryId: number, chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[], model: string | undefined): Promise<void> {
-        // Re-derivation = clear all of the entry's chunk rows, then insert each in seq
+    static async indexEmbedding(db: Db, derivationId: number, chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[], model: string | undefined): Promise<void> {
+        // Re-derivation = clear all of the artifact's chunk rows, then insert each in seq
         // order. No model (no embedder installed) or no chunks → just cleared.
-        await (db.embedding_delete as PrepMethod).run({ entry_id: entryId });
+        await (db.embedding_delete as PrepMethod).run({ derivation_id: derivationId });
         if (model === undefined) return;
         for (const [seq, c] of chunks.entries()) {
             await (db.embedding_set as PrepMethod).run({
-                entry_id: entryId, chunk_seq: seq, line_start: c.lineStart, line_end: c.lineEnd,
+                derivation_id: derivationId, chunk_seq: seq, line_start: c.lineStart, line_end: c.lineEnd,
                 vector: c.vector, embedding_model: model,
             });
         }
-    }
-
-    // §semantic-embed-dedup (#416) — before the expensive embed, reuse an existing embedding for
-    // IDENTICAL body content (any other entry, same active model): the metaproject's 15×
-    // tokenizer.json embeds ONCE, the rest copy. Returns the model on a hit, undefined on a miss
-    // (caller embeds). content_hash is the stamped body identity (content-hash.ts).
-    static async tryReuseEmbeddings(db: Db, entryId: number, bodyContent: string, mimetypes: Mimetypes): Promise<string | undefined> {
-        const info = await EntrySemantic.#embedderInfo(mimetypes);
-        if (info === null || info.model === undefined) return undefined;
-        const hash = contentHash(bodyContent);
-        const rows = await (db.embedding_by_content_hash as PrepMethod).all<{ chunk_seq: number; line_start: number; line_end: number; vector: Uint8Array }>({ content_hash: hash, embedding_model: info.model, entry_id: entryId });
-        if (rows.length === 0) return undefined;
-        await (db.embedding_delete as PrepMethod).run({ entry_id: entryId });
-        for (const c of rows) {
-            await (db.embedding_set as PrepMethod).run({ entry_id: entryId, chunk_seq: c.chunk_seq, line_start: c.line_start, line_end: c.line_end, vector: c.vector, embedding_model: info.model });
-        }
-        return info.model;
     }
 
     // Project Semantics — derive an entry's chunk embeddings. Probes the embedder
@@ -79,23 +75,14 @@ export default class EntrySemantic {
         fallbackEmbedding: Uint8Array | undefined,
         fallbackModel: string | undefined,
         signal?: AbortSignal,
-        maxChunks?: number,
         onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void,
-    ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined; capped: boolean }> {
+    ): Promise<{ chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[]; model: string | undefined }> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) {
             const totalLines = content.length === 0 ? 0 : content.split("\n").length;
-            if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined, capped: false };
-            return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel, capped: false };
+            if (fallbackEmbedding === undefined || fallbackEmbedding.byteLength === 0 || totalLines === 0) return { chunks: [], model: undefined };
+            return { chunks: [{ lineStart: 1, lineEnd: totalLines, vector: fallbackEmbedding }], model: fallbackModel };
         }
-        // §semantic-entry-chunk-cap — a LATENCY stage, never a coverage bound: the INLINE
-        // (dispatch-time) path caps chunks so a cold ~query answers in bounded seconds, and a
-        // capped pass does NOT stamp the deep hash — the background pump completes the entry to
-        // FULL depth (a 300-page book is entirely searchable at steady state; rank can't be
-        // dominated regardless — semantic_rank takes one best chunk per entry). The old flat cap
-        // silently foreclosed legitimate large texts: head-only vectors under a whole-file FTS
-        // narrow returned head-biased spans forever, and the stamped hash made it permanent.
-        const CHUNK_CAP = maxChunks ?? Number.POSITIVE_INFINITY;
         // Symbol edges (a @graph endLine, or the line before a symbol starts) are the
         // tiler's preferred cut points; it still tiles every line if there are none.
         const boundaries = new Set<number>();
@@ -118,9 +105,7 @@ export default class EntrySemantic {
             counter,
             (progress) => onProgress?.({ phase: "planning", ...progress }),
         );
-        if (specs.length === 0) return { chunks: [], model: undefined, capped: false };
-        const capped = specs.length > CHUNK_CAP;
-        if (capped) specs = specs.slice(0, CHUNK_CAP); // §semantic-entry-chunk-cap — inline latency stage; the pump completes
+        if (specs.length === 0) return { chunks: [], model: undefined };
         // One data-parallel batch over the tiled chunk texts (#272 — embedBatch via the
         // framework seam, ~6× the per-chunk loop on a multi-core box; vectors bit-identical,
         // so no re-embed). Each tile embeds as PLAIN TEXT: a chunk is a fragment, not a
@@ -135,7 +120,7 @@ export default class EntrySemantic {
             const vector = vectors[i];
             if (vector !== undefined && vector.byteLength > 0) chunks.push({ lineStart: spec.lineStart, lineEnd: spec.lineEnd, vector });
         }
-        return { chunks, model: chunks.length > 0 ? info.model : undefined, capped };
+        return { chunks, model: chunks.length > 0 ? info.model : undefined };
     }
 
     // Chunk budget in tokens — `.env.defaults` is the law, no code fallback. EMPTY =
@@ -159,7 +144,7 @@ export default class EntrySemantic {
     // through the Mimetypes handle. null until an embedder is installed.
     static async #embedderInfo(mimetypes: Mimetypes): Promise<EmbedderInfo | null> {
         // PLURNK_SERVICE_EMBED_DISABLE=1 forces the no-embedder path even when the optional embeddings package
-        // IS installed — the whole semantic stack (deriveEmbeddings, the ~query FTS→cosine fusion, the
+        // IS installed — the whole semantic stack (deriveEmbeddings, exhaustive ~query cosine rank, the
         // deep_hash config) funnels through here, so one gate makes everything FTS-only. The fast lane
         // (mock-provider tests) sets it so the suite doesn't spin up the MiniLM worker pool for nothing.
         if (process.env.PLURNK_SERVICE_EMBED_DISABLE === "1") return null;
@@ -174,24 +159,23 @@ export default class EntrySemantic {
     static async deepConfigSignature(mimetypes: Mimetypes): Promise<string> {
         const info = await EntrySemantic.#embedderInfo(mimetypes);
         if (info === null) return "embed:none";
-        return `embed:${info.model ?? "?"}:${info.maxTokens}:${info.maxTokens === null ? "?" : EntrySemantic.#chunkBudget(info.maxTokens)}:${EntrySemantic.#chunkOverlap()}`;
+        const base = `embed:${info.model ?? "?"}:${info.maxTokens}:${info.maxTokens === null ? "?" : EntrySemantic.#chunkBudget(info.maxTokens)}:${EntrySemantic.#chunkOverlap()}`;
+        const maxBytes = EntrySemantic.maxEmbedSize();
+        return maxBytes === 0 ? base : `${base}:max-bytes=${maxBytes}`;
     }
 
-    // Build the FTS5 narrow from a ~query: OR the alphanumeric terms (a broad cut —
-    // cosine does the precision). FTS5-syntax-safe (bare lowercased terms).
+    // Build the FTS5 query used only by the no-embedder keyword fallback.
     static ftsQueryFor(text: string): string {
         const terms = text.toLowerCase().match(/[a-z0-9]+/g);
         if (terms === null) return "";
         return [...new Set(terms)].join(" OR ");
     }
 
-    // The ~query dispatch: embed the query text through the SAME channel, FTS-narrow by
-    // its terms, cosine-rank the narrowed set, top-K. Each result carries its best-matching
+    // The ~query dispatch: embed the query text through the SAME channel and cosine-rank
+    // every vector in scope, top-K. Each result carries its best-matching
     // chunk's line span (the Finding extent). No embedder → the top-K <K> form degrades to an
     // FTS-only keyword rank (whole-entry findings); the <0.x> threshold form stays 501.
     static async rankSemantic(db: Db, workspaceId: number, scheme: string | null, mimetypes: Mimetypes, queryText: string, marker: { first: number; last: number | null }): Promise<{ status: number; results: Array<{ pathname: string; lineStart: number; lineEnd: number }> }> {
-        const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
-        if (ftsQuery.length === 0) return { status: 200, results: [] };
         // #209 — the result marker form-dispatches: integer <K> → top-K rank;
         // decimal <0.x> → a similarity threshold (minimum cosine in (0,1)), with
         // <0.x,N> capping the threshold set at N (else unbounded). A fractional
@@ -213,6 +197,8 @@ export default class EntrySemantic {
             // by BM25 keyword relevance alone; the <0.x> threshold form is intrinsically cosine-
             // based (no bounded BM25 analogue) → it stays 501.
             if (!Number.isInteger(first)) return { status: 501, results: [] };
+            const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
+            if (ftsQuery.length === 0) return { status: 200, results: [] };
             const rows = await (db.semantic_rank_fts as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
                 fts_query: ftsQuery, workspace_id: workspaceId, scheme, k: first,
             });
@@ -220,14 +206,14 @@ export default class EntrySemantic {
         }
         if (Number.isInteger(first)) {
             const rows = await (db.semantic_rank as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
-                fts_query: ftsQuery, workspace_id: workspaceId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,
+                workspace_id: workspaceId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,
             });
             return { status: 200, results: rows.map(toResult) };
         }
         if (first <= 0 || first >= 1) return { status: 416, results: [] };
         const cap = (last !== null && Number.isInteger(last) && last > 0) ? last : -1;
         const rows = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
-            fts_query: ftsQuery, workspace_id: workspaceId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, threshold: first, cap,
+            workspace_id: workspaceId, scheme, query_vector: r.embedding, embedding_model: r.embeddingModel, threshold: first, cap,
         });
         return { status: 200, results: rows.map(toResult) };
     }

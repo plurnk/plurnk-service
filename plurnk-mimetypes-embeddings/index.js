@@ -288,11 +288,22 @@ export async function embedBatch(texts, { onProgress, signal } = {}) {
     }
     const results = new Array(texts.length);
     let completed = 0;
-    await Promise.all(texts.map(async (text, index) => {
-        results[index] = await enqueueWorkerJob("embed", text, signal);
-        completed += 1;
-        onProgress?.({ completed, total: texts.length });
-    }));
+    let next = 0;
+    const producer = async () => {
+        while (next < texts.length) {
+            const index = next++;
+            results[index] = await enqueueWorkerJob("embed", texts[index], signal);
+            completed += 1;
+            onProgress?.({ completed, total: texts.length });
+        }
+    };
+    // The pool itself is the concurrency bound. Do not retain one Promise and
+    // queued closure per chunk: legitimate tokenizer assets can contain tens of
+    // thousands of chunks, and several entries may overlap.
+    await Promise.all(Array.from(
+        { length: Math.min(texts.length, WORKERS) },
+        () => producer(),
+    ));
     return results;
 }
 

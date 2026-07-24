@@ -402,6 +402,7 @@ export default class Daemon {
         ClientInput.assertConstraint("workspace.unconstrain", effect, glob);
         await (this.#db.crud_delete_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
+        void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
         return { effect, glob };
     }
 
@@ -560,7 +561,7 @@ export default class Daemon {
         const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
         await Promise.allSettled(drainPromises);
         await this.#drainStreamingSchemes();
-        await this.#engine.drainDerivations(); // §derivation-off-hot-path — background pumps finish before the db closes upstream
+        await this.#engine.drainDerivations(); // active workspace warms finish before the db closes upstream
     }
 
     // Per-scheme idle awaits for clean shutdown. New streaming schemes

@@ -130,6 +130,17 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
+-- INIT: derivations
+-- Content-addressed deep projections. Entries point at a COMPLETE artifact by
+-- deep_hash; graph, FTS, and vectors are stored once regardless of how many
+-- workspace/worktree paths carry identical content under the same reader/config.
+-- A building row is unattached and safely replaceable after interruption.
+CREATE TABLE IF NOT EXISTS derivations (
+    id        INTEGER NOT NULL PRIMARY KEY,
+    deep_hash TEXT    NOT NULL UNIQUE CHECK (length(deep_hash) > 0),
+    state     TEXT    NOT NULL DEFAULT 'building' CHECK (state IN ('building', 'complete'))
+) STRICT;
+
 -- INIT: entries
 -- The canonical addressable store. (workspace, owner, scheme, pathname) is the identity
 -- tuple, and NO component may be NULL: NULLs are distinct under SQL UNIQUE, so a nullable
@@ -175,7 +186,8 @@ CREATE TABLE IF NOT EXISTS entries (
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     CHECK (workspace_id IS NOT NULL),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-    FOREIGN KEY (owner_id)     REFERENCES workers(id)    ON DELETE CASCADE
+    FOREIGN KEY (owner_id)     REFERENCES workers(id)    ON DELETE CASCADE,
+    FOREIGN KEY (deep_hash)    REFERENCES derivations(deep_hash)
 ) STRICT;
 
 -- {§entry-owner} / {§stream-owner-scoped} — ONE identity: the owner is the axis (scope is dead).
@@ -232,21 +244,20 @@ CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);
 
 -- INIT: symbol_defs
 -- @graph NODES (plurnk-service#186). Code symbol definitions, populated
--- delete-then-insert per entry at write (EntryCrud.writeEntry) from mimetypes'
+-- once per content-addressed derivation from mimetypes'
 -- `symbols` channel. Qualified path = container ? container || '.' || name : name.
 CREATE TABLE IF NOT EXISTS symbol_defs (
     id         INTEGER NOT NULL PRIMARY KEY,
-    workspace_id INTEGER NOT NULL,
-    entry_id   INTEGER NOT NULL,
+    derivation_id INTEGER NOT NULL,
     name       TEXT    NOT NULL CHECK (length(name) > 0),
     kind       TEXT    NOT NULL,
     container  TEXT,
     line       INTEGER NOT NULL,
     end_line   INTEGER,
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (workspace_id, name);
+CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (name);
 
 -- INIT: symbol_refs
 -- @graph EDGES (plurnk-service#186), from mimetypes' `references` channel.
@@ -255,37 +266,34 @@ CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (workspace_id, name);
 -- type|use (frozen, edge metadata only — traversal is kind-agnostic).
 CREATE TABLE IF NOT EXISTS symbol_refs (
     id         INTEGER NOT NULL PRIMARY KEY,
-    workspace_id INTEGER NOT NULL,
-    entry_id   INTEGER NOT NULL,
+    derivation_id INTEGER NOT NULL,
     name       TEXT    NOT NULL CHECK (length(name) > 0),
     kind       TEXT    NOT NULL,
     container  TEXT,
     line       INTEGER NOT NULL,
     col        INTEGER,
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (workspace_id, name);
-CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (workspace_id, entry_id, container);
+CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (name);
+CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (derivation_id, container);
 
 -- INIT: entry_fts (~semantic FTS half — plurnk-service#186)
--- Keyword/content index over entry body content; the FTS5 rowid IS entries.id.
--- The ~semantic dialect narrows candidates here (cheap, indexed) then cosine-ranks
--- the narrowed set over the embedding vectors — FTS does the scale-cut, cosine the
--- precise rank, so no ANN/extension is needed. Populated at the gated manifest-add
--- hook alongside symbol_defs/refs: re-indexed only when body content changes.
+-- Keyword/content index over a derivation's readable content; rowid IS derivations.id.
+-- Explicit keyword fallback when no embedder is installed. Vector search never
+-- consults this table: semantic recall is exhaustive over complete vectors.
 CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
 
 -- INIT: entry_embeddings (~semantic vector half — plurnk-service#186; Project
--- Semantics chunking). One Float32 vector per CHUNK: an entry tiles into N chunks,
+-- Semantics chunking). One Float32 vector per CHUNK: a derivation tiles into N chunks,
 -- each addressed by its <L> line range (line_start..line_end) and embedded
 -- separately, so a large body is fully searchable instead of truncated at the
 -- embedder's window. line_start/line_end are stored for Project Findings to expose;
--- the rank currently max-pools an entry's chunks to its pathname. Supplied at the
--- gated manifest-add hook; the fusion (semantic_rank) FTS-narrows then cosine-ranks
--- these. CASCADE-deleted with the entry.
+-- the rank currently max-pools a derivation's chunks, then projects every attached
+-- pathname. semantic_rank exhaustively cosine-ranks these.
+-- CASCADE-deleted with the derivation artifact.
 CREATE TABLE IF NOT EXISTS entry_embeddings (
-    entry_id        INTEGER NOT NULL,
+    derivation_id   INTEGER NOT NULL,
     chunk_seq       INTEGER NOT NULL,
     line_start      INTEGER NOT NULL,
     line_end        INTEGER NOT NULL,
@@ -294,8 +302,8 @@ CREATE TABLE IF NOT EXISTS entry_embeddings (
     -- per row as the dimension/staleness guard: rank filters by the current model so
     -- a swap never cosine-compares mismatched dimensions.
     embedding_model TEXT    NOT NULL,
-    PRIMARY KEY (entry_id, chunk_seq),
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    PRIMARY KEY (derivation_id, chunk_seq),
+    FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
 ) STRICT;
 
 -- INIT: log_entries

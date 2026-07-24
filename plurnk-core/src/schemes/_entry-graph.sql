@@ -5,25 +5,54 @@
 -- the grammar's `@<sym` surface is single-hop; WITH RECURSIVE the day it grows one.
 
 -- PREP: graph_delete_defs
-DELETE FROM symbol_defs WHERE entry_id = $entry_id;
+DELETE FROM symbol_defs WHERE derivation_id = $derivation_id;
 
 -- PREP: graph_delete_refs
-DELETE FROM symbol_refs WHERE entry_id = $entry_id;
+DELETE FROM symbol_refs WHERE derivation_id = $derivation_id;
 
 -- PREP: graph_insert_def
-INSERT INTO symbol_defs (workspace_id, entry_id, name, kind, container, line, end_line)
-VALUES ($workspace_id, $entry_id, $name, $kind, $container, $line, $end_line);
+INSERT INTO symbol_defs (derivation_id, name, kind, container, line, end_line)
+VALUES ($derivation_id, $name, $kind, $container, $line, $end_line);
 
 -- PREP: graph_insert_ref
-INSERT INTO symbol_refs (workspace_id, entry_id, name, kind, container, line, col)
-VALUES ($workspace_id, $entry_id, $name, $kind, $container, $line, $col);
+INSERT INTO symbol_refs (derivation_id, name, kind, container, line, col)
+VALUES ($derivation_id, $name, $kind, $container, $line, $col);
+
+-- PREP: graph_insert_defs_bulk
+INSERT INTO symbol_defs (derivation_id, name, kind, container, line, end_line)
+SELECT $derivation_id,
+       json_extract(value, '$.name'), json_extract(value, '$.kind'),
+       json_extract(value, '$.container'), json_extract(value, '$.line'),
+       json_extract(value, '$.endLine')
+FROM json_each($rows);
+
+-- PREP: graph_insert_refs_bulk
+INSERT INTO symbol_refs (derivation_id, name, kind, container, line, col)
+SELECT $derivation_id,
+       json_extract(value, '$.name'), json_extract(value, '$.kind'),
+       json_extract(value, '$.container'), json_extract(value, '$.line'),
+       json_extract(value, '$.column')
+FROM json_each($rows);
+
+-- PREP: derivation_get
+SELECT id, state FROM derivations WHERE deep_hash = $deep_hash;
+
+-- PREP: derivation_create
+INSERT INTO derivations (deep_hash, state)
+VALUES ($deep_hash, 'building')
+RETURNING id, state;
+
+-- PREP: derivation_complete
+UPDATE derivations SET state = 'complete' WHERE id = $derivation_id;
 
 -- PREP: graph_referrers
 -- @<sym — entries (scheme-scoped) that reference sym, with each reference's line
 -- (#286: a matcher resolves to (file, span) — one item per reference occurrence).
 SELECT DISTINCT e.pathname, r.line AS line, r.line AS end_line
-FROM symbol_refs r JOIN entries e ON e.id = r.entry_id
-WHERE r.workspace_id = $workspace_id AND e.scheme = $scheme AND r.name = $name
+FROM symbol_refs r
+JOIN derivations d ON d.id = r.derivation_id
+JOIN entries e ON e.deep_hash = d.deep_hash
+WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND r.name = $name
 ORDER BY e.pathname, r.line;
 
 -- PREP: graph_def_pathnames_by_name
@@ -31,20 +60,25 @@ ORDER BY e.pathname, r.line;
 -- @>'s target resolution and @'s neighborhood def lookup. end_line falls back to line
 -- when a def has no end (#286: the symbol's line..end_line is its (file, span)).
 SELECT DISTINCT e.pathname, d.line AS line, COALESCE(d.end_line, d.line) AS end_line
-FROM symbol_defs d JOIN entries e ON e.id = d.entry_id
-WHERE d.workspace_id = $workspace_id AND e.scheme = $scheme AND d.name = $name
+FROM symbol_defs d
+JOIN derivations x ON x.id = d.derivation_id
+JOIN entries e ON e.deep_hash = x.deep_hash
+WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND d.name = $name
 ORDER BY e.pathname, d.line;
 
 -- PREP: graph_resolve_def
 -- sym → its def(s): (entry_id, container) to compose the qualified path for @>.
-SELECT entry_id, container FROM symbol_defs
-WHERE workspace_id = $workspace_id AND name = $name;
+SELECT DISTINCT d.derivation_id, d.container
+FROM symbol_defs d
+JOIN derivations x ON x.id = d.derivation_id
+JOIN entries e ON e.deep_hash = x.deep_hash
+WHERE e.workspace_id = $workspace_id AND d.name = $name;
 
 -- PREP: graph_refs_from_source
 -- @>sym step — the target names sym's def references (its own ref rows, keyed
 -- by the source def's full qualified path = the @> join semantics from #186).
 SELECT DISTINCT name FROM symbol_refs
-WHERE workspace_id = $workspace_id AND entry_id = $entry_id AND container IS $container;
+WHERE derivation_id = $derivation_id AND container IS $container;
 
 -- PREP: graph_set_deep_hash
 -- Stamp the body-content hash at the moment an entry's deep channels were

@@ -102,15 +102,12 @@ export default class EntryFind {
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
         if (statement.body !== null && statement.body.dialect === "semantic") {
-            // ~query: embed the query text, FTS-narrow by its terms, cosine-rank the narrowed
-            // set, top-K CHUNKS. Each ranked chunk is a (file, span) item — a file may appear
+            // ~query: embed the query text, then cosine-rank every vector in scope.
+            // Each ranked chunk is a (file, span) item — a file may appear
             // more than once (#286, no dedup). 501 when no embeddings handler is installed. <L> carries the rank marker.
             const { mimetypes } = ctx;
             if (mimetypes === undefined) return { status: 501, matches: [] };
             if (statement.lineMarker === null) return { status: 400, matches: [] };  // ~query needs a rank marker, e.g. ~query<10>
-            // §semantic-cold-query-full-fidelity — warm the query's own candidate slice inline
-            // (bit-identical to a warm corpus; the background pump owes nothing to THIS query).
-            await EntryManifest.deriveFtsCandidates(ctx, scheme, EntrySemantic.ftsQueryFor(statement.body.raw), 128);
             const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.workspaceId, scheme, mimetypes, statement.body.raw, LineMarkerOps.firstLast(statement.lineMarker));
             if (ranked.status !== 200) return { status: ranked.status, matches: [] };
             return { status: 200, matches: ranked.results.map((x) => ({ pathname: x.pathname, span: { lineStart: x.lineStart, lineEnd: x.lineEnd } })) };

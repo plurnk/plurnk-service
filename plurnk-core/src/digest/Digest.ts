@@ -91,7 +91,8 @@ interface DigestModel {
         vector_complete: number;
         fts_only: number;
         unfinished: number;
-        partial: number;
+        derivation_artifacts_complete: number;
+        derivation_artifacts_building: number;
         chunk_rows: number;
         models: number;
         token_derivations: number;
@@ -210,7 +211,7 @@ export default class Digest {
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
         lines.push(`Workspaces: ${m.workspaces.length}  Runs: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Log entries: ${m.logEntries.length}`);
-        lines.push(`Semantic:  body=${m.embeddings.body_entries} complete=${m.embeddings.derivation_complete} (vectors=${m.embeddings.vector_complete} fts-only=${m.embeddings.fts_only}) unfinished=${m.embeddings.unfinished} (partial=${m.embeddings.partial}) chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
+        lines.push(`Semantic:  body=${m.embeddings.body_entries} attached=${m.embeddings.derivation_complete} (vectors=${m.embeddings.vector_complete} fts-only=${m.embeddings.fts_only}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         // Triage rollup up top: how many conversations limped vs died vs ran clean, and the total
         // error/strike load. The whole point of the "degenerate win" lens — see it before scrolling.
         const health = m.loops.map((l) => Digest.#loopHealth(l, m));
@@ -319,6 +320,7 @@ export default class Digest {
     static #renderJson(m: DigestModel): string {
         return JSON.stringify({
             dbPath: m.dbPath,
+            semantic: m.embeddings,
             workspaces: m.workspaces.map((s) => ({ id: s.id, name: s.name, cost_pico: s.cost_pico })),
             workers: m.workers.map((r) => ({ id: r.id, workspace_id: r.workspace_id, name: r.name, cost_pico: r.cost_pico })),
             loops: m.loops.map((l) => ({
@@ -467,7 +469,7 @@ export default class Digest {
             ? "FROM entries e JOIN entry_channels ec ON ec.entry_id=e.id AND ec.name='body'"
             : "";
         const withVector = has("entry_embeddings")
-            ? "EXISTS (SELECT 1 FROM entry_embeddings em WHERE em.entry_id=e.id)"
+            ? "EXISTS (SELECT 1 FROM derivations d JOIN entry_embeddings em ON em.derivation_id=d.id WHERE d.deep_hash=e.deep_hash)"
             : "0";
         const embeddings = {
             body_entries: semanticStateAvailable ? one(`SELECT count(*) n ${body}`) : -1,
@@ -475,7 +477,8 @@ export default class Digest {
             vector_complete: semanticStateAvailable && has("entry_embeddings") ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL AND ${withVector}`) : -1,
             fts_only: semanticStateAvailable && has("entry_embeddings") ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL AND NOT ${withVector}`) : -1,
             unfinished: semanticStateAvailable ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NULL`) : -1,
-            partial: semanticStateAvailable && has("entry_embeddings") ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NULL AND ${withVector}`) : -1,
+            derivation_artifacts_complete: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='complete'") : -1,
+            derivation_artifacts_building: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='building'") : -1,
             chunk_rows: has("entry_embeddings") ? one("SELECT count(*) n FROM entry_embeddings") : -1,
             models: has("entry_embeddings") ? one("SELECT count(DISTINCT embedding_model) n FROM entry_embeddings") : -1,
             token_derivations: has("token_counts") ? one("SELECT count(*) n FROM token_counts") : -1,

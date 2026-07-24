@@ -54,8 +54,8 @@ test("[#186-semantic-e2e] ~query ranks by REAL semantic similarity (full pipelin
 
         const r = await new Worker().find(semanticStmt(url(""), "database connection error", 2), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
-        // The two connection entries are returned, real-cosine-ranked; cake (no shared
-        // keyword) is excluded by the FTS narrow, never reaching cosine.
+        // Top-2 returns the two closest vectors. Cake is eligible for cosine
+        // ranking too; it simply falls below both connection entries.
         assert.deepEqual(r.results.map((f) => f.path).sort(), ["worker:///db.md", "worker:///sql.md"]);
         assert.ok(!r.results.some((f) => f.path === "worker:///cake.md"), "the unrelated recipe never enters the ranking");
         assert.ok(r.results.every((row) => typeof row.channels === "object" && !("extent" in (row as object))), "~semantic FIND returns uniform catalog rows (no per-match extent) — the matched chunk's span is a READ, the ranking is the row order");
@@ -104,11 +104,14 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
         await EntryManifest.maintainDerivations(ctx);
         const findCtx = (): ReturnType<typeof makeSchemeCtx> => makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes });
 
-        // A low floor admits every FTS-matched candidate (cosine > 0.05) — same set
-        // an integer top-K would, proving the decimal routes to the threshold path.
+        // A low floor admits every positively related vector. Exhaustive cosine
+        // recall may include a weakly positive document; lexical overlap is not
+        // an eligibility gate.
         const low = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05), findCtx());
         assert.equal(low.status, 200);
-        assert.deepEqual([...new Set(low.results.map((f) => f.path))].sort(), ["worker:///db.md", "worker:///sql.md"]);
+        const lowPaths = new Set(low.results.map((f) => f.path));
+        assert.ok(lowPaths.has("worker:///db.md"));
+        assert.ok(lowPaths.has("worker:///sql.md"));
 
         // A near-1 floor admits nothing — the threshold actually filters; it isn't a top-K in disguise.
         const high = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.999), findCtx());

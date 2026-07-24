@@ -81,7 +81,7 @@
         "@plurnk/plurnk-providers-xai": "~1.2.0",
         "@plurnk/plurnk-schemes": "1.2.0",
         "@plurnk/plurnk-schemes-http": "1.2.0",
-        "@possumtech/sqlrite": "6.3.0",
+        "@possumtech/sqlrite": "^6.5.0",
         "diff": "^9.0.0",
         "ignore": "7.0.6",
         "isomorphic-git": "1.38.10"

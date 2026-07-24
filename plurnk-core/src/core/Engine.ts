@@ -194,47 +194,47 @@ export default class Engine {
     // §send-premature-terminate — loops owed one idle-grace turn after a retrieval-only 409
     // (the steer's own advice is to wait; in-memory, fail-open on restart).
     #retrievalRefusalGrace = new Set<number>();
-    // §derivation-off-hot-path — the background derivation chain: the per-turn pump and the
-    // workspace warm ride it instead of the turn (a 2-CPU container CPU-embedding a 335-entry
-    // ingest starved every loop for ~28min, #316). Serialized (never two pumps interleaved),
-    // drained at daemon stop (never racing db close), failures logged (never swallowed).
-    // A turn never waits on an embedding; a ~query warms its own candidate slice inline
-    // (§semantic-cold-query-full-fidelity), so cold workspaces still get full-fidelity search.
-    #derivationChain: Promise<void> = Promise.resolve();
+    // One coalesced warm per workspace. Creation/membership changes start it as soon
+    // as content exists; the first model turn joins it, so no operation observes
+    // partial graph/vector coverage. A request arriving mid-pass marks the workspace
+    // dirty and guarantees one final exhaustive rescan.
     #workspaceWarms = new Map<number, {
         dirty: boolean;
+        materialize: boolean;
         ctx: PlurnkSchemeContext;
         promise: Promise<void>;
     }>();
     #workspaceWarmStatus = new Map<number, WorkspaceDerivationStatus>();
 
-    #queueDerivation(job: () => Promise<void>): Promise<void> {
-        const run = this.#derivationChain.then(job).catch((err: unknown) => {
-            process.stderr.write(`plurnk-engine: background derivation failed: ${err instanceof Error ? err.message : String(err)}\n`);
-        });
-        this.#derivationChain = run;
-        return run;
-    }
-
-    #queueWorkspaceWarm(ctx: PlurnkSchemeContext): Promise<void> {
+    #queueWorkspaceWarm(ctx: PlurnkSchemeContext, invalidate = true, materialize = true): Promise<void> {
         const workspaceId = ctx.workspaceId;
         const existing = this.#workspaceWarms.get(workspaceId);
         if (existing !== undefined) {
-            existing.dirty = true;
+            if (invalidate) existing.dirty = true;
+            if (materialize) existing.materialize = true;
             existing.ctx = ctx;
             return existing.promise;
         }
+        if (!invalidate && this.#workspaceWarmStatus.get(workspaceId)?.phase === "complete") {
+            return Promise.resolve();
+        }
 
-        const state = { dirty: false, ctx, promise: Promise.resolve() };
+        const state = { dirty: false, materialize, ctx, promise: Promise.resolve() };
+        // Register before publishing the first synchronous telemetry event. A
+        // listener may request another warm from that callback; it must join
+        // this state rather than opening a second pump in the re-entrant gap.
+        this.#workspaceWarms.set(workspaceId, state);
         const publish = (current: PlurnkSchemeContext, status: WorkspaceDerivationStatus): void => {
             this.#workspaceWarmStatus.set(workspaceId, status);
             current.pushTelemetry?.({
                 source: "engine:derivation", kind: "embed_progress", ...status,
             });
         };
-        const promise = this.#queueDerivation(async () => {
+        const promise = (async () => {
             do {
                 state.dirty = false;
+                const shouldMaterialize = state.materialize;
+                state.materialize = false;
                 const current = state.ctx;
                 publish(current, {
                     phase: "preparing",
@@ -242,7 +242,7 @@ export default class Engine {
                     completed: 0, total: 1, percent: 0, level: "info",
                 });
                 try {
-                    await GitMembership.indexGitMembership(current);
+                    if (shouldMaterialize) await GitMembership.indexGitMembership(current);
                     await EntryManifest.maintainDerivations({
                         ...current,
                         pushTelemetry: (event) => {
@@ -277,11 +277,10 @@ export default class Engine {
                 message: "Repository semantic index is ready",
                 completed: 1, total: 1, percent: 100, level: "info",
             });
-        }).finally(() => {
+        })().finally(() => {
             if (this.#workspaceWarms.get(workspaceId) === state) this.#workspaceWarms.delete(workspaceId);
         });
         state.promise = promise;
-        this.#workspaceWarms.set(workspaceId, state);
         return promise;
     }
 
@@ -291,7 +290,7 @@ export default class Engine {
 
     // Awaited by Daemon.stop before the db closes.
     async drainDerivations(): Promise<void> {
-        await this.#derivationChain;
+        await Promise.all([...this.#workspaceWarms.values()].map((state) => state.promise));
     }
 
     #streamEventNotify: StreamEventNotify | undefined;
@@ -869,17 +868,18 @@ export default class Engine {
         // (disk → body channel) so they appear in the catalog. No-ops
         // on headless / non-git workspaces. Runs BEFORE the derivation pump so
         // this turn's packet reflects them.
-        // A workspace warm reaches "indexing" only after its membership snapshot has completed.
-        // Do not rescan the entire forest on a turn arriving during that semantic pass: the warm
-        // already materialized exactly the entries this packet reads, and a redundant 2,500-file
-        // stat/DB sweep can delay the provider until indexing is nearly finished.
-        const warmStatus = this.#workspaceWarmStatus.get(workspaceId);
-        const fsDivergences = warmStatus?.phase === "indexing"
-            ? []
-            : await GitMembership.indexGitMembership(systemCtx);
+        // Workspace creation starts this eagerly. Joining here is the correctness
+        // boundary: the model never runs against partial graph/vector coverage.
+        await this.#queueWorkspaceWarm(systemCtx, false);
+        // The warm materialized membership before deriving. This second pass is the
+        // ordinary cheap change detector and captures any drift that landed meanwhile.
+        const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
         await this.#logFsFictions(workspaceId, fsDivergences);
-
-        this.#queueDerivation(() => EntryManifest.maintainDerivations(systemCtx)); // §derivation-off-hot-path — the turn proceeds; ~queries warm their own slice
+        // The refresh above may have changed bodies (including model/client edits
+        // since the startup warm). Re-derive to completion before packet/model
+        // construction. Membership is already current, so this pass does not
+        // consume the filesystem divergences a second time.
+        await this.#queueWorkspaceWarm(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, §actor-boundary-catalog-preview):
         // one FIND(scheme:///**) per scheme that holds entries, foisted into the worker's first
@@ -1706,13 +1706,10 @@ export default class Engine {
         return (row?.n ?? 0) > 0;
     }
 
-    // #290 — run the derivation pump (deep channels: symbols/refs/FTS +
-    // embeddings, deep_hash-gated) at WORKSPACE-SCOPE, off the per-turn path, so a freshly-created
-    // workspace's corpus warms DURING the client's startup window instead of freezing the first
-    // loop.run. workspace.create fires this and returns immediately; embed_progress live-fans-out as it
-    // runs. Idempotent + deep_hash-gated, so turn 1's pump finds the work done (or harmlessly re-runs);
-    // a no-embedder build derives the cheap symbols/refs/FTS channels and skips the embed pass. Has no
-    // loop yet — telemetry fans out live only (loopId 0), never buffered to a loop that never drains.
+    // Workspace-scope eager warm: creation and membership changes start the
+    // exhaustive graph/FTS/vector derivation immediately. The RPC returns while
+    // progress live-fans-out at loopId 0; a model turn joins this same coalesced
+    // promise and cannot reach its provider until coverage is complete.
     async warmWorkspaceDerivations(workspaceId: number): Promise<void> {
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId, workerId: 0, loopId: 0, turnId: 0,

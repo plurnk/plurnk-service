@@ -577,7 +577,7 @@ All exports from `@plurnk/plurnk-mimetypes/index` are the stable API surface und
 
 ## 16. References channel (issues #16/#19)
 
-The references channel carries **classified symbol uses** — never definitions (those are the symbols channel's job). It is the per-entry raw material for plurnk-service's `symbol_refs` graph rows; linking, traversal, and cross-entry identity are entirely service-side SQL.
+The references channel carries **classified symbol uses** — never definitions (those are the symbols channel's job). It is the raw material for plurnk-service's content-addressed `symbol_refs` graph artifacts; linking, traversal, and cross-entry identity are entirely service-side SQL.
 
 ```ts
 type RefKind = "import" | "call" | "instantiate" | "inherit" | "type" | "use";
@@ -641,7 +641,7 @@ it("acme-mime-foo refs are conformant", async () => {
 
 ## 17. Embedding channel (issue #24)
 
-The `embedding` channel is the per-entry vector supply for plurnk-service's `~semantic` dialect: **native-endian raw Float32 bytes** (`Uint8Array`, length = 4 × dimension), **scalar per entry**. The service stores the bytes verbatim as a sqlite BLOB and cosine-ranks over a `Float32Array` view — no JSON round-trip. The same channel embeds arbitrary text: an entry's body and a `~query`'s query text ride the identical path.
+The `embedding` channel supplies vectors for plurnk-service's `~semantic` dialect: **native-endian raw Float32 bytes** (`Uint8Array`, length = 4 × dimension). The service stores those bytes verbatim in content-addressed derivation artifacts and cosine-ranks over a `Float32Array` view — no JSON round-trip. The same channel embeds arbitrary text: derived body chunks and a `~query`'s query text ride the identical path.
 
 - **Opt-in only.** `"embedding"` is never in the default channel set — it is a model inference, orders of magnitude costlier than parsing. Request it explicitly: `process(input, { channels: ["embedding"] })`.
 - **The embedder is an opt-in artifact package**: `@plurnk/plurnk-mimetypes-embeddings` (per-grammar-package precedent — the framework ships no model weights). It exports `embed(text): Promise<Uint8Array>` and `dimension: number`. Model: MiniLM-class `all-MiniLM-L6-v2`, **dimension 384** (1536 bytes), quantized ONNX bundled in the package (hermetic; pinned revision; fetch + verify scripts). Vectors are mean-pooled and L2-normalized.
@@ -730,7 +730,7 @@ Machine-generated content (minified bundles, lockfiles, sourcemaps) is honest by
 - `ProcessResult.noEmbed?: string` — the matched pattern, present iff matched (also on the grammar-degraded path); consumers skip semantic derivation and stay FTS-only for these entries.
 - `matchNoEmbed(path)` — the exported matcher, read at call time from the host env like the pdf caps. Unset/empty → nothing suppressed; **no code fallback carries a hidden default**.
 - A content heuristic (line-length mass ratios) was evaluated and **rejected**: it false-positives on line-record data (large-record JSONL, wide-row CSV), silently excluding real searchable content — a worse failure than the waste it prevents — and its thresholds would be hidden magic. Name-based misses a generated file with an innocent name; the operator adds a pattern, which is the paradigm working, not failing.
-- Whole-content size ceilings are explicitly NOT this mechanism: a 500-page novel embeds fully (owner ruling, #47) — suppression is name-targeted, never size-targeted.
+- Name-based suppression remains this framework's reader-declared mechanism. A host may additionally impose an explicit, observable vector-workload size ceiling; that is host policy, not a mimetype content classification.
 
 ## 22. Standards alignment — the DIVERGENCES register (#490/#408) <!-- coverage: policy -->
 

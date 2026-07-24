@@ -70,8 +70,8 @@ SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 -- the branch's scratch is independent — it edits its own without touching the parent's.
 
 -- PREP: fork_get_worker_scope_entries
--- The parent's worker-scope entries (owner = the parent's worker name, prefix `/<parent>/*`). deep_hash
--- and attributes ride along; copying the channels with their tokens keeps the deep_hash valid so
+-- The parent's worker-scope entries. Content-addressed deep artifact pointers
+-- and attributes ride along; copying the channels keeps the pointer valid so
 -- the next-turn pump skips re-derivation (the content is byte-identical).
 SELECT id, scheme, pathname, deep_hash, attributes
 FROM entries WHERE workspace_id = $workspace_id AND owner_id = $owner_id ORDER BY id;
@@ -84,8 +84,8 @@ VALUES ($workspace_id, $owner_id, $scheme, $pathname, $deep_hash, $attributes)
 RETURNING id;
 
 -- PREP: fork_copy_entry_channels
--- Copy every channel (body + derived graph/fts/embedding) from the source entry to the copy — one
--- statement, content/tokens/state preserved, so the deep_hash gate holds and nothing re-derives.
+-- Copy every source channel from the source entry to the copy. Deep projections
+-- live on the shared artifact, not on either entry.
 INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
 SELECT $new_entry_id, name, content, mimetype, tokens, state FROM entry_channels WHERE entry_id = $old_entry_id;
 

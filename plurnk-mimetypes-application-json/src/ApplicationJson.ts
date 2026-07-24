@@ -42,7 +42,7 @@ export default class ApplicationJson extends BaseHandler {
         });
         if (errors.length === 0) return;
         const first = errors[0];
-        const { line, column } = offsetToLineCol(content, first.offset);
+        const { line, column } = makeOffsetLocator(content)(first.offset);
         throw new SyntaxError(
             `${printParseErrorCode(first.error)} at line ${line}:${column}`,
         );
@@ -58,7 +58,7 @@ export default class ApplicationJson extends BaseHandler {
         if (tree === undefined) return [];
 
         const symbols: MimeSymbol[] = [];
-        collectKeys(tree, content, symbols, "");
+        collectKeys(tree, makeOffsetLocator(content), symbols, "");
         return symbols;
     }
 
@@ -148,12 +148,13 @@ export default class ApplicationJson extends BaseHandler {
 // jsonpath and xpath report identical lines (#41). undefined when unlocatable —
 // never a faked line.
 function spanFor(tree: Node, content: string): (pointer: string) => { line: number; endLine: number } | undefined {
+    const locate = makeOffsetLocator(content);
     return (pointer) => {
         const valueNode = findNodeAtLocation(tree, pointerToSegments(pointer));
         if (valueNode === undefined) return undefined;
         const node = valueNode.parent?.type === "property" ? valueNode.parent : valueNode;
-        const line = offsetToLineCol(content, node.offset).line;
-        const endLine = offsetToLineCol(content, node.offset + Math.max(node.length - 1, 0)).line;
+        const line = locate(node.offset).line;
+        const endLine = locate(node.offset + Math.max(node.length - 1, 0)).line;
         return { line, endLine };
     };
 }
@@ -176,12 +177,17 @@ function pointerToSegments(pointer: string): Array<string | number> {
 // `container` is the dotted path of enclosing emitted keys (SPEC §3): keys
 // inside this property's value carry the path extended by this key. Array
 // indices contribute nothing — arrays recurse with the path unchanged.
-function collectKeys(node: Node, content: string, into: MimeSymbol[], container: string): void {
+function collectKeys(
+    node: Node,
+    locate: (offset: number) => { line: number; column: number },
+    into: MimeSymbol[],
+    container: string,
+): void {
     if (node.type === "property" && node.children && node.children.length >= 2) {
         const keyNode = node.children[0];
         let inner = container;
         if (keyNode.type === "string" && typeof keyNode.value === "string") {
-            const { line, column } = offsetToLineCol(content, keyNode.offset);
+            const { line, column } = locate(keyNode.offset);
             into.push({
                 name: keyNode.value,
                 kind: "field",
@@ -196,30 +202,40 @@ function collectKeys(node: Node, content: string, into: MimeSymbol[], container:
         }
         // Recurse into the value to find nested keys.
         const valueNode = node.children[1];
-        if (valueNode) collectKeys(valueNode, content, into, inner);
+        if (valueNode) collectKeys(valueNode, locate, into, inner);
         return;
     }
 
     // Objects, arrays, and the root all recurse through children.
     if (node.children) {
         for (const child of node.children) {
-            collectKeys(child, content, into, container);
+            collectKeys(child, locate, into, container);
         }
     }
 }
 
-// Convert a byte offset into 1-indexed line/column.
-function offsetToLineCol(content: string, offset: number): { line: number; column: number } {
-    let line = 1;
-    let column = 1;
-    const limit = Math.min(offset, content.length);
-    for (let i = 0; i < limit; i += 1) {
-        if (content.charCodeAt(i) === 0x0a) {
-            line += 1;
-            column = 1;
-        } else {
-            column += 1;
-        }
+// Build the line index once, then resolve each parser offset by binary search.
+// Re-scanning content[0..offset] for every JSON key made extraction quadratic:
+// large tokenizer metadata could monopolize the daemon main thread for minutes
+// while the embedding worker pool sat idle.
+function makeOffsetLocator(content: string): (offset: number) => { line: number; column: number } {
+    const lineStarts = [0];
+    for (let i = 0; i < content.length; i += 1) {
+        if (content.charCodeAt(i) === 0x0a) lineStarts.push(i + 1);
     }
-    return { line, column };
+    return (offset) => {
+        const target = Math.max(0, Math.min(offset, content.length));
+        let low = 0;
+        let high = lineStarts.length;
+        while (low < high) {
+            const middle = (low + high) >>> 1;
+            if (lineStarts[middle] <= target) low = middle + 1;
+            else high = middle;
+        }
+        const lineIndex = low - 1;
+        return {
+            line: lineIndex + 1,
+            column: target - lineStarts[lineIndex] + 1,
+        };
+    };
 }

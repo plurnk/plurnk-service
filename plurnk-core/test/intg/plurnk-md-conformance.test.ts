@@ -235,8 +235,8 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
         await new Worker().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
         await new Worker().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
         await EntryManifest.maintainDerivations(ctx);  // store real embeddings via the plugin
-        const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [5] }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
+        const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [1] }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a"], "top-1 returns the closest semantic document");
     } finally { db.close(); }
 });

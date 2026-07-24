@@ -11,6 +11,9 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { MockResponse } from "@plurnk/plurnk-providers";
+import { Mock } from "@plurnk/plurnk-providers";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import type { TelemetryEvent } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
@@ -18,7 +21,7 @@ import Owner from "../../src/core/Owner.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, makeSchemeCtx } from "./_helpers.ts";
 
 const tokenize = (text: string): number => Math.ceil(text.length / 4);
 
@@ -51,11 +54,6 @@ test("[#290] Engine.warmWorkspaceDerivations derives deep channels at workspace 
         await new Worker().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
         await new Worker().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
         await new Worker().edit(editStmt(url("cart.ts"), "export function addToCart() {}\n"), ctx);
-
-        // §semantic-fts-at-write — the keyword half indexes AT the write now: a cold corpus is
-        // FTS-addressable before any pump runs. The warm still owns the DEEP channels (graph,
-        // embeddings, deep_hash) — asserted below by the stamped hashes and progress fan-out.
-        assert.deepEqual(await fts(db, workspaceId, "processPayment"), ["/pay.ts"], "write-time FTS precedes the warm");
 
         // Warm at workspace scope — the seam workspace.create fires. No loop/turn exists.
         await engine.warmWorkspaceDerivations(workspaceId);
@@ -119,6 +117,61 @@ test("[#587] workspace warm materializes a fresh repository before deriving it",
         const phases = telemetry.filter((t) => t.event.kind === "embed_progress").map((t) => t.event.phase);
         assert.deepEqual(phases, ["preparing", "preparing", "complete"], "overlapping warms coalesce, rescan once, and emit one terminal state");
         assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "complete", "terminal state remains queryable for a late client");
+    } finally {
+        await db.close();
+    }
+});
+
+test("a model turn joins an in-flight startup warm before calling its provider", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `warm-join-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "wait for semantics");
+        const mimetypes = new Mimetypes();
+        await mimetypes.ready();
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        await new Worker().edit(editStmt(url("orientation.md"), "semantic orientation evidence\n"), ctx);
+
+        let release!: () => void;
+        const blocked = new Promise<void>((resolve) => { release = resolve; });
+        let entered!: () => void;
+        const processing = new Promise<void>((resolve) => { entered = resolve; });
+        const originalProcess = mimetypes.process.bind(mimetypes);
+        let first = true;
+        mimetypes.process = async (...args): Promise<Awaited<ReturnType<typeof originalProcess>>> => {
+            if (first) {
+                first = false;
+                entered();
+                await blocked;
+            }
+            return originalProcess(...args);
+        };
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize, mimetypes });
+        const response: MockResponse = {
+            assistant: {
+                content: "",
+                ops: [{ op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: { raw: "ready", json: null }, position: { line: 1, column: 1 } }],
+                reasoning: null,
+                usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
+            },
+        };
+        const provider = new Mock({ contextWindow: 4096, responses: [response] });
+
+        const warm = engine.warmWorkspaceDerivations(workspaceId);
+        await processing;
+        const turn = engine.runTurn({
+            provider, workspaceId, workerId, loopId, turnNumber: 1,
+            messages: [{ role: "system", content: "test" }, { role: "user", content: "go" }],
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(provider.remaining, 1, "provider is untouched while semantic coverage is incomplete");
+
+        release();
+        await warm;
+        await turn;
+        assert.equal(provider.remaining, 0, "provider runs after the joined warm completes");
     } finally {
         await db.close();
     }

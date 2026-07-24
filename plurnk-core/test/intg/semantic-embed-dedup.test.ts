@@ -1,38 +1,66 @@
-// [§semantic-embed-dedup] #416 — identical body content embeds ONCE; a duplicate entry copies the
-// existing vectors instead of re-embedding (the metaproject's 15× tokenizer.json → 1×). Tests the
-// dedup SOURCE query directly (no embedder needed): given a content_hash + model, it returns the
-// chunk rows of another entry that shares the content — the rows the pump copies.
+// Content-addressed semantic artifacts (#416 / #588): identical derivation inputs
+// build once, then every pathname attaches the same graph/FTS/vector projection.
+
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace } from "./_helpers.ts";
-import Owner from "../../src/core/Owner.ts";
-import { contentHash } from "../../src/core/content-hash.ts";
+import Worker from "../../src/schemes/Worker.ts";
+import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
-test("the dedup source query returns a sibling's chunks for identical content (#416)", async () => {
+process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
+
+const url = (pathname: string): UrlPath => ({
+    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
+    username: null, password: null, hostname: null, port: null,
+    pathname: `/${pathname}`, params: {}, fragment: null,
+});
+
+const edit = (pathname: string, body: string): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null, target: url(pathname), lineMarker: null, body,
+    position: { line: 1, column: 1 },
+});
+
+test("identical entries attach one complete semantic artifact and both remain addressable (#416, #588)", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `dedup-${crypto.randomUUID()}`);
-        const hash = contentHash("shared body content");
-        // Entry A: a body channel stamped with the content_hash + an embedding under 'm1'.
-        const a = (await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/a" }))!.id;
-        await (db.test_seed_channel_hashed as PrepMethod).run({ entry_id: a, name: "body", content: "shared body content", mimetype: "text/markdown", content_hash: hash, state: "static" });
-        await (db.embedding_set as PrepMethod).run({ entry_id: a, chunk_seq: 0, line_start: 1, line_end: 1, vector: new Uint8Array([9, 8, 7]), embedding_model: "m1" });
-        // Entry B: same content_hash, not yet embedded.
-        const b = (await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/b" }))!.id;
-        await (db.test_seed_channel_hashed as PrepMethod).run({ entry_id: b, name: "body", content: "shared body content", mimetype: "text/markdown", content_hash: hash, state: "static" });
+        const workspaceId = await insertWorkspace(db, `artifact-share-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        let embeddedTexts = 0;
+        const vector = new Uint8Array(new Float32Array([1, 0]).buffer);
+        const mimetypes = {
+            process: async (input: { content: string }) => ({ content: input.content, embedding: vector, embeddingModel: "stub@shared" }),
+            embedBatch: async (texts: readonly string[]) => {
+                embeddedTexts += texts.length;
+                return texts.map(() => vector);
+            },
+            embedderInfo: () => ({ maxTokens: 128, countTokens: (text: string) => text.split(/\s+/u).filter(Boolean).length, model: "stub@shared" }),
+        } as unknown as Mimetypes;
+        const writeCtx = makeSchemeCtx({ db, workspaceId, workerId });
+        const deriveCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
 
-        // The dedup source query for B under m1 finds A's chunk.
-        const rows = await (db.embedding_by_content_hash as PrepMethod).all<{ chunk_seq: number; vector: Uint8Array }>({ content_hash: hash, embedding_model: "m1", entry_id: b });
-        assert.equal(rows.length, 1, "A's single chunk is offered as the reuse source");
-        assert.deepEqual([...rows[0].vector], [9, 8, 7], "the exact sibling vector, to copy verbatim");
+        const body = "shared semantic artifact";
+        await new Worker().edit(edit("a.md", body), writeCtx);
+        await new Worker().edit(edit("b.md", body), writeCtx);
+        await EntryManifest.maintainDerivations(deriveCtx);
 
-        // A different model → no reuse source (dimensions could differ; never cross-copy).
-        const other = await (db.embedding_by_content_hash as PrepMethod).all<{ chunk_seq: number }>({ content_hash: hash, embedding_model: "m2", entry_id: b });
-        assert.equal(other.length, 0, "reuse is per-model — a mismatched model finds nothing");
+        const rows = await (db.test_entries_with_hash_by_scheme_prefix as PrepMethod).all<{ pathname: string; deep_hash: string }>({
+            workspace_id: workspaceId, scheme: "worker", prefix: "/%",
+        });
+        assert.equal(rows.length, 2);
+        assert.equal(rows[0].deep_hash, rows[1].deep_hash, "both pathnames point at the same derivation identity");
 
-        // Distinct content → no source.
-        const none = await (db.embedding_by_content_hash as PrepMethod).all<{ chunk_seq: number }>({ content_hash: contentHash("different"), embedding_model: "m1", entry_id: b });
-        assert.equal(none.length, 0, "distinct content shares no embedding");
-    } finally { await db.close(); }
+        const artifacts = await (db.test_artifact_counts as PrepMethod).get<{ artifacts: number; vectors: number }>({ deep_hash: rows[0].deep_hash });
+        assert.deepEqual(artifacts, { artifacts: 1, vectors: 1 }, "one complete artifact owns one vector set");
+        assert.equal(embeddedTexts, 1, "the shared content embeds exactly once");
+
+        const ranked = await EntrySemantic.rankSemantic(db, workspaceId, "worker", mimetypes, "shared artifact", { first: 10, last: null });
+        assert.deepEqual(ranked.results.map((r) => r.pathname).sort(), ["/a.md", "/b.md"],
+            "artifact sharing never collapses the independently addressable entries");
+    } finally {
+        await db.close();
+    }
 });

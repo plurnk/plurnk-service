@@ -10,6 +10,8 @@
 // tokenizer in production; a conservative char-count upper bound until it reports
 // one; a stub in tests). Every tunable is a parameter — no constants live here.
 
+import { availableParallelism } from "node:os";
+
 export interface ChunkSpec {
     seq: number;        // 0-based index within the entry
     lineStart: number;  // 1-based first line, inclusive — the <L> extent
@@ -37,12 +39,23 @@ export default class EntryChunk {
         // bound: a chunk that passes the sum check is guaranteed <= budget in the
         // real tokenizer. Lossless, and only O(n) countTokens calls.
         let planned = 0;
-        const lineTokens = await Promise.all(lines.map(async (line) => {
-            const tokens = await countTokens(line);
-            planned++;
-            onPlanningProgress?.({ completed: planned, total: lines.length });
-            return tokens;
-        }));
+        let nextLine = 0;
+        const lineTokens = new Array<number>(lines.length);
+        const counter = async (): Promise<void> => {
+            while (nextLine < lines.length) {
+                const index = nextLine++;
+                lineTokens[index] = await countTokens(lines[index]);
+                planned++;
+                onPlanningProgress?.({ completed: planned, total: lines.length });
+            }
+        };
+        // Keep only a host-relative window of token-count promises alive. Mapping a
+        // 400k-line tokenizer JSON through Promise.all retained hundreds of thousands
+        // of promises per concurrent entry and could exhaust V8 before embedding began.
+        await Promise.all(Array.from(
+            { length: Math.min(lines.length, availableParallelism() * 2) },
+            () => counter(),
+        ));
 
         const chunks: ChunkSpec[] = [];
         let start = 0;

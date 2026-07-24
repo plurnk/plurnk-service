@@ -83,7 +83,6 @@ test("EntrySemantic.deriveEmbeddings reports planning and embedding progress wit
             undefined,
             undefined,
             undefined,
-            undefined,
             (progress) => events.push(progress),
         );
         const planning = events.filter((event) => event.phase === "planning");

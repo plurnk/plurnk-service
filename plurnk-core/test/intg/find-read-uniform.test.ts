@@ -127,9 +127,8 @@ test("[#286] ~semantic READ honors FIND — the ranked chunks come back as rows 
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, ...ids, mimetypes }));
         const { result, rows } = await dispatchRows(db, engine, ids, parseOp<ReadStatement>("<<READ(worker:///**)<3>:~database connection error:READ", "READ"));
         assert.equal(result.status, 200);
-        assert.ok((result.rowsWritten ?? 0) >= 1, "semantic READ fans out the ranked matches");
-        assert.ok(rows.some((r) => /database connection/.test(r.content ?? "")), "the db entry's chunk is delivered as content");
-        assert.ok(!rows.some((r) => /birthday cake/.test(r.content ?? "")), "the unrelated entry never ranks in");
+        assert.equal(rows.length, 2, "top-3 exhaustively ranks the two-document corpus");
+        assert.match(rows[0].content ?? "", /database connection/, "the closest chunk ranks first");
     } finally { await db.close(); }
 });
 

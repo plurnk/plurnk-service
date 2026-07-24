@@ -73,6 +73,10 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
     await mkdir(dirname(dbPath), { recursive: true });
     const db = (await SqlRite.open({
         path: dbPath,
+        // The suite already runs eight isolated databases concurrently. One reader
+        // per fixture exercises the WAL read lane without multiplying a host-sized
+        // pool by every test database.
+        readers: 1,
         dir: [
             MIGRATIONS_DIR,
             resolve(PROJECT_ROOT, "src"),

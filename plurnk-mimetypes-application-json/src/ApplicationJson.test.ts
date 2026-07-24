@@ -199,6 +199,15 @@ describe("ApplicationJson — extract", () => {
         const result = h.extractRaw(src);
         assert.deepEqual(result.map((s) => s.name), ["real"]);
     });
+
+    it("extracts a large line-oriented document without rescanning every prefix (#588)", () => {
+        const fields = Array.from({ length: 10_000 }, (_, i) => `  "field${i}": ${i}`);
+        const src = `{\n${fields.join(",\n")}\n}`;
+        const result = h.extractRaw(src);
+        assert.equal(result.length, fields.length);
+        assert.equal(result.at(-1)?.name, "field9999");
+        assert.equal(result.at(-1)?.line, 10_001);
+    });
 });
 
 describe("ApplicationJson — framework integration via BaseHandler", () => {

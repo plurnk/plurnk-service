@@ -14,7 +14,6 @@
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
-import { contentHash } from "../core/content-hash.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import type { ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
@@ -88,58 +87,62 @@ export default class EntryManifest {
         return [...byEntry.values()];
     }
 
-    // The per-turn derivation pump (§mimetype). For each BODY channel whose content changed
-    // since its last derivation (the deep_hash gate, config-signature-folded), re-derive every
-    // deep channel from ONE process() — the @graph symbol index (#186) and the ~semantic FTS +
-    // embedding — and stamp the new hash. An unchanged entry is skipped; its symbol/FTS/embedding
-    // rows persist. This is the engine-side point where the mimetypes handler legitimately fires
-    // (never at a scheme write). It DERIVES; it does not render — FIND and the catalog read what
-    // it leaves. Per-entry isolation: a malformed/unprocessable entry (e.g. invalid JSON the model
-    // wrote) makes process() throw — uncaught, that once crashed the whole turn (the daemon's
-    // -32603); contain it here (clear the deep channels, stamp the hash so it doesn't re-attempt)
-    // and keep pumping the rest.
-    // One entry's full derivation (graph + FTS + embeddings + hash stamp), containment
-    // included — shared by the pump and the ~query inline slice (§semantic-cold-query-full-fidelity
-    // full-fidelity). Failure clears the deep channels and stamps the hash (no re-attempt).
-    // Every derivation write funnels through an entry-keyed chain: the background pump and a
-    // ~query's inline slice may target the SAME entry concurrently, and indexFts/indexEmbedding
-    // are delete-then-insert — interleaved same-entry writers would duplicate chunk rows.
-    // Different entries remain independent and may occupy the embedding pool concurrently.
-    static #deriveChains = new Map<number, Promise<void>>();
+    // The derivation pump (§mimetype) materializes one immutable artifact per
+    // content+mimetype+reader+embedder identity, then atomically attaches entries to
+    // it. The artifact contains graph, reader-projected FTS, and vectors; identical
+    // entries share it without copying. Malformed content degrades to a complete
+    // empty projection so one bad entry cannot stop the corpus. Cancellation leaves
+    // a building artifact unattached and retry rebuilds it before attachment.
+    // Hash-keyed chains serialize concurrent workspace warm requests for the same
+    // artifact while distinct artifacts remain parallel.
+    static #deriveChains = new Map<string, Promise<void>>();
 
-    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
-        const prior = EntryManifest.#deriveChains.get(r.entry_id) ?? Promise.resolve();
-        const run = prior.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, maxChunks, onProgress));
+    static async deriveOne(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+        const prior = EntryManifest.#deriveChains.get(hash) ?? Promise.resolve();
+        const run = prior.then(() => EntryManifest.#deriveOneUnlocked(ctx, r, hash, embedActive, onProgress));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
-        EntryManifest.#deriveChains.set(r.entry_id, tail);
+        EntryManifest.#deriveChains.set(hash, tail);
         void tail.finally(() => {
-            if (EntryManifest.#deriveChains.get(r.entry_id) === tail) EntryManifest.#deriveChains.delete(r.entry_id);
+            if (EntryManifest.#deriveChains.get(hash) === tail) EntryManifest.#deriveChains.delete(hash);
         });
         return run;
     }
 
-    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, maxChunks?: number, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
-        const { db, workspaceId, mimetypes } = ctx;
+    static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
+        const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
+        let artifact = await (db.derivation_get as PrepMethod).get<{ id: number; state: "building" | "complete" }>({ deep_hash: hash });
+        if (artifact?.state === "complete") {
+            await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            return;
+        }
+        if (artifact === undefined) {
+            artifact = await (db.derivation_create as PrepMethod).get<{ id: number; state: "building" }>({ deep_hash: hash });
+        }
+        if (artifact === undefined) throw new Error(`failed to create derivation artifact ${hash}`);
+        const derivationId = artifact.id;
+        const attachComplete = async (): Promise<void> => {
+            await (db.derivation_complete as PrepMethod).run({ derivation_id: derivationId });
+            await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+        };
         try {
             const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
             let result: ProcessResult;
             if (wantGraph) {
                 try {
                     result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: ["symbols", "references", "content"] }); // §mimetype-methods-process-entry-point — "content" = the readable projection (mimetypes#48): FTS/embeddings consume it when the handler offers one. Embeddings have one path below: tiled embedBatch, never a discarded whole-file pre-pass.
-                    await EntryGraph.populateFrom(db, workspaceId, r.entry_id, result.symbols ?? [], result.references ?? []);
+                    await EntryGraph.populateFrom(db, derivationId, result.symbols ?? [], result.references ?? []);
                 } catch {
                     // A handler predating the references channel throws → metadata-only, clear graph.
                     result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: [] });
-                    await EntryGraph.populateFrom(db, workspaceId, r.entry_id, [], []);
+                    await EntryGraph.populateFrom(db, derivationId, [], []);
                 }
             } else {
                 result = await mimetypes.process({ content: r.content, hint: r.mimetype, path: r.pathname }, { channels: [] });
-                await EntryGraph.populateFrom(db, workspaceId, r.entry_id, [], []);
+                await EntryGraph.populateFrom(db, derivationId, [], []);
             }
-            // The other two deep channels: re-index the body into entry_fts (~semantic's keyword
-            // half) and store the embedding vector(s) + model (the vector half). Empty/binary →
-            // cleared, not stored.
+            // Store the processed lexical projection and vectors in the derivation
+            // artifact. Empty/binary content clears rather than stores projections.
             // The SEMANTIC SOURCE: when the handler returns a readable projection
             // (ProcessResult.content — e.g. text/html's Readability→markdown), FTS and the
             // embedder consume THAT, not the raw body. A 424k-token raw page becomes a few-k
@@ -147,68 +150,35 @@ export default class EntryManifest {
             // epic's READ-slices-of-reading end-state) actually consumes. Handlers that return
             // no projection keep today's raw-body behavior exactly.
             const semanticSource = result.content ?? r.content;
-            await EntrySemantic.indexFts(db, r.entry_id, semanticSource);
+            await EntrySemantic.indexFts(db, derivationId, semanticSource);
             // mimetypes SPEC 21 / #47 — the operator's PLURNK_MIMETYPES_NO_EMBED classification: a matched entry
             // (lockfile, minified bundle, sourcemap) is never semantically derived — zero vectors,
             // FTS-only is the honest treatment. The knob IS the decision table; no code heuristics.
             if (result.noEmbed !== undefined) {
-                await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
+                await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
                 ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} (${r.pathname}) matched no-embed pattern '${result.noEmbed}' — FTS-only, no vectors`, level: "info" });
-                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+                await attachComplete();
                 return;
             }
-            // §semantic-embed-dedup (#416) — identical body content already embedded elsewhere
-            // (the metaproject's 15× tokenizer.json) copies instead of re-embedding. On a hit the
-            // deep_hash stamps (a full derivation) and the expensive embed is skipped entirely.
-            const reusedModel = await EntrySemantic.tryReuseEmbeddings(db, r.entry_id, r.content, mimetypes);
-            if (reusedModel !== undefined) {
-                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            // Size rejection is vector-only: membership, READ, graph, and FTS remain exhaustive.
+            if (EntrySemantic.embedSizeRejection(r.content) !== null) {
+                await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
+                await attachComplete();
                 return;
             }
-            const { chunks, model, capped } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, maxChunks, onProgress);
-            await EntrySemantic.indexEmbedding(db, r.entry_id, chunks, model);
-            // §semantic-entry-chunk-cap — a CAPPED (inline, latency-staged) pass does NOT stamp:
-            // the hash stays stale so the background pump completes the entry to full depth.
-            // Head-quality answers now, whole-book coverage at steady state. There is NO pump-side
-            // size cap — semantic search must work for legitimately large corpora (owner ruling);
-            // junk-content eligibility is classification (mimetypes#47), never a magic number.
-            if (capped) {
-                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `entry ${r.entry_id} inline-embedded head-first (${chunks.length} chunks) — the background pump completes it`, level: "info" });
-            } else {
-                await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
-            }
-        } catch {
-            await EntryGraph.populateFrom(db, workspaceId, r.entry_id, [], []);
-            await EntrySemantic.indexFts(db, r.entry_id, "");
-            await EntrySemantic.indexEmbedding(db, r.entry_id, [], undefined);
-            await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            const { chunks, model } = await EntrySemantic.deriveEmbeddings(mimetypes, semanticSource, result.symbols ?? [], undefined, undefined, ctx.signal, onProgress);
+            await EntrySemantic.indexEmbedding(db, derivationId, chunks, model);
+            await attachComplete();
+        } catch (error) {
+            // Interruption is not a completed degradation. Leave the artifact in
+            // building state and the entry on its prior complete pointer; the next
+            // pass clears/rebuilds the partial projections before attaching.
+            if (ctx.signal?.aborted === true) throw error;
+            await EntryGraph.populateFrom(db, derivationId, [], []);
+            await EntrySemantic.indexFts(db, derivationId, "");
+            await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
+            await attachComplete();
         }
-    }
-
-    // §semantic-cold-query-full-fidelity — derive any STALE entries among the ~query's
-    // FTS-narrowed candidate slice, inline at dispatch. Ranking only ever scores the
-    // narrowed set, so deriving exactly this slice on demand gives bit-identical results
-    // to a fully-warm corpus — the first turn never runs on degraded search while the
-    // background pump sweeps the rest. Bounded by the caller's cap; returns how many derived.
-    static async deriveFtsCandidates(ctx: PlurnkSchemeContext, scheme: string | null, ftsQuery: string, cap: number): Promise<number> {
-        const { db, workspaceId, mimetypes } = ctx;
-        if (mimetypes === undefined) return 0;
-        const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);
-        if (deepCfgSig === "embed:none") return 0; // FTS-only posture — nothing to derive
-        const rows = await (db.semantic_fts_candidates as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string; deep_hash: string | null }>({
-            fts_query: ftsQuery, workspace_id: workspaceId, scheme, cap,
-        });
-        let derived = 0;
-        for (const r of rows) {
-            const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
-            if (hash === r.deep_hash) continue; // already warm for this config
-            await EntryManifest.deriveOne(ctx, r, hash, true, 128); // inline latency stage (§semantic-entry-chunk-cap)
-            derived++;
-        }
-        if (rows.length === cap) {
-            ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `inline slice capped at ${cap} candidates — broader results warm in the background`, level: "info" });
-        }
-        return derived;
     }
 
     static async maintainDerivations(ctx: PlurnkSchemeContext): Promise<void> {
@@ -228,7 +198,7 @@ export default class EntryManifest {
         const pending: Array<{ r: ManifestRow; hash: string }> = [];
         for (const r of rows) {
             if (r.channel !== "body") continue; // derivation fires on the body channel only
-            const hash = createHash("sha256").update(r.content).update("\0").update(deepCfgSig).digest("hex");
+            const hash = createHash("sha256").update(r.content).update("\0").update(r.mimetype).update("\0").update(deepCfgSig).digest("hex");
             if (hash !== r.deep_hash) pending.push({ r, hash }); // unchanged since last derivation → deep rows persist
         }
         // Smallest-first (owner ruling, service#337 follow-up): a fat outlier (a minified bundle,
@@ -236,6 +206,25 @@ export default class EntryManifest {
         // and the hot path never queues behind the whale. Pure scheduling — nothing is skipped,
         // nothing is lazy; the whale still derives to full depth, just at the back of the line.
         pending.sort((a, b) => a.r.content.length - b.r.content.length);
+        const oversized = pending.flatMap(({ r }) => {
+            const rejection = EntrySemantic.embedSizeRejection(r.content);
+            return rejection === null ? [] : [{
+                pathname: r.pathname,
+                actualBytes: rejection.actualBytes,
+                maxBytes: rejection.maxBytes,
+            }];
+        });
+        if (oversized.length > 0) {
+            ctx.pushTelemetry?.({
+                source: "engine:derivation",
+                kind: "embed_size_rejections",
+                level: "warn",
+                message: `${oversized.length} workspace entr${oversized.length === 1 ? "y exceeds" : "ies exceed"} PLURNK_SERVICE_MAX_EMBED_SIZE and will remain FTS-only: ${oversized.map((entry) => entry.pathname).join(", ")}`,
+                entries: oversized,
+                count: oversized.length,
+                maxBytes: oversized[0].maxBytes,
+            });
+        }
         const total = pending.length;
         const step = total > 1 ? Math.max(1, Math.floor(total / 10)) : 0; // ~10 milestones, or silent for 0-1
         let completed = 0;
@@ -247,20 +236,20 @@ export default class EntryManifest {
             }
         };
 
-        // §derivation-dedup-parallel (#416) — grouping by content_hash means each unique body
-        // embeds exactly once while distinct representatives run with bounded concurrency. Each
-        // representative releases its own siblings immediately after commit: no global barrier
-        // leaves cheap worktree copies pending behind an unrelated slow tail entry.
+        // §derivation-dedup-parallel (#416) — each content+mimetype+configuration identity builds
+        // one shared artifact while distinct artifacts run with bounded concurrency.
         const groups = new Map<string, Array<{ r: ManifestRow; hash: string }>>();
         for (const p of pending) {
-            const key = embedActive ? contentHash(p.r.content) : String(p.r.entry_id); // no dedup when embeddings are off
-            const g = groups.get(key);
-            if (g === undefined) groups.set(key, [p]); else g.push(p);
+            const g = groups.get(p.hash);
+            if (g === undefined) groups.set(p.hash, [p]); else g.push(p);
         }
         const rawConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
         const cores = availableParallelism();
         const configuredConcurrency = rawConcurrency === undefined || rawConcurrency.trim() === ""
-            ? (cores <= 4 ? cores : cores - 1)
+            // Entry derivation is a producer tier above the all-core embedding pool.
+            // A square-root fan-out keeps that pool fed without simultaneously
+            // materializing one enormous symbol/chunk graph per host core.
+            ? Math.max(1, Math.floor(Math.sqrt(cores)))
             : Number(rawConcurrency);
         if (!Number.isInteger(configuredConcurrency) || configuredConcurrency === 0 || configuredConcurrency < -1) {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
@@ -276,7 +265,7 @@ export default class EntryManifest {
                     for (const { r, hash } of group) {
                         if (Boolean(ctx.signal?.aborted)) return;
                         let lastProgress = "";
-                        await EntryManifest.deriveOne(ctx, r, hash, embedActive, undefined, (progress) => {
+                        await EntryManifest.deriveOne(ctx, r, hash, embedActive, (progress) => {
                             if (step === 0 || progress.total <= 1) return;
                             const milestone = progress.completed === progress.total
                                 || progress.completed % Math.max(1, Math.floor(progress.total / 10)) === 0;
@@ -304,9 +293,8 @@ export default class EntryManifest {
             };
             await Promise.all(Array.from({ length: Math.min(concurrency, work.length || 1) }, () => worker()));
         };
-        // Each group stays on one worker: its representative commits first, then every sibling
-        // immediately reuses that result. A global reps→dups barrier made one slow tail entry
-        // leave hundreds of already-reusable worktree duplicates falsely pending.
+        // Each group stays on one worker: its representative completes the artifact, then every
+        // sibling attaches that same immutable result.
         await workerPool([...groups.values()]);
     }
 

@@ -13,25 +13,27 @@ import type { Db, PrepMethod } from "../core/Db.ts";
 import type { MimeSymbol, MimeRef } from "@plurnk/plurnk-mimetypes";
 
 export default class EntryGraph {
+    static readonly #STORE_BATCH = 1024;
+
     // Replace an entry's graph rows with the given extracted symbols/references
     // (delete-then-insert, so empty arrays clear a now-empty/binary/non-code entry
     // to zero rows). Caller has already run the handler; this is pure storage.
     static async populateFrom(
-        db: Db, workspaceId: number, entryId: number,
+        db: Db, derivationId: number,
         symbols: readonly MimeSymbol[], references: readonly MimeRef[],
     ): Promise<void> {
-        await (db.graph_delete_defs as PrepMethod).run({ entry_id: entryId });
-        await (db.graph_delete_refs as PrepMethod).run({ entry_id: entryId });
-        for (const s of symbols) {
-            await (db.graph_insert_def as PrepMethod).run({
-                workspace_id: workspaceId, entry_id: entryId, name: s.name, kind: s.kind,
-                container: s.container ?? null, line: s.line, end_line: s.endLine ?? null,
+        await (db.graph_delete_defs as PrepMethod).run({ derivation_id: derivationId });
+        await (db.graph_delete_refs as PrepMethod).run({ derivation_id: derivationId });
+        for (let offset = 0; offset < symbols.length; offset += EntryGraph.#STORE_BATCH) {
+            await (db.graph_insert_defs_bulk as PrepMethod).run({
+                derivation_id: derivationId,
+                rows: symbols.slice(offset, offset + EntryGraph.#STORE_BATCH),
             });
         }
-        for (const r of references) {
-            await (db.graph_insert_ref as PrepMethod).run({
-                workspace_id: workspaceId, entry_id: entryId, name: r.name, kind: r.kind,
-                container: r.container ?? null, line: r.line, col: r.column ?? null,
+        for (let offset = 0; offset < references.length; offset += EntryGraph.#STORE_BATCH) {
+            await (db.graph_insert_refs_bulk as PrepMethod).run({
+                derivation_id: derivationId,
+                rows: references.slice(offset, offset + EntryGraph.#STORE_BATCH),
             });
         }
     }
@@ -84,11 +86,11 @@ export default class EntryGraph {
     // @>sym: sym's def(s) → the target names those defs reference → those targets'
     // defining entries (with their def spans). The def's full qualified path is the @> join key (#186).
     static async #referents(db: Db, workspaceId: number, scheme: string | null, name: string): Promise<GraphMatch[]> {
-        const defs = await (db.graph_resolve_def as PrepMethod).all<{ entry_id: number; container: string | null }>({ workspace_id: workspaceId, name });
+        const defs = await (db.graph_resolve_def as PrepMethod).all<{ derivation_id: number; container: string | null }>({ workspace_id: workspaceId, name });
         const targets = new Set<string>();
         for (const d of defs) {
             const qualified = d.container === null ? name : `${d.container}.${name}`;
-            const refs = await (db.graph_refs_from_source as PrepMethod).all<{ name: string }>({ workspace_id: workspaceId, entry_id: d.entry_id, container: qualified });
+            const refs = await (db.graph_refs_from_source as PrepMethod).all<{ name: string }>({ derivation_id: d.derivation_id, container: qualified });
             for (const r of refs) targets.add(r.name);
         }
         const out: GraphMatch[] = [];
