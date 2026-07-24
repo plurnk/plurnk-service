@@ -42,12 +42,18 @@ export default class WebFetcher {
     }
 
     async fetch(url: string, opts?: { signal?: AbortSignal }): Promise<{ body: string; mimetype: string } | null> {
-        const timeout = AbortSignal.timeout(requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT"));
-        const signal = opts?.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
+        // Bound the byte probe independently. Browser.render owns its own
+        // navigation timeout and must be allowed to observe Playwright's
+        // TimeoutError so Browser.#safeGoto can salvage an already-rendered DOM.
+        // Sharing this timeout with render used to close the page at the exact
+        // same instant as goto timed out, converting salvageable news pages into
+        // "Target closed" and returning null (#596).
+        const probeTimeout = AbortSignal.timeout(requireNumEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT"));
+        const probeSignal = opts?.signal ? AbortSignal.any([opts.signal, probeTimeout]) : probeTimeout;
 
         let response: Response;
         try {
-            response = await Guard.fetch(url, { method: "GET", body: undefined, headers: [["User-Agent", BROWSER_UA]] }, signal);
+            response = await Guard.fetch(url, { method: "GET", body: undefined, headers: [["User-Agent", BROWSER_UA]] }, probeSignal);
         } catch {
             return null; // SSRF-refused or unreachable — both dead
         }
@@ -62,7 +68,9 @@ export default class WebFetcher {
             try {
                 const rendered = await this.#browser.render(url, {
                     workerId: 0,
-                    signal,
+                    // Caller cancellation still spans the whole operation.
+                    // The renderer supplies its own per-navigation deadline.
+                    signal: opts?.signal,
                     headers: [["User-Agent", BROWSER_UA]],
                     guard: Guard.isPublicUrl,
                 });

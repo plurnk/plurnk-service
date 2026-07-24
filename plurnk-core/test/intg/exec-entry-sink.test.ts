@@ -133,7 +133,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
 
-test("entry(content:null) fetches through the guarded sink — live materializes, dead prunes (#455)", async () => {
+test("entry(content:null) fetches through the guarded sink — live materializes, unavailable does not (#455)", async () => {
     // The sink's WebFetch is faked: the SSRF guard blocks localhost, so no live server can stand in for
     // the fetch. A /dead URL resolves null (dead); anything else resolves rendered html bytes.
     const fetchWeb: WebFetch = async (url) =>
@@ -156,8 +156,9 @@ test("entry(content:null) fetches through the guarded sink — live materializes
         assert.equal(body?.mimetype, "text/markdown", "the fetched html projected to the decisive markdown body");
         assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
 
-        // The DEAD url: the fake returned null → the sink REJECTED → the executor pruned it. No entry, ever.
+        // The unavailable URL: the fake returned null, so the sink rejected and no HTTP entry materialized.
+        // Search discovery membership is independently preserved by the search executor (#596).
         const dead = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/example.org/dead" });
-        assert.equal(dead, undefined, "a null fetch rejects the sink so nothing materializes — the dead row is pruned pre-turn");
+        assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });

@@ -87,10 +87,12 @@ export interface ExecArgs {
     // executor owns zero substrate machinery (SPEC §2.6). `content` null ⇒
     // CONSUMER-SOURCED: the consumer fetches `path` and derives the body +
     // mimetype — the ruling-#5 prefetch, since the executor never fetches
-    // (§2.6). A rejection means "not materialized / dead" — the executor prunes
-    // the item (search prunes the digest row). Consumer collision semantics:
-    // upsert + tag-union + freshness bump. Optional: absent, the producer
-    // degrades gracefully (search lists without prefetch/pruning).
+    // (§2.6). A rejection means only "not materialized"; it says nothing about
+    // whether discovery metadata is valid. Search preserves the candidate in
+    // its ranked digest and reports the materialization verdict separately.
+    // Consumer collision semantics: upsert + tag-union + freshness bump.
+    // Optional: absent, the producer preserves discovery results without a
+    // materialization verdict.
     entry?: (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<void>;
 }
 

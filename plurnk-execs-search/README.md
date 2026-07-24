@@ -29,7 +29,7 @@ Every tunable is an **optional env override** — no code default hides a magic 
 
 | Var | Required | Behavior if unset |
 |---|---|---|
-| `PLURNK_EXECS_SEARCH_SEARXNG_URL` | **yes** | search is unavailable — base URL of the instance (`/search` must allow `format=json`) |
+| `PLURNK_EXECS_SEARCH_SEARXNG_URL` | **yes** | search is unavailable — base URL of the instance (`/search` must allow `format=json`); URL userinfo is sent as HTTP Basic auth and redacted from diagnostics |
 | `PLURNK_EXECS_SEARCH_LANGUAGE` | no | SearXNG's own default |
 | `PLURNK_EXECS_SEARCH_LIMIT` | no | keep all results (else a client-side cap) |
 | `PLURNK_EXECS_SEARCH_TIMEOUT` | no | the consumer's signal is the deadline (SPEC §2.5); this is an extra ceiling (ms) |
@@ -39,17 +39,29 @@ Every tunable is an **optional env override** — no code default hides a magic 
 
 The page-fetch knobs (per-page timeout, redirect hops) moved to the consumer with the fetch — the executor no longer fetches result pages (SPEC §2.6, ruling #5); schemes-http owns the prefetch and its `PLURNK_SCHEMES_HTTP_*` knobs.
 
-## The dead-row prefetch (plurnk-execs#18, SPEC §2.6)
+## Page prefetch (plurnk-execs#18, service#596, SPEC §2.6)
 
 The executor emits the digest but **never fetches** (ruling #5). It hands each unique candidate url to the consumer's `ExecArgs.entry()` sink as a **prefetch request** — `entry(url, null, { tags: [slug] })`, content consumer-sourced — and the consumer (schemes-http) fetches, renders, and materializes the `https://` entry behind its own SSRF/redirect guards (schemes-http's guarded fetch, #456):
 
-- **Survivor:** `entry()` resolves — the row rides the digest; its body lives in the materialized entry (a folded row carrying path + tokens).
-- **Pruned:** `entry()` rejects (unreachable / guard-refused / empty) — the row is dropped. *Listed = fetchable.* Zero dead rows by construction.
-- **No sink:** older consumers degrade gracefully — every candidate rides the digest, unpruned.
+- **Materialized:** `entry()` resolves — the row carries `materialized: true`; its body lives in the ordinary HTTP entry.
+- **Unavailable body:** `entry()` rejects (unreachable / guard-refused / empty) — the discovery row remains in rank order with `materialized: false`.
+- **No sink:** every candidate rides the digest and the `materialized` field is omitted because no verdict exists.
+
+Discovery membership and rank belong to SearXNG. Page fetchability is optional
+enrichment and must never remove or reorder a result: many authoritative news
+origins reject automated fetches while their title, URL, and snippet remain
+valid search evidence.
 
 ## Output
 
-Writes a compact **digest of survivors only** — `{ title, url, snippet }` per result (plus `publishedDate` when present), capped by `PLURNK_EXECS_SEARCH_LIMIT` — as JSON to the `results` channel. Zero dead rows by construction. The digest is the model's chooser context and rides OPEN (a few KB by design — the raw SearXNG payload was ~10–20× that and blew budgets, plurnk-execs#17); page bodies live in the materialized entries, never the packet. The model reads `exec://<coord>/EXEC#results`, then READs / `~`-queries the entries it picks.
+Writes a compact ranked digest — `{ title, url, snippet, materialized? }` per
+result (plus `publishedDate` when present), capped by
+`PLURNK_EXECS_SEARCH_LIMIT` — as JSON to the `results` channel. The digest is
+the model's chooser context and rides OPEN (a few KB by design — the raw
+SearXNG payload was ~10–20× that and blew budgets, plurnk-execs#17); successful
+page bodies live in materialized HTTP entries, never the packet. The model can
+answer from discovery evidence, READ a materialized page, or select another
+source when `materialized` is false.
 
 Failures emit a `TelemetryEvent` (`source: "exec:<tag>"`): `searxng_not_configured`, `searxng_unreachable`, `searxng_timeout`, `searxng_http_<n>`, `external_bang_refused`.
 

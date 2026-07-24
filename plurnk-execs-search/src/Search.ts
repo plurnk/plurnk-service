@@ -31,9 +31,31 @@ const slugify = (query: string): string => query.toLowerCase().replace(/[^a-z0-9
 // emits `URL= ` with a trailing space) must read as unconfigured. Truthy-only
 // checks let " " through, and `new URL("/search", " ")` then throws uncaught →
 // the worker never resolves nor times out (plurnk-execs-search#3).
-const searxngUrl = (): string | null => {
+interface SearxngConfig {
+    base: URL;
+    authorization?: string;
+}
+
+const searxngConfig = (): SearxngConfig | null => {
     const u = (process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL ?? "").trim();
-    return u && URL.canParse(u) ? u : null;
+    if (!u || !URL.canParse(u)) return null;
+    const base = new URL(u);
+    let username: string;
+    let password: string;
+    try {
+        username = decodeURIComponent(base.username);
+        password = decodeURIComponent(base.password);
+    } catch {
+        return null;
+    }
+    base.username = "";
+    base.password = "";
+    return {
+        base,
+        ...(username || password
+            ? { authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` }
+            : {}),
+    };
 };
 
 // The signal fields of a SearXNG result — everything else it returns (template,
@@ -63,13 +85,13 @@ interface SearxngResult {
 // .env.defaults. The page-fetch knobs (timeout, redirects) moved to the consumer
 // with the fetch — the executor no longer fetches (SPEC §2.6, ruling #5).
 //
-// The dead-row prefetch (plurnk-execs#18, SPEC §2.6): the executor emits the
-// digest but NEVER fetches — it hands each candidate url to the consumer's
-// entry() as a prefetch request (content consumer-sourced). The consumer
-// fetches/renders/materializes the https:// entry; its reject IS the liveness
-// verdict, and the executor prunes that digest row. Survivors ONLY — zero dead
-// rows. The digest rides OPEN as chooser context; page bodies live in the
-// entries (schemes-http owns the fetch/render — its guarded Browser fetch), never the packet.
+// Page prefetch (plurnk-execs#18, service#596, SPEC §2.6): the executor emits
+// the ranked discovery digest but NEVER fetches — it hands each candidate URL
+// to the consumer's entry() as a consumer-sourced prefetch request. The
+// consumer fetches/renders/materializes the https:// entry; resolve/reject
+// becomes the row's materialized verdict, never a membership or ranking filter.
+// The digest rides OPEN as chooser context; successful page bodies live in the
+// entries (schemes-http owns the guarded fetch/render), never the packet.
 export default class Search extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
@@ -79,9 +101,9 @@ export default class Search extends BaseExecutor {
     // not a reachability ping — boot answers "is search set up?"; live
     // reachability is the worker path's job (it emits searxng_unreachable).
     override async probe(): Promise<RuntimeAvailability> {
-        const url = searxngUrl();
-        return url
-            ? { available: true, detail: url }
+        const config = searxngConfig();
+        return config
+            ? { available: true, detail: config.base.toString() }
             : { available: false, detail: "PLURNK_EXECS_SEARCH_SEARXNG_URL is not set to a valid URL" };
     }
 
@@ -109,8 +131,8 @@ export default class Search extends BaseExecutor {
             return fail("external_bang_refused", `external bang refused: "${preview(query)}"`, 400);
         }
 
-        const base = searxngUrl();
-        if (base === null) return fail("searxng_not_configured", "PLURNK_EXECS_SEARCH_SEARXNG_URL is not set to a valid URL");
+        const config = searxngConfig();
+        if (config === null) return fail("searxng_not_configured", "PLURNK_EXECS_SEARCH_SEARXNG_URL is not set to a valid URL");
 
         // All tunables are optional env overrides — no code default hides a
         // magic number (suggested values live in the consumer's .env.example).
@@ -119,7 +141,7 @@ export default class Search extends BaseExecutor {
         const timeoutRaw = process.env.PLURNK_EXECS_SEARCH_TIMEOUT;
         const safesearch = process.env.PLURNK_EXECS_SEARCH_SAFESEARCH;
 
-        const url = new URL("/search", base);
+        const url = new URL("/search", config.base);
         url.searchParams.set("q", query);
         url.searchParams.set("format", "json");
         url.searchParams.set("categories", category);
@@ -136,7 +158,10 @@ export default class Search extends BaseExecutor {
             : signal;
         let response: Response;
         try {
-            response = await fetch(url, { signal: fetchSignal });
+            response = await fetch(url, {
+                signal: fetchSignal,
+                ...(config.authorization ? { headers: { Authorization: config.authorization } } : {}),
+            });
         } catch (err) {
             // Caller cancellation is normal flow, not telemetry-worthy.
             if (signal.aborted) {
@@ -169,11 +194,12 @@ export default class Search extends BaseExecutor {
             return { status: 200 };
         }
 
-        // Dead-row prefetch (#18, SPEC §2.6, ruling #5): hand each candidate url
-        // to the consumer's entry() as a prefetch request (content null ⇒
-        // consumer-sourced) and prune on the reject verdict. The executor never
-        // fetches. Deduped by url; without the sink no verdict exists, so every
-        // candidate rides (graceful degradation). Survivors only — zero dead rows.
+        // Page prefetch (#18, SPEC §2.6, #596): hand each candidate URL to the
+        // consumer's entry() as a prefetch request (content null ⇒
+        // consumer-sourced). The executor never fetches. Fetchability is
+        // enrichment, not relevance: a rejection leaves the SearXNG discovery
+        // row in place and records only that no body materialized. Deduped by
+        // URL; without the sink no verdict exists, so `materialized` is omitted.
         const slug = slugify(query);
         const unique = [...new Map(capped.filter((r) => r.url).map((r) => [r.url!, r])).values()];
         const verdicts = await Promise.all(unique.map(async (r) => {
@@ -182,26 +208,25 @@ export default class Search extends BaseExecutor {
                 await entry(r.url!, null, { tags: [slug] });
                 return true;
             } catch {
-                return false; // reject = dead row, pruned
+                return false;
             }
         }));
         if (signal.aborted) {
             setState("results", "errored");
             return { status: 499 };
         }
-        const survivors = unique.filter((_, i) => verdicts[i]);
-
         // Emit a model-consumable digest, not the raw upstream payload (#17): a
         // raw SearXNG result is ~10–20× its information content, and a wake that
         // folds the full response back into the prompt can exceed the budget
         // outright (a 68KB/query hard 413). Title + url + a snippet (optionally
         // bounded) — the OPEN chooser context; sizes ride the ambient entry rows.
         const snippetMax = process.env.PLURNK_EXECS_SEARCH_SNIPPET;
-        const results = survivors.map(({ title, url, content, publishedDate }) => ({
+        const results = unique.map(({ title, url, content, publishedDate }, i) => ({
             title,
             url,
             snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
             ...(publishedDate ? { publishedDate } : {}),
+            ...(entry ? { materialized: verdicts[i] } : {}),
         }));
         write("results", JSON.stringify(results));
         setState("results", "closed");

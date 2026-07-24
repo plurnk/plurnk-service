@@ -9,11 +9,11 @@ import type { RenderResult } from "./Browser.ts";
 const PUB = "https://93.184.216.34/x"; // public IP literal — skips DNS
 
 const fakeBrowser = (html: string) => {
-    const calls: Array<{ url: string; guarded: boolean }> = [];
+    const calls: Array<{ url: string; guarded: boolean; signal: AbortSignal | undefined }> = [];
     return {
         calls,
         render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]>; guard?: (u: string) => Promise<boolean> }): Promise<RenderResult> => {
-            calls.push({ url, guarded: typeof opts.guard === "function" });
+            calls.push({ url, guarded: typeof opts.guard === "function", signal: opts.signal });
             return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
         },
     };
@@ -38,6 +38,17 @@ test("HTML → rendered DOM (guard passed to the browser)", async () => {
         assert.deepEqual(await new WebFetcher(b).fetch(PUB), { body: "<html><body>rendered</body></html>", mimetype: "text/html" });
     });
     assert.equal(b.calls[0].guarded, true);
+    assert.equal(b.calls[0].signal, undefined,
+        "the byte-probe timeout does not close render at its salvage deadline");
+});
+
+test("#596: caller cancellation still spans byte probe and render", async () => {
+    const b = fakeBrowser("<html><body>rendered</body></html>");
+    const caller = new AbortController();
+    await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
+        await new WebFetcher(b).fetch(PUB, { signal: caller.signal });
+    });
+    assert.equal(b.calls[0].signal, caller.signal);
 });
 
 test("close releases the owned renderer", async () => {

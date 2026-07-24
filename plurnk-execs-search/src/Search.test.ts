@@ -84,7 +84,7 @@ test("effect: search is read (auto-run; entries materialize via the consumer's o
 
 test("probe: available when SEARXNG_URL is set, unavailable otherwise", async () => {
     const set = await new Search({ runtime: "search", glyph: "🔎" }).probe();
-    assert.deepEqual(set, { available: true, detail: "http://searxng.test" });
+    assert.deepEqual(set, { available: true, detail: "http://searxng.test/" });
 
     delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
     const unset = await new Search({ runtime: "search", glyph: "🔎" }).probe();
@@ -92,8 +92,27 @@ test("probe: available when SEARXNG_URL is set, unavailable otherwise", async ()
     assert.match(String(unset.detail), /not set/);
 });
 
-test("probe: blank / whitespace / malformed URL reads as unavailable, not just unset (#3)", async () => {
-    for (const v of ["", "   ", "not-a-url"]) {
+test("URL userinfo becomes Basic auth and is redacted from requests and probes", async () => {
+    process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = "https://relay-key@search.example/search";
+    let requested = "";
+    let authorization: string | null = null;
+    setFetch(async (u, init) => {
+        requested = String(u);
+        authorization = new Headers(init?.headers).get("authorization");
+        return { ok: true, status: 200, json: async () => ({ results: [] }) };
+    });
+
+    const probe = await new Search({ runtime: "search", glyph: "🔎" }).probe();
+    const { result } = await invoke("search", "q");
+
+    assert.deepEqual(result, { status: 200 });
+    assert.equal(probe.detail, "https://search.example/search");
+    assert.equal(requested.includes("relay-key"), false);
+    assert.equal(authorization, `Basic ${Buffer.from("relay-key:").toString("base64")}`);
+});
+
+test("probe: blank / whitespace / malformed URL or credentials read as unavailable, not just unset (#3)", async () => {
+    for (const v of ["", "   ", "not-a-url", "https://%ZZ@searxng.test"]) {
         process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = v;
         const r = await new Search({ runtime: "search", glyph: "🔎" }).probe();
         assert.equal(r.available, false, `"${v}" is not a usable URL — must gate false`);
@@ -166,7 +185,7 @@ test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and 
     delete process.env.PLURNK_EXECS_SEARCH_RAW;
 });
 
-// --- the dead-row prefetch pass (#18, SPEC §2.6, ruling #5) ---------------
+// --- page prefetch enrichment (#18, #596, SPEC §2.6) -----------------------
 
 test("entry(): the executor hands each unique candidate url to the sink as a prefetch request (url, null, [slug])", async () => {
     routes([{ title: "a", url: "https://8.8.8.8/a" }]);
@@ -180,22 +199,21 @@ test("entry(): the executor hands each unique candidate url to the sink as a pre
     assert.equal(calls[0].opts.mimetype, undefined, "no mimetype supplied — the consumer determines it");
 });
 
-test("prune: a rejected entry() prunes that row; resolving candidates survive", async () => {
+test("#596: a rejected entry() preserves ranked discovery and reports materialization separately", async () => {
     routes([
         { title: "a", url: "https://8.8.8.8/a" },
         { title: "b", url: "https://8.8.8.9/b" },
     ]);
     const { writes } = await invoke("search", "q", {
-        entry: async (path) => { if (path.includes("8.8.8.9")) throw new Error("consumer fetch refused — dead row"); },
+        entry: async (path) => { if (path.includes("8.8.8.9")) throw new Error("consumer fetch refused — body unavailable"); },
     });
-    assert.deepEqual(
-        JSON.parse(writes[0].chunk).map((r: { title: string }) => r.title),
-        ["a"],
-        "the rejected candidate is pruned; the resolved one survives",
-    );
+    assert.deepEqual(JSON.parse(writes[0].chunk), [
+        { title: "a", url: "https://8.8.8.8/a", materialized: true },
+        { title: "b", url: "https://8.8.8.9/b", materialized: false },
+    ], "page fetchability annotates but never rewrites SearXNG membership or order");
 });
 
-test("prune: every rejecting entry() empties the digest — survivors only, zero dead rows", async () => {
+test("#596: every rejecting entry() still leaves the complete discovery digest", async () => {
     routes([
         { title: "x", url: "https://8.8.8.8/x" },
         { title: "y", url: "https://8.8.8.9/y" },
@@ -204,7 +222,10 @@ test("prune: every rejecting entry() empties the digest — survivors only, zero
     const { writes } = await invoke("search", "q", {
         entry: async (path) => { requested.push(path); throw new Error("all dead"); },
     });
-    assert.deepEqual(JSON.parse(writes[0].chunk), [], "all candidates pruned when every prefetch rejects");
+    assert.deepEqual(JSON.parse(writes[0].chunk), [
+        { title: "x", url: "https://8.8.8.8/x", materialized: false },
+        { title: "y", url: "https://8.8.8.9/y", materialized: false },
+    ], "all candidates remain usable as title/url/snippet evidence");
     assert.deepEqual(requested.sort(), ["https://8.8.8.8/x", "https://8.8.8.9/y"], "each candidate was still handed to the sink");
 });
 
@@ -219,16 +240,38 @@ test("dedupe: two candidates with the same url request the prefetch once and lis
     assert.deepEqual(requested, ["https://8.8.8.8/a"], "the duplicate url is handed to entry() exactly once");
 });
 
-test("degrade: without an entry sink every candidate rides the digest and entry is never called", async () => {
+test("#596 regression: inaccessible authoritative hits stay ahead of accessible irrelevant hits", async () => {
+    routes([
+        { title: "Bessent discusses AI", url: "https://news.example/bessent-ai", content: "Authoritative report." },
+        { title: "Scott Credit Union", url: "https://scu.example/", content: "Banking." },
+        { title: "SCOTT Bikes", url: "https://bikes.example/scott", content: "Bicycles." },
+    ]);
+    const { writes } = await invoke("search", "Scott Bessent recent remarks AI", {
+        entry: async (path) => {
+            if (path.includes("news.example")) throw new Error("publisher rejected automated page fetch");
+        },
+    });
+    const rows = JSON.parse(writes[0].chunk) as { title: string; materialized: boolean }[];
+    assert.deepEqual(rows.map(({ title, materialized }) => ({ title, materialized })), [
+        { title: "Bessent discusses AI", materialized: false },
+        { title: "Scott Credit Union", materialized: true },
+        { title: "SCOTT Bikes", materialized: true },
+    ]);
+});
+
+test("degrade: without an entry sink every candidate rides without a materialization verdict", async () => {
     routes([
         { title: "a", url: "https://8.8.8.8/a" },
         { title: "b", url: "https://8.8.8.9/b" },
     ]);
     const { writes } = await invoke("search", "q");
     assert.deepEqual(
-        JSON.parse(writes[0].chunk).map((r: { title: string }) => r.title),
-        ["a", "b"],
-        "no sink ⇒ no verdict ⇒ every candidate survives (graceful degradation)",
+        JSON.parse(writes[0].chunk),
+        [
+            { title: "a", url: "https://8.8.8.8/a" },
+            { title: "b", url: "https://8.8.8.9/b" },
+        ],
+        "no sink ⇒ no verdict; omission remains distinct from materialized:false",
     );
 });
 

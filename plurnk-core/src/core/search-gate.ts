@@ -4,8 +4,8 @@
 //
 //   Dedup — an IDENTICAL (runtime, command) already run in this loop STRIKES and SERVES: the
 //   result is status 409 (a turn failure — the strike rail counts it, the failed-ops gate holds
-//   the terminal a turn) CARRYING the prior survivor digest, re-read live from the original
-//   exec entry so it reflects the post-prefetch truth. No provenance prose, no re-fetch (owner:
+//   the terminal a turn) CARRYING the prior ranked digest, re-read live from the original
+//   exec entry so it includes final materialization verdicts. No provenance prose, no re-fetch (owner:
 //   "strike on identical, duplicate searches, and return the same results").
 //
 //   Cap — the (N+1)th search in one TURN is flood control: 429, a legible steer, nothing served.

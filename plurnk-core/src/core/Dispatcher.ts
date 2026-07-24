@@ -366,7 +366,7 @@ export default class Dispatcher {
     // §search-gate (#406, owner ruling) — search runtimes only; everything else dispatches
     // untouched. A DUPLICATE (same runtime+command this loop) STRIKES AND SERVES: 409 (the
     // strike rail counts the turn failure; the failed-ops gate holds the terminal a turn)
-    // carrying the prior survivor digest re-read live — the model sees its results again, the
+    // carrying the prior ranked digest re-read live — the model sees its results again, the
     // engine never re-fetches, no provenance prose. The per-turn CAP is flood control: 429.
     async #gatedExec(statement: PlurnkStatement, ctx: PlurnkSchemeContext, loopId: number, turnId: number): Promise<DispatchResult> {
         const runtime = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
@@ -376,7 +376,7 @@ export default class Dispatcher {
             return { status: 429, error: `Per-turn search limit reached (${verdict.cap}).` };
         }
         if (verdict.verdict === "duplicate") {
-            // {§stream-owner-scoped} — the prior survivor digest is the CALLER's own stream entry.
+            // {§stream-owner-scoped} — the prior ranked digest is the CALLER's own stream entry.
             const prior = await EntryCrud.readEntry(verdict.priorPathname, ctx, runtime, ctx.workerId);
             const raw = prior.entry?.channels["#results"]?.content ?? "";
             let results: unknown = raw;
