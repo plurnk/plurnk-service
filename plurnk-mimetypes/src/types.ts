@@ -82,10 +82,6 @@ export interface DetectInput {
     path?: string;
     ext?: string;
     hint?: string;
-    // Raw content for magic-byte sniffing. Accepts string or Uint8Array since
-    // sniffing is most useful for binary mimetypes. Currently not consumed by
-    // detect() — reserved for the future content-sniffing lane.
-    content?: string | Uint8Array;
 }
 
 export interface HandlerInfo {
@@ -101,7 +97,7 @@ export interface HandlerInfo {
     // Where this handler came from. "package" → discovered from a @plurnk/*
     // npm package via discover(); resolved by importing packageName.
     // "treesitter" → built into the framework's tree-sitter registry
-    // (SPEC §9.5); resolved by looking up TREE_SITTER_REGISTRY by mimetype
+    // (SPEC §9.4); resolved by looking up TREE_SITTER_REGISTRY by mimetype
     // and instantiating TreeSitterLanguageHandler with the registry entry.
     // @plurnk packages take precedence — tree-sitter entries only fill in
     // mimetypes that no @plurnk package claims.

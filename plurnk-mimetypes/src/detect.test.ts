@@ -127,10 +127,6 @@ describe("detect", () => {
         assert.equal(detect({ path: "foo.js", ext: "" }, reg), "text/javascript");
     });
 
-    it("content alone does not yet match (sniffing is a future hook)", () => {
-        const reg = registry({ byExtension: { ".js": "text/javascript" } });
-        assert.equal(detect({ content: "function foo() {}" }, reg), null);
-    });
 });
 
 describe("emptyRegistry", () => {

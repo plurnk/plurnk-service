@@ -119,7 +119,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         importMapping: () => import("./cpp.ts"),
     },
     {
-        // Convention alias (SPEC §22.2, #490): Linguist's C++ name. Hint-only —
+        // Linguist's C++ convention. Hint-only —
         // extension detection stays with the canonical text/x-cpp entry.
         mimetype: "text/x-c++src",
         glyph: "🇨",
@@ -149,7 +149,7 @@ export const TREE_SITTER_REGISTRY: readonly TreeSitterLanguageEntry[] = [
         importMapping: () => import("./tsx.ts"),
     },
     {
-        // Convention alias (SPEC §22.2, #490): Deno's canonical TSX name
+        // Deno's canonical TSX name
         // (consistent with our Deno-sourced text/typescript). Hint-only.
         mimetype: "text/tsx",
         glyph: "🟦",

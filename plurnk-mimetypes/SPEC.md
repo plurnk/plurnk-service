@@ -2,7 +2,8 @@
 
 This document defines the duck contract, pipeline, data shapes, and policies that the framework owns. Per-mimetype handler repos consume this spec; plurnk-service consumes the pipeline.
 
-The eventual home for the formal version of this contract is JSON Schema in [`@plurnk/plurnk-grammar`](https://github.com/plurnk/plurnk-grammar). Until then, this plain-text spec is authoritative.
+TypeScript exports define the executable API. This document defines the
+behavioral contract for handler authors and consumers.
 
 ---
 
@@ -274,16 +275,19 @@ interface ProcessResult {
 
 ## 8. Detection priority
 
-`detect({ path?, ext?, hint?, content? }, registry)` resolves in strict priority order, highest wins:
+`detect({ path?, ext?, hint? }, registry)` resolves in strict priority order,
+highest wins:
 
 1. `hint` — caller asserts a mimetype directly.
 2. `path` basename matches a registered filename (`Dockerfile`, `Makefile`).
 3. `ext` (explicit) or `extname(path)` matches a registered extension (case-insensitive, leading-dot enforced on lookup).
-4. `content` — magic-byte sniffing. **Future hook**; not implemented (`detect.ts` returns null for this lane).
 
 Returns the resolved mimetype string or `null`.
 
-`Mimetypes.detect()` (the orchestrator method) wraps the pure `detect()` and additionally applies an optional **default fallback** from `MimetypesOptions.defaultMimetype`. When all four lanes above miss but a default is configured, the orchestrator returns the default — never `null`. plurnk-service sets `defaultMimetype: "text/markdown"` because LLM output is overwhelmingly markdown; standalone consumers omit the option to preserve strict null-on-miss behavior. The default only affects the orchestrator's resolution; downstream handler discovery still applies normally (an unknown default mimetype resolves no handler, so `process()` returns the §7 handler-missing result — `ok: false`, no channel fields).
+`Mimetypes.detect()` wraps the pure function and applies an optional fallback
+from `MimetypesOptions.defaultMimetype`. When all lanes miss but a default is
+configured, it returns that default. The fallback does not alter handler
+discovery; an unknown default still produces the §7 handler-missing result.
 
 ## 9. Parser backends
 
@@ -309,11 +313,7 @@ Examples of legitimate deferrals: a language whose tree-sitter grammar (whether 
 
 The portability rule preserves the original premise of the ecosystem: every handler installs cleanly with `npm install` on any platform Node runs on. The quality rule preserves the credibility of the registry as a coverage claim. The four-tier model means coverage can grow without sacrificing either.
 
-### 9.2 Existing handlers
-
-ANTLR-backed handlers shipped at 0.1.x stay on ANTLR. The hierarchy applies forward — new handlers default to tree-sitter unless they fall through. Existing handlers may migrate to tree-sitter only when a specific limitation justifies the work (e.g., known grammar bugs in graphql/zig/scala2/php where the tree-sitter version handles the case correctly). Wholesale rewrites are out of scope.
-
-### 9.3 ANTLR extractor
+### 9.2 ANTLR extractor
 
 For ANTLR-backed handlers (existing pattern, still supported):
 
@@ -329,11 +329,11 @@ For ANTLR-backed handlers (existing pattern, still supported):
 
 Parse failures and visit-time exceptions are caught by `AntlrExtractor.extractRaw()` and converted to an empty `MimeSymbol[]` — the symbols channel comes back empty rather than erroring; there is no substitution to text content.
 
-### 9.4 Async `extractRaw` contract
+### 9.3 Async `extractRaw` contract
 
 `BaseHandler.extractRaw(content)` returns `MimeSymbol[] | Promise<MimeSymbol[]>` — synchronous handlers (AntlrExtractor, hand-rolled) return the array directly; tree-sitter handlers return a promise to honor WASM grammar init. Every consumer (`Mimetypes.process`, `symbolsRaw`, query routes) **`await`s the result unconditionally** — the union is awaitable either way.
 
-### 9.5 Tree-sitter extractor
+### 9.4 Tree-sitter extractor
 
 For tree-sitter-backed handlers:
 
@@ -344,11 +344,11 @@ For tree-sitter-backed handlers:
 
 Parse failures are caught by `TreeSitterExtractor.extractRaw()` and converted to an empty `MimeSymbol[]`, mirroring AntlrExtractor's error policy.
 
-### 9.6 Hand-rolled extractor
+### 9.5 Hand-rolled extractor
 
-For the rare format where neither tree-sitter nor grammars-v4 has coverage and the syntax is simple enough to scan directly: extend `BaseHandler` and implement `extractRaw(content)` returning `MimeSymbol[]` (or `Promise<MimeSymbol[]>` if the scanner needs async I/O, which it shouldn't). The handler README must justify why neither §9.5 nor §9.3 was viable — the bar is intentionally high to keep the family converged on community-maintained grammars.
+For the rare format where neither tree-sitter nor grammars-v4 has coverage and the syntax is simple enough to scan directly: extend `BaseHandler` and implement `extractRaw(content)` returning `MimeSymbol[]` (or `Promise<MimeSymbol[]>` if the scanner needs async I/O, which it shouldn't). The handler README must justify why neither §9.4 nor §9.2 was viable — the bar is intentionally high to keep the family converged on community-maintained grammars.
 
-## 10. Tokenization — a consumer concern <!-- coverage: policy -->
+## 10. Tokenization — a consumer concern
 
 The framework neither tokenizes nor budgets content for its own pipeline. Token counting is wholly a consumer concern — the service tokenizes content with its live provider at render time and never trusts write-time counts. The opt-in `Tokenizers` seam (§19) exposes exact model-vocab counting *for consumers that want it*; the framework never calls it for its own budgeting.
 
@@ -502,7 +502,7 @@ The deep channels are **never model-visible**. They are consumed exclusively by 
 
 Per plurnk-mimetypes#9. The full content's addressable extent in the unit `<L>` addresses for that content — line count for text, item count for structured. Exposed on `ProcessResult` so consumers can hand the model navigation bounds (`READ<100,150>` needs to know whether 150 is in range). Defaults: `extent = totalLines` for text content, `0` for binary; handlers with non-line units (structured archives, paginated documents) override `BaseHandler.extent()`.
 
-## 13. Per-grammar package architecture <!-- coverage: policy -->
+## 13. Per-grammar package architecture
 
 ### 13.1 Runtime boundary
 
@@ -544,25 +544,7 @@ interface TreeSitterLanguageEntry {
 
 Each leaf rebuilds from a pinned upstream commit and verifies that the committed WASM is byte-identical.
 
-## 14. Testing discipline (issue-driven test files)
-
-Recurring problem: tests prove that what was written does what was intended, not whether what was written matches the design promise the issue claimed to deliver. When an issue says "X works universally" and the implementation only delivers half of X, the per-feature tests still pass — because no one wrote the test that asserts "X is universal."
-
-The fix: every closed issue gets a test file in `src/issues/issue-{N}.test.ts` whose `describe` block names enumerate the issue's load-bearing claims (C1, C2, ...). The PR closing the issue must include this file. The tests assert the claim — *not the implementation* — so a future refactor that breaks the contract fails here, even if the per-feature tests still pass.
-
-Example (`src/issues/issue-10.test.ts`):
-
-```ts
-describe("Issue #10 — C3: cross-dispatch matrix", () => {
-    it("xpath on a JSON-shaped entry returns matches via the projected deep-xml", ...);
-    it("jsonpath on a tree-shaped entry returns matches via deep-json", ...);
-    // ...
-});
-```
-
-If C3 had been written when issue #10 first landed, the xpath-on-non-XML gap (issue #10's symmetric half, delivered late) would have failed the test immediately rather than shipping silently until someone noticed.
-
-### 14.1 Query-line conformance harness (#41)
+## 14. Query-line conformance
 
 The dialect-symmetry invariant (§11.2) is enforced by a shipped harness, not eyeballed per handler. `@plurnk/plurnk-mimetypes/conformance` exports `assertQueryLineConformance(handler, cases)`, where each case is `{ source, dialect, pattern, expectStartLines?, scalar? }`:
 
@@ -571,7 +553,7 @@ The dialect-symmetry invariant (§11.2) is enforced by a shipped harness, not ey
 
 **The gate must exercise every dialect a handler supports** — the single most important rule, and the one whose absence let the jsonpath/xpath asymmetry hide. A handler that supports both jsonpath and xpath gets a case for each (`$..*` and `//*`); testing one dialect proves nothing about the other. Each handler ships `src/queryLines.conformance.test.ts` (binary handlers assert the contract directly against a built fixture, e.g. pdf). The 30 tree-sitter grammar packages route through the one shared handler, so they are gated centrally in the framework's `src/treesitter/queryLines.conformance.test.ts` across a spread of languages on both dialects — one red build for an ecosystem-wide regression.
 
-## 15. Public API stability <!-- coverage: policy -->
+## 15. Public API stability
 
 All exports from `@plurnk/plurnk-mimetypes/index` are the stable API surface under semver; a breaking change to them is a platform MAJOR (announced, rare). Internal modules (those not re-exported from `index.ts`) are not part of the stable API and may change freely.
 
@@ -719,50 +701,10 @@ The axes do not collapse: NDJSON is text AND line-navigable (each line is a reco
 - **Taxonomy heuristic** (`classifyMimetype`, exported): answers for ANY mimetype string — consumers classify stream labels with no installed handler. Rules: `text/*` → text; a known text-application set (json/yaml/toml/xml/javascript/ecmascript/typescript/sql/jsonl/x-ndjson) → text; RFC 6839 suffixes `+json/+xml/+yaml/+toml` → text; else binary; slash-less → binary; `""` → not binary, not line-navigable. Tree-navigated: `application/json`, `application/xml`, `text/html`, and `+json`/`+xml` suffixes; every other non-binary text is line-navigable (yaml/toml/csv deliberately read as line-oriented).
 - **Registry refinement** (`Mimetypes.classify`): an installed handler's declared `plurnk.binary` is authoritative, and an optional per-entry **`navigation: "line" | "tree"`** in the plurnk block overrides the taxonomy (declare it only when a handler's algebra defies the taxonomy — no current handler needs it). A binary type is never line-navigable. `source: "handler"` marks registry-decided answers.
 
-### 20.3 Consumer migration
-
-plurnk-schemes retires `TEXT_APPLICATION_MIMETYPES` / `TREE_NAVIGABLE_MIMETYPES` and delegates: sync call sites use `classifyMimetype`, registry-aware sites use `classify()`. The third axis schemes floated (structural-JSON for `<L>` item dispatch) stays scheme-semantics (`isJson` is RFC 6839 trivia, not handler knowledge) — not absorbed.
-
 ## 21. Embedding-eligibility suppression (issue #47)
 
 Machine-generated content (minified bundles, lockfiles, sourcemaps) is honest bytes but semantic-derivation waste — a minified vuepress bundle chunked to 2,162 embeddings wall-clocked a CPU run (service#337). The eligibility decision is **operator configuration, not code**: `PLURNK_MIMETYPES_SEARCH_EXCLUDE` is a comma-separated pattern list — an entry without `/` matches the **basename**, an entry with `/` matches the **full path** (directory drawers like `*/dist/*`; hashed bundle names defeat basename rules — the run18 offender was `dist/assets/js/12.5188bb.js`). glob syntax is the body-matcher dialect's engine (§11.3 `globToRegex` — `*` crosses `/`, `?`, `[...]`; one glob engine per family, never a second variant); no wildcard = exact; first match wins. The sane default ships in this package's `.env.defaults` (the shipped operator floor, #52). The knob IS the classification — tunable per deployment, extensible without a release, and the matched pattern is the observable reason.
 
 - `ProcessResult.searchExcluded?: string` — the matched pattern, present iff matched (also on the grammar-degraded path); consumers keep the entry directly readable but exclude it from graph, lexical, and vector search.
 - `matchSearchExclusion(path)` — the exported matcher, read at call time from the host env like the pdf caps. Unset/empty → nothing suppressed; **no code fallback carries a hidden default**.
-- A content heuristic (line-length mass ratios) was evaluated and **rejected**: it false-positives on line-record data (large-record JSONL, wide-row CSV), silently excluding real searchable content — a worse failure than the waste it prevents — and its thresholds would be hidden magic. Name-based misses a generated file with an innocent name; the operator adds a pattern, which is the paradigm working, not failing.
 - Name-based suppression remains this framework's reader-declared mechanism. A host may additionally impose an explicit, observable vector-workload size ceiling; that is host policy, not a mimetype content classification.
-
-## 22. Standards alignment — the DIVERGENCES register (#490/#408) <!-- coverage: policy -->
-
-Owner doctrine: every plurnkism carries a DGR (Documented Good Reason) or converges. Verified against the **live** IANA text/application registries, GitHub Linguist `languages.yml`, mime-db, Pygments, and shared-mime-info (2026-07-16). Census of the 44 registered mimetypes: **13 IANA-registered, 23 established tooling conventions, 8 house-invented.**
-
-### 22.1 House naming style vs BCP 178 (the umbrella DGR)
-
-RFC 6648/BCP 178 deprecates minting new `x-` names *for registration contexts* — an `x-` name can never be promoted as-is (the `application/x-javascript` → `text/javascript` history). 27 of our 44 use `x-`. **DGR:** for unregistered tooling-internal identifiers, `x-` explicitly signals "unregistered" — more honest than squatting standards-tree names that IANA may later assign differently; GitHub Linguist (the dominant convention source, and our §2.1 tier-2) does exactly the same. House policy stands: tier-1 IANA always wins (we adopt registered names on sight, per §2.1); tier-3 coinages stay `x-`-marked as unregistered.
-
-### 22.2 The eight invented types
-
-| type | disposition |
-|---|---|
-| `text/x-cpp` | **CONVERGE**: register the Linguist convention `text/x-c++src` alongside, per §2.1's own multiple-conventions rule (the §2.1 example already prescribes this; the registry never caught up). |
-| `text/x-tsx` | **CONVERGE**: register `text/tsx` (Deno's canonical — consistent with our Deno-sourced `text/typescript`) alongside. |
-| `text/x-zig`, `text/x-odin` | **DGR** (umbrella §22.1): Pygments uses unprefixed `text/zig`/`text/odin`, but unprefixed unregistered standards-tree names are squatting; `x-` marks the truth. Adopt the IANA name the day one exists. |
-| `text/x-fsharp-signature` | **DGR**: no ecosystem term exists anywhere for F# `.fsi` signature files; distinct grammar requires a distinct type. |
-| `application/jsonc` | **DGR**: JSONC (comments/trailing commas) is *not valid JSON*, so `+json` suffix semantics (RFC 6839 "receivers may process as JSON") would be a lie; a distinct bare name is the honest shape. "jsonc" is the model-vocabulary term (VS Code language id). |
-| `text/stream` | **DGR**: tail-oriented live data (exec output streams). Deliberately NOT WHATWG `text/event-stream` — no SSE framing; naming it `event-stream` would promise a wire format we don't speak. |
-| `text/x-dotenv` | **DGR** (umbrella): Linguist recognizes the Dotenv language but assigns no MIME; no convention exists to converge on. |
-
-### 22.3 Vocabulary vs ecosystem terms
-
-| surface | standard neighbor | disposition |
-|---|---|---|
-| positions 1-indexed | LSP is 0-indexed | **DGR**: model/editor/compiler vocabulary is 1-indexed everywhere models read; anchoring to the model's vocabulary is project convention. |
-| `container` (full dotted path) | LSP `containerName` (immediate parent) | **DGR**: the full path is the graph join key (§16); the immediate parent would break `@>` resolution. Name deliberately differs from LSP's since the semantics differ. |
-| `SymbolKind` values | LSP SymbolKind | Convergent subset (lowercase); additions `heading` (markdown; LSP has no equivalent) and `type` (aliases; absent from LSP's enum) carry the DGR. |
-| `RefKind` taxonomy | LSP has none; SCIP/Kythe use roles/edges | **DGR**: frozen 2026-06-10 against the service graph schema (§16); LSP references are untyped so there is nothing to converge on. |
-| dialect names regex/xpath/jsonpath/glob | ECMAScript / XPath 1.0 / RFC 9535 / shell glob | Names converge. jsonpath is **RFC 9535** (owner-ruled, #490): the engine is grammar-closed per the RFC — no expression-language filters, no eval sandbox on the model-authored input path (the jsonpath-plus predecessor carried a sandboxed evaluator with a CVE history: 2024-21534, 2025-1302). |
-| `maxTokens` (context window) | OpenAI `max_tokens` = *output* cap; HF `model_max_length`; llama.cpp `n_ctx` | **DGR with a debt note**: ours means the context window, colliding with the ecosystem's most-read meaning. Documented at §17; scoped to embeddings (no generation surface to confuse). Rename (`contextWindow`) is queued for the next platform MAJOR — the collision isn't worth breaking the seam alone. |
-| `countTokens`, `dimension`, `embedBatch` | Anthropic `count_tokens`; OpenAI `dimensions`; batch-embed | Convergent. |
-| `tokenizerId` (vocab sha) | no ecosystem standard exists | **DGR**: §19.2 — vocab identity ≠ model identity is the load-bearing distinction; the ecosystem has no term for it. |
-| `mimetype` (one word) | IANA/RFC "media type"; MDN "MIME type" | Colloquial convergence (MDN-aligned); the RFC term "media type" appears in registry-facing prose. |
-| `deepJson`/`deepXml`, `channels`, `glyph`, `extent` | — | Plurnkisms naming our own projections/surfaces, not standard concepts; the *dialects served over them* are standards-cited above. No convergence target exists. |

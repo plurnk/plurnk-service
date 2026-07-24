@@ -28,7 +28,7 @@ describe("TreeSitter registry", () => {
             assert.ok(entry.mimetype.length > 0, `mimetype empty: ${JSON.stringify(entry)}`);
             assert.ok(entry.glyph.length > 0, `glyph empty: ${entry.mimetype}`);
             assert.ok(entry.slug.length > 0, `slug empty: ${entry.mimetype}`);
-            // Hint-only convention aliases (SPEC §22.2, #490) carry empty
+            // Hint-only convention aliases carry empty
             // extensions on purpose — extension detection stays with the
             // canonical entry for the same slug, which must exist and own them.
             if (entry.extensions.length === 0) {

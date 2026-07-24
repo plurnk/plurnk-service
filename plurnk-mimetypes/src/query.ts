@@ -71,7 +71,7 @@ export function queryJsonpathObject(
     pattern: string,
     lineFor?: (pointer: string, value: unknown) => readonly LineSpan[] | undefined,
 ): QueryMatch[] {
-    // RFC 9535 engine (json-p3; owner-ruled convergence, #490 / SPEC §22.3).
+    // RFC 9535 engine.
     // Grammar-closed filters — no expression evaluator on the model-authored
     // input path (the jsonpath-plus predecessor sandboxed an eval with a CVE
     // history). Normalized paths per RFC §2.7; pointers per RFC 6901.

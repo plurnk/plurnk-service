@@ -1,14 +1,12 @@
 import { basename, extname } from "node:path";
 import type { DetectInput, Registry } from "./types.ts";
 
-// Resolve a mimetype string from any combination of path / explicit extension /
-// caller hint / raw content. Resolution priority (highest wins):
+// Resolve a mimetype string from a path, explicit extension, or caller hint.
 //
 //   1. hint     — caller asserts a mimetype directly
 //   2. filename — path's basename matches a registered special filename
 //                 (Dockerfile, Makefile, etc.)
 //   3. extension — explicit `ext` arg, or extname() of `path`
-//   4. content   — magic-byte sniffing (not yet implemented; future hook)
 //
 // Returns the matched mimetype or null when no rule fires.
 export function detect(input: DetectInput, registry: Registry): string | null {
@@ -41,7 +39,6 @@ export function detect(input: DetectInput, registry: Registry): string | null {
         }
     }
 
-    // Content sniffing is a future hook — no magic-byte table yet.
     return null;
 }
 
