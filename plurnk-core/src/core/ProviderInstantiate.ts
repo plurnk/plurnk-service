@@ -34,6 +34,18 @@ export default class ProviderInstantiate {
         ProviderInstantiate.#aliasByProvider.set(provider, alias);
     }
 
+    // Register a preconstructed handle under its full durable identity. Production
+    // providers arrive through instantiateProvider and are already cached; this seam
+    // gives injected providers (notably deterministic test providers) the identical
+    // lookup behavior when a persisted loop resumes.
+    static registerInstance(provider: Provider, spec: ProviderAlias): void {
+        ProviderInstantiate.#aliasByProvider.set(provider, spec.alias);
+        ProviderInstantiate.#instances.set(
+            `${spec.provider}|${spec.model}|${spec.baseUrl ?? ""}`,
+            Promise.resolve(provider),
+        );
+    }
+
     static async instantiateProvider(alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> {
         if (env === process.env) {
             const key = `${alias.provider}|${alias.model}|${alias.baseUrl ?? ""}`;

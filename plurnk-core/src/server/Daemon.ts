@@ -13,7 +13,7 @@ import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { Provider } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 // The event scope (#364 — relocated from the retired MethodRegistry): "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped. "this" retired with the per-connection leg.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -140,6 +140,10 @@ export default class Daemon {
             defaultMimetype: "text/markdown",
             discoverOptions: { cwd: this.#discoveryCwd },
         });
+        const bootSpec = resolveActiveAlias();
+        if (this.#provider !== null && bootSpec !== null) {
+            ProviderInstantiate.registerInstance(this.#provider, bootSpec);
+        }
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
             // §tokenomics-agnostic-ruler — the ONE model-facing token ruler (chars/2), NOT the
@@ -157,7 +161,9 @@ export default class Daemon {
             injectWorker: async ({ workspaceId, workerId, prompt, flags }) => {
                 if (this.#provider === null) throw new Error("injectWorker: no provider configured");
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                const { action, loopId } = await this.inject({ workspaceId, workerId, prompt, provider: this.#provider, systemPrompt, ...(flags === undefined ? {} : { flags }) });
+                const providerSpec = resolveActiveAlias();
+                if (providerSpec === null) throw new Error("injectWorker: active provider has no resolvable alias");
+                const { action, loopId } = await this.inject({ workspaceId, workerId, prompt, providerSpec, systemPrompt, ...(flags === undefined ? {} : { flags }) });
                 return { action, loopId };
             },
             // worker:// KILL (terminate) — abort any worker's in-flight work by id. One
@@ -225,8 +231,8 @@ export default class Daemon {
         // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>, #90) wins
         // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
         // between two models is cheap, and an unresolvable alias/model fails loud here.
-        const provider = await this.#resolveLoopProvider(args.alias, args.model);
-        if (provider === null) throw new Error("runLoop: no provider configured");
+        const selection = await this.#resolveLoopProvider(args.alias, args.model);
+        if (selection === null) throw new Error("runLoop: no provider configured");
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // §machine-processes — the model NEVER runs in a client-origin run (its packets would carry
         // client op.* rows). The module resolves the model worker via ensureModelWorker and passes it (or a
@@ -240,7 +246,13 @@ export default class Daemon {
         const requested = args.maxTurns ?? ceiling;
         const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
         const { flags: _inputFlags, ...rest } = args;
-        const { action, loopId, turnSeq } = await this.inject({ ...rest, ...(flags !== undefined ? { flags } : {}), ...(maxTurns >= 0 ? { maxTurns } : {}), provider, systemPrompt });
+        const { action, loopId, turnSeq } = await this.inject({
+            ...rest,
+            ...(flags !== undefined ? { flags } : {}),
+            ...(maxTurns >= 0 ? { maxTurns } : {}),
+            providerSpec: selection,
+            systemPrompt,
+        });
         return { action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
     }
 
@@ -248,9 +260,50 @@ export default class Daemon {
     // (<provider>/<model>, client-resolved #90) wins over a named `alias`; absent both, the
     // boot default. A named alias missing from the env cascade, or a malformed model spec, throws
     // legibly rather than silently running the wrong model.
-    async #resolveLoopProvider(alias: string | undefined, model: string | undefined): Promise<Provider | null> {
-        const spec = resolveLoopAlias(alias, model, parseAliasesFromEnv());
-        return spec === null ? this.#provider : ProviderInstantiate.instantiateProvider(spec);
+    async #resolveLoopProvider(alias: string | undefined, model: string | undefined): Promise<ProviderAlias | null> {
+        const requested = resolveLoopAlias(alias, model, parseAliasesFromEnv());
+        if (requested === null && this.#provider === null) return null;
+        const spec = requested ?? resolveActiveAlias();
+        if (spec === null) throw new Error("runLoop: boot provider has no resolvable alias");
+        // Resolve eagerly so loop.run fails before enqueue when the provider
+        // cannot be constructed. The drain later retrieves this cached handle
+        // from the loop's durable spec at the claim boundary.
+        await ProviderInstantiate.instantiateProvider(spec);
+        return spec;
+    }
+
+    async #providerSpecForLoop(loopId: number): Promise<ProviderAlias> {
+        const row = await (this.#db.drain_loop_provider_spec as PrepMethod).get<{ provider_spec: string }>({ loop_id: loopId });
+        if (row === undefined) throw new Error(`loop ${loopId}: provider selection row is missing`);
+        let parsed: Partial<ProviderAlias> | null;
+        try {
+            parsed = JSON.parse(row.provider_spec) as Partial<ProviderAlias> | null;
+        } catch {
+            throw new Error(`loop ${loopId}: persisted provider selection is malformed — refusing boot-default substitution`);
+        }
+        if (parsed === null
+            || typeof parsed.alias !== "string" || parsed.alias.length === 0
+            || typeof parsed.provider !== "string" || parsed.provider.length === 0
+            || typeof parsed.model !== "string" || parsed.model.length === 0
+            || (parsed.baseUrl !== undefined && typeof parsed.baseUrl !== "string")) {
+            throw new Error(`loop ${loopId}: persisted provider selection is missing or invalid — refusing boot-default substitution`);
+        }
+        return parsed as ProviderAlias;
+    }
+
+    async #providerForLoop(loopId: number): Promise<Provider> {
+        return ProviderInstantiate.instantiateProvider(await this.#providerSpecForLoop(loopId));
+    }
+
+    async #assertLoopProvider(loopId: number, requested: ProviderAlias): Promise<void> {
+        const selected = await this.#providerSpecForLoop(loopId);
+        if (JSON.stringify(selected) !== JSON.stringify(requested)) {
+            throw new Error(
+                `loop ${loopId}: provider selection is frozen at '${selected.alias}' (${selected.provider}/${selected.model}); `
+                + `requested '${requested.alias}' (${requested.provider}/${requested.model}). `
+                + "Cancel or conclude the loop before hot-swapping models.",
+            );
+        }
     }
 
     // §machine-processes — the workspace's model worker (created on first use), distinct from the client
@@ -624,7 +677,7 @@ export default class Daemon {
 
     async inject(args: {
         workspaceId: number; workerId: number; prompt: string;
-        provider: Provider; systemPrompt: string;
+        providerSpec: ProviderAlias; systemPrompt: string;
         maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[];
     }): Promise<{
         action: "injected_next_turn" | "enqueued_new_loop";
@@ -639,6 +692,8 @@ export default class Daemon {
         // we enqueue a fresh loop below and ensure a drain claims it.
         if (this.#activeDrains.has(workerId)) {
             await this.#assertFoldPosture(workerId, args.flags); // #368 — a fold never silently discards intent
+            const active = await (this.#db.drain_current_loop_for_worker as PrepMethod).get<{ id: number }>({ worker_id: workerId });
+            if (active !== undefined) await this.#assertLoopProvider(active.id, args.providerSpec);
             const result = await this.#engine.inject(workerId, prompt);
             if (result !== null) {
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq };
@@ -654,10 +709,11 @@ export default class Daemon {
             const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ worker_id: workerId });
             if (slept !== undefined) {
                 await this.#assertFoldPosture(workerId, args.flags, slept.id); // #368 — the resume path drops nothing silently either
+                await this.#assertLoopProvider(slept.id, args.providerSpec);
                 const injected = await this.#engine.inject(workerId, prompt);
                 await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
                 const started = await this.#ensureDrain({
-                    workspaceId, workerId, provider: args.provider, systemPrompt: args.systemPrompt,
+                    workspaceId, workerId, systemPrompt: args.systemPrompt,
                     maxTurns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
                 });
                 return { action: "injected_next_turn", loopId: slept.id, ...(injected?.turnSeq !== undefined ? { turnSeq: injected.turnSeq } : {}), ...(started ?? {}) };
@@ -669,6 +725,7 @@ export default class Daemon {
         if (seqRow === undefined) throw new Error("inject: next-sequence query returned no row");
         const loopRow = await (this.#db.drain_enqueue_loop as PrepMethod).get<{ id: number }>({
             worker_id: workerId, sequence: seqRow.next, prompt,
+            provider_spec: JSON.stringify(args.providerSpec),
         });
         if (loopRow === undefined) throw new Error("inject: loop enqueue returned no row");
         const loopId = loopRow.id;
@@ -694,8 +751,7 @@ export default class Daemon {
         // firstLoopPromise is present only when THIS call started the drain — loop.run
         // keys its fast-path response on that.
         const started = await this.#ensureDrain({
-            workspaceId, workerId, provider: args.provider,
-            systemPrompt: args.systemPrompt,
+            workspaceId, workerId, systemPrompt: args.systemPrompt,
             maxTurns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
         });
         return { action: "enqueued_new_loop", loopId, ...(started ?? {}) };
@@ -715,13 +771,13 @@ export default class Daemon {
      * (resolves only when the whole drain finishes, queue+subs settled).
      */
     #startDrain(opts: {
-        workspaceId: number; workerId: number; provider: Provider;
+        workspaceId: number; workerId: number;
         systemPrompt: string; maxTurns: number;
     }): {
         firstLoopPromise: Promise<DrainLoopResult>;
         drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
     } {
-        const { workspaceId, workerId, provider, systemPrompt, maxTurns } = opts;
+        const { workspaceId, workerId, systemPrompt, maxTurns } = opts;
         // The drain runs under the worker's cancellation scope (shared with the
         // execs its loops spawn), so loop.cancel/shutdown abort it as a unit.
         const controller = this.#workerSignal(workerId);
@@ -765,6 +821,10 @@ export default class Daemon {
                         if (loopRow === undefined) break;
                     }
                     currentLoopId = loopRow.id;
+                    // #598 — provider identity belongs to the claimed loop, not the
+                    // drain that happened to claim it. A drain can consume multiple
+                    // queued loops; resolve each durable selection at this boundary.
+                    const provider = await this.#providerForLoop(loopRow.id);
                     const onDispatch = (logEntryId: number): void => {
                         // #506 — a rejection here was a silent process-death vector (unhandled in a
                         // fire-and-forget void); a log-broadcast failure must never crash the drain.
@@ -788,7 +848,7 @@ export default class Daemon {
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // (#handleWakeWorker) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect (§exec-poll). §worker-lifecycle-wake-liveness.
-                        void this.#schedulePollWake(workspaceId, workerId, provider, systemPrompt).catch((err: unknown) => console.error("poll-wake scheduling failed:", err instanceof Error ? err.message : String(err)));
+                        void this.#schedulePollWake(workspaceId, workerId, systemPrompt).catch((err: unknown) => console.error("poll-wake scheduling failed:", err instanceof Error ? err.message : String(err)));
                         // §send-premature-terminate/[102]<T> — the park DEADLINE (grammar 0.75.0): the
                         // dispatcher recorded the marker's seconds; a bounded park is woken at T
                         // regardless of arrivals, so a park always has a next turn. -1 (indefinite:
@@ -802,7 +862,7 @@ export default class Daemon {
                             if (deadline !== undefined && deadline > 0) {
                                 const t = setTimeout(() => {
                                     this.#parkTimers.delete(workerId);
-                                    void this.#wakeParkedWorker(workspaceId, workerId, provider, systemPrompt).catch((err: unknown) => console.error("park-deadline wake failed:", err instanceof Error ? err.message : String(err)));
+                                    void this.#wakeParkedWorker(workspaceId, workerId, systemPrompt).catch((err: unknown) => console.error("park-deadline wake failed:", err instanceof Error ? err.message : String(err)));
                                 }, deadline * 1000);
                                 t.unref();
                                 this.#parkTimers.set(workerId, t);
@@ -918,7 +978,7 @@ export default class Daemon {
         // Topology join (§run-lifecycle): when this drain exits having CONCLUDED the worker, wake its parent
         // if parked. Runs after the drain fully tears down (settled promise) so the quiescence check sees
         // final state; speculative (#onDrainExit no-ops unless the worker concluded AND the parent is parked).
-        drainPromise.then(() => this.#onDrainExit(workspaceId, workerId, provider, systemPrompt)).catch(() => {});
+        drainPromise.then(() => this.#onDrainExit(workspaceId, workerId, systemPrompt)).catch(() => {});
         // Swallow unhandled rejections (drain aborts with no awaiter); the
         // error already surfaced via firstLoopPromise or was logged inside.
         drainPromise.catch(() => {});
@@ -948,7 +1008,7 @@ export default class Daemon {
     // in teardown and won't claim, so we don't defer to it — start fresh, or the loop
     // strands on a cancel/resume race (I6 no-lost-loop). Otherwise start one.
     #ensureDrain(opts: {
-        workspaceId: number; workerId: number; provider: Provider;
+        workspaceId: number; workerId: number;
         systemPrompt: string; maxTurns: number;
     }): Promise<{
         firstLoopPromise: Promise<DrainLoopResult>;
@@ -970,13 +1030,14 @@ export default class Daemon {
         const endedSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
         const prefix = promptLoopPrefix(endedSeq);
         const orphan = await (this.#db.drain_orphaned_prompt_for_loop as PrepMethod).get<{
-            body: string; flags: string | null;
+            body: string; flags: string | null; provider_spec: string;
         }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%` });
         if (orphan === undefined) return;
         const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ worker_id: workerId });
         if (seqRow === undefined) throw new Error("reconcileOrphanedWake: next-sequence query returned no row");
         const fresh = await (this.#db.drain_enqueue_loop as PrepMethod).get<{ id: number }>({
             worker_id: workerId, sequence: seqRow.next, prompt: orphan.body,
+            provider_spec: orphan.provider_spec,
         });
         if (fresh === undefined) throw new Error("reconcileOrphanedWake: enqueue returned no row");
         if (orphan.flags !== null) {
@@ -1109,13 +1170,6 @@ export default class Daemon {
             return;
         }
 
-        if (this.#provider === null) {
-            this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                ...payload, wakeAction: "skipped-no-provider",
-            });
-            return;
-        }
-
         try {
             const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
 
@@ -1129,7 +1183,7 @@ export default class Daemon {
             if (slept !== undefined) {
                 await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
                 const started = await this.#ensureDrain({
-                    workspaceId: payload.workspaceId, workerId: payload.workerId, provider: this.#provider,
+                    workspaceId: payload.workspaceId, workerId: payload.workerId,
                     systemPrompt, maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
                 });
                 this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
@@ -1169,7 +1223,7 @@ export default class Daemon {
      * poll work — ambient folded stream deltas already surface progress (§exec-stream); the wake
      * matters only across hibernation. A wake-edge-less 202 (no polled stream) gets no timer. §exec-poll
      */
-    async #schedulePollWake(workspaceId: number, workerId: number, provider: Provider, systemPrompt: string): Promise<void> {
+    async #schedulePollWake(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const existing = this.#pollTimers.get(workerId);
         if (existing !== undefined) { clearTimeout(existing); this.#pollTimers.delete(workerId); }
         const row = await (this.#db.drain_worker_min_poll as PrepMethod).get<{ poll_seconds: number | null }>({ worker_id: workerId });
@@ -1207,7 +1261,7 @@ export default class Daemon {
         const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
         const timer = setTimeout(() => {
             this.#pollTimers.delete(workerId);
-            void this.#wakeParkedWorker(workspaceId, workerId, provider, systemPrompt);
+            void this.#wakeParkedWorker(workspaceId, workerId, systemPrompt);
         }, Math.max(delayMs, execWaitMs));
         timer.unref();
         this.#pollTimers.set(workerId, timer);
@@ -1217,7 +1271,7 @@ export default class Daemon {
      *  wake payload. The shared wake primitive: a poll cadence (§exec-poll), a watched stream concluding,
      *  or a child worker finishing (§run-lifecycle topology join) all call this. A no-op if the worker was
      *  cancelled or isn't actually parked (no slept loop) — so calling it speculatively is safe. */
-    async #wakeParkedWorker(workspaceId: number, workerId: number, provider: Provider, systemPrompt: string): Promise<void> {
+    async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const scope = this.#workerAborts.get(workerId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(workerId)) return; // cancelled — no resurrection
         const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ worker_id: workerId });
@@ -1231,7 +1285,7 @@ export default class Daemon {
         }
         await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
         const started = await this.#ensureDrain({
-            workspaceId, workerId, provider, systemPrompt,
+            workspaceId, workerId, systemPrompt,
             maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
         });
         started?.drainPromise?.catch((err: unknown) => {
@@ -1245,14 +1299,14 @@ export default class Daemon {
      *  blocked at 202, or still holding a stream, is NOT concluded — its own wake edges drive it, not this.
      *  The parent reads the child's deliverable from its own log (the §worker-scheme-collect delta) on
      *  resume — control edge here, never an injected prompt. Recurses up via the parent's own drain-exit. */
-    async #onDrainExit(workspaceId: number, workerId: number, provider: Provider, systemPrompt: string): Promise<void> {
+    async #onDrainExit(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ worker_id: workerId });
         if (slept !== undefined) return; // parked at 202 — not concluded, the worker is still alive
         const openSubs = await (this.#db.find_open_subscriptions_for_worker as PrepMethod).all<{ id: number }>({ worker_id: workerId });
         if (openSubs.length > 0) return; // a stream still runs — its conclusion re-evaluates, not this exit
         const parent = await (this.#db.worker_parent_id as PrepMethod).get<{ parent_worker_id: number | null }>({ worker_id: workerId });
         if (parent?.parent_worker_id == null) return; // a root run — nobody to wake
-        await this.#wakeParkedWorker(workspaceId, parent.parent_worker_id, provider, systemPrompt);
+        await this.#wakeParkedWorker(workspaceId, parent.parent_worker_id, systemPrompt);
     }
 
     // #506 — a SUBSCRIBER throw must never propagate into engine control flow: a transport

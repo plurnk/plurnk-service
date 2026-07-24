@@ -12,6 +12,9 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
+import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
+import Daemon from "../../src/server/Daemon.ts";
+import { openMigrated } from "./_helpers.ts";
 
 const execDsl = (command: string): string =>
     `<<EXEC[sh]:${command}:EXEC\n<<SEND[102]<-1>:done:SEND`;
@@ -29,6 +32,140 @@ const mockResponse = (dsl: string) => {
         assistantRaw: null,
     };
 };
+
+test("#598: an async wake resumes with the loop's durable provider, never the boot default", async () => {
+    const boot = new Mock({
+        contextWindow: 16384,
+        responses: [mockResponse("<<SEND[500]:boot provider must never run this loop:SEND")],
+    });
+    const selected = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl("sleep 1; echo selected")),
+            mockResponse("<<SEND[200]:resumed on selected provider:SEND"),
+        ],
+    });
+    const selectedSpec = { alias: "wakeb", provider: "openai", model: "wake-provider-b" } as const;
+    const prior = process.env.PLURNK_MODEL_wakeb;
+    process.env.PLURNK_MODEL_wakeb = "openai/wake-provider-b";
+    ProviderInstantiate.registerInstance(selected, selectedSpec);
+
+    try {
+        await withDaemon(boot, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-provider-identity" });
+                const terminated = subscribeNotifications(ws, "loop/terminated");
+                const started = await rpcCall(ws, 2, "loop.run", {
+                    prompt: "run on B, park, then resume on B",
+                    alias: "wakeb",
+                    model: "openai/wake-provider-b",
+                    flags: { auto: true },
+                });
+                const loopId = (started.result as { loopId: number }).loopId;
+
+                await waitForDb(
+                    async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status,
+                    (status) => status === 202,
+                );
+
+                // A repeated client call naming a DIFFERENT provider must not mutate a
+                // parked loop. Mid-loop hot-swap is not an implicit side effect of prompt
+                // injection; the caller must conclude/cancel and open a new loop.
+                const conflict = await rpcCall(ws, 3, "loop.run", {
+                    prompt: "silently change this parked loop to the boot model",
+                    alias: "mocktest",
+                    model: "openai/mocktest",
+                    flags: { auto: true },
+                });
+                assert.match(conflict.error?.message ?? "", /provider selection is frozen/,
+                    "a conflicting provider request against the parked loop fails loudly");
+
+                await waitFor(
+                    () => terminated() as Array<{ loopId: number; finalStatus: number }>,
+                    (events) => events.some((event) => event.loopId === loopId && event.finalStatus === 200),
+                    { timeoutMs: 6000 },
+                );
+                assert.equal(selected.remaining, 0, "provider B generated both the initial and resumed turns");
+                assert.equal(boot.remaining, 1, "boot-default provider A was never called");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_MODEL_wakeb;
+        else process.env.PLURNK_MODEL_wakeb = prior;
+    }
+});
+
+test("#598: a parked loop retains its provider across daemon restart", async () => {
+    const boot = new Mock({
+        contextWindow: 16384,
+        responses: [mockResponse("<<SEND[500]:boot provider must remain unused:SEND")],
+    });
+    const selected = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl("sleep 30")),
+            mockResponse("<<SEND[200]:resumed after restart on selected provider:SEND"),
+        ],
+    });
+    const selectedSpec = { alias: "restartb", provider: "openai", model: "restart-provider-b" } as const;
+    const prior = process.env.PLURNK_MODEL_restartb;
+    process.env.PLURNK_MODEL_restartb = "openai/restart-provider-b";
+    ProviderInstantiate.registerInstance(selected, selectedSpec);
+
+    const db = await openMigrated();
+    let first: Daemon | undefined;
+    let second: Daemon | undefined;
+    try {
+        first = new Daemon({ db, provider: boot });
+        await first.start();
+        const envelope = await first.createWorkspace({ name: "exec-wake-provider-restart", projectRoot: null });
+        const workerId = await first.ensureModelWorker(envelope.workspaceId);
+        const started = await first.runLoop({
+            workspaceId: envelope.workspaceId,
+            workerId,
+            prompt: "park on B before restart",
+            alias: "restartb",
+            model: "openai/restart-provider-b",
+            flags: { auto: true },
+        });
+        await waitForDb(
+            async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: started.loopId }))?.status,
+            (status) => status === 202,
+        );
+        await first.stop();
+        first = undefined;
+
+        second = new Daemon({ db, provider: boot });
+        await second.start();
+        const terminated: Array<{ loopId: number; finalStatus: number }> = [];
+        second.subscribeToEvents((_workspaceId, method, params) => {
+            if (method === "loop/terminated") terminated.push(params as { loopId: number; finalStatus: number });
+        });
+        const resumed = await second.runLoop({
+            workspaceId: envelope.workspaceId,
+            workerId,
+            prompt: "resume the parked loop after restart",
+            alias: "restartb",
+            model: "openai/restart-provider-b",
+            flags: { auto: true },
+        });
+        assert.equal(resumed.loopId, started.loopId, "restart resumes the same durable loop");
+        await waitFor(
+            () => terminated,
+            (events) => events.some((event) => event.loopId === started.loopId && event.finalStatus === 200),
+            { timeoutMs: 6000 },
+        );
+        assert.equal(selected.remaining, 0, "B generated before and after daemon restart");
+        assert.equal(boot.remaining, 1, "restart never substituted boot-default A");
+    } finally {
+        if (first !== undefined) await first.stop();
+        if (second !== undefined) await second.stop();
+        await db.close();
+        if (prior === undefined) delete process.env.PLURNK_MODEL_restartb;
+        else process.env.PLURNK_MODEL_restartb = prior;
+    }
+});
 
 test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
     // First loop: EXEC echo + SEND[202] (Accepted) — the loop SLEEPS while the

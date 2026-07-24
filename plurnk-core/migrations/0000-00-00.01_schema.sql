@@ -1,12 +1,8 @@
--- INIT: schema_version
--- {§db-schema-version-stamp} (#536) — the cross-repo drift gate: external consumers (bench's
--- digest) fail-hard on mismatch instead of rotting silently against a moved schema. ANY change
--- to the schema's SHAPE (tables, columns, identity keys) bumps this integer in the same commit.
--- v2: entries.scheme NOT NULL — the 'file' reserved scheme replaced NULL ({§entry-identity-no-null}, #545).
--- v3: file-class pathnames are bare git-pathspec keys — the leading slash retired ({§fs-canonical-name}, #546).
-PRAGMA user_version = 3;
+-- MIGRATE: 1 baseline
+-- The complete v3 schema baseline. SqlRite owns PRAGMA user_version: subsequent
+-- MIGRATE blocks are both the evolution history and the external schema stamp.
 
--- INIT: workspaces
+-- workspaces
 -- project_root: workspace pointer. NULL = headless (no disk side-effects);
 -- non-null = absolute path to the client's source tree, supplied at
 -- workspace.create or workspace.set_root.
@@ -25,7 +21,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
 
 CREATE INDEX IF NOT EXISTS sessions_created_at ON workspaces (created_at);
 
--- INIT: runs
+-- runs
 CREATE TABLE IF NOT EXISTS workers (
     id            INTEGER NOT NULL PRIMARY KEY,
     version       INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -48,7 +44,7 @@ CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (p
 -- → worker_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
 CREATE        INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
 
--- INIT: loops
+-- loops
 -- flags: per-loop runtime flags (auto, noProposals, noWeb, noInteraction,
 -- mode). JSON column, merged over DEFAULT_LOOP_FLAGS in code so missing
 -- keys read as their defaults. SchemeRegistry.resolveForLoop gates schemes
@@ -96,7 +92,7 @@ BEGIN
     UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
 END;
 
--- INIT: turns
+-- turns
 -- finish_reason / model: provider-call metadata (plurnk-grammar Turn.json).
 -- Properties of the call, not of the model's emission payload — kept on
 -- the Turn row alongside usage rather than nested into packet.assistant.
@@ -130,7 +126,7 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
--- INIT: derivations
+-- derivations
 -- Content-addressed deep projections. Entries point at a COMPLETE artifact by
 -- deep_hash; graph, FTS, and vectors are stored once regardless of how many
 -- workspace/worktree paths carry identical content under the same reader/config.
@@ -144,7 +140,7 @@ CREATE TABLE IF NOT EXISTS derivations (
     CHECK ((state = 'building' AND disposition IS NULL) OR (state = 'complete' AND disposition IS NOT NULL))
 ) STRICT;
 
--- INIT: entries
+-- entries
 -- The canonical addressable store. (workspace, owner, scheme, pathname) is the identity
 -- tuple, and NO component may be NULL: NULLs are distinct under SQL UNIQUE, so a nullable
 -- component voids the identity index — the #526 disease, re-run on this axis as run59/#545
@@ -198,14 +194,14 @@ CREATE TABLE IF NOT EXISTS entries (
 -- loop is seq 1), so identity keys on the owner and identical coordinates are DISTINCT rows (#526).
 CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, owner_id, scheme, pathname);
 
--- INIT: entries_scheme_heal
+-- entries_scheme_heal
 -- v1→v2 in-place heal ({§entry-identity-no-null}): fold legacy NULL-scheme member rows onto
 -- the reserved 'file' scheme. Idempotent — a second pass updates zero rows. A v1 db already
 -- fragmented by the #545 duplicate class fails HERE on the identity index, loudly and by
 -- design: a fragmented store has no safe automatic merge; recover via a fresh db.
 UPDATE entries SET scheme = 'file' WHERE scheme IS NULL;
 
--- INIT: entries_pathname_heal
+-- entries_pathname_heal
 -- v2→v3 in-place heal ({§fs-canonical-name}): file-class keys migrate to the bare git-pathspec
 -- form — the leading slash was the retired namespace-origin notation. Idempotent; a db holding
 -- both spellings of one member fails HERE on the identity index, loudly (fresh-db recovery).
@@ -245,7 +241,7 @@ CREATE TABLE IF NOT EXISTS entry_tags (
 
 CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);
 
--- INIT: symbol_defs
+-- symbol_defs
 -- @graph NODES (plurnk-service#186). Code symbol definitions, populated
 -- once per content-addressed derivation from mimetypes'
 -- `symbols` channel. Qualified path = container ? container || '.' || name : name.
@@ -262,7 +258,7 @@ CREATE TABLE IF NOT EXISTS symbol_defs (
 
 CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (name);
 
--- INIT: symbol_refs
+-- symbol_refs
 -- @graph EDGES (plurnk-service#186), from mimetypes' `references` channel.
 -- name = edge TARGET; container = the SOURCE def's full qualified path (the
 -- @> join key; module-level → NULL); kind ∈ import|call|instantiate|inherit|
@@ -281,13 +277,13 @@ CREATE TABLE IF NOT EXISTS symbol_refs (
 CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (name);
 CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (derivation_id, container);
 
--- INIT: entry_fts (~semantic FTS half — plurnk-service#186)
+-- entry_fts (~semantic FTS half — plurnk-service#186)
 -- Keyword/content index over a derivation's readable content; rowid IS derivations.id.
 -- Explicit keyword fallback when no embedder is installed. Vector search never
 -- consults this table: semantic recall is exhaustive over complete vectors.
 CREATE VIRTUAL TABLE IF NOT EXISTS entry_fts USING fts5(content);
 
--- INIT: entry_embeddings (~semantic vector half — plurnk-service#186; Project
+-- entry_embeddings (~semantic vector half — plurnk-service#186; Project
 -- Semantics chunking). One Float32 vector per CHUNK: a derivation tiles into N chunks,
 -- each addressed by its <L> line range (line_start..line_end) and embedded
 -- separately, so a large body is fully searchable instead of truncated at the
@@ -309,7 +305,7 @@ CREATE TABLE IF NOT EXISTS entry_embeddings (
     FOREIGN KEY (derivation_id) REFERENCES derivations(id) ON DELETE CASCADE
 ) STRICT;
 
--- INIT: log_entries
+-- log_entries
 -- Chronological event store. sequence is 1-based, scoped to the turn —
 -- resets at each new turn. URI-bit columns are unprefixed (scheme,
 -- pathname, …). state/outcome/attrs carry the proposal lifecycle —
@@ -409,7 +405,7 @@ BEGIN
     SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/expanded may change');
 END;
 
--- INIT: schemes_providers
+-- schemes_providers
 -- Scheme/provider catalog. Schemes are static (registered at boot);
 -- providers carry per-model metadata for cost accounting and selection.
 CREATE TABLE IF NOT EXISTS schemes (
@@ -437,7 +433,7 @@ CREATE TABLE IF NOT EXISTS providers (
 
 CREATE INDEX IF NOT EXISTS providers_created_at ON providers (created_at);
 
--- INIT: cost_rollups
+-- cost_rollups
 -- Triggers maintaining denormalized cost_pico totals on runs and workspaces
 -- as turns insert/update. Pure denormalization (textbook trigger use);
 -- no branching state-machine logic lives here.
@@ -485,7 +481,7 @@ BEGIN
      );
 END;
 
--- INIT: subscriptions
+-- subscriptions
 -- Subscription registry per SPEC §subscriptions. Exists ONLY for cancellation
 -- routing (SEND[499] → lookup → scheme teardown). Closed rows persist
 -- for forensics; partial unique index enforces one active subscription
@@ -524,7 +520,7 @@ CREATE INDEX IF NOT EXISTS subscriptions_opened_at ON subscriptions (opened_at);
 
 -- (worker_watermarks removed — §env-delta is now pull-from-log, no per-worker snapshot.)
 
--- INIT: workspace_constraints
+-- workspace_constraints
 -- SPEC §membership constraint overlay — the client's supersede over git membership.
 -- Per (workspace, effect, glob/target): `pick` (members git misses, resolved by a
 -- targeted client-dictated scan), `hide` (drop git-tracked matches), `view` (member

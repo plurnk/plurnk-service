@@ -4,8 +4,8 @@
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt)
-VALUES ($worker_id, $sequence, 100, $prompt)
+INSERT INTO loops (worker_id, sequence, status, prompt, provider_spec)
+VALUES ($worker_id, $sequence, 100, $prompt, $provider_spec)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
@@ -110,7 +110,7 @@ ORDER BY e.id ASC;
 -- the drain can promote it to a fresh loop — no wake silently lost.
 -- $pattern = promptLoopPrefix + '%', $prefix_len = length of that prefix
 -- built JS-side (per the SqlRite LIKE-binding note above).
-SELECT c.content AS body, l.flags AS flags
+SELECT c.content AS body, l.flags AS flags, l.provider_spec AS provider_spec
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id
 JOIN loops l ON l.id = $loop_id
@@ -130,6 +130,9 @@ LIMIT 1;
 -- A worker's parked (slept) loop — SEND[202] suspends it at status 202, resumable by a wake
 -- (§worker-lifecycle-wake-liveness). A worker parks one at a time; take the most recent.
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
+
+-- PREP: drain_loop_provider_spec
+SELECT provider_spec FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_resume_slept_loop
 -- Re-queue a slept (202) loop to status 100 so the drain re-claims and CONTINUES it. The
