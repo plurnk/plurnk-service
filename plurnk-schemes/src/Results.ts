@@ -3,12 +3,11 @@
 // forked in-tree (plurnk-service `_entry-ops.ts` vs the local redefinitions
 // in `File.ts` / `Exec.ts` / `Log.ts`).
 //
-// The shape keys on SCHEME-SHAPE, not op. EDIT against `known://` and EDIT
-// against `file://` produce structurally different results because the
-// schemes are differently shaped, not because EDIT is. So a family is the
-// superset of fields its shape can return across every op (entry-shape READ
-// returns content; entry-shape EDIT returns entryId) — fields optional per
-// op, discriminated by `shape`.
+// SchemeResult expresses the engine's actual universal invariant: every
+// handler result has a numeric status and may carry scheme-owned metadata.
+// EntryResult, ProposalResult, and PassthroughResult are optional authoring
+// aids for schemes that benefit from those conventional shapes; the engine
+// does not require or branch on their `shape` discriminator.
 //
 // Three shapes cover the current set:
 //   entry       — entries + entry_channels backed (known/unknown/skill/plurnk)
@@ -26,8 +25,13 @@ import type { LogCoordinate, TelemetryEvent } from "@plurnk/plurnk-grammar";
 
 export type { TelemetryEvent };
 
-export interface SchemeResultBase {
+export interface SchemeResult {
     readonly status: number;
+    readonly error?: unknown;
+    readonly [field: string]: unknown;
+}
+
+export interface SchemeResultBase extends SchemeResult {
     readonly error?: TelemetryEvent;
 }
 
@@ -58,19 +62,17 @@ export interface PassthroughResult extends SchemeResultBase {
     readonly reason?: string;
 }
 
-export type SchemeResult = EntryResult | ProposalResult | PassthroughResult;
-
 export default class Results {
     static isEntry(result: SchemeResult): result is EntryResult {
-        return result.shape === "entry";
+        return "shape" in result && result.shape === "entry";
     }
 
     static isProposal(result: SchemeResult): result is ProposalResult {
-        return result.shape === "proposal";
+        return "shape" in result && result.shape === "proposal";
     }
 
     static isPassthrough(result: SchemeResult): result is PassthroughResult {
-        return result.shape === "passthrough";
+        return "shape" in result && result.shape === "passthrough";
     }
 
     // A result is an error result iff its status is in the 4xx/5xx range. The

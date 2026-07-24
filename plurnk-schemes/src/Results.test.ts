@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { SchemeResult } from "./Results.ts";
+import type { SchemeResult, SchemeResultBase } from "./Results.ts";
 import Results from "./Results.ts";
 
 test("shape discriminator narrows each family", () => {
@@ -19,16 +19,20 @@ test("shape discriminator narrows each family", () => {
     assert.equal(Results.isProposal(passthrough), false);
 });
 
-test("guards are mutually exclusive and total over the union", () => {
+test("shape guards are mutually exclusive and optional on a scheme result", () => {
     const results: SchemeResult[] = [
         { shape: "entry", status: 200, entryId: 1, channel: "body" },
         { shape: "proposal", status: 202 },
         { shape: "passthrough", status: 200 },
+        { status: 204 },
     ];
-    for (const r of results) {
+    for (const r of results.slice(0, 3)) {
         const hits = [Results.isEntry(r), Results.isProposal(r), Results.isPassthrough(r)].filter(Boolean);
-        assert.equal(hits.length, 1, `exactly one guard matches ${r.shape}`);
+        assert.equal(hits.length, 1, "exactly one shape guard matches");
     }
+    assert.equal(Results.isEntry(results[3]), false);
+    assert.equal(Results.isProposal(results[3]), false);
+    assert.equal(Results.isPassthrough(results[3]), false);
 });
 
 test("isErrorStatus marks 4xx/5xx and only those", () => {
@@ -76,7 +80,7 @@ test("logCoordinate omits op when absent", () => {
 });
 
 test("an error result carries a TelemetryEvent error envelope", () => {
-    const result: SchemeResult = {
+    const result: SchemeResultBase = {
         shape: "entry",
         status: 404,
         entryId: null,

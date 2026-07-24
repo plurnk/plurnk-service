@@ -94,7 +94,7 @@ The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handl
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath` | `RegexPath`).
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - Executor-scheme (RFC schemes#20 — "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` → `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`); `Summarize.summarize(content, mimetype)` → `OrientIndex` is the structural-only EXEC-receipt index (no content — universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
-- Result families: `SchemeResult` (`EntryResult` | `ProposalResult` | `PassthroughResult`), `SchemeResultBase`, `TelemetryEvent`. Keyed on scheme-shape, not op. `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards `isEntryResult` / `isProposalResult` / `isPassthroughResult` / `isErrorStatus`; builders `schemeError(scheme, kind, message?, position?)`, `logCoordinate(coordinate, op?)`.
+- Results: `SchemeResult` is the universal `{ status, ...schemeMetadata }` contract. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Their `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Capability ctx (see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `ProjectionCaps` / `SubscriptionCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`, `ProposalApplyRequest`, and `ProposalApplyResult`.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
@@ -125,7 +125,7 @@ Behavior ships as `export default class` (one class per file, static methods) �
 
 ### Result families — `Results`
 
-- `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — `shape` discriminator guards over `SchemeResult`.
+- `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — guards for the optional conventional result shapes.
 - `Results.isErrorStatus(status)` — `status >= 400`.
 - `Results.error(scheme, kind, message?, position?)` — build a scheme-sourced `TelemetryEvent` (`source: "scheme:<name>"`).
 - `Results.logCoordinate(coordinate, op?)` — build a `LogCoordinate` position.
