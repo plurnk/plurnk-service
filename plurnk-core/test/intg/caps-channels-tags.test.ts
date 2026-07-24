@@ -8,14 +8,14 @@ import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
 import DbTagCaps from "../../src/core/caps/DbTagCaps.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 
 test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transitions; absent → 404", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-channels-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId });
-        const entries = new DbEntryCaps(ctx, "known");
+        const entries = new DbEntryCaps(ctx, "known", schemeManifest("known"));
         const channels = new DbChannelCaps(ctx, "known");
 
         const w = await entries.write("/doc.md", { channels: { body: { content: "abc", mimetype: "text/markdown" } }, tags: [] });
@@ -48,7 +48,7 @@ test("DbTagCaps: add dedupes (INSERT OR IGNORE), list is sorted, remove drops na
     try {
         const workspaceId = await insertWorkspace(db, `caps-tags-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId });
-        const entries = new DbEntryCaps(ctx, "known");
+        const entries = new DbEntryCaps(ctx, "known", schemeManifest("known"));
         const tags = new DbTagCaps(ctx, "known");
 
         await entries.write("/x.md", { channels: { body: { content: "_", mimetype: "text/markdown" } }, tags: ["keep"] });

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}:///${pathname}`, scheme,
@@ -27,7 +27,7 @@ test("[catalog] engine_scheme_catalog_summary tallies distinct entries per schem
         await new Worker().edit(editStmt(url("worker", "a.md"), "alpha beta"), ctx);
         await new Worker().edit(editStmt(url("worker", "b.md"), "gamma"), ctx);
         const Skill = (await import("../../src/schemes/Skill.ts")).default;
-        await new Skill().edit(editStmt(url("skill", "q"), "a recipe"), ctx);
+        await new Skill().edit(editStmt(url("skill", "q"), "a recipe"), makeHandlerCtx(ctx, Skill.manifest));
 
         const rows = await (db.engine_scheme_catalog_summary as PrepMethod).all<{ scheme: string | null; entries: number }>({ workspace_id: workspaceId });
         const byScheme = new Map(rows.map((r) => [r.scheme, r]));

@@ -646,15 +646,16 @@ export default class Dispatcher {
         return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body: null } as PlurnkStatement;
     }
 
-    #externalEntryManifest(schemeName: string, statement: PlurnkStatement): SchemeManifest | null {
-        if (!this.#schemes.isExternal(schemeName)) return null;
+    #standardEntryManifest(schemeName: string, statement: PlurnkStatement): SchemeManifest | null {
+        const handler = this.#schemes.get(schemeName) as { find?: unknown } | undefined;
+        if (typeof handler?.find === "function") return null;
         const target = statement.target;
         if (target === null || target.kind !== "url" || target.scheme === null) return null;
         const manifest = this.#schemes.manifestFor(schemeName);
         return manifest === undefined ? null : { ...manifest, name: target.scheme };
     }
 
-    static #foldExternalAuthority(statement: PlurnkStatement): PlurnkStatement {
+    static #foldStoredEntryAuthority(statement: PlurnkStatement): PlurnkStatement {
         const target = statement.target;
         if (target === null || target.kind !== "url") return statement;
         const pathname = foldAuthorityIntoPath(target.hostname, target.pathname);
@@ -664,7 +665,7 @@ export default class Dispatcher {
         } as PlurnkStatement;
     }
 
-    static #externalMatchRead(statement: PlurnkStatement, pathname: string, span: { lineStart: number; lineEnd: number } | null, storage: boolean): PlurnkStatement {
+    static #storedEntryMatchRead(statement: PlurnkStatement, pathname: string, span: { lineStart: number; lineEnd: number } | null, storage: boolean): PlurnkStatement {
         const target = statement.target;
         if (target === null || target.kind !== "url") return Dispatcher.#retargetRead(statement, pathname, span);
         const hostPrefix = target.hostname === null ? null : `/${target.hostname}`;
@@ -690,10 +691,10 @@ export default class Dispatcher {
         const { workerId, loopId, turnId, sequence, origin, onDispatch } = ids;
         const schemeName = schemeNameOf(statement.target);
         const findStatement = { ...statement, op: "FIND" } as PlurnkStatement;
-        const externalManifest = schemeName === null ? null : this.#externalEntryManifest(schemeName, statement);
-        const found = externalManifest === null
+        const standardEntryManifest = schemeName === null ? null : this.#standardEntryManifest(schemeName, statement);
+        const found = standardEntryManifest === null
             ? await this.#run(schemeName, findStatement, ctx)
-            : await EntryFind.findWorkspaceEntries(Dispatcher.#foldExternalAuthority(findStatement) as Extract<PlurnkStatement, { op: "FIND" }>, ctx, externalManifest) as unknown as DispatchResult;
+            : await EntryFind.findWorkspaceEntries(Dispatcher.#foldStoredEntryAuthority(findStatement) as Extract<PlurnkStatement, { op: "FIND" }>, ctx, standardEntryManifest) as unknown as DispatchResult;
         const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number } | null }> | undefined) ?? [];
         const overflow = typeof found.overflow === "number" ? found.overflow : null;
         // §find-count-not-contents applies to WORK as well as rendering. A READ
@@ -738,22 +739,22 @@ export default class Dispatcher {
             ctx.signal?.throwIfAborted();
             let whole = wholeByPath.get(m.pathname);
             if (whole === undefined) {
-                const retargeted = externalManifest === null
+                const retargeted = standardEntryManifest === null
                     ? Dispatcher.#retargetRead(statement, m.pathname, null)
-                    : Dispatcher.#externalMatchRead(statement, m.pathname, null, true);
-                whole = externalManifest === null
+                    : Dispatcher.#storedEntryMatchRead(statement, m.pathname, null, true);
+                whole = standardEntryManifest === null
                     ? await this.#run(schemeName, retargeted, ctx)
                     : await EntryOps.readWorkspaceEntry(
                         retargeted as ReadStatement,
                         ctx,
-                        externalManifest,
+                        standardEntryManifest,
                     ) as DispatchResult;
                 wholeByPath.set(m.pathname, whole);
             }
             const result = Dispatcher.#sliceMatch(whole, m.span);
-            const deliveredStatement = externalManifest === null
+            const deliveredStatement = standardEntryManifest === null
                 ? Dispatcher.#retargetRead(statement, m.pathname, m.span)
-                : Dispatcher.#externalMatchRead(statement, m.pathname, m.span, false);
+                : Dispatcher.#storedEntryMatchRead(statement, m.pathname, m.span, false);
             const id = await this.#writeLog({ statement: deliveredStatement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + written, origin });
             onDispatch?.(id);
             fannedStatuses.push(result.status);
@@ -1072,15 +1073,10 @@ export default class Dispatcher {
         const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
         const method = handler[methodName];
         if (typeof method !== "function") return { status: 501 };
-        // External @plurnk/plurnk-schemes-* siblings receive the DB-free SchemeCtx
-        // (caps), never the raw PlurnkSchemeContext (schemes SPEC §channels). The dynamic
-        // dispatch is typed for in-tree schemes; the cast bridges the ctx shapes —
-        // the sibling reads caps, the in-tree handler reads db.
-        if (this.#schemes.isExternal(schemeName)) {
-            const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
-            return method.call(handler, statement, new SchemeCtxImpl(ctx, addressedScheme ?? schemeName) as unknown as PlurnkSchemeContext);
-        }
-        return method.call(handler, statement, ctx);
+        const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
+        const manifest = this.#schemes.manifestFor(schemeName);
+        if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
+        return method.call(handler, statement, new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest));
     }
 
     // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/

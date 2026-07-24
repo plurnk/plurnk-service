@@ -1,20 +1,12 @@
-// Capability context — the DB-free authoring surface for
-// `@plurnk/plurnk-schemes-*` siblings (keystone PR-2; design converged on
-// plurnk-service#180). The full contract — the live namespaces and why
-// `visibility` and `proposals` are not namespaces —
-// is SPEC §capability-ctx. This module is its typed mirror.
-//
-// WHY it exists: today a sibling receives plurnk-service's raw `Db` handle on
-// `ctx.db` and reaches straight through it — but SPEC §forbidden bars a third-party
-// scheme from importing `@plurnk/plurnk-service/*` or touching the database, so
-// `ctx.db` is an illegal contract and a real sibling is unbuildable. This module
-// exports INTERFACES only; plurnk-service injects a db-backed implementation
-// behind them (the existing `scheme-types.ts` seam, widened — not new
-// machinery). In-tree schemes keep using `db` directly during transition; the
-// cap impl is a thin adapter over the same `_entry-*.ts` / `ChannelWrite`
-// helpers, cut over scheme-by-scheme.
+// Stable context for trusted `@plurnk/plurnk-schemes-*` extensions. This is a
+// semantic compatibility boundary, not a sandbox: installed Node.js plugins
+// already have host-process authority. The interfaces keep extension code
+// independent of database schemas and private service modules while the
+// consumer injects their implementation.
 
 import type { WriterTier } from "./types.ts";
+import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-grammar";
+import type { SchemeResult } from "./Results.ts";
 // Channel streaming-lifecycle state (mirrors plurnk-service's ChannelState /
 // grammar ChannelContent.state). Metadata, not an engine gate (service SPEC: channel lifecycle state).
 export type ChannelState = "static" | "active" | "closed" | "errored";
@@ -26,14 +18,68 @@ export interface EntryData {
     readonly tags: ReadonlyArray<string>;
 }
 
+export type EntryOwner = "commons" | "worker";
+
+export interface EntryEditResult extends SchemeResult {
+    readonly entryId: number | null;
+    readonly channel: string | null;
+    readonly span?: string | null;
+    readonly error?: string;
+}
+
+export interface EntryReadResult extends SchemeResult {
+    readonly content: string | null;
+    readonly mimetype: string | null;
+    readonly channel: string | null;
+    readonly startLine?: number | null;
+    readonly matches?: number | null;
+    readonly reason?: string;
+    readonly error?: string;
+    readonly awaitWorker?: string;
+}
+
+export interface EntryCatalogItem {
+    readonly path: string;
+    readonly seconds?: number;
+    readonly tags?: ReadonlyArray<string>;
+    readonly channels: Readonly<Record<string, { mimetype: string; tokens: number; lines: number }>>;
+    readonly matchSpan?: { lineStart: number; lineEnd: number };
+    readonly matchPath?: string;
+}
+
+export interface EntryMatch {
+    readonly pathname: string;
+    readonly span: { lineStart: number; lineEnd: number } | null;
+    readonly path?: string;
+}
+
+export interface EntryFindResult extends SchemeResult {
+    readonly content: string | null;
+    readonly mimetype: string | null;
+    readonly results: ReadonlyArray<EntryCatalogItem>;
+    readonly itemsTokenTotal: number;
+    readonly pathnames: ReadonlyArray<string>;
+    readonly matches: ReadonlyArray<EntryMatch>;
+    readonly overflow?: number;
+    readonly error?: string;
+}
+
+export interface EntryOperationCaps {
+    edit(statement: EditStatement, owner?: EntryOwner): Promise<EntryEditResult>;
+    read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult>;
+    find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult>;
+    send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult>;
+}
+
 // ── entries ──────────────────────────────────────────────────────────────
-// CRUD over the scheme's OWN namespace only. The impl scopes every call to
-// the calling scheme; a sibling cannot read or write another scheme's
-// entries (SPEC §forbidden). Wraps `_entry-crud.ts`.
+// Direct storage over the scheme's own namespace plus the standard PLURNK
+// entry-op implementation. A scheme may use these semantics or implement an
+// op itself.
 export interface EntryCaps {
-    read(pathname: string): Promise<{ status: number; entry: EntryData | null }>;
-    write(pathname: string, entry: EntryData): Promise<{ status: number; created: boolean; entryId: number | null }>;
-    delete(pathname: string): Promise<{ status: number }>;
+    readonly operations: EntryOperationCaps;
+    read(pathname: string, owner?: EntryOwner): Promise<{ status: number; entry: EntryData | null }>;
+    write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<{ status: number; created: boolean; entryId: number | null }>;
+    delete(pathname: string, owner?: EntryOwner): Promise<{ status: number }>;
 }
 
 // ── channels ─────────────────────────────────────────────────────────────

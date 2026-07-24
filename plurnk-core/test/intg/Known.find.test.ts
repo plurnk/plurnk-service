@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -243,7 +243,7 @@ test("commons FIND is scoped to the scheme (doesn't leak across schemes)", async
 
         // Seed a SKILL entry under the same workspace — a different scheme at the same tier.
         const Skill = (await import("../../src/schemes/Skill.ts")).default;
-        await new Skill().edit({ ...editStmt(url("here-skill"), "y"), target: { ...url("here-skill"), scheme: "skill", raw: "skill:///here-skill" } }, makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Skill().edit({ ...editStmt(url("here-skill"), "y"), target: { ...url("here-skill"), scheme: "skill", raw: "skill:///here-skill" } }, makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
 
         const r = await new Worker().find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);

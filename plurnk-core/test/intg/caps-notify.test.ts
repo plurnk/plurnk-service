@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import { openMigrated, insertWorkspace, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 // Wall-clock wait for a condition — the emit's entryId lookup goes through the shared
@@ -28,7 +28,7 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         const workspaceId = await insertWorkspace(db, `caps-notify-${crypto.randomUUID()}`);
         const captured: Array<{ sid: number; payload: StreamEventPayload }> = [];
         const ctx = makeSchemeCtx({ db, workspaceId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
-        const entries = new DbEntryCaps(ctx, "worker");
+        const entries = new DbEntryCaps(ctx, "worker", schemeManifest("worker"));
         const notify = new DbNotifyCaps(ctx, "worker");
 
         await entries.write("/stream.md", { channels: { body: { content: "data", mimetype: "text/markdown" } }, tags: [] });

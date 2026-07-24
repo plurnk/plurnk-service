@@ -6,7 +6,6 @@ import type TelemetryChannel from "./TelemetryChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
-import type { ProposalAware } from "@plurnk/plurnk-schemes";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -225,9 +224,9 @@ export default class ProposalLifecycle {
                 attrs: (originalResult.attrs ?? {}) as object,
                 body: resolution.body,
             };
-            const applyResult = this.#schemes.isExternal(schemeName)
-                ? await (handler as unknown as ProposalAware).applyResolution(request, new SchemeCtxImpl(applyCtx, schemeName))
-                : await handler.applyResolution(request, applyCtx);
+            const manifest = this.#schemes.manifestFor(schemeName);
+            if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
+            const applyResult = await handler.applyResolution(request, new SchemeCtxImpl(applyCtx, schemeName, manifest));
             if (applyResult.status >= 400) {
                 return {
                     decision: "reject",

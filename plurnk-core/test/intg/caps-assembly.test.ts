@@ -6,14 +6,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
-import { openMigrated, insertWorkspace, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 
 test("SchemeCtxImpl: identity and the six capabilities are wired", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-asm-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId: 7, loopId: 8, turnId: 9, writer: "model" });
-        const sctx = new SchemeCtxImpl(ctx, "known");
+        const sctx = new SchemeCtxImpl(ctx, "known", schemeManifest("known"));
 
         // identity lifted off the PlurnkSchemeContext
         assert.equal(sctx.workspaceId, workspaceId);

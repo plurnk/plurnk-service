@@ -35,6 +35,12 @@ const makeCtx = () => {
     let closed: { reason: string; outcome?: string } | null = null;
 
     const entries: EntryCaps = {
+        operations: {
+            async edit() { return { status: 501, entryId: null, channel: null }; },
+            async read() { return { status: 501, content: null, mimetype: null, channel: null }; },
+            async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] }; },
+            async send() { return { status: 501 }; },
+        },
         async read(pathname) {
             const entry = store.get(pathname) ?? null;
             return { status: entry ? 200 : 404, entry };

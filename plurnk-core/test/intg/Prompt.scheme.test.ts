@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Prompt from "../../src/schemes/Prompt.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, readStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -38,10 +38,10 @@ test("the engine writes prompt:///<loop>/<N> owner-keyed; each worker READs only
         await EntryCrud.writeEntry("/1/1", { channels: { body: { content: "sister task", mimetype: "text/markdown" } }, tags: [] }, ctxSister, "prompt", sister);
 
         const p = new Prompt();
-        const own = await p.read(readStmt(urlPath("prompt", "/1/1")), ctxSelf);
+        const own = await p.read(readStmt(urlPath("prompt", "/1/1")), makeHandlerCtx(ctxSelf, Prompt.manifest));
         assert.equal(own.status, 200);
         assert.equal(own.content, "fix the parser", "a worker's READ resolves its OWN frame");
-        const sisterOwn = await p.read(readStmt(urlPath("prompt", "/1/1")), ctxSister);
+        const sisterOwn = await p.read(readStmt(urlPath("prompt", "/1/1")), makeHandlerCtx(ctxSister, Prompt.manifest));
         assert.equal(sisterOwn.content, "sister task", "the sister's identical coordinate is her own frame — never the sibling's");
     } finally { await db.close(); }
 });
@@ -51,7 +51,7 @@ test("a frame the worker doesn't hold is 404 — no cross-worker prompt address 
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const p = new Prompt();
-        const missing = await p.read(readStmt(urlPath("prompt", "/9/9")), ctx);
+        const missing = await p.read(readStmt(urlPath("prompt", "/9/9")), makeHandlerCtx(ctx, Prompt.manifest));
         assert.equal(missing.status, 404);
     } finally { await db.close(); }
 });

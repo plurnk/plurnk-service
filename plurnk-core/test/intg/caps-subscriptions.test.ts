@@ -9,7 +9,7 @@ import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbSubscriptionCaps from "../../src/core/caps/DbSubscriptionCaps.ts";
 import type { WakeWorkerPayload, StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 
 test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, close terminates + wakes", async () => {
     const db = await openMigrated();
@@ -24,7 +24,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
             streamEventNotify: (_s, e) => streamEvents.push(e),
             wakeWorkerNotify: (p) => wakes.push(p),
         });
-        const entries = new DbEntryCaps(ctx, "exec");
+        const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain", stderr: "text/plain" }, "stdout"));
         const subs = new DbSubscriptionCaps(ctx, "exec");
 
         const seeded = await entries.write("/run", { channels: {

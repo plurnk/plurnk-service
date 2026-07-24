@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, sendStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -108,7 +108,7 @@ test("SEND[410](skill:///x) deletes skill entry", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const Skill = (await import("../../src/schemes/Skill.ts")).default;
-        await new Skill().edit(editStmt(urlPath("skill", "/grep"), "search text"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Skill().edit(editStmt(urlPath("skill", "/grep"), "search text"), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("skill", "/grep")));
         assert.equal(r.status, 200);

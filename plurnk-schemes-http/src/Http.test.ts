@@ -49,6 +49,12 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
     const localAbort = new AbortController();
 
     const entries: EntryCaps = {
+        operations: {
+            async edit() { return { status: 501, entryId: null, channel: null }; },
+            async read() { return { status: 501, content: null, mimetype: null, channel: null }; },
+            async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] }; },
+            async send() { return { status: 501 }; },
+        },
         async read() { return priorEntry === null ? { status: 404, entry: null } : { status: 200, entry: priorEntry }; },
         async write(pathname, entry) { wrote = { pathname, entry }; seq.push("write"); return { status: 201, created: true, entryId: 1 }; },
         async delete(pathname) { deleted = pathname; return { status: 200 }; },

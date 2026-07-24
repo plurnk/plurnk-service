@@ -32,7 +32,7 @@ export default class Foo implements SchemeHandler {
   static manifest: SchemeManifest = { /* step 3 */ };
 
   async read(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult> {
-    /* … reach the substrate ONLY through ctx capabilities (SPEC §3.bis, §5) … */
+    /* … use ctx's stable domain capabilities (SPEC §3.bis) … */
   }
 }
 ```
@@ -79,7 +79,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - Manifest/flags: `SchemeManifest` (incl. `example` / `documentation` / `glyph` self-doc), `SchemeFlagAffinity`, `WriterTier`, `LoopFlags`, `DEFAULT_LOOP_FLAGS`.
 - Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSection`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
 - Results: universal `SchemeResult` plus optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, and `TelemetryEvent`.
-- Capability ctx: `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `ProjectionCaps` / `SubscriptionCaps`, plus `EntryData` / `ChannelState` / `SubscriptionHandle` / `ProposalAware` / `ProposalApplyRequest` / `ProposalApplyResult`.
+- Capability ctx: `SchemeCtx` and its entry, channel, tag, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.
 
 ### Helpers (`export default class`, static methods)
 
@@ -91,7 +91,9 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 - `Results.error` / `.logCoordinate` / `.isEntry` / `.isProposal` / `.isPassthrough` / `.isErrorStatus` — result builders + guards.
 - `SchemeDiscovery.discover({ cwd? })` — scope-agnostic `node_modules` scan for `plurnk.kind:"scheme"` packages (trust-gated, fail-hard on prefix collision); returns descriptors for the consumer to register (SPEC §6).
 
-The **capability ctx** (`SchemeCtx`) is the DB-free authoring surface for siblings — interfaces only; the consumer (`plurnk-core`) injects the db-backed impl (see SPEC §3.bis). Those implementations themselves (CRUD primitives, entry-op handlers, channel writes, subscription registry) stay in the consumer.
+`SchemeCtx` is the stable semantic API for trusted in-process schemes, not a
+sandbox. The consumer injects its implementation; database layout and private
+service modules remain outside the compatibility contract.
 
 ## Tests
 

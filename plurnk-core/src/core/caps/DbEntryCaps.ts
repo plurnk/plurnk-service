@@ -1,35 +1,76 @@
-// db-backed EntryCaps (@plurnk/plurnk-schemes) — the keystone PR-2 seam (#180).
-// schemes exports the capability interfaces; plurnk-service injects this
-// db-backed impl so a third-party `@plurnk/plurnk-schemes-*` sibling reaches
-// entries through intent (read/write/delete) instead of the forbidden raw
-// `ctx.db` (schemes SPEC §channels). Binds a PlurnkSchemeContext + the scheme name and
-// delegates 1:1 to EntryCrud — the same path the in-tree schemes use during
-// transition, so the adapter is zero-behavior-change over a proven primitive.
+// Consumer implementation of the stable entry domain. Direct storage and
+// standard PLURNK entry operations share the same proven core primitives.
 
-import type { EntryCaps, EntryData } from "@plurnk/plurnk-schemes";
+import type {
+    EditStatement,
+    EntryCaps,
+    EntryData,
+    EntryEditResult,
+    EntryFindResult,
+    EntryOperationCaps,
+    EntryOwner,
+    EntryReadResult,
+    FindStatement,
+    ReadStatement,
+    SchemeManifest,
+    SchemeResult,
+    SendStatement,
+} from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import EntryCrud from "../../schemes/_entry-crud.ts";
+import EntryFind from "../../schemes/_entry-find.ts";
+import EntryOps from "../../schemes/_entry-ops.ts";
+import EntrySend from "../../schemes/_entry-send.ts";
 
 export default class DbEntryCaps implements EntryCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
+    readonly #manifest: SchemeManifest;
+    readonly operations: EntryOperationCaps;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string, manifest: SchemeManifest) {
         this.#ctx = ctx;
         this.#scheme = scheme;
+        this.#manifest = manifest;
+        this.operations = {
+            edit: (statement, owner) => this.#edit(statement, owner),
+            read: (statement, owner) => this.#read(statement, owner),
+            find: (statement, owner) => this.#find(statement, owner),
+            send: (statement, owner) => this.#send(statement, owner),
+        };
     }
 
-    async read(pathname: string): Promise<{ status: number; entry: EntryData | null }> {
-        return EntryCrud.readEntry(pathname, this.#ctx, this.#scheme);
+    #ownerId(owner: EntryOwner | undefined): number | undefined {
+        return owner === "worker" ? this.#ctx.workerId : undefined;
     }
 
-    async write(pathname: string, entry: EntryData): Promise<{ status: number; created: boolean; entryId: number | null }> {
+    async #edit(statement: EditStatement, owner?: EntryOwner): Promise<EntryEditResult> {
+        return { ...await EntryOps.editWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId(owner)) };
+    }
+
+    async #read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult> {
+        return { ...await EntryOps.readWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId(owner)) };
+    }
+
+    async #find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult> {
+        return { ...await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, this.#ownerId(owner)) };
+    }
+
+    async #send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult> {
+        return EntrySend.sendToWorkspaceEntry(statement, this.#ctx, this.#scheme, this.#ownerId(owner));
+    }
+
+    async read(pathname: string, owner?: EntryOwner): Promise<{ status: number; entry: EntryData | null }> {
+        return EntryCrud.readEntry(pathname, this.#ctx, this.#scheme, this.#ownerId(owner));
+    }
+
+    async write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<{ status: number; created: boolean; entryId: number | null }> {
         // schemes' EntryData carries `tags` as ReadonlyArray; EntryCrud writes a
         // mutable array — copy at the boundary.
-        return EntryCrud.writeEntry(pathname, { channels: entry.channels, tags: [...entry.tags] }, this.#ctx, this.#scheme);
+        return EntryCrud.writeEntry(pathname, { channels: entry.channels, tags: [...entry.tags] }, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 
-    async delete(pathname: string): Promise<{ status: number }> {
-        return EntryCrud.deleteEntry(pathname, this.#ctx, this.#scheme);
+    async delete(pathname: string, owner?: EntryOwner): Promise<{ status: number }> {
+        return EntryCrud.deleteEntry(pathname, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 }

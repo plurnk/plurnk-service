@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { SchemeResult, SchemeResultBase } from "./results.ts";
+import type { EntryResult, PassthroughResult, ProposalResult, SchemeResult } from "./results.ts";
 import Results from "./results.ts";
 
 test("shape discriminator narrows each family", () => {
-    const entry: SchemeResult = { shape: "entry", status: 201, entryId: 7, channel: "body" };
-    const proposal: SchemeResult = { shape: "proposal", status: 202, body: "preview", diff: "@@ -1 +1 @@" };
-    const passthrough: SchemeResult = { shape: "passthrough", status: 200, content: "row", mimetype: "application/json" };
+    const entry: EntryResult = { shape: "entry", status: 201, entryId: 7, channel: "body" };
+    const proposal: ProposalResult = { shape: "proposal", status: 202, body: "preview", diff: "@@ -1 +1 @@" };
+    const passthrough: PassthroughResult = { shape: "passthrough", status: 200, content: "row", mimetype: "application/json" };
 
     assert.equal(Results.isEntryResult(entry), true);
     assert.equal(Results.isProposalResult(entry), false);
@@ -21,9 +21,9 @@ test("shape discriminator narrows each family", () => {
 
 test("shape guards are mutually exclusive and optional on a scheme result", () => {
     const results: SchemeResult[] = [
-        { shape: "entry", status: 200, entryId: 1, channel: "body" },
-        { shape: "proposal", status: 202 },
-        { shape: "passthrough", status: 200 },
+        { shape: "entry", status: 200, entryId: 1, channel: "body" } as EntryResult,
+        { shape: "proposal", status: 202 } as ProposalResult,
+        { shape: "passthrough", status: 200 } as PassthroughResult,
         { status: 204 },
     ];
     for (const r of results.slice(0, 3)) {
@@ -79,7 +79,7 @@ test("logCoordinate omits op when absent", () => {
 });
 
 test("an error result carries a TelemetryEvent error envelope", () => {
-    const result: SchemeResultBase = {
+    const result: EntryResult = {
         shape: "entry",
         status: 404,
         entryId: null,

@@ -95,7 +95,7 @@ The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handl
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - Executor-scheme (RFC schemes#20 — "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` → `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`); `Summarize.summarize(content, mimetype)` → `OrientIndex` is the structural-only EXEC-receipt index (no content — universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal `{ status, ...schemeMetadata }` contract. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Their `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
-- Capability ctx (see §3.bis): `SchemeCtx` + `EntryCaps` / `ChannelCaps` / `TagCaps` / `NotifyCaps` / `ProjectionCaps` / `SubscriptionCaps`, plus `EntryData`, `ChannelState`, `SubscriptionHandle`, `ProposalAware`, `ProposalApplyRequest`, and `ProposalApplyResult`.
+- Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`, and typed standard-operation results.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
 
@@ -139,13 +139,25 @@ Behavior ships as `export default class` (one class per file, static methods) �
   - Empty match array → status 204
   - Matches → status 200, body rendered as lean `<source-line>:\t<value>` lines (one match per line, the `N:\t` convention READ emits). Value bare for a single-line string, JSON-encoded otherwise so the one-match-per-line invariant holds (preserves `<L><K>` pick-Kth composition). The resolved query path (`matching`) is dropped — the structured `{matched, matching}` wrapper was a model-legibility barrier (schemes#12).
 
-### §3.bis Capability ctx — the DB-free authoring surface {§capability-ctx}
+### §3.bis Capability ctx — the stable trusted-extension surface {§capability-ctx}
 
-The contract that lets a third-party `@plurnk/plurnk-schemes-*` sibling be authored without importing `@plurnk/plurnk-service` or touching a raw DB handle (forbidden by §5). **Interfaces only**: this repo exports the shapes; the consumer (`plurnk-core`) injects a db-backed implementation behind them. Design converged on [plurnk-service#180](https://github.com/plurnk/plurnk-service/issues/180).
+Scheme plugins are trusted in-process Node.js code. `SchemeCtx` is not a
+sandbox or a security boundary; an installed plugin already has the process's
+authority. It is the stable semantic API that keeps plugins independent of
+database schemas, prepared-statement names, and private service modules.
+**Interfaces only**: this repo exports the contract and the consumer injects
+its implementation.
 
 `SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
 
-- `entries` — CRUD over the scheme's own namespace (`read`/`write`/`delete`).
+- `entries` — direct storage over the scheme's own namespace
+  (`read`/`write`/`delete`) plus `operations`, the standard PLURNK
+  `READ`/`EDIT`/`FIND`/`SEND` implementation for entry-bearing schemes.
+  Standard operations are bound to the handler's manifest. Their optional
+  owner is semantic: `"commons"` (default) or the current `"worker"`; database
+  owner IDs are not part of the plugin contract. A handler may implement its
+  own op method instead. In particular, a handler with `find()` owns FIND and
+  fan-out; one without it receives the standard stored-entry behavior.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the run-wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
@@ -158,24 +170,22 @@ There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in pl
 
 ## §4 What's NOT in this repo
 
-DB-coupled entry/channel machinery — CRUD + write-time tokenization, the SEND/FIND dispatchers, the channel-write/subscription registry, the per-call DB-handle context — lives in the consumer (`plurnk-core`), never here. This package is types + pure helpers only; a scheme reaches the substrate through the §3.bis capability ctx, never a raw DB handle.
+DB-coupled entry/channel machinery — CRUD + write-time tokenization, the
+standard entry operations, channel writes, and subscription registry — lives
+in the consumer. This package defines their stable interfaces and pure helpers.
 
-## §5 Forbidden (for third-party schemes) {§forbidden}
+## §5 Trusted extension contract {§trusted-extension}
 
-| ❌ |
-|---|
-| Imports from `@plurnk/plurnk-service/*` |
-| Direct database access |
-| Writes outside the scheme's own namespace |
-| Direct invocation of peer schemes |
-| Mutating `ctx` |
-| Holding `ctx` references past the op handler's return |
-| Reading or writing `log_entries` directly |
-| Calling consumer-internal methods |
-| Writing to `console`, stdout, stderr |
-| Spawning subprocesses (unless the scheme is specifically a subprocess scheme) |
-| Opening network connections (unless specifically a network scheme) |
-| Caching across op invocations (state in instance fields beyond config) |
+Installed schemes may legitimately own network connections, subprocesses,
+caches, pools, or other host resources. Use `close()` to release resources
+owned by the handler. These powers are why installation is a trust decision and
+why contained interoperability belongs in MCP rather than an in-process plugin.
+
+The supported compatibility boundary is `@plurnk/plurnk-schemes`. Plugins
+should not import private service modules, depend on database layout, or call
+prepared statements directly: those are unstable implementation details, not
+additional plugin capabilities. Use `SchemeCtx` or propose a new semantic
+capability when the public surface cannot express a coherent extension.
 
 ## §6 Discovery & registration (third-party)
 

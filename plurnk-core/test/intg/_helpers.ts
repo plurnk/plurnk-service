@@ -6,11 +6,13 @@ import { Paths } from "../../src/index.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import Owner from "../../src/core/Owner.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import GitMembership from "../../src/core/git-membership.ts";
+import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
@@ -41,6 +43,9 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     tokenize: (text: string) => Math.ceil(text.length / 4),
     ...overrides,
 });
+
+export const makeHandlerCtx = (ctx: PlurnkSchemeContext, manifest: SchemeManifest): SchemeCtxImpl =>
+    new SchemeCtxImpl(ctx, manifest.name, manifest);
 
 // Boot-style executor registry for EXEC tests. Memoized — built once (discover
 // + probe the installed siblings), shared across the suite. Pass to
@@ -229,3 +234,13 @@ export const seedEntryWithChannel = async (
     });
     return entry.id;
 };
+export const schemeManifest = (name: string, channels: Record<string, string> = { body: "text/markdown" }, defaultChannel = Object.keys(channels)[0] ?? "body"): SchemeManifest => ({
+    name,
+    channels,
+    defaultChannel,
+    category: "data",
+    scope: "workspace",
+    writableBy: ["model", "client", "plurnk", "plugin"],
+    volatile: false,
+    modelVisible: true,
+});

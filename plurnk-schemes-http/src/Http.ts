@@ -1,7 +1,6 @@
 // http(s):// scheme handler — the first greenfield `@plurnk/plurnk-schemes-*`
-// sibling, authored entirely against the DB-free capability ctx (SchemeCtx).
-// It never imports plurnk-service and never touches a raw DB handle (schemes SPEC §forbidden);
-// the substrate is reached only through intent, via the injected caps.
+// sibling, authored entirely against the stable SchemeCtx contract. It never
+// imports private service modules or depends on database layout.
 //
 // Surface — the HTTP method is the OP (grammar#46): READ→GET, SEND→POST,
 // EDIT→PUT, KILL→DELETE. Every request streams its response the same way
@@ -20,9 +19,8 @@
 // The SEND `[code]` is loop disposition (102/200/…), never the HTTP status —
 // the real 2xx/4xx comes back in the response `header`/`body` channels.
 //
-// Network exception: the schemes SPEC §forbidden table bars connections "unless specifically
-// a network scheme." This IS that scheme — `fetch` is the whole point. No
-// runtime deps: `fetch` and `AbortController` are Node built-ins.
+// `fetch` is the scheme's purpose. No runtime dependencies: `fetch` and
+// `AbortController` are Node built-ins.
 
 import type {
     SchemeCtx,

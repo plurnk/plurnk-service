@@ -31,11 +31,9 @@ const SCHEME_DOCS: ReadonlyMap<string, string> = await (async () => {
 })();
 
 export default class SchemeRegistry {
-    // Heterogeneous handler store — in-tree schemes take PlurnkSchemeContext, external
-    // siblings the DB-free SchemeCtx of the imported SchemeHandler; the common supertype
-    // is `object`. Dispatch (Dispatcher.#run) borrows SchemeHandler's op-key set, not its ctx.
+    // Handler store. Dispatcher supplies one context implementation to bundled
+    // and discovered schemes alike.
     #handlers = new Map<string, object>();
-    #external = new Set<string>();
     #attributions: string[] = []; // #249 — declared attribution tags of discovered external schemes
     // §exec — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
     // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
@@ -104,10 +102,6 @@ export default class SchemeRegistry {
         const handler = this.#handlers.get(name) as { manifest?: SchemeManifest; constructor?: { manifest?: SchemeManifest } } | undefined;
         return handler?.manifest ?? handler?.constructor?.manifest;
     }
-
-    // True for schemes registered via discoverExternal — they receive the
-    // DB-free SchemeCtx (caps), not the in-tree PlurnkSchemeContext.
-    isExternal(name: string): boolean { return this.#external.has(name); }
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
 
@@ -188,8 +182,7 @@ export default class SchemeRegistry {
     // never crashed) both live there now, single-sourced across the plugin families
     // (the "delegate upstream" rule — execs/mimetypes/providers already ship discover()).
     // The service keeps only consumer policy: in-tree precedence (a name a built-in owns
-    // is left as-is) and importing + registering the trusted descriptors. A sibling reaches
-    // the substrate only through the DB-free SchemeCtx the engine wraps for isExternal() schemes.
+    // is left as-is) and importing + registering the trusted descriptors.
     async discoverExternal(cwd: string = process.cwd()): Promise<void> {
         const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
         for (const name of skipped) {
@@ -205,7 +198,6 @@ export default class SchemeRegistry {
             const Handler = mod[exportName ?? "default"];
             if (typeof Handler !== "function") throw new Error(`external scheme '${name}' (${packageName}): export '${exportName ?? "default"}' is not a constructor — boot fail-hard (#473)`);
             this.register(name, new Handler());
-            this.#external.add(name);
             this.#attributions.push(...PluginAttribution.read(packageName)); // #249 — fail-hard if it claims @plurnk/
         }
     }
