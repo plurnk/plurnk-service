@@ -240,7 +240,7 @@ export default class EntryManifest {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_CONCURRENCY must be -1 (match cores) or a positive integer; got ${JSON.stringify(rawConcurrency)}`);
         }
         const concurrency = configuredConcurrency === -1 ? availableParallelism() : configuredConcurrency;
-        let lastDetailAt = 0;
+        let lastHeartbeatAt = 0;
         const workerPool = async (work: Array<Array<{ r: ManifestRow; hash: string; searchExcluded: string | undefined }>>): Promise<void> => {
             let next = 0;
             const worker = async (): Promise<void> => {
@@ -249,26 +249,23 @@ export default class EntryManifest {
                     const group = work[next++];
                     for (const { r, hash, searchExcluded } of group) {
                         if (Boolean(ctx.signal?.aborted)) return;
-                        let lastProgress = "";
                         await EntryManifest.deriveOne(ctx, r, hash, embedActive, searchExcluded, (progress) => {
                             if (step === 0 || progress.total <= 1) return;
                             const milestone = progress.completed === progress.total
                                 || progress.completed % Math.max(1, Math.floor(progress.total / 10)) === 0;
                             if (!milestone) return;
                             const now = Date.now();
-                            if (now - lastDetailAt < 250) return;
-                            lastDetailAt = now;
-                            const detail = `${progress.phase}:${progress.completed}/${progress.total}`;
-                            if (detail === lastProgress) return;
-                            lastProgress = detail;
+                            if (now - lastHeartbeatAt < 5_000) return;
+                            lastHeartbeatAt = now;
                             const percent = Math.floor((completed / total) * 100);
                             ctx.pushTelemetry?.({
                                 source: "engine:derivation",
                                 kind: "embed_progress",
-                                message: `Indexing repository semantics: ${percent}% (${completed}/${total}); ${r.pathname}: ${progress.phase} ${progress.completed}/${progress.total}`,
+                                message: `Indexing repository semantics: ${percent}% (${completed}/${total})`,
                                 completed,
                                 total,
                                 percent,
+                                phase: progress.phase,
                                 level: "info",
                             });
                         });

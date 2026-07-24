@@ -72,13 +72,14 @@ test("[#272] the derivation pump emits throttled embed_progress telemetry for a 
         const seed = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
         for (const name of ["a.md", "b.md", "c.md"]) await new Worker().edit(editStmt(url(name), `content for ${name} with words to embed`), seed);
 
-        type Tel = { source?: string; kind?: string; completed?: number; total?: number };
+        type Tel = { source?: string; kind?: string; message?: string; pathname?: string; completed?: number; total?: number };
         const events: Tel[] = [];
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushTelemetry: (e) => events.push(e as Tel) }));
 
         const progress = events.filter((e) => e.source === "engine:derivation" && e.kind === "embed_progress");
         assert.ok(progress.length > 0, "a 3-entry corpus pass emits progress telemetry (the ingest is visible, not frozen)");
         assert.ok(progress.every((e) => e.total === 3), "total reflects the corpus size (3 changed entries)");
+        assert.ok(progress.every((e) => e.pathname === undefined && !e.message?.includes(".md")), "client progress is aggregate state, never a pathname ledger");
         assert.equal(progress.at(-1)?.completed, 3, "the final progress event reports completion");
 
         // A normal turn re-derives a single changed entry (total=1) → below the multi-entry
