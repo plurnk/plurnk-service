@@ -213,6 +213,29 @@ test("#596: a rejected entry() preserves ranked discovery and reports materializ
     ], "page fetchability annotates but never rewrites SearXNG membership or order");
 });
 
+test("search acquisition emits bounded aggregate progress with no candidate URLs", async () => {
+    const results = Array.from({ length: 25 }, (_, i) => ({
+        title: `result ${i}`,
+        url: `https://example${i}.test/page`,
+    }));
+    routes(results);
+    const { events } = await invoke("search", "private query words", {
+        entry: async (path) => { if (path.includes("example3.")) throw new Error("dead"); },
+    });
+    const progress = events.filter((event) => event.kind === "search_progress");
+
+    assert.ok(progress.length >= 2 && progress.length <= 12, "start + bounded milestones + terminal, never one event per result");
+    assert.deepEqual(
+        progress.map((event) => event.phase).filter((phase, i, phases) => i === 0 || i === phases.length - 1),
+        ["fetching", "complete"],
+    );
+    assert.equal(progress.at(-1)?.completed, 25);
+    assert.equal(progress.at(-1)?.materialized, 24);
+    assert.equal(progress.at(-1)?.rejected, 1);
+    assert.equal(progress.at(-1)?.percent, 100);
+    assert.ok(progress.every((event) => !JSON.stringify(event).includes("example3.test")), "telemetry never becomes a candidate URL ledger");
+});
+
 test("#596: every rejecting entry() still leaves the complete discovery digest", async () => {
     routes([
         { title: "x", url: "https://8.8.8.8/x" },

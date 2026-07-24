@@ -202,15 +202,46 @@ export default class Search extends BaseExecutor {
         // URL; without the sink no verdict exists, so `materialized` is omitted.
         const slug = slugify(query);
         const unique = [...new Map(capped.filter((r) => r.url).map((r) => [r.url!, r])).values()];
+        let completed = 0;
+        let materialized = 0;
+        const reportProgress = (phase: "fetching" | "complete"): void => {
+            const total = unique.length;
+            const percent = total === 0 ? 100 : Math.floor((completed / total) * 100);
+            emit({
+                source: `exec:${runtime}`,
+                kind: "search_progress",
+                level: "info",
+                message: phase === "complete"
+                    ? `search acquisition complete: ${materialized}/${total} pages materialized`
+                    : `acquiring search results: ${percent}% (${completed}/${total})`,
+                phase,
+                completed,
+                total,
+                materialized,
+                rejected: completed - materialized,
+                percent,
+            });
+        };
+        if (entry && unique.length > 0) reportProgress("fetching");
         const verdicts = await Promise.all(unique.map(async (r) => {
             if (!entry) return true;
+            let accepted = false;
             try {
                 await entry(r.url!, null, { tags: [slug] });
-                return true;
+                accepted = true;
             } catch {
-                return false;
+                accepted = false;
+            } finally {
+                completed++;
+                if (accepted) materialized++;
+                // At most ~10 intermediate notices regardless of result count,
+                // plus start and terminal. Progress is aggregate: no URL ledger.
+                const step = Math.max(1, Math.ceil(unique.length / 10));
+                if (completed < unique.length && completed % step === 0) reportProgress("fetching");
             }
+            return accepted;
         }));
+        if (entry && unique.length > 0) reportProgress("complete");
         if (signal.aborted) {
             setState("results", "errored");
             return { status: 499 };

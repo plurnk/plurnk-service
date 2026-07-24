@@ -57,6 +57,7 @@ interface TurnRow {
 }
 interface LogRow {
     id: number; turn_id: number; sequence: number;
+    origin: string; attrs: string;
     op: string; scheme: string | null; pathname: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
 }
@@ -146,6 +147,37 @@ export default class Digest {
         return `  ← ${le.op}[${le.status_rx}] ${target}${state}${outcome}${fail}${errLine}`;
     }
 
+    // Human triage is not a row dump. Preserve every row in digest.json, but
+    // collapse repeated same-outcome deliveries in the Markdown waterfall.
+    // This makes matcher amplification legible (`×20,177`) without concealing it,
+    // and turns machine page acquisition into one typed aggregate.
+    static #renderOpLines(rows: LogRow[]): string[] {
+        const groups = new Map<string, { first: LogRow; count: number; firstSeq: number; lastSeq: number }>();
+        for (const row of rows) {
+            const attrs = Digest.#parseJson(row.attrs, {}) as { kind?: unknown };
+            const materialized = row.origin === "plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
+            const key = materialized
+                ? `materialized\0${row.status_rx}\0${row.state}\0${row.outcome ?? ""}`
+                : [row.op, row.scheme ?? "", row.pathname ?? "", row.status_rx, row.state, row.outcome ?? ""].join("\0");
+            const group = groups.get(key);
+            if (group === undefined) {
+                groups.set(key, { first: row, count: 1, firstSeq: row.sequence, lastSeq: row.sequence });
+            } else {
+                group.count++;
+                group.lastSeq = row.sequence;
+            }
+        }
+        return [...groups.values()].map(({ first, count, firstSeq, lastSeq }) => {
+            const attrs = Digest.#parseJson(first.attrs, {}) as { kind?: unknown };
+            const materialized = first.origin === "plurnk" && first.op === "EDIT" && attrs.kind === "entry_materialized";
+            if (materialized) {
+                return `  ← materialized entries[${first.status_rx}] ×${count} (seq ${firstSeq}–${lastSeq})`;
+            }
+            const line = Digest.#renderOpLine(first);
+            return count === 1 ? line : `${line} ×${count} (seq ${firstSeq}–${lastSeq})`;
+        });
+    }
+
     // The "degenerate win" lens (owner ask): a loop's health = how many errors/strikes it earned
     // vs whether it still concluded. A green that limped across on 16 errors is a FAILING artifact
     // wearing a passing badge; the digest must make that impossible to miss. errors = ≥400 op rows;
@@ -190,7 +222,7 @@ export default class Digest {
         const reasoningLine = reasoning && reasoning.length > 0
             ? `  ↳ reasoning: ${Digest.#summarize(reasoning, 100)}`
             : null;
-        const opLines = (m.logEntriesByTurn.get(turn.id) ?? []).map((le) => Digest.#renderOpLine(le));
+        const opLines = Digest.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? []);
         return [head, summary, ...(reasoningLine ? [reasoningLine] : []), ...opLines].join("\n");
     }
 

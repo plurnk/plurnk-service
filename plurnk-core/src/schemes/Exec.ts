@@ -531,7 +531,9 @@ export default class Exec {
                         span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
                     }), mimetype_rx: "application/json",
                     status_rx: written.status, tokens: ctx.tokenize?.(decisive) ?? 0, state: "resolved", outcome: null,
-                    attrs: JSON.stringify({ tags }),
+                    // Durable provenance for clients/forensics. This is machine
+                    // ambience, not a human/model action waterfall item.
+                    attrs: JSON.stringify({ tags, kind: "entry_materialized" }),
                 });
             };
             const run = entryChain.then(op, op);

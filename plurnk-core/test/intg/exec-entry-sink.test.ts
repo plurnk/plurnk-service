@@ -108,6 +108,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         assert.equal(narrations[0]?.source, String(workerId), "source attributes the CALLING run");
         assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries the write's real token weight");
         assert.ok(/turkeys_query/.test(narrations[0]?.attrs ?? ""), "attrs carry the slug tags for the meta line");
+        assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
 
         // The row is a FULL fiction — the journal records the write itself, not just that one happened:
         // tx carries the statement with the written content (replay/fork-complete), rx carries the
