@@ -21,15 +21,9 @@ const housekeepingGrace = (reason: unknown): number | null => {
     return r?.housekeeping === true && typeof r.graceMs === "number" ? r.graceMs : null;
 };
 
-// Concrete BaseExecutor for subprocess runtimes (sh, node, python, …). Spawns
-// via resolveWorkertime, streams the process's stdout/stderr into the declared
-// channels, honors cancellation, and reports the exit code. The sibling
-// packages (plurnk-execs-sh / -node / -python) subclass this and differ only
-// in which runtime tags they claim in their `plurnk.runtimes[]` manifest.
-//
-// This is the destination of plurnk-service's legacy `streamShellCommand`
-// (service#174 Q2): the scheme migrates onto it on its own timeline; until
-// then both paths coexist.
+// Concrete BaseExecutor for subprocess runtimes. It streams stdout and stderr,
+// honors cancellation, and reports the exit code. Runtime packages subclass it
+// to claim tags and provide spawn recipes.
 export default class SubprocessExecutor extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return {

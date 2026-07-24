@@ -71,7 +71,8 @@ Declare the two and a third-party tag gets the same self-documenting surface the
 - `Policy` — the runtime enable/disable resolver (SPEC §3.3): `Policy.isEnabled(tag, env?)`, `Policy.enabledAcross(tag, layers)`. Same parser the daemon and the consumer's per-workspace client layer share.
 - Contract types: `ExecArgs`, `ExecResult`, `ChannelDecl`, `ChannelState`, `ExecutorMetadata`, `RuntimeAvailability`, `Effect`, `ExecInfo`, `ExecRegistry`, `Discovery`, `DiscoverOptions`.
 - `TelemetryEvent`, `ContentOffset`, `LogCoordinate` — the `emit` sink's payload (mirror of grammar's telemetry envelope).
-- `resolveWorkertime`, `isKnownRuntime`, `KNOWN_RUNTIMES`, `SpawnArgs`, `RuntimeResolver` — subprocess-family helper for the consumer's legacy spawn path (SPEC §4).
+- `SpawnArgs` — the `SubprocessExecutor.spawnArgs()` return shape for
+  runtime-specific subclasses.
 
 ## Tests
 

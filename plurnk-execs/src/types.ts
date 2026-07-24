@@ -3,11 +3,7 @@
 // its `package.json` `plurnk.runtimes[]` block, and provides a BaseExecutor
 // subclass implementing the dispatch for those tags.
 //
-// The framework surface is `BaseExecutor.run()` + `discover()`. The runtime
-// tag → spawn-args translator (`SpawnArgs` / `resolveWorkertime`) is retained as
-// a subprocess-family helper: plurnk-service's exec scheme still consumes it
-// on its legacy subprocess path until the deferred SubprocessExecutor
-// migration (service#174 Q2). See SPEC.md.
+// The framework surface is `BaseExecutor.run()` + `discover()`.
 
 import type { TelemetryEvent } from "./TelemetryEvent.ts";
 
@@ -217,17 +213,3 @@ export interface SpawnArgs {
      */
     stdin?: string;
 }
-
-/**
- * Translate a runtime tag + command string into spawn args for `node:child_process.spawn`.
- *
- * Runtimes:
- *   - `""` / `"sh"` / `"bash"`           → shell-mode invocation of the command
- *   - `"node"`                          → `node -e <command>`
- *   - `"python"` / `"python3"`          → `python3 -c <command>`
- *   - any other (unknown) runtime tag    → conservative `<runtime> -c <command>` fallback
- *
- * Consumers check `isKnownRuntime(runtime)` before calling to enforce a 501 boundary
- * on unconfigured runtimes; this function never throws.
- */
-export type RuntimeResolver = (runtime: string, command: string, target?: string | null) => SpawnArgs;

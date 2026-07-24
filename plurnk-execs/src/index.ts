@@ -1,5 +1,4 @@
 import Discover from "./discover.ts";
-import Runtime from "./runtime.ts";
 
 // Framework surface
 export { default as BaseExecutor } from "./BaseExecutor.ts";
@@ -22,13 +21,6 @@ export { default as Policy } from "./policy.ts";
 // availability and fills by confabulating runtimes (execs#24).
 export { default as Advertise } from "./advertise.ts";
 
-// Runtime-tag → spawn-args helper (subprocess family; legacy scheme path,
-// SPEC §4). Same shape: behavior on the `Runtime` class, the documented
-// function/constant names re-exported over its statics.
-export const KNOWN_RUNTIMES = Runtime.KNOWN;
-export const isKnownRuntime = Runtime.isKnown;
-export const resolveWorkertime = Runtime.resolve;
-
 // Contract types
 export type {
     ChannelState,
@@ -45,7 +37,6 @@ export type {
     Discovery,
     DiscoverOptions,
     SpawnArgs,
-    RuntimeResolver,
 } from "./types.ts";
 
 // Telemetry envelope (local mirror of grammar's TelemetryEvent schema)

@@ -6,7 +6,9 @@ Contract for `@plurnk/plurnk-execs-*` sibling packages — runtime executors tha
 
 A runtime executor handles one or more EXEC `runtime` slot values (`sh`, `node`, `python`, `search`, `news`, …). It is a `BaseExecutor` subclass that declares its output channels and implements `run()`; the framework discovers it from its `package.json` `plurnk` block. The consuming scheme owns all I/O and lifecycle machinery (db, channels, subscriptions, AbortController bridging, wake-on-completion) and hands the executor sinks — the executor stays stateless across runs beyond its construction metadata.
 
-The framework ships `SubprocessExecutor` (§4), the concrete `BaseExecutor` for subprocess runtimes (sh/node/python), built on the lower-level `resolveWorkertime` / `SpawnArgs` helper. plurnk-service's exec scheme has adopted `SubprocessExecutor`; the discovery-registry + `probe()`/`effect()` consumption is realized in service `0.9.0` (`ExecutorRegistry` boot-discovers and probes siblings; `EffectPolicy` gates the proposal lifecycle).
+The framework ships `SubprocessExecutor` (§4), a concrete `BaseExecutor` for
+subprocess runtimes. Runtime packages override its `spawnArgs()` hook and
+inherit process execution, streaming, cancellation, and telemetry.
 
 ## §2 Executor contract
 
@@ -232,9 +234,10 @@ When a loop leaves **zero** EXEC runtimes in the §3.2 *Active* bucket, the capa
 
 Execs owns the notice content and the tally. It does **not** own the mode, the sheet's rendering, or the decision of when a loop bars host effects — only the single line spoken when its own count of surviving runtimes reaches zero.
 
-## §4 Subprocess helper (legacy path)
+## §4 Subprocess executors
 
-`resolveWorkertime(runtime, command) → SpawnArgs` and `isKnownRuntime(runtime)` / `KNOWN_RUNTIMES` translate a subprocess runtime tag into `node:child_process.spawn` arguments:
+`SubprocessExecutor` translates a runtime tag and command into
+`node:child_process.spawn` arguments:
 
 ```ts
 interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; stdin?: string; }
@@ -247,13 +250,24 @@ interface SpawnArgs { cmd: string; args: string[]; useShell: boolean; stdin?: st
 | `"python"` / `"python3"` | `{ cmd: "python3", args: ["-c", command], useShell: false }` |
 | any other | `{ cmd: runtime, args: ["-c", command], useShell: false }` (conservative fallback) |
 
-`resolveWorkertime` never throws; consumers gate unknown runtimes with `isKnownRuntime` and return 501 before invoking.
+The executor registry rejects an unknown runtime before an executor runs.
 
-**With a `(target)`** — `resolveWorkertime(runtime, command, target)` runs the **target as the program** and the **body as its stdin** (plurnk-execs#15): a shell runs `sh -c "<target>"` (the shell tokenizes the target — the framework parses nothing), any other runtime runs `<interpreter> <target>` (a single script-file positional). No target → the body is the inline program (`-c`/`-e`) as in the table. This is family-relative: the *data* runtimes (jq/sqlite/wasm) invert it — `target` is the data, `body` the program — inside their own `run()`. Each plugin maps the two raw strings to its own tool's CLI; the parent hands them down and parses neither.
+With a target, a subprocess executor runs the target as the program and passes
+the body as stdin: a shell runs `sh -c "<target>"`; another interpreter runs
+`<interpreter> <target>`. With no target, the body is the inline program. Data
+runtimes such as jq, sqlite, and wasm define their own mapping.
 
-**Dispatch note (#448):** the consumer **stat-routes** a subprocess op's `(target)` — a **directory** becomes the `cwd` for the body command; a **file** is the program run here (via `resolveWorkertime` above), the body its stdin (empty body is legal — it just runs the file: `<<EXEC[sh](greet.sh)::EXEC`). No target → the body is the command in the project-root cwd. So: directory → run *in* it, file → run *it*.
+The consumer stat-routes a subprocess target: a directory becomes the command's
+working directory; a file is the program and the body is its stdin. With no
+target, the body runs from the project-root working directory.
 
-The framework wraps this in **`SubprocessExecutor extends BaseExecutor`** — declares `{ stdout, stderr }` channels and implements `run()` (spawn via `resolveWorkertime`, stream into the channels, honor `signal`, `emit` `spawn_failed` on a failed start, return `{ status, exitCode }`). Subclasses with their own interpreter table override the **`protected spawnArgs(runtime, command, target) → SpawnArgs`** hook (default delegates to `resolveWorkertime`) — and so inherit run()'s streaming + process-group abort handling. `SpawnArgs.stdin?` lets filter-style runtimes feed their program/input via stdin (`bc`, `tclsh`; or `""` for an `awk` BEGIN with EOF). On abort it signals the whole **process group** (`detached` spawn + `process.kill(-pid, …)`) so shell grandchildren can't leak (plurnk-execs#4): the default abort is a polite **SIGHUP**, once, no escalation; a `KILL[code]` reason carrying `{ signal }` delivers exactly that signal, fire-and-forget; only the consumer's loop-end housekeeping reason (`{ housekeeping: true, graceMs }`) escalates SIGHUP→**SIGKILL** after the consumer-sourced grace (never a magic number here). The `plurnk-execs-common` sibling subclasses it — claiming the whole subprocess set (sh/bash/node/python plus detected host interpreters) via a recipe table behind a `spawnArgs()` / `probe()` override. `isKnownRuntime` / `KNOWN_RUNTIMES` are the legacy 501 gate; the discovery registry + `probe()` supersede them once a consumer wires the registry.
+`SubprocessExecutor extends BaseExecutor`, declares stdout and stderr channels,
+and implements `run()`. Subclasses override
+`spawnArgs(runtime, command, target) → SpawnArgs` and optionally `binary`.
+They inherit streaming, scoped environment handling, availability probing, exit
+status, and process-group cancellation. Abort sends SIGHUP by default; an
+explicit kill reason supplies its signal; loop-end housekeeping may escalate to
+SIGKILL after the consumer-provided grace period.
 
 ## §5 Consumer surface (plurnk-service)
 

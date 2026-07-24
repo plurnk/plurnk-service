@@ -2,38 +2,23 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import Runtime from "./runtime.ts";
 
-test("KNOWN_RUNTIMES includes shell + node + python aliases", () => {
-    for (const r of ["", "sh", "bash", "node", "python", "python3"]) {
-        assert.ok(Runtime.KNOWN.has(r), `expected '${r}' in known runtimes`);
-    }
-});
-
-test("isKnownRuntime: true for known, false otherwise", () => {
-    assert.equal(Runtime.isKnown("sh"), true);
-    assert.equal(Runtime.isKnown("node"), true);
-    assert.equal(Runtime.isKnown("python"), true);
-    assert.equal(Runtime.isKnown(""), true);
-    assert.equal(Runtime.isKnown("perl"), false);
-    assert.equal(Runtime.isKnown("ruby"), false);
-});
-
-test("resolveWorkertime: empty runtime → shell mode with command as cmd", () => {
+test("empty runtime uses shell mode", () => {
     const r = Runtime.resolve("", "echo hi");
     assert.deepEqual(r, { cmd: "echo hi", args: [], useShell: true });
 });
 
-test("resolveWorkertime: sh / bash → shell mode", () => {
+test("sh and bash use shell mode", () => {
     assert.deepEqual(Runtime.resolve("sh", "ls -la"), { cmd: "ls -la", args: [], useShell: true });
     assert.deepEqual(Runtime.resolve("bash", "ls -la"), { cmd: "ls -la", args: [], useShell: true });
 });
 
-test("resolveWorkertime: node → `node -e <command>`", () => {
+test("node uses its eval flag", () => {
     assert.deepEqual(Runtime.resolve("node", "console.log(1)"), {
         cmd: "node", args: ["-e", "console.log(1)"], useShell: false,
     });
 });
 
-test("resolveWorkertime: python / python3 → `python3 -c <command>`", () => {
+test("python aliases use python3", () => {
     assert.deepEqual(Runtime.resolve("python", "print(1)"), {
         cmd: "python3", args: ["-c", "print(1)"], useShell: false,
     });
@@ -42,19 +27,19 @@ test("resolveWorkertime: python / python3 → `python3 -c <command>`", () => {
     });
 });
 
-test("resolveWorkertime: unknown runtime → conservative `<runtime> -c <command>` fallback", () => {
+test("an additional runtime uses the conventional command flag", () => {
     assert.deepEqual(Runtime.resolve("perl", "say 1"), {
         cmd: "perl", args: ["-c", "say 1"], useShell: false,
     });
 });
 
-test("resolveWorkertime: a shell target runs as `-c <target>` with body as stdin (#15)", () => {
+test("a shell target runs as the program with body on stdin", () => {
     assert.deepEqual(Runtime.resolve("sh", "piped input", "./run.sh"), {
         cmd: "sh", args: ["-c", "./run.sh"], useShell: false, stdin: "piped input",
     });
 });
 
-test("resolveWorkertime: an interpreter target runs the script file with body as stdin (#15)", () => {
+test("an interpreter target is the script with body on stdin", () => {
     assert.deepEqual(Runtime.resolve("python", "data", "t.py"), {
         cmd: "python3", args: ["t.py"], useShell: false, stdin: "data",
     });
@@ -63,7 +48,7 @@ test("resolveWorkertime: an interpreter target runs the script file with body as
     });
 });
 
-test("resolveWorkertime is total — never throws on any runtime/command combo", () => {
+test("spawn recipe resolution is total", () => {
     for (const runtime of ["", "sh", "node", "python", "ruby", "🐍", "with spaces"]) {
         for (const command of ["", "echo hi", "rm -rf /", "1 && 2"]) {
             assert.doesNotThrow(() => Runtime.resolve(runtime, command));
