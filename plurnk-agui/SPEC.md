@@ -1,9 +1,9 @@
 # @plurnk/plurnk-agui — the projection contract
 
-The bridge is **a client of the plurnk daemon and a server of AG-UI**: it consumes the same
-JSON-RPC-over-WebSocket wire every plurnk client speaks, and emits the Agent-User Interaction
-Protocol's SSE event stream. Zero daemon changes; the daemon's numbers and semantics pass
-through, never recomputed.
+The module is the daemon's external client interface. It consumes core's
+in-process module seam and emits the Agent-User Interaction Protocol over
+HTTP/SSE. Core's numbers and semantics pass through; the module does not
+recompute them.
 
 ## Architecture
 
@@ -27,10 +27,9 @@ through, never recomputed.
   Extended context persists across AG-UI runs because the worker's log does.
 - **Family-internal runtime deps only** {§agui-zero-dep} — `@plurnk/*` packages (the grammar,
   for edge parsing) are welcome, exact-pinned; third-party runtime deps (e.g. `@ag-ui/core`
-  with its Zod) stay out. Event shapes remain hand-defined plain JSON.
-  plain JSON (`src/types.ts`); the SSE encoding is `data: <json>\n\n`. The protocol is young;
-  a zero-dep plugin beats tracking SDK churn, and adopting the official SDK later is a
-  types-only swap.
+  with its Zod) stay out. Event shapes remain hand-defined plain JSON
+  (`src/types.ts`); the SSE encoding is `data: <json>\n\n`.
+  a zero-dependency implementation avoids coupling the runtime to an SDK.
 
 ## The projection {§agui-projection}
 
@@ -83,7 +82,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   them richly. Nothing plurnk-specific ever masquerades as a core event.
 - **Numbers pass through verbatim** {§agui-numbers-passthrough} — the budget `STATE_DELTA`
   carries the daemon's own usage figures (`contextTokens`, `contextSize` = the effective
-  prompt budget, service#345). The bridge never recomputes a number; the daemon's gauge is
+  prompt budget, service#345). The module never recomputes a number; the daemon's gauge is
   the gauge.
 
 - **The row channel** {§agui-row-channel} — every log row ALSO rides `CUSTOM plurnk.row`
@@ -96,7 +95,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging
   up IS the abort signal; no worker is orphaned unwatched.
 
-- **Reattach replays** {§agui-replay} — a rediscovered thread (the bridge restarted, a second
+- **Reattach replays** {§agui-replay} — a rediscovered thread (the module restarted, a second
   frontend arrived) attaches to its existing workspace by name→id and opens ORIENTED: the model
   worker's SENDs replay as `MESSAGES_SNAPSHOT` (the conversation spine; everything else stays
   reachable via live `plurnk.row`), and every pending stop-the-world proposal re-surfaces
@@ -153,4 +152,4 @@ module OWNS and a client MUST handle:
 `POST /` (or `/agui`) with an AG-UI `RunAgentInput` body: the last `user` message becomes the
 `loop.run` prompt (`maxTurns`/`flags.auto` from env); the response is `text/event-stream`,
 one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Loop auto never answers
-a question — that's the daemon's own rule; the bridge inherits it.
+a question — that is the daemon's own rule; the module inherits it.

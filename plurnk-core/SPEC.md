@@ -100,8 +100,8 @@ Dependency direction (from root to leaf):
     - `plurnk-mimetypes` — handler base classes, discovery, the fitting algorithm, and the match primitives (`queryGlob`/`queryRegex`/`queryJsonpathObject`/`queryXpathString`) the service's matcher dispatches over (§matcher-dispatch). Handler children are per-mimetype: `plurnk-mimetypes-text-{python,typescript,markdown,html,csv,plain}`, `plurnk-mimetypes-application-{json,yaml,toml,pdf}`, …
     - `plurnk-schemes` — scheme-author types (`SchemeManifest`, `WriterTier`, `LoopFlags`), result-shape contracts (`EntryResult` / `ProposalResult` / `PassthroughResult`), slicing primitives, matcher helpers, `schemeError(...)` constructor. Future scheme children: `plurnk-schemes-http`, `plurnk-schemes-git`, …
     - `plurnk-execs` — `BaseExecutor`, `SubprocessExecutor`, runtime resolver, discovery. Children declare runtimes: `plurnk-execs-sh`, future `plurnk-execs-search`, `plurnk-execs-node`, …
-- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), discovers installed mimetype handlers + provider vendors + executor siblings at boot, hosts the daemon (`src/service.ts` over WebSocket + JSON-RPC), and projects packets to the wire (the packet shape is service-owned since grammar 0.67 deleted `Packet.json`, §packet). Most of the substantive runtime work lives here.
-- **`plurnk`** (client) — terminal UI consuming the daemon's RPC surface. Renders `telemetry/event` notifications, subscribes to log/stream/proposal events. No engine logic of its own.
+- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), discovers installed mimetype handlers + provider vendors + executor siblings at boot, and exposes an in-process seam to client-interface modules. Packet assembly is service-owned (§packet).
+- **`plurnk`** (client) — terminal UI consuming the AG-UI+ client surface. Renders daemon events and contains no engine logic.
 
 The grammar is the contract. The frameworks consume the contract and add author-facing surfaces. The service consumes the frameworks and runs the engine. The client consumes the service and renders to humans. Each tier is its own published package; each tier's evolution happens in its own repo.
 
@@ -914,26 +914,11 @@ External plugins declare their own env vars in their own `.env.defaults`, assemb
 
 ---
 
-## §rpc RPC Surface
+## §rpc Module seam
 
-plurnk-service runs as a daemon. Clients (TUI/CLI/neovim/web/Telegram/etc.) drive it via self-describing RPC. This section is the wire — implementing a new client should require reading only §rpc.
-
-### §transport Transport
-
-The client surface is AG-UI+ on `PLURNK_HOST:PLURNK_PORT` (default `127.0.0.1:3044`), bound by the plurnk-agui plugin module at boot — the module owns that protocol (its SPEC lives in plurnk-agui). Production is **single-listener**: the daemon opens no transport of its own; plugin modules open theirs through the seam.
-
-The daemon speaks **no wire protocol of its own**: the intg harness dispatches into the seam directly (a JSON-RPC-shaped in-process mimic, `test/intg/_seam.ts`), certifying the same surface a module consumes.
-
-Out of scope for v0: auth, TLS, multiplexing. Local-loopback + filesystem permissions are the access control.
-
-### §protocol Protocol
-
-JSON-RPC 2.0. Two message kinds:
-
-- **Request:** `{ "jsonrpc": "2.0", "id": …, "method": …, "params": … }`. Server replies with matching `id`.
-- **Notification:** `{ "jsonrpc": "2.0", "method": …, "params": … }`. No `id`; server-initiated; no reply.
-
-Success response: `{ "jsonrpc": "2.0", "id": …, "result": … }`. Failure: `{ "jsonrpc": "2.0", "id": …, "error": { "code": …, "message": …, "data": … } }`.
+Core exposes operations and events to in-process client-interface modules. It
+does not own an external wire protocol or listener. `plurnk-agui` owns the
+default AG-UI+ HTTP/SSE interface and its public contract.
 
 ### §method-registration Method registration
 
@@ -1062,9 +1047,7 @@ All `op.*` return `{ status, ...op-specific }`. All `requiresInit: true`. None `
 
 Future: `subscription.list`, `subscription.cancel` (the latter is `op.send({status: 499, recipient})` today).
 
-### §notifications Notifications
-
-Server-initiated events on the same WebSocket.
+### §notifications Events
 
 | Notification       | Params                              | When fired |
 |--------------------|-------------------------------------|------------|
@@ -1078,68 +1061,16 @@ Server-initiated events on the same WebSocket.
 
 `stream/event` carries metadata only, never content. Clients fetch via `entry.read({target})`. **Every notification envelope carries its `workspaceId`** (and `workerId` where the emitter has it) so a multi-workspace client — one connection, many workspaces — can route it ({§notifications-envelope-carries-workspaceid}); the broadcast stays workspace-scoped too.
 
-### §connection-lifecycle Connection lifecycle
+### §connection-lifecycle Client context
 
-```
-[client]                                          [daemon]
-   |                                                 |
-   |-- ws.connect ----------------------------------->|
-   |<------- on('open') --------------------------- |
-   |                                                 |
-   |-- discover() ---------------------------------->|
-   |<------- { methods, notifications, capabilities }|
-   |                                                 |
-   |-- workspace.attach(id=42) ------------------------>|
-   |<------- { id: 42, name: "demo-workspace" }       |
-   |   (daemon opens a client loop in workspace 42)    |
-   |                                                 |
-   |-- loop.run(prompt="...") ----------------------->|
-   |<-- notification: log/entry { ... }              |
-   |<-- notification: log/entry { ... }              |
-   |<-- notification: loop/terminated { ... }        |
-   |<------- { loopId, turnIds, finalStatus: 200 }   |
-   |                                                 |
-   |-- op.dispatch(op=...) -------------------------->|
-   |<-- notification: log/entry { ... }              |
-   |<------- { status: 201 }                         |
-   |                                                 |
-   |-- ws.close ------------------------------------->|
-   |   (daemon closes the client loop; workspace keeps)|
-```
+**The client's run.** A module client context is an actor (§machine-processes); its `op.*` write to its **own worker** — `origin = "client"`, one loop per context — and `log.read` reads that worker. Closing the context closes the loop's status; rows persist. Multiple contexts each get their own client worker.
 
-**The client's run.** A client connection is an actor (§machine-processes); its `op.*` write to its **own worker** — `origin = "client"`, one loop per connection — and `log.read` reads that worker. Disconnect closes the loop's status; rows persist. Multiple connections each get their own client worker.
-
-`loop.run` and `inject` target the **model's worker** — a separate worker holding the conversation, `origin = "model"`. Both workers share the workspace's one filesystem (§machine-processes); the packet renders only the model's worker, so the client's ops are structurally absent from it — no origin filter (§actor-boundary-isolation). The model worker (`Envelope.ensureModelWorker`) and the connection's client worker are distinct, each lazily allocated on first use — the §machine-processes conflation is corrected.
-
-### §errors Errors
-
-Standard JSON-RPC codes:
-
-| Code   | Meaning                       |
-|--------|-------------------------------|
-| -32700 | Parse error (malformed JSON)  |
-| -32600 | Invalid request               |
-| -32601 | Method not found              |
-| -32602 | Invalid params                |
-| -32603 | Internal error                |
-
-Plurnk-specific (`-32000` to `-32099`):
-
-| Code   | Meaning                                            |
-|--------|----------------------------------------------------|
-| -32000 | Not initialized (requires workspace attach)          |
-| -32001 | Workspace not found                                  |
-| -32002 | Loop not found                                     |
-| -32003 | Entry not found (engine 404)                       |
-| -32004 | Provider unavailable                               |
-| -32005 | Scheme unavailable                                 |
-| -32006 | Mimetype unavailable                               |
-| -32007 | Timeout                                            |
-
+`loop.run` and `inject` target the **model's worker** — a separate worker holding the conversation, `origin = "model"`. Both workers share the workspace's one filesystem (§machine-processes); the packet renders only the model's worker, so the client's ops are structurally absent from it — no origin filter (§actor-boundary-isolation). The model worker (`Envelope.ensureModelWorker`) and the client context's worker are distinct, each lazily allocated on first use.
 
 ### §versioning Versioning
 
-Pre-stabilization. Clients track HEAD. No semver until the interface is worth committing to.
+The module seam follows the platform major. External protocol compatibility is
+owned by the client-interface module that publishes it.
 
 ---
 
