@@ -40,8 +40,7 @@
         "test": "node --conditions=plurnk-dev --test index.test.js",
         "fetch:tokenizers": "node --conditions=plurnk-dev scripts/fetch-tokenizers.mjs",
         "verify:tokenizers": "node --conditions=plurnk-dev scripts/verify-tokenizers.mjs",
-        "deps:fresh": "npm outdated",
-        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm run verify:tokenizers && npm test"
+        "prepublishOnly": "npm audit --audit-level=moderate && npm run verify:tokenizers && npm test"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^1.3.1"

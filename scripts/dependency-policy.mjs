@@ -9,6 +9,11 @@ const violations = [];
 
 for (const file of manifests) {
     const manifest = JSON.parse(await fs.readFile(file, "utf8"));
+    for (const [name, command] of Object.entries(manifest.scripts ?? {})) {
+        if (typeof command === "string" && /\bnpm outdated\b/.test(command)) {
+            violations.push(`${file}: scripts.${name} duplicates the root release freshness gate`);
+        }
+    }
     for (const section of sections) {
         for (const name of Object.keys(manifest[section] ?? {})) {
             if (name !== "web-tree-sitter" && forbidden.test(name)) {
@@ -19,7 +24,7 @@ for (const file of manifests) {
 }
 
 if (violations.length > 0) {
-    console.error("Native Tree-sitter packages are forbidden; consume PLURNK WASM grammar leaves:");
+    console.error("Dependency policy violations:");
     for (const violation of violations) console.error(`  ${violation}`);
     process.exit(1);
 }

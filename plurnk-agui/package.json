@@ -30,7 +30,6 @@
         "test:lint": "tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=.env.defaults --test src/*.test.ts",
         "test:intg": "node --conditions=plurnk-dev --env-file-if-exists=.env.defaults --test test/intg/*.test.ts",
-        "deps:fresh": "npm outdated",
         "prepublishOnly": "npm test",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",

@@ -62,8 +62,7 @@
         "grammars:update": "node --conditions=plurnk-dev scripts/update-grammars.mjs",
         "grammars:publish": "node --conditions=plurnk-dev scripts/publish-grammars.mjs",
         "deps:check": "node --conditions=plurnk-dev scripts/deps-check.mjs",
-        "deps:fresh": "npm outdated",
-        "prepublishOnly": "npm run deps:fresh && npm audit --audit-level=moderate && npm test",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test",
         "prepack": "npm run build"
     },
     "peerDependencies": {

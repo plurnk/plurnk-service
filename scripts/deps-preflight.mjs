@@ -1,10 +1,13 @@
-// Release freshness gate — the FIRST step of `release:version`, so a tree with
+// The single release freshness gate — the FIRST step of `release:version`, so a tree with
 // ANY outdated dependency cannot be stamped (fail on any update). Each stale
 // package is either resolved (bump the range, relock, drill) or waived in
 // deps-waivers.json with { reason, issue, lane } — documented, attributed debt
 // (an open issue on the owning lane), never silence. The waiver is the escape
 // hatch and gets reached for reflexively, which is why every one is committed
-// and named. The owner's `ownerVeto` list OUTRANKS any waiver: a package listed
+// and named. Package-local `npm outdated` gates are invalid in a shared
+// workspace: npm reports unrelated compatible leaves from the root tree. The
+// dependency-policy gate prevents those duplicate checks from returning.
+// The owner's `ownerVeto` list OUTRANKS any waiver: a package listed
 // there blocks regardless — the override of the override.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

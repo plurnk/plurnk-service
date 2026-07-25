@@ -1,7 +1,7 @@
 // The pre-stamp gate sweep (#505 post-mortem, law 4's other half): run every workspace's OWN
 // prepublish gate BEFORE the stamp, so a red that would refuse a publish is found before the
 // train leaves — never mid-publish over a stamped tree. The drill (lint+unit+intg) is the
-// push gate; the per-package prepublishOnly gates (deps:fresh, audit, conformance tiers) are
+// push gate; the per-package prepublishOnly gates (audit, tests, conformance tiers) are
 // the PUBLISH bar, and until this script they ran for the first time during publish itself.
 // Expensive by design — a release is deliberate ("pain is the best teacher").
 // Usage: node scripts/release-gates.mjs [--only <pkg-dir>]
