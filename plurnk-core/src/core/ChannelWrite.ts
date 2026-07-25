@@ -84,7 +84,8 @@ export type InjectWorkerNotify = (args: {
 // signal, so its active loop closes at 499 and any background streams tear down.
 // Sync; returns whether there was work. KILL routes through Dispatcher.#handleKill
 // (not a scheme handler), so this is an Engine field, never a ctx capability.
-export type CancelWorkerNotify = (workerId: number) => boolean;
+export type CancelWorkerNotify = (workerId: number, reason: string) => Promise<void>;
+export type CancelDescendantsNotify = (workerId: number, reason: string) => Promise<void>;
 
 // Telemetry event fan-out. TelemetryChannel.push fires this for every
 // TelemetryEvent (parse_error, strike, cycle, sudden_death, no_ops,

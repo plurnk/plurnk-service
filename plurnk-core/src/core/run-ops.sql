@@ -18,7 +18,7 @@ SELECT name FROM workers WHERE id = $worker_id;
 -- deliverable a sister COLLECTS by READing worker://<name> (§worker-scheme-collect, the pull side of
 -- the same deliverable the push delta carries). Terminal status → the message is the result (200)
 -- or the abandonment reason; non-terminal → the worker hasn't delivered yet (READ steers to 202).
--- terminated_by names a collapse/cancel so the COLLECT renders its marker (#379).
+-- terminated_by names an external cancellation so COLLECT renders its marker.
 SELECT r.id AS worker_id, l.status, l.terminal_message, l.terminated_by
 FROM workers r
 JOIN loops l ON l.worker_id = r.id

@@ -59,45 +59,6 @@ SELECT prompt, sequence FROM loops WHERE id = $loop_id;
 -- claimant can never double-claim.
 UPDATE loops SET status = 102 WHERE id = $loop_id AND status = 100;
 
--- PREP: engine_loop_set_status
--- The universal terminal setter. terminal_message carries either the loop's deliverable
--- (the SEND body) or the engine's abandonment reason (max_turns / budget_overflow /
--- strike_threshold) — rides the §worker-scheme delta.
-UPDATE loops SET status = $status, terminal_message = $message WHERE id = $loop_id;
-
--- PREP: engine_loop_mark_terminated_by
--- #379/#380 — name the engine/client act on a terminal the model didn't choose: 'collapse'
--- (∅-wait conclude) or 'cancel' (external loop.cancel). Stamped right after the terminal
--- setter by those two paths only; the model's own terminals leave it NULL.
-UPDATE loops SET terminated_by = $terminated_by WHERE id = $loop_id;
-
--- PREP: engine_loop_cancel_external
--- #380 — an external cancel writes the loop's terminal ROW (a dead loop must never read as
--- live 102 — the #311 rule, applied to the 499 path; before this, the 499 existed only in the
--- broadcast) with the cancel's provenance: terminated_by='cancel', the reason as the
--- abandonment message. Conditional on non-terminal so a KILL-then-abort race never rewrites
--- an already-terminal row.
-UPDATE loops SET status = 499, terminal_message = $message, terminated_by = 'cancel'
-WHERE id = $loop_id AND status NOT IN (200, 413, 429, 499, 500, 504, 508);
-
--- PREP: engine_worker_cancel_live_loops
--- #380, the PARKED case — a 202-blocked loop has no drain to observe the abort (the drain
--- tears down on 202), so loop.cancel terminalizes the worker's live loops itself. 102/202 only:
--- queued (100) loops stay enqueued per §methods-loop-cancel. RETURNING feeds the
--- loop/terminated broadcast for exactly the loops this cancel killed.
-UPDATE loops SET status = 499, terminal_message = $message, terminated_by = 'cancel'
-WHERE worker_id = $worker_id AND status IN (102, 202)
-RETURNING id;
-
--- PREP: engine_terminate_worker_live_loops
--- §op-synchronous — KILL(run) is a DECISIVE op, not a fork/spawn/stream, so it must complete
--- before the turn moves on. Synchronously flip every LIVE loop of the worker to 499 (killed) so the
--- same-turn premature-terminate gate (engine_worker_has_live_child) sees it dead immediately; the
--- physical scope reap (drain abort, stream teardown) then proceeds async via cancelWorker. The
--- loops_stamp_terminated_at trigger stamps terminated_at on the 499 transition (the §worker-scheme delta).
-UPDATE loops SET status = 499, terminal_message = $message
-WHERE worker_id = $worker_id AND status IN (100, 102, 202);
-
 -- PREP: workspace_get_settings
 -- #231 — the workspace's client-chosen open-context bag ({ manifestItems?, mdDocs? }),
 -- read at turn-0 with precedence over env.
@@ -312,7 +273,7 @@ INSERT INTO log_entries (
 -- PREP: engine_pull_loop_terminations
 -- §worker-scheme — sibling runs' loops that reached a terminal status since this worker last
 -- looked (the loop-termination ambient delta). Carries terminal_message — the SEND[200]
--- deliverable or the abandonment reason — plus terminated_by so a collapse/cancel renders
+-- deliverable or the abandonment reason — plus terminated_by so a cancellation renders
 -- its marker (#379). Excludes this worker's own loops.
 SELECT l.worker_id, r.name AS worker_name, l.status, l.prompt, l.terminal_message, l.terminated_by
 FROM loops l

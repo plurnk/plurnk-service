@@ -9,6 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { ParsedPath, CopyStatement, WorkStatement, ForkStatement, KillStatement, ReadStatement, FindStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
@@ -234,7 +235,7 @@ test("READ(worker://name) collects the deliverable — message done, 425 running
         assert.match(String(running.content), /still running|SEND\[202\]/, "the 425 steers the model to hibernate and await");
 
         // It concludes 200 with a deliverable → READing the worker yields the deliverable (the pull side of collect).
-        await (db.engine_loop_set_status as PrepMethod).run({ status: 200, message: "postgres", loop_id: wLoop });
+        assert.equal(await new LoopLifecycle(db).finish(wLoop, 200, "postgres"), true);
         const done = await run.read(readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
         assert.equal(done.content, "postgres", "the deliverable (terminal message) is collected by READing the worker itself — no scratch-path guessing");
@@ -395,7 +396,7 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
     const db = await openMigrated();
     try {
         const killed: number[] = [];
-        const cancelWorker = (workerId: number): boolean => { killed.push(workerId); return true; };
+        const cancelWorker = async (workerId: number): Promise<void> => { killed.push(workerId); };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker, tokenize });
         const workspaceId = await insertWorkspace(db, `run-kill-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -512,7 +513,14 @@ test("KILL(run) is decisive — a same-turn KILL then SEND[200] concludes, no pr
         const parentTurn = await insertTurn(db, parentLoop, 1, 200);
         const worker = await insertWorker(db, workspaceId, null, "leftover-worker");
         const workerLoop = await insertLoop(db, worker, 1, "work");          // a LIVE child (status 102)
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: (_workerId: number) => true }); // stub reap — the sync terminal-flip is under test
+        const lifecycle = new LoopLifecycle(db);
+        const engine = new Engine({
+            db,
+            schemes: new SchemeRegistry(),
+            cancelWorker: async (workerId: number, reason: string) => {
+                await lifecycle.cancelTree(workerId, reason, true);
+            },
+        });
 
         // Before: the live child would make a SEND[200] a premature-terminate. KILL must fix it IN this turn.
         const killWorker: KillStatement = { op: "KILL", suffix: "", signal: null, target: workerPath("leftover-worker"), lineMarker: null, body: null, position: { line: 1, column: 1 } };
@@ -526,7 +534,7 @@ test("KILL(run) is decisive — a same-turn KILL then SEND[200] concludes, no pr
     } finally { await db.close(); }
 });
 
-test("SEND[202]: a live obligation BLOCKS; ∅ (bare or <-1>) is the 409 contradiction — never a hang, never a silent conclude", async () => {
+test("SEND[202]: a live obligation blocks; an empty join completes immediately", async () => {
     const db = await openMigrated();
     try {
         // 202 + J (a live child) → the loop BLOCKS at 202, to be reawakened when the child concludes.
@@ -541,17 +549,17 @@ test("SEND[202]: a live obligation BLOCKS; ∅ (bare or <-1>) is the 409 contrad
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
 
-        // 202 + ∅ (no live work) → 409: the wait-side contradiction (owner ruling, #502 run113).
+        // 202 + ∅ (no live work) → successful completion.
         const s2 = await insertWorkspace(db, `wait-void-${crypto.randomUUID()}`);
         const run = await insertWorker(db, s2);
         const loop = await insertLoop(db, run, 1, "solo");
         const turn = await insertTurn(db, loop, 1, 200);
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
         const satisfied = await eng2.dispatch({ statement: sendStmt(202, null, "standing by"), workspaceId: s2, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
-        assert.equal(satisfied.status, 409, "202 on nothing is the contradiction, returned to the model");
-        assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 202, "no held-open 202 — the turn is back with the model");
+        assert.equal(satisfied.status, 200, "202 on an empty task group completes");
+        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 200, "the empty join is terminal");
 
-        // 202<-1> + ∅ — the degenerate indefinite wait on nothing: the same 409, never a hang.
+        // 202<-1> + ∅ — the marker cannot turn an empty join into a hang.
         const s3 = await insertWorkspace(db, `wait-hang-${crypto.randomUUID()}`);
         const run3 = await insertWorker(db, s3);
         const loop3 = await insertLoop(db, run3, 1, "solo");
@@ -559,40 +567,30 @@ test("SEND[202]: a live obligation BLOCKS; ∅ (bare or <-1>) is the 409 contrad
         const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
         const indef = { ...sendStmt(202, null, "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
         const noHang = await eng3.dispatch({ statement: indef, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
-        assert.equal(noHang.status, 409, "202<-1> on nothing is the same contradiction — refused with the fact, never hung");
-        assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop3 }))?.status, 202, "no held-open 202");
+        assert.equal(noHang.status, 200, "202<-1> on nothing completes immediately");
+        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop3 }))?.status, 200, "no held-open 202");
     } finally { await db.close(); }
 });
 
-test("a ∅ wait is 409 — the contradiction returns to the model; a historical collapse row still renders both truth layers (#379, #502)", async () => {
-    // run113: a worker waited on an EXEC that never dispatched; the old ∅-collapse concluded it
-    // CLEAN and the confusion vanished. The flip: dispatch 409s the ∅ wait (the recovery rail);
-    // the collapse MARKER render survives for rows history already carries (run42's class).
+test("an already-drained join is a normal deliverable", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `collapse-mark-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `drained-join-${crypto.randomUUID()}`);
         const worker = await insertWorker(db, workspaceId, null, "req-test");
         const wLoop = await insertLoop(db, worker, 1, "test the module");
         const wTurn = await insertTurn(db, wLoop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const waited = await engine.dispatch({ statement: sendStmt(202, null, "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
-        assert.equal(waited.status, 409, "∅ — a wait on nothing is the contradiction, returned to the model");
-        assert.match(String(waited.error), /Attempted \[202\] wait with nothing pending: no surviving streams, no worker runs, no unretrieved results\./, "the canon text states the fact");
-        assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: wLoop }))?.status, 200, "the loop did NOT conclude — the turn returns to the model");
-
-        // The RENDER contract survives for history: a row already carrying terminated_by='collapse'
-        // (real DBs hold them) still names the act before the model's unrewritten words.
-        await (db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: wLoop, message: "Standing by for user input" });
-        await (db.engine_loop_mark_terminated_by as PrepMethod).run({ terminated_by: "collapse", loop_id: wLoop });
+        assert.equal(waited.status, 200, "the empty join completes");
+        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: wLoop }))?.status, 200, "the loop concluded");
         const reader = await insertWorker(db, workspaceId);
         const collected = await new Worker().read(readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 200);
-        assert.match(String(collected.content), /^\[ concluded on ∅-collapse — waited on nothing; no result was produced \] Standing by for user input$/,
-            "the deliverable names the engine's act and carries the park text — never the park text alone as a result");
+        assert.equal(String(collected.content), "Standing by for user input", "the model's terminal body is the deliverable");
     } finally { await db.close(); }
 });
 
-test("an idle wait is 409; the worker concludes by SAYING so next turn — never a held-open 202, never a silent conclude", async () => {
+test("an idle join completes in the same turn", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `idle-concludes-${crypto.randomUUID()}`);
@@ -601,13 +599,7 @@ test("an idle wait is 409; the worker concludes by SAYING so next turn — never
         const turn = await insertTurn(db, loop, 1, 200);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const r = await engine.dispatch({ statement: sendStmt(202, null, "idle"), workspaceId, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
-        assert.equal(r.status, 409, "an idle wait is the ∅ contradiction — returned, never silently concluded");
-        const done = await engine.dispatch({ statement: sendStmt(200, null, "done — nothing to do"), workspaceId, workerId: run, loopId: loop, turnId: turn, sequence: 2, origin: "model" });
-        assert.equal(done.status, 409, "same-turn conclude after the 409 is held — the error lands NEXT turn (errors are weighed before concluding)");
-        // the real recovery shape: next turn, the model has SEEN the 409 and concludes deliberately
-        const turn2 = await insertTurn(db, loop, 2, 102);
-        const concluded = await engine.dispatch({ statement: sendStmt(200, null, "done — nothing to do"), workspaceId, workerId: run, loopId: loop, turnId: turn2, sequence: 1, origin: "model" });
-        assert.equal(concluded.status, 200, "the idle worker concludes by SAYING so — SEND[200], one turn later");
-        assert.notEqual((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 202, "no held-open 202 — the loop reached a real terminal");
+        assert.equal(r.status, 200, "the already-drained join completes");
+        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 200, "no held-open 202");
     } finally { await db.close(); }
 });

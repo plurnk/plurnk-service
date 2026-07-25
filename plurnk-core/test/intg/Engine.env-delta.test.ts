@@ -14,6 +14,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
@@ -178,8 +179,9 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         await sleep(2);  // ms-resolution — terminations must land strictly after A's turn 1
 
         // worker SENDs[200] its result (its deliverable); grinder is abandoned (budget).
-        await (db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: workerLoop, message: "the answer is 42" });
-        await (db.engine_loop_set_status as PrepMethod).run({ status: 413, loop_id: grinderLoop, message: "budget_overflow" });
+        const lifecycle = new LoopLifecycle(db);
+        assert.equal(await lifecycle.finish(workerLoop, 200, "the answer is 42"), true);
+        assert.equal(await lifecycle.finish(grinderLoop, 413, "budget_overflow"), true);
 
         // A's turn 2 pulls both terminations from the shared log: the 2xx deliverable born open, the abandonment folded.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });

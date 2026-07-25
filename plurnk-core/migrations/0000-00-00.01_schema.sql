@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- §worker-scheme loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly);
     -- terminal_message is the deliverable — the SEND[200] body or the abandonment
-    -- reason — set by the terminating PREP (engine_loop_set_status).
+    -- reason — set by the guarded terminal lifecycle transition.
     terminated_at    TEXT,
     terminal_message TEXT,
     -- Who ended the loop when it wasn't the model's own deliberate terminal: 'collapse' (the

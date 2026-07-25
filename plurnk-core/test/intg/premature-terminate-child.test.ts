@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
@@ -108,15 +109,15 @@ test("READ + SEND[200] same turn is refused 409 — the pending set includes thi
     } finally { await db.close(); }
 });
 
-test("a legacy [102]<-1> emission on an idle run is the ∅ 409 — refused with the fact, never a hang, never a silent conclude", async () => {
+test("a legacy [102]<-1> join on an idle run completes immediately", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // The legacy indefinite-park syntax routes through the obligation-checked wait: with no live
-        // work under it, the ∅ wait is the contradiction — 409 returns the turn (owner ruling, #502).
+        // The legacy indefinite-park syntax routes through the obligation-checked join.
+        // An empty task group is already drained and completes without parking.
         const wait = { op: "SEND" as const, suffix: "", signal: 102, target: null, lineMarker: { marks: [-1] }, body: "standing by", position: { line: 1, column: 1 } };
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
@@ -124,9 +125,9 @@ test("a legacy [102]<-1> emission on an idle run is the ∅ 409 — refused with
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
-        assert.notEqual(loopStatus, 202, "never a held-open 202 — the 409 returned the turn to the model");
+        assert.equal(loopStatus, 200, "the already-drained join completes terminally");
         const row = await (db.test_send_rows_for_run as PrepMethod).all<{ status_rx: number }>({ worker_id: workerId });
-        assert.ok(row.some((r) => r.status_rx === 409), "the ∅ wait minted the 409 — the fact the model sees next turn");
+        assert.ok(row.some((r) => r.status_rx === 200), "the SEND records successful completion");
     } finally { await db.close(); }
 });
 
@@ -173,20 +174,22 @@ test("a model that won't stop premature-200ing with a live child STRIKES OUT (50
     } finally { await db.close(); }
 });
 
-test("GUARD: 499 is NEVER gated — abandon-by-intent discards pending work legally", async () => {
-    // Doctrine guard (weaker-model protection): the pending set gates [200] only. A model
-    // abandoning (499) with live children AND unreceived retrievals terminates cleanly — discard
-    // by stated intent is the one legitimate discard. If this test reddens, someone widened the
-    // gate; that is a paradigm change and belongs in Parked-for-Depth, not a commit.
+test("499 is never gated and recursively cancels unresolved descendants", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `guard-499-${crypto.randomUUID()}`);
         const parentWorker = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
-        await insertLoop(db, childWorker, 1, "child"); // live child
+        const childLoop = await insertLoop(db, childWorker, 1, "child"); // live child
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const lifecycle = new LoopLifecycle(db);
+        const engine = new Engine({
+            db,
+            schemes: new SchemeRegistry(),
+            mimetypes: DEFAULT_MIMETYPES,
+            cancelDescendants: async (root, reason) => { await lifecycle.cancelTree(root, reason, false); },
+        });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(499, null, "abandoning")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
@@ -196,6 +199,8 @@ test("GUARD: 499 is NEVER gated — abandon-by-intent discards pending work lega
         assert.equal(result.steerStruck, false, "no strike for a legal abandon");
         const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: parentLoop }))?.status;
         assert.equal(loopStatus, 499, "the loop is terminal");
+        const childStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: childLoop }))?.status;
+        assert.equal(childStatus, 499, "the unresolved child is cancelled with its abandoned parent scope");
     } finally { await db.close(); }
 });
 

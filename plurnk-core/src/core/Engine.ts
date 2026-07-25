@@ -19,12 +19,13 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, TelemetryEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, TelemetryEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
 import SearchGate from "./search-gate.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
+import LoopLifecycle from "./LoopLifecycle.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -153,6 +154,7 @@ export default class Engine {
     }
 
     #db: Db;
+    #lifecycle: LoopLifecycle;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
     // Write-time tokenizer (SPEC §tokenomics). Synchronous per the provider
@@ -311,7 +313,7 @@ export default class Engine {
         process.stderr.write(`plurnk-engine: rail verdict unavailable — the configured grammar did not parse in @plurnk/gbnf (${message})\n`);
     }
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, telemetryEventNotify, tokenize }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, telemetryEventNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -319,10 +321,12 @@ export default class Engine {
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
+        cancelDescendants?: CancelDescendantsNotify;
         telemetryEventNotify?: TelemetryEventNotify;
         tokenize?: (text: string) => number;
     }) {
         this.#db = db;
+        this.#lifecycle = new LoopLifecycle(db);
         this.#schemes = schemes;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
@@ -366,7 +370,7 @@ export default class Engine {
             tokenize: this.#tokenize,
             telemetry: this.#telemetry, proposals: this.#proposals,
             executors, loopSignal,
-            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker,
+            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
             parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
             liveSubscriptions: this.#liveSubscriptions,
@@ -545,7 +549,7 @@ export default class Engine {
                 source: "engine:rails", kind: "loop_timeout", level: "error",
                 message: `loop abandoned 504: the loop wall expired after ${turnIds.length} turns`,
             });
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 504, message: "loop_timeout" });
+            await this.#lifecycle.finish(loopId, 504, "loop_timeout");
             cleanup("forceful", "loop_timeout");
             return { turnIds, finalStatus: 504, hitMaxTurns: false, reason: "loop_timeout" };
         };
@@ -603,7 +607,7 @@ export default class Engine {
                     source: "engine:rails", kind: "max_turns", level: "warn",
                     message: `loop ended 429: the configured turn ceiling (${maxTurns}) is exhausted`,
                 });
-                await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 429, message: "max_turns" });
+                await this.#lifecycle.finish(loopId, 429, "max_turns");
                 cleanup("forceful", "max_turns");
                 return { turnIds, finalStatus: 429, hitMaxTurns: true, reason: "max_turns" };
             }
@@ -656,7 +660,7 @@ export default class Engine {
                     source: "engine:rails", kind: "budget_overflow", level: "error",
                     message: `loop abandoned 413: the packet exceeds the budget even after the newest turn folded — unrecoverable overflow after ${turnIds.length} turns`,
                 });
-                await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status: 413, message: "budget_overflow" });
+                await this.#lifecycle.finish(loopId, 413, "budget_overflow");
                 cleanup("forceful", "budget_overflow");
                 return { turnIds, finalStatus: 413, hitMaxTurns: false, reason: "budget_overflow" };
             }
@@ -687,7 +691,7 @@ export default class Engine {
                         ? `loop abandoned ${status}: strike threshold crossed after ${turnIds.length} turns — the model was spinning in place (cycle detected)`
                         : `loop abandoned ${status}: strike threshold crossed after ${turnIds.length} turns — repeated failed or no-op turns`,
                 });
-                await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: loopId, status, message: "strike_threshold" });
+                await this.#lifecycle.finish(loopId, status, "strike_threshold");
                 cleanup("forceful", "strike_threshold");
                 return { turnIds, finalStatus: status, hitMaxTurns: false, reason: "strike_threshold" };
             }

@@ -13,13 +13,10 @@ import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillSt
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 
-// #379 (owner ruling) — a loop the ENGINE concluded (∅-collapse) or the CLIENT killed (cancel)
-// must not present its last words as a deliverable: run42's workers parked on nothing, the
-// collapse concluded them, and the parent COLLECTed 'Standing by for user input' as a status-200
-// stage result — nine blind re-spawns. The marker names the act as STATE; the model's words
-// follow unrewritten. NULL terminated_by = the model's own terminal — the message IS the result.
+// A loop cancelled outside the worker names that act as state before preserving the
+// model's last words. NULL terminated_by = the model's own terminal, including an
+// already-drained join; its message is the result.
 export const markTerminal = (terminatedBy: string | null, message: string | null): string | null => {
-    if (terminatedBy === "collapse") return `[ concluded on ∅-collapse — waited on nothing; no result was produced ]${message === null ? "" : ` ${message}`}`;
     if (terminatedBy === "cancel") return `[ cancelled from outside the worker ]${message === null ? "" : ` ${message}`}`;
     return message;
 };

@@ -134,11 +134,6 @@ SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequ
 -- PREP: drain_loop_provider_spec
 SELECT provider_spec FROM loops WHERE id = $loop_id;
 
--- PREP: drain_resume_slept_loop
--- Re-queue a slept (202) loop to status 100 so the drain re-claims and CONTINUES it. The
--- engine's next-turn-sequence is DB-derived, so the resumed loop foists no prompt (seq > 1).
-UPDATE loops SET status = 100 WHERE id = $loop_id AND status = 202;
-
 -- PREP: drain_worker_min_poll
 -- grammar 0.74.20 EXEC `<T,P>` — the tightest poll cadence (seconds) among a worker's OPEN
 -- subscriptions. open_count distinguishes no stream from an open stream whose cadence is NULL;

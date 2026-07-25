@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import {
@@ -76,7 +77,7 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
         const childId = await insertWorker(db, workspaceId, parentId, "child");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
         await (db.engine_reclaim_queued_loop as PrepMethod).run({ loop_id: parentLoopId });
-        await (db.engine_loop_set_status as PrepMethod).run({ loop_id: parentLoopId, status: 202, message: null });
+        assert.equal(await new LoopLifecycle(db).park(parentLoopId, "waiting for child"), true);
         const childLoopId = await enqueueLoop(db, childId, 1, "interrupted child");
         await (db.engine_reclaim_queued_loop as PrepMethod).run({ loop_id: childLoopId });
 
@@ -151,7 +152,7 @@ test("a child drain exception still propagates the parent wake edge", async () =
         const childId = await insertWorker(db, workspaceId, parentId, "child");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
         await (db.engine_reclaim_queued_loop as PrepMethod).run({ loop_id: parentLoopId });
-        await (db.engine_loop_set_status as PrepMethod).run({ loop_id: parentLoopId, status: 202, message: null });
+        assert.equal(await new LoopLifecycle(db).park(parentLoopId, "waiting for child"), true);
         const childLoopId = await enqueueLoop(db, childId, 1, "fail while running");
 
         await daemon.start();

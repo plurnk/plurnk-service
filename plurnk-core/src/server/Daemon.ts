@@ -29,6 +29,7 @@ import ClientTurn from "./clientTurn.ts";
 import LoopDocs from "./loopDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
+import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { rulerCount } from "../core/token-ruler.ts";
 import type { Executor, RegistryEntry } from "../core/ExecutorRegistry.ts";
@@ -75,6 +76,7 @@ type ChannelRow = { name: string } & ChannelShape;
 export default class Daemon {
     #db: Db;
     #engine: Engine;
+    #lifecycle: LoopLifecycle;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
     #provider: Provider | null;
@@ -126,6 +128,7 @@ export default class Daemon {
         nodeModulesPath?: string;
     }) {
         this.#db = db;
+        this.#lifecycle = new LoopLifecycle(db);
         this.#schemes = schemes ?? new SchemeRegistry();
         this.#provider = provider ?? null;
         // Plugin discovery resolves from the SERVICE's node_modules (its exec/scheme/mimetype
@@ -166,10 +169,10 @@ export default class Daemon {
                 const { action, loopId } = await this.inject({ workspaceId, workerId, prompt, providerSpec, systemPrompt, ...(flags === undefined ? {} : { flags }) });
                 return { action, loopId };
             },
-            // worker:// KILL (terminate) — abort any worker's in-flight work by id. One
-            // abort, one scope (Daemon.cancelDrain): the active loop closes 499,
-            // background streams tear down. Whoever holds the address may end it.
-            cancelWorker: (workerId) => this.cancelDrain(workerId, "killed via worker:// KILL"),
+            // worker:// KILL (terminate) — cancel the addressed worker subtree and
+            // tear down its held streams before the operation completes.
+            cancelWorker: async (workerId, reason) => this.#cancelWorkerTree(workerId, reason),
+            cancelDescendants: async (workerId, reason) => this.#cancelTree(workerId, reason, false),
             telemetryEventNotify: (workspaceId, payload) => this.notifyTelemetryEvent(workspaceId, payload),
         });
         // Wire proposal-pending events to the loop/proposal WS notification.
@@ -793,7 +796,7 @@ export default class Daemon {
                 await this.#assertFoldPosture(workerId, args.flags, slept.id); // #368 — the resume path drops nothing silently either
                 await this.#assertLoopProvider(slept.id, args.providerSpec);
                 const injected = await this.#engine.inject(workerId, prompt);
-                await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
+                await this.#lifecycle.wake(slept.id);
                 const started = await this.#ensureDrain({
                     workspaceId, workerId, systemPrompt: args.systemPrompt,
                     maxTurns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
@@ -955,7 +958,7 @@ export default class Daemon {
                         // so a worker-run hibernation always returns. The loop is 202 here; reset to
                         // claimable and the drain re-runs it on the next claim below.
                         if (this.#owedWakes.delete(workerId)) {
-                            await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: loopRow.id });
+                            await this.#lifecycle.wake(loopRow.id);
                             continue;
                         }
                         // The loop is blocked at 202 on a live obligation (§wait-obligation-matrix);
@@ -1006,10 +1009,18 @@ export default class Daemon {
                         // the broadcast carries the same message. The abort reason is the client's
                         // loop.cancel reason (cancelDrain threads it through scope.abort).
                         const message = String(controller.signal.reason ?? "user_cancelled").slice(0, 500);
-                        await (this.#db.engine_loop_cancel_external as PrepMethod).run({ loop_id: currentLoopId, message });
-                        this.#broadcast({ workspaceId }, "loop/terminated", {
-                            workerId, loopId: currentLoopId, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage, message,
-                        });
+                        const cancelled = await this.#lifecycle.finish(currentLoopId, 499, message, "cancel");
+                        if (cancelled) {
+                            this.#broadcast({ workspaceId }, "loop/terminated", {
+                                workerId,
+                                loopId: currentLoopId,
+                                finalStatus: 499,
+                                hitMaxTurns: false,
+                                turnIds: await this.#lifecycle.turnIds(currentLoopId),
+                                usage,
+                                message,
+                            });
+                        }
                     }
                     if (!firstSettled) {
                         firstSettled = true;
@@ -1034,7 +1045,7 @@ export default class Daemon {
                         // the same message so a backend 400 (context overflow, auth, …) reaches the
                         // client as text, never a contentless 500.
                         const message = (err instanceof Error ? err.message : String(err)).slice(0, 500);
-                        await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: currentLoopId, status: 500, message });
+                        await this.#lifecycle.finish(currentLoopId, 500, message);
                         const usage = await this.#engine.loopUsage(currentLoopId);
                         this.#broadcast({ workspaceId }, "loop/terminated", {
                             workerId, loopId: currentLoopId, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage, message,
@@ -1144,6 +1155,39 @@ export default class Daemon {
         return fresh;
     }
 
+    async #cancelTree(workerId: number, reason: string, includeRoot: boolean): Promise<void> {
+        const cancelled = await this.#lifecycle.cancelTree(workerId, reason, includeRoot);
+        for (const targetWorkerId of cancelled.workerIds) {
+            const pollTimer = this.#pollTimers.get(targetWorkerId);
+            if (pollTimer !== undefined) { clearTimeout(pollTimer); this.#pollTimers.delete(targetWorkerId); }
+            const parkTimer = this.#parkTimers.get(targetWorkerId);
+            if (parkTimer !== undefined) { clearTimeout(parkTimer); this.#parkTimers.delete(targetWorkerId); }
+            this.#pollBackoff.delete(targetWorkerId);
+            this.#owedWakes.delete(targetWorkerId);
+            const scope = this.#workerAborts.get(targetWorkerId);
+            if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
+        }
+        await Promise.all(cancelled.workerIds.map(async (targetWorkerId) => this.#reapWorkerStreams(targetWorkerId)));
+        for (const { loopId, workerId: targetWorkerId } of cancelled.loops) {
+            const row = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: targetWorkerId });
+            if (row === undefined) continue;
+            const usage = await this.#engine.loopUsage(loopId);
+            this.#broadcast({ workspaceId: row.workspace_id }, "loop/terminated", {
+                workerId: targetWorkerId,
+                loopId,
+                finalStatus: 499,
+                hitMaxTurns: false,
+                turnIds: await this.#lifecycle.turnIds(loopId),
+                usage,
+                message: reason.slice(0, 500),
+            });
+        }
+    }
+
+    async #cancelWorkerTree(workerId: number, reason: string): Promise<void> {
+        await this.#cancelTree(workerId, reason, true);
+    }
+
     /**
      * Cancel the worker's in-flight work (loop.cancel). One abort, one scope: the
      * run signal stops the running loop's turn generation AND tears down every
@@ -1159,41 +1203,10 @@ export default class Daemon {
         if (pollTimer !== undefined) { clearTimeout(pollTimer); this.#pollTimers.delete(workerId); }
         // Stop the active drain's turn-generation (its loop closes 499). The worker
         // signal is the optimization path — the fast, listener-driven reap.
-        const scope = this.#workerAborts.get(workerId);
-        if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
-        // #380, the PARKED case — status 202 can become durable just before the drain
-        // unregisters itself. Snapshotting `hadDrain` is therefore not sufficient: the
-        // abort catch may own a live 102, while a drain that already returned 202 owns
-        // nothing. Reconcile after that exact drain settles, then atomically claim any
-        // remaining 102/202 rows. The query makes this single-writer: if the abort catch
-        // already terminalized its loop, there is no row here and no duplicate broadcast.
-        const interruptedDrain = this.#activeDrains.get(workerId)?.promise;
-        void (async () => {
-            if (interruptedDrain !== undefined) await interruptedDrain.catch(() => {});
-            const message = reason.slice(0, 500);
-            const dead = await (this.#db.engine_worker_cancel_live_loops as PrepMethod).all<{ id: number }>({ worker_id: workerId, message });
-            if (dead.length === 0) return;
-            const srow = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: workerId });
-            if (srow === undefined) return;
-            for (const { id } of dead) {
-                const usage = await this.#engine.loopUsage(id);
-                this.#broadcast({ workspaceId: srow.workspace_id }, "loop/terminated", {
-                    workerId, loopId: id, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage, message,
-                });
-            }
-        })().catch((err: unknown) => {
-            console.error(`cancelDrain(${workerId}) live-loop terminalize failed:`, err);
-        });
-        // Total reap by the subscription contract (§worker-lifecycle-total-reap):
-        // durable rows enumerate everything the worker holds; the process-local
-        // registry owns each callable teardown. This is independent of signal-listener
-        // timing, so an exec mid-spawn (its row written before it is killable) is
-        // reaped too. A late spawn
-        // (registering after this) self-aborts against its captured, now-aborted
-        // epoch (§exec-timeout). Idempotent; fire-and-forget (the
-        // abort is sync, the registry read async; the 499 conclusion surfaces async).
-        void this.#reapWorkerStreams(workerId).catch((err: unknown) => {
-            console.error(`reapWorkerStreams(${workerId}) failed:`, err);
+        // Durable structured cancellation: one recursive transition claims the
+        // worker and every unresolved descendant, then reaps each process-local scope.
+        void this.#cancelWorkerTree(workerId, reason).catch((err: unknown) => {
+            console.error(`cancelTree(${workerId}) failed:`, err);
         });
         return hadWork;
     }
@@ -1267,7 +1280,7 @@ export default class Daemon {
             // the manifest. §worker-lifecycle-wake-liveness.
             const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ worker_id: payload.workerId });
             if (slept !== undefined) {
-                await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
+                await this.#lifecycle.wake(slept.id);
                 const started = await this.#ensureDrain({
                     workspaceId: payload.workspaceId, workerId: payload.workerId,
                     systemPrompt, maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
@@ -1369,7 +1382,7 @@ export default class Daemon {
             if (this.#activeDrains.has(workerId)) this.#owedWakes.add(workerId);
             return;
         }
-        await (this.#db.drain_resume_slept_loop as PrepMethod).run({ loop_id: slept.id });
+        await this.#lifecycle.wake(slept.id);
         const started = await this.#ensureDrain({
             workspaceId, workerId, systemPrompt,
             maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),

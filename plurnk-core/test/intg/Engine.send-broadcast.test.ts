@@ -114,7 +114,7 @@ test("SEND with null signal → 400 (no status to apply)", async () => {
     } finally { await db.close(); }
 });
 
-test("Multiple SENDs in one turn: last terminal status wins", async () => {
+test("multiple SENDs in one turn: the first terminal concludes the loop", async () => {
     const { db, env, engine } = await setup();
     try {
         await engine.dispatch({
@@ -132,7 +132,7 @@ test("Multiple SENDs in one turn: last terminal status wins", async () => {
     } finally { await db.close(); }
 });
 
-test("Successive terminal SENDs: later wins (UPDATE overwrites)", async () => {
+test("successive terminal SENDs preserve and report the first terminal winner", async () => {
     const { db, env, engine } = await setup();
     try {
         await engine.dispatch({
@@ -141,11 +141,12 @@ test("Successive terminal SENDs: later wins (UPDATE overwrites)", async () => {
             sequence: 1, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 200);
-        await engine.dispatch({
+        const late = await engine.dispatch({
             statement: sendStmt(499, "actually cancel"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
-        assert.equal(await loopStatus(db, env.loopId), 499, "later 499 overrides earlier 200");
+        assert.equal(late.status, 200, "the losing transition reports durable state, not its requested status");
+        assert.equal(await loopStatus(db, env.loopId), 200, "terminal state is immutable");
     } finally { await db.close(); }
 });

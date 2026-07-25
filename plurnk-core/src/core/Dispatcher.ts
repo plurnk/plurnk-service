@@ -16,7 +16,7 @@ import { decodePathParens } from "./path-decode.ts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify } from "./ChannelWrite.ts";
+import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
@@ -24,6 +24,7 @@ import EntryFind from "../schemes/_entry-find.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
+import LoopLifecycle from "./LoopLifecycle.ts";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -77,6 +78,7 @@ export default class Dispatcher {
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #injectWorker: InjectWorkerNotify | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
+    #cancelDescendants: CancelDescendantsNotify | undefined;
     // §send-premature-terminate/[102]<T> — the engine-owned park-deadline registry (loopId → seconds;
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
@@ -85,8 +87,9 @@ export default class Dispatcher {
     // SEND[102] parks on it (blocking join). Engine-owned, twin of #parkDeadlines.
     #joinTargets: Set<number>;
     #liveSubscriptions: LiveSubscriptions;
+    #lifecycle: LoopLifecycle;
 
-    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
+    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -99,6 +102,7 @@ export default class Dispatcher {
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
+        cancelDescendants?: CancelDescendantsNotify;
         parkDeadlines?: Map<number, number>;
         searchGate?: import("./search-gate.ts").default;
         joinTargets?: Set<number>;
@@ -116,10 +120,12 @@ export default class Dispatcher {
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#injectWorker = injectWorker;
         this.#cancelWorker = cancelWorker;
+        this.#cancelDescendants = cancelDescendants;
         this.#parkDeadlines = parkDeadlines ?? new Map();
         this.#searchGate = searchGate;
         this.#joinTargets = joinTargets ?? new Set();
         this.#liveSubscriptions = liveSubscriptions;
+        this.#lifecycle = new LoopLifecycle(db);
     }
 
     // workspace → project_root, memoized: {§fs-namespace} fixes the root immutably at
@@ -632,9 +638,8 @@ export default class Dispatcher {
                 const handlerCtx = this.#handlerContext("worker", ctx);
                 return handlerCtx === null ? { status: 501 } : await workerHandler.killEntry(statement, handlerCtx);
             }
-            // terminate — abort any worker by address; whoever holds it may end it.
-            // `worker://self` = self. cancelWorker (→ Daemon.cancelDrain) aborts the worker's signal
-            // (its loop closes 499); an idle run is a no-op-200, a missing run 404.
+            // Terminate an addressed worker's structured scope. `worker://self` = self.
+            // An idle worker is a no-op 200; a missing worker is 404.
             const name = path.kind === "url" ? (path.hostname ?? "") : ""; // §worker-scheme — the worker is the AUTHORITY
             if (name === "") return { status: 400, error: "worker:// kill requires a worker name or ~ (worker://<name>)" };
             let workerId = ctx.workerId;
@@ -644,13 +649,9 @@ export default class Dispatcher {
                 workerId = row.id;
             }
             if (this.#cancelWorker === undefined) throw new Error("run kill: cancelWorker capability absent");
-            // §op-synchronous — KILL is DECISIVE: flip the worker's live loops to 499 NOW so the
-            // same-turn premature-terminate gate sees it dead (KILL … SEND[200] concludes in ONE
-            // turn — the model never reasons about async reap timing). The physical scope reap
-            // (drain abort + stream teardown) then rides cancelWorker; a killed loop can't heal back
-            // because cancelWorker aborts its drain's signal.
-            await (this.#db.engine_terminate_worker_live_loops as PrepMethod).run({ worker_id: workerId, message: "killed via worker:// KILL" });
-            this.#cancelWorker(workerId);
+            // §op-synchronous — KILL is decisive. Await the one lifecycle owner so the
+            // same-turn pending-work gate observes the complete subtree as terminal.
+            await this.#cancelWorker(workerId, "killed via worker:// KILL");
             return { status: 200 };
         }
         if (!this.#schemes.has(schemeName)) return { status: 501 };
@@ -1000,13 +1001,15 @@ export default class Dispatcher {
         // terminal with a live child stays the existing premature-terminate steer (#354 decision #1).
         const joinArmed = this.#joinTargets.delete(loopId);
         if (status === 102 && statement.lineMarker === null && joinArmed) {
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw.length > 0 ? raw : "parked — awaiting a worker's result (blocking collect)" });
+            if (!await this.#lifecycle.park(loopId, raw.length > 0 ? raw : "parked — awaiting a worker's result (blocking collect)")) {
+                return { status: await this.#lifecycle.status(loopId) };
+            }
             this.#parkDeadlines.set(loopId, -1); // indefinite: the bounded child's terminal is the wake edge
             return { status: 102, attrs: { parked: -1, join: true } };
         }
 
-        // §wait-obligation-matrix — the WAIT: SEND[202], and the legacy SEND[102]<T> the terminal
-        // redesign spelled the same park with, are one obligation-checked wait (waitpid). A live
+        // §wait-obligation-matrix — SEND[202] and the legacy SEND[102]<T> are one
+        // obligation-checked join. A live
         // obligation (a spawned child or open stream, J) BLOCKS the loop until it concludes and
         // reawakens it (§worker-lifecycle-child-wake); a wait on nothing (∅) is already satisfied and
         // resolves like 200, so <-1>+∅ self-resolves rather than hang the agent; a pending own
@@ -1015,7 +1018,9 @@ export default class Dispatcher {
             const marks = statement.lineMarker?.marks[0];
             const seconds = typeof marks === "number" ? marks : -1; // bare 202 / absent T = indefinite, bounded by the join
             if (await this.#hasLiveWork(workerId)) {
-                await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 202, loop_id: loopId, message: raw.length > 0 ? raw : "waiting on live work" });
+                if (!await this.#lifecycle.park(loopId, raw.length > 0 ? raw : "waiting on live work")) {
+                    return { status: await this.#lifecycle.status(loopId) };
+                }
                 this.#parkDeadlines.set(loopId, seconds);
                 return { status: 202, attrs: { waiting: seconds } };
             }
@@ -1028,11 +1033,13 @@ export default class Dispatcher {
             // the deltas land next turn, the model weighs them and concludes.
             const undelivered = await (this.#db.engine_worker_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ worker_id: workerId, turn_id: turnId });
             if (undelivered !== undefined) return { status: 102 };
-            // ∅ — a wait on nothing is a contradiction, the mirror of premature-terminate (owner
-            // ruling, #502 run113): concluding it silently laundered the one signal that something
-            // was structurally off (the model believed work was pending; nothing was). 409 gives
-            // the turn back with the fact — the recovery rail this exact confusion needs.
-            return { status: 409, error: "Attempted [202] wait with nothing pending: no surviving streams, no worker runs, no unretrieved results." };
+            // The joined set is already drained. Awaiting an empty task group completes
+            // immediately; it never parks and needs no corrective model turn.
+            const finished = await this.#lifecycle.finish(loopId, 200, raw === "" ? null : raw);
+            return {
+                status: finished ? 200 : await this.#lifecycle.status(loopId),
+                attrs: { joined: true, pending: 0 },
+            };
         }
 
         // §send-300-choices — ask the operator and park (the answer returns via loop.inject).
@@ -1059,7 +1066,7 @@ export default class Dispatcher {
 
         // [200] — terminate, gated by the pending set (post-batch). The row records the refused
         // attempt faithfully (status_rx=409, never erased); the loop stays a continue; the strike
-        // couples in runTurn. [499] abandons regardless — discard by stated intent.
+        // couples in runTurn. [499] abandons and cancels the descendant scope.
         if (status === 200) {
             // §send-200-failed-ops (#363, owner ruling: never 200 over a failed op) — the failure
             // twin of the pending set: this turn's failed op results (and this emission's parse
@@ -1092,11 +1099,13 @@ export default class Dispatcher {
                 }
                 return { status: 409, error: `Attempted [200] termination in a turn that performs retrieval or has surviving work: ${pending.join("; ")}. KILL what you no longer need; SEND[102] (or [102]<seconds>) to receive the rest; then conclude.` };
             }
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 200, loop_id: loopId, message: raw === "" ? null : raw });
-            return { status: 200 };
+            const finished = await this.#lifecycle.finish(loopId, 200, raw === "" ? null : raw);
+            return { status: finished ? 200 : await this.#lifecycle.status(loopId) };
         }
         if (status === 499) {
-            await (this.#db.engine_loop_set_status as PrepMethod).run({ status: 499, loop_id: loopId, message: raw === "" ? null : raw });
+            const finished = await this.#lifecycle.finish(loopId, 499, raw === "" ? null : raw);
+            if (!finished) return { status: await this.#lifecycle.status(loopId) };
+            await this.#cancelDescendants?.(workerId, raw === "" ? "parent abandoned its scope" : raw);
             return { status: 499 };
         }
         // Every other signal — 102 bare, 202 (retired as a terminal; now ordinary mid-comms), 1xx —

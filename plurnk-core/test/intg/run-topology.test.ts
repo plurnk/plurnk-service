@@ -59,6 +59,28 @@ test("a child FAILING (499) also wakes the parent — any conclusion is a wake e
     });
 });
 
+test("a parent abandoning its scope cancels every unresolved descendant", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("<<WORK(worker://child):keep working until cancelled:WORK\n<<SEND[499]:abandon this scope:SEND", 10),
+        makeMockResponse("<<SEND[102]:still working:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "abandon-tree" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn then abandon", flags: { auto: true } });
+            assert.equal(finalStatus, 499);
+            await waitForDb(
+                () => (db.test_list_loops_all as PrepMethod).all<{ status: number }>({}),
+                (loops) => loops.length >= 3 && loops.every(({ status }) => ![100, 102, 202].includes(status)),
+                { timeoutMs: 8000 },
+            );
+            const loops = await (db.test_list_loops_all as PrepMethod).all<{ status: number }>({});
+            assert.ok(loops.every(({ status }) => ![100, 102, 202].includes(status)), `no unresolved descendant survives abandonment: ${JSON.stringify(loops)}`);
+        } finally { ws.close(); }
+    });
+});
+
 test("wake propagates UP a grandchild chain (parent→child→grandchild)", async () => {
     // Each level parks until the one below concludes — so the order is forced and the recursion shows:
     // grandchild concludes → wakes child → child concludes → wakes parent → parent concludes.
@@ -132,12 +154,10 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling — the voice door m
     });
 });
 
-test("an idle wait 409s; the model sees the fact and concludes NEXT turn — the run113 recovery shape through the real loop", async () => {
+test("an idle join completes immediately through the real loop", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        // Turn 1: a wait with nothing running under it — the ∅ contradiction, refused with the fact.
+        // Turn 1: the joined task group is already empty, so the join completes.
         makeMockResponse("<<SEND[202]:nothing running; done for now:SEND", 10),
-        // Turn 2: the model has SEEN the 409 in its log and concludes deliberately — the recovery rail.
-        makeMockResponse("<<SEND[200]:nothing to do — done.:SEND", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -147,9 +167,9 @@ test("an idle wait 409s; the model sees the fact and concludes NEXT turn — the
             await rpcCall(ws, 2, "loop.run", { prompt: "nothing to do", flags: { auto: true } });
             const t = await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
             assert.equal(t.length, 1, "the run concluded — one loop/terminated, no held-open 202");
-            assert.equal(t[0].finalStatus, 200, "the model's OWN conclude, one turn after the 409 (§wait-obligation-matrix)");
+            assert.equal(t[0].finalStatus, 200, "the already-drained join is the model's successful terminal");
             const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number }>({ loop_id: (t[0] as { loopId?: number }).loopId ?? 1 });
-            assert.ok(rows.some((r) => r.op === "SEND" && r.status_rx === 409), "the ∅ wait minted the 409 the model recovered from");
+            assert.ok(rows.some((r) => r.op === "SEND" && r.status_rx === 200), "the join records successful completion");
         } finally { ws.close(); }
     });
 });

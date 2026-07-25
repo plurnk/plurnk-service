@@ -1,7 +1,7 @@
 // §send-undelivered-child-term — the 1ms fan-out race (the recurring "heavy-topo variance",
 // root-caused): workers concluding DURING the parent's generation are no longer live (the wait's
-// J leg misses them) but their collect deltas are queued for the NEXT packet. The ∅-collapse
-// concluded the parent with its waiting-text as terminal, discarding three delivered results;
+// J leg misses them) but their collect deltas are queued for the NEXT packet. An empty-join
+// conclusion here would discard the delivered results;
 // a [200] in the same window discards them identically. Both gates now treat a child terminated
 // after the current turn's timestamp as PENDING: the wait continues (R semantics), the [200]
 // refuses with the steer.
@@ -30,14 +30,14 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, parent, parentLoop, parentTurn, engine };
 }
 
-test("a bare SEND[202] over a just-concluded child CONTINUES — never the ∅-collapse", async () => {
+test("a bare SEND[202] over a just-concluded child continues until the result is delivered", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
         const r = await engine.dispatch({ statement: sendStmt(202, null, "Waiting for worker-x."), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102, "the wait is NOT on nothing — the child's deliverable is on the doorstep; continue");
         const loop = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: parentLoop });
-        assert.notEqual(loop?.status, 200, "the loop did NOT collapse to concluded over the undelivered result");
+        assert.notEqual(loop?.status, 200, "the loop did not conclude over the undelivered result");
     } finally { await db.close(); }
 });
 
