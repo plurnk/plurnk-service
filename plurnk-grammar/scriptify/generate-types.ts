@@ -41,7 +41,12 @@ for (const file of files) {
     const schema = JSON.parse(schemaText);
     const ts = await compile(schema, name, {
         bannerComment: "",
-        $refOptions: { resolve: httpsResolver as never },
+        $refOptions: {
+            resolve: {
+                http: false,
+                ...httpsResolver,
+            } as never,
+        },
         declareExternallyReferenced: true,
         additionalProperties: false,
         format: false,

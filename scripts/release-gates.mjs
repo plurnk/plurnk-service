@@ -3,7 +3,8 @@
 // train leaves — never mid-publish over a stamped tree. The drill (lint+unit+intg) is the
 // push gate; the per-package prepublishOnly gates (audit, tests, conformance tiers) are
 // the PUBLISH bar, and until this script they ran for the first time during publish itself.
-// Expensive by design — a release is deliberate ("pain is the best teacher").
+// release:version builds every workspace immediately before this sweep. Publish
+// later uses --ignore-scripts so these complete gates run exactly once.
 // Usage: node scripts/release-gates.mjs [--only <pkg-dir>]
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

@@ -45,7 +45,12 @@ console.log(`release-publish: ${order.length} workspaces at ${version}`);
 for (const { name } of order) {
     if (await served(name) === version) { console.log(`  serves  ${name}`); continue; }
     console.log(`  publish ${name}`);
-    await run("npm", ["publish", "-w", name, "--access", "public"], { maxBuffer: 16 * 1024 * 1024 }); // Law 1: rejects on refusal
+    // release:version already built every workspace and ran every complete
+    // prepublishOnly gate against this candidate before stamping. Re-running
+    // lifecycle scripts here duplicates the expensive proof after the train has
+    // left and can tear an otherwise valid release. Publish the gated artifacts
+    // exactly as they stand; consumer install verification remains below.
+    await run("npm", ["publish", "-w", name, "--access", "public", "--ignore-scripts"], { maxBuffer: 16 * 1024 * 1024 }); // Law 1: rejects on refusal
     await awaitServed(name);
 }
 

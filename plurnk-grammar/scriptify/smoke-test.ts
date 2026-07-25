@@ -24,7 +24,10 @@ const cleanup = async (): Promise<void> => {
 
 try {
     process.stdout.write(`[smoke] packing tarball in ${grammarDir}...\n`);
-    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent"], { cwd: grammarDir, env: cleanEnv });
+    // The caller built the candidate before smoke. Re-running prepack here would
+    // rebuild the same artifact inside its own verification and used to compound
+    // the generator's lifecycle cost.
+    const { stdout: packOut } = await run("npm", ["pack", "--json", "--silent", "--ignore-scripts"], { cwd: grammarDir, env: cleanEnv });
     const tarballName = JSON.parse(packOut)[0].filename;
     tarballPath = join(grammarDir, tarballName);
     process.stdout.write(`[smoke] tarball: ${tarballName}\n`);
