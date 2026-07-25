@@ -21,10 +21,10 @@ const mockSeam = (pending: PendingProposal[] = []) => {
         resolveProposal: (logEntryId, resolution) => { resolves.push({ logEntryId, resolution }); },
         runLoop: async (a) => { workers.push({ workspaceId: a.workspaceId, prompt: a.prompt }); return { action: "enqueued_new_loop" as const, loopId: 77 }; },
         cancelDrain: (workerId) => { cancelled = workerId; return true; },
-        dispatchAsClient: async () => ({ status: 200 }),
+        dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "runLoop" | "cancelDrain" | "dispatchAsClient" | "readLog" | "listProviders">;
+    } satisfies Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
     return { seam, fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)), workers, resolves, cancelled: () => cancelled };
 };
 

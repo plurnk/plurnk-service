@@ -134,9 +134,8 @@ export default class Envelope {
         };
     }
 
-    // Lazy client-loop allocator. Called from dispatchAsClient on the first
-    // client-origin op for this connection; subsequent ops reuse the same
-    // loop until the connection closes.
+    // Client action journal allocator. One action allocates one segment; its
+    // statements become ordered turns and settlement closes the segment.
     static async ensureClientLoop(db: Db, workerId: number): Promise<number> {
         const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ worker_id: workerId });
         if (loop === undefined) throw new Error("ensureClientLoop: loop insert returned no row");

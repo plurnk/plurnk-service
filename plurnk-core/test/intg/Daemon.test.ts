@@ -465,6 +465,34 @@ test("the client-interface seam — dispatchAsClient runs a client op through th
     });
 });
 
+test("the client-interface seam — one client action journals every statement in one terminal segment (#616)", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-action-journal" })).result as { id: number };
+            const worker = (await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: created.id }))!;
+            const before = await (db.test_loops_list_ids as PrepMethod).all<{ id: number }>({ worker_id: worker.id });
+
+            const results = await daemon.dispatchClientAction({
+                workspaceId: created.id,
+                workerId: worker.id,
+                statements: [
+                    Dsl.buildEdit({ target: "worker:///x", content: "one action" }),
+                    Dsl.buildRead({ target: "worker:///x" }),
+                ],
+            });
+
+            assert.deepEqual(results.map((result) => result.status), [201, 200]);
+            const after = await (db.test_loops_list_ids as PrepMethod).all<{ id: number }>({ worker_id: worker.id });
+            assert.equal(after.length, before.length + 1, "the action created one journal segment, not one loop per statement");
+            const loopId = after[after.length - 1].id;
+            const turns = await (db.test_list_turns_in_loop as PrepMethod).all<{ sequence: number }>({ loop_id: loopId });
+            assert.deepEqual(turns.map((turn) => turn.sequence), [1, 2], "each statement remains a distinct ordered journal turn");
+            assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status, 200, "the action segment closes terminally");
+        } finally { ws.close(); }
+    });
+});
+
 test("the client-interface seam — readLog returns a workspace's journal, ownership-verified (#355)", async () => {
     // The module's primary render input. Seeded here via the dispatch seam, read back via readLog, and the
     // cross-workspace invariant proven: a workspace reads only its own runs (core holds it, not the module).

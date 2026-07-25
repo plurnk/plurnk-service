@@ -1028,7 +1028,10 @@ registry.registerMethod("loop.run", {
 
 Per the **Speak in DSL, not plumbing** rule (AGENTS.md): `op.*` methods construct DSL statements internally and dispatch through `Engine.dispatch`. {§methods-op-mirror} Param shapes are ergonomic (semantic names, not HEREDOC slots); semantics are the DSL's.
 
-Each `op.*` call creates a turn in the connection's client loop (§connection-lifecycle), dispatches, fires `log/entry`, returns the dispatch result.
+Each client action creates one terminal journal segment (§connection-lifecycle). Every
+statement in that action creates an ordered turn inside the segment, dispatches, fires
+`log/entry`, and returns its result. `op.parse` therefore does not manufacture one loop
+per parsed statement.
 
 Naming: `target` = URI the op acts on; `scope` for FIND; `source`/`destination` for COPY/MOVE; `recipient` for SEND (or null = broadcast); `cwd` for EXEC. `path` is reserved for *identity* — never an RPC operand.
 
@@ -1069,7 +1072,16 @@ Future: `subscription.list`, `subscription.cancel` (the latter is `op.send({stat
 
 ### §connection-lifecycle Client context
 
-**The client's run.** A module client context is an actor (§machine-processes); its `op.*` write to its **own worker** — `origin = "client"`, one loop per context — and `log.read` reads that worker. Closing the context closes the loop's status; rows persist. Multiple contexts each get their own client worker.
+**Client action evidence.** A module client is an actor (§machine-processes); its
+side-effecting `op.*` actions write to its **own worker** with `origin = "client"`.
+One action owns one journal segment, and all statements parsed from that action are
+ordered turns inside it. A proposal may hold the segment open while the action crosses
+an AG-UI interrupt/resume boundary; resolution or failure closes it. These segments
+record durable action evidence but do not define client-visible lifecycle—AG-UI runs do.
+Observational actions create no turns or rows. `LOOK` retains a closed, rowless
+observation segment because the public scheme context and relative `log:///` addressing
+require an honest numeric loop coordinate; it never leaves active lifecycle behind.
+Multiple client actors have distinct workers.
 
 `loop.run` and `inject` target the **model's worker** — a separate worker holding the conversation, `origin = "model"`. Both workers share the workspace's one filesystem (§machine-processes); the packet renders only the model's worker, so the client's ops are structurally absent from it — no origin filter (§actor-boundary-isolation). The model worker (`Envelope.ensureModelWorker`) and the client context's worker are distinct, each lazily allocated on first use.
 

@@ -320,10 +320,43 @@ export default class Daemon {
     async dispatchAsClient(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const { workspaceId, workerId, statement } = args;
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
-        const turnId = await ClientTurn.insertClientTurn(this.#db, clientLoopId);
+        try {
+            const result = await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement });
+            await Envelope.closeClientLoop(this.#db, clientLoopId, 200);
+            return result;
+        } catch (error) {
+            await Envelope.closeClientLoop(this.#db, clientLoopId, 499);
+            throw error;
+        }
+    }
+
+    // The client-interface action contract: one AG-UI action owns one journal segment,
+    // regardless of how many statements op.parse produced. A proposed statement may
+    // keep this promise (and segment) open across interrupt/resume; settlement closes
+    // it. The journal is durable evidence for the action, not a second client lifecycle.
+    async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
+        const { workspaceId, workerId, statements } = args;
+        if (statements.length === 0) return [];
+        const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
+        try {
+            const results = [];
+            for (const statement of statements) {
+                results.push(await this.#dispatchClientStatement({ workspaceId, workerId, loopId: clientLoopId, statement }));
+            }
+            await Envelope.closeClientLoop(this.#db, clientLoopId, 200);
+            return results;
+        } catch (error) {
+            await Envelope.closeClientLoop(this.#db, clientLoopId, 499);
+            throw error;
+        }
+    }
+
+    async #dispatchClientStatement(args: { workspaceId: number; workerId: number; loopId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
+        const { workspaceId, workerId, loopId, statement } = args;
+        const turnId = await ClientTurn.insertClientTurn(this.#db, loopId);
         const entryIds: number[] = [];
         const result = await this.#engine.dispatch({
-            statement, workspaceId, workerId, loopId: clientLoopId, turnId, sequence: 1,
+            statement, workspaceId, workerId, loopId, turnId, sequence: 1,
             origin: "client", onDispatch: (logEntryId: number) => { entryIds.push(logEntryId); },
         });
         for (const logEntryId of entryIds) {
@@ -336,12 +369,20 @@ export default class Daemon {
     // op.look (#283/#358) — the pure READ-projection query on the seam: resolve a READ through the
     // full scheme resolver and return its content, writing NO log row — the client's off-run
     // inspection primitive (the module rewrites LOOK→READ and parses at its edge, exactly like
-    // dispatchAsClient). Rides the client loop so log:/// coordinates resolve run-relative;
-    // invisible to the model. Engine.look enforces READ-only.
+    // dispatchClientAction). Its closed observation segment supplies the numeric loop coordinate
+    // required by plugin context and relative log:/// addresses without impersonating an active
+    // client lifecycle. It creates no turn or log row. Engine.look enforces READ-only.
     async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const { workspaceId, workerId, statement } = args;
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
-        return await this.#engine.look({ statement, workspaceId, workerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
+        try {
+            const result = await this.#engine.look({ statement, workspaceId, workerId, loopId: clientLoopId }) as { status: number; [key: string]: unknown };
+            await Envelope.closeClientLoop(this.#db, clientLoopId, 200);
+            return result;
+        } catch (error) {
+            await Envelope.closeClientLoop(this.#db, clientLoopId, 499);
+            throw error;
+        }
     }
 
     // The log-read hook (#355) — a workspace's journal, the module's primary render input. The worker is
@@ -1386,7 +1427,7 @@ export default class Daemon {
 export type CoreSeam = Pick<Daemon,
     | "subscribeToEvents"
     | "pendingProposals" | "resolveProposal"
-    | "runLoop" | "cancelDrain" | "dispatchAsClient" | "ensureModelWorker"
+    | "runLoop" | "cancelDrain" | "dispatchClientAction" | "ensureModelWorker"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"
     | "createWorkspace" | "attachWorkspace" | "createConversationWorker" | "renameWorkspace" | "constrain" | "unconstrain"

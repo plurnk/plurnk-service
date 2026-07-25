@@ -54,10 +54,10 @@ export interface DaemonSeam {
     runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string }): Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
     // Loop-control — cancel a worker's active drain. Returns whether a drain was cancelled.
     cancelDrain(workerId: number, reason?: string): boolean;
-    // The op keystone — execute one parsed op as a client-origin turn; the emitted
-    // log/entry arrives on the event source. Backs the whole op_* family; the module
-    // parses with the grammar at its edge and hands over the statement.
-    dispatchAsClient(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }>;
+    // One client action journals all of its parsed statements in one internal segment.
+    // The segment is evidence for the action and may remain open across an AG-UI
+    // interrupt/resume while a proposed statement awaits resolution.
+    dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>>;
     // Journal read — the module's primary render input (ownership-verified per workspace).
     readLog(args: { workspaceId: number; workerId: number; loopId?: number; turnId?: number; sinceId?: number; limit?: number; loopSeq?: number; turnSeq?: number; sequence?: number }): Promise<LogEntryWire[]>;
     // Providers + effective prompt budget (promptBudget) for the STATE gauge.

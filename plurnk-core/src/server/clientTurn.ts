@@ -1,6 +1,5 @@
-// Helper for creating a turn inside a connection's client loop. Each
-// client-origin RPC dispatch (op.*) creates one such turn with a synthetic
-// packet matching the same shape as model turns but with empty content.
+// Helper for creating an ordered statement turn inside a client action's
+// journal segment, with a synthetic packet matching the model-turn shape.
 
 import type { Db, PrepMethod } from "../core/Db.ts";
 

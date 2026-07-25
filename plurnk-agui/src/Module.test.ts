@@ -22,7 +22,7 @@ const mockSeam = () => {
         },
         runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}) }); return { action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
-        dispatchAsClient: async () => ({ status: 200 }),
+        dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", origin: "model" }],
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, promptBudget: 200000 }] }),
         createWorkspace: async () => ({ workspaceId: 3, workspaceName: "agui-t", projectRoot: null, workerId: 10, workerName: "client-1", modelWorkerId: null, clientLoopId: null }),

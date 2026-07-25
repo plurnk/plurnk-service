@@ -416,7 +416,8 @@ export default class Module {
                     const statement = { op: "EXEC", suffix: "", signal: null, target: null, lineMarker: null, body: p.command, position: { line: 1, col: 1 } } as unknown as PlurnkStatement;
                     // Client ops journal as client-origin turns in the CLIENT run (run-split:
                     // only LOOPS live in the model worker).
-                    return { ok: true, result: await this.#seam.dispatchAsClient({ workspaceId: env.workspaceId, workerId: env.workerId, statement }) };
+                    const [result] = await this.#seam.dispatchClientAction({ workspaceId: env.workspaceId, workerId: env.workerId, statements: [statement] });
+                    return { ok: true, result };
                 }
                 case "op.parse": {
                     // Raw DSL parsed at the module's edge (the grammar is a family-internal
@@ -424,12 +425,20 @@ export default class Module {
                     // failures return as 400 results, mirroring the legacy op.parse.
                     if (typeof p.text !== "string" || p.text.length === 0) return { ok: false, error: "op.parse requires text" };
                     const parsed = PlurnkParser.parseClient(p.text);
-                    const results: Array<Record<string, unknown>> = [];
-                    const workerId = env.workerId; // client ops ride the client worker
+                    const results: Array<Record<string, unknown> | null> = [];
+                    const statements: PlurnkStatement[] = [];
                     for (const item of parsed.items) {
                         if (item.kind === "error") { results.push({ status: 400, error: String(item.error.message ?? item.error) }); continue; }
                         if (item.kind !== "statement") continue; // interstitial text isn't dispatchable
-                        results.push(await this.#seam.dispatchAsClient({ workspaceId: env.workspaceId, workerId, statement: item.statement as unknown as PlurnkStatement }));
+                        statements.push(item.statement as unknown as PlurnkStatement);
+                        results.push(null);
+                    }
+                    const dispatched = statements.length === 0
+                        ? []
+                        : await this.#seam.dispatchClientAction({ workspaceId: env.workspaceId, workerId: env.workerId, statements });
+                    let index = 0;
+                    for (let i = 0; i < results.length; i++) {
+                        if (results[i] === null) results[i] = dispatched[index++];
                     }
                     return { ok: true, result: { results } };
                 }
