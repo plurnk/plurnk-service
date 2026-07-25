@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { build } from "esbuild";
 
 const run = promisify(execFile);
 // npm exports its config as npm_config_* into lifecycle children — when this smoke runs
@@ -88,6 +90,30 @@ console.log("OK: parser, validator, error class, and parsePath all consumable fr
     const { stdout: consumeOut, stderr: consumeErr } = await run("node", ["consume.js"], { cwd: tempDir });
     if (consumeErr) process.stderr.write(consumeErr);
     process.stdout.write(consumeOut);
+
+    await writeFile(join(tempDir, "consume-browser.js"), `
+import { PlurnkParser } from "@plurnk/plurnk-grammar";
+export const parse = (input) => PlurnkParser.parse(input);
+`);
+    const browserBundle = join(tempDir, "consume-browser.bundle.mjs");
+    process.stdout.write("[smoke] bundling the installed package for a browser Worker...\n");
+    await build({
+        absWorkingDir: tempDir,
+        entryPoints: ["consume-browser.js"],
+        outfile: browserBundle,
+        bundle: true,
+        format: "esm",
+        platform: "browser",
+        logLevel: "silent",
+    });
+    const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
+        parse(input: string): { items: Array<{ kind: string }> };
+    };
+    const browserResult = browserConsumer.parse("<<PLAN:browser bundle initialized:PLAN\n<<SEND[200]:browser-safe:SEND");
+    if (browserResult.items.some(({ kind }) => kind === "error")) {
+        throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
+    }
+    process.stdout.write("[smoke] browser bundle initialized and parsed a turn\n");
 
     await cleanup();
     process.stdout.write(`[smoke] PASS\n`);

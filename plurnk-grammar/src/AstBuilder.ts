@@ -1,6 +1,8 @@
+/// <reference path="./json-p3-esm.d.ts" />
+
 import { ParserRuleContext, TerminalNode } from "antlr4ng";
 import * as xpath from "xpath";
-import { JSONPathEnvironment } from "json-p3";
+import { JSONPathEnvironment } from "json-p3/dist/json-p3.esm.js";
 import type {
     BuffStatement,
     ClientOp,
