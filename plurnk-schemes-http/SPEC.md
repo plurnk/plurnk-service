@@ -29,7 +29,7 @@ static manifest: SchemeManifest = {
 
 Implemented against the DB-free `SchemeCtx` (no `ctx.db`):
 
-The HTTP method is the op: `read` → GET, `send` (SEND[200]) → POST, `edit` → PUT (whole-body; `<L>` rejected), `kill` → DELETE. `SEND[410]` drops the cached copy; `SEND[499]` cancels in-flight; other SEND codes → 501. Request headers ride the target's `{Key: value}` blocks (grammar#46).
+The HTTP method is the op: an unscoped `read` → GET, `send` (SEND[200]) → POST, `edit` → PUT (whole-body; `<L>` rejected), `kill` → DELETE. A scoped READ observes the already-materialized readable response through the standard entry operation; it never refetches and discards the requested scope. Without a materialized body it returns 409 directing an unscoped READ first. `SEND[410]` drops the cached copy; `SEND[499]` cancels in-flight; other SEND codes → 501. Request headers ride the target's `{Key: value}` blocks (grammar#46).
 
 Results use the `passthrough` family (read-only / network shape) — http entries are coordinate/URL-addressed, not entry-CRUD-backed.
 

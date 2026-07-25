@@ -8,7 +8,7 @@ Lets the model treat any web URL as an addressable, streamable resource:
 
 | Op | Behavior |
 |---|---|
-| `READ(http(s)://host/path)` | `fetch` the URL; stream the response body into the `body` channel as it arrives. A streaming read — returns `102 Processing`, the subscription accumulates, the model reads the entry on a later turn. |
+| `READ(http(s)://host/path)` | Without `<scope>`, fetch/revalidate the URL and stream its readable body. With `<scope>`, read that range from the materialized response without refetching. |
 | `SEND[200](http(s)://…)` | Request with a body (POST); response streams back the same way. |
 | `SEND[499](http(s)://…)` | Cancel an in-flight request (abort the fetch). |
 | `SEND[410](http(s)://…)` | Delete the cached response entry. |

@@ -7,13 +7,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ReadStatement, ExecStatement } from "@plurnk/plurnk-grammar";
+import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, makeHandlerCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
 
@@ -81,4 +82,35 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         assert.match(byName.get("html")?.content ?? "", /<script>ads\(\)/, "the raw page is archived under #html for xpath");
         assert.ok(byName.get("body")!.tokens < byName.get("html")!.tokens, "the price is the projection's, not the scaffolding's");
     } finally { await quiesceExecs(schemes); await db.close(); }
+});
+
+test("a scoped HTTP READ slices the materialized readable body instead of starting another fetch", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `http-scope-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        await EntryCrud.writeEntry("/example.org/page", {
+            channels: {
+                body: { content: "one\ntwo\nthree\nfour", mimetype: "text/markdown" },
+                header: { content: "HTTP 200 OK", mimetype: "text/plain" },
+                html: { content: "<p>one</p><p>two</p><p>three</p><p>four</p>", mimetype: "text/html" },
+            },
+            tags: [],
+        }, ctx, "https");
+        const statement: ReadStatement = {
+            op: "READ", suffix: "", signal: null,
+            target: {
+                kind: "url", raw: "https://example.org/page", scheme: "https",
+                username: null, password: null, hostname: "example.org", port: null,
+                pathname: "/page", params: {}, fragment: null,
+            },
+            lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
+        };
+        const manifest = { ...Http.manifest, name: "https" };
+        const result = await new Http().read(statement, makeHandlerCtx(ctx, manifest));
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "two\nthree");
+        assert.equal(result.startLine, 2);
+    } finally { await db.close(); }
 });

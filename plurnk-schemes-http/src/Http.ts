@@ -100,12 +100,29 @@ export default class Http implements SchemeHandler {
         await this.#browser.close?.();
     }
 
-    // READ → fetch; an HTML page is rendered, everything else streams raw.
-    // Returns 102 Processing; the subscription drives the channel content the
-    // model sees next turn. (ws/wss dispatch to the Ws scheme directly — #473.)
+    // An unscoped READ fetches/revalidates. A scoped READ observes the already
+    // materialized readable entry: refetching would discard the requested range
+    // and return another asynchronous whole-body 102.
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad_target", "READ requires an http(s):// URL target");
+        }
+        if (statement.lineMarker !== null) {
+            const prior = await ctx.entries.read(Http.#pathname(statement.target));
+            const body = prior.entry?.channels[BODY];
+            if (body === undefined || body.content.length === 0) {
+                return Http.#bad(409, "http", "scope_requires_materialization", "scoped READ requires a materialized response; READ the URL without <scope> first");
+            }
+            const { error, ...read } = await ctx.entries.operations.read(statement);
+            if (read.status >= 400) {
+                return Http.#bad(
+                    read.status,
+                    "http",
+                    "scoped_read_failed",
+                    error ?? read.reason ?? `scoped READ failed with status ${read.status}`,
+                );
+            }
+            return { shape: "passthrough", ...read };
         }
         return this.#fetchStream(statement.target, ctx, "GET", undefined);
     }

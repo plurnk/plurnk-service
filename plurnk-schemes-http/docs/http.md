@@ -7,12 +7,16 @@ streams its response: status `102` now, then an ordinary fragmentless READ
 returns the sanitized body. Auxiliary transport/archive channels are never
 presented by default.
 
-Re-reading a URL **revalidates** it: the prior fetch's validators (`ETag`/
+Re-reading a URL without `<scope>` **revalidates** it: the prior fetch's validators (`ETag`/
 `Last-Modified`) go out on the next READ, and if the page is unchanged the
 stored copy is served without re-rendering — always fresh, but cheap when
 nothing changed. Within the operator's freshness window a re-read serves the
 stored copy directly, skipping even that check. You just READ again; there's
 no cache flag to manage.
+
+A scoped READ (`READ(url)<start,end>`) observes the already-materialized
+readable response without refetching it. If the URL has not been materialized,
+READ it once without a scope first.
 
 The HTTP method is the **op**:
 

@@ -45,13 +45,17 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
     let closed: { reason: string; outcome?: string } | null = null;
     let deleted: string | null = null;
     let wrote: { pathname: string; entry: EntryData } | null = null;
+    let observedRead: ReadStatement | null = null;
     const seq: string[] = []; // op order — proves create-then-subscribe (http#3)
     const localAbort = new AbortController();
 
     const entries: EntryCaps = {
         operations: {
             async editBatch() { return { status: 501, entryId: null, channel: null }; },
-            async read() { return { status: 501, content: null, mimetype: null, channel: null }; },
+            async read(statement) {
+                observedRead = statement;
+                return { status: 200, content: "selected lines", mimetype: "text/markdown", channel: "body" };
+            },
             async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] }; },
             async send() { return { status: 501 }; },
         },
@@ -87,7 +91,7 @@ const makeCtx = (priorEntry: EntryData | null = null) => {
     };
     return {
         ctx,
-        inspect: () => ({ chunks, opened, closed, deleted, wrote, seq }),
+        inspect: () => ({ chunks, opened, closed, deleted, wrote, observedRead, seq }),
         forceCancel: () => opened?.handle.cancel(),
     };
 };
@@ -99,8 +103,8 @@ const urlTarget = (raw: string, pathname: string, headers?: [string, string][], 
     ...(headers === undefined ? {} : { headers }),
 });
 
-const readStmt = (target: UrlPath | null): ReadStatement => ({
-    op: "READ", suffix: "READ", signal: null, target, lineMarker: null, body: null,
+const readStmt = (target: UrlPath | null, lineMarker: ReadStatement["lineMarker"] = null): ReadStatement => ({
+    op: "READ", suffix: "READ", signal: null, target, lineMarker, body: null,
     position: { line: 0, column: 0 },
 });
 const sendStmt = (signal: number, target: UrlPath | null, body?: string): SendStatement => ({
@@ -207,6 +211,36 @@ test("READ: streams response body into the body channel and closes done", async 
     assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
     assert.equal(closed?.reason, "done");
     assert.match(closed?.outcome ?? "", /HTTP 200; \d+ bytes/);
+});
+
+test("scoped READ observes the materialized readable entry without refetching", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry("complete page", "text/markdown", ""));
+    let fetched = false;
+    await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
+        const statement = readStmt(urlTarget("https://example.com/x", "/x"), { marks: [2, 4] });
+        const result = await new Http().read(statement, ctx);
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "selected lines");
+        assert.equal(inspect().observedRead, statement, "the standard entry reader owns scope semantics");
+    });
+    assert.equal(fetched, false, "a range observation never re-enters the network path");
+    assert.equal(inspect().wrote, null, "the materialized entry is not replaced with a stream seed");
+    assert.equal(inspect().opened, null, "no subscription is opened for a stored range");
+});
+
+test("scoped READ fails clearly when no readable response has been materialized", async () => {
+    const { ctx, inspect } = makeCtx();
+    let fetched = false;
+    await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
+        const result = await new Http().read(
+            readStmt(urlTarget("https://example.com/x", "/x"), { marks: [2, 4] }),
+            ctx,
+        );
+        assert.equal(result.status, 409);
+        assert.match(JSON.stringify(result.error), /READ the URL without <scope> first/);
+    });
+    assert.equal(fetched, false);
+    assert.equal(inspect().opened, null);
 });
 
 test("READ: an explicit auxiliary fragment publishes that channel instead", async () => {
