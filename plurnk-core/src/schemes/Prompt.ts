@@ -1,8 +1,5 @@
-import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { EntryEditResult, EntryFindResult, EntryReadResult, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
 import type { EditStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-grammar";
-import EntryCrud from "./_entry-crud.ts";
-import type { ReadEntryResult } from "./_entry-crud.ts";
 
 // prompt:// — the worker's own task frames ({§prompt-self-only}, #527): each loop's prompt at
 // prompt:///<loopSeq>/<turnSeq>, owned by the worker via owner_id — the address carries only the
@@ -39,10 +36,5 @@ export default class Prompt implements SchemeHandler {
 
     async find(statement: FindStatement, ctx: SchemeCtx): Promise<EntryFindResult> {
         return ctx.entries.operations.find(statement, "worker");
-    }
-
-    // COPY source / engine readers — the caller's own frame.
-    async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        return EntryCrud.readEntry(pathname, ctx, Prompt.manifest.name, ctx.workerId);
     }
 }

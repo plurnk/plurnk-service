@@ -123,6 +123,40 @@ export default class Dispatcher {
     // workspace → project_root, memoized: {§fs-namespace} fixes the root immutably at
     // workspace creation, so a process-lifetime cache can never go stale.
     #rootCache = new Map<number, string | null>();
+
+    #entryContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
+        const manifest = this.#schemes.manifestFor(scheme);
+        return manifest?.category !== "data" ? null : new SchemeCtxImpl(ctx, scheme, manifest);
+    }
+
+    async #readEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
+        const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
+        if (typeof handler?.readEntry === "function") return handler.readEntry(pathname, ctx);
+        const caps = this.#entryContext(scheme, ctx)?.entries;
+        if (caps === undefined) return { status: 501, entry: null };
+        const result = await caps.read(pathname, scheme === "prompt" ? "worker" : "commons");
+        return {
+            status: result.status,
+            entry: result.entry === null
+                ? null
+                : { channels: { ...result.entry.channels }, tags: [...result.entry.tags] },
+        };
+    }
+
+    async #writeEntry(scheme: string, pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
+        const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
+        if (typeof handler?.writeEntry === "function") return handler.writeEntry(pathname, entry, ctx);
+        const caps = this.#entryContext(scheme, ctx)?.entries;
+        if (caps === undefined) return { status: 501, created: false, entryId: null };
+        return caps.write(pathname, entry);
+    }
+
+    async #deleteEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
+        const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
+        if (typeof handler?.deleteEntry === "function") return handler.deleteEntry(pathname, ctx);
+        const caps = this.#entryContext(scheme, ctx)?.entries;
+        return caps === undefined ? { status: 501 } : caps.delete(pathname);
+    }
     async #workspaceRoot(workspaceId: number): Promise<string | null> {
         if (this.#rootCache.has(workspaceId)) return this.#rootCache.get(workspaceId) ?? null;
         const row = await (this.#db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
@@ -259,8 +293,8 @@ export default class Dispatcher {
                 const moveSource = (result.attrs as { moveSource?: { scheme: string; pathname: string } } | undefined)?.moveSource;
                 if (moveSource !== undefined) {
                     const srcHandler = this.#schemes.get(moveSource.scheme) as (SchemeWithCrud & { applyResolution?: (a: { attrs: object }, c: PlurnkSchemeContext) => Promise<{ status: number }> }) | undefined;
-                    if (srcHandler !== undefined && typeof srcHandler.deleteEntry === "function") {
-                        const del = await srcHandler.deleteEntry(moveSource.pathname, schemeCtx);
+                    if (srcHandler !== undefined) {
+                        const del = await this.#deleteEntry(moveSource.scheme, moveSource.pathname, schemeCtx);
                         // A host-effecting source-delete PROPOSES (202); the MOVE proposal already gated the whole
                         // create+kill, so apply the source-delete now — never raise a second review for one MOVE.
                         if (del.status === 202 && del.attrs !== undefined && typeof srcHandler.applyResolution === "function") await srcHandler.applyResolution({ attrs: del.attrs }, schemeCtx);
@@ -531,8 +565,7 @@ export default class Dispatcher {
 
         const srcSchemeName = schemeNameOf(srcPath);
         if (srcSchemeName === null) return { status: 400, error: "MOVE source must be a URL path with a scheme" };
-        const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
-        if (srcHandler === undefined || typeof srcHandler.deleteEntry !== "function") return { status: 501 };
+        if (!this.#schemes.has(srcSchemeName)) return { status: 501 };
 
         // Relocation: COPY then DELETE source (§move-relocation-deletes-source).
         const copyResult = await this.#copyOrchestration({ statement, srcPath, dstPath, ctx });
@@ -545,7 +578,7 @@ export default class Dispatcher {
         if (copyResult.status === 202) {
             return { ...copyResult, attrs: { ...(copyResult.attrs as Record<string, unknown>), moveSource: { scheme: srcSchemeName, pathname: srcPathname } } };
         }
-        const delResult = await srcHandler.deleteEntry(srcPathname, ctx);
+        const delResult = await this.#deleteEntry(srcSchemeName, srcPathname, ctx);
         if (delResult.status >= 400) return { status: delResult.status };
         return copyResult;
     }
@@ -607,11 +640,10 @@ export default class Dispatcher {
             this.#cancelWorker(workerId);
             return { status: 200 };
         }
-        const handler = this.#schemes.get(schemeName) as SchemeWithCrud | undefined;
-        if (handler === undefined || typeof handler.deleteEntry !== "function") return { status: 501 };
+        if (!this.#schemes.has(schemeName)) return { status: 501 };
         // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
         // carries the delete target to review (§isProposal fires on 202). Plurnk-internal deletes execute inline.
-        const delResult = await handler.deleteEntry(pathnameFromPath(path), ctx);
+        const delResult = await this.#deleteEntry(schemeName, pathnameFromPath(path), ctx);
         return delResult.attrs !== undefined ? { status: delResult.status, attrs: delResult.attrs } : { status: delResult.status };
     }
 
@@ -830,24 +862,21 @@ export default class Dispatcher {
             }
         }
 
-        const srcHandler = this.#schemes.get(srcSchemeName) as SchemeWithCrud | undefined;
-        const dstHandler = this.#schemes.get(dstSchemeName) as SchemeWithCrud | undefined;
+        const srcHandler = this.#schemes.get(srcSchemeName);
+        const dstHandler = this.#schemes.get(dstSchemeName);
         if (srcHandler === undefined || dstHandler === undefined) return { status: 501 };
-        if (typeof srcHandler.readEntry !== "function" || typeof dstHandler.writeEntry !== "function") return { status: 501 };
 
         const srcPathname = pathnameFromPath(srcPath);
         const dstPathname = pathnameFromPath(dstPath);
 
-        const srcResult = await srcHandler.readEntry(srcPathname, ctx);
+        const srcResult = await this.#readEntry(srcSchemeName, srcPathname, ctx);
         if (srcResult.status !== 200 || srcResult.entry === null) return { status: 404, error: `COPY/MOVE source not found: ${srcSchemeName}://${srcPathname}` };  // §copy-missing-source-404 §move-missing-source-404
         const entry = srcResult.entry;
 
         // Destination read — the conflict/no-op verdict is deferred until the
         // to-be-written content is known (after <L> slice + tag resolution below),
         // so an identical re-copy resolves to 304 instead of a phantom 409.
-        const dstExisting = typeof dstHandler.readEntry === "function"
-            ? await dstHandler.readEntry(dstPathname, ctx)
-            : null;
+        const dstExisting = await this.#readEntry(dstSchemeName, dstPathname, ctx);
 
         // Mimetype compatibility check against the destination scheme's manifest
         const dstManifest = (dstHandler.constructor as { manifest?: SchemeManifest }).manifest;
@@ -898,7 +927,7 @@ export default class Dispatcher {
             return { status: 409, error: `COPY/MOVE destination exists: ${dstSchemeName}://${dstPathname}` };  // §copy-conflict-409
         }
 
-        const writeResult = await dstHandler.writeEntry(dstPathname, { channels, tags }, ctx);
+        const writeResult = await this.#writeEntry(dstSchemeName, dstPathname, { channels, tags }, ctx);
         // A file dest returns 202 (disk write → §membership review): propagate the
         // proposal so dispatch runs the gate + routes applyResolution to the dest.
         if (writeResult.status === 202) return { status: 202, attrs: writeResult.attrs, body: writeResult.body };

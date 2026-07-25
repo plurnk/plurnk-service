@@ -17,6 +17,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import Paths from "../Paths.ts";
 import { docsExcludeSet } from "./teaching.ts";
+import type { CoreSchemeAdapter, CoreSchemeServices } from "./CoreSchemeServices.ts";
 
 // The in-tree CORE-scheme depth (run/known/unknown/log) lives in the docs corpus (docs/)
 // (Paths.schemeDocs), NOT inline — the docs agent owns the prose; loaded once at module eval.
@@ -64,6 +65,13 @@ export default class SchemeRegistry {
     register(name: string, handler: object): void {
         if (this.#handlers.has(name)) throw new Error(`scheme '${name}' is already registered`);
         this.#handlers.set(name, handler);
+    }
+
+    bindCore(services: CoreSchemeServices): void {
+        for (const handler of new Set(this.#handlers.values())) {
+            const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
+            if (typeof bindCore === "function") bindCore.call(handler, services);
+        }
     }
 
     // §exec / #240 — exec OUTPUT entries address by their runtime TAG as authority

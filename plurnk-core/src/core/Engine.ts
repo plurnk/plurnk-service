@@ -339,6 +339,16 @@ export default class Engine {
         const executors = (): ExecutorRegistry | undefined => this.#executors;
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopAborts.get(loopId)?.signal;
         this.#telemetry = new TelemetryChannel({ db, notify: telemetryEventNotify });
+        schemes.bindCore({
+            db,
+            mimetypes: this.#mimetypes,
+            executors,
+            tokenize: this.#tokenize,
+            streamEventNotify,
+            wakeWorkerNotify,
+            injectWorker,
+            pushTelemetry: (workspaceId, loopId, event) => this.#telemetry.push(workspaceId, loopId, event),
+        });
         this.#strikes = new StrikeRail();
         this.#packets = new PacketBuilder({ db, schemes, telemetry: this.#telemetry, executors });
         this.#proposals = new ProposalLifecycle({
