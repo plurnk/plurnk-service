@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
+import { insertLoop, insertTurn, insertWorker } from "./_helpers.ts";
 
 type LoopRow = { id: number; status: number; terminal_message: string | null; terminated_by: string | null };
 
@@ -77,6 +78,56 @@ test("cancelling a PARKED (202) loop terminalizes it — no dead-park at 202 for
             assert.equal(row!.terminal_message, "shutting down the request");
             const sh = await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" });
             assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere (§notifications-stream-concluded)
+        } finally { ws.close(); }
+    });
+});
+
+test("external cancellation terminalizes the complete durable subtree and emits each loop's turns", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [] });
+    await withDaemon(mock, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-tree" });
+            const workspaceId = (created.result as { id: number }).id;
+            const root = await insertWorker(db, workspaceId, null, "root");
+            const rootLoop = await insertLoop(db, root, 1, "root");
+            const rootTurn = await insertTurn(db, rootLoop, 1, 102);
+            const child = await insertWorker(db, workspaceId, root, "child");
+            const childLoop = await insertLoop(db, child, 1, "child");
+            const childTurn = await insertTurn(db, childLoop, 1, 102);
+            const grandchild = await insertWorker(db, workspaceId, child, "grandchild");
+            const grandchildLoop = await insertLoop(db, grandchild, 1, "grandchild");
+            const grandchildTurn = await insertTurn(db, grandchildLoop, 1, 102);
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+
+            assert.equal(daemon.cancelDrain(root, "operator cancelled the scope"), false,
+                "no process-local drain was active; durable cancellation still proceeds");
+
+            const rows = await waitForDb(
+                () => (db.test_list_loops_all as PrepMethod).all<LoopRow>({}),
+                (loops) => [rootLoop, childLoop, grandchildLoop].every((id) =>
+                    loops.some((loop) => loop.id === id && loop.status === 499)),
+            );
+            for (const loopId of [rootLoop, childLoop, grandchildLoop]) {
+                const row = rows.find(({ id }) => id === loopId);
+                assert.equal(row?.terminated_by, "cancel");
+                assert.equal(row?.terminal_message, "operator cancelled the scope");
+            }
+
+            const notes = await waitFor(
+                () => terminated() as Array<{ loopId: number; finalStatus: number; turnIds: number[] }>,
+                (events) => [rootLoop, childLoop, grandchildLoop].every((id) =>
+                    events.some((event) => event.loopId === id && event.finalStatus === 499)),
+            );
+            assert.deepEqual(
+                new Map(notes.map(({ loopId, turnIds }) => [loopId, turnIds])),
+                new Map([
+                    [rootLoop, [rootTurn]],
+                    [childLoop, [childTurn]],
+                    [grandchildLoop, [grandchildTurn]],
+                ]),
+                "each terminal event carries the turns belonging to that loop",
+            );
         } finally { ws.close(); }
     });
 });
