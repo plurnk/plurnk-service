@@ -234,7 +234,7 @@ export default class Module {
                 // (results would cross streams). Only a proposal-pause (this stream already
                 // terminated) hands off to the workspace binding, which the resume run rebinds.
                 if (!finished) {
-                    emit([...events, { type: EventType.RUN_FINISHED, threadId: input.threadId, runId: input.runId, outcome: { type: "success" } }]);
+                    this.#portal.finishThread(boundRun, events);
                     return;
                 }
                 this.#portal.finishRun(workspaceId, events);
@@ -246,7 +246,11 @@ export default class Module {
                 // not a timer, releases any deferral).
                 .then(async (outcome) => { await new Promise((r) => setImmediate(r)); finishAction(outcome); })
                 .catch((err: unknown) => finishAction({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-            req.on("close", finish);
+            res.on("close", () => {
+                if (finished) return;
+                this.#seam.cancelDrain(lifecycleWorkerId, "client_disconnected");
+                finish();
+            });
             return;
         }
 
@@ -254,7 +258,7 @@ export default class Module {
         // to the durable continuation before releasing the proposal.
         if (input.resume !== undefined) {
             await this.#portal.resolve(workspaceId, boundRun, input.resume);
-            req.on("close", finish); // client hangup on a resume just detaches; the loop already runs
+            res.on("close", finish); // client hangup on a resume just detaches; the loop already runs
             return;
         }
 
@@ -280,9 +284,9 @@ export default class Module {
         // A dropped SSE on a LIVE run cancels the loop (hangup is the abort). A worker we
         // finished ourselves — terminal event or proposal-terminate — leaves the engine
         // alone (the paused loop is exactly what the resume run needs).
-        req.on("close", () => {
+        res.on("close", () => {
             if (finished) return;
-            this.#seam.cancelDrain(workerId);
+            this.#seam.cancelDrain(workerId, "client_disconnected");
             finish();
         });
         } catch (err) {

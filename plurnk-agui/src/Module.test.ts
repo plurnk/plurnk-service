@@ -120,6 +120,86 @@ test("an action run executes via the seam: result custom + RUN_FINISHED, no loop
     } finally { await mod.close(); }
 });
 
+test("a streaming action remains open until its stream concludes", async () => {
+    const { seam, emit } = mockSeam();
+    let dispatched!: () => void;
+    const dispatchStarted = new Promise<void>((resolve) => { dispatched = resolve; });
+    let release!: () => void;
+    const dispatchReleased = new Promise<void>((resolve) => { release = resolve; });
+    seam.dispatchClientAction = async () => {
+        dispatched();
+        await dispatchReleased;
+        return [{ status: 200 }];
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        let settled = false;
+        const run = openStream(mod.address().port, {
+            threadId: "streaming-action",
+            runId: "streaming-action-run",
+            forwardedProps: { plurnk: { workspace: "streaming-action", action: { kind: "op.exec", command: "printf done" } } },
+        }).then((events) => {
+            settled = true;
+            return events;
+        });
+
+        await dispatchStarted;
+        emit(3, "stream/event", { entryId: 81, scheme: "sh", channel: "stdout", state: "active", contentLength: 4 });
+        release();
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(settled, false, "the action result cannot terminate its AG-UI run while its spawned stream is active");
+
+        emit(3, "stream/concluded", { entryId: 81, scheme: "sh", closeStatus: 200, summary: "done" });
+        const events = await run;
+        assert.equal(events.at(-1)?.type, "RUN_FINISHED");
+        assert.ok(events.some((event) => event.type === "CUSTOM" && (event as { name?: string }).name === "plurnk.action.result"));
+        assert.ok(events.some((event) => event.type === "ACTIVITY_SNAPSHOT" && (event as { messageId?: string }).messageId === "stream-81"));
+    } finally { await mod.close(); }
+});
+
+test("client hangup cancels an unfinished streaming action instead of detaching it", async () => {
+    const { seam, emit } = mockSeam();
+    let dispatched!: () => void;
+    const dispatchStarted = new Promise<void>((resolve) => { dispatched = resolve; });
+    let release!: () => void;
+    const dispatchReleased = new Promise<void>((resolve) => { release = resolve; });
+    let cancelled!: (value: { workerId: number; reason?: string }) => void;
+    const cancellation = new Promise<{ workerId: number; reason?: string }>((resolve) => { cancelled = resolve; });
+    seam.dispatchClientAction = async () => {
+        dispatched();
+        await dispatchReleased;
+        return [{ status: 200 }];
+    };
+    seam.cancelDrain = (workerId, reason) => {
+        cancelled({ workerId, ...(reason !== undefined ? { reason } : {}) });
+        return true;
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
+    try {
+        const ac = new AbortController();
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            signal: ac.signal,
+            body: JSON.stringify(standardInput({
+                threadId: "abandoned-action",
+                runId: "abandoned-action-run",
+                forwardedProps: { plurnk: { workspace: "abandoned-action", action: { kind: "op.exec", command: "sleep 60" } } },
+            })),
+        });
+        assert.equal(response.status, 200);
+        const body = response.text();
+        await dispatchStarted;
+        emit(3, "stream/event", { entryId: 82, scheme: "sh", channel: "stdout", state: "active", contentLength: 1 });
+        release();
+        await new Promise((resolve) => setImmediate(resolve));
+        ac.abort();
+        await assert.rejects(body, { name: "AbortError" });
+        assert.deepEqual(await cancellation, { workerId: 10, reason: "client_disconnected" });
+    } finally { await mod.close(); }
+});
+
 test("a standard resume resolves the paused proposal without driving a new loop", async () => {
     const { seam, resolves } = mockSeam();
     seam.pendingProposals = async () => [{ logEntryId: 42, workerId: 77, loopId: 1, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }];

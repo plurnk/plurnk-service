@@ -114,7 +114,11 @@ no side-channel RPC endpoint; the worker envelope is the whole interface. Unknow
 error honestly (`ok:false`). `loop.inject` rides this surface; its steered effect
 streams on the original worker's open SSE. `loop.cancel` is its counterpart — it aborts
 the model worker's active drain (the addressable spelling of the SSE-hangup abort; both
-clients' stop controls ride it).
+clients' stop controls ride it). An action that opens a stream remains one live AG-UI run:
+its result is held until every observed stream emits `stream/concluded`, then the result
+and `RUN_FINISHED` close that same run. A client disconnect before settlement cancels the
+action worker with reason `client_disconnected`; it never silently converts the action
+into detached background work.
 
 ## Topology scope {§agui-topology-scope}
 

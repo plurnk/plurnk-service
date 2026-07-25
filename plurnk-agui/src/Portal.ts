@@ -63,7 +63,7 @@ export default class Portal {
                 if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
                     const deferred = thread.deferredFinish;
                     thread.deferredFinish = null;
-                    thread.emit([...deferred, { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } }]);
+                    this.#finishThread(thread, deferred);
                 }
             }
         });
@@ -109,14 +109,26 @@ export default class Portal {
 
     closeRun(workspaceId: number, t: unknown): void { this.#threads.get(workspaceId)?.delete(t as Thread); }
 
+    #finishThread(thread: Thread, events: AguiEvent[]): void {
+        thread.emit([...events, { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } }]);
+    }
+
+    finishThread(thread: unknown, events: AguiEvent[]): void {
+        const bound = thread as Thread;
+        if (bound.openStreams.size > 0) {
+            bound.deferredFinish = events;
+            return;
+        }
+        this.#finishThread(bound, events);
+    }
+
     // Emit extra events + RUN_FINISHED through the workspace's CURRENT thread binding —
     // an action that paused on a proposal completes AFTER the resume run rebound the
     // stream, so its result must ride whichever response is live now, never the
     // closure of the request that spawned it.
     finishRun(workspaceId: number, events: AguiEvent[]): void {
         for (const t of this.#threads.get(workspaceId) ?? []) {
-            if (t.openStreams.size > 0) { t.deferredFinish = events; continue; } // defer past live streams (event-driven, no timer)
-            t.emit([...events, { type: EventType.RUN_FINISHED, threadId: t.threadId, runId: t.inputRunId, outcome: { type: "success" } }]);
+            this.finishThread(t, events);
         }
     }
 
