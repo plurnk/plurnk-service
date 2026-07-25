@@ -51,3 +51,12 @@ Plurnk sees what git sees. The model's file surface is defined by three external
 Run the root monorepo commands for deterministic lint, unit, and integration
 coverage. Live-model, demo, and installation tests declare their external
 requirements separately.
+
+For manual client/service drills, create the modest standalone project used by
+the demos instead of digesting this monorepo:
+
+```sh
+npm run fixture:demo -w plurnk-core -- <label>
+```
+
+The command prints the temporary project path. The caller removes it when done.

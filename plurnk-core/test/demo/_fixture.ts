@@ -110,3 +110,12 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
         },
     };
 };
+
+// Developer entrypoint: create the same modest, standalone git project used by
+// live demos and print its path. This keeps client/service theory drills from
+// accidentally digesting the platform monorepo. The caller owns cleanup.
+if (import.meta.main) {
+    const label = process.argv[2] ?? "manual";
+    const fixture = await seedDemoFixture(label);
+    process.stdout.write(`${fixture.workspace}\n`);
+}
