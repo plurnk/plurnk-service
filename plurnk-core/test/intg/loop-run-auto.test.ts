@@ -29,7 +29,7 @@ class ProposingTest {
         volatile: false,
         modelVisible: true,
     };
-    async edit(): Promise<{ status: number; attrs: object; body: string }> {
+    async editBatch(): Promise<{ status: number; attrs: object; body: string }> {
         return {
             status: 202,
             body: "--- proposed-test\n+++ proposed-test\n@@ +x @@",

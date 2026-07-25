@@ -221,7 +221,9 @@ export default class File extends CoreSchemeAdapterBase {
     // with a udiff body for client review + attrs carrying the full patched
     // content. Engine writes the proposed log entry, pauses dispatch, and
     // calls applyResolution() (below) after the proposal accepts.
-    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
+    async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+        const statement = statements[0];
+        if (statement === undefined) return { status: 400, error: "EDIT batch is empty" };
         const core = this.coreContext(ctx);
         if (statement.target === null) return { status: 400, error: "EDIT requires a path" };
         const pathname = statement.target.kind === "regex" ? statement.target.raw
@@ -229,6 +231,13 @@ export default class File extends CoreSchemeAdapterBase {
         const target = await this.#resolveWriteTarget(pathname, core);
         if (!target.ok) return { status: target.status, error: target.error };
         const { canonical, rel, fileExists, original, mimetype, baseSig, admittedBy } = target;
+        for (const candidate of statements.slice(1)) {
+            if (candidate.target === null) return { status: 400, error: "EDIT batch spans multiple resources" };
+            const candidatePathname = candidate.target.kind === "regex" ? candidate.target.raw
+                : decodePathParens(candidate.target.kind === "url" ? candidate.target.pathname : candidate.target.raw);
+            const candidateTarget = await this.#resolveWriteTarget(candidatePathname, core);
+            if (!candidateTarget.ok || candidateTarget.rel !== rel) return { status: 400, error: "EDIT batch spans multiple resources" };
+        }
 
         // `<L>` line marker dispatches on file mimetype: JSON →
         // LineMarkerOps.applyJsonItemEdit (structural item edit); otherwise →
@@ -240,21 +249,26 @@ export default class File extends CoreSchemeAdapterBase {
         // in the body, not the marker slot) silently replaced a 1,693-line file with 2 —
         // the model's own subsequent reads told it so, repeatedly, and it never noticed.
         // Refusing the omission converts a silent accident into a loud, immediate one.
-        const body = statement.body ?? "";
         let patched: string;
         if (fileExists) {
-            if (statement.lineMarker === null) return { status: 400, error: "EDIT of an existing file requires a line marker — use <1,-1> to replace the whole file deliberately" };
+            if (statements.some(({ lineMarker }) => lineMarker === null)) return { status: 400, error: "EDIT of an existing file requires a line marker — use <1,-1> to replace the whole file deliberately" };
+            const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
             const result = MimetypeBinary.isJsonMimetype(mimetype)
-                ? LineMarkerOps.applyJsonItemEdit(original, statement.lineMarker, body)
-                : LineMarkerOps.applyLineMarkerEdit(original, statement.lineMarker, body);
+                ? LineMarkerOps.applyJsonItemEditBatch(original, edits)
+                : LineMarkerOps.applyLineMarkerEditBatch(original, edits);
             if (result.status !== 200) return { status: result.status, error: result.error };
             patched = result.result ?? "";
         } else {
-            patched = body;
+            if (statements.length !== 1) return { status: 409, error: "creation cannot coexist with another EDIT" };
+            patched = statement.body ?? "";
         }
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
         return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched, span: editedSpan(original, patched), baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) } };
+    }
+
+    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
+        return this.editBatch([statement], ctx);
     }
 
     // COPY/MOVE INTO file:/// — the dest write. Same §membership gate as edit, same 202

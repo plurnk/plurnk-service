@@ -78,7 +78,9 @@ export default class EntryOps {
         return Owner.commonsId(ctx.db, ctx.workspaceId);
     }
 
-    static async editWorkspaceEntry(statement: EditStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<EditResult> {
+    static async editWorkspaceEntryBatch(statements: readonly EditStatement[], ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<EditResult> {
+        const statement = statements[0];
+        if (statement === undefined) return { status: 400, entryId: null, channel: null, error: "EDIT batch is empty" };
         if (statement.target === null) return { status: 400, entryId: null, channel: null };
 
         const { db, workspaceId } = ctx;
@@ -88,6 +90,13 @@ export default class EntryOps {
         const pathname = EntryOps.#pathnameOf(statement);
         const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
         if (targetChannel === null) return { status: 400, entryId: null, channel: null, error: EntryOps.#channelMissFact(fragment, scheme, pathname, channels, defaultChannel) };
+        for (const candidate of statements.slice(1)) {
+            if (candidate.target === null
+                || EntryOps.#pathnameOf(candidate) !== pathname
+                || EntryOps.#fragmentOf(candidate) !== fragment) {
+                return { status: 400, entryId: null, channel: targetChannel, error: "EDIT batch spans multiple resources or channels" };
+            }
+        }
 
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
         const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
@@ -115,8 +124,6 @@ export default class EntryOps {
             return { status: 415, entryId: existing?.id ?? null, channel: targetChannel };
         }
 
-        const body = statement.body ?? "";  // null clears — §edit-null-clears
-
         // Read current content unconditionally for diff generation (M.12 —
         // surface diff in EDIT response so wrong-marker mistakes are visible).
         let originalContent = "";
@@ -133,17 +140,24 @@ export default class EntryOps {
         // EXISTING entry has no easy-clobber path: a marker is REQUIRED, even for a
         // deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;
-        if (existing !== undefined && statement.lineMarker === null) {
+        if (existing !== undefined && statements.some(({ lineMarker }) => lineMarker === null)) {
             return { status: 400, entryId: existing.id, channel: targetChannel, error: "EDIT of an existing entry requires a line marker — use <1,-1> to replace the whole entry deliberately" };
         }
-        if (statement.lineMarker !== null && existing !== undefined) {
+        if (existing !== undefined) {
+            const edits = statements.map((candidate) => ({
+                marker: candidate.lineMarker!,
+                body: candidate.body ?? "",
+            }));
             const result = MimetypeBinary.isJsonMimetype(effectiveMimetype)
-                ? LineMarkerOps.applyJsonItemEdit(originalContent, statement.lineMarker, body)
-                : LineMarkerOps.applyLineMarkerEdit(originalContent, statement.lineMarker, body);
-            if (result.status !== 200) return { status: result.status, entryId: existing.id, channel: targetChannel };
+                ? LineMarkerOps.applyJsonItemEditBatch(originalContent, edits)
+                : LineMarkerOps.applyLineMarkerEditBatch(originalContent, edits);
+            if (result.status !== 200) return { status: result.status, entryId: existing.id, channel: targetChannel, error: result.error };
             newContent = result.result ?? "";
         } else {
-            newContent = body;
+            if (statements.length !== 1) {
+                return { status: 409, entryId: null, channel: targetChannel, error: "creation cannot coexist with another EDIT" };
+            }
+            newContent = statement.body ?? "";
         }
 
         // 304 no-op (SPEC §edit): an existing entry whose write would change nothing —
@@ -151,7 +165,7 @@ export default class EntryOps {
         // model a "you already did this" signal instead of a phantom 200 it can't
         // distinguish from a real update.
         if (existing !== undefined && newContent === originalContent) {
-            const signalTags = Array.isArray(statement.signal) ? statement.signal : [];
+            const signalTags = statements.flatMap(({ signal }) => Array.isArray(signal) ? signal : []);
             let addsTag = false;
             if (signalTags.length > 0) {
                 const have = new Set(
@@ -181,8 +195,9 @@ export default class EntryOps {
         // built engine-side at manifest-add (EntryManifest.buildManifestBody).
 
         // Tags apply additively — each signal tag is written, never replacing existing ones. §edit-tags-additive
-        if (Array.isArray(statement.signal)) {
-            for (const tag of statement.signal) {
+        for (const candidate of statements) {
+            if (!Array.isArray(candidate.signal)) continue;
+            for (const tag of candidate.signal) {
                 await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
             }
         }

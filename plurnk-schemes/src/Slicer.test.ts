@@ -432,3 +432,40 @@ test("applyJsonItemEdit: out-of-range position → 416", () => {
     const r = Slicer.jsonItemEdit('["a","b"]', { marks: [99] }, '"x"');
     assert.equal(r.status, 416);
 });
+
+test("lineMarkerEditBatch applies disjoint ranges against one snapshot", () => {
+    const r = Slicer.lineMarkerEditBatch("one\ntwo\nthree\nfour\n", [
+        { marker: { marks: [2] }, body: "TWO\n2.5" },
+        { marker: { marks: [4] }, body: "FOUR" },
+    ]);
+    assert.equal(r.status, 200);
+    assert.equal(r.result, "one\nTWO\n2.5\nthree\nFOUR\n");
+});
+
+test("lineMarkerEditBatch rejects overlap without producing a partial result", () => {
+    const r = Slicer.lineMarkerEditBatch("one\ntwo\nthree\nfour\n", [
+        { marker: { marks: [2, 3] }, body: "middle" },
+        { marker: { marks: [3, 4] }, body: "tail" },
+    ]);
+    assert.equal(r.status, 409);
+    assert.match(r.error ?? "", /overlap/);
+    assert.equal(r.result, undefined);
+});
+
+test("lineMarkerEditBatch rejects whole-resource replacement mixed with another edit", () => {
+    const r = Slicer.lineMarkerEditBatch("one\ntwo\n", [
+        { marker: { marks: [1, -1] }, body: "all" },
+        { marker: { marks: [-1] }, body: "tail" },
+    ]);
+    assert.equal(r.status, 409);
+    assert.match(r.error ?? "", /whole-resource/);
+});
+
+test("jsonItemEditBatch preserves original item coordinates", () => {
+    const r = Slicer.jsonItemEditBatch('["a","b","c","d"]', [
+        { marker: { marks: [2] }, body: '["B","B2"]' },
+        { marker: { marks: [4] }, body: '"D"' },
+    ]);
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.result ?? ""), ["a", "B", "B2", "c", "D"]);
+});

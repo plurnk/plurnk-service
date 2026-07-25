@@ -86,7 +86,9 @@ export default class Worker extends CoreSchemeAdapterBase {
         return { ...statement, target: { ...t, hostname: null } };
     }
 
-    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult & { error?: string }> {
+    async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult & { error?: string }> {
+        const statement = statements[0];
+        if (statement === undefined) return { status: 400, entryId: null, channel: null, error: "EDIT batch is empty" };
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
         if (authority === null) return { status: 400, entryId: null, channel: null, error: "worker:// requires a worker target" };
@@ -99,7 +101,14 @@ export default class Worker extends CoreSchemeAdapterBase {
         const resolved = await Worker.#resolveAuthority(authority, core);
         if (resolved === null) return { status: 404, entryId: null, channel: null, error: `worker://${authority} not found` };
         if (!resolved.writable) return { status: 403, entryId: null, channel: null, error: "a named worker's space is read-only — write to worker:///... (the commons) or worker://~/... (your own)" };
-        return EntryOps.editWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
+        if (statements.some((candidate) => Worker.#authority(candidate.target) !== authority)) {
+            return { status: 400, entryId: null, channel: null, error: "EDIT batch spans multiple worker spaces" };
+        }
+        return EntryOps.editWorkspaceEntryBatch(statements.map((candidate) => Worker.#stripAuthority(candidate)), core, Worker.manifest, resolved.ownerId);
+    }
+
+    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult & { error?: string }> {
+        return this.editBatch([statement], ctx);
     }
 
     // KILL an ENTRY (path present). Same write-scoping as EDIT: self + commons only. The

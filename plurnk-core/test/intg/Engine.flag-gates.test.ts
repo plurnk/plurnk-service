@@ -32,7 +32,7 @@ class SideEffectingScheme {
         modelVisible: true,
         flags: { excludedInAsk: true },
     };
-    async edit(): Promise<{ status: number }> {
+    async editBatch(): Promise<{ status: number }> {
         return { status: 201 };
     }
 }

@@ -1,5 +1,5 @@
-// #360 — the per-turn world model is synchronized: a write is visible to reads in the SAME
-// turn (ops dispatch sequentially against live state, never a turn-start snapshot). Pinned
+// #360/#619 — the per-turn world model is synchronized: MODE schedules observations after
+// settled mutations, irrespective of their authored position. Pinned
 // after a requiem confabulated a desync (run39): the model stitched the turn-1 init-foist
 // FIND (items:0, correct — pre-write) to its later EDIT[201] and testified they were one turn.
 import test from "node:test";
@@ -28,6 +28,27 @@ test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME 
             const rx = JSON.parse(modelFind[0].rx ?? "{}") as { content?: string };
             assert.match(rx.content ?? "", /module-loader-spec/,
                 "the just-EDITed entry is visible to the SAME-turn FIND — writes land before subsequent ops read");
+        } finally { ws.close(); }
+    });
+});
+
+test("MODE batches same-resource EDITs against one snapshot before an authored-earlier READ (#619)", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("<<PLAN:create fixture:PLAN\n<<EDIT(worker:///mode.md):one\ntwo\nthree\nfour:EDIT\n<<SEND[102]:fixture created:SEND", 10),
+        makeMockResponse("<<PLAN:observe the settled edits:PLAN\n<<READ(worker:///mode.md)::READ\n<<EDIT(worker:///mode.md)<2>:TWO\n2.5:EDIT\n<<EDIT(worker:///mode.md)<4>:FOUR:EDIT\n<<SEND[102]:mutated and observed:SEND", 10),
+        makeMockResponse("<<PLAN:conclude:PLAN\n<<SEND[200]:done:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "mode-batch" });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            assert.equal(result.finalStatus, 200);
+            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
+            const reads = rows.filter((row) => row.op === "READ" && row.origin === "model");
+            assert.equal(reads.length, 1);
+            const receipt = JSON.parse(reads[0].rx) as { content?: string };
+            assert.equal(receipt.content, "one\nTWO\n2.5\nthree\nFOUR");
         } finally { ws.close(); }
     });
 });

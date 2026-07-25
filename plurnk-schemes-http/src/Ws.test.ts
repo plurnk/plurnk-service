@@ -46,7 +46,7 @@ const makeCtx = () => {
 
     const entries: EntryCaps = {
         operations: {
-            async edit() { return { status: 501, entryId: null, channel: null }; },
+            async editBatch() { return { status: 501, entryId: null, channel: null }; },
             async read() { return { status: 501, content: null, mimetype: null, channel: null }; },
             async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] }; },
             async send() { return { status: 501 }; },

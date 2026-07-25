@@ -112,7 +112,11 @@ export default class Http implements SchemeHandler {
 
     // EDIT → PUT the body (full-resource replace). `<L>` has no meaning against a
     // remote resource — reject rather than silently ignore the model's intent.
-    async edit(statement: EditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
+        if (statements.length !== 1) {
+            return Http.#bad(409, "http", "non_atomic_edit_batch", "multiple EDITs of one remote resource cannot be committed atomically");
+        }
+        const statement = statements[0];
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad_target", "EDIT requires an http(s):// URL target");
         }
@@ -120,6 +124,10 @@ export default class Http implements SchemeHandler {
             return Http.#bad(400, "http", "no_line_edit", "EDIT on http PUTs the whole body; <L> line-editing a remote resource is unsupported");
         }
         return this.#fetchStream(statement.target, ctx, "PUT", statement.body ?? "");
+    }
+
+    async edit(statement: EditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+        return this.editBatch([statement], ctx);
     }
 
     // KILL → DELETE the resource. Distinct from SEND[410] (which drops the local

@@ -1349,6 +1349,14 @@ export default class Engine {
                 || realCommands++ < maxCommands,
         );
         const opsToDispatch = scheduleTurnOps(admittedOps);
+        await this.#dispatcher.prepareEditBatches(
+            opsToDispatch.filter((statement): statement is EditStatement => statement.op === "EDIT"),
+            {
+                workspaceId, workerId, loopId, turnId,
+                origin, onDispatch,
+                turnParseErrors: parseErrors?.length ?? 0,
+            },
+        );
         // A broken packet's ops aren't max_commands drops — they're refused wholesale, and the
         // output_truncated 413 already tells the model why; don't also mint max_commands_exceeded.
         const droppedCount = brokenPacket ? 0 : opsCount - opsToDispatch.length;
@@ -1358,7 +1366,7 @@ export default class Engine {
         // every op writes one row (the common case).
         let rowSeq = nextActionIndex;
         for (const statement of opsToDispatch) {
-            const result = await this.dispatch({
+            const result = await this.#dispatcher.dispatch({
                 statement, workspaceId, workerId, loopId, turnId,
                 sequence: rowSeq,
                 origin, onDispatch,
@@ -1699,6 +1707,10 @@ export default class Engine {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
+        if (context.statement.op === "EDIT") {
+            const { statement, sequence: _sequence, ...batchContext } = context;
+            await this.#dispatcher.prepareEditBatches([statement], batchContext);
+        }
         return this.#dispatcher.dispatch(context);
     }
 

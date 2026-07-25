@@ -17,8 +17,12 @@ export default class Skill implements SchemeHandler {
         folderScopes: true,
     };
 
+    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
+        return ctx.entries.operations.editBatch(statements);
+    }
+
     async edit(statement: EditStatement, ctx: SchemeCtx): Promise<EntryEditResult> {
-        return ctx.entries.operations.edit(statement);
+        return this.editBatch([statement], ctx);
     }
 
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<EntryReadResult> {

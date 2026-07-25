@@ -456,7 +456,7 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
             category: "data" as const, scope: "workspace" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
-        async edit() { throw new Error("scheme handler deliberately threw"); }
+        async editBatch() { throw new Error("scheme handler deliberately threw"); }
     }
     schemes.register("boom", new Boom());
     const engine = new Engine({ db, schemes });
@@ -488,7 +488,7 @@ test("Engine.dispatch: non-Error throw (string) → action-entry at 500 with str
             category: "data" as const, scope: "workspace" as const,
             writableBy: ["model" as const], volatile: false, modelVisible: true,
         };
-        async edit(): Promise<never> { throw "raw string thrown"; }
+        async editBatch(): Promise<never> { throw "raw string thrown"; }
     }
     schemes.register("boomstr", new BoomString());
     const engine = new Engine({ db, schemes });

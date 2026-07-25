@@ -27,6 +27,10 @@ interface NormalizedMarker {
 export interface SliceResult { status: number; text?: string; startLine?: number; error?: string }
 export interface JsonSliceResult { status: number; body?: string; error?: string }
 export interface EditResult { status: number; result?: string; error?: string }
+export interface BatchEdit {
+    readonly marker: LineMarker;
+    readonly body: string;
+}
 
 export default class Slicer {
     static #splitLines(content: string): { lines: string[]; trailingNewline: boolean } {
@@ -324,6 +328,74 @@ export default class Slicer {
         }
         let result = newLines.join("\n");
         if (newLines.length > 0 && trailingNewline) result += "\n";
+        return { status: 200, result };
+    }
+
+    static #batchOrder(edits: readonly BatchEdit[], total: number): { edits?: BatchEdit[]; error?: string; status?: number } {
+        if (edits.length === 0) return { edits: [] };
+        const regions: Array<{ edit: BatchEdit; start: number; end: number; insertion: boolean; whole: boolean }> = [];
+        for (const edit of edits) {
+            const norm = Slicer.#normalize(edit.marker, total);
+            if ("error" in norm) return { status: 416, error: norm.error };
+            const insertion = norm.kind !== "range";
+            const whole = norm.kind === "range" && norm.start === 1 && norm.end === total;
+            regions.push({ edit, start: norm.start, end: norm.end, insertion, whole });
+        }
+        if (regions.some(({ whole }) => whole) && regions.length > 1) {
+            return { status: 409, error: "whole-resource replacement cannot coexist with another EDIT" };
+        }
+        for (let i = 0; i < regions.length; i += 1) {
+            for (let j = i + 1; j < regions.length; j += 1) {
+                const a = regions[i];
+                const b = regions[j];
+                if (a.insertion && b.insertion && a.start === b.start) {
+                    return { status: 409, error: `multiple EDITs target insertion boundary ${a.start}` };
+                }
+                if (!a.insertion && !b.insertion && a.start <= b.end && b.start <= a.end) {
+                    return { status: 409, error: `EDIT ranges ${a.start},${a.end} and ${b.start},${b.end} overlap` };
+                }
+                if (a.insertion !== b.insertion) {
+                    const insertionRegion = a.insertion ? a : b;
+                    const rangeRegion = a.insertion ? b : a;
+                    if (insertionRegion.start >= rangeRegion.start && insertionRegion.start < rangeRegion.end) {
+                        return { status: 409, error: `EDIT insertion boundary ${insertionRegion.start} falls inside range ${rangeRegion.start},${rangeRegion.end}` };
+                    }
+                }
+            }
+        }
+        return {
+            edits: regions
+                .sort((a, b) => b.start - a.start || Number(a.insertion) - Number(b.insertion))
+                .map(({ edit }) => edit),
+        };
+    }
+
+    static lineMarkerEditBatch(content: string, edits: readonly BatchEdit[]): EditResult {
+        const total = Slicer.#splitLines(content).lines.length;
+        const ordered = Slicer.#batchOrder(edits, total);
+        if (ordered.error !== undefined) return { status: ordered.status ?? 409, error: ordered.error };
+        let result = content;
+        for (const edit of ordered.edits ?? []) {
+            const applied = Slicer.lineMarkerEdit(result, edit.marker, edit.body);
+            if (applied.status !== 200) return applied;
+            result = applied.result ?? "";
+        }
+        return { status: 200, result };
+    }
+
+    static jsonItemEditBatch(content: string, edits: readonly BatchEdit[]): EditResult {
+        let parsed: unknown;
+        try { parsed = JSON.parse(content); }
+        catch (err) { return { status: 400, error: `malformed JSON source: ${err instanceof Error ? err.message : String(err)}` }; }
+        const total = Slicer.#jsonValueToItems(parsed).length;
+        const ordered = Slicer.#batchOrder(edits, total);
+        if (ordered.error !== undefined) return { status: ordered.status ?? 409, error: ordered.error };
+        let result = content;
+        for (const edit of ordered.edits ?? []) {
+            const applied = Slicer.jsonItemEdit(result, edit.marker, edit.body);
+            if (applied.status !== 200) return applied;
+            result = applied.result ?? "";
+        }
         return { status: 200, result };
     }
 }

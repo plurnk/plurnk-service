@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-grammar";
-import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, ReadStatement } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, ReadStatement, EditStatement } from "@plurnk/plurnk-grammar";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db, PrepMethod } from "./Db.ts";
 import Owner from "./Owner.ts";
@@ -53,6 +53,12 @@ export type DispatchResult = { status: number; attrs?: object; [key: string]: un
 
 import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
+type PreparedEdit = {
+    readonly first: boolean;
+    readonly initial: DispatchResult;
+    readonly settled: Promise<DispatchResult>;
+    settle(result: DispatchResult): void;
+};
 
 interface SchemeWithCrud {
     readEntry?: (pathname: string, ctx: SchemeCtx) => Promise<ReadEntryResult>;
@@ -88,6 +94,7 @@ export default class Dispatcher {
     #joinTargets: Set<number>;
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
+    #preparedEdits = new WeakMap<EditStatement, PreparedEdit>();
 
     constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
@@ -191,7 +198,79 @@ export default class Dispatcher {
         if (key !== null) target.pathname = key;
     }
 
+    async prepareEditBatches(statements: readonly EditStatement[], context: Omit<DispatchContext, "statement" | "sequence">): Promise<void> {
+        const { workspaceId, workerId, loopId, turnId, origin } = context;
+        const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
+        const groups = new Map<string, EditStatement[]>();
+        for (const statement of statements) {
+            const target = this.#extractTarget(statement.target);
+            await this.#canonColumns(target, workspaceId);
+            const key = JSON.stringify([
+                schemeNameOf(statement.target),
+                target.scheme,
+                target.hostname,
+                target.pathname,
+                target.fragment,
+            ]);
+            const group = groups.get(key);
+            if (group === undefined) groups.set(key, [statement]);
+            else group.push(statement);
+        }
+        for (const group of groups.values()) {
+            const first = group[0];
+            const schemeName = schemeNameOf(first.target);
+            let initial: DispatchResult;
+            let denial = group.map((statement) => this.#checkWritable(statement, origin)).find((result) => result !== null) ?? null;
+            if (denial === null) {
+                for (const statement of group) {
+                    denial = await this.#checkFlagsGate(statement, loopId);
+                    if (denial !== null) break;
+                }
+            }
+            if (denial !== null) {
+                initial = denial;
+            } else if (schemeName === null) {
+                initial = { status: 400 };
+            } else {
+                const handler = this.#schemes.get(schemeName) as SchemeHandler | undefined;
+                const method = handler?.editBatch;
+                const manifest = this.#schemes.manifestFor(schemeName);
+                if (typeof method !== "function" || manifest === undefined) {
+                    initial = { status: 501 };
+                } else {
+                    try {
+                        const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
+                        initial = await method.call(handler, group, new SchemeCtxImpl(schemeCtx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions));
+                    } catch (err) {
+                        initial = { status: 500, error: err instanceof Error ? err.message : String(err) };
+                    }
+                }
+            }
+            let resolveSettled!: (result: DispatchResult) => void;
+            const settled = new Promise<DispatchResult>((resolve) => { resolveSettled = resolve; });
+            const prepared: PreparedEdit = {
+                first: true,
+                initial,
+                settled,
+                settle: resolveSettled,
+            };
+            this.#preparedEdits.set(first, prepared);
+            for (const statement of group.slice(1)) {
+                this.#preparedEdits.set(statement, { ...prepared, first: false });
+            }
+        }
+    }
+
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
+        const result = await this.#dispatchOne(context);
+        if (context.statement.op === "EDIT") {
+            const prepared = this.#preparedEdits.get(context.statement);
+            if (prepared?.first === true) prepared.settle(result);
+        }
+        return result;
+    }
+
+    async #dispatchOne(context: DispatchContext): Promise<DispatchResult> {
         const { statement, workspaceId, workerId, loopId, turnId, sequence, origin, onDispatch, turnParseErrors } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         let result: DispatchResult;
@@ -211,7 +290,14 @@ export default class Dispatcher {
             // skips it. Logging failures (#writeLog throws) are NOT caught —
             // those are system failures.
             try {
-                if (statement.op === "SEND" && statement.target === null) {
+                if (statement.op === "EDIT") {
+                    const prepared = this.#preparedEdits.get(statement);
+                    if (prepared === undefined) {
+                        result = { status: 500, error: "EDIT reached dispatch without a prepared resource batch" };
+                    } else {
+                        result = prepared.first ? prepared.initial : await prepared.settled;
+                    }
+                } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, turnParseErrors });
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleWorkerControl(statement, schemeCtx);

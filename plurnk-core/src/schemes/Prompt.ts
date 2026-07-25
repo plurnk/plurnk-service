@@ -26,8 +26,8 @@ export default class Prompt implements SchemeHandler {
 
     // The engine's foisted prompt EDIT (origin plurnk; the model is gated off by writableBy) —
     // the frame lands owner-keyed to the worker it addresses.
-    async edit(statement: EditStatement, ctx: SchemeCtx): Promise<EntryEditResult> {
-        return ctx.entries.operations.edit(statement, "worker");
+    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
+        return ctx.entries.operations.editBatch(statements, "worker");
     }
 
     async read(statement: ReadStatement, ctx: SchemeCtx): Promise<EntryReadResult> {

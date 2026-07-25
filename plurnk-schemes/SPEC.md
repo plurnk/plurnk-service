@@ -66,7 +66,7 @@ export interface SchemeHandler {
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     fold?(statement: FoldStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    edit?(statement: EditStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<SchemeResult>;
     copy?(statement: CopyStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -95,7 +95,7 @@ The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handl
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - Executor-scheme (RFC schemes#20 — "an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` → `ReadResolution` is the free `<L>`/matcher read over produced output (reuses `Slicer`/`Matcher`); `Summarize.summarize(content, mimetype)` → `OrientIndex` is the structural-only EXEC-receipt index (no content — universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal `{ status, ...schemeMetadata }` contract. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Their `error` is a grammar `TelemetryEvent`, present iff `status >= 400`. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
-- Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`, and typed standard-operation results.
+- Capability ctx (see §3.bis): `SchemeCtx` and its domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
 

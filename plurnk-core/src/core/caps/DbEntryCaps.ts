@@ -33,7 +33,7 @@ export default class DbEntryCaps implements EntryCaps {
         this.#scheme = scheme;
         this.#manifest = manifest;
         this.operations = {
-            edit: (statement, owner) => this.#edit(statement, owner),
+            editBatch: (statements, owner) => this.#editBatch(statements, owner),
             read: (statement, owner) => this.#read(statement, owner),
             find: (statement, owner) => this.#find(statement, owner),
             send: (statement, owner) => this.#send(statement, owner),
@@ -44,8 +44,8 @@ export default class DbEntryCaps implements EntryCaps {
         return owner === "worker" ? this.#ctx.workerId : undefined;
     }
 
-    async #edit(statement: EditStatement, owner?: EntryOwner): Promise<EntryEditResult> {
-        return { ...await EntryOps.editWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId(owner)) };
+    async #editBatch(statements: readonly EditStatement[], owner?: EntryOwner): Promise<EntryEditResult> {
+        return { ...await EntryOps.editWorkspaceEntryBatch(statements, this.#ctx, this.#manifest, this.#ownerId(owner)) };
     }
 
     async #read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult> {

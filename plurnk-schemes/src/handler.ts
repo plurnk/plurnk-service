@@ -59,7 +59,7 @@ export interface SchemeHandler {
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     fold?(statement: FoldStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    edit?(statement: EditStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<SchemeResult>;
     copy?(statement: CopyStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     move?(statement: MoveStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;

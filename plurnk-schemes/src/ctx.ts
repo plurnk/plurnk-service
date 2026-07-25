@@ -65,7 +65,7 @@ export interface EntryFindResult extends SchemeResult {
 }
 
 export interface EntryOperationCaps {
-    edit(statement: EditStatement, owner?: EntryOwner): Promise<EntryEditResult>;
+    editBatch(statements: readonly EditStatement[], owner?: EntryOwner): Promise<EntryEditResult>;
     read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult>;
     find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult>;
     send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult>;
