@@ -64,10 +64,10 @@
         "prepublishOnly": "npm outdated && npm audit --audit-level=moderate && npm test",
         "prepack": "npm run build"
     },
-    "dependencies": {
-        "playwright": "1.61.1"
-    },
     "peerDependencies": {
         "@plurnk/plurnk-schemes": "~1.2.0"
+    },
+    "dependencies": {
+        "playwright": "1.62.0"
     }
 }

@@ -84,7 +84,7 @@
         "@possumtech/sqlrite": "^6.5.0",
         "diff": "^9.0.0",
         "ignore": "7.0.6",
-        "isomorphic-git": "1.38.10"
+        "isomorphic-git": "1.40.0"
     },
     "devDependencies": {
         "@types/diff": "^7.0.2"

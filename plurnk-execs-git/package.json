@@ -60,7 +60,7 @@
         "prepublishOnly": "npm outdated && npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "isomorphic-git": "1.38.10"
+        "isomorphic-git": "1.40.0"
     },
     "peerDependencies": {
         "@plurnk/plurnk-execs": "~1.2.0"
