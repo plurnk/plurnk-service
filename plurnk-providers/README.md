@@ -38,7 +38,7 @@ A provider plugin may use any npm scope. Declare its identity:
     "name": "acme"
   },
   "peerDependencies": {
-    "@plurnk/plurnk-providers": "~1.2.0"
+    "@plurnk/plurnk-providers": "^1.2.0"
   }
 }
 ```

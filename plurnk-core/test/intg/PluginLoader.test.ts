@@ -168,12 +168,12 @@ test("an incompatible peer range refuses before import", async () => {
     const skewed: DiscoveredPlugin = {
         packageName: "@plurnk/plurnk-providers-nonexistent-skewed",  // unimportable — the throw MUST precede import
         packagePath: "/tmp/fake/skewed",
-        manifest: { kind: "provider", name: "skewed", builtAgainst: "1.0.5", compatibleWith: "~1.0.5" },
+        manifest: { kind: "provider", name: "skewed", builtAgainst: "2.0.0", compatibleWith: "^2.0.0" },
     };
     await assert.rejects(
         () => PluginLoader.loadPlugin(skewed),
         (e: Error) => {
-            assert.match(e.message, /supports ~1\.0\.5; loaded /, "the error names the compatibility range");
+            assert.match(e.message, /supports \^2\.0\.0; loaded /, "the error names the compatibility range");
             assert.ok(e.message.includes(head), "the skew names the loaded head");
             assert.doesNotMatch(e.message, /Cannot find|does not provide an export/, "refused BEFORE import — never the #512 detonation");
             return true;
@@ -203,11 +203,11 @@ test("discovery extracts compatibility and provenance", async () => {
     const dir = await makeTempNodeModules();
     try {
         await seedPackage(dir, "plurnk-providers-stamped", { kind: "provider", name: "stamped", builtAgainst: "1.2.0" } as never, {
-            peerDependencies: { "@plurnk/plurnk-providers": "~1.2.0" },
+            peerDependencies: { "@plurnk/plurnk-providers": "^1.2.0" },
         });
         const plugins = await PluginLoader.discoverPlugins(dir);
         assert.equal(plugins.length, 1);
         assert.equal(plugins[0].manifest.builtAgainst, "1.2.0");
-        assert.equal(plugins[0].manifest.compatibleWith, "~1.2.0");
+        assert.equal(plugins[0].manifest.compatibleWith, "^1.2.0");
     } finally { await rm(dir, { recursive: true, force: true }); }
 });

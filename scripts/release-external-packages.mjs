@@ -1,8 +1,8 @@
 // Align managed external packages after the monorepo publishes.
 //
-// Per registry entry (plurnk-meta/external-packages.json): verify current-minor compatibility plus exact
-// builtAgainst provenance. Compatible packages stay put across patches; an incompatible managed package
-// is realigned to the new minor, then `npm install` pulls the published head from the registry,
+// Per registry entry (plurnk-meta/external-packages.json): verify compatible-major dependency ranges plus
+// exact builtAgainst provenance. Compatible packages stay put; an incompatible managed package
+// is realigned to the current family head, then `npm install` pulls the published head from the registry,
 // then `npm publish` (runs the repo's OWN prepublishOnly gate in its own context — a red there halts
 // with the repo's real exit code, #505's lesson), then poll the registry until it serves. Same laws:
 // real exits, halt-on-red naming the repository and owner, and idempotency (a package already serving the version
@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
+import { caretRange, compatibleRange, exactVersion, supportsVersion } from "./release-compat.mjs";
 
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -44,24 +45,18 @@ const registryContractMatches = async (p) => {
         return false;
     }
 };
-const exact = (value) => /^(\d+)\.(\d+)\.(\d+)$/.exec(value ?? "");
-const tilde = (value) => /^~(\d+)\.(\d+)\.(\d+)$/.exec(value ?? "");
-const includes = (range, candidate) => {
-    const r = tilde(range); const v = exact(candidate);
-    return r !== null && v !== null && r[1] === v[1] && r[2] === v[2] && Number(v[3]) >= Number(r[3]);
-};
 const platformPins = (p) => ["dependencies", "peerDependencies"].flatMap((field) =>
     Object.entries(p[field] ?? {}).filter(([name]) => /^@plurnk\//.test(name)).map(([name, range]) => ({ field, name, range })));
 const contract = (p, hostVersion) => {
     const pins = platformPins(p);
     const builtAgainst = p.plurnk?.builtAgainst;
     const errors = [];
-    if (pins.length > 0 && exact(builtAgainst) === null) errors.push(`plurnk.builtAgainst must be an exact version (got ${JSON.stringify(builtAgainst)})`);
+    if (pins.length > 0 && exactVersion(builtAgainst) === null) errors.push(`plurnk.builtAgainst must be an exact version (got ${JSON.stringify(builtAgainst)})`);
     for (const { field, name, range } of pins) {
-        if (tilde(range) === null) errors.push(`${field}.${name} must use ~M.m.p compatibility (got ${JSON.stringify(range)})`);
-        else if (!includes(range, builtAgainst)) errors.push(`${field}.${name}@${range} excludes builtAgainst ${builtAgainst}`);
+        if (caretRange(range) === null) errors.push(`${field}.${name} must use ^M.m.p compatibility (got ${JSON.stringify(range)})`);
+        else if (!supportsVersion(range, builtAgainst)) errors.push(`${field}.${name}@${range} excludes builtAgainst ${builtAgainst}`);
     }
-    return { errors, compatible: pins.every(({ range }) => includes(range, hostVersion)) };
+    return { errors, compatible: pins.every(({ range }) => supportsVersion(range, hostVersion)) };
 };
 
 // Managed-package edit at a compatibility boundary: its own artifact takes the stamp, runtime/peer
@@ -73,7 +68,8 @@ const alignManagedPackage = async (repoDir) => {
     p.version = version;
     for (const field of ["dependencies", "peerDependencies"]) {
         for (const k of Object.keys(p[field] ?? {})) {
-            if (/^@plurnk\//.test(k) && p[field][k] !== `~${version}`) { p[field][k] = `~${version}`; changed = true; }
+            const range = compatibleRange(version);
+            if (/^@plurnk\//.test(k) && p[field][k] !== range) { p[field][k] = range; changed = true; }
         }
     }
     for (const k of Object.keys(p.devDependencies ?? {})) {
@@ -93,23 +89,25 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
     if (!existsSync(repo)) throw new Error(`${tag}: registry names a repo not on disk — census drift, regenerate`);
     const manifest = JSON.parse(await readFile(join(repo, "package.json"), "utf8"));
     const state = contract(manifest, version);
-    if (state.errors.length > 0) throw new Error(`${tag}: invalid compatibility/provenance contract — ${state.errors.join("; ")}`);
 
     if (release === "independent") {
+        if (state.errors.length > 0) throw new Error(`${tag}: invalid compatibility/provenance contract — ${state.errors.join("; ")}`);
         if (!state.compatible) throw new Error(`${tag}: platform dependency range excludes ${version}; the product requires its own compatible release`);
         console.log(`  guard   ${tag} [independent] — compatible with ${version}, built against ${manifest.plurnk.builtAgainst}`);
         guarded++;
         continue;
     }
 
-    // A compatible artifact survives patch versions unchanged. Crossing its minor
-    // window realigns and republishes it; provenance moves only when the artifact is rebuilt.
-    if (state.compatible && await registryContractMatches(manifest)) {
+    // A compatible artifact survives family releases unchanged. Invalid legacy
+    // ranges and genuinely incompatible artifacts are realigned and republished;
+    // provenance moves only when the artifact is rebuilt.
+    if (state.errors.length === 0 && state.compatible && await registryContractMatches(manifest)) {
         console.log(`  guard   ${tag} — ${manifest.version} supports ${version}, built against ${manifest.plurnk.builtAgainst}`);
         guarded++;
         continue;
     }
-    if (state.compatible) console.log(`  align   ${tag} — local compatibility/provenance is not published at ${manifest.version}`);
+    if (state.errors.length > 0) console.log(`  align   ${tag} — ${state.errors.join("; ")}`);
+    else if (state.compatible) console.log(`  align   ${tag} — local compatibility/provenance is not published at ${manifest.version}`);
 
     // The release workflow updates an incompatible managed plugin.
     // COLLISION DETECTOR (#542, the terraform lesson): a leaf whose registry LATEST exceeds the stamp
@@ -122,7 +120,7 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
     if (latest !== null && latest !== version) {
         const cmp = latest.split(".").map(Number); const stamp = version.split(".").map(Number);
         const ahead = cmp[0] > stamp[0] || (cmp[0] === stamp[0] && (cmp[1] > stamp[1] || (cmp[1] === stamp[1] && cmp[2] > stamp[2])));
-        if (ahead) throw new Error(`${tag}: VERSION-LINE COLLISION — registry latest ${latest} is ahead of the stamp ${version}; this leaf ran an independent line (the terraform class). It cannot wear this stamp; it rejoins lockstep at the next stamp past ${latest}. Do not align, do not publish — rule it on the board.`);
+        if (ahead) throw new Error(`${tag}: VERSION-LINE COLLISION — registry latest ${latest} is ahead of the stamp ${version}; this managed leaf ran an independent line (the terraform class). Do not overwrite its lineage — rule the next release on the board.`);
     }
     if (latest === version) {
         throw new Error(`${tag}: ${version} is already immutable on npm with a different compatibility/provenance contract; adopt this reform at the next stamp`);
@@ -151,9 +149,9 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
     }
     // Idempotent against a lane pre-committing the alignment (#541 resume): commit only when the
     // align/install actually changed the tree — an empty `git commit` exits 1 and would halt a
-    // resume on a leaf whose lane already landed the lockstep. Push is a safe no-op either way.
+    // resume on a leaf whose lane already landed the alignment. Push is a safe no-op either way.
     const aligned = (await run("git", ["-C", repo, "status", "--porcelain"])).stdout.trim();
-    if (aligned !== "") await run("git", ["-C", repo, "commit", "-am", `chore(release): lockstep ${version}`], { maxBuffer: 8 * 1024 * 1024 });
+    if (aligned !== "") await run("git", ["-C", repo, "commit", "-am", `chore(release): align with ${version}`], { maxBuffer: 8 * 1024 * 1024 });
     await run("git", ["-C", repo, "push"], { maxBuffer: 8 * 1024 * 1024 });
     await run("npm", ["publish", "--access", "public"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 }); // runs the repo's own prepublishOnly gate
     for (let i = 0; ; i++) { if (await served(name) === version) break; if (i >= 12) throw new Error(`${tag}: published but registry never served ${version}`); await sleep(10_000); }

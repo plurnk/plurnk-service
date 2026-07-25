@@ -88,9 +88,14 @@ export default class PluginLoader {
     }
     static #legacyWarned = new Set<string>();
     static #supports(range: string, version: string): boolean {
-        const r = /^~(\d+)\.(\d+)\.(\d+)$/.exec(range);
+        const r = /^\^(\d+)\.(\d+)\.(\d+)$/.exec(range);
         const v = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-        return r !== null && v !== null && r[1] === v[1] && r[2] === v[2] && Number(v[3]) >= Number(r[3]);
+        if (r === null || v === null || r[1] !== v[1]) return false;
+        const [, rMajor, rMinor, rPatch] = r.map(Number);
+        const [, vMajor, vMinor, vPatch] = v.map(Number);
+        if (rMajor > 0) return vMinor > rMinor || (vMinor === rMinor && vPatch >= rPatch);
+        if (rMinor > 0) return vMinor === rMinor && vPatch >= rPatch;
+        return vMajor === 0 && vMinor === 0 && vPatch === rPatch;
     }
 
     static async loadPlugin(plugin: DiscoveredPlugin): Promise<unknown> {

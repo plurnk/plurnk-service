@@ -1,11 +1,12 @@
 // Lockstep version stamp. Usage: node scripts/release-version.mjs <version>
 // Sets every workspace to <version>, pins internal runtime/dev dependencies
-// exactly, and gives plugin-facing peers a current-minor compatibility range.
+// exactly, and gives plugin-facing peers a compatible-major range.
 // The root workspaces array is authoritative; a missing manifest crashes.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { compatibleRange } from "./release-compat.mjs";
 
 const run = promisify(execFile);
 const version = process.argv[2];
@@ -51,7 +52,7 @@ for (const [file, pkg] of manifests) {
         }
     }
     for (const name of Object.keys(pkg.peerDependencies ?? {})) {
-        if (members.has(name)) pkg.peerDependencies[name] = `~${version}`;
+        if (members.has(name)) pkg.peerDependencies[name] = compatibleRange(version);
     }
     await fs.writeFile(file, `${JSON.stringify(pkg, null, 4)}\n`);
 }
