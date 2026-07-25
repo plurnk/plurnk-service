@@ -141,9 +141,10 @@ UPDATE loops SET status = 100 WHERE id = $loop_id AND status = 202;
 
 -- PREP: drain_worker_min_poll
 -- grammar 0.74.20 EXEC `<T,P>` — the tightest poll cadence (seconds) among a worker's OPEN
--- polled subscriptions. NULL when the worker holds no polled stream → no hibernation poll-wake.
-SELECT MIN(poll_seconds) AS poll_seconds
-FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL AND poll_seconds IS NOT NULL;
+-- subscriptions. open_count distinguishes no stream from an open stream whose cadence is NULL;
+-- child-only joins have no polling policy and wake exclusively from child settlement.
+SELECT COUNT(*) AS open_count, MIN(poll_seconds) AS poll_seconds
+FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
 
 -- PREP: worker_parent_id
 -- A worker's parent (worker:// spawn / fork set parent_worker_id, §lifecycle-terms). NULL = a root run.

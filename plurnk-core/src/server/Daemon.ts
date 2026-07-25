@@ -1312,7 +1312,11 @@ export default class Daemon {
     async #schedulePollWake(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const existing = this.#pollTimers.get(workerId);
         if (existing !== undefined) { clearTimeout(existing); this.#pollTimers.delete(workerId); }
-        const row = await (this.#db.drain_worker_min_poll as PrepMethod).get<{ poll_seconds: number | null }>({ worker_id: workerId });
+        const row = await (this.#db.drain_worker_min_poll as PrepMethod).get<{ open_count: number; poll_seconds: number | null }>({ worker_id: workerId });
+        if ((row?.open_count ?? 0) === 0) {
+            this.#pollBackoff.delete(workerId);
+            return;
+        }
         const pollSec = row?.poll_seconds ?? null;
         // #521 (§exec-poll, owner-ruled) — the poll cadence for a parked exec stream:
         //   explicit <,P> (P>0)  → fixed cadence P, reset the backoff (today's behavior).
@@ -1330,12 +1334,8 @@ export default class Daemon {
             this.#pollBackoff.delete(workerId);
             return; // explicit opt-out
         } else {
-            // #521 (universal, owner-ruled) — ANY unbounded park backs off; no park is ever blind.
-            // A child-join and a hung exec wake on the SAME ladder, so a lost wake edge (a dropped
-            // child-terminal/stream conclusion) self-heals within one step and the model regains a
-            // turn to inspect + KILL. The primary wake edge still resumes it immediately when it fires;
-            // the backoff timer then no-ops (the loop is no longer slept). Non-striking — shares the
-            // explicit-poll wake primitive, so a correctly-waiting parent never strikes out.
+            // An open stream without an explicit cadence uses the stream polling floor.
+            // Child joins never enter this branch: durable child settlement is their only wake edge.
             const base = Number(process.env.PLURNK_SERVICE_EXEC_POLL_SEC ?? "60");
             const turns = Number(process.env.PLURNK_SERVICE_EXEC_POLL_TURNS ?? "8");
             const step = this.#pollBackoff.get(workerId) ?? 0;
