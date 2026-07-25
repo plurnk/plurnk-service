@@ -29,8 +29,9 @@ test("a child worker concluding wakes a parent parked at 202", async () => {
             const terminated = subscribeNotifications(ws, "loop/terminated");
             // runLoopToTerminal awaits the PARENT's loop/terminated. If the child-wake doesn't fire,
             // the parent stays parked at 202 forever and this times out — so reaching 200 IS the proof.
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn a worker and wait for it", flags: { auto: true } });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "spawn a worker and wait for it", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the parent resumed from 202 (woken by the child) and concluded");
+            assert.equal(turnIds?.length, 2, "the terminal event accounts for the complete durable loop across park/resume");
             await flush();
             // Both runs concluded 200 — the worker's terminal and the parent's resumed terminal.
             const concluded = (terminated() as Array<{ finalStatus: number }>).filter((t) => t.finalStatus === 200);

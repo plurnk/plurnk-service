@@ -968,18 +968,19 @@ export default class Daemon {
                     }
                     this.#owedWakes.delete(workerId); // the loop concluded (non-202) — no park to honor a held wake at
                     const usage = await this.#engine.loopUsage(loopRow.id);
+                    const turnIds = await this.#lifecycle.turnIds(loopRow.id);
                     this.#broadcast({ workspaceId }, "loop/terminated", {
                         workerId,
                         loopId: loopRow.id,
                         finalStatus: result.finalStatus,
                         hitMaxTurns: result.hitMaxTurns,
-                        turnIds: result.turnIds,
+                        turnIds,
                         usage,
                     });
                     loopsDrained++;
                     const loopResult: DrainLoopResult = {
                         loopId: loopRow.id,
-                        turnIds: result.turnIds,
+                        turnIds,
                         finalStatus: result.finalStatus,
                         hitMaxTurns: result.hitMaxTurns,
                         usage,
