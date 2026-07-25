@@ -19,8 +19,27 @@ export default class DispatchAsPlurnk {
         const loopId = await Envelope.ensureClientLoop(db, workerId);
         const turnId = await ClientTurn.insertClientTurn(db, loopId);
         let sequence = 1;
-        for (const statement of statements) {
-            await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: sequence++, origin: "plurnk" });
+        try {
+            for (const statement of statements) {
+                const result = await engine.dispatch({
+                    statement, workspaceId, workerId, loopId, turnId,
+                    sequence: sequence++, origin: "plurnk",
+                });
+                if (result.status >= 400) {
+                    throw new Error(`plurnk actor ${statement.op} failed with status ${result.status}`);
+                }
+            }
+            await Envelope.closeClientLoop(db, loopId, 200);
+        } catch (cause) {
+            try {
+                await Envelope.closeClientLoop(db, loopId, 499);
+            } catch (closeCause) {
+                throw new AggregateError(
+                    [cause, closeCause],
+                    `plurnk actor loop ${loopId} failed and could not be closed`,
+                );
+            }
+            throw cause;
         }
     }
 }

@@ -164,6 +164,9 @@ test("runtime work is an ephemeral plurnk worker firing ops — the EDIT lands i
                 const plurnkWorker = (await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" }))!;
                 assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker was spawned to do the runtime work");
                 assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk worker is a sibling actor, distinct from the model worker");
+                const plurnkLoop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ worker_id: plurnkWorker.id });
+                const plurnkLoopStatus = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: plurnkLoop?.id });
+                assert.equal(plurnkLoopStatus?.status, 200, "the runtime actor's ephemeral loop is terminal after its batch");
                 const plurnkLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
                 const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/SELFHOST.md");
                 assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk worker's log — an op, not a privileged engine pathway");
