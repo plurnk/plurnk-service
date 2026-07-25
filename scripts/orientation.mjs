@@ -11,14 +11,20 @@ import {
     rmSync,
     writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { evaluateOrientation } from "./orientation-verdict.mjs";
 
 const serviceRoot = resolve(import.meta.dirname, "..");
-const projectRoot = resolve(process.env.PLURNK_ACCEPTANCE_PROJECT_ROOT ?? resolve(serviceRoot, ".."));
-const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(projectRoot, "repo", "plurnk"));
-const benchmarksRoot = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(projectRoot, "benchmarks"));
+const operatorEnv = resolve(homedir(), ".plurnk", ".env");
+if (existsSync(operatorEnv)) process.loadEnvFile(operatorEnv);
+process.loadEnvFile(resolve(serviceRoot, "plurnk-meta", ".env.defaults"));
+
+const projectRoot = resolve(process.env.PLURNK_ACCEPTANCE_PROJECT_ROOT ?? resolve(serviceRoot, "..", "repo"));
+const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(projectRoot, "plurnk"));
+const benchmarksRoot = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(projectRoot, "..", "benchmarks"));
+const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT;
+if (timeout === undefined) throw new Error("PLURNK_ACCEPTANCE_TIMEOUT is not configured");
 const prompt = readFileSync(resolve(import.meta.dirname, "fixtures", "orientation-prompt.md"), "utf8").trim();
 
 const usage = "usage: npm run acceptance:orientation -- --model <alias> [--requiem] [--preserve]";
@@ -178,7 +184,7 @@ try {
         "--project-root", projectRoot,
         "--repo", "**",
         "--auto",
-        "--timeout", process.env.PLURNK_ACCEPTANCE_TIMEOUT ?? "900",
+        "--timeout", timeout,
         prompt,
     ], projectRoot, {
         env: {
