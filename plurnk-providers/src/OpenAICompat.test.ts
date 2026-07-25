@@ -100,6 +100,19 @@ test("#548: a 422 grammar_invalid is transient — retried on the budget, surfac
     mock.restoreAll();
 });
 
+test("an SSE error frame is a failed exchange, not an empty completion", async () => {
+    const calls = installFetch([{
+        status: 422,
+        error: { message: "non-conforming emission rejected", type: "grammar_invalid" },
+    }]);
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (e: unknown) => e instanceof ProviderError && e.kind === "grammar_invalid",
+    );
+    assert.equal(calls.length, 1);
+});
+
 test("#539: a trailing eos_token (--special EOG leak) is stripped from content", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "the answer<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });

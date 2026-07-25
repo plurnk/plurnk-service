@@ -218,6 +218,19 @@ export const chatCompletionStream = async ({ url, headers, body, signal, capture
             let chunk: Record<string, unknown>;
             try { chunk = JSON.parse(payload) as Record<string, unknown>; } catch { continue; }
 
+            // A streaming server may flush HTTP 200 headers before inference
+            // completes, then report a terminal failure as an SSE error frame.
+            // That frame is a failed exchange, never an empty completion.
+            if (chunk.error !== null && typeof chunk.error === "object") {
+                const status = typeof chunk.status === "number"
+                    && Number.isInteger(chunk.status)
+                    && chunk.status >= 400
+                    && chunk.status <= 599
+                    ? chunk.status
+                    : 500;
+                throw new OpenAiHttpError(status, JSON.stringify({ error: chunk.error }), null);
+            }
+
             if (typeof chunk.model === "string") model = chunk.model;
             if (chunk.usage !== undefined && chunk.usage !== null) usage = chunk.usage as StreamResponse["usage"];
 
