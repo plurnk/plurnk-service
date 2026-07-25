@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import type { EditStatement, ReadStatement, LineMarker } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -175,6 +176,31 @@ test("file.edit: creates a new file on accept (target doesn't exist)", async () 
         assert.equal(result.status, 200);
         const onDisk = await readFile(join(root, target), "utf8");
         assert.equal(onDisk, "# Created via proposal\n");
+    });
+});
+
+test("file.edit: reviewer-modified acceptance receipts the content that actually lands (#619)", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const target = "reviewed.md";
+        const stmt = fileEditStmt(target, "model proposal\n");
+        const idDeferred = deferred<number>();
+        const dispatchPromise = ctx.engine.dispatch({
+            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        const logEntryId = await idDeferred.promise;
+        const reviewed = "reviewer revision\n";
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept", body: reviewed });
+        await dispatchPromise;
+        assert.equal(await readFile(join(root, target), "utf8"), reviewed);
+        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ rx: string }>({ id: logEntryId });
+        const rx = JSON.parse(row?.rx ?? "{}") as {
+            receipt?: { revision?: string; effect?: { context?: string } };
+        };
+        assert.equal(rx.receipt?.revision, createHash("sha256").update(reviewed).digest("hex"));
+        assert.match(rx.receipt?.effect?.context ?? "", /1:reviewer revision/);
+        assert.doesNotMatch(rx.receipt?.effect?.context ?? "", /model proposal/);
     });
 });
 

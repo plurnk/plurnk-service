@@ -9,6 +9,7 @@ import test from "node:test";
 import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import type { EditStatement } from "@plurnk/plurnk-grammar";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
@@ -19,6 +20,7 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockRe
 // File scheme used to require PLURNK_WORKSPACE_ROOT but now reads
 // workspaces.project_root — out of scope for these auto tests anyway).
 class ProposingTest {
+    readonly batches: number[] = [];
     static manifest: SchemeManifest = {
         name: "proposing-test",
         channels: {},
@@ -29,7 +31,8 @@ class ProposingTest {
         volatile: false,
         modelVisible: true,
     };
-    async editBatch(): Promise<{ status: number; attrs: object; body: string }> {
+    async editBatch(statements: readonly EditStatement[]): Promise<{ status: number; attrs: object; body: string }> {
+        this.batches.push(statements.length);
         return {
             status: 202,
             body: "--- proposed-test\n+++ proposed-test\n@@ +x @@",
@@ -37,6 +40,36 @@ class ProposingTest {
         };
     }
 }
+
+test("same-resource EDIT batch raises one proposal and one resolution governs every row (#619)", async () => {
+    const dsl = "<<EDIT(proposing-test://x)<1>:one:EDIT\n<<EDIT(proposing-test://x)<3>:three:EDIT\n<<SEND[200]:done:SEND";
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
+
+    await withDaemon(mock, async (db, daemon, addr) => {
+        const scheme = new ProposingTest();
+        daemon.schemes.register("proposing-test", scheme);
+        const ws = await connect(addr);
+        try {
+            const proposals = subscribeNotifications(ws, "loop/proposal");
+            await rpcCall(ws, 1, "workspace.create", { name: "one-resource-proposal" });
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "batch" });
+            const pending = await waitFor(
+                () => proposals() as Array<{ logEntryId: number }>,
+                (items) => items.length === 1,
+            );
+            await rpcCall(ws, 3, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "accept" });
+            const run = await loopPromise;
+            const loopId = (run.result as { loopId: number }).loopId;
+            await flush();
+            assert.deepEqual(scheme.batches, [2], "the scheme receives one resource batch");
+            assert.equal(proposals().length, 1, "the client reviews the resource once");
+            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; scheme: string; status_rx: number }>({ loop_id: loopId });
+            const edits = rows.filter((row) => row.op === "EDIT" && row.scheme === "proposing-test");
+            assert.equal(edits.length, 2);
+            assert.ok(edits.every((row) => row.status_rx === 200), "one acceptance settles every statement row");
+        } finally { ws.close(); }
+    });
+});
 
 test("loop.run with flags.auto=true persists to loops.flags", async () => {
     const dsl = "<<EDIT(worker:///x):body:EDIT\n<<SEND[200]:done:SEND";
