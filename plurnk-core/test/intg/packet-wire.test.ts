@@ -165,6 +165,30 @@ test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim
     assert.doesNotMatch(out, /1:3:/, "must NOT re-number an already-numbered span");
 });
 
+test("log render: model EDIT receipt renders revision and bounded join context verbatim", () => {
+    const revision = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    const receipt = {
+        revision,
+        unit: "lines",
+        before: 4,
+        after: 5,
+        effect: { requested: "<2>", source: "2", result: "2-3", removed: 1, inserted: 2, context: "1:one\n2:TWO\n3:2.5\n4:three" },
+    };
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/3",
+        origin: "model",
+        op: "EDIT", status: 200,
+        target: { scheme: "worker", pathname: "/draft" },
+        rx: { status: 200, receipt },
+    }], tok);
+    assert.match(out, /"rev":"abcdef01"/);
+    assert.match(out, /"extent":"lines 4→5"/);
+    assert.match(out, /"change":"-1 \+2"/);
+    assert.match(out, /"range":"<2> 2→2-3"/);
+    assert.match(out, /3:2\.5/);
+    assert.doesNotMatch(out, new RegExp(revision));
+});
+
 test("render guard: every content-emitting op applies the N:\\t convention uniformly (READ/FIND/EDIT/EXEC/stream/PLAN/SEND)", () => {
     // The model orients on line numbers, so EVERY op that emits a content body must number
     // line-navigable (text/*) bodies and leave tree-navigable (JSON) verbatim — else it has its

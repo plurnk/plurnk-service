@@ -18,6 +18,15 @@ import { renderAddress } from "./plurnk-uri.ts";
 import { encodePathParens } from "./path-decode.ts";
 import type { GitStatus } from "./git-state.ts";
 
+const editReceiptRevisionChars = (): number => {
+    const raw = process.env.PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS;
+    const value = Number(raw);
+    if (!Number.isSafeInteger(value) || value < 1 || value > 64) {
+        throw new Error(`PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS must be a safe integer from 1 through 64, got ${JSON.stringify(raw)}`);
+    }
+    return value;
+};
+
 // PacketSection is the canonical packet shape: an ordered list of named,
 // slotted sections (defined below). Sections arrive both from Engine's
 // in-memory packet AND from `turns.packet` re-parsed by the digest — re-parsed
@@ -448,15 +457,43 @@ export default class PacketWire {
                 } else {
                     body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
                 }
-            } else if ((op === "EDIT" || op === "COPY" || op === "MOVE") && rx !== null && typeof rx === "object" && (typeof (rx as { span?: unknown }).span === "string" || typeof (rx as { body?: unknown }).body === "string")) {
-                // EDIT (§edit-result-render): the resulting span as it looks now. editedSpan already
-                // line-numbered it with the changed region's REAL offsets (e.g. 50:…), so wrap
-                // verbatim — re-numbering here would double it (1:50:…) and lose the true line
-                // position. Empty span (content emptied) ⇒ no body — the meta line stands alone.
-                // The inline entry-scheme EDIT delivers the span under `span`; a PROPOSED file EDIT's
-                // accept delivers the same span under `body` (the generic accept-rx key) — render either.
-                const r = rx as { span?: string; body?: string };
-                const span = typeof r.span === "string" ? r.span : (r.body ?? "");
+            } else if (op === "EDIT" && rx !== null && typeof rx === "object" && (rx as { receipt?: unknown }).receipt !== null && typeof (rx as { receipt?: unknown }).receipt === "object") {
+                const receipt = (rx as {
+                    receipt: {
+                        revision?: unknown;
+                        unit?: unknown;
+                        before?: unknown;
+                        after?: unknown;
+                        effect?: {
+                            requested?: unknown;
+                            source?: unknown;
+                            result?: unknown;
+                            removed?: unknown;
+                            inserted?: unknown;
+                            context?: unknown;
+                        };
+                    };
+                }).receipt;
+                const effect = receipt.effect;
+                if (typeof receipt.revision !== "string" || !/^[a-f0-9]{64}$/.test(receipt.revision)
+                    || (receipt.unit !== "lines" && receipt.unit !== "items")
+                    || typeof receipt.before !== "number" || typeof receipt.after !== "number"
+                    || effect === undefined
+                    || typeof effect.requested !== "string" || typeof effect.source !== "string" || typeof effect.result !== "string"
+                    || typeof effect.removed !== "number" || typeof effect.inserted !== "number" || typeof effect.context !== "string") {
+                    throw new Error("invalid structured EDIT receipt");
+                }
+                meta.rev = receipt.revision.slice(0, editReceiptRevisionChars());
+                meta.extent = `${receipt.unit} ${receipt.before}→${receipt.after}`;
+                meta.change = `-${effect.removed} +${effect.inserted}`;
+                meta.range = `${effect.requested} ${effect.source}→${effect.result}`;
+                if (effect.context.length > 0) body = PacketWire.#wrapHeredocBody(target ?? `log:///${coordinate}`, effect.context);
+            } else if ((op === "EDIT" || op === "COPY" || op === "MOVE") && rx !== null && typeof rx === "object" && (typeof (rx as { receipt?: unknown }).receipt === "string" || typeof (rx as { span?: unknown }).span === "string" || typeof (rx as { body?: unknown }).body === "string")) {
+                // EDIT renders its bounded effect receipt; COPY/MOVE and environment-delta
+                // EDITs retain their resulting span. Each is already line-addressed where
+                // appropriate, so wrapping is verbatim.
+                const r = rx as { receipt?: string; span?: string; body?: string };
+                const span = typeof r.receipt === "string" ? r.receipt : typeof r.span === "string" ? r.span : (r.body ?? "");
                 // An EDIT/COPY/MOVE span is the RESULTING file content — bytes the model inspects to
                 // confirm its edit landed, CONTENT not composed directive text — so it renders FULL
                 // like READ/FIND (#566). Grinder-foldable (not PLAN-exempt), so a large span reclaims.

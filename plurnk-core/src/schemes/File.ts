@@ -1,4 +1,4 @@
-import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import Namespace from "../core/namespace.ts";
 import Owner from "../core/Owner.ts";
 import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
@@ -21,11 +21,12 @@ import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 type WriteTarget =
     | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string; baseSig: string | null; admittedBy?: "client" | "git" }
     | { ok: false; status: number; error: string };
-import { LineMarkerOps, MimetypeBinary, editedSpan } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, editReceipt, editReceiptUnit, editedSpan, projectEditReceipt } from "../content/index.ts";
+import type { EditBatchReceipt } from "../content/index.ts";
 
-type EditResult = { status: number; body?: string; attrs?: object; error?: string };
-type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; span?: string; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
-type ApplyResult = { status: number; outcome?: string; body?: string };
+type EditResult = { status: number; body?: string; attrs?: object; editReceipt?: EditBatchReceipt; error?: string };
+type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; editReceipt?: EditBatchReceipt; span?: string; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
+type ApplyResult = { status: number; outcome?: string; body?: string; result?: object };
 
 // Workspace root for file ops is sourced from `workspaces.project_root`,
 // supplied by the client at workspace.create (headless is forever; issue
@@ -264,7 +265,18 @@ export default class File extends CoreSchemeAdapterBase {
         }
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, body: patch, attrs: { path: rel, canonical, patch, patched, span: editedSpan(original, patched), baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) } };
+        const receiptEdits = fileExists
+            ? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }))
+            : [{ marker: { marks: [1, -1] as [number, number] }, body: patched }];
+        const batchReceipt = editReceipt(original, patched, receiptEdits, {
+            unit: editReceiptUnit(MimetypeBinary.isJsonMimetype(mimetype), original, patched),
+        });
+        return {
+            status: 202,
+            body: patch,
+            editReceipt: batchReceipt,
+            attrs: { path: rel, canonical, patch, patched, editReceipt: batchReceipt, baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) },
+        };
     }
 
     async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
@@ -347,6 +359,22 @@ export default class File extends CoreSchemeAdapterBase {
         if (conflict) {
             return { status: 409, outcome: `write_conflict: ${relPath} changed on disk since the proposal (expected ${existed ? baseSig : "absent"}, found ${currentSig ?? "absent"}) — re-read and re-propose` };
         }
+        let receipt = attrs.editReceipt;
+        if (body !== undefined && body !== attrs.patched) {
+            const original = existed ? await readFile(canonical, "utf8") : "";
+            const mimetype = await detectFileMimetype(canonical, core);
+            const reviewed = editReceipt(
+                original,
+                patched,
+                [{ marker: { marks: [1, -1] as [number, number] }, body: patched }],
+                { unit: editReceiptUnit(MimetypeBinary.isJsonMimetype(mimetype), original, patched) },
+            );
+            const statementCount = attrs.editReceipt?.effects.length ?? 1;
+            receipt = {
+                ...reviewed,
+                effects: Array.from({ length: statementCount }, () => reviewed.effects[0]!),
+            };
+        }
         try {
             // A write into a not-yet-existing subtree creates it — an accepted proposal must not
             // die on a missing parent dir (the fan-out digest: tasks/… write_failed on ENOENT).
@@ -395,7 +423,8 @@ export default class File extends CoreSchemeAdapterBase {
                 body: err instanceof Error ? err.message : String(err),
             };
         }
-        return { status: 200, body: attrs.span };
+        if (receipt === undefined) return { status: 200, body: attrs.span };
+        return { status: 200, result: { receipt: projectEditReceipt(receipt, 0), editReceipt: receipt } };
     }
 
     // deleteEntry — the KILL / MOVE-source counterpart of writeEntry. Deleting a host file is

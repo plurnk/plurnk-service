@@ -7,19 +7,17 @@ import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
-import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editedSpan } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt, editReceiptUnit } from "../content/index.ts";
+import type { EditBatchReceipt } from "../content/index.ts";
 
 // Shared static-method helpers for workspace-scope entry-bearing schemes
 // (Known, Unknown, Skill). Each scheme passes its manifest; helpers
 // extract scheme name + channels + defaultChannel. Channel routing
 // follows SPEC §channel-selection: path.fragment ?? manifest.defaultChannel.
 
-// The model sees its EDIT's RESULT — the edited area as it looks now,
-// line-numbered with a couple lines of context (§edit-result-render) — rendered from the
-// `span` computed here and carried on rx. Post-edit state inline, no
-// confirming READ; the same rendering serves system delta-EDITs (§env-delta).
-// Supersedes the prior input-echo of the source statement.
-export type EditResult = { status: number; entryId: number | null; channel: string | null; span?: string | null; error?: string };
+// The model sees an EDIT effect receipt: revision identity, extent changes,
+// source→result range mappings, and bounded join context (§edit-result-render).
+export type EditResult = { status: number; entryId: number | null; channel: string | null; editReceipt?: EditBatchReceipt | null; error?: string };
 // startLine = 1-indexed position the content starts at in the original
 // source. Lets the render layer prefix N: correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
@@ -202,7 +200,17 @@ export default class EntryOps {
             }
         }
 
-        return { status: createdNow ? 201 : 200, entryId, channel: targetChannel, span: editedSpan(originalContent, newContent) };  // §edit-status-201-200
+        const receiptEdits = existing === undefined
+            ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
+            : statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
+        return {
+            status: createdNow ? 201 : 200,
+            entryId,
+            channel: targetChannel,
+            editReceipt: editReceipt(originalContent, newContent, receiptEdits, {
+                unit: editReceiptUnit(MimetypeBinary.isJsonMimetype(effectiveMimetype), originalContent, newContent),
+            }),
+        };  // §edit-status-201-200
     }
 
     // Scope-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves the

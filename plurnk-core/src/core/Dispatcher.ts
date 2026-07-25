@@ -55,6 +55,7 @@ import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 type PreparedEdit = {
     readonly first: boolean;
+    readonly index: number;
     readonly initial: DispatchResult;
     readonly settled: Promise<DispatchResult>;
     settle(result: DispatchResult): void;
@@ -250,13 +251,14 @@ export default class Dispatcher {
             const settled = new Promise<DispatchResult>((resolve) => { resolveSettled = resolve; });
             const prepared: PreparedEdit = {
                 first: true,
+                index: 0,
                 initial,
                 settled,
                 settle: resolveSettled,
             };
             this.#preparedEdits.set(first, prepared);
-            for (const statement of group.slice(1)) {
-                this.#preparedEdits.set(statement, { ...prepared, first: false });
+            for (const [index, statement] of group.slice(1).entries()) {
+                this.#preparedEdits.set(statement, { ...prepared, first: false, index: index + 1 });
             }
         }
     }
@@ -295,7 +297,32 @@ export default class Dispatcher {
                     if (prepared === undefined) {
                         result = { status: 500, error: "EDIT reached dispatch without a prepared resource batch" };
                     } else {
-                        result = prepared.first ? prepared.initial : await prepared.settled;
+                        const settled = prepared.first ? prepared.initial : await prepared.settled;
+                        const aggregate = settled.editReceipt ?? prepared.initial.editReceipt;
+                        if (aggregate !== null && typeof aggregate === "object") {
+                            const receipt = aggregate as {
+                                revision: string;
+                                unit: "lines" | "items";
+                                before: number;
+                                after: number;
+                                effects: readonly object[];
+                            };
+                            const effect = receipt.effects[prepared.index];
+                            if (effect === undefined) throw new Error(`EDIT receipt has no effect at index ${prepared.index}`);
+                            const { editReceipt: _editReceipt, ...withoutAggregate } = settled;
+                            result = {
+                                ...withoutAggregate,
+                                receipt: {
+                                    revision: receipt.revision,
+                                    unit: receipt.unit,
+                                    before: receipt.before,
+                                    after: receipt.after,
+                                    effect,
+                                },
+                            };
+                        } else {
+                            result = settled;
+                        }
                     }
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, turnParseErrors });

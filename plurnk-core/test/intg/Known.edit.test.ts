@@ -309,19 +309,23 @@ test("Known.edit: <L> on JSON path with malformed body → 400", async () => {
     } finally { await db.close(); }
 });
 
-test("Known.edit result carries the edited span — post-edit state, line-numbered ()", async () => {
+test("Known.edit result carries a bounded effect receipt with revision identity", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
         const k = new Worker();
-        // New entry: the whole body is the edit → span is the full body, 1-indexed.
+        // New entry: the receipt states the resulting revision and bounded join context.
         const r1 = await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nbeta\ngamma" }), ctx);
         assert.equal(r1.status, 201);
-        assert.equal(r1.span, "1:alpha\n2:beta\n3:gamma", "new entry → span is the full body, line-numbered");
-        // Re-edit changing one line: the diff finds it; span shows the edited region
-        // plus context, in its post-edit state — not the input statement.
+        assert.match(r1.editReceipt?.revision ?? "", /^[a-f0-9]{64}$/);
+        assert.deepEqual({ unit: r1.editReceipt?.unit, before: r1.editReceipt?.before, after: r1.editReceipt?.after }, { unit: "lines", before: 0, after: 3 });
+        assert.match(r1.editReceipt?.effects[0]?.context ?? "", /1:alpha\n2:beta\n3:gamma/);
         const r2 = await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nBETA\ngamma", lineMarker: fullReplace }), ctx);
         assert.equal(r2.status, 200);
-        assert.equal(r2.span, "1:alpha\n2:BETA\n3:gamma", "re-edit → span shows the change (BETA) with context, post-edit, line-numbered");
+        assert.deepEqual(
+            r2.editReceipt?.effects.map(({ requested, source, result, removed, inserted }) => ({ requested, source, result, removed, inserted })),
+            [{ requested: "<1,-1>", source: "1-3", result: "1-3", removed: 3, inserted: 3 }],
+        );
+        assert.match(r2.editReceipt?.effects[0]?.context ?? "", /1:alpha\n2:BETA\n3:gamma/);
     } finally { await db.close(); }
 });

@@ -24,6 +24,9 @@ export interface ProposalResolution {
     // content) — INPUT to applyResolution, not echoed back verbatim. The applied
     // result reaches the model via the scheme's applyResult body (e.g. the EDIT diff).
     body?: string;
+    // Structured model-facing result produced by the accepted scheme apply.
+    // Unlike the resolver body, this describes what actually landed.
+    result?: object;
     // Operational reason (rejected / timeout / write_failed / policy_veto / etc.).
     // Stored on log_entries.outcome COLUMN for forensics; a NON-accept also
     // carries it as the rx's terse error token — the one-word why the model
@@ -207,7 +210,7 @@ export default class ProposalLifecycle {
             : schemeNameOf(statement.target);
         if (schemeName === null) return resolution;
         const handler = this.#schemes.get(schemeName) as
-            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<{ status: number; outcome?: string; body?: string }> }
+            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<{ status: number; outcome?: string; body?: string; result?: object }> }
             | undefined;
         if (handler === undefined || typeof handler.applyResolution !== "function") return resolution;
         try {
@@ -247,7 +250,11 @@ export default class ProposalLifecycle {
             const withOutcome = applyResult.outcome !== undefined && resolution.outcome === undefined
                 ? { ...resolution, outcome: applyResult.outcome }
                 : resolution;
-            return applyResult.body === undefined ? withOutcome : { ...withOutcome, body: applyResult.body };
+            return {
+                ...withOutcome,
+                ...(applyResult.body !== undefined ? { body: applyResult.body } : {}),
+                ...(applyResult.result !== undefined ? { result: applyResult.result } : {}),
+            };
         } catch (err) {
             return {
                 decision: "reject",
@@ -282,14 +289,14 @@ export default class ProposalLifecycle {
         // carries the outcome TOKEN as its terse error (write_failed / rejected / timeout — one
         // word, never prose): a bare {"status":400} left the model blind to a mechanically failed
         // apply and parking on a phantom worker (the fan-out digest).
-        const rx = (decision === "accept" && resolution.body !== undefined)
-            ? JSON.stringify({ status, body: resolution.body })
+        const rx = (decision === "accept" && (resolution.body !== undefined || resolution.result !== undefined))
+            ? JSON.stringify({ status, ...(resolution.body !== undefined ? { body: resolution.body } : {}), ...(resolution.result ?? {}) })
             : decision === "accept"
                 ? JSON.stringify({ status })
                 : JSON.stringify({ status, error: outcome });
         await (this.#db.engine_resolve_log_entry as PrepMethod).run({
             id: logEntryId, state, outcome, status_rx: status, rx,
         });
-        return { status, outcome, body: resolution.body };
+        return { status, outcome, body: resolution.body, ...(resolution.result ?? {}) };
     }
 }

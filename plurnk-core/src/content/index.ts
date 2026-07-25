@@ -17,3 +17,5 @@ export { default as ReadResolve } from "./read-resolve.ts";
 export type { ReadSliceResult } from "./read-resolve.ts";
 
 export { editedSpan } from "./edited-span.ts";
+export { editReceipt, editReceiptUnit, projectEditReceipt } from "./edit-receipt.ts";
+export type { EditBatchReceipt, EditEffectReceipt, EditReceipt, ReceiptEdit } from "./edit-receipt.ts";

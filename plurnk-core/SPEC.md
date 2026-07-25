@@ -1260,15 +1260,15 @@ The CAS is the **hard backstop**, at the moment of writing, on every accept path
 
 **Migration path.** Built. The per-worker world-snapshot the architecture forbade (§machine-processes) is **deleted**; its `[§machine-processes-worker-is-its-log]` conformance test is now green. The pull + the `plurnk`-run fs narration replace it.
 
-### §edit-result-render EDIT log rows render their result, not their input
+### §edit-result-render EDIT log rows render a bounded effect receipt
 
 **Question.** An EDIT's log row exists so the model has a record of what it did. Re-emitting the model's *input* statement (the tx heredoc) records the *intent* but not the *outcome* — the model still has to READ the entry back to confirm "did it land, what does it look like now." And a system delta-EDIT (§env-delta) has no input statement at all. What should an EDIT row's body be?
 
-**Decision — the edited area as it looks now.** An EDIT row renders the **resulting span**: the edited region of the entry *after* the write, line-numbered, with a couple of lines of context above and below. The model sees post-edit state inline — no confirming READ — and the same rendering serves the model's own EDITs and the system delta-EDITs (§env-delta) identically. The entry's object still carries op + target, so "I EDITed X" stays legible; the body says "and here's X now."
+**Decision — effect, revision, and bounded join context.** A model-authored EDIT row renders compact metadata (`rev`, `extent`, `change`, and `range`) plus bounded numbered context around that edit's resulting join. The durable result retains the full SHA-256 revision; `rev` abbreviates it to `PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS` for display correlation only and is never an identity, lookup key, or compare-and-swap token. Every row in one resource batch carries the same revision and extent but its own requested marker, normalized source/result ranges, removed/inserted counts, and context. The receipt proves what landed without copying an arbitrarily large changed region into the next packet. A deliberate READ in the same turn is scheduled after mutation (§op-mode-phases) and remains the universal way to request arbitrary current content.
 
-**Scope.** The span is computed at edit time — the write range and the result are both known then — and stored on the EDIT's `rx`; the render reads it. A large span is bounded like any rendered slice, and FOLD collapses it to the coordinate when the model doesn't need it.
+**Scope.** The receipt is computed from the one pre-turn snapshot and committed result and stored structurally on the EDIT's `rx`; reviewer-modified proposals recompute it from the content that actually lands. Text resources report lines; structural JSON resources report top-level items. `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` bounds neighboring lines/items independently for each row. Environment-delta EDITs remain factual state-diff events and carry their resulting span (§env-delta); COPY/MOVE likewise retain their resulting span.
 
-**Migration path.** Changes what EDIT rows *show* (input → output); the op surface and EDIT's behaviour are unchanged. Tests asserting the input-heredoc render move to the resulting-span render.
+**Migration path.** Built with MODE scheduling and atomic resource batches; the former unbounded resulting-span confirmation is removed from model-authored EDITs.
 
 ### §proposal-ownership Loop auto and client YOLO
 
@@ -1511,7 +1511,7 @@ Same rule applies across Known, Unknown, Skill, Plurnk, File. Effective mimetype
 
 A log row renders its **result body** for the content-returning ops — `READ@200` (the content it pulled) and `FIND@200` (the catalog rows / matched entries it returned) — under the query's fence, mimetype-driven per the rules above; every other op re-emits its statement. FIND included: the model must see what a find *returned*, not just its echoed query, and the turn-0 foisted `FIND(scheme:///**)` reaches the packet through this branch — without it the catalog preview is invisible. {§render-rule-find-renders-result}
 
-An `EDIT` log row renders its **resulting span** — the edited area as it looks now (`rx.span`), under the target's fence — not the input statement: the log reads "and here's X now," so the model sees its edit's effect. The object still carries op + target; the model's own EDITs and the system delta-EDITs (§env-delta) render identically; an emptied span → the object's meta alone (no body). With no span stored, the row falls back to re-emitting the statement (the heredoc the model wrote). {§edit-result-render}
+An `EDIT` log row renders its bounded **effect receipt** (`rx.receipt`) as row metadata and join context, not its input statement. Proposal-gated file EDITs compute the accepted receipt from what actually lands. Environment-delta EDITs and COPY/MOVE rows render their resulting `rx.span`. {§edit-result-render}
 
 The `N:` prefix is presentation/reference per plurnk.md ("not part of the source"); stripped before any matcher operation on the log entry.
 

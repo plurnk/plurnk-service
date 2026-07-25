@@ -23,7 +23,7 @@ export type EntryOwner = "commons" | "worker";
 export interface EntryEditResult extends SchemeResult {
     readonly entryId: number | null;
     readonly channel: string | null;
-    readonly span?: string | null;
+    readonly editReceipt?: object | null;
     readonly error?: string;
 }
 
@@ -228,6 +228,7 @@ export interface ProposalApplyResult {
     readonly status: number;
     readonly outcome?: string;
     readonly body?: string;
+    readonly result?: object;
 }
 
 export interface ProposalAware {

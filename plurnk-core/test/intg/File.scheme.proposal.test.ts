@@ -119,14 +119,14 @@ test("file.edit: writes file on accept via applyResolution", async () => {
         assert.equal(result.status, 200);
         const onDisk = await readFile(join(root, target), "utf8");
         assert.equal(onDisk, "hello world\n");
-        // The applied EDIT's rx carries the editedSpan diff — the line-numbered confirmation of
-        // WHAT CHANGED lands in the EDIT row itself (parity with the entry-scheme EDIT's span).
-        // Pre-fix the applied rx was a bare {"status":200}, so the model couldn't see its own write
-        // and re-EDITed; default-folding reclaims the echoed span at the next turn boundary.
+        // The applied EDIT's rx carries the bounded structured receipt computed from what landed.
         const applied = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ status_rx: number; rx: string }>({ id: logEntryId });
         assert.equal(applied?.status_rx, 200);
-        assert.match(applied?.rx ?? "", /hello world/, "applied EDIT rx shows the changed content");
-        assert.match(applied?.rx ?? "", /\b1:/, "applied EDIT rx carries the line number of the change");
+        const appliedRx = JSON.parse(applied?.rx ?? "{}") as {
+            receipt?: { revision?: string; effect?: { context?: string } };
+        };
+        assert.match(appliedRx.receipt?.revision ?? "", /^[a-f0-9]{64}$/);
+        assert.match(appliedRx.receipt?.effect?.context ?? "", /1:hello world/, "applied EDIT rx shows bounded landed context");
     });
 });
 

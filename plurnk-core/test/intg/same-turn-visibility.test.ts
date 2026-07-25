@@ -49,6 +49,41 @@ test("MODE batches same-resource EDITs against one snapshot before an authored-e
             assert.equal(reads.length, 1);
             const receipt = JSON.parse(reads[0].rx) as { content?: string };
             assert.equal(receipt.content, "one\nTWO\n2.5\nthree\nFOUR");
+            const edits = rows
+                .filter((row) => row.op === "EDIT" && row.origin === "model")
+                .map((row) => JSON.parse(row.rx) as {
+                    receipt?: { revision?: string; effect?: { requested?: string; source?: string; result?: string } };
+                })
+                .filter((row) => row.receipt?.effect?.requested === "<2>" || row.receipt?.effect?.requested === "<4>");
+            assert.equal(edits.length, 2);
+            assert.match(edits[0].receipt?.revision ?? "", /^[a-f0-9]{64}$/);
+            assert.equal(edits[0].receipt?.revision, edits[1].receipt?.revision, "both rows identify the one committed resource revision");
+            assert.deepEqual(edits.map((row) => row.receipt?.effect), [
+                { requested: "<2>", source: "2", result: "2-3", removed: 1, inserted: 2, context: "1:one\n2:TWO\n3:2.5\n4:three\n5:FOUR" },
+                { requested: "<4>", source: "4", result: "5", removed: 1, inserted: 1, context: "3:2.5\n4:three\n5:FOUR" },
+            ]);
+        } finally { ws.close(); }
+    });
+});
+
+test("MODE rejects an overlapping resource batch without applying either EDIT (#619)", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("<<EDIT(worker:///atomic.md):one\ntwo\nthree:EDIT\n<<SEND[102]:fixture:SEND", 10),
+        makeMockResponse("<<EDIT(worker:///atomic.md)<1,2>:changed:EDIT\n<<EDIT(worker:///atomic.md)<2,3>:also changed:EDIT\n<<READ(worker:///atomic.md)::READ\n<<SEND[102]:checked:SEND", 10),
+        makeMockResponse("<<SEND[200]:done:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "mode-atomic-failure" });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            assert.equal(result.finalStatus, 200);
+            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
+            const failedEdits = rows.filter((row) => row.op === "EDIT" && row.origin === "model"
+                && (JSON.parse(row.rx) as { status?: number }).status === 409);
+            assert.equal(failedEdits.length, 2);
+            const read = rows.find((row) => row.op === "READ" && row.origin === "model");
+            assert.equal((JSON.parse(read?.rx ?? "{}") as { content?: string }).content, "one\ntwo\nthree");
         } finally { ws.close(); }
     });
 });
