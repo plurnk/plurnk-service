@@ -8,7 +8,6 @@ import test from "node:test";
 import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string; expanded: number; turn_id: number };
@@ -21,7 +20,7 @@ test("the foisted prompt EDIT log row is folded by default; a normal op in the s
             await rpcCall(ws, 1, "workspace.create", { name: "prompt-fold" });
             const resp = await runLoopToTerminal(ws, 2, { prompt: "hello there" });
             const { loopId } = resp as { loopId: number };
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+            const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
             const prompt = rows.find((r) => r.op === "EDIT" && r.scheme === "prompt");
             assert.ok(prompt !== undefined, "the prompt EDIT is logged (forensics)");
             assert.equal(prompt!.expanded, 0, "the prompt EDIT log row is FOLDed by default — its body lives in packet.user.prompt");

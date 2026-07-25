@@ -4,7 +4,7 @@ import Owner from "../core/Owner.ts";
 import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
 import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { Db } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import GitMembership from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -35,7 +35,7 @@ type ApplyResult = { status: number; outcome?: string; body?: string; result?: o
 // (project_root=null), file ops fail at 400; the client either supplies
 // a root or the op isn't appropriate for this workspace.
 const loadWorkspaceRoot = async (db: Db, workspaceId: number): Promise<string | null> => {
-    const row = await (db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
+    const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
     return row?.project_root ?? null;
 };
 
@@ -181,28 +181,28 @@ export default class File extends CoreSchemeAdapterBase {
         let baseSig: string | null = null;  // the snapshot signature the proposal is computed against; null = create (assumed-absent)
         let admittedBy: "client" | "git" | undefined;
         if (fileExists) {
-            const member = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null; membership_origin: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
+            const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
             if (member === undefined) return { ok: false, status: 403, error: `a file exists at ${rel}` };
             // {§fs-write-surface} 5 — a git-included mount member is read-only: git's grants
             // confer rw only within the project; only an explicit client grant carries write.
             if (isMount && member.membership_origin === "git") return { ok: false, status: 403, error: "member is read-only" };
-            const viewGlobs = (await (ctx.db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
+            const viewGlobs = (await ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
                 .filter((c) => c.effect === "view").map((c) => c.glob);
             if (viewGlobs.some((g) => matchesGlob(rel, g))) return { ok: false, status: 403, error: "member is read-only" }; // view = read-only member, 403 on edit — §membership-overlay-view
             // The diff base is the entry's snapshot — the body channel the model READ — not a fresh
             // disk read. EDIT is naive against the view the model saw; the write-side CAS (applyResolution)
             // guards the landing. baseSig is that snapshot's stat, carried with the proposal so a sibling
             // worker's reconcile can't advance it under the paused proposal. §membership-edit-write-cas
-            const snapshot = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel, channel: "body" });
+            const snapshot = await ctx.db.ops_read_channel.get<{ content: string }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel, channel: "body" });
             original = snapshot?.content ?? "";
             baseSig = member.synced_sig;
         } else {
             // {§fs-write-surface} 1 — the blind-write closure: an exclusive CREATE is legal only
             // where the RESULT will be a member. A client pick admits it; else git's auto-add
             // must (untracked-not-ignored). A non-git root grants nothing by itself.
-            const picks = (await (ctx.db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
+            const picks = (await ctx.db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: ctx.workspaceId }))
                 .filter((c) => c.effect === "pick").map((c) => c.glob);
             const clientAdmits = picks.some((g) => matchesGlob(rel, g));
             if (!clientAdmits && !(await GitMembership.wouldGitAdmit(root, rel, ctx.signal))) {
@@ -403,13 +403,13 @@ export default class File extends CoreSchemeAdapterBase {
             // time; provenance never waits for the reconcile to guess what was already known.
             const admitted = (args.attrs as { admittedBy?: string }).admittedBy;
             if (entryId !== null && (admitted === "client" || admitted === "git")) {
-                await (core.db.crud_stamp_origin as PrepMethod).run({ entry_id: entryId, membership_origin: admitted });
+                await core.db.crud_stamp_origin.run({ entry_id: entryId, membership_origin: admitted });
             }
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
             // write as the synced state — not an FsDivergence narrated back at the model.
             if (entryId !== null) {
                 const landed = await stat(canonical);
-                await (core.db.crud_set_synced_sig as PrepMethod).run({ entry_id: entryId, synced_sig: `${landed.mtimeMs}:${landed.size}` });
+                await core.db.crud_set_synced_sig.run({ entry_id: entryId, synced_sig: `${landed.mtimeMs}:${landed.size}` });
             }
         } catch (err) {
             // Disk write succeeded; entry registration failed. Surface
@@ -437,7 +437,7 @@ export default class File extends CoreSchemeAdapterBase {
         if (root === null) return { status: 400 };
         const rel = Namespace.canonicalize(pathname, root);
         if (rel === null) return { status: 404 };
-        const member = await (core.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", pathname: rel });
+        const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", pathname: rel });
         if (member === undefined) return { status: 404 };
         return { status: 202, attrs: { deletePath: rel } };
     }

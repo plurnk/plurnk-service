@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
@@ -46,11 +45,11 @@ test("an interrupted artifact stays building and unattached; retry completes and
             EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, signal: abort.signal })),
             /interrupted/,
         );
-        const interrupted = await (db.test_derivation_interruption_state as PrepMethod).get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        const interrupted = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
         assert.deepEqual(interrupted, { deep_hash: null, building: 1, complete: 0 }, "no partial artifact becomes visible through the entry");
 
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
-        const recovered = await (db.test_derivation_interruption_state as PrepMethod).get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        const recovered = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
         assert.ok(recovered?.deep_hash);
         assert.deepEqual({ building: recovered?.building, complete: recovered?.complete }, { building: 0, complete: 1 }, "retry completes the same artifact and only then attaches it");
     } finally {
@@ -71,11 +70,11 @@ test("an entry-local derivation failure is terminal, explicit, and does not bloc
         } as unknown as Mimetypes;
 
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
-        const entry = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/interrupted.md" });
-        const disposition = await (db.test_derivation_disposition as PrepMethod).get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
+        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
         assert.equal(disposition?.disposition, "failed");
         assert.equal(disposition?.reason, "fixture reader exploded");
-        const state = await (db.test_derivation_interruption_state as PrepMethod).get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        const state = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
         assert.ok(state?.deep_hash, "the terminal failure attaches an explicit artifact");
         assert.deepEqual({ building: state?.building, complete: state?.complete }, { building: 0, complete: 1 });
     } finally {

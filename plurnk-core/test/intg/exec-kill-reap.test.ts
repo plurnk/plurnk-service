@@ -8,7 +8,6 @@ import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, waitForDb } from "./_rpc.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 
 const mockTurn = (dsl: string) => ({
     assistant: { content: `<<PLAN::PLAN\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
@@ -35,7 +34,7 @@ test("teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bou
                 // The loop parks (202) only AFTER its EXEC has spawned, so a 202 status is the
                 // deterministic "the stubborn spawn is live" gate — never a fixed-sleep race.
                 await waitForDb(
-                    () => (db.engine_loop_status as PrepMethod).get<{ status: number }>({ loop_id: loopId }),
+                    () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
                     (r) => r?.status === 202,
                     { timeoutMs: 5000 },
                 );

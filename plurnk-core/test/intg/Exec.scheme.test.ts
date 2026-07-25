@@ -10,7 +10,6 @@ import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, seedEntryWithChannel, rootWorkspace } from "./_helpers.ts";
 import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -84,11 +83,11 @@ test("EXEC[sh](worker:///script) empty body → resolves the scheme content as t
         assert.equal(result.status, 200, "empty body + scheme target is accepted, not 400");
         await ctx.exec.idle();
 
-        const log = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname });
+        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
         assert.ok(entryRow, "sh entry exists");
-        const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
+        const stdout = await ctx.db.test_get_channel.get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
         assert.equal(stdout?.content, "resolved-from-scheme\n", "the stored script's content was resolved into the command and run");
     });
 });
@@ -103,7 +102,7 @@ test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
+        const row = await ctx.db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
         assert.equal(row?.state, "proposed");
         assert.equal(row?.status_rx, 202);
         const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; command: string; pathname: string };
@@ -133,7 +132,7 @@ test("EXEC: the (target) slot lands in attrs.target (the data source), NOT attrs
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; target: string | null; command: string };
         assert.equal(attrs.target, "data/users.json", "the (target) slot is the data source, in attrs.target");
         assert.equal(attrs.cwd, null, "cwd is the workspace (null headless here), never the target");
@@ -156,7 +155,7 @@ test("file (target) + empty body runs the file, not the old empty-body 400 (#462
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;  // a log row minted ⇒ it dispatched (proposed), never the empty-body 400
-            const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id });
+            const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
             const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; command: string };
             assert.equal(attrs.target, "greet.sh", "a FILE target is the program the executor runs (body = stdin)");
             assert.equal(attrs.cwd, root, "a file target never moves cwd — it stays the workspace");
@@ -180,7 +179,7 @@ test("directory (target) overrides cwd; the body is the command run there (#462)
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;
-            const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id });
+            const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
             const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; command: string };
             assert.equal(attrs.cwd, join(root, "sub"), "a DIRECTORY target overrides cwd — the body runs there");
             assert.equal(attrs.target, null, "a directory is neither program nor data source — target is cleared");
@@ -226,21 +225,21 @@ test("EXEC[sh]: clean exit → channels at state=closed, stdout captured, subscr
         assert.equal(result.status, 200);
         await ctx.exec.idle();
 
-        const log = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string; outcome: string | null }>({ id: logEntryId });
+        const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string; outcome: string | null }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
         assert.equal(log?.outcome, "started", "dispatch outcome reflects when applyResolution returned");
 
-        const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
             scheme: "sh", pathname,
         });
         assert.ok(entryRow, `sh://${pathname} entry exists`);
-        const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+        const stdout = await ctx.db.test_get_channel.get<{ content: string; state: string }>({
             entry_id: entryRow.id, name: "stdout",
         });
         assert.equal(stdout?.content, "marker\n");
         assert.equal(stdout?.state, "closed");
 
-        const sub = await (ctx.db.test_get_subscription_by_entry as PrepMethod).get<{ close_status: number | null }>({
+        const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null }>({
             worker_id: ctx.workerId, entry_id: entryRow.id,
         });
         assert.equal(sub?.close_status, 200, "spawn's actual exit-0 lands on subscription.close_status");
@@ -261,20 +260,20 @@ test("EXEC[sh]: non-zero exit → channels=errored, stderr captured, subscriptio
         await dispatchPromise;
         await ctx.exec.idle();
 
-        const log = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
 
-        const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
             scheme: "sh", pathname,
         });
         assert.ok(entryRow);
-        const stderr = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+        const stderr = await ctx.db.test_get_channel.get<{ content: string; state: string }>({
             entry_id: entryRow.id, name: "stderr",
         });
         assert.equal(stderr?.content, "oops\n");
         assert.equal(stderr?.state, "errored");
 
-        const sub = await (ctx.db.test_get_subscription_by_entry as PrepMethod).get<{ close_status: number | null }>({
+        const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null }>({
             worker_id: ctx.workerId, entry_id: entryRow.id,
         });
         assert.equal(sub?.close_status, 500, "non-zero exit → subscription closed at 500");
@@ -291,7 +290,7 @@ test("EXEC: cwd defaults to workspace.project_root when statement target is null
     const marker = `cwd-default-${crypto.randomUUID().slice(0, 6)}.txt`;
     try {
         await withWorkspace(async (ctx) => {
-            await (ctx.db.test_set_session_project_root as PrepMethod).run({
+            await ctx.db.test_set_session_project_root.run({
                 id: ctx.workspaceId, project_root: workspace,
             });
             const idDeferred = deferred<number>();
@@ -329,13 +328,13 @@ test("EXEC[node]: runs node code via -e and captures stdout", async () => {
         await dispatchPromise;
         await ctx.exec.idle();
 
-        const log = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const log = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+        const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
             scheme: "node", pathname,
         });
         assert.ok(entryRow);
-        const stdout = await (ctx.db.test_get_channel as PrepMethod).get<{ content: string }>({
+        const stdout = await ctx.db.test_get_channel.get<{ content: string }>({
             entry_id: entryRow.id, name: "stdout",
         });
         // stdout reflects the subprocess's INHERITED env (§exec-env-scoped) — a host FORCE_COLOR makes
@@ -379,12 +378,12 @@ test("EXEC: subscription row opens then closes; stream/event fires per chunk + t
         assert.equal(closedEvents.length, 2, "both stdout and stderr transition to closed");
 
         // Subscription row exists and is closed at 200.
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
             scheme: "sh", pathname: chunkEvents.length > 0
-                ? (await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: chunkEvents[0].entryId }))!.pathname
+                ? (await db.test_get_entry_by_id.get<{ pathname: string }>({ id: chunkEvents[0].entryId }))!.pathname
                 : "",
         });
-        const sub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ close_status: number | null }>({
+        const sub = await db.test_get_subscription_by_entry.get<{ close_status: number | null }>({
             worker_id: workerId, entry_id: entryRow!.id,
         });
         assert.equal(sub?.close_status, 200);

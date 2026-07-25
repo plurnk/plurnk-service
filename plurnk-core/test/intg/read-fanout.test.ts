@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Log from "../../src/schemes/Log.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -72,7 +72,7 @@ test("a matcher READ fans out to one row per MATCH, each at its (file, span) (#2
         // numbers it N: at render (#286 — no pre-numbering baked into the body). Read the stored
         // rx directly: Log.read re-resolves the body fresh and wouldn't surface the stored span.
         const rxOf = async (seq: number): Promise<{ content?: string; startLine?: number | null }> => {
-            const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq });
+            const row = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq });
             return JSON.parse(row!.rx) as { content?: string; startLine?: number | null };
         };
         // Sequence 1 is the FIND selection-summary row (§matcher-selection-signal); deliveries follow.
@@ -114,7 +114,7 @@ test("trailing slash is ordinary resource syntax unless the scheme declares fold
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
-        const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+        const row = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
         assert.match(row?.rx ?? "", /opaque root resource/);
     } finally { await db.close(); }
 });
@@ -149,7 +149,7 @@ test("an over-budget matcher READ writes a bounded FIND + 413 and zero deliverie
         assert.equal(r.status, 413);
         assert.equal(r.rowsWritten, 2, "one count-bearing FIND summary + one loud READ refusal");
         const rows = await Promise.all([1, 2].map((sequence) =>
-            (db.log_read_by_coordinate as PrepMethod).get<{ op: string; status_rx: number; rx: string }>({
+            db.log_read_by_coordinate.get<{ op: string; status_rx: number; rx: string }>({
                 worker_id: workerId,
                 loop_seq: 1,
                 turn_seq: 1,

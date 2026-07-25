@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
@@ -24,7 +23,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             assert.equal(result.usage?.promptTokens, 0);
             assert.equal(result.usage?.costPico, 0);
 
-            const entryCount = (await (db.test_count_entries as PrepMethod).get<{ n: number }>())?.n;
+            const entryCount = (await db.test_count_entries.get<{ n: number }>())?.n;
             // worker:///france/capital + the prompt frame (2 base — no manifest.json entry, the
             // catalog is FIND-served), plus 11 docs: the 3 non-excluded in-tree schemes (log/worker/prompt
             // — file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE, skill excluded too), the
@@ -217,7 +216,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
             // contentless corpse over a still-live 102 row.
             const msg = (captured[0] as { message?: string }).message;
             assert.ok(typeof msg === "string" && msg.length > 0, "loop/terminated carries the error message");
-            const loopRow = await (_db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: (captured[0] as { loopId: number }).loopId });
+            const loopRow = await _db.test_get_loop_status.get<{ status: number }>({ id: (captured[0] as { loopId: number }).loopId });
             assert.equal(loopRow?.status, 500, "the loop ROW is terminal 500 — a dead loop never reads as live");
             // #506 — the WHY reaches ALL THREE forensic channels, never one: the daemon log carries
             // the stack, and an error-level telemetry event fires (run54 had zero of either).

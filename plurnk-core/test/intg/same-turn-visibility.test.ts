@@ -5,7 +5,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
 test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME turn (#360)", async () => {
@@ -22,7 +21,7 @@ test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME 
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             assert.equal(finalStatus, 200);
             await flush();
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; rx: string }>({ loop_id: 2 });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: 2 });
             const modelFind = (rows ?? []).filter((r) => r.op === "FIND" && r.origin === "model");
             assert.ok(modelFind.length >= 1, "the model's FIND dispatched");
             const rx = JSON.parse(modelFind[0].rx ?? "{}") as { content?: string };
@@ -44,7 +43,7 @@ test("MODE batches same-resource EDITs against one snapshot before an authored-e
             await rpcCall(ws, 1, "workspace.create", { name: "mode-batch" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             assert.equal(result.finalStatus, 200);
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const reads = rows.filter((row) => row.op === "READ" && row.origin === "model");
             assert.equal(reads.length, 1);
             const receipt = JSON.parse(reads[0].rx) as { content?: string };
@@ -78,7 +77,7 @@ test("MODE rejects an overlapping resource batch without applying either EDIT (#
             await rpcCall(ws, 1, "workspace.create", { name: "mode-atomic-failure" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             assert.equal(result.finalStatus, 200);
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId });
             const failedEdits = rows.filter((row) => row.op === "EDIT" && row.origin === "model"
                 && (JSON.parse(row.rx) as { status?: number }).status === 409);
             assert.equal(failedEdits.length, 2);

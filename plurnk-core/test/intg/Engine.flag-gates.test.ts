@@ -9,7 +9,6 @@ import assert from "node:assert/strict";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, sendStmt } from "./_dsl.ts";
@@ -50,7 +49,7 @@ const setup = async () => {
 };
 
 const setLoopFlags = async (db: Awaited<ReturnType<typeof openMigrated>>, loopId: number, flags: object): Promise<void> => {
-    await (db.engine_set_loop_flags as PrepMethod).run({ loop_id: loopId, flags: JSON.stringify(flags) });
+    await db.engine_set_loop_flags.run({ loop_id: loopId, flags: JSON.stringify(flags) });
 };
 
 test("ask mode refuses EVERY filesystem write — EDIT/COPY-dest/MOVE/KILL on the workspace (the ancient read-only contract, uncovered until now)", async () => {

@@ -11,7 +11,6 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.
 class WitnessMock extends Mock {
@@ -41,7 +40,7 @@ test("[#561] the requiem interview identifies as its own root — primaryWorkerI
         const worker = await insertWorker(db, workspaceId, null, "witness");
         const loopId = await insertLoop(db, worker, 1, "go");
         // A turn carrying a MODEL packet (non-empty sections) so the requiem picks this worker up.
-        await (db.test_insert_turn as PrepMethod).get<{ id: number }>({ loop_id: loopId, sequence: 1, status: 200, packet: MODEL_PACKET("witness") });
+        await db.test_insert_turn.get<{ id: number }>({ loop_id: loopId, sequence: 1, status: 200, packet: MODEL_PACKET("witness") });
     } finally { await db.close(); }
 
     const provider = new WitnessMock({ contextWindow: 100000, responses: [{ assistant: { content: "the testimony", reasoning: null, ops: [], finishReason: "stop" } }] });

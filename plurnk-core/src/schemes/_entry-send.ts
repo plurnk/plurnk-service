@@ -3,7 +3,6 @@
 // and 499 (Client Closed Request, cancel active subscription).
 
 import type { SendStatement } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../core/Db.ts";
 import Owner from "../core/Owner.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -43,9 +42,9 @@ export default class EntrySend {
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
                 const { db, workspaceId } = ctx;
-                const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
+                const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
                 if (entry === undefined) return { status: 404 };
-                const deleted = await (db.crud_delete_channel as PrepMethod).get<{ name: string }>({ entry_id: entry.id, name: fragment });
+                const deleted = await db.crud_delete_channel.get<{ name: string }>({ entry_id: entry.id, name: fragment });
                 return { status: deleted === undefined ? 404 : 200 };
             }
             const result = await EntryCrud.deleteEntry(pathname, ctx, scheme, explicitOwnerId);
@@ -60,7 +59,7 @@ export default class EntrySend {
             const pathname = EntrySend.#pathnameOf(statement);
             if (pathname === null) return { status: 400 };
             const { db, workspaceId, workerId } = ctx;
-            const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
+            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });
             if (entry === undefined) return { status: 404, error: "no entry at path" };
             const subscription = await ChannelWrite.findActiveSubscription(db, { workerId, entryId: entry.id });
             if (subscription === null) return { status: 404, error: "no active subscription to cancel" };

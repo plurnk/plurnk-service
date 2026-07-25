@@ -5,7 +5,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -42,7 +42,7 @@ const dispatchTurn = async (
     ctx: { workspaceId: number; workerId: number; loopId: number },
 ): Promise<{ turnId: number; statuses: number[] }> => {
     const { assistant } = await provider.generate({ messages: [] });
-    const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: ctx.loopId });
+    const seqRow = await db.client_turn_next_sequence.get<{ next: number }>({ loop_id: ctx.loopId });
     if (seqRow === undefined) throw new Error("seq query returned no row");
     const ops = (assistant.ops ?? []) as PlurnkStatement[];
     const sendOp = ops.find((o): o is SendStatement => o.op === "SEND");
@@ -71,12 +71,12 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         const result = await dispatchTurn(engine, provider, db, env);
         assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; SEND[200] broadcast terminal → 200");
 
-        const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
+        const entry = await db.test_get_entry_by_path.get<{ id: number }>({
             workspace_id: env.workspaceId, scheme: "worker", pathname: "/france/capital",
         });
         assert.ok(entry !== undefined);
 
-        const logRows = await (db.test_log_entries_by_turn as PrepMethod).all<{ op: string; sequence: number; status_rx: number; pathname: string | null }>({ turn_id: result.turnId });
+        const logRows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number; status_rx: number; pathname: string | null }>({ turn_id: result.turnId });
         assert.equal(logRows.length, 2);
         assert.equal(logRows[0]?.op, "EDIT");
         assert.equal(logRows[0]?.sequence, 1);
@@ -104,10 +104,10 @@ test("e2e: three EDITs in one turn — sequence 1/2/3, three entries written", a
         const result = await dispatchTurn(engine, provider, db, env);
         assert.deepEqual(result.statuses, [201, 201, 201, 102]);
 
-        const count = (await (db.test_count_entries_by_session as PrepMethod).get<{ n: number }>({ workspace_id: env.workspaceId }))?.n;
+        const count = (await db.test_count_entries_by_session.get<{ n: number }>({ workspace_id: env.workspaceId }))?.n;
         assert.equal(count, 3);
 
-        const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ sequence: number }>({ turn_id: result.turnId });
+        const indices = await db.test_log_entries_by_turn.all<{ sequence: number }>({ turn_id: result.turnId });
         assert.deepEqual(indices.map((r) => r.sequence), [1, 2, 3, 4]);
     } finally { await db.close(); }
 });
@@ -141,7 +141,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
         assert.deepEqual(turn2.statuses, [200, 102], "READ → 200; the continue receives the result next turn");
         assert.deepEqual(turn3.statuses, [200], "the conclusion lands clean — nothing pending");
 
-        const turn2Reads = (await (db.test_log_entries_by_turn as PrepMethod).all<{ sequence: number; status_rx: number; pathname: string; op: string }>({ turn_id: turn2.turnId }))
+        const turn2Reads = (await db.test_log_entries_by_turn.all<{ sequence: number; status_rx: number; pathname: string; op: string }>({ turn_id: turn2.turnId }))
             .filter((r) => r.op === "READ");
         assert.equal(turn2Reads.length, 1);
         assert.equal(turn2Reads[0]?.sequence, 1, "sequence resets per turn (1-based)");

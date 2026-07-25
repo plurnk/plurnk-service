@@ -10,7 +10,6 @@ import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, rootWorkspace } from "./_helpers.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -95,7 +94,7 @@ test("effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a 
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
         assert.equal(row?.state, "proposed", "host runtime proposes — waits for a human");
         engine.resolveProposal(logEntryId, { decision: "accept" });
         await dispatchPromise;
@@ -147,7 +146,7 @@ test("fall-through-INELIGIBLE dispatch → 501 — the refusal lane survives ", 
     // shell off gets the refusal for EVERY shell-shaped path, never a side door.
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
-        await (db.test_set_session_settings as PrepMethod).run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
+        await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
         const result = await engine.dispatch({
             statement: execStmt("nonesuch", null, "echo hi"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",

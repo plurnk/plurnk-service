@@ -137,7 +137,7 @@ test("delegated path: the engine stamps railsAttached + railsVerdict from its ow
         const accept = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "OK", reasoning: null } }] }) as unknown as Provider;
         ProviderInstantiate.registerAlias(accept, "verdictbox");
         const t1 = await engine.runTurn({ provider: accept, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const meta1 = JSON.parse((await (db.test_get_turn_meta as import("../../src/core/Db.ts").PrepMethod).get<{ meta: string }>({ id: t1.turnId }))!.meta) as Record<string, unknown>;
+        const meta1 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t1.turnId }))!.meta) as Record<string, unknown>;
         assert.equal(meta1.railsAttached, "delegated", "no constrainsOutput claim → the contract is delegated; the engine verifies");
         assert.equal(meta1.railsVerdict, "accept", "conforming emission grades accept");
 
@@ -145,7 +145,7 @@ test("delegated path: the engine stamps railsAttached + railsVerdict from its ow
         const reject = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "<<PLAN::PLAN\n<<SEND[200]:done:SEND", reasoning: null } }] }) as unknown as Provider;
         ProviderInstantiate.registerAlias(reject, "verdictbox");
         const t2 = await engine.runTurn({ provider: reject, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const meta2 = JSON.parse((await (db.test_get_turn_meta as import("../../src/core/Db.ts").PrepMethod).get<{ meta: string }>({ id: t2.turnId }))!.meta) as Record<string, unknown>;
+        const meta2 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t2.turnId }))!.meta) as Record<string, unknown>;
         assert.equal(meta2.railsAttached, "delegated");
         assert.equal(meta2.railsVerdict, "reject", "diverging emission grades reject — an unconstrained backend self-names per turn");
     } finally {

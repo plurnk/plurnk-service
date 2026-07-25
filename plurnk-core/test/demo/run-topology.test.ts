@@ -10,7 +10,6 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -35,7 +34,7 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
         throw err;
     }
     const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
-    const workers = await (s.db.envelope_list_workers_for_workspace as PrepMethod).all<{ id: number; name: string; origin: string }>({ workspace_id: s.workspaceId });
+    const workers = await s.db.envelope_list_workers_for_workspace.all<{ id: number; name: string; origin: string }>({ workspace_id: s.workspaceId });
     const modelWorkers = workers.filter(({ origin }) => origin === "model");
     const delegatedWorkers = Math.max(0, modelWorkers.length - 1);
     console.error(`[topo:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns} delegatedWorkers=${delegatedWorkers} delegation=${delegatedWorkers > 0 ? "observed" : "not-observed"}`);
@@ -43,7 +42,7 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
         // All runs in the workspace — see the children too, not just the parent.
         console.error(`workers: ${workers.map((r) => `${r.id}:${r.name}`).join(", ")}`);
         for (const turnId of turnIds) {
-            const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
+            const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
             console.error(`--- turn ${turnId} status=${row?.status} ---\n${(packet.assistant?.content ?? "").slice(0, 1500)}`);
         }

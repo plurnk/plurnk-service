@@ -6,7 +6,6 @@ import type { SendStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, sendStmt } from "./_dsl.ts";
 
@@ -26,13 +25,13 @@ test("SEND[410](worker:///x) deletes the entry (side-effect; not model-facing)",
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/doomed"), "tomorrow"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const beforeDelete = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/doomed" });
+        const beforeDelete = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
         assert.ok(beforeDelete !== undefined);
 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/doomed")));
         assert.equal(r.status, 200);
 
-        const afterDelete = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/doomed" });
+        const afterDelete = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
         assert.equal(afterDelete, undefined, "entry removed");
     } finally { await db.close(); }
 });
@@ -52,9 +51,9 @@ test("SEND[410] with #fragment deletes that channel only; entry remains", async 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/x", "body")));
         assert.equal(r.status, 200);
 
-        const stillThere = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/x" });
+        const stillThere = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/x" });
         assert.ok(stillThere !== undefined, "entry row still present");
-        const channel = await (db.test_get_channel as PrepMethod).get<{ name: string }>({ entry_id: stillThere?.id, name: "body" });
+        const channel = await db.test_get_channel.get<{ name: string }>({ entry_id: stillThere?.id, name: "body" });
         assert.equal(channel, undefined, "body channel was removed");
     } finally { await db.close(); }
 });
@@ -99,7 +98,7 @@ test("SEND[410](worker:///x) deletes unknown entry", async () => {
 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/topic")));
         assert.equal(r.status, 200);
-        const gone = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/topic" });
+        const gone = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/topic" });
         assert.equal(gone, undefined);
     } finally { await db.close(); }
 });
@@ -112,7 +111,7 @@ test("SEND[410](skill:///x) deletes skill entry", async () => {
 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("skill", "/grep")));
         assert.equal(r.status, 200);
-        const gone = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/grep" });
+        const gone = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/grep" });
         assert.equal(gone, undefined);
     } finally { await db.close(); }
 });
@@ -122,15 +121,15 @@ test("SEND[410] cascades — channels and tags all removed", async () => {
     try {
         const k = new Worker();
         await k.edit({ ...editStmt(urlPath("worker", "/doomed"), "body"), signal: ["a", "b"] }, makeSchemeCtx({ db, workspaceId, workerId }));
-        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/doomed" });
+        const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
         const entryId = entryRow!.id;
-        assert.ok(((await (db.test_count_channels_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
-        assert.ok(((await (db.test_count_entry_tags as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
+        assert.ok(((await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
+        assert.ok(((await db.test_count_entry_tags.get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/doomed")));
         assert.equal(r.status, 200);
 
-        assert.equal((await (db.test_count_channels_for_entry as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n, 0);
-        assert.equal((await (db.test_count_entry_tags as PrepMethod).get<{ n: number }>({ entry_id: entryId }))?.n, 0);
+        assert.equal((await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n, 0);
+        assert.equal((await db.test_count_entry_tags.get<{ n: number }>({ entry_id: entryId }))?.n, 0);
     } finally { await db.close(); }
 });

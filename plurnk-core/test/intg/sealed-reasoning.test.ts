@@ -13,7 +13,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Translator } from "@plurnk/plurnk-agui";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
@@ -39,7 +38,7 @@ test("the item list lands verbatim on attrs.reasoning AND agui projects a correl
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
         // 1. The carrier: attrs.reasoning is the item LIST, blobs verbatim.
-        const rows = await (db.test_log_entries_by_run_op as PrepMethod).all<{ attrs: string }>({ worker_id: workerId, op: "model" });
+        const rows = await db.test_log_entries_by_run_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined);
         assert.ok(row, "the mirror row carries attrs.reasoning");
         const list = (JSON.parse(row!.attrs) as { reasoning: Array<{ id: string | null; subtype: string; encrypted: Array<{ data: string; format: string | null }> }> }).reasoning;
@@ -56,7 +55,7 @@ test("the item list lands verbatim on attrs.reasoning AND agui projects a correl
 
         // 3. Weight safety: the NEXT packet's render must not contain the blob anywhere.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const packet = (await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet;
+        const packet = (await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet;
         const sections = (JSON.parse(packet) as { sections?: Array<{ content: string }> }).sections ?? [];
         assert.ok(sections.every((s) => !s.content.includes(BLOB)), "no packet section carries the sealed blob — the model never pays for what it cannot read");
         assert.ok(t1.turnId > 0);
@@ -79,7 +78,7 @@ test("a MULTI-item turn serves N correlated spans — the array residual is clos
         ] as never });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
-        const rows = await (db.test_log_entries_by_run_op as PrepMethod).all<{ attrs: string }>({ worker_id: workerId, op: "model" });
+        const rows = await db.test_log_entries_by_run_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined)!;
         // core relays BOTH items (not a collapsed first) → agui projects TWO correlated sealed values.
         const values = projectThroughAgui(workerId, row.attrs)

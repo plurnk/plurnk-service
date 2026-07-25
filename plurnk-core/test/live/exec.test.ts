@@ -10,7 +10,6 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
 test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdout", async () => {
@@ -34,7 +33,7 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
 
         const dumpTurns = async (): Promise<void> => {
             for (const turnId of turnIds) {
-                const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
+                const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
                 const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
                 console.error(`turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 400)}`);
             }
@@ -46,7 +45,7 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         // Verify a real exec-output entry was created and captured the probe string.
         // §exec / #240: EXEC[sh] output persists under the RUNTIME TAG scheme ("sh"),
         // addressed sh:///<loop>/<turn>/<seq> — NOT scheme="exec" (exec:// is process-control only).
-        const execEntryCount = (await (s.db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
+        const execEntryCount = (await s.db.test_count_entries_by_session_scheme.get<{ n: number }>({
             workspace_id: s.workspaceId, scheme: "sh",
         }))?.n ?? 0;
         assert.ok(execEntryCount >= 1, "at least one sh:/// exec-output entry was created");
@@ -55,15 +54,15 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         // know the auto-generated coordinate from outside; list workspace entries to find
         // any sh:///<coord>.
         type EntryListRow = { scheme: string; pathname: string };
-        const allEntries = await (s.db.test_list_entries_by_workspace_workspace_pathname as PrepMethod).all<EntryListRow>({ workspace_id: s.workspaceId });
+        const allEntries = await s.db.test_list_entries_by_workspace_workspace_pathname.all<EntryListRow>({ workspace_id: s.workspaceId });
         const execEntries = allEntries.filter((e) => e.scheme === "sh");
         let foundProbe = false;
         for (const e of execEntries) {
-            const entryRow = await (s.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+            const entryRow = await s.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
                 scheme: "sh", pathname: e.pathname,
             });
             if (entryRow === undefined) continue;
-            const stdout = await (s.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+            const stdout = await s.db.test_get_channel.get<{ content: string; state: string }>({
                 entry_id: entryRow.id, name: "stdout",
             });
             if ((stdout?.content ?? "").includes("plurnk-exec-live-ok")) {
@@ -75,11 +74,11 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
         if (!foundProbe) {
             await dumpTurns();
             for (const e of execEntries) {
-                const entryRow = await (s.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+                const entryRow = await s.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
                     scheme: "sh", pathname: e.pathname,
                 });
                 if (entryRow === undefined) continue;
-                const stdout = await (s.db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+                const stdout = await s.db.test_get_channel.get<{ content: string; state: string }>({
                     entry_id: entryRow.id, name: "stdout",
                 });
                 console.error(`sh:///${e.pathname} stdout: state=${stdout?.state} content=${JSON.stringify(stdout?.content)}`);

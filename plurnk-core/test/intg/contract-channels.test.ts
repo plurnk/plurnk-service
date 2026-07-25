@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Worker from "../../src/schemes/Worker.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -37,7 +37,7 @@ const seedExecEntry = async (
     });
     // Second channel on the SAME entry — the (entry_id, name) keying means a
     // distinct name is a distinct row under the same entry.
-    await (db.test_seed_channel as PrepMethod).run({
+    await db.test_seed_channel.run({
         entry_id: entryId, name: "stderr", content: stderr, mimetype: "text/stream", state: "static",
     });
     return entryId;
@@ -108,13 +108,13 @@ test("channels are keyed by (entry_id, name); same key collides, distinct names 
     try {
         // Two distinct channel names on one entry are two rows under the same key space.
         const entryId = await seedExecEntry(db, workspaceId, workerId, "run/keys", "first-out", "first-err");
-        const channels = await (db.test_list_channels_for_entry as PrepMethod).all<{ name: string; content: string }>({ entry_id: entryId });
+        const channels = await db.test_list_channels_for_entry.all<{ name: string; content: string }>({ entry_id: entryId });
         assert.deepEqual(channels.map((c) => c.name), ["stderr", "stdout"], "distinct names coexist under one entry");
 
         // (entry_id, name) is the primary key — re-inserting the SAME (entry, name)
         // raw violates uniqueness. The append-only store keys on this tuple.
         await assert.rejects(
-            () => (db.test_seed_channel as PrepMethod).run({
+            () => db.test_seed_channel.run({
                 entry_id: entryId, name: "stdout", content: "dup", mimetype: "text/stream", state: "static",
             }),
             /constraint/i,
@@ -146,9 +146,9 @@ test("the exec scheme transitions channel state across the connection lifecycle"
         // Wait for the spawned subprocess + queued state writes to drain.
         await exec.idle();
 
-        const entryId = (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname }))?.id;
+        const entryId = (await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "sh", pathname }))?.id;
         assert.notEqual(entryId, undefined);
-        const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({ entry_id: entryId, name: "stdout" });
+        const stdout = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entryId, name: "stdout" });
         // Scheme-owned transition: a clean exit closes the stdout channel.
         assert.equal(stdout?.state, "closed", "exec scheme transitioned stdout active → closed on clean exit");
         assert.equal(stdout?.content, "done", "content accumulated through the lifecycle");
@@ -174,7 +174,7 @@ test("channel state does not gate reads — errored/closed channels still return
         assert.equal(r.channel, "body");
 
         // Confirm the stored state really is 'errored' (the read ignored it).
-        const stored = await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: (await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "worker", pathname: "/partial" }))?.id, name: "body" });
+        const stored = await db.test_get_channel.get<{ state: string }>({ entry_id: (await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname: "/partial" }))?.id, name: "body" });
         assert.equal(stored?.state, "errored", "state persisted as errored — read succeeded anyway");
     } finally { await db.close(); }
 });

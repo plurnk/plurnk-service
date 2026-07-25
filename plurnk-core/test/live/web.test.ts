@@ -17,7 +17,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
@@ -55,8 +54,8 @@ test("live web: a discovered http:// READ fetches a real URL into a streamed ent
             let body = "";
             for (let i = 0; i < 40 && body.length === 0; i++) {
                 await new Promise((res) => setTimeout(res, 500));
-                const e = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "https", pathname: "/www.google.com/robots.txt" });
-                if (e) body = (await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: e.id, name: "body" }))?.content ?? "";
+                const e = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname: "/www.google.com/robots.txt" });
+                if (e) body = (await db.test_get_channel.get<{ content: string }>({ entry_id: e.id, name: "body" }))?.content ?? "";
             }
             assert.ok(body.length > 0, "the real fetched robots.txt body materialized in the entry");
             assert.match(body, /User-agent|Disallow/i, "the body is the actual robots.txt content");
@@ -96,22 +95,22 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
             });
             await exec.idle();   // the backgrounded search spawn settles
 
-            const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+            const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
             const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "search", pathname });
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "search", pathname });
             assert.ok(entry, "a search:/// output entry was created");
-            const results = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entry.id, name: "results" });
+            const results = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "results" });
             const rows = JSON.parse(results?.content ?? "[]") as Array<{ url?: string; materialized?: boolean }>;
             assert.ok(Array.isArray(rows) && rows.length > 0, "the SearXNG query returned a non-empty JSON results array");
             const survivor = rows.find((row) => row.materialized === true && typeof row.url === "string");
             assert.ok(survivor?.url, "live search materialized at least one discovered page");
             const url = new URL(survivor.url);
-            const page = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+            const page = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
                 scheme: url.protocol.slice(0, -1),
                 pathname: `/${url.hostname}${url.pathname}`,
             });
             assert.ok(page, "the materialized verdict names a real, addressable web entry");
-            const pageBody = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string }>({ entry_id: page.id, name: "body" });
+            const pageBody = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: page.id, name: "body" });
             assert.ok((pageBody?.content.length ?? 0) > 0, "the discovered page has a non-empty model-facing body");
             assert.notEqual(pageBody?.mimetype, "text/html", "raw HTML never occupies the decisive body channel");
         } finally { await db.close(); }
@@ -133,10 +132,10 @@ test("live web: a real HTML READ stores readable body + faithful DOM under one a
             const turnId = await insertTurn(db, loopId, 1, 102);
             const result = await engine.dispatch({ statement: item.statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
             assert.equal(result.status, 102);
-            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "https", pathname: "/example.com/" });
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname: "/example.com/" });
             assert.ok(entry);
-            const body = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "body" });
-            const html = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "html" });
+            const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "body" });
+            const html = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "html" });
             assert.equal(body?.mimetype, "text/markdown");
             assert.match(body?.content ?? "", /documentation examples/i);
             assert.match(body?.content ?? "", /iana\.org\/domains\/example/i);

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { hermeticGitEnv } from "./git-env.ts";
 import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
 export interface GitStatus {
@@ -34,7 +34,7 @@ export default class GitState {
     static async status(db: Db, workspaceId: number, signal: AbortSignal | undefined): Promise<GitStatus | null> {
         // #232 — git:false denies git telemetry for the workspace (env AND workspace ceiling).
         if (!GitState.enabled() || (await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
-        const row = await (db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
+        const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;
         if (root === null) return null;
         if (process.env.PLURNK_SERVICE_GIT_NATIVE !== "1") {

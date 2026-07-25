@@ -20,7 +20,7 @@ import { resolveActiveAlias } from "@plurnk/plurnk-providers";
 import type { Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../src/core/ProviderInstantiate.ts";
 import Daemon from "../src/server/Daemon.ts";
-import type { Db, PrepMethod } from "../src/core/Db.ts";
+import type { Db } from "../src/core/Db.ts";
 import { openMigrated } from "./intg/_helpers.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./intg/_rpc.ts";
 import Digest from "../src/digest/Digest.ts";
@@ -122,7 +122,7 @@ export const liveLoop = async (
 const lastReply = async (db: Db, turnIds: number[] | undefined): Promise<string> => {
     const lastTurnId = turnIds?.[turnIds.length - 1];
     if (lastTurnId === undefined) return "";
-    const row = await (db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: lastTurnId });
+    const row = await db.test_get_turn.get<{ packet: string }>({ id: lastTurnId });
     const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
     return packet.assistant?.content ?? "";
 };
@@ -140,11 +140,11 @@ export const seedEntry = async (
     // Honor the convention. (readWorkspaceEntry is a direct scheme+pathname+channel lookup — no
     // membership filter — so a plain workspace entry resolves; no git materialization needed.)
     const pathname = opts.pathname.startsWith("/") ? opts.pathname : `/${opts.pathname}`;
-    const e = await (db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({
+    const e = await db.crud_insert_workspace_entry.get<{ id: number }>({
         workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: opts.scheme ?? "worker", pathname,
     });
     if (e === undefined) throw new Error("seedEntry: insert returned no row");
-    await (db.crud_write_channel as PrepMethod).run({
+    await db.crud_write_channel.run({
         entry_id: e.id, name: "body", content: opts.content, mimetype: opts.mimetype ?? "text/markdown", tokens: 0, state: "static",
     });
     return e.id;
@@ -154,7 +154,7 @@ export const seedEntry = async (
 // channel/entry is gone). Assert what the OP did to the db, never the model's words.
 export const readBody = async (db: Db, pathname: string): Promise<string | undefined> => {
     const canonical = pathname.startsWith("/") ? pathname : `/${pathname}`;  // match seedEntry's canonical form
-    const row = await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: canonical });
+    const row = await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: canonical });
     return row?.content;
 };
 
@@ -162,7 +162,7 @@ export const readBody = async (db: Db, pathname: string): Promise<string | undef
 // (what a READ actually sliced / a FIND actually matched). modelWorkerId rides the
 // loop/terminated event (liveLoop returns it).
 export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise<string> => {
-    const row = await (db.test_get_log_rx_by_run_op as PrepMethod).get<{ rx: string }>({ worker_id: modelWorkerId, op });
+    const row = await db.test_get_log_rx_by_run_op.get<{ rx: string }>({ worker_id: modelWorkerId, op });
     return row?.rx ?? "";
 };
 

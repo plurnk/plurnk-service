@@ -9,7 +9,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string; status_rx: number; rx: string };
@@ -30,7 +29,7 @@ test("PLURNK_SERVICE_FILES_ITEMS foists the catalog at turn 0 — memory FULL, t
                 await rpcCall(ws, 4, "op.edit", { target: "worker:///c.md", content: "charlie" });
                 const resp = await runLoopToTerminal(ws, 5, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const cf = rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.pathname === "/**");
                 assert.ok(cf !== undefined, "turn 0 foists a FIND(worker:///**) catalog preview when set");
                 assert.equal(cf!.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
@@ -48,7 +47,7 @@ test("PLURNK_SERVICE_FILES_ITEMS foists the catalog at turn 0 — memory FULL, t
                 await rpcCall(ws, 1, "workspace.create", { name: "manifest-off" });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 assert.equal(rows.find((r) => r.op === "FIND"), undefined, "no catalog FIND foisted when unset");
             } finally { ws.close(); }
         });
@@ -71,9 +70,9 @@ test("no manifest.json entry — the catalog is FIND-served; preview-off foists 
                 await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
                 const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const entry = await (db.test_get_entry_id_by_scheme_pathname as PrepMethod).get<{ id: number }>({ scheme: "worker", pathname: "/manifest.json" });
+                const entry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname: "/manifest.json" });
                 assert.equal(entry?.id, undefined, "no manifest.json entry — the catalog is not materialized as an entry");
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 assert.equal(rows.find((r) => r.op === "FIND"), undefined, "preview off → no catalog FIND foisted; the model FINDs on demand");
             } finally { ws.close(); }
         });
@@ -95,7 +94,7 @@ test("workspace.create settings.filesItems replaces the env default at turn 0", 
                 await rpcCall(ws, 1, "workspace.create", { name: "mi-off", settings: { filesItems: 0 } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 assert.equal(rows.find((r) => r.op === "FIND"), undefined, "workspace filesItems:0 replaces env -1 — no catalog FIND foisted");
             } finally { ws.close(); }
         });
@@ -107,7 +106,7 @@ test("workspace.create settings.filesItems replaces the env default at turn 0", 
                 await rpcCall(ws, 1, "workspace.create", { name: "mi-on", settings: { filesItems: -1 } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const cf = rows.find((r) => r.op === "FIND");
                 assert.ok(cf !== undefined && cf.status_rx === 200, "workspace filesItems:-1 replaces env 0 — catalog FIND foisted");
             } finally { ws.close(); }
@@ -149,7 +148,7 @@ test("[#269] turn-0 run-once foists fire on the worker's first loop only, not ev
                 const r1 = await runLoopToTerminal(ws, 3, { prompt: "first" });
                 const r2 = await runLoopToTerminal(ws, 4, { prompt: "second" });
                 const catalogFind = async (loopId: number) => {
-                    const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                    const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                     return rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.pathname === "/**");
                 };
                 assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "worker's first loop foists the catalog preview");
@@ -173,7 +172,7 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
                 const { modelWorkerId } = resp as { modelWorkerId: number };
                 // The worker's first turn opens with the turn-0 `model` exemplar at 1/1/1, born OPEN.
-                const row = await (db.log_read_by_coordinate as PrepMethod).get<{ op: string; rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+                const row = await db.log_read_by_coordinate.get<{ op: string; rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 assert.equal(row?.op, "model", "the worker's first turn opens with the turn-0 model exemplar");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic — it carries the FIND the foist ACTUALLY dispatched (worker:///**), rendered to
@@ -198,7 +197,7 @@ test("an EMPTY workspace still foists the bare FIND(**) — 'nothing here' is or
                 await rpcCall(ws, 1, "workspace.create", { name: "empty-ws-find" }); // headless: zero tracked files
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<LogRow>({ loop_id: loopId });
+                const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const bare = rows.find((r) => r.op === "FIND" && r.scheme === null && r.pathname === "**");
                 assert.ok(bare !== undefined, "the bare FIND(**) foists even with zero tracked files — the model is TOLD not to look there");
             } finally { ws.close(); }

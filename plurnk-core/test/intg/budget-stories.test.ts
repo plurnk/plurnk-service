@@ -26,7 +26,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
 
@@ -70,7 +70,7 @@ const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number
     return { workspaceId, workerId, loopId };
 };
 const packetOf = async (db: Db, turnId: number): Promise<{ tokens: number; assistant: { ops: unknown[] }; telemetryErrors: Array<Record<string, unknown>>; packet: object }> => {
-    const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
+    const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
     const packet = JSON.parse(row!.packet) as { tokens: number; assistant: { ops: unknown[] }; telemetryErrors: Array<Record<string, unknown>> };
     return { ...packet, packet };
 };
@@ -82,7 +82,7 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
     return { ceiling: Number(m![1]), usage: Number(m![2]), percent: m![3] === "<1" ? 0.5 : Number(m![3]), free: Number(m![4]) };
 };
 const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>> =>
-    (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>({ worker_id: workerId });
+    db.engine_render_log.all<{ turn_seq: number; expanded: number; tokens: number; op: string; pathname: string | null }>({ worker_id: workerId });
 // #382 — the user prompt (plurnk://prompt/…) is grinder-EXEMPT frame; the grinder folds work, never the task.
 const isPrompt = (r: { scheme?: string | null; pathname: string | null }): boolean => (r as { scheme?: string | null }).scheme === "prompt";
 

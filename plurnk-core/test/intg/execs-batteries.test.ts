@@ -21,7 +21,6 @@ import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, ""); // the host sets FORCE_COLOR; node colorizes
@@ -66,19 +65,19 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         // Side-effecting (host) executors PROPOSE (202, awaiting accept); pure/read ones run INLINE,
         // auto-resolved within dispatch. `attrs.inline` is decided at proposal time, so it's the
         // deterministic gate — a row-state check races the inline auto-resolve. Accept only a real proposal.
-        const proposal = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const proposal = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const inline = (JSON.parse(proposal?.attrs ?? "{}") as { inline?: boolean }).inline === true;
         if (!inline) engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatchPromise;
         await exec.idle(); // the spawn runs async; idle() awaits its close
 
-        const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: tag, pathname });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: tag, pathname });
         // idle() awaits the spawn promise, which drains the channel-write queue before resolving, so the
         // output is committed by here — for inline and proposed runtimes alike. No poll, no close-race.
         const out = entryRow
-            ? await (db.test_get_channel as PrepMethod).get<{ content: string; state: string; mimetype: string }>({ entry_id: entryRow.id, name: channel })
+            ? await db.test_get_channel.get<{ content: string; state: string; mimetype: string }>({ entry_id: entryRow.id, name: channel })
             : undefined;
         assert.equal(out?.state, "closed", `EXEC[${tag}] output channel settled to closed by idle()`);
         return { status: result.status, out: stripAnsi(out?.content ?? ""), inline, mimetype: out?.mimetype ?? "", declaredMimetype };
@@ -223,16 +222,16 @@ test("an unregistered tag falls through to the shell — EXEC[echo]:hello runs a
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        const proposal = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const proposal = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         if ((JSON.parse(proposal?.attrs ?? "{}") as { inline?: boolean }).inline !== true) engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatchPromise;
         await exec.idle();
         assert.equal(result.status, 200, "no 501 — the tag fell through to the shell");
-        const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
         assert.ok(entryRow, "the output entry lands under sh:// — it ran on sh, never a phantom echo://");
-        const out = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
+        const out = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
         assert.match(out?.content ?? "", /hello fallthrough/, "the tag became the command word: `echo hello fallthrough`");
     } finally { await db.close(); }
 });

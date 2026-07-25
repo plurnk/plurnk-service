@@ -10,7 +10,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -55,7 +54,7 @@ test("loop.run flags.noProposals=true: in-tree listener auto-rejects — model s
             });
             assert.equal(result.finalStatus, 200, "loop concludes on the SECOND [200], the rejection weighed (§send-200-failed-ops)");
 
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
             const edit = rows.find((r) => r.op === "EDIT" && r.scheme === "proposing-test");
             assert.ok(edit !== undefined, "proposing-test EDIT log entry expected");
             assert.equal(edit!.status_rx, 400,

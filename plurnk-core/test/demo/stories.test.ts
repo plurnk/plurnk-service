@@ -25,7 +25,7 @@ import type { WebFetch } from "../../src/schemes/Exec.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import WorldState from "../../src/core/world-state.ts";
@@ -51,7 +51,7 @@ interface StoryResult {
 }
 
 const assertRetrievedWebBody = async (story: StoryResult): Promise<void> => {
-    const reads = await (story.db.test_count_model_https_default_reads as PrepMethod).get<{ n: number }>();
+    const reads = await story.db.test_count_model_https_default_reads.get<{ n: number }>();
     assert.ok((reads?.n ?? 0) > 0, "the model READ a materialized HTTPS entry without channel knowledge — discovery alone is not retrieval");
 };
 
@@ -82,7 +82,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
 
     const dump = async (): Promise<void> => {
         for (const turnId of turnIds) {
-            const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
+            const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
             console.error(`--- turn ${turnId} status=${row?.status} ---`);
             console.error((packet.assistant?.content ?? "").slice(0, 2000));
@@ -165,7 +165,7 @@ test("story: answer a question with a web search (canned gate — #530)", { time
             fetchWeb: web.fetchWeb,
         });
         try {
-            const searchEntries = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "search" });
+            const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
             const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && story.lastContent.includes(CANNED_VERSION);
             if (!ok) await story.dump();
             assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
@@ -191,7 +191,7 @@ test("story: search, retrieve, and report a measured claim from a page (canned)"
             fetchWeb: web.fetchWeb,
         });
         try {
-            const pages = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "https" });
+            const pages = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "https" });
             const ok = story.finalStatus === 200 && story.lastContent.toLowerCase().includes(CANNED_SAVINGS);
             if (!ok) await story.dump();
             assert.ok((pages?.n ?? 0) > 0, "search materialized retrievable web pages");
@@ -217,7 +217,7 @@ test("story: search and recover an exact statement from a transcript page (canne
             fetchWeb: web.fetchWeb,
         });
         try {
-            const searchEntries = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "search" });
+            const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
             const ok = story.finalStatus === 200 && story.lastContent.toLowerCase().includes(CANNED_QUOTE);
             if (!ok) await story.dump();
             assert.ok((searchEntries?.n ?? 0) > 0, "the model used web search rather than answering from fixture files");
@@ -244,7 +244,7 @@ test("story: answer a question with a web search (LIVE — #530, in the default 
         maxTurns: 8,
     });
     try {
-        const searchEntries = await (story.db.test_count_entries_by_scheme as PrepMethod).get<{ n: number }>({ scheme: "search" });
+        const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
         const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && /(Zhannetta|Lotnik)/i.test(story.lastContent);
         if (!ok) await story.dump();
         assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
@@ -516,7 +516,7 @@ test("story: create a decisions doc, then revise it — the world stays lawful (
         assert.match(chain.steps[2].lastContent, /express/i, "the model reports its own work");
         assert.match(chain.steps[2].lastContent, /postgres/i);
         // the identity pin: one file, one row — under every spelling the model used across three loops.
-        const row = await (chain.db.test_count_rows_for_pathname as PrepMethod).get<{ n: number }>({ pathname: "docs/decisions.md" });
+        const row = await chain.db.test_count_rows_for_pathname.get<{ n: number }>({ pathname: "docs/decisions.md" });
         assert.equal(row?.n, 1, "the created file is exactly ONE row — the 227× class stays dead at the demo rung");
     } finally { await chain.cleanup(); }
 });

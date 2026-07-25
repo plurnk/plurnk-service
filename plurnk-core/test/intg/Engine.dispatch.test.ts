@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import type { EditStatement, ReadStatement, KillStatement, PlanStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -107,7 +106,7 @@ test("Engine.dispatch: the KILL body annotation survives into the log row's tx (
             statement: killStmt({ target: urlPath("worker", "/gone"), body: "superseded — see /final" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ op: string; tx: string }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("KILL log_entry not found");
         assert.equal(log.op, "KILL");
         const tx = JSON.parse(log.tx) as { body: string | null };
@@ -173,7 +172,7 @@ test("Engine.dispatch: PLAN is a logged no-op (200) whose reasoning body survive
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(plan.status, 200);
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ op: string; tx: string }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("PLAN log_entry not found");
         assert.equal(log.op, "PLAN");
         const tx = JSON.parse(log.tx) as { body: string | null };
@@ -199,7 +198,7 @@ test("Engine.dispatch: EDIT against worker:/// routes to Known.edit, returns 201
         assert.equal(result.status, 201);
         const entryId = (result as unknown as { entryId: number }).entryId;
         assert.ok(entryId >= 1);
-        const entry = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: entryId });
+        const entry = await db.test_get_entry_by_id.get<{ pathname: string }>({ id: entryId });
         assert.equal(entry?.pathname, "/france/capital");
     } finally { await db.close(); }
 });
@@ -212,7 +211,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{
+        const log = await db.test_first_log_entry_for_turn.get<{
             worker_id: number; loop_id: number; turn_id: number; sequence: number;
             origin: string; op: string; suffix: string; signal: string | null;
             scheme: string | null; pathname: string | null;
@@ -266,7 +265,7 @@ test("Engine.dispatch: unknown scheme returns 501 and still writes log row", asy
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501);
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 501);
         assert.equal(log?.scheme, "wiki");
     } finally { await db.close(); }
@@ -285,7 +284,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; scheme: string | null; pathname: string | null }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string | null; pathname: string | null }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 400);
         assert.equal(log?.scheme, null);
         assert.equal(log?.pathname, null);
@@ -305,7 +304,7 @@ test("Engine.dispatch: multiple actions in one turn — log_entries sequence UNI
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
-        const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ sequence: number; pathname: string }>({ turn_id: env.turnId });
+        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; pathname: string }>({ turn_id: env.turnId });
         assert.equal(rows.length, 2);
         assert.equal(rows[0]?.sequence, 1);
         assert.equal(rows[0]?.pathname, "/a");
@@ -322,7 +321,7 @@ test("Engine.dispatch: signal serialized to JSON in log", async () => {
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ signal: string }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ signal: string }>({ turn_id: env.turnId });
         assert.deepEqual(JSON.parse(log?.signal ?? "null"), ["france", "europe"]);
     } finally { await db.close(); }
 });
@@ -337,7 +336,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
                 sequence: i + 1, origin,
             });
         }
-        const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ origin: string; sequence: number }>({ turn_id: env.turnId });
+        const rows = await db.test_log_entries_by_turn.all<{ origin: string; sequence: number }>({ turn_id: env.turnId });
         assert.deepEqual(rows.map((r) => r.origin), ["model", "client", "plurnk", "plugin"]);
     } finally { await db.close(); }
 });
@@ -357,7 +356,7 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
         assert.equal(result.status, 403);
         assert.match((result as unknown as { error: string }).error, /writer 'plugin'.*'worker'/);
         // 403 still writes a log row
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 403);
         assert.equal(log?.scheme, "worker");
     } finally { await db.close(); }
@@ -469,7 +468,7 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
         assert.equal(result.status, 500);
         assert.match((result as unknown as { error: string }).error, /scheme handler deliberately threw/);
         // action-entry preserved at status 500 with error in rx
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number; rx: string; scheme: string }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; rx: string; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 500);
         assert.equal(log?.scheme, "boom");
         const rx = JSON.parse(log?.rx ?? "{}");

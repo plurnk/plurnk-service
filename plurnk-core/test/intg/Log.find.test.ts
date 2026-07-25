@@ -8,7 +8,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -75,7 +74,7 @@ test("READ(log:///**):#pattern# fans out — FIND locates, per-row READs deliver
             workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
         });
         assert.equal(result.status, 200, "the matcher READ fans out through Log.find");
-        const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; rx: string; sequence: number }>({ loop_id: loopId });
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; sequence: number }>({ loop_id: loopId });
         const delivered = rows.filter((r) => r.op === "READ" && r.sequence >= 4 && r.rx.includes("engine hums"));
         assert.ok(delivered.length >= 1, "the matching row's content delivered as a fanned READ row");
     } finally { await db.close(); }

@@ -6,7 +6,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fork from "../../src/core/fork.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const TERMINAL = new Set([200, 413, 429, 499, 500, 508]);
@@ -20,14 +19,14 @@ test("N self-forks of one parent get UNIQUE, individually-addressable names", as
         const f1 = await Fork.fork(db, parent);
         const f2 = await Fork.fork(db, parent);
         const f3 = await Fork.fork(db, parent);
-        const nameOf = async (id: number): Promise<string | undefined> => (await (db.fork_get_worker as PrepMethod).get<{ name: string }>({ id }))?.name;
+        const nameOf = async (id: number): Promise<string | undefined> => (await db.fork_get_worker.get<{ name: string }>({ id }))?.name;
         const [n1, n2, n3] = [await nameOf(f1), await nameOf(f2), await nameOf(f3)];
         assert.deepEqual([n1, n2, n3], ["worker-fork-1", "worker-fork-2", "worker-fork-3"], "each fork gets a unique -fork-<N>");
         assert.equal(new Set([n1, n2, n3]).size, 3, "no two forks collide on a single name");
         // The bug: a single `worker-fork` would have worker_resolve_by_name resolve to the newest for ALL three,
         // so KILL/SEND/READ could only ever reach one. Each unique name must address its OWN fork.
         for (const [n, id] of [[n1, f1], [n2, f2], [n3, f3]] as const) {
-            const r = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: n });
+            const r = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: n });
             assert.equal(r?.id, id, `worker://${n} addresses its own fork`);
         }
     } finally { await db.close(); }
@@ -40,7 +39,7 @@ test("a fork inherits the parent's loops as HISTORY (clamped terminal), never fr
         const parent = await insertWorker(db, workspaceId, null, "p");
         await insertLoop(db, parent, 1, "live"); // the parent's current loop — non-terminal (forking mid-flight)
         const fork = await Fork.fork(db, parent);
-        const loops = await (db.fork_get_loops as PrepMethod).all<{ status: number }>({ worker_id: fork });
+        const loops = await db.fork_get_loops.all<{ status: number }>({ worker_id: fork });
         assert.ok(loops.length > 0, "the fork inherited the parent's loop");
         assert.ok(loops.every((l) => TERMINAL.has(l.status)), `inherited loops are terminal history, not frozen-live (got [${loops.map((l) => l.status)}])`);
     } finally { await db.close(); }
@@ -51,8 +50,8 @@ test("the 409 liveness gate and the Child Runs orientation AGREE — never refus
     try {
         const workspaceId = await insertWorkspace(db, `gate-orient-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId);
-        const gate = async (): Promise<boolean> => (await (db.engine_worker_has_live_child as PrepMethod).get<{ live: number }>({ worker_id: parent })) !== undefined;
-        const orientCount = async (): Promise<number> => (await (db.engine_child_workers_live as PrepMethod).all<{ name: string }>({ worker_id: parent })).length;
+        const gate = async (): Promise<boolean> => (await db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: parent })) !== undefined;
+        const orientCount = async (): Promise<number> => (await db.engine_child_workers_live.all<{ name: string }>({ worker_id: parent })).length;
 
         // No children → both clear.
         assert.equal(await gate(), false, "no child: gate clear");
@@ -69,7 +68,7 @@ test("the 409 liveness gate and the Child Runs orientation AGREE — never refus
         // while the orientation showed nothing (latest loop terminal) — refused for an invisible child →
         // strike-out. The latest-loop gate now matches the orientation: both clear, in lockstep.
         const ownLatest = await insertLoop(db, child, 2, "own work"); // seq 2 — the actual work loop
-        await (db.test_set_loop_status as PrepMethod).run({ id: ownLatest, status: 200 }); // it concluded
+        await db.test_set_loop_status.run({ id: ownLatest, status: 200 }); // it concluded
         assert.equal(await gate(), false, "concluded child: gate clears (the inherited seq-1 @ 102 is not the latest loop)");
         assert.equal(await orientCount(), 0, "concluded child: orientation empty too — gate and orientation never contradict");
     } finally { await db.close(); }

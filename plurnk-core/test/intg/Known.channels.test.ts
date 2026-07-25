@@ -3,7 +3,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Worker from "../../src/schemes/Worker.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, openStmt, foldStmt } from "./_dsl.ts";
 
@@ -26,7 +25,7 @@ test("Known.edit writes only the body channel; preview is render-time", async ()
         assert.equal(r.status, 201);
         assert.equal(r.channel, "body");
 
-        const channels = await (db.test_list_channels_for_entry as PrepMethod).all<{ name: string; content: string; mimetype: string }>({ entry_id: r.entryId });
+        const channels = await db.test_list_channels_for_entry.all<{ name: string; content: string; mimetype: string }>({ entry_id: r.entryId });
         assert.equal(channels.length, 1);
         assert.equal(channels[0].name, "body");
         assert.equal(channels[0].content, "hello");

@@ -12,7 +12,6 @@ import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const emptyTurn = { assistant: { content: "", ops: [] as PlurnkStatement[], reasoning: null } };
@@ -143,7 +142,7 @@ test("[note4] manifest keys channels by addressable URI — default bare, non-de
         const workerId = await insertWorker(db, workspaceId);
         // A multi-channel exec stream entry at sh:///1/1/2 (stdout is the default channel, + stderr).
         const id = await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "sh", pathname: "/1/1/2", channel: "stdout", content: "out", mimetype: "text/stream" });
-        await (db.test_seed_channel as PrepMethod).run({ entry_id: id, name: "stderr", content: "err", mimetype: "text/stream", state: "static" });
+        await db.test_seed_channel.run({ entry_id: id, name: "stderr", content: "err", mimetype: "text/stream", state: "static" });
         // sh's default channel is stdout (the Exec handler) — resolve it so stdout keys bare, stderr by #fragment.
         const ctx = makeSchemeCtx({ db, workspaceId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
         const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<{ path: string; channels: Record<string, unknown> }>;

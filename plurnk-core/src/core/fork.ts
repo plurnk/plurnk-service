@@ -9,14 +9,14 @@
 // "fork = everything-in-common-but-name, then diverges". The §env-delta reconciliation
 // snapshot is not copied; the branch first-sights its world like any fresh run.
 
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 
 export default class Fork {
     // Terminal loop statuses (§lifecycle-terms) — inherited loops outside this set are clamped to 200.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
     static async fork(db: Db, parentWorkerId: number, name?: string): Promise<number> {
-        const parent = await (db.fork_get_worker as PrepMethod).get<{ workspace_id: number; name: string; origin: string }>({ id: parentWorkerId });
+        const parent = await db.fork_get_worker.get<{ workspace_id: number; name: string; origin: string }>({ id: parentWorkerId });
         if (parent === undefined) throw new Error(`fork: run ${parentWorkerId} not found`);
 
         // #248 — name the branch at instantiation (immutable after). An explicit name wins; the default
@@ -24,10 +24,10 @@ export default class Fork {
         // addressable instead of all colliding on a single `<parent>-fork` (§worker-scheme-fork).
         let branchName = name;
         if (branchName === undefined) {
-            const existing = await (db.fork_count_branches as PrepMethod).get<{ n: number }>({ parent_worker_id: parentWorkerId, name_prefix: `${parent.name}-fork%` });
+            const existing = await db.fork_count_branches.get<{ n: number }>({ parent_worker_id: parentWorkerId, name_prefix: `${parent.name}-fork%` });
             branchName = `${parent.name}-fork-${(existing?.n ?? 0) + 1}`;
         }
-        const branch = await (db.fork_insert_worker as PrepMethod).get<{ id: number }>({
+        const branch = await db.fork_insert_worker.get<{ id: number }>({
             workspace_id: parent.workspace_id, name: branchName, parent_worker_id: parentWorkerId, origin: parent.origin,
         });
         if (branch === undefined) throw new Error("fork: branch run insert returned no row");
@@ -38,24 +38,24 @@ export default class Fork {
         // is clamped to terminal (200). Otherwise a fork taken while the parent's loop is mid-flight (102)
         // would carry a frozen-live loop no drain ever advances, falsely marking the branch forever-live
         // to any liveness check (§worker-scheme-fork, the premature-terminate gate §send-premature-terminate).
-        const loops = await (db.fork_get_loops as PrepMethod).all<{ id: number; sequence: number; status: number; prompt: string; flags: string }>({ worker_id: parentWorkerId });
+        const loops = await db.fork_get_loops.all<{ id: number; sequence: number; status: number; prompt: string; flags: string }>({ worker_id: parentWorkerId });
         const loopMap = new Map<number, number>();
         for (const l of loops) {
             const status = Fork.#TERMINAL_LOOP.has(l.status) ? l.status : 200;
-            const nl = await (db.fork_insert_loop as PrepMethod).get<{ id: number }>({ worker_id: branchWorkerId, sequence: l.sequence, status, prompt: l.prompt, flags: l.flags });
+            const nl = await db.fork_insert_loop.get<{ id: number }>({ worker_id: branchWorkerId, sequence: l.sequence, status, prompt: l.prompt, flags: l.flags });
             if (nl === undefined) throw new Error("fork: loop insert returned no row");
             loopMap.set(l.id, nl.id);
         }
 
         // turns → new turns, loop_id remapped, mapping old id → new id.
-        const turns = await (db.fork_get_turns as PrepMethod).all<{ id: number; loop_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
+        const turns = await db.fork_get_turns.all<{ id: number; loop_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
         const turnMap = new Map<number, number>();
         for (const { id, loop_id, ...rest } of turns) {
             // #254 — a fork inherits the parent's log for context but spends no new money:
             // the copied turns are history, not fresh generations. Zero their usage so the
             // cost-rollup triggers add nothing — the workspace total stays true lifetime spend
             // (no double-count) and the branch's cost_pico accrues only what IT generates.
-            const nt = await (db.fork_insert_turn as PrepMethod).get<{ id: number }>({
+            const nt = await db.fork_insert_turn.get<{ id: number }>({
                 ...rest, usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 0,
                 loop_id: loopMap.get(loop_id),
             });
@@ -65,28 +65,28 @@ export default class Fork {
 
         // entries → new entries: run/loop/turn ids remapped; fold-state and
         // attribution and content all preserved.
-        const entries = await (db.fork_get_log_entries as PrepMethod).all<{ id: number; loop_id: number; turn_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
+        const entries = await db.fork_get_log_entries.all<{ id: number; loop_id: number; turn_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
         for (const e of entries) {
             const { id: oldLogId, ...row } = e;
-            const ne = await (db.fork_insert_log_entry as PrepMethod).get<{ id: number }>({ ...row, worker_id: branchWorkerId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
+            const ne = await db.fork_insert_log_entry.get<{ id: number }>({ ...row, worker_id: branchWorkerId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
             if (ne === undefined) throw new Error("fork: log entry copy returned no row");
             // §log-region-tagging — carry the row's region tags onto the copy (no-op when untagged).
-            await (db.fork_copy_log_tags as PrepMethod).run({ old_log_id: oldLogId, new_log_id: ne.id });
+            await db.fork_copy_log_tags.run({ old_log_id: oldLogId, new_log_id: ne.id });
         }
 
         // §worker-scheme — inherit the parent's private scratch: same pathnames, the BRANCH as owner
         // ({§entry-owner} — ownership is the column, never the pathname), so the branch's private
         // workspace is independent and diverges on its own edits.
-        const scratch = await (db.fork_get_worker_scope_entries as PrepMethod).all<{ id: number; scheme: string; pathname: string; deep_hash: string | null; attributes: string }>(
+        const scratch = await db.fork_get_worker_scope_entries.all<{ id: number; scheme: string; pathname: string; deep_hash: string | null; attributes: string }>(
             { workspace_id: parent.workspace_id, owner_id: parentWorkerId },
         );
         for (const s of scratch) {
-            const ne = await (db.fork_insert_worker_scope_entry as PrepMethod).get<{ id: number }>(
+            const ne = await db.fork_insert_worker_scope_entry.get<{ id: number }>(
                 { workspace_id: parent.workspace_id, owner_id: branchWorkerId, scheme: s.scheme, pathname: s.pathname, deep_hash: s.deep_hash, attributes: s.attributes },
             );
             if (ne === undefined) throw new Error("fork: worker-scope entry copy returned no row");
-            await (db.fork_copy_entry_channels as PrepMethod).run({ old_entry_id: s.id, new_entry_id: ne.id });
-            await (db.fork_copy_entry_tags as PrepMethod).run({ old_entry_id: s.id, new_entry_id: ne.id });
+            await db.fork_copy_entry_channels.run({ old_entry_id: s.id, new_entry_id: ne.id });
+            await db.fork_copy_entry_tags.run({ old_entry_id: s.id, new_entry_id: ne.id });
         }
 
         return branchWorkerId;

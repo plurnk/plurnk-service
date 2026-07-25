@@ -4,7 +4,6 @@
 // workers (which inherit origin='model' but carry parent_worker_id) never shadow it.
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon } from "./_rpc.ts";
 
 test("ensureModelWorker finds first — repeated calls return ONE conversation worker (#371)", async () => {
@@ -17,7 +16,7 @@ test("ensureModelWorker finds first — repeated calls return ONE conversation w
             const b = await daemon.ensureModelWorker(workspaceId);
             const c = await daemon.ensureModelWorker(workspaceId);
             assert.equal(a, b); assert.equal(b, c);
-            const runs = await (db.test_runs_by_session as PrepMethod).all<{ id: number; origin: string }>({ workspace_id: workspaceId });
+            const runs = await db.test_runs_by_session.all<{ id: number; origin: string }>({ workspace_id: workspaceId });
             assert.equal((runs ?? []).filter((r) => r.origin === "model").length, 1, "exactly one model worker minted across three ensures");
             // A fork of the conversation never shadows it — ensure still returns the root.
             const fork = await daemon.forkWorker({ workspaceId, workerId: a, name: "branch" });

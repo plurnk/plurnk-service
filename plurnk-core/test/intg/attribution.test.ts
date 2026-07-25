@@ -14,7 +14,6 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 import { parseDsl } from "./_rpc.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 
 const sendDone = parseDsl("<<PLAN::PLAN\n<<SEND[200]:done:SEND");
 const turn = (ops: PlurnkStatement[]): MockResponse => ({
@@ -87,7 +86,7 @@ test("#249 — the loop is tagged with its active plugins' attribution tags, sto
 
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        const row = await (db.test_loops_get_attributions as PrepMethod).get<{ attributions: string }>({ loop_id: loopId });
+        const row = await db.test_loops_get_attributions.get<{ attributions: string }>({ loop_id: loopId });
         assert.deepEqual(JSON.parse(row!.attributions), ["@acme/widgets", "npm:jane"], "the activity is tagged with its plugins' tags, deduped + sorted");
     } finally { await db.close(); }
 });

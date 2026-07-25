@@ -4,7 +4,7 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { Db } from "../core/Db.ts";
 import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import ChannelWrite, { type WakeWorkerPayload } from "../core/ChannelWrite.ts";
@@ -217,7 +217,7 @@ export default class Daemon {
     // gate, validation, and applyResolution stay core (Engine.resolveProposal); the seam is the read +
     // the resolve, never the mechanism. `resolveProposal` throws for an unknown/already-resolved id.
     async pendingProposals(workspaceId: number): Promise<PendingProposal[]> {
-        return (this.#db.proposal_list_pending as PrepMethod).all<PendingProposal>({ workspace_id: workspaceId });
+        return this.#db.proposal_list_pending.all<PendingProposal>({ workspace_id: workspaceId });
     }
 
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
@@ -240,7 +240,7 @@ export default class Daemon {
         // §machine-processes — the model NEVER runs in a client-origin run (its packets would carry
         // client op.* rows). The module resolves the model worker via ensureModelWorker and passes it (or a
         // fork); a client worker here is a caller error, refused loudly rather than silently rehomed.
-        const target = await (this.#db.envelope_get_worker_by_id as PrepMethod).get<{ workspace_id: number; origin: string }>({ id: args.workerId });
+        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number; origin: string }>({ id: args.workerId });
         if (target === undefined) throw new Error(`runLoop: run ${args.workerId} not found`);
         if (target.origin === "client") throw new Error(`runLoop: run ${args.workerId} is a client worker — loops run in model workers (§machine-processes); resolve one with ensureModelWorker(workspaceId)`);
         // §operator-config-max-turns-ceiling — the operator ceiling clamps a per-call maxTurns; a
@@ -276,7 +276,7 @@ export default class Daemon {
     }
 
     async #providerSpecForLoop(loopId: number): Promise<ProviderAlias> {
-        const row = await (this.#db.drain_loop_provider_spec as PrepMethod).get<{ provider_spec: string }>({ loop_id: loopId });
+        const row = await this.#db.drain_loop_provider_spec.get<{ provider_spec: string }>({ loop_id: loopId });
         if (row === undefined) throw new Error(`loop ${loopId}: provider selection row is missing`);
         let parsed: Partial<ProviderAlias> | null;
         try {
@@ -398,10 +398,10 @@ export default class Daemon {
         loopSeq?: number; turnSeq?: number; sequence?: number;
     }): Promise<LogEntryWire[]> {
         const { workspaceId, workerId } = args;
-        const target = await (this.#db.envelope_get_worker_by_id as PrepMethod).get<{ workspace_id: number }>({ id: workerId });
+        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
         if (target === undefined) throw new Error(`run ${workerId} not found`);
         if (target.workspace_id !== workspaceId) throw new Error(`run ${workerId} is not in this workspace (${workspaceId})`);
-        const rows = await (this.#db.log_read_recent_ids as PrepMethod).all<{ id: number }>({
+        const rows = await this.#db.log_read_recent_ids.all<{ id: number }>({
             worker_id: workerId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null,
             loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
@@ -434,7 +434,7 @@ export default class Daemon {
     listPrompts(workspaceId: number, limit: number = 100) { return Envelope.listPromptsForWorkspace(this.#db, workspaceId, limit); }
     listMembers(workspaceId: number) { return GitMembership.resolveMembershipEffects(this.#db, workspaceId, undefined); }
     listConstraints(workspaceId: number) {
-        return (this.#db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
+        return this.#db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
     }
     workspaceDerivationStatus(workspaceId: number) {
         return this.#engine.workspaceDerivationStatus(workspaceId);
@@ -454,7 +454,7 @@ export default class Daemon {
         const constraints = ClientInput.parseConstraints(args.constraints);
         const envelope = await Envelope.createClientEnvelope(this.#db, { name: args.name, projectRoot, settings });
         for (const { effect, glob } of constraints) {
-            await (this.#db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: envelope.workspaceId, effect, glob });
+            await this.#db.crud_insert_workspace_constraint.run({ workspace_id: envelope.workspaceId, effect, glob });
         }
         if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.workspaceId, undefined);
         await LoopDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
@@ -472,7 +472,7 @@ export default class Daemon {
 
     async renameWorkspace(workspaceId: number, name: string): Promise<{ id: number; name: string }> {
         if (typeof name !== "string" || name.length === 0) throw new Error("workspace.rename: name must be a non-empty string"); // seam fail-hard (#364)
-        const taken = await (this.#db.envelope_get_workspace_by_name as PrepMethod).get<{ id: number }>({ name });
+        const taken = await this.#db.envelope_get_workspace_by_name.get<{ id: number }>({ name });
         if (taken !== undefined && taken.id !== workspaceId) throw new Error(`a workspace named "${name}" already exists — pick another`);
         return { id: workspaceId, name: await Envelope.updateWorkspaceName(this.#db, workspaceId, name) };
     }
@@ -483,10 +483,10 @@ export default class Daemon {
         // born with its workspace pointer or never has one — so a 'repo' constraint on a headless
         // workspace can never resolve. Refuse legibly instead of recording a forever-pending lie.
         if (effect === "repo") {
-            const s = await (this.#db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
+            const s = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
             if (s?.project_root == null) throw new Error("workspace.constrain: this workspace is headless — and headless is forever (a workspace pointer is set at workspace.create or never). A 'repo' overlay needs a workspace created with projectRoot.");
         }
-        await (this.#db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect, glob });
+        await this.#db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
         // Members may have just landed — begin warming now, but return the constraint response
         // immediately. Awaiting the whole corpus here kept `/repo **` at the head of the client's
@@ -497,7 +497,7 @@ export default class Daemon {
 
     async unconstrain(workspaceId: number, effect: string, glob: string): Promise<{ effect: string; glob: string }> {
         ClientInput.assertConstraint("workspace.unconstrain", effect, glob);
-        await (this.#db.crud_delete_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect, glob });
+        await this.#db.crud_delete_workspace_constraint.run({ workspace_id: workspaceId, effect, glob });
         await GitMembership.resolveGitMembership(this.#db, workspaceId, undefined);
         void this.#engine.warmWorkspaceDerivations(workspaceId).catch(() => {});
         return { effect, glob };
@@ -512,18 +512,18 @@ export default class Daemon {
         if (args.offset !== undefined && args.channel === undefined) throw new Error("readEntry: offset requires channel (which channel to slice)");
         const scheme = m[1];
         const pathname = m[2].split("#")[0];
-        const row = await (this.#db.entry_read_lookup as PrepMethod).get<{ id: number; scope: string; workspace_id: number; scheme: string; pathname: string }>({ workspace_id: args.workspaceId, scheme, pathname });
+        const row = await this.#db.entry_read_lookup.get<{ id: number; scope: string; workspace_id: number; scheme: string; pathname: string }>({ workspace_id: args.workspaceId, scheme, pathname });
         if (row === undefined) return { status: 404, entry: null };
         let channelRows: ChannelRow[];
         if (args.channel === undefined) {
-            channelRows = await (this.#db.entry_read_channels as PrepMethod).all<ChannelRow>({ entry_id: row.id });
+            channelRows = await this.#db.entry_read_channels.all<ChannelRow>({ entry_id: row.id });
         } else {
-            const r = await (this.#db.entry_read_channel_slice as PrepMethod).get<ChannelRow>({ entry_id: row.id, channel: args.channel, offset: args.offset ?? 0 });
+            const r = await this.#db.entry_read_channel_slice.get<ChannelRow>({ entry_id: row.id, channel: args.channel, offset: args.offset ?? 0 });
             channelRows = r === undefined ? [] : [r];
         }
         const channels: EntryShape["channels"] = {};
         for (const c of channelRows) channels[c.name] = { content: c.content, contentLength: c.contentLength, mimetype: c.mimetype, tokens: c.tokens, state: c.state };
-        const tagRows = await (this.#db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: row.id });
+        const tagRows = await this.#db.crud_read_tags.all<{ tag: string }>({ entry_id: row.id });
         return { status: 200, entry: { id: row.id, scope: row.scope, workspaceId: row.workspace_id, scheme: row.scheme, pathname: row.pathname, channels, tags: tagRows.map((t) => t.tag) } };
     }
 
@@ -537,11 +537,11 @@ export default class Daemon {
     async createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }> {
         const { workspaceId, name } = args;
         if (name !== undefined && (typeof name !== "string" || name.length === 0)) throw new Error("run.create: name must be a non-empty string");
-        const workspace = await (this.#db.envelope_get_workspace as PrepMethod).get<{ id: number }>({ id: workspaceId });
+        const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
         if (workspace === undefined) throw new Error(`run.create: workspace ${workspaceId} not found`);
         if (name !== undefined) {
             if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) throw new Error(`run.create: name "${name}" is reserved for a non-client actor`);
-            const taken = await (this.#db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name });
+            const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name });
             if (taken !== undefined) throw new Error(`run.create: a worker named "${name}" already exists — worker names are immutable, pick another`);
         }
         const run = await Envelope.createModelWorker(this.#db, workspaceId, name);
@@ -552,16 +552,16 @@ export default class Daemon {
     async forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }> {
         if (args.name !== undefined && (typeof args.name !== "string" || args.name.length === 0)) throw new Error("run.fork: name must be a non-empty string"); // seam fail-hard (#364)
         const { workspaceId, workerId, name } = args;
-        const owner = await (this.#db.envelope_get_worker_by_id as PrepMethod).get<{ workspace_id: number }>({ id: workerId });
+        const owner = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
         if (owner === undefined) throw new Error(`forkWorker: run ${workerId} not found`);
         if (owner.workspace_id !== workspaceId) throw new Error(`forkWorker: run ${workerId} is not in workspace ${workspaceId}`);
         if (name !== undefined) {
             if (Envelope.RESERVED_RUN_NAMES.has(name.toLowerCase())) throw new Error(`forkWorker: name "${name}" is reserved for a non-client actor`);
-            const taken = await (this.#db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name });
+            const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name });
             if (taken !== undefined) throw new Error(`forkWorker: a worker named "${name}" already exists — worker names are immutable, pick another`);
         }
         const branchWorkerId = await Fork.fork(this.#db, workerId, name);
-        const branch = await (this.#db.envelope_get_worker_by_id as PrepMethod).get<{ name: string }>({ id: branchWorkerId });
+        const branch = await this.#db.envelope_get_worker_by_id.get<{ name: string }>({ id: branchWorkerId });
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
     }
 
@@ -632,14 +632,14 @@ export default class Daemon {
     }
 
     async #recoverLifecycle(): Promise<void> {
-        await (this.#db.recovery_fail_active_loops as PrepMethod).run({});
-        await (this.#db.recovery_error_orphan_subscription_channels as PrepMethod).run({});
-        await (this.#db.recovery_fail_orphan_subscriptions as PrepMethod).run({});
-        await (this.#db.recovery_resume_unblocked_parks as PrepMethod).run({});
+        await this.#db.recovery_fail_active_loops.run({});
+        await this.#db.recovery_error_orphan_subscription_channels.run({});
+        await this.#db.recovery_fail_orphan_subscriptions.run({});
+        await this.#db.recovery_resume_unblocked_parks.run({});
 
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         const maxTurns = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50");
-        const queued = await (this.#db.recovery_queued_workers as PrepMethod).all<{
+        const queued = await this.#db.recovery_queued_workers.all<{
             worker_id: number;
             workspace_id: number;
         }>({});
@@ -655,7 +655,7 @@ export default class Daemon {
             });
         }
 
-        const parked = await (this.#db.recovery_parked_workers as PrepMethod).all<{
+        const parked = await this.#db.recovery_parked_workers.all<{
             worker_id: number;
             workspace_id: number;
         }>({});
@@ -751,8 +751,8 @@ export default class Daemon {
     async #assertFoldPosture(workerId: number, flags: Partial<LoopFlags> | undefined, loopId?: number): Promise<void> {
         if (flags === undefined || Object.keys(flags).length === 0) return;
         const row = loopId !== undefined
-            ? await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId })
-            : await (this.#db.drain_active_loop_flags as PrepMethod).get<{ id: number; flags: string }>({ worker_id: workerId });
+            ? await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId })
+            : await this.#db.drain_active_loop_flags.get<{ id: number; flags: string }>({ worker_id: workerId });
         const effective: Record<string, unknown> = { ...DEFAULT_LOOP_FLAGS, ...JSON.parse(row?.flags ?? "{}") as object };
         const conflicts = Object.entries(flags).filter(([k, v]) => v !== undefined && effective[k] !== v).map(([k, v]) => `${k}: ${JSON.stringify(effective[k])} → ${JSON.stringify(v)}`);
         if (conflicts.length > 0) {
@@ -777,7 +777,7 @@ export default class Daemon {
         // we enqueue a fresh loop below and ensure a drain claims it.
         if (this.#activeDrains.has(workerId)) {
             await this.#assertFoldPosture(workerId, args.flags); // #368 — a fold never silently discards intent
-            const active = await (this.#db.drain_current_loop_for_worker as PrepMethod).get<{ id: number }>({ worker_id: workerId });
+            const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
             if (active !== undefined) await this.#assertLoopProvider(active.id, args.providerSpec);
             const result = await this.#engine.inject(workerId, prompt);
             if (result !== null) {
@@ -791,7 +791,7 @@ export default class Daemon {
         // slept loop's next-turn prompt (the directed message — distinct from the env door, which
         // resumes promptless); then re-queue + drain it. §worker-lifecycle-wake-liveness.
         if (!this.#activeDrains.has(workerId)) {
-            const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ worker_id: workerId });
+            const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
             if (slept !== undefined) {
                 await this.#assertFoldPosture(workerId, args.flags, slept.id); // #368 — the resume path drops nothing silently either
                 await this.#assertLoopProvider(slept.id, args.providerSpec);
@@ -806,9 +806,9 @@ export default class Daemon {
         }
 
         // Enqueue a fresh loop. Persist flags on the row.
-        const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ worker_id: workerId });
+        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
         if (seqRow === undefined) throw new Error("inject: next-sequence query returned no row");
-        const loopRow = await (this.#db.drain_enqueue_loop as PrepMethod).get<{ id: number }>({
+        const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
             worker_id: workerId, sequence: seqRow.next, prompt,
             provider_spec: JSON.stringify(args.providerSpec),
         });
@@ -817,13 +817,13 @@ export default class Daemon {
 
         if (args.flags !== undefined) {
             const merged = { ...DEFAULT_LOOP_FLAGS, ...args.flags };
-            await (this.#db.engine_set_loop_flags as PrepMethod).run({
+            await this.#db.engine_set_loop_flags.run({
                 loop_id: loopId, flags: JSON.stringify(merged),
             });
         }
         // #260 — persist client-passed @file paths before the drain claims the loop, so turn 0 foists them.
         if (args.openPaths !== undefined && args.openPaths.length > 0) {
-            await (this.#db.engine_set_loop_open_paths as PrepMethod).run({
+            await this.#db.engine_set_loop_open_paths.run({
                 loop_id: loopId, open_paths: JSON.stringify(args.openPaths),
             });
         }
@@ -877,7 +877,7 @@ export default class Daemon {
         });
         let firstSettled = false;
 
-        const claim = () => (this.#db.drain_claim_next_loop as PrepMethod).get<{
+        const claim = () => this.#db.drain_claim_next_loop.get<{
             id: number; sequence: number; prompt: string;
         }>({ worker_id: workerId });
 
@@ -1127,21 +1127,21 @@ export default class Daemon {
     // The drain claims it on its next iteration, so a conclusion or client
     // prompt is never silently dropped. Inherits the ended loop's flags.
     async #reconcileOrphanedWake(workerId: number, endedLoopId: number): Promise<void> {
-        const endedSeq = (await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
+        const endedSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
         const prefix = promptLoopPrefix(endedSeq);
-        const orphan = await (this.#db.drain_orphaned_prompt_for_loop as PrepMethod).get<{
+        const orphan = await this.#db.drain_orphaned_prompt_for_loop.get<{
             body: string; flags: string | null; provider_spec: string;
         }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%` });
         if (orphan === undefined) return;
-        const seqRow = await (this.#db.loop_run_next_sequence as PrepMethod).get<{ next: number }>({ worker_id: workerId });
+        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
         if (seqRow === undefined) throw new Error("reconcileOrphanedWake: next-sequence query returned no row");
-        const fresh = await (this.#db.drain_enqueue_loop as PrepMethod).get<{ id: number }>({
+        const fresh = await this.#db.drain_enqueue_loop.get<{ id: number }>({
             worker_id: workerId, sequence: seqRow.next, prompt: orphan.body,
             provider_spec: orphan.provider_spec,
         });
         if (fresh === undefined) throw new Error("reconcileOrphanedWake: enqueue returned no row");
         if (orphan.flags !== null) {
-            await (this.#db.engine_set_loop_flags as PrepMethod).run({ loop_id: fresh.id, flags: orphan.flags });
+            await this.#db.engine_set_loop_flags.run({ loop_id: fresh.id, flags: orphan.flags });
         }
     }
 
@@ -1170,7 +1170,7 @@ export default class Daemon {
         }
         await Promise.all(cancelled.workerIds.map(async (targetWorkerId) => this.#reapWorkerStreams(targetWorkerId)));
         for (const { loopId, workerId: targetWorkerId } of cancelled.loops) {
-            const row = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: targetWorkerId });
+            const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: targetWorkerId });
             if (row === undefined) continue;
             const usage = await this.#engine.loopUsage(loopId);
             this.#broadcast({ workspaceId: row.workspace_id }, "loop/terminated", {
@@ -1279,7 +1279,7 @@ export default class Daemon {
             // sibling mid-teardown (the #ensureDrain lock serializes the re-claim). No fresh loop,
             // no summary-as-prompt — the resumed loop reads the concluded stream's own state from
             // the manifest. §worker-lifecycle-wake-liveness.
-            const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ worker_id: payload.workerId });
+            const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: payload.workerId });
             if (slept !== undefined) {
                 await this.#lifecycle.wake(slept.id);
                 const started = await this.#ensureDrain({
@@ -1326,7 +1326,7 @@ export default class Daemon {
     async #schedulePollWake(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const existing = this.#pollTimers.get(workerId);
         if (existing !== undefined) { clearTimeout(existing); this.#pollTimers.delete(workerId); }
-        const row = await (this.#db.drain_worker_min_poll as PrepMethod).get<{ open_count: number; poll_seconds: number | null }>({ worker_id: workerId });
+        const row = await this.#db.drain_worker_min_poll.get<{ open_count: number; poll_seconds: number | null }>({ worker_id: workerId });
         if ((row?.open_count ?? 0) === 0) {
             this.#pollBackoff.delete(workerId);
             return;
@@ -1374,7 +1374,7 @@ export default class Daemon {
     async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         const scope = this.#workerAborts.get(workerId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(workerId)) return; // cancelled — no resurrection
-        const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ worker_id: workerId });
+        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
         if (slept === undefined) {
             // Not parked. If a drain is still ACTIVE, the worker is mid-turn and about to park — the
             // conclusion that fired this wake arrived before the 202 committed (the conclude-before-park
@@ -1400,11 +1400,11 @@ export default class Daemon {
      *  The parent reads the child's deliverable from its own log (the §worker-scheme-collect delta) on
      *  resume — control edge here, never an injected prompt. Recurses up via the parent's own drain-exit. */
     async #onDrainExit(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
-        const slept = await (this.#db.drain_find_slept_loop as PrepMethod).get<{ id: number }>({ worker_id: workerId });
+        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
         if (slept !== undefined) return; // parked at 202 — not concluded, the worker is still alive
-        const openSubs = await (this.#db.find_open_subscriptions_for_worker as PrepMethod).all<{ id: number }>({ worker_id: workerId });
+        const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
         if (openSubs.length > 0) return; // a stream still runs — its conclusion re-evaluates, not this exit
-        const parent = await (this.#db.worker_parent_id as PrepMethod).get<{ parent_worker_id: number | null }>({ worker_id: workerId });
+        const parent = await this.#db.worker_parent_id.get<{ parent_worker_id: number | null }>({ worker_id: workerId });
         if (parent?.parent_worker_id == null) return; // a root run — nobody to wake
         await this.#wakeParkedWorker(workspaceId, parent.parent_worker_id, systemPrompt);
     }

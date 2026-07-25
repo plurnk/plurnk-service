@@ -11,7 +11,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 
 test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline (#421)", async () => {
     const db = await openMigrated();
@@ -26,7 +25,7 @@ test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and 
         const result = await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
         // The gauge omits its Token Ceiling headline (no percent to compute) — the FOLD-target lines still ship.
-        const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         const budget = packet.sections.find((s) => s.name === "budget");
         assert.ok(budget, "the budget section still ships");
         assert.doesNotMatch(budget.content, /Token Ceiling/, "no ceiling headline — the window is unbounded, there is no percent to show");

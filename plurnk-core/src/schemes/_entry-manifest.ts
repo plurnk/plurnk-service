@@ -15,7 +15,6 @@
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { encodePathParens } from "../core/path-decode.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
-import type { PrepMethod } from "../core/Db.ts";
 import { matchSearchExclusion, type ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
@@ -54,13 +53,13 @@ export default class EntryManifest {
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
         if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — the model-agnostic ruler, re-counted at render");
         const all = ownerId === undefined
-            ? await (db.engine_list_workspace_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId })
-            : await (db.engine_list_worker_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId, owner_id: ownerId });
+            ? await db.engine_list_workspace_entries.all<ManifestRow>({ workspace_id: workspaceId })
+            : await db.engine_list_worker_entries.all<ManifestRow>({ workspace_id: workspaceId, owner_id: ownerId });
         const rows = schemeFilter === undefined ? all : all.filter((r) => r.scheme === schemeFilter);
         const tagsById = new Map<number, string[]>();
         const tagRows = ownerId === undefined
-            ? await (db.engine_list_workspace_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId })
-            : await (db.engine_list_worker_entry_tags as PrepMethod).all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId, owner_id: ownerId });
+            ? await db.engine_list_workspace_entry_tags.all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId })
+            : await db.engine_list_worker_entry_tags.all<{ entry_id: number; tag: string }>({ workspace_id: workspaceId, owner_id: ownerId });
         for (const { entry_id, tag } of tagRows) {
             const list = tagsById.get(entry_id);
             if (list === undefined) tagsById.set(entry_id, [tag]); else list.push(tag);
@@ -112,19 +111,19 @@ export default class EntryManifest {
     static async #deriveOneUnlocked(ctx: PlurnkSchemeContext, r: { entry_id: number; pathname: string; content: string; mimetype: string }, hash: string, embedActive: boolean, searchExcluded: string | undefined, onProgress?: (progress: { phase: "planning" | "embedding"; completed: number; total: number }) => void): Promise<void> {
         const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
-        let artifact = await (db.derivation_get as PrepMethod).get<{ id: number; state: "building" | "complete" }>({ deep_hash: hash });
+        let artifact = await db.derivation_get.get<{ id: number; state: "building" | "complete" }>({ deep_hash: hash });
         if (artifact?.state === "complete") {
-            await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            await db.graph_set_deep_hash.run({ entry_id: r.entry_id, deep_hash: hash });
             return;
         }
         if (artifact === undefined) {
-            artifact = await (db.derivation_create as PrepMethod).get<{ id: number; state: "building" }>({ deep_hash: hash });
+            artifact = await db.derivation_create.get<{ id: number; state: "building" }>({ deep_hash: hash });
         }
         if (artifact === undefined) throw new Error(`failed to create derivation artifact ${hash}`);
         const derivationId = artifact.id;
         const attachComplete = async (disposition: "vector" | "lexical" | "excluded" | "nonsemantic" | "failed", reason: string | null = null): Promise<void> => {
-            await (db.derivation_complete as PrepMethod).run({ derivation_id: derivationId, disposition, reason });
-            await (db.graph_set_deep_hash as PrepMethod).run({ entry_id: r.entry_id, deep_hash: hash });
+            await db.derivation_complete.run({ derivation_id: derivationId, disposition, reason });
+            await db.graph_set_deep_hash.run({ entry_id: r.entry_id, deep_hash: hash });
         };
         const wantGraph = r.content.length > 0 && !MimetypeBinary.isBinaryMimetype(r.mimetype);
         if (searchExcluded !== undefined) {
@@ -187,7 +186,7 @@ export default class EntryManifest {
     static async maintainDerivations(ctx: PlurnkSchemeContext): Promise<void> {
         const { db, workspaceId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("maintainDerivations: ctx.mimetypes is required to derive entry deep channels");
-        const rows = await (db.engine_list_workspace_entries as PrepMethod).all<ManifestRow>({ workspace_id: workspaceId });
+        const rows = await db.engine_list_workspace_entries.all<ManifestRow>({ workspace_id: workspaceId });
         // The embedding config signature is identical for every entry this pass — compute it
         // once and fold it into each deep_hash (re-derive on model/knob change).
         const deepCfgSig = await EntrySemantic.deepConfigSignature(mimetypes);

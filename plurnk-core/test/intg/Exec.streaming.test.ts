@@ -18,7 +18,6 @@ import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, rootWorkspace } from "./_helpers.ts";
 import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -67,15 +66,15 @@ test("streaming exec: chunks land in the channel as they arrive (not buffered un
         assert.equal(result.status, 200, "applyResolution returns 200/started fast — does not block");
 
         // Find the auto-generated entry id from the log entry's attrs.
-        const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
             scheme: "sh", pathname,
         });
         assert.ok(entryRow, "exec entry was created at proposal-time, before any output");
 
         const sampleStdout = async (): Promise<{ content: string; state: string }> => {
-            const row = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({
+            const row = await db.test_get_channel.get<{ content: string; state: string }>({
                 entry_id: entryRow!.id, name: "stdout",
             });
             return { content: row?.content ?? "", state: row?.state ?? "?" };
@@ -146,15 +145,15 @@ test("streaming exec: subscription stays open during emission, closes after exit
         engine.resolveProposal(logEntryId, { decision: "accept" });
         await dispatchPromise;
 
-        const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
             scheme: "sh", pathname,
         });
 
         // Mid-stream: subscription is still open (closed_at IS NULL).
         await new Promise((r) => setTimeout(r, 600));
-        const midSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{
+        const midSub = await db.test_get_subscription_by_entry.get<{
             closed_at: string | null; close_status: number | null;
         }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.equal(midSub?.closed_at, null, "subscription is alive during emission");
@@ -162,7 +161,7 @@ test("streaming exec: subscription stays open during emission, closes after exit
 
         // After completion: subscription closes at 200.
         await exec.idle();
-        const endSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{
+        const endSub = await db.test_get_subscription_by_entry.get<{
             closed_at: string | null; close_status: number | null;
         }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.ok(endSub?.closed_at, "subscription closed after spawn exit");
@@ -202,7 +201,7 @@ test("streaming exec: the workspace catalog picks up partial channel content bet
             // one row per (entry, channel) with the channel's LIVE content.
             // Streaming is a channel property — partial bytes must be observable
             // mid-stream regardless of how they're later rendered.
-            const rows = await (db.engine_list_workspace_entries as PrepMethod).all<{
+            const rows = await db.engine_list_workspace_entries.all<{
                 scheme: string | null; pathname: string;
                 channel: string; content: string;
             }>({ workspace_id: workspaceId });
@@ -256,9 +255,9 @@ test("[#500] EXEC[sh](script-file) with an empty body runs the file through acce
         const exec = schemes.get("exec") as Exec;
         await exec.idle();
         // the exec entry lives at the l/t/s coordinate (/1/1/1) under the runtime scheme — fail-hard
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
         assert.ok(entryRow, "the sh exec entry exists at /1/1/1");
-        const ch = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
+        const ch = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
         assert.match(ch?.content ?? "", /greetings-from-500/, "the script RAN — its stdout arrived");
         const mode = (await stat(join(dir, "demo_greet.sh"))).mode & 0o777;
         assert.equal(mode, 0o644, "transient exec: the mode is untouched — no chmod magic");

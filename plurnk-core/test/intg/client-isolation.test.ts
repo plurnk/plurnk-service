@@ -12,7 +12,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { insertWorkspace, insertWorker } from "./_helpers.ts";
 
@@ -29,11 +28,11 @@ test("a client op.* never enters the model's packet — the client writes to its
             const run = await runLoopToTerminal(ws, 3, { prompt: "go" });
             const loopId = (run as { loopId: number }).loopId;
 
-            const modelWorker = await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId });
+            const modelWorker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.ok(modelWorker !== undefined, "the model loop has a worker");
 
             // The model's packet is rendered from the model's run alone.
-            const modelLog = await (db.engine_render_log as PrepMethod).all<{ origin: string; pathname: string }>({ worker_id: modelWorker!.worker_id });
+            const modelLog = await db.engine_render_log.all<{ origin: string; pathname: string }>({ worker_id: modelWorker!.worker_id });
             assert.ok(modelLog.length > 0, "the model's packet carries its own log");
             assert.ok(
                 modelLog.every((r) => r.origin !== "client"),
@@ -63,7 +62,7 @@ test("a connection reads the model worker by id — loop.run returns modelWorker
             const { loopId, modelWorkerId } = run as { loopId: number; modelWorkerId: number };
             assert.equal(typeof modelWorkerId, "number", "loop.run returns the model worker's id");
             assert.notEqual(modelWorkerId, clientWorkerId, "the model worker is distinct from the connection's client worker");
-            const byLoop = await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId });
+            const byLoop = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.equal(byLoop!.worker_id, modelWorkerId, "the returned modelWorkerId is the worker the loop actually ran in");
 
             // Default log.read (no workerId) → the connection's own (client) run: the op.edit.

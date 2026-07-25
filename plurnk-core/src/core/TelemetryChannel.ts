@@ -1,5 +1,5 @@
 import type { TelemetryEvent } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 import type { TelemetryEventNotify } from "./ChannelWrite.ts";
 
 // §telemetry — the uniform error channel. Every engine failure is a terse op='error'
@@ -74,7 +74,7 @@ export default class TelemetryChannel {
     // channel, no per-kind handling.
     async mintEngineError(kind: EngineErrorKind, { workerId, loopId, turnId, sequence }: { workerId: number; loopId: number; turnId: number; sequence: number }): Promise<void> {
         const { status, term } = ENGINE_ERRORS[kind];
-        await (this.#db.engine_insert_log_entry as PrepMethod).get({
+        await this.#db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin: "plurnk", source: "rail", op: "error", suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,

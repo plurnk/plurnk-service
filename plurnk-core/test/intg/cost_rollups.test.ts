@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MIN_PACKET = JSON.stringify({
@@ -16,7 +16,7 @@ const MIN_PACKET = JSON.stringify({
 });
 
 const insertTurnWithCost = async (db: Db, loopId: number, sequence: number, costPico: number): Promise<number> => {
-    const row = await (db.test_cost_insert_turn as PrepMethod).get<{ id: number }>({
+    const row = await db.test_cost_insert_turn.get<{ id: number }>({
         loop_id: loopId, sequence, packet: MIN_PACKET, cost_pico: costPico,
     });
     if (row === undefined) throw new Error("turn insert returned no row");
@@ -24,8 +24,8 @@ const insertTurnWithCost = async (db: Db, loopId: number, sequence: number, cost
 };
 
 const costs = async (db: Db, workspaceId: number, workerId: number) => ({
-    run: (await (db.test_cost_run as PrepMethod).get<{ cost_pico: number }>({ id: workerId }))?.cost_pico ?? 0,
-    workspace: (await (db.test_cost_session as PrepMethod).get<{ cost_pico: number }>({ id: workspaceId }))?.cost_pico ?? 0,
+    run: (await db.test_cost_run.get<{ cost_pico: number }>({ id: workerId }))?.cost_pico ?? 0,
+    workspace: (await db.test_cost_session.get<{ cost_pico: number }>({ id: workspaceId }))?.cost_pico ?? 0,
 });
 
 test("cost rollups: turn insert propagates to run AND workspace", async () => {
@@ -100,9 +100,9 @@ test("cost rollups: forked worker's turn rolls into the same workspace", async (
         const loopF = await insertLoop(db, forkId, 1);
         await insertTurnWithCost(db, loopT, 1, 100);
         await insertTurnWithCost(db, loopF, 1, 200);
-        const trunkCost = (await (db.test_cost_run as PrepMethod).get<{ cost_pico: number }>({ id: trunkId }))?.cost_pico;
-        const forkCost = (await (db.test_cost_run as PrepMethod).get<{ cost_pico: number }>({ id: forkId }))?.cost_pico;
-        const workspaceCost = (await (db.test_cost_session as PrepMethod).get<{ cost_pico: number }>({ id: workspaceId }))?.cost_pico;
+        const trunkCost = (await db.test_cost_run.get<{ cost_pico: number }>({ id: trunkId }))?.cost_pico;
+        const forkCost = (await db.test_cost_run.get<{ cost_pico: number }>({ id: forkId }))?.cost_pico;
+        const workspaceCost = (await db.test_cost_session.get<{ cost_pico: number }>({ id: workspaceId }))?.cost_pico;
         assert.equal(trunkCost, 100);
         assert.equal(forkCost, 200);
         assert.equal(workspaceCost, 300);
@@ -136,11 +136,11 @@ test("cost rollups: UPDATE OF usage_cost_pico propagates the delta", async () =>
         const turnId = await insertTurnWithCost(db, loopId, 1, 1000);
         let c = await costs(db, workspaceId, workerId);
         assert.equal(c.run, 1000);
-        await (db.test_cost_update_turn as PrepMethod).run({ cost_pico: 1500, id: turnId });
+        await db.test_cost_update_turn.run({ cost_pico: 1500, id: turnId });
         c = await costs(db, workspaceId, workerId);
         assert.equal(c.run, 1500);
         assert.equal(c.workspace, 1500);
-        await (db.test_cost_update_turn as PrepMethod).run({ cost_pico: 800, id: turnId });
+        await db.test_cost_update_turn.run({ cost_pico: 800, id: turnId });
         c = await costs(db, workspaceId, workerId);
         assert.equal(c.run, 800);
         assert.equal(c.workspace, 800);
@@ -154,7 +154,7 @@ test("cost rollups: UPDATE with same usage_cost_pico is a no-op", async () => {
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurnWithCost(db, loopId, 1, 1000);
-        await (db.test_cost_update_turn as PrepMethod).run({ cost_pico: 1000, id: turnId });
+        await db.test_cost_update_turn.run({ cost_pico: 1000, id: turnId });
         const c = await costs(db, workspaceId, workerId);
         assert.equal(c.run, 1000);
         assert.equal(c.workspace, 1000);

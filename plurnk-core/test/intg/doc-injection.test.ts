@@ -12,7 +12,6 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 test("PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ into the model's turn 0", async () => {
@@ -33,7 +32,7 @@ test("PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ
                 const { loopId } = resp as { loopId: number };
 
                 // The model's turn-0 log carries a READ of worker://plurnk/AGENTS.md.
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{
+                const rows = await db.test_log_entries_by_loop.all<{
                     op: string; pathname: string; scheme: string; status_rx: number;
                 }>({ loop_id: loopId });
                 const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/AGENTS.md");
@@ -45,7 +44,7 @@ test("PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ
                 assert.equal(editInModel, undefined, "the materializing EDIT lives in the plurnk worker, not the model's log");
 
                 // The materialized entry body equals the host file content.
-                const body = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({
+                const body = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
                     pathname: "/AGENTS.md", scheme: "worker", name: "body",
                 });
                 assert.equal(body?.content, docBody, "the kernel doc body mirrors the host file");
@@ -76,7 +75,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — 
                 await rpcCall(ws, 1, "workspace.create", { name: "md-zero" });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
                 const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/POLICY.md");
                 assert.ok(docRead !== undefined && docRead.status_rx === 200, "PLURNK_MD doc is materialized + READ at turn 0 even with the preview off");
                 assert.equal(rows.find((r) => r.op === "FIND"), undefined, "the catalog preview stays off at =0 — the doc foist is independent of it, not capped by it");
@@ -113,9 +112,9 @@ test("workspace.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — e
                 ] } });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
                 const read = (p: string) => rows.filter((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === p);
-                const bodyOf = (p: string) => (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: p, scheme: "worker", name: "body" });
+                const bodyOf = (p: string) => db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: p, scheme: "worker", name: "body" });
 
                 // the env doc the client didn't touch rides along (UNION, not replace)
                 assert.equal(read("/GUIDE.md")[0]?.status_rx, 200, "the uncollided server doc survives the union");

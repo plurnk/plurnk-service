@@ -6,7 +6,6 @@ import test from "node:test";
 import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 
 test("a child worker concluding wakes a parent parked at 202", async () => {
@@ -72,11 +71,11 @@ test("a parent abandoning its scope cancels every unresolved descendant", async 
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn then abandon", flags: { auto: true } });
             assert.equal(finalStatus, 499);
             await waitForDb(
-                () => (db.test_list_loops_all as PrepMethod).all<{ status: number }>({}),
+                () => db.test_list_loops_all.all<{ status: number }>({}),
                 (loops) => loops.length >= 3 && loops.every(({ status }) => ![100, 102, 202].includes(status)),
                 { timeoutMs: 8000 },
             );
-            const loops = await (db.test_list_loops_all as PrepMethod).all<{ status: number }>({});
+            const loops = await db.test_list_loops_all.all<{ status: number }>({});
             assert.ok(loops.every(({ status }) => ![100, 102, 202].includes(status)), `no unresolved descendant survives abandonment: ${JSON.stringify(loops)}`);
         } finally { ws.close(); }
     });
@@ -120,7 +119,7 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
             await rpcCall(ws, 1, "workspace.create", { name: "sequential" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "two jobs in sequence", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the parent parked, woke on w1, spawned+parked again, woke on w2, then concluded");
-            const workers = await (db.test_workers_with_parent as PrepMethod).all<{ id: number; name: string; parent_worker_id: number | null; origin: string }>({});
+            const workers = await db.test_workers_with_parent.all<{ id: number; name: string; parent_worker_id: number | null; origin: string }>({});
             const modelWorkers = workers.filter(({ origin }) => origin === "model");
             const parent = modelWorkers.find(({ parent_worker_id: parentId }) => parentId === null);
             assert.ok(parent, `the topology has a root model worker; got ${JSON.stringify(modelWorkers)}`);
@@ -152,13 +151,13 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling — the voice door m
             const loopId = (run.result as { loopId: number }).loopId;
             // The actor concludes its first (idle) loop — nothing to wait on.
             await waitFor(() => terminated() as Array<{ loopId: number }>, (ts) => ts.some((t) => t.loopId === loopId), { timeoutMs: 8000 });
-            const before = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            const before = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
             // Address the concluded actor by name, then irc it — the voice door.
             const workers = ((await rpcCall(ws, 3, "workspace.workers", {})).result as { workers: Array<{ name: string; origin: string }> }).workers;
             const actor = workers.find((r) => r.origin === "model")!;
             await rpcCall(ws, 4, "op.send", { status: 200, recipient: `worker://${actor.name}`, body: "the entry code is 4815" });
             // A FRESH loop is minted (there was no slept loop to resume).
-            const after = await waitForDb(() => (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }), (r) => (r?.n ?? 0) > before, { timeoutMs: 8000 });
+            const after = await waitForDb(() => db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }), (r) => (r?.n ?? 0) > before, { timeoutMs: 8000 });
             assert.ok((after?.n ?? 0) > before, "the irc reawakened the concluded actor as a FRESH loop — the voice door mints a new loop, never resumes a park");
         } finally { ws.close(); }
     });
@@ -178,7 +177,7 @@ test("an idle join completes immediately through the real loop", async () => {
             const t = await waitFor(() => terminated() as Array<{ finalStatus: number }>, (items) => items.length > 0, { timeoutMs: 8000 });
             assert.equal(t.length, 1, "the run concluded — one loop/terminated, no held-open 202");
             assert.equal(t[0].finalStatus, 200, "the already-drained join is the model's successful terminal");
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number }>({ loop_id: (t[0] as { loopId?: number }).loopId ?? 1 });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: (t[0] as { loopId?: number }).loopId ?? 1 });
             assert.ok(rows.some((r) => r.op === "SEND" && r.status_rx === 200), "the join records successful completion");
         } finally { ws.close(); }
     });
@@ -211,11 +210,11 @@ test("spawn and fork carry the delegating loop's flags — an auto parent's chil
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "delegate everything", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the whole topology concluded — no child stalled in a proposal void");
             // The delegated loops' persisted flags carry the parent's auto.
-            const loops = await (db.test_all_loops as PrepMethod).all<{ id: number; worker_id: number; flags: string }>({});
+            const loops = await db.test_all_loops.all<{ id: number; worker_id: number; flags: string }>({});
             const childLive = loops.filter((l) => JSON.parse(l.flags).auto === true);
             assert.ok(childLive.length >= 3, `parent + both delegated live loops carry auto; got ${JSON.stringify(loops)}`);
             // And the children's EDITs resolved — never proposed into the void.
-            const edits = await (db.test_edit_states as PrepMethod).all<{ pathname: string; state: string }>({});
+            const edits = await db.test_edit_states.all<{ pathname: string; state: string }>({});
             for (const e of edits.filter((x) => /from-(worker|fork)/.test(x.pathname))) {
                 assert.equal(e.state, "resolved", `child EDIT ${e.pathname} auto-accepted under inherited auto`);
             }
@@ -273,7 +272,7 @@ test("OPEN/FOLD are recorded in the DB, suppressed from the render; a failed one
             await rpcCall(ws, 1, "workspace.create", { name: "meta-ops" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "curate", flags: { auto: true } });
             assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
-            const rows = await (db.test_ops_by_loop as PrepMethod).all<{ op: string; status_rx: number }>({});
+            const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
             const folds = rows.filter((r) => r.op === "FOLD");
             // BOTH FOLDs are now recorded in the DB — the success (real coordinate) and the failure
             // (phantom). The success is render-suppressed; the failure renders + carries its status.

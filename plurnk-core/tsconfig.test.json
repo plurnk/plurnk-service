@@ -1,0 +1,15 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "paths": {
+            "@possumtech/sqlrite": [
+                "./SqlRite.test.d.ts"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*.ts",
+        "test/**/*.ts",
+        "bin/**/*.ts"
+    ]
+}

@@ -4,7 +4,6 @@ import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import type { EditStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
 // grammar 0.70: turns lead with PLAN; prefix it (when absent) and strip it back out.
@@ -47,14 +46,14 @@ test("parser roundtrip: <<EDIT[france,europe](worker:///countries/france/capital
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
-        const entry = await (db.test_parser_entries_first as PrepMethod).get<{ owner_id: number; scheme: string; pathname: string; hostname: string | null }>();
+        const entry = await db.test_parser_entries_first.get<{ owner_id: number; scheme: string; pathname: string; hostname: string | null }>();
         assert.ok((entry?.owner_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
         assert.equal(entry?.scheme, "worker");
         assert.equal(entry?.pathname, "/countries/france/capital");
         assert.equal(entry?.hostname, null);
-        const body = await (db.test_parser_body_first as PrepMethod).get<{ content: string }>();
+        const body = await db.test_parser_body_first.get<{ content: string }>();
         assert.equal(body?.content, "Paris");
-        const tags = await (db.test_parser_tags as PrepMethod).all<{ tag: string }>();
+        const tags = await db.test_parser_tags.all<{ tag: string }>();
         assert.deepEqual(tags.map((t) => t.tag), ["europe", "france"]);
     } finally { await db.close(); }
 });
@@ -73,7 +72,7 @@ test("parser roundtrip: digit-suffix <<EDIT1…:EDIT1 carries a bare :EDIT token
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
-        const body = await (db.test_parser_body_first as PrepMethod).get<{ content: string }>();
+        const body = await db.test_parser_body_first.get<{ content: string }>();
         assert.equal(body?.content, "a body with a :EDIT token inside", "the bare delimiter survives into storage verbatim");
     } finally { await db.close(); }
 });
@@ -90,9 +89,9 @@ test("parser roundtrip: multi-statement text parses + dispatches in order", asyn
         assert.equal(statements.length, 3);
         const statuses = await dispatch(engine, env, statements);
         assert.deepEqual(statuses, [201, 201, 201]);
-        const pathnames = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
+        const pathnames = await db.test_parser_pathnames.all<{ pathname: string }>();
         assert.deepEqual(pathnames.map((p) => p.pathname), ["/a", "/b", "/c"]);
-        const logIndices = await (db.test_parser_log_indices as PrepMethod).all<{ sequence: number; pathname: string }>();
+        const logIndices = await db.test_parser_log_indices.all<{ sequence: number; pathname: string }>();
         assert.deepEqual(logIndices.map((r) => r.sequence), [1, 2, 3]);
         assert.deepEqual(logIndices.map((r) => r.pathname), ["/a", "/b", "/c"]);
     } finally { await db.close(); }
@@ -132,7 +131,7 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        const log = await (db.test_parser_log_first as PrepMethod).get<{ scheme: string; hostname: string | null; pathname: string }>();
+        const log = await db.test_parser_log_first.get<{ scheme: string; hostname: string | null; pathname: string }>();
         assert.equal(log?.scheme, "https");
         assert.equal(log?.hostname, "en.wikipedia.org");
         assert.equal(log?.pathname, "/wiki/Paris");
@@ -151,7 +150,7 @@ test("parser roundtrip: real DSL with params + fragment on opaque scheme", async
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        const log = await (db.test_parser_log_first as PrepMethod).get<{ scheme: string; hostname: string | null; pathname: string; params: string | null; fragment: string | null }>();
+        const log = await db.test_parser_log_first.get<{ scheme: string; hostname: string | null; pathname: string; params: string | null; fragment: string | null }>();
         assert.equal(log?.scheme, "worker");
         assert.equal(log?.hostname, null);
         assert.equal(log?.pathname, "/france");

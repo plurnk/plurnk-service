@@ -18,7 +18,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeCtx } from "@plurnk/plurnk-schemes";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
@@ -82,7 +81,7 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(opened.status, 102, "the public plugin opened its subscription");
-        const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
+        const entry = await db.test_get_entry_by_path.get<{ id: number }>({
             workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
         });
         if (entry === undefined) throw new Error("stream entry missing");
@@ -99,12 +98,12 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         assert.equal(result.status, 200, "owning scheme accepted the cancel");
         assert.deepEqual(teardownByHandle, [HANDLE], "registry routed teardown to the stored handle");
 
-        const sub = await (db.test_get_subscription as PrepMethod).get<{ closed_at: string | null; close_status: number | null }>({ id: subId });
+        const sub = await db.test_get_subscription.get<{ closed_at: string | null; close_status: number | null }>({ id: subId });
         assert.ok(sub?.closed_at !== null, "subscription registry row marked closed");
         assert.equal(sub?.close_status, 499, "registry row closed at 499");
         assert.equal(await ChannelWrite.findActiveSubscription(db, { workerId, entryId }), null, "no active subscription remains");
 
-        const channel = await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "data" });
+        const channel = await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" });
         assert.equal(channel?.state, "closed", "channel transitioned active → closed");
     } finally { await db.close(); }
 });
@@ -147,12 +146,12 @@ test("multi-chunk exec writes ONE lifecycle log row, not one per chunk", async (
 
         // ...but the log holds exactly ONE EXEC row for this turn — the lifecycle
         // event — never one row per chunk.
-        const rows = await (db.test_log_entries_by_turn as PrepMethod).all<{ op: string; status_rx: number }>({ turn_id: turnId });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turnId });
         const execRows = rows.filter((r) => r.op === "EXEC");
         assert.equal(execRows.length, 1, "exactly one EXEC log row regardless of chunk count");
         assert.equal(rows.length, 1, "no per-chunk log rows accumulated for the turn");
 
-        const logRow = await (db.test_get_log_entry_by_id as PrepMethod).get<{ status_rx: number; state: string }>({ id: logEntryId });
+        const logRow = await db.test_get_log_entry_by_id.get<{ status_rx: number; state: string }>({ id: logEntryId });
         assert.equal(logRow?.status_rx, 200, "lifecycle row resolved at 200 (graceful close)");
         assert.equal(logRow?.state, "resolved", "lifecycle row in resolved state");
     } finally { await db.close(); }
@@ -166,7 +165,7 @@ test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it"
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
-        const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
+        const entry = await db.test_seed_entry_session.get<{ id: number }>({
             workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/cap",
         });
         const entryId = entry!.id;
@@ -175,7 +174,7 @@ test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it"
 
         // Over the cap by one char → the single engine constraint fires.
         await assert.rejects(
-            () => (db.test_seed_channel as PrepMethod).run({
+            () => db.test_seed_channel.run({
                 entry_id: entryId, name: "toobig", content: "a".repeat(CAP + 1),
                 mimetype: "text/plain", state: "static",
             }),
@@ -186,12 +185,12 @@ test("100 MiB channel-body CHECK rejects over-cap; engine caps nothing below it"
         // Well under the cap → stored verbatim. The engine throttles/truncates
         // nothing below 100 MiB. Seed an empty channel and append into it.
         const oneMiB = "x".repeat(1024 * 1024);
-        await (db.test_seed_channel as PrepMethod).run({
+        await db.test_seed_channel.run({
             entry_id: entryId, name: "under", content: "", mimetype: "text/plain", state: "active",
         });
         await ChannelWrite.appendToChannel(db, { entryId, channel: "under", chunk: oneMiB });
         await ChannelWrite.appendToChannel(db, { entryId, channel: "under", chunk: oneMiB });
-        const stored = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryId, name: "under" });
+        const stored = await db.test_get_channel.get<{ content: string }>({ entry_id: entryId, name: "under" });
         assert.equal(stored?.content.length, 2 * 1024 * 1024, "2 MiB stored verbatim — no engine cap below 100 MiB");
     } finally { await db.close(); }
 });
@@ -256,7 +255,7 @@ test("engine has no connection/transaction surface; channel growth is scheme-dir
         const entryId = await seedEntryWithChannel(db, { workspaceId, content: "", state: "active" });
         await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "chunk-1" });
         await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "chunk-2" });
-        const row = await (db.test_get_channel as PrepMethod).get<{ content: string; state: string }>({ entry_id: entryId, name: "body" });
+        const row = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entryId, name: "body" });
         assert.equal(row?.content, "chunk-1chunk-2", "content accumulated by scheme-direct appends, no engine transaction");
         assert.equal(row?.state, "active", "engine treats the growing channel as plain static storage");
     } finally { await db.close(); }

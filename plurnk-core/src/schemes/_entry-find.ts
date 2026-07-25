@@ -17,7 +17,6 @@
 
 import type { FindStatement } from "@plurnk/plurnk-grammar";
 import { LineMarkerOps } from "../content/index.ts";
-import type { PrepMethod } from "../core/Db.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import { decodePathParens } from "../core/path-decode.ts";
@@ -113,7 +112,7 @@ export default class EntryFind {
         // empty survey says "don't look here").
         if (statement.target.kind !== "regex" && scopePathname !== null && scopePathname.length > 0
             && !scopePathname.includes("*") && !scopePathname.endsWith("/")) {
-            const exact = await (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+            const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
                 scheme, pathname: scopePathname,
@@ -138,7 +137,7 @@ export default class EntryFind {
         // other scheme draws from the commons.
         type Candidate = { entry_id: number; pathname: string; content?: string; mimetype?: string };
         const semantic = statement.body?.dialect === "semantic";
-        let candidates = await (db[semantic ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"] as PrepMethod).all<Candidate>({
+        let candidates = await db[semantic ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
             owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId),
             scheme,
@@ -231,7 +230,7 @@ export default class EntryFind {
         }
         const resolved: Match[] = matches.map((match) => ({ ...match, span: null }));
         for (const [pathname, indices] of grouped) {
-            const row = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({
+            const row = await ctx.db.ops_read_channel.get<{ content: string; mimetype: string }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: ownerId,
                 scheme,

@@ -6,7 +6,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 class CapturingMock extends Mock {
@@ -32,7 +31,7 @@ test("generate carries the live streak — 0 explicit, bumped by a struck turn, 
             assert.equal(finalStatus, 200, "the loop concluded through the struck turn");
             assert.deepEqual(mock.seen, [0, 1, 2, 0], "explicit 0 at start → 1 after the idle strike → 2 after no-ops → the working turn zeroes it");
             // The model-facing packets never carry it (§engine-rails: no metric to game).
-            for (const row of await (db.test_all_packets as PrepMethod).all<{ packet: string }>({})) {
+            for (const row of await db.test_all_packets.all<{ packet: string }>({})) {
                 const sections = (JSON.parse(row.packet) as { sections?: object[] }).sections ?? [];
                 assert.ok(!/strike/i.test(JSON.stringify(sections)), "no packet section mentions strikes");
             }

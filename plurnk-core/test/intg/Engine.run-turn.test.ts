@@ -5,7 +5,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse, ProviderUsage } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -103,7 +102,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(result.status, 200, "turn status from terminal SEND");
         assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; SEND broadcast → 200");
 
-        const turn = await (db.test_get_turn as PrepMethod).get<{ loop_id: number; sequence: number; status: number; usage_completion: number }>({ id: result.turnId });
+        const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number; usage_completion: number }>({ id: result.turnId });
         if (turn === undefined) throw new Error("turn not found");
         assert.equal(turn.loop_id, loopId);
         assert.equal(turn.sequence, 1);
@@ -114,10 +113,10 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         // §model-entry) + the prompt foist EDIT + its auto-READ (§prompt-auto-read) + 2 model
         // ops (EDIT, SEND) + 1 folded `model` echo of THIS turn's verbatim emission.
         // Turn-as-container model — pre-model writes share the turn's sequence counter.
-        const logCount = (await (db.test_count_log_entries_by_turn as PrepMethod).get<{ n: number }>({ turn_id: result.turnId }))?.n;
+        const logCount = (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: result.turnId }))?.n;
         assert.equal(logCount, 6);
 
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
     } finally { await db.close(); }
 });
@@ -139,7 +138,7 @@ test("Engine.runTurn: recorded turn cost reflects reasoning tokens (costFor bill
         });
         assert.equal(result.status, 200);
 
-        const turn = await (db.test_get_turn as PrepMethod).get<{ usage_cost_pico: number; usage_completion: number }>({ id: result.turnId });
+        const turn = await db.test_get_turn.get<{ usage_cost_pico: number; usage_completion: number }>({ id: result.turnId });
         if (turn === undefined) throw new Error("turn not found");
         // costFor charges prompt+completion+reasoning = 100+50+200 = 350.
         // Strip reasoning from the usage the engine forwards and it falls
@@ -173,7 +172,7 @@ test("Engine.runTurn: packet stores system + user content from messages (no loop
                 { role: "user", content: "second user msg" },
             ],
         });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { assistant: unknown };
         // The definition section is now JUST the system message body — the scheme
@@ -203,7 +202,7 @@ test("Engine.runTurn: multi-op turn — prompt at 1, model ops at 2..N", async (
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.deepEqual(result.statuses, [201, 201, 201, 200]);
-        const indices = await (db.test_log_entries_by_turn as PrepMethod).all<{ sequence: number; op: string }>({ turn_id: result.turnId });
+        const indices = await db.test_log_entries_by_turn.all<{ sequence: number; op: string }>({ turn_id: result.turnId });
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
@@ -233,7 +232,7 @@ test("Engine.runTurn: ops-without-SEND turn completes at status 102 (implicit co
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102, "EDIT-only turn is implicitly 'still going'");
         assert.deepEqual(result.statuses, [201]);
-        const turnCount = (await (db.test_count_turns as PrepMethod).get<{ n: number }>())?.n;
+        const turnCount = (await db.test_count_turns.get<{ n: number }>())?.n;
         assert.equal(turnCount, 1);
     } finally { await db.close(); }
 });
@@ -248,7 +247,7 @@ test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 422);
         assert.deepEqual(result.statuses, []);
-        const turnCount = (await (db.test_count_turns as PrepMethod).get<{ n: number }>())?.n;
+        const turnCount = (await db.test_count_turns.get<{ n: number }>())?.n;
         assert.equal(turnCount, 1, "turn row inserted at 422; failure is logged, not hidden");
     } finally { await db.close(); }
 });
@@ -268,7 +267,7 @@ test("Engine.runTurn: empty-ops turn does NOT surface telemetry — gamification
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as {
             telemetryErrors: Array<{ kind: string }>;
         };
@@ -309,7 +308,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
             // Scope to scheme='worker' to exclude the engine's prompt:/// entry.
-            const known = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
+            const known = await db.test_count_entries_by_session_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
             assert.equal(known?.n, 3, "3 worker:/// entries; overflow ops never reached schemes");
@@ -317,7 +316,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
             // Turn 2 packet carries the cap failure as a terse 'Max Commands Exceeded' (429) log row,
             // surfaced via its derived LogCoordinate pointer. The emitted/dropped counts live on the row.
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as {
                 telemetryErrors: Array<{ status?: number; position?: { type?: string } }>;
             };
@@ -353,14 +352,14 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the op cei
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             assert.equal(t1.statuses.length, 5, "all 5 ops dispatched — no cap");
-            const known = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
+            const known = await db.test_count_entries_by_session_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
             assert.equal(known?.n, 5, "5 worker:/// entries; nothing dropped");
 
             // Next packet carries NO max_commands_exceeded — the ceiling never engaged.
             const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: Array<{ status?: number }> };
             assert.equal(packet.telemetryErrors.filter((e) => e.status === 429).length, 0, "no Max Commands Exceeded when off");
         } finally { await db.close(); }
@@ -405,7 +404,7 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
         assert.equal(result.turnIds.length, 5);
 
         const turnHadSuddenDeath = await Promise.all(result.turnIds.map(async (id) => {
-            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id });
             const packet = JSON.parse(row?.packet ?? "{}") as {
                 telemetryErrors: Array<{ kind: string }>;
             };
@@ -552,7 +551,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 5,
         });
         assert.equal(result.finalStatus, 200);
-        const t2 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
+        const t2 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[1] });
         const t2packet = JSON.parse(t2?.packet ?? "{}") as { telemetryErrors: Array<{ status?: number; position?: { type?: string } }> };
         const errors = t2packet.telemetryErrors;
         // The 403 action failure DOES surface (a real error that happened) as a LogCoordinate pointer.
@@ -650,7 +649,7 @@ test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 10, minCycles: 3, maxCyclePeriod: 4,
         });
-        const t4 = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnIds[3] });
+        const t4 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[3] });
         const packet = JSON.parse(t4?.packet ?? "{}") as {
             telemetryErrors: Array<{ kind: string }>;
         };
@@ -683,7 +682,7 @@ test("Engine.runLoop: sudden_death never surfaces to model", async () => {
         });
         assert.equal(result.finalStatus, 200);
         for (const id of result.turnIds) {
-            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id });
             const packet = JSON.parse(row?.packet ?? "{}") as {
                 telemetryErrors: Array<{ kind: string }>;
             };
@@ -714,7 +713,7 @@ test("Engine.runTurn: telemetry buffer drains — failure shows once, then clear
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const get403s = async (turnId: number): Promise<number[]> => {
-            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}") as {
                 telemetryErrors: Array<{ status?: number; position?: { type?: string } }>;
             };
@@ -743,7 +742,7 @@ test("Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw"
             }],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { assistantRaw: { vendor: string; id: string } };
         assert.deepEqual(packet.assistantRaw, raw);
@@ -764,10 +763,10 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const seqs = await (db.test_list_turns_in_loop as PrepMethod).all<{ id: number; sequence: number }>({ loop_id: loopId });
+        const seqs = await db.test_list_turns_in_loop.all<{ id: number; sequence: number }>({ loop_id: loopId });
         assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3]);
         assert.deepEqual([t1.turnId, t2.turnId, t3.turnId], seqs.map((s) => s.id));
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "loop terminal after final SEND[200]");
     } finally { await db.close(); }
 });
@@ -781,7 +780,7 @@ test("Engine.runTurn: multi-SEND turn — last SEND wins on turn.status", async 
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 200);
-        const turnStatus = (await (db.test_get_turn_status as PrepMethod).get<{ status: number }>({ id: result.turnId }))?.status;
+        const turnStatus = (await db.test_get_turn_status.get<{ status: number }>({ id: result.turnId }))?.status;
         assert.equal(turnStatus, 200);
     } finally { await db.close(); }
 });
@@ -803,7 +802,7 @@ test("Engine.runTurn: packet.system.log on first turn contains the prompt entry"
             responses: [response([editStmt("/x", "y"), sendStmt(200, "done")])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // The prompt foist is the loop's opening EDIT (plurnk-origin) against
         // prompt:///<loop>/1 ({§prompt-self-only}). Found by its stable identity (origin + target),
@@ -829,7 +828,7 @@ test("Engine.runTurn: packet.system.log captures prior turn's actions on second 
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // Turn 2 packet sees the prompt foist + the prior turn's 2 model ops (an
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
@@ -858,7 +857,7 @@ test("Engine.runTurn: packet.system.log JSON rx body is parsed (mimetype_rx=appl
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         const log = logEntries(packet);
         // Found by identity, robust to a turn-0 manifest-preview foist.
@@ -883,7 +882,7 @@ test("Engine.runTurn: telemetry.errors empty on first turn", async () => {
             responses: [response([editStmt("/x", "y"), sendStmt(200, "done")])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: object[] };
         assert.deepEqual(packet.telemetryErrors, []);
     } finally { await db.close(); }
@@ -907,7 +906,7 @@ test("Engine.runTurn: previous-turn 403 (writableBy denial) surfaces in next pac
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as {
             telemetryErrors: Array<{ status: number; position: { type: string; coordinate: string } }>;
         };
@@ -942,7 +941,7 @@ test("Engine.runTurn: telemetry.errors only includes IMMEDIATELY previous turn (
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });   // t1: 1 failure
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });   // t2: clean
         const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: t3.turnId });
         const packet = JSON.parse(row?.packet ?? "{}") as { telemetryErrors: object[] };
         assert.deepEqual(packet.telemetryErrors, [], "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
     } finally { await db.close(); }
@@ -981,7 +980,7 @@ test("Engine.runTurn: PLAN dispatches as an ordinary log op — passed through, 
         // PLAN dispatches like any op (a no-op for state) → both PLAN and the SEND in statuses.
         assert.deepEqual(result.statuses, [200, 200], "PLAN dispatched as a log op, then the SEND");
         // The PLAN body is a real log row (passed to the client), NOT swallowed into reasoning.
-        const ops = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string }>({ loop_id: loopId });
+        const ops = await db.test_log_entries_by_loop.all<{ op: string }>({ loop_id: loopId });
         assert.ok(ops.some((o) => o.op === "PLAN"), "PLAN is logged as an op, not hoisted to reasoning");
     } finally { await db.close(); }
 });
@@ -1022,7 +1021,7 @@ test("a truncated emission (finish=length + parse errors) dispatches NOTHING (#5
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         // No op the MODEL emitted dispatched — the FIND and EDIT are refused wholesale.
-        const rows = await (db.test_ops_by_turn as PrepMethod).all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
+        const rows = await db.test_ops_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
         const modelDispatched = rows.filter((r) => r.origin === "model" && r.op !== "model" && r.op !== "error");
         assert.deepEqual(modelDispatched, [], `a broken packet dispatches nothing; got ${JSON.stringify(modelDispatched)}`);
         // But the turn still RECORDS through the existing error channel: the output_truncated 413

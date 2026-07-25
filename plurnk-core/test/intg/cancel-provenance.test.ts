@@ -7,7 +7,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { insertLoop, insertTurn, insertWorker } from "./_helpers.ts";
 
 type LoopRow = { id: number; status: number; terminal_message: string | null; terminated_by: string | null };
@@ -26,13 +25,13 @@ test("cancelling a LIVE loop writes the provenanced 499 row — who/why on the r
             void rpcCall(ws, 2, "loop.run", { prompt: "slow job", flags: { auto: true } });
             await flush();
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
             await rpcCall(ws, 3, "loop.cancel", { reason: "operator redirected the task" });
             // The ROW is the record: 499, provenanced, carrying the client's reason.
             const row = await waitForDb(
-                async () => (await (db.test_list_loops_all as PrepMethod).all<LoopRow>({})).find((l) => l.status === 499),
+                async () => (await db.test_list_loops_all.all<LoopRow>({})).find((l) => l.status === 499),
                 (l) => l !== undefined,
             );
             assert.equal(row!.terminated_by, "cancel", "the external act is named on the terminal record");
@@ -65,18 +64,18 @@ test("cancelling a PARKED (202) loop terminalizes it — no dead-park at 202 for
             await flush();
             // Parked: the loop row reaches 202 (the drain has exited by then).
             const parked = await waitForDb(
-                async () => (await (db.test_list_loops_all as PrepMethod).all<LoopRow>({})).find((l) => l.status === 202),
+                async () => (await db.test_list_loops_all.all<LoopRow>({})).find((l) => l.status === 202),
                 (l) => l !== undefined,
             );
             await rpcCall(ws, 3, "loop.cancel", { reason: "shutting down the request" });
             const row = await waitForDb(
-                async () => (await (db.test_list_loops_all as PrepMethod).all<LoopRow>({})).find((l) => l.id === parked!.id),
+                async () => (await db.test_list_loops_all.all<LoopRow>({})).find((l) => l.id === parked!.id),
                 (l) => l !== undefined && l.status !== 202,
             );
             assert.equal(row!.status, 499, "the parked loop went terminal — never a zombie 202");
             assert.equal(row!.terminated_by, "cancel");
             assert.equal(row!.terminal_message, "shutting down the request");
-            const sh = await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" });
+            const sh = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" });
             assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere (§notifications-stream-concluded)
         } finally { ws.close(); }
     });
@@ -104,7 +103,7 @@ test("external cancellation terminalizes the complete durable subtree and emits 
                 "no process-local drain was active; durable cancellation still proceeds");
 
             const rows = await waitForDb(
-                () => (db.test_list_loops_all as PrepMethod).all<LoopRow>({}),
+                () => db.test_list_loops_all.all<LoopRow>({}),
                 (loops) => [rootLoop, childLoop, grandchildLoop].every((id) =>
                     loops.some((loop) => loop.id === id && loop.status === 499)),
             );

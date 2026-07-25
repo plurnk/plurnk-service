@@ -14,7 +14,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Log from "../../src/schemes/Log.ts";
 import Matcher from "../../src/content/matcher.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -327,7 +327,7 @@ test("THE REAL PATH: a matcher READ's FIND row carries each hit's canonical path
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
-        const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; rx: string }>({ loop_id: loopId });
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: loopId });
         const findRow = rows.find((r) => r.op === "FIND");
         assert.ok(findRow, "the fanout writes its FIND row");
         const rx = JSON.parse(findRow!.rx) as { results?: Array<{ matchPath?: string; matchSpan?: object }> };

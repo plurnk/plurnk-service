@@ -10,7 +10,6 @@ import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { EditStatement } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 
@@ -63,7 +62,7 @@ test("same-resource EDIT batch raises one proposal and one resolution governs ev
             await flush();
             assert.deepEqual(scheme.batches, [2], "the scheme receives one resource batch");
             assert.equal(proposals().length, 1, "the client reviews the resource once");
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; scheme: string; status_rx: number }>({ loop_id: loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string; status_rx: number }>({ loop_id: loopId });
             const edits = rows.filter((row) => row.op === "EDIT" && row.scheme === "proposing-test");
             assert.equal(edits.length, 2);
             assert.ok(edits.every((row) => row.status_rx === 200), "one acceptance settles every statement row");
@@ -82,7 +81,7 @@ test("loop.run with flags.auto=true persists to loops.flags", async () => {
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "test", flags: { auto: true } });
             const result = response.result as { loopId: number };
 
-            const row = await (db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: result.loopId });
+            const row = await db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: result.loopId });
             assert.ok(row !== undefined);
             const parsed = JSON.parse(row!.flags) as { auto: boolean };
             assert.equal(parsed.auto, true);
@@ -101,7 +100,7 @@ test("loop.run without flags leaves loops.flags at default ({})", async () => {
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "test" });
             const result = response.result as { loopId: number };
 
-            const row = await (db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: result.loopId });
+            const row = await db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: result.loopId });
             assert.equal(row?.flags, "{}");
         } finally { ws.close(); }
     });
@@ -127,7 +126,7 @@ test("loop.run with flags.auto=true: in-tree auto listener resolves proposal", a
             assert.equal(result.finalStatus, 200, "loop completes without external resolution (not maxed — that'd be 429)");
 
             // The proposed entry should have transitioned out of 'proposed'.
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{
+            const rows = await db.test_log_entries_by_loop.all<{
                 op: string; status_rx: number; scheme: string;
             }>({ loop_id: result.loopId });
             const edit = rows.find((r) => r.op === "EDIT" && r.scheme === "proposing-test");

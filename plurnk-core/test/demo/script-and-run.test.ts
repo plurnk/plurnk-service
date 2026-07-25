@@ -16,7 +16,6 @@ import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
 test("demo: 'write a script that greets me and run it' — script lands in workspace, runs, model reports the greeting", async () => {
@@ -41,7 +40,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
 
             if (finalStatus !== 200) {
                 for (const turnId of turnIds) {
-                    const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
+                    const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
                     const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
                     console.error(`turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 400)}`);
                 }
@@ -60,7 +59,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
             // A filesystem outcome alone is not enough: the prior broken fixture
             // passed after two refused EDITs because the model used shell
             // redirection. Pin the model-facing authoring contract itself.
-            const edits = await (s.db.test_log_entries_by_run_op_full as PrepMethod).all<{
+            const edits = await s.db.test_log_entries_by_run_op_full.all<{
                 pathname: string;
                 status_rx: number;
             }>({ worker_id: modelWorkerId, op: "EDIT" });

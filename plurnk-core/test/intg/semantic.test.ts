@@ -5,7 +5,6 @@
 // Mimetypes, so DEFAULT_MIMETYPES's decline only affects tests that don't need
 // the embedder.
 
-import type { PrepMethod } from "../../src/core/Db.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
@@ -148,23 +147,23 @@ test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE: a matched path is excluded from eve
         await new Worker().edit(editStmt(url("fixture.json"), identical), ctx);
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await EntryManifest.maintainDerivations(ctx);
-        const lock = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/package-lock.json" });
-        const notes = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/notes.md" });
-        const fixture = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/fixture.json" });
-        const lockVecs = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: lock?.id ?? -1 });
-        const noteVecs = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: notes?.id ?? -1 });
+        const lock = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/package-lock.json" });
+        const notes = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/notes.md" });
+        const fixture = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/fixture.json" });
+        const lockVecs = await db.test_count_embeddings.get<{ n: number }>({ entry_id: lock?.id ?? -1 });
+        const noteVecs = await db.test_count_embeddings.get<{ n: number }>({ entry_id: notes?.id ?? -1 });
         assert.equal(lockVecs?.n, 0, "the lockfile matched the pattern — zero vectors");
         assert.ok((noteVecs?.n ?? 0) > 0, "the unmatched entry embeds fully");
-        const lockFts = await (db.test_fts_search as PrepMethod).all({ workspace_id: workspaceId, query: "lockfileVersion" });
+        const lockFts = await db.test_fts_search.all({ workspace_id: workspaceId, query: "lockfileVersion" });
         assert.ok(!lockFts.some((row) => (row as { pathname: string }).pathname === "/package-lock.json"), "excluded content contributes no lexical result");
-        const disposition = await (db.test_derivation_disposition as PrepMethod).get<{ disposition: string; reason: string }>({ entry_id: lock?.id ?? -1 });
-        const includedDisposition = await (db.test_derivation_disposition as PrepMethod).get<{ disposition: string; reason: string | null; deep_hash: string }>({ entry_id: fixture?.id ?? -1 });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: lock?.id ?? -1 });
+        const includedDisposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string | null; deep_hash: string }>({ entry_id: fixture?.id ?? -1 });
         assert.equal(disposition?.disposition, "excluded");
         assert.equal(disposition?.reason, "package-lock.json");
         assert.equal(includedDisposition?.disposition, "vector", "identical bytes at an included path remain searchable");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
         await EntryManifest.maintainDerivations(ctx);
-        const lockVecs2 = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: lock?.id ?? -1 });
+        const lockVecs2 = await db.test_count_embeddings.get<{ n: number }>({ entry_id: lock?.id ?? -1 });
         assert.equal(lockVecs2?.n, 0, "still zero after a second pump pass — classified once, skipped");
     } finally {
         db.close();
@@ -188,7 +187,7 @@ test("[#337] the pump derives smallest-first — a fat outlier never clogs the c
         await new Worker().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);
         await new Worker().edit(editStmt(url("minnow-b.md"), "a tiny note about lemons"), ctx);
         await EntryManifest.maintainDerivations(ctx);
-        const order = await (db.test_embedding_insertion_order as PrepMethod).all<{ pathname: string; first_rowid: number }>({});
+        const order = await db.test_embedding_insertion_order.all<{ pathname: string; first_rowid: number }>({});
         const byPath = new Map(order.map((o) => [o.pathname, o.first_rowid]));
         const whaleFirst = byPath.get("/whale.md") ?? -1;
         assert.ok((byPath.get("/minnow-a.md") ?? Infinity) < whaleFirst, "minnow-a embedded before the whale");

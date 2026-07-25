@@ -1,6 +1,5 @@
 import type { SchemeManifest, PlurnkSchemeContext, LoopFlags } from "../core/scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
-import type { PrepMethod } from "../core/Db.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult, ReadResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
@@ -70,11 +69,11 @@ export default class Worker extends CoreSchemeAdapterBase {
     static async #resolveAuthority(authority: string, ctx: PlurnkSchemeContext): Promise<{ ownerId: number; writable: boolean } | null> {
         if (authority === "") return { ownerId: await Owner.commonsId(ctx.db, ctx.workspaceId), writable: true };
         if (authority === "~") return { ownerId: ctx.workerId, writable: true };
-        const named = await (ctx.db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: authority });
+        const named = await ctx.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: authority });
         if (named === undefined) return null;
         if (named.id === ctx.workerId) return { ownerId: named.id, writable: true }; // naming yourself IS ~
         if (authority === "plurnk") return { ownerId: named.id, writable: false };  // the kernel's published surface
-        const permitted = await (ctx.db.owner_is_ancestor_or_self as PrepMethod).get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
+        const permitted = await ctx.db.owner_is_ancestor_or_self.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
         return permitted === undefined ? null : { ownerId: named.id, writable: false };
     }
 
@@ -134,7 +133,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
         if (entryPath === "") {
             if (authority === "" || authority === "~") return { status: 400, content: null, mimetype: null, channel: null }; // collect names a WORKER
-            const row = await (core.db.worker_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: authority });
+            const row = await core.db.worker_deliverable_by_name.get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: authority });
             if (row === undefined) return { status: 404, content: `worker://${authority} not found in this workspace`, mimetype: "text/markdown", channel: null };
             // §join-blocking-collect (#354) — a still-running worker is a BLOCKING JOIN: the READ
             // arms the join (awaitWorker), and the turn's bare SEND[102] parks until the worker delivers.
@@ -204,7 +203,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         if (core.injectWorker === undefined) throw new Error("run.send: injectWorker capability absent");
         let workerId = core.workerId;
         if (authority !== "~") {
-            const row = await (core.db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: core.workspaceId, name: authority });
+            const row = await core.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: core.workspaceId, name: authority });
             if (row === undefined) return { status: 404, error: `worker://${authority} not found in this workspace` };
             workerId = row.id;
         }
@@ -213,7 +212,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // §worker-delegation-inherits-flags — an irc that RESUMES a parked loop keeps that loop's
         // own flags (inject ignores these there); a fresh loop raised by the message acts on
         // the sender's behalf and carries the sender's authority.
-        const row = await (core.db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: core.loopId });
+        const row = await core.db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: core.loopId });
         const flags = row === undefined ? undefined : { ...DEFAULT_LOOP_FLAGS, ...(JSON.parse(row.flags) as Partial<LoopFlags>) };
         await core.injectWorker({ workspaceId: core.workspaceId, workerId, prompt, flags });
         return { status: 200 };

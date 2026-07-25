@@ -6,7 +6,6 @@ import type { CopyStatement, MoveStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
 
@@ -31,11 +30,11 @@ test("Engine.copy same-scheme (known → known)", async () => {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/france/capital"), urlPath("worker", "/europe/france")));
         assert.equal(r.status, 201);
 
-        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "/europe/france", scheme: "worker" });
+        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string; pathname: string }>({ pathname: "/europe/france", scheme: "worker" });
         assert.equal(dst?.scheme, "worker");
-        const channel = await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/europe/france", name: "body" });
+        const channel = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/europe/france", name: "body" });
         assert.equal(channel?.content, "Paris");
-        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "/europe/france" });
+        const tags = await db.test_tags_by_pathname.all<{ tag: string }>({ pathname: "/europe/france" });
         assert.deepEqual(tags.map((t) => t.tag), ["france"]);
     } finally { await db.close(); }
 });
@@ -48,9 +47,9 @@ test("Engine.copy cross-scheme (worker commons → skill)", async () => {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/topic"), urlPath("skill", "/topic")));
         assert.equal(r.status, 201);
 
-        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string }>({ pathname: "/topic", scheme: "skill" });
+        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "/topic", scheme: "skill" });
         assert.equal(dst?.scheme, "skill");
-        const channel = await (db.test_get_channel_by_pathname_scheme as PrepMethod).get<{ content: string }>({ pathname: "/topic", scheme: "skill", name: "body" });
+        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/topic", scheme: "skill", name: "body" });
         assert.equal(channel?.content, "open question");
     } finally { await db.close(); }
 });
@@ -72,7 +71,7 @@ test("Engine.copy conflicting destination returns 409", async () => {
 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst")));
         assert.equal(r.status, 409);
-        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
+        const dstBody = (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "dest body");
     } finally { await db.close(); }
 });
@@ -91,7 +90,7 @@ test("Engine.copy to a destination already holding identical content returns 304
         // Divergent destination is still a real collision; it stays untouched.
         await k.edit(editStmt(urlPath("worker", "/src"), "changed body", null, fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal((await copy(3)).status, 409, "divergent content is a collision");
-        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
+        const dstBody = (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "same body", "collision leaves the destination untouched");
     } finally { await db.close(); }
 });
@@ -104,7 +103,7 @@ test("Engine.copy tag policy — signal present REPLACES source tags on dest", a
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), ["new", "tags"]));
         assert.equal(r.status, 201);
 
-        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "/dst" });
+        const tags = await db.test_tags_by_pathname.all<{ tag: string }>({ pathname: "/dst" });
         assert.deepEqual(tags.map((t) => t.tag), ["new", "tags"]);
     } finally { await db.close(); }
 });
@@ -117,7 +116,7 @@ test("Engine.copy tag policy — no signal CARRIES source tags", async () => {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), null));
         assert.equal(r.status, 201);
 
-        const tags = await (db.test_tags_by_pathname as PrepMethod).all<{ tag: string }>({ pathname: "/dst" });
+        const tags = await db.test_tags_by_pathname.all<{ tag: string }>({ pathname: "/dst" });
         assert.deepEqual(tags.map((t) => t.tag), ["a", "b"]);
     } finally { await db.close(); }
 });
@@ -130,10 +129,10 @@ test("Engine.move relocates: source deleted, dest created", async () => {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst")));
         assert.equal(r.status, 201);
 
-        const src = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/src" });
+        const src = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/src" });
         assert.equal(src, undefined, "source removed");
 
-        const dstBody = (await (db.test_get_channel_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
+        const dstBody = (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "movable");
     } finally { await db.close(); }
 });
@@ -147,7 +146,7 @@ test("Engine.move with no destination → 400, source survives", async () => {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/trash-me"), null));
         assert.equal(r.status, 400);
 
-        const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/trash-me" });
+        const remaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/trash-me" });
         assert.notEqual(remaining, undefined, "source survives — MOVE never deletes");
     } finally { await db.close(); }
 });
@@ -162,7 +161,7 @@ test("Engine.move to /dev/null no longer deletes — source survives", async () 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/obsolete"), localPath("/dev/null")));
         assert.notEqual(r.status, 200, "not a successful delete");
 
-        const remaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/obsolete" });
+        const remaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/obsolete" });
         assert.notEqual(remaining, undefined, "source survives — /dev/null no longer deletes");
     } finally { await db.close(); }
 });
@@ -183,10 +182,10 @@ test("Engine.move cross-scheme (worker commons → skill) deletes source, create
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/draft"), urlPath("skill", "/answer")));
         assert.equal(r.status, 201);
 
-        const srcRemaining = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ pathname: "/draft", scheme: "worker" });
+        const srcRemaining = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ pathname: "/draft", scheme: "worker" });
         assert.equal(srcRemaining, undefined, "the commons source is deleted");
 
-        const dst = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string }>({ pathname: "/answer", scheme: "skill" });
+        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "/answer", scheme: "skill" });
         assert.equal(dst?.scheme, "skill");
     } finally { await db.close(); }
 });
@@ -198,8 +197,8 @@ test("Engine.copy with <L> slices the source range into the dest, no N:\\t prefi
         const stmt: CopyStatement = { ...copyStmt(urlPath("worker", "/long"), urlPath("worker", "/sliced")), lineMarker: { marks: [2, 3] } };
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
-        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/sliced" });
-        const dstChannel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
+        const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/sliced" });
+        const dstChannel = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "beta\ngamma\n");
         // Symmetric with READ <L> but WITHOUT the N: prefix (sliceLinesRaw) — the dest is content, not a view.
         assert.doesNotMatch(dstChannel?.content ?? "", /^\d+:/, "COPY <L> writes raw lines, never the READ line-number prefix");
@@ -223,10 +222,10 @@ test("Engine.move with <L> slices the source range, then deletes the whole sourc
         const stmt: MoveStatement = { ...moveStmt(urlPath("worker", "/orig"), urlPath("worker", "/moved")), lineMarker: { marks: [1, 2] } };
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
-        const srcRemaining = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/orig" });
+        const srcRemaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/orig" });
         assert.equal(srcRemaining, undefined);
-        const entryRow = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/moved" });
-        const dstChannel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
+        const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/moved" });
+        const dstChannel = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "first\nsecond\n");
     } finally { await db.close(); }
 });

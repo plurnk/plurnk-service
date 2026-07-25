@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
@@ -40,7 +40,7 @@ const parseRead = (dsl: string): ReadStatement => {
 // never a disk read. Root comes from the workspace's project_root, like production.
 const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<void> => {
     if (ctx.mimetypes === undefined) throw new Error("addMember: ctx.mimetypes required");
-    const row = await (ctx.db.envelope_get_workspace as PrepMethod).get<{ project_root: string }>({ id: ctx.workspaceId });
+    const row = await ctx.db.envelope_get_workspace.get<{ project_root: string }>({ id: ctx.workspaceId });
     const canonical = join(row?.project_root ?? "", pathname);
     const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
     const content = await readFile(canonical, "utf8");
@@ -58,7 +58,7 @@ const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `file-test-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: workspaceId, project_root: root });
+        await db.test_set_session_project_root.run({ id: workspaceId, project_root: root });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);

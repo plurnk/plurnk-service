@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { ParsedPath, SendStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
 const sendStmt = (status: number | null, body: string, target: ParsedPath | null = null): SendStatement => ({
@@ -26,7 +26,7 @@ const setup = async () => {
 };
 
 const loopStatus = async (db: Db, loopId: number): Promise<number> => {
-    const row = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId });
+    const row = await db.test_get_loop_status.get<{ status: number }>({ id: loopId });
     if (row === undefined) throw new Error("loop not found");
     return row.status;
 };
@@ -42,7 +42,7 @@ test("SEND[200]:done:SEND (null path, terminal success) → loop.status = 200", 
         });
         assert.equal(result.status, 200);
         assert.equal(await loopStatus(db, env.loopId), 200);
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 200);
     } finally { await db.close(); }
 });
@@ -70,7 +70,7 @@ test("SEND[102]:continuing:SEND → loop.status unchanged (still 102, non-termin
         });
         assert.equal(result.status, 102);
         assert.equal(await loopStatus(db, env.loopId), 102, "non-terminal status leaves loop continuing");
-        const log = await (db.test_first_log_entry_for_turn as PrepMethod).get<{ status_rx: number }>({ turn_id: env.turnId });
+        const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 102);
     } finally { await db.close(); }
 });

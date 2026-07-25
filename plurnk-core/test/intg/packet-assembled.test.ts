@@ -13,12 +13,11 @@ import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string }> }> =>
-    JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId }))!.packet);
+    JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
 test("assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;

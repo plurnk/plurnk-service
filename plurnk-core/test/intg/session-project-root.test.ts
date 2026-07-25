@@ -5,7 +5,6 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
 test("workspace.create with projectRoot round-trips and persists the column", async () => {
@@ -19,7 +18,7 @@ test("workspace.create with projectRoot round-trips and persists the column", as
             assert.equal(result.name, "with-root");
             assert.equal(result.projectRoot, "/home/me/repo/foo");
 
-            const row = await (db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: result.id });
+            const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: result.id });
             assert.equal(row?.project_root, "/home/me/repo/foo");
         } finally { ws.close(); }
     });
@@ -33,7 +32,7 @@ test("workspace.create without projectRoot leaves the column null (headless)", a
             const result = response.result as { id: number; name: string; projectRoot: string | null };
             assert.equal(result.projectRoot, null);
 
-            const row = await (db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: result.id });
+            const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: result.id });
             assert.equal(row?.project_root, null);
         } finally { ws.close(); }
     });

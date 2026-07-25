@@ -12,7 +12,6 @@ import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import Owner from "../../src/core/Owner.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace } from "./_helpers.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
@@ -48,7 +47,7 @@ test("pin 1+2: every spelling of one member resolves to the ONE row — bare, sl
             assert.equal(r.status, 200, `READ(${spelling}) resolves the member`);
             assert.equal(r.content, "the one file\n", `READ(${spelling}) reads the SAME row`);
         }
-        const rows = await (db.test_count_entry_rows as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, pathname: "src/main.js" });
+        const rows = await db.test_count_entry_rows.get<{ n: number }>({ workspace_id: workspaceId, pathname: "src/main.js" });
         assert.equal(rows?.n, 1, "one identity under every spelling");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -57,9 +56,9 @@ test("pin 3: EDIT via a slashed spelling answers in bare canon and mints NO shad
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "note.md"), "original\n");
-        const seeded = await (db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "note.md" });
+        const seeded = await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "note.md" });
         assert.ok(seeded);
-        const before = await (db.test_entries_count_all as PrepMethod).get<{ n: number }>({});
+        const before = await db.test_entries_count_all.get<{ n: number }>({});
 
         const r = await new File().edit(editStmt("/note.md", "revised\n", fullReplace), ctx);
         assert.equal(r.status, 202, "the slashed spelling proposes against the member");
@@ -67,7 +66,7 @@ test("pin 3: EDIT via a slashed spelling answers in bare canon and mints NO shad
         assert.equal(attrs.path, "note.md", "the engine answers in wire canon — never an echo of the model's spelling");
         assert.match((r as { body?: string }).body ?? "", /^Index: note\.md/, "the diff header speaks canon");
 
-        const after = await (db.test_entries_count_all as PrepMethod).get<{ n: number }>({});
+        const after = await db.test_entries_count_all.get<{ n: number }>({});
         assert.equal(after?.n, before?.n, "no shadow row minted via the alternate spelling (the id-42854 pin)");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -77,7 +76,7 @@ test("the storage fixpoint: every file-class row is its own canon", async () => 
     try {
         await writeFile(join(root, "a.md"), "a\n");
         await EntryCrud.writeEntry("a.md", { channels: { body: { content: "a\n", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
-        const rows = await (db.test_file_pathnames as PrepMethod).all<{ pathname: string }>({ workspace_id: workspaceId });
+        const rows = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: workspaceId });
         assert.ok(rows.length > 0);
         for (const { pathname } of rows) {
             assert.ok(Namespace.isCanonical(pathname, root), `stored key '${pathname}' is its own canon — the world-state predicate`);
@@ -95,7 +94,7 @@ test("the log row: address COLUMNS speak canon, tx keeps the model's verbatim sp
         const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
         const { insertLoop, insertTurn } = await import("./_helpers.ts");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const loopId = await insertLoop(db, (await (db.test_first_worker_for_ws as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId }))!.id, 1, "go");
+        const loopId = await insertLoop(db, (await db.test_first_worker_for_ws.get<{ id: number }>({ workspace_id: workspaceId }))!.id, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const spelling = "/./readme.md"; // a deliberately ugly legal spelling
@@ -103,7 +102,7 @@ test("the log row: address COLUMNS speak canon, tx keeps the model's verbatim sp
             statement: readStmt(spelling), workspaceId, workerId: ctx.workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 200, "the ugly spelling resolves");
-        const row = await (db.test_last_log_row as PrepMethod).get<{ pathname: string | null; tx: string }>({ loop_id: loopId });
+        const row = await db.test_last_log_row.get<{ pathname: string | null; tx: string }>({ loop_id: loopId });
         assert.equal(row?.pathname, "readme.md", "the engine-authored pathname COLUMN carries wire canon");
         assert.ok(row?.tx.includes("/./readme.md"), "tx keeps the model's own spelling verbatim — history is never rewritten");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
@@ -121,7 +120,7 @@ test("the six-row write matrix — grantor-keyed mounts, O_EXCL create, the blin
         assert.equal(blind.status, 403, "a create whose result would not be a member is refused — plurnk never writes what it cannot see");
 
         // (1') the client grants via pick → the same create proposes (O_EXCL at an empty path).
-        await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
+        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
         const granted = await file.edit(editStmt("fresh.md", "x\n"), ctx);
         assert.equal(granted.status, 202, "the client grant admits the exclusive create");
 
@@ -135,8 +134,8 @@ test("the six-row write matrix — grantor-keyed mounts, O_EXCL create, the blin
         await writeFile(join(outside, "gitted.md"), "git-included\n");
         const mountKeyClient = `../${outside.split("/").at(-1)}/client.md`;
         const mountKeyGit = `../${outside.split("/").at(-1)}/gitted.md`;
-        await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyClient, membership_origin: "client" });
-        await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyGit, membership_origin: "git" });
+        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyClient, membership_origin: "client" });
+        await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commons, scheme: "file", pathname: mountKeyGit, membership_origin: "git" });
         const rw = await file.edit(editStmt(mountKeyClient, "revised\n", fullReplace), ctx);
         assert.equal(rw.status, 202, "a client-granted mount member is read-write — the per-file rw bind mount");
         const ro = await file.edit(editStmt(mountKeyGit, "revised\n"), ctx);
@@ -184,14 +183,14 @@ test("pins 6+8: facts distinguish wrong-address / occupancy / empty-survey by th
 test("the accept stamps the grantor the closure proved — provenance never waits for the reconcile", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {
-        await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
+        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
         const file = new File();
         const proposal = await file.edit(editStmt("stamped.md", "content\n"), ctx);
         assert.equal(proposal.status, 202);
         assert.equal((proposal.attrs as { admittedBy?: string }).admittedBy, "client", "the closure names WHO admitted");
         const applied = await file.applyResolution({ attrs: proposal.attrs as never, body: undefined }, ctx);
         assert.equal(applied.status, 200);
-        const row = await (db.test_get_origin as PrepMethod).get<{ membership_origin: string | null }>({ workspace_id: workspaceId, pathname: "stamped.md" });
+        const row = await db.test_get_origin.get<{ membership_origin: string | null }>({ workspace_id: workspaceId, pathname: "stamped.md" });
         assert.equal(row?.membership_origin, "client", "the accepted create carries its PROVEN grantor, not NULL");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -206,7 +205,7 @@ test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it 
         assert.equal(invisible.status, 404, "no grantor → the file does not exist for the model (counterintuitive on purpose — the sandbox's center)");
 
         // The client grants (pick) + the membership pass runs → it exists.
-        await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "ungran.md" });
+        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "ungran.md" });
         const GitMembership = (await import("../../src/core/git-membership.ts")).default;
         await GitMembership.indexGitMembership(ctx);
         const visible = await file.read(readStmt("ungran.md"), ctx);

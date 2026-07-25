@@ -7,7 +7,6 @@
 // (grammar/schemes/personality releases) re-calibrates the pins instead of breaking them
 // — the razor-pin treadmill (three re-pinnings in one week) ends here.
 
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 
 export const measureFloor = async (opts: { label: string; projectRoot: string; prompt: string }): Promise<number> => {
@@ -19,7 +18,7 @@ export const measureFloor = async (opts: { label: string; projectRoot: string; p
         try {
             const { turnIds } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: 120_000 });
             if (turnIds.length === 0) throw new Error("floor probe ran no turn — nothing to measure");
-            const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: turnIds[0] });
+            const row = await s.db.test_get_turn.get<{ packet: string }>({ id: turnIds[0] });
             const tokens = (JSON.parse(row?.packet ?? "{}") as { tokens?: number }).tokens ?? 0;
             if (tokens <= 0) throw new Error("floor probe read no packet total from the 413 record");
             return tokens;

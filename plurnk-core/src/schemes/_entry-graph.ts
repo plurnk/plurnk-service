@@ -9,7 +9,7 @@
 // (EntryManifest.buildManifestBody) and hands them here via populateFrom; this module
 // only owns the relational index (insert + the @</@>/@ resolution).
 
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { Db } from "../core/Db.ts";
 import type { MimeSymbol, MimeRef } from "@plurnk/plurnk-mimetypes";
 
 export default class EntryGraph {
@@ -22,16 +22,16 @@ export default class EntryGraph {
         db: Db, derivationId: number,
         symbols: readonly MimeSymbol[], references: readonly MimeRef[],
     ): Promise<void> {
-        await (db.graph_delete_defs as PrepMethod).run({ derivation_id: derivationId });
-        await (db.graph_delete_refs as PrepMethod).run({ derivation_id: derivationId });
+        await db.graph_delete_defs.run({ derivation_id: derivationId });
+        await db.graph_delete_refs.run({ derivation_id: derivationId });
         for (let offset = 0; offset < symbols.length; offset += EntryGraph.#STORE_BATCH) {
-            await (db.graph_insert_defs_bulk as PrepMethod).run({
+            await db.graph_insert_defs_bulk.run({
                 derivation_id: derivationId,
                 rows: symbols.slice(offset, offset + EntryGraph.#STORE_BATCH),
             });
         }
         for (let offset = 0; offset < references.length; offset += EntryGraph.#STORE_BATCH) {
-            await (db.graph_insert_refs_bulk as PrepMethod).run({
+            await db.graph_insert_refs_bulk.run({
                 derivation_id: derivationId,
                 rows: references.slice(offset, offset + EntryGraph.#STORE_BATCH),
             });
@@ -74,23 +74,23 @@ export default class EntryGraph {
     }
 
     static async #referrers(db: Db, workspaceId: number, scheme: string | null, name: string): Promise<GraphMatch[]> {
-        const rows = await (db.graph_referrers as PrepMethod).all<{ pathname: string; line: number; end_line: number }>({ workspace_id: workspaceId, scheme, name });
+        const rows = await db.graph_referrers.all<{ pathname: string; line: number; end_line: number }>({ workspace_id: workspaceId, scheme, name });
         return rows.map((r) => ({ pathname: r.pathname, lineStart: r.line, lineEnd: r.end_line }));
     }
 
     static async #defs(db: Db, workspaceId: number, scheme: string | null, name: string): Promise<GraphMatch[]> {
-        const rows = await (db.graph_def_pathnames_by_name as PrepMethod).all<{ pathname: string; line: number; end_line: number }>({ workspace_id: workspaceId, scheme, name });
+        const rows = await db.graph_def_pathnames_by_name.all<{ pathname: string; line: number; end_line: number }>({ workspace_id: workspaceId, scheme, name });
         return rows.map((r) => ({ pathname: r.pathname, lineStart: r.line, lineEnd: r.end_line }));
     }
 
     // @>sym: sym's def(s) → the target names those defs reference → those targets'
     // defining entries (with their def spans). The def's full qualified path is the @> join key (#186).
     static async #referents(db: Db, workspaceId: number, scheme: string | null, name: string): Promise<GraphMatch[]> {
-        const defs = await (db.graph_resolve_def as PrepMethod).all<{ derivation_id: number; container: string | null }>({ workspace_id: workspaceId, name });
+        const defs = await db.graph_resolve_def.all<{ derivation_id: number; container: string | null }>({ workspace_id: workspaceId, name });
         const targets = new Set<string>();
         for (const d of defs) {
             const qualified = d.container === null ? name : `${d.container}.${name}`;
-            const refs = await (db.graph_refs_from_source as PrepMethod).all<{ name: string }>({ derivation_id: d.derivation_id, container: qualified });
+            const refs = await db.graph_refs_from_source.all<{ name: string }>({ derivation_id: d.derivation_id, container: qualified });
             for (const r of refs) targets.add(r.name);
         }
         const out: GraphMatch[] = [];

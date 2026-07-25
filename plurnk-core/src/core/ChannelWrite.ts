@@ -7,7 +7,7 @@
 // stream/event notifications scoped to the entry's workspace via an optional
 // callback the daemon wires in.
 
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 import type { LoopFlags } from "./types.ts";
 import { renderAddress } from "./plurnk-uri.ts";
 
@@ -110,15 +110,15 @@ interface ChannelMetaRow {
 }
 
 export default class ChannelWrite {
-    static #channelMeta(db: Db): PrepMethod { return db.channel_meta as PrepMethod; }
-    static #appendStmt(db: Db): PrepMethod { return db.append_to_channel as PrepMethod; }
-    static #stateStmt(db: Db): PrepMethod { return db.set_channel_state as PrepMethod; }
-    static #mimetypeStmt(db: Db): PrepMethod { return db.set_channel_mimetype as PrepMethod; }
-    static #openSubStmt(db: Db): PrepMethod { return db.open_subscription as PrepMethod; }
-    static #closeSubStmt(db: Db): PrepMethod { return db.close_subscription as PrepMethod; }
-    static #findActiveStmt(db: Db): PrepMethod { return db.find_active_subscription as PrepMethod; }
-    static #openSubsForWorkerStmt(db: Db): PrepMethod { return db.find_open_subscriptions_for_worker as PrepMethod; }
-    static #execTerminalStmt(db: Db): PrepMethod { return db.find_exec_close_status as PrepMethod; }
+    static #channelMeta(db: Db) { return db.channel_meta; }
+    static #appendStmt(db: Db) { return db.append_to_channel; }
+    static #stateStmt(db: Db) { return db.set_channel_state; }
+    static #mimetypeStmt(db: Db) { return db.set_channel_mimetype; }
+    static #openSubStmt(db: Db) { return db.open_subscription; }
+    static #closeSubStmt(db: Db) { return db.close_subscription; }
+    static #findActiveStmt(db: Db) { return db.find_active_subscription; }
+    static #openSubsForWorkerStmt(db: Db) { return db.find_open_subscriptions_for_worker; }
+    static #execTerminalStmt(db: Db) { return db.find_exec_close_status; }
 
     // The entry's target URI for stream notifications (#179). A NULL scheme is
     // a filesystem entry (the file scheme stores scheme=NULL), so it decodes to
@@ -224,6 +224,6 @@ export default class ChannelWrite {
         db: Db,
         workerId: number,
     ): Promise<Array<{ id: number; scheme: string }>> {
-        return (db.find_open_turn_scoped_subscriptions_for_worker as PrepMethod).all<{ id: number; scheme: string }>({ worker_id: workerId });
+        return db.find_open_turn_scoped_subscriptions_for_worker.all<{ id: number; scheme: string }>({ worker_id: workerId });
     }
 }

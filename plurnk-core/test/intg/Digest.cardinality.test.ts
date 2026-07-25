@@ -4,7 +4,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Digest from "../../src/digest/Digest.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
 test("digest Markdown exposes amplification as exact aggregates while JSON preserves every row", async () => {
@@ -25,7 +24,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             attrs: object,
             hostname: string | null = null,
         ): Promise<void> => {
-            await (db.engine_insert_log_entry as PrepMethod).run({
+            await db.engine_insert_log_entry.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin, source: null, op, suffix: "", signal: null,
                 scheme: "https", username: null, password: null, hostname, port: null,

@@ -2,7 +2,7 @@
 // reader-projected FTS, graph, and vectors. Vector search ranks every eligible
 // vector in scope; FTS is only the explicit no-embedder fallback.
 
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { Db } from "../core/Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 // mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it
@@ -39,8 +39,8 @@ export default class EntrySemantic {
     // Replace a derivation artifact's FTS row with its readable content.
     // Empty content (binary member / cleared entry) → no FTS row (delete only).
     static async indexFts(db: Db, derivationId: number, content: string): Promise<void> {
-        await (db.fts_delete as PrepMethod).run({ derivation_id: derivationId });
-        if (content.length > 0) await (db.fts_insert as PrepMethod).run({ derivation_id: derivationId, content });
+        await db.fts_delete.run({ derivation_id: derivationId });
+        if (content.length > 0) await db.fts_insert.run({ derivation_id: derivationId, content });
     }
 
     // Cosine similarity over two Float32 vectors stored as BLOBs — the SqlRite
@@ -62,10 +62,10 @@ export default class EntrySemantic {
     static async indexEmbedding(db: Db, derivationId: number, chunks: { lineStart: number; lineEnd: number; vector: Uint8Array }[], model: string | undefined): Promise<void> {
         // Re-derivation = clear all of the artifact's chunk rows, then insert each in seq
         // order. No model (no embedder installed) or no chunks → just cleared.
-        await (db.embedding_delete as PrepMethod).run({ derivation_id: derivationId });
+        await db.embedding_delete.run({ derivation_id: derivationId });
         if (model === undefined) return;
         for (const [seq, c] of chunks.entries()) {
-            await (db.embedding_set as PrepMethod).run({
+            await db.embedding_set.run({
                 derivation_id: derivationId, chunk_seq: seq, line_start: c.lineStart, line_end: c.lineEnd,
                 vector: c.vector, embedding_model: model,
             });
@@ -210,20 +210,20 @@ export default class EntrySemantic {
             if (!Number.isInteger(first)) return { status: 501, results: [] };
             const ftsQuery = EntrySemantic.ftsQueryFor(queryText);
             if (ftsQuery.length === 0) return { status: 200, results: [] };
-            const rows = await (db.semantic_rank_fts as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
+            const rows = await db.semantic_rank_fts.all<{ pathname: string; line_start: number; line_end: number }>({
                 fts_query: ftsQuery, workspace_id: workspaceId, scheme, entry_ids, k: first,
             });
             return { status: 200, results: rows.map(toResult) };
         }
         if (Number.isInteger(first)) {
-            const rows = await (db.semantic_rank as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
+            const rows = await db.semantic_rank.all<{ pathname: string; line_start: number; line_end: number }>({
                 workspace_id: workspaceId, scheme, entry_ids, query_vector: r.embedding, embedding_model: r.embeddingModel, k: first,
             });
             return { status: 200, results: rows.map(toResult) };
         }
         if (first <= 0 || first >= 1) return { status: 416, results: [] };
         const cap = (last !== null && Number.isInteger(last) && last > 0) ? last : -1;
-        const rows = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string; line_start: number; line_end: number }>({
+        const rows = await db.semantic_rank_threshold.all<{ pathname: string; line_start: number; line_end: number }>({
             workspace_id: workspaceId, scheme, entry_ids, query_vector: r.embedding, embedding_model: r.embeddingModel, threshold: first, cap,
         });
         return { status: 200, results: rows.map(toResult) };

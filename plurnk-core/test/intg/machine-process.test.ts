@@ -14,7 +14,6 @@ import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-grammar"
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -67,14 +66,14 @@ test("a fork copies the parent's log (rows + their fold-state)", async () => {
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/b.md"), "second"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         // Fold the first row — a fold-state bit on the parent's own log.
-        const ids = await (db.test_log_entries_by_run as PrepMethod).all<{ id: number }>({ worker_id: workerId });
-        await (db.log_set_expanded_by_id as PrepMethod).run({ id: ids[0].id, expanded: 0 });
+        const ids = await db.test_log_entries_by_run.all<{ id: number }>({ worker_id: workerId });
+        await db.log_set_expanded_by_id.run({ id: ids[0].id, expanded: 0 });
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
         const shape = (rows: Array<{ op: string; pathname: string; expanded: number }>) => rows.map((r) => `${r.op}:${r.pathname}:${r.expanded}`);
-        const parentLog = await (db.engine_render_log as PrepMethod).all<{ op: string; pathname: string; expanded: number }>({ worker_id: workerId });
-        const branchLog = await (db.engine_render_log as PrepMethod).all<{ op: string; pathname: string; expanded: number }>({ worker_id: branchWorkerId });
+        const parentLog = await db.engine_render_log.all<{ op: string; pathname: string; expanded: number }>({ worker_id: workerId });
+        const branchLog = await db.engine_render_log.all<{ op: string; pathname: string; expanded: number }>({ worker_id: branchWorkerId });
         assert.deepEqual(shape(branchLog), shape(parentLog), "the branch's log mirrors the parent's — rows and fold-state");
         assert.ok(branchLog.some((r) => r.expanded === 0), "the row folded on the parent stayed folded in the branch");
     } finally { db.close(); }
@@ -90,12 +89,12 @@ test("a fork carries a log row's region tags along with its fold-state", async (
         const turnId = await insertTurn(db, loopId, 1);
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         // Tag the parent's row (the write FOLD[tag] performs), directly — to isolate the fork-copy.
-        const ids = await (db.test_log_entries_by_run as PrepMethod).all<{ id: number }>({ worker_id: workerId });
-        await (db.log_write_tag as PrepMethod).run({ log_entry_id: ids[0].id, tag: "projectB" });
+        const ids = await db.test_log_entries_by_run.all<{ id: number }>({ worker_id: workerId });
+        await db.log_write_tag.run({ log_entry_id: ids[0].id, tag: "projectB" });
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
-        const branchTags = await (db.test_log_tags_by_run as PrepMethod).all<{ coordinate: string; tag: string }>({ worker_id: branchWorkerId });
+        const branchTags = await db.test_log_tags_by_run.all<{ coordinate: string; tag: string }>({ worker_id: branchWorkerId });
         assert.deepEqual(branchTags.map((r) => r.tag), ["projectB"], "the branch inherited the parent's region tag — a named working-set survives the fork");
     } finally { db.close(); }
 });
@@ -109,12 +108,12 @@ test("a fork shares the workspace's filesystem and overlay, live and uncopied", 
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        const before = (await (db.engine_list_workspace_entries as PrepMethod).all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
+        const before = (await db.engine_list_workspace_entries.all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
-        const after = (await (db.engine_list_workspace_entries as PrepMethod).all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
-        const branch = await (db.test_run_lineage as PrepMethod).get<{ workspace_id: number }>({ id: branchWorkerId });
+        const after = (await db.engine_list_workspace_entries.all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
+        const branch = await db.test_run_lineage.get<{ workspace_id: number }>({ id: branchWorkerId });
         assert.equal(branch!.workspace_id, workspaceId, "the branch lives in the parent's workspace — one shared world");
         assert.equal(after, before, "the fork copied no entries — the filesystem is shared, not duplicated");
     } finally { db.close(); }
@@ -127,7 +126,7 @@ test("a workspace cannot be forked; the fork is worker-scoped", async () => {
         const workerId = await insertWorker(db, workspaceId);
         const branchWorkerId = await Fork.fork(db, workerId);
         assert.notEqual(branchWorkerId, workerId, "a fork is a new run");
-        const lineage = await (db.test_run_lineage as PrepMethod).get<{ workspace_id: number; parent_worker_id: number | null }>({ id: branchWorkerId });
+        const lineage = await db.test_run_lineage.get<{ workspace_id: number; parent_worker_id: number | null }>({ id: branchWorkerId });
         assert.equal(lineage!.workspace_id, workspaceId, "the branch is in the parent's workspace — the workspace is shared, never forked");
         assert.equal(lineage!.parent_worker_id, workerId, "the branch's lineage points at the parent run");
     } finally { db.close(); }
@@ -141,15 +140,15 @@ test("#254 — a fork inherits the log but spends no new money: workspace cost i
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         // Give the parent turn a real cost — the rollup triggers carry it to run + workspace.
-        await (db.engine_close_turn as PrepMethod).run({
+        await db.engine_close_turn.run({
             id: turnId, status: 200, packet: "{}",
             usage_prompt: 100, usage_completion: 50, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 1000,
             finish_reason: null, model: "mock", meta: "{}",
         });
         const workspaceCost = async () =>
-            (await (db.envelope_list_workspaces as PrepMethod).all<{ id: number; cost_pico: number }>({})).find((s) => s.id === workspaceId)?.cost_pico;
+            (await db.envelope_list_workspaces.all<{ id: number; cost_pico: number }>({})).find((s) => s.id === workspaceId)?.cost_pico;
         const workerCost = async (rid: number) =>
-            (await (db.envelope_list_workers_for_workspace as PrepMethod).all<{ id: number; cost_pico: number }>({ workspace_id: workspaceId })).find((r) => r.id === rid)?.cost_pico;
+            (await db.envelope_list_workers_for_workspace.all<{ id: number; cost_pico: number }>({ workspace_id: workspaceId })).find((r) => r.id === rid)?.cost_pico;
 
         assert.equal(await workspaceCost(), 1000, "baseline: the parent turn's cost rolled up to the workspace");
         assert.equal(await workerCost(workerId), 1000, "baseline: and to the parent run");

@@ -10,7 +10,7 @@
 
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 
 export type ClientMdDoc = { alias: string; content: string };
 export type WorkspaceOpenContext = {
@@ -27,7 +27,7 @@ export default class WorkspaceSettings {
     // The workspace's open-context bag. Absent/unset fields read as null / []. A malformed
     // bag never reaches here — workspace.create validates before persisting.
     static async read(db: Db, workspaceId: number): Promise<WorkspaceOpenContext> {
-        const row = await (db.workspace_get_settings as PrepMethod).get<{ settings: string }>({ workspace_id: workspaceId });
+        const row = await db.workspace_get_settings.get<{ settings: string }>({ workspace_id: workspaceId });
         const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown; questions?: unknown }) : {};
         const filesItems = typeof bag.filesItems === "number" ? bag.filesItems : null;
         const maxCommands = typeof bag.maxCommands === "number" ? bag.maxCommands : null;

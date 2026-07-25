@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -26,7 +25,7 @@ const enqueueLoop = async (
     sequence: number,
     prompt: string,
 ): Promise<number> => {
-    const row = await (db.drain_enqueue_loop as PrepMethod).get<{ id: number }>({
+    const row = await db.drain_enqueue_loop.get<{ id: number }>({
         worker_id: workerId,
         sequence,
         prompt,
@@ -52,7 +51,7 @@ test("boot restores a drain for accepted queued work", async () => {
         await daemon.start();
 
         const status = await waitForDb(
-            async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status,
+            async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
             (value) => value === 200,
         );
         assert.equal(status, 200);
@@ -76,10 +75,10 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
         const parentId = await insertWorker(db, workspaceId, null, "parent");
         const childId = await insertWorker(db, workspaceId, parentId, "child");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
-        await (db.engine_reclaim_queued_loop as PrepMethod).run({ loop_id: parentLoopId });
+        await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
         assert.equal(await new LoopLifecycle(db).park(parentLoopId, "waiting for child"), true);
         const childLoopId = await enqueueLoop(db, childId, 1, "interrupted child");
-        await (db.engine_reclaim_queued_loop as PrepMethod).run({ loop_id: childLoopId });
+        await db.engine_reclaim_queued_loop.run({ loop_id: childLoopId });
 
         const entryId = await seedEntryWithChannel(db, {
             workspaceId,
@@ -99,7 +98,7 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
         await daemon.start();
 
         const child = await waitForDb(
-            () => (db.test_list_loops_all as PrepMethod).all<{
+            () => db.test_list_loops_all.all<{
                 id: number;
                 status: number;
                 terminal_message: string | null;
@@ -108,18 +107,18 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
         );
         assert.match(child?.terminal_message ?? "", /daemon restarted/);
 
-        const subscription = await (db.test_get_subscription as PrepMethod).get<{
+        const subscription = await db.test_get_subscription.get<{
             close_status: number | null;
         }>({ id: subscriptionId });
         assert.equal(subscription?.close_status, 500);
-        const channel = await (db.test_get_channel as PrepMethod).get<{ state: string }>({
+        const channel = await db.test_get_channel.get<{ state: string }>({
             entry_id: entryId,
             name: "stdout",
         });
         assert.equal(channel?.state, "errored");
 
         const parentStatus = await waitForDb(
-            async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: parentLoopId }))?.status,
+            async () => (await db.test_get_loop_status.get<{ status: number }>({ id: parentLoopId }))?.status,
             (value) => value === 200,
         );
         assert.equal(parentStatus, 200, "the settled child propagated a wake through the parent edge");
@@ -151,18 +150,18 @@ test("a child drain exception still propagates the parent wake edge", async () =
         const parentId = await insertWorker(db, workspaceId, null, "parent");
         const childId = await insertWorker(db, workspaceId, parentId, "child");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
-        await (db.engine_reclaim_queued_loop as PrepMethod).run({ loop_id: parentLoopId });
+        await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
         assert.equal(await new LoopLifecycle(db).park(parentLoopId, "waiting for child"), true);
         const childLoopId = await enqueueLoop(db, childId, 1, "fail while running");
 
         await daemon.start();
 
         const parentStatus = await waitForDb(
-            async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: parentLoopId }))?.status,
+            async () => (await db.test_get_loop_status.get<{ status: number }>({ id: parentLoopId }))?.status,
             (value) => value === 200,
         );
         assert.equal(parentStatus, 200);
-        const childStatus = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: childLoopId });
+        const childStatus = await db.test_get_loop_status.get<{ status: number }>({ id: childLoopId });
         assert.equal(childStatus?.status, 500);
         assert.equal(calls, 2, "the failed child terminal woke exactly one parent continuation");
     } finally {

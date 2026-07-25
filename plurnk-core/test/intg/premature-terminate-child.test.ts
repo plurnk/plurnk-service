@@ -9,7 +9,6 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { ParsedPath } from "@plurnk/plurnk-grammar";
 import { sendStmt, readStmt } from "./_dsl.ts";
 
@@ -48,7 +47,7 @@ test("SEND[200] with a live CHILD run is refused 409 on the record (no erasure) 
         // The record is faithful, NOT erased: the SEND row keeps its [200] emission but is stamped 409
         // (refused — Conflict), auto-surfacing in the errors section (status≥400). The old downgrade
         // rewrote the row to 102, erasing what the model did.
-        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: premature.turnId });
+        const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: premature.turnId });
         const sendRow = rows.find((r) => r.op === "SEND");
         assert.equal(sendRow?.status_rx, 409, "the SEND row records the refusal as 409, preserving the model's termination attempt");
     } finally { await db.close(); }
@@ -69,7 +68,7 @@ test("a CONCLUDED child carrying an inherited non-terminal loop does NOT block t
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "inherited");                       // seq 1 — frozen at 102 (inherited history)
         const ownLoop = await insertLoop(db, childWorker, 2, "own work");        // seq 2 — the child's actual loop
-        await (db.test_set_loop_status as PrepMethod).run({ id: ownLoop, status: 200 }); // it concluded
+        await db.test_set_loop_status.run({ id: ownLoop, status: 200 }); // it concluded
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
@@ -100,11 +99,11 @@ test("READ + SEND[200] same turn is refused 409 — the pending set includes thi
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
         assert.equal(result.steerStruck, false, "a retrievals-only refusal does NOT strike (owner ruling) — it teaches; the turn still demotes");
-        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
+        const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 409, "the SEND[200] row records the refusal as 409");
         // The STORED record agrees with the return (run20's T3 bug: the close persists the
         // provisional status pre-dispatch; the refusal must demote the row too, not just the return).
-        const storedTurn = await (db.test_get_turn as PrepMethod).get<{ status: number }>({ id: result.turnId });
+        const storedTurn = await db.test_get_turn.get<{ status: number }>({ id: result.turnId });
         assert.equal(storedTurn?.status, 102, "the persisted turns.status is demoted — the digest surface never lies");
     } finally { await db.close(); }
 });
@@ -124,9 +123,9 @@ test("a legacy [102]<-1> join on an idle run completes immediately", async () =>
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "the already-drained join completes terminally");
-        const row = await (db.test_send_rows_for_run as PrepMethod).all<{ status_rx: number }>({ worker_id: workerId });
+        const row = await db.test_send_rows_for_run.all<{ status_rx: number }>({ worker_id: workerId });
         assert.ok(row.some((r) => r.status_rx === 200), "the SEND records successful completion");
     } finally { await db.close(); }
 });
@@ -197,9 +196,9 @@ test("499 is never gated and recursively cancels unresolved descendants", async 
         });
         assert.equal(result.status, 499, "the abandon lands — pending work never gates a 499");
         assert.equal(result.steerStruck, false, "no strike for a legal abandon");
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: parentLoop }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop }))?.status;
         assert.equal(loopStatus, 499, "the loop is terminal");
-        const childStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: childLoop }))?.status;
+        const childStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: childLoop }))?.status;
         assert.equal(childStatus, 499, "the unresolved child is cancelled with its abandoned parent scope");
     } finally { await db.close(); }
 });
@@ -221,7 +220,7 @@ test("a retrievals-ONLY refusal states the continuation, not a remedy menu (owne
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const refusals = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         const refused = refusals.find((r) => r.status_rx === 409);
         assert.ok(refused, "the retrieval gate refused");
         assert.match(refused!.rx, /Last turn both performed retrieval operations and attempted to terminate\. Retrieval operations force an additional turn to receive results for review and reaction\. To conclude, only use PLAN and SEND\[200\] operations\./, "the steer narrates history third-person, states the forced-turn mechanism, and prescribes the concluding emission's shape (#384, owner wording, run48)");
@@ -244,9 +243,9 @@ test("retrieval preemies NEVER strike — repeated refusals teach without execut
         const readAndConclude = () => ({ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "the answer is Hi")] } });
         const provider = new Mock({ contextWindow: 100000, responses: [readAndConclude(), readAndConclude(), readAndConclude(), readAndConclude()] });
         for (let i = 0; i < 4; i++) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const refusals = await (db.test_send_rows_for_run as PrepMethod).all<{ status_rx: number }>({ worker_id: workerId });
+        const refusals = await db.test_send_rows_for_run.all<{ status_rx: number }>({ worker_id: workerId });
         assert.equal(refusals.filter((r) => r.status_rx === 409).length, 4, "all four conclude-attempts refused — the gate never weakened");
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.notEqual(loopStatus, 500, "the loop is NOT struck out — retrieval preemies never strike");
         assert.equal(loopStatus, 102, "still alive, still teachable");
     } finally { await db.close(); }
@@ -274,9 +273,9 @@ test("one idle-grace turn after a retrieval-409 — obeying the steer never stri
         for (let i = 0; i < 5; i++) {
             const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             statuses.push(r.status);
-            if ((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status === 500) break;
+            if ((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status === 500) break;
         }
-        const errRows = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
+        const errRows = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         const idleStrikes = errRows.filter((r) => /idle_turn/.test(r.rx)).length;
         assert.ok(idleStrikes >= 1, "later idles still strike — the rail is intact");
         const graceCovered = 5 - 1 - idleStrikes; // turns minus the refused turn minus struck idles
@@ -300,7 +299,7 @@ test("a parse-emptied turn is FAILED RETRIEVAL, not idle — the root 400 speaks
             { assistant: { content: "<<PLAN:check the doc:PLAN\n<<FIND(((broken:FIND\n<<SEND[102]:fetching:SEND", reasoning: null } },
         ] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const errRows = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
+        const errRows = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(errRows.length > 0, "the malformed FIND minted its parse-error row (the root cause, recorded)");
         assert.ok(errRows.every((r) => !/idle_turn|Illegal idle/.test(r.rx)), "no idle-409 stacked on the root error — one accident, one error");
     } finally { await db.close(); }
@@ -333,13 +332,13 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
         const metaLine = log.split("\n").find((l) => l.includes('"op":"SEND"') && l.includes('"status":409'));
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
         assert.match(metaLine!, /"error":"Last turn both performed retrieval operations and attempted to terminate\./, "the steer rides the META LINE — visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.
-        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
+        const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(!errs.some((e) => e.rx.includes("action_failure")), "no separate minted item — the op row is the model's op result");
     } finally { await db.close(); }
 });

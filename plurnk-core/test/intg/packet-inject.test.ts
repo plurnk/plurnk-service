@@ -6,7 +6,6 @@ import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
@@ -31,7 +30,7 @@ test("PLURNK_SERVICE_PACKET_INJECT: operator file rides as a system section afte
             messages: [{ role: "system", content: "PLURNK_MD" }, { role: "user", content: "go" }],
         });
 
-        const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId }))!.packet);
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
         assert.match(packetSection(packet, "inject"), /Prefer sqlite over node/, "the operator file is the inject section's content");
         const sysOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "system").map((s) => s.name);
         assert.deepEqual(sysOrder.slice(0, 4), ["definition", "tools", "schemes", "inject"], "inject sits right after the teaching, before the log");

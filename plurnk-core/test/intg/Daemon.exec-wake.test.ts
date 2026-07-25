@@ -11,7 +11,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
@@ -65,7 +64,7 @@ test("#598: an async wake resumes with the loop's durable provider, never the bo
                 const loopId = (started.result as { loopId: number }).loopId;
 
                 await waitForDb(
-                    async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status,
+                    async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
                     (status) => status === 202,
                 );
 
@@ -130,7 +129,7 @@ test("#598: a parked loop retains its provider across daemon restart", async () 
             flags: { auto: true },
         });
         await waitForDb(
-            async () => (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: started.loopId }))?.status,
+            async () => (await db.test_get_loop_status.get<{ status: number }>({ id: started.loopId }))?.status,
             (status) => status === 202,
         );
         await first.stop();
@@ -147,7 +146,7 @@ test("#598: a parked loop retains its provider across daemon restart", async () 
             (events) => events.some((event) => event.loopId === started.loopId && event.finalStatus === 200),
             { timeoutMs: 6000 },
         );
-        const loops = await (db.test_list_loops_all as PrepMethod).all<{ id: number; worker_id: number }>({});
+        const loops = await db.test_list_loops_all.all<{ id: number; worker_id: number }>({});
         assert.deepEqual(
             loops.filter((loop) => loop.worker_id === workerId).map((loop) => loop.id),
             [started.loopId],
@@ -359,7 +358,7 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
             // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
             // to open, not a fixed sleep racing the spawn (the flake this replaces).
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 

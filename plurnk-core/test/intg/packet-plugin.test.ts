@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { PacketSection } from "../../src/core/packet-wire.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
@@ -31,7 +30,7 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
         const engine = new Engine({ db, schemes });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet);
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
 
         // ADD: the plugin's section is in the packet, carrying its content.
         assert.equal(packetSection(packet, "demo"), "hello from the plugin");

@@ -9,7 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_helpers.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
@@ -76,7 +76,7 @@ test("under the ceiling the grinder never fires — nothing is hidden", async ()
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         // Under the ceiling the grinder early-returns before pass 1, so turn 1's
         // log stays shown — it would be hidden only on overflow.
-        const log = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number }>({ worker_id: workerId });
+        const log = await db.engine_render_log.all<{ turn_seq: number }>({ worker_id: workerId });
         assert.ok(log.some((r) => r.turn_seq === 1), "no overflow → prior turn's log still shown, grinder inert");
     } finally { await db.close(); }
 });
@@ -93,10 +93,10 @@ test("on overflow the prior turn's log entries are folded to their coordinate", 
         const wideP = mockAt(4096, okSends(1));
         const tinyP = mockAt(TINY, okSends(2));
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ worker_id: workerId });
+        const before = await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId });
         assert.ok(before.some((r) => r.turn_seq === 1 && r.expanded === 1), "turn 1 left an open (expanded=1) log entry");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number; pathname: string | null }>({ worker_id: workerId });
+        const after = await db.engine_render_log.all<{ turn_seq: number; expanded: number; pathname: string | null }>({ worker_id: workerId });
         // #382 — the prompt frame is grinder-exempt; the grinder folds the prior turn's WORK, not the task.
         const t1 = after.filter((r) => r.turn_seq === 1 && (r as { scheme?: string | null }).scheme !== "prompt");
         assert.ok(t1.length > 0 && t1.every((r) => r.expanded === 0), "prior turn's WORK folded (the exempt prompt stays open) — collapsed to coordinate, not deleted");
@@ -115,10 +115,10 @@ test("a PLAN row at the newest boundary survives the overflow fold — the check
         const wideP = mockAt(4096, [response([planStmt, sendStmt(200, "ok")])]);
         const tinyP = mockAt(TINY, okSends(1));
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const before = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; op: string; expanded: number }>({ worker_id: workerId });
+        const before = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number }>({ worker_id: workerId });
         assert.ok(before.some((r) => r.turn_seq === 1 && r.op === "PLAN" && r.expanded === 1), "turn 1's PLAN landed open");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; op: string; expanded: number; pathname: string | null }>({ worker_id: workerId });
+        const after = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number; pathname: string | null }>({ worker_id: workerId });
         const plan = after.find((r) => r.turn_seq === 1 && r.op === "PLAN");
         assert.equal(plan?.expanded, 1, "the PLAN row is grinder-exempt — still OPEN through the fold");
         const folded = after.filter((r) => r.turn_seq === 1 && r.op !== "PLAN" && r.op !== "error" && (r as { scheme?: string | null }).scheme !== "prompt");
@@ -140,11 +140,11 @@ test("THE DOCTRINE: older history is NEVER grinder-folded — the model alone cu
         const tinyP = mockAt(TINY, okSends(2));
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const openT1before = (await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ worker_id: workerId }))
+        const openT1before = (await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId }))
             .filter((r) => r.turn_seq === 1 && r.expanded === 1).length;
         assert.ok(openT1before > 0, "precondition: turn 1 left open rows (uncurated history)");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
-        const after = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; expanded: number }>({ worker_id: workerId });
+        const after = await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId });
         assert.equal(after.filter((r) => r.turn_seq === 1 && r.expanded === 1).length, openT1before,
             "turn 1's open rows are UNTOUCHED by the turn-3 grinder fire — history is the model's alone");
         assert.ok(after.filter((r) => r.turn_seq === 2).every((r) => r.expanded === 0),
@@ -215,7 +215,7 @@ test("overflow is a terse op='error' log row (413) surfaced THIS turn as a LogCo
         // op='error' row, re-derived into turn 2's OWN packet (same-turn, not a turn late).
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const t2 = await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row!.packet) as { telemetryErrors: Array<Record<string, unknown>> };
         const evt = packet.telemetryErrors.find((e) => (e.position as { type?: string } | undefined)?.type === "log-coordinate" && e.status === 413);
         assert.ok(evt, "the overflow surfaced THIS turn as a 413 LogCoordinate pointer");
@@ -237,7 +237,7 @@ test("a huge ENGINE-WRITTEN row on the current turn is part of the newest bounda
         await engine.runTurn({ provider: mockAt(4096, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         // Turn 2 — opened manually; a HUGE OPEN engine-origin row lands on it pre-model (the wake surface).
         const turnId = await insertTurn(db, loopId, 2, 102);
-        await (db.engine_insert_log_entry as PrepMethod).get({
+        await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "plurnk", source: null, op: "READ", suffix: "", signal: null,
             scheme: "search", username: null, password: null, hostname: null, port: null,
@@ -265,7 +265,7 @@ test("a huge ENGINE-WRITTEN row on the current turn is part of the newest bounda
         });
         assert.equal(result.struck, true, "the compaction struck (one strike for the fire)");
         assert.equal(result.fit, true, "stage 2 folded the current turn's engine row — the packet fits, no 413");
-        const rows = await (db.engine_render_log as PrepMethod).all<{ turn_seq: number; op: string; expanded: number }>({ worker_id: workerId });
+        const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number }>({ worker_id: workerId });
         const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
         assert.equal(bigRow.expanded, 0, "the wake row is FOLDED (re-OPENable) — and not fatal");
@@ -299,11 +299,11 @@ test("the 413 row states the pressure law — fold history first, fetch within t
         const tinyP = mockAt(TINY, okSends(2));
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const t2 = await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row!.packet) as { telemetryErrors: Array<{ status?: number }> };
         assert.ok(packet.telemetryErrors.find((e) => e.status === 413), "the overflow pointer surfaced (terse LogCoordinate)");
         // The text lives in the error ROW the pointer names — what the model actually reads.
-        const errRow = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
+        const errRow = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         const text = errRow.map((r) => r.rx).join(" ");
         assert.match(text, /larger than Tokens Free arrives folded/, "the law rides the signal row");
         assert.match(text, /FOLD older items first/, "the lever is named");
@@ -322,7 +322,7 @@ test("a finish=length turn's parse errors are led by the CAUSE — truncation, n
             assistant: { content: "<<PLAN:big turn:PLAN\n<<FIND(SPEC.md):#grinder", reasoning: null, finishReason: "length", usage: { prompt: 10, completion: 12281, reasoning: 0, cached: 0, total: 12291 } },
         } as never] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
+        const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(errs.length >= 2, "the truncation row AND the parse artifact both recorded");
         const first = JSON.parse(errs[0]!.rx) as { kind?: string; message?: string };
         assert.equal(first.kind, "output_truncated", "the CAUSE leads");
@@ -343,7 +343,7 @@ test("a finish=length turn that emitted NOTHING — reasoning ran away — is le
             assistant: { content: "", reasoning: "ran away reasoning for the whole pool", finishReason: "length", usage: { prompt: 10, completion: 65536, reasoning: 0, cached: 0, total: 65546 } },
         } as never] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
+        const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         assert.ok(errs.length >= 2, "the truncation row AND the empty-emission parse artifact both recorded — the record never hides");
         const first = JSON.parse(errs[0]!.rx) as { kind?: string; message?: string };
         assert.equal(first.kind, "output_truncated", "the CAUSE leads");
@@ -398,7 +398,7 @@ test("the FIRST hard overflow is a RECOVERY TURN — steer minted, generate runs
         assert.equal(result.finalStatus, 413, "still terminates 413 — the model was told and (structurally) could not comply");
         assert.equal(result.reason, "budget_overflow");
         assert.equal(mock.remaining, 2, "generate ran EXACTLY once — the recovery turn happened; the second overflow skipped the LLM");
-        const errs = await (db.test_error_rows_for_run as PrepMethod).all<{ rx: string }>({ worker_id: workerId });
+        const errs = await db.test_error_rows_for_run.all<{ rx: string }>({ worker_id: workerId });
         const steer = errs.map((e) => JSON.parse(e.rx) as { kind?: string; message?: string }).find((e) => e.kind === "budget_overflow" && (e.message ?? "").includes("recovery turn"));
         assert.ok(steer, "the recovery steer was minted — over-budget, the remedy (KILL/FOLD history), and the consequence, stated");
     } finally { await db.close(); }

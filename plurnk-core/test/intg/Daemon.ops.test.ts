@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 
 test("op.edit creates an entry via engine.dispatch (origin=client)", async () => {
@@ -13,14 +12,14 @@ test("op.edit creates an entry via engine.dispatch (origin=client)", async () =>
             });
             assert.equal((response.result as { status: number }).status, 201);
 
-            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ scheme: string; pathname: string }>({ pathname: "/france/capital", scheme: "worker" });
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string; pathname: string }>({ pathname: "/france/capital", scheme: "worker" });
             assert.equal(entry?.scheme, "worker");
             assert.equal(entry?.pathname, "/france/capital");
-            const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/france/capital" }))?.content;
+            const body = (await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/france/capital" }))?.content;
             assert.equal(body, "Paris");
-            const tags = await (db.test_parser_tags as PrepMethod).all<{ tag: string }>();
+            const tags = await db.test_parser_tags.all<{ tag: string }>();
             assert.deepEqual(tags.map((t) => t.tag), ["france", "geography"]);
-            const log = await (db.test_first_log_entry as PrepMethod).get<{ origin: string; op: string }>();
+            const log = await db.test_first_log_entry.get<{ origin: string; op: string }>();
             assert.equal(log?.origin, "client");
             assert.equal(log?.op, "EDIT");
         } finally { ws.close(); }
@@ -79,12 +78,12 @@ test("op.look (#283) resolves a target like op.read but writes NO log entry", as
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "look-test" });
             await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "secret" });
-            const before = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n ?? -1;
+            const before = (await db.test_log_entries_count_all.get<{ n: number }>())?.n ?? -1;
             const response = await rpcCall(ws, 3, "op.look", { text: "<<READ(worker:///x)::READ" });
             const result = response.result as { status: number; content: string };
             assert.equal(result.status, 200);
             assert.equal(result.content, "secret");
-            const after = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n ?? -2;
+            const after = (await db.test_log_entries_count_all.get<{ n: number }>())?.n ?? -2;
             assert.equal(after, before, "op.look must write no log_entries row — that's the whole contract");
         } finally { ws.close(); }
     });
@@ -124,7 +123,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
             const response = await rpcCall(ws, 2, "op.dispatch", { statement });
             assert.equal((response.result as { status: number }).status, 201);
 
-            const body = (await (db.test_get_body_by_pathname as PrepMethod).get<{ content: string }>({ pathname: "/hello" }))?.content;
+            const body = (await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/hello" }))?.content;
             assert.equal(body, "world");
         } finally { ws.close(); }
     });
@@ -143,7 +142,7 @@ test("op.parse parses multi-statement text and dispatches each", async () => {
             assert.equal(result.results[0].status, 201);
             assert.equal(result.results[1].status, 201);
 
-            const entries = await (db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>();
+            const entries = await db.test_parser_pathnames.all<{ pathname: string }>();
             assert.deepEqual(entries.map((e) => e.pathname).filter((p) => p === "/a" || p === "/b"), ["/a", "/b"]);
         } finally { ws.close(); }
     });
@@ -227,15 +226,15 @@ test("op.send broadcast with terminal status updates loop status", async () => {
         try {
             const workspace = await rpcCall(ws, 1, "workspace.create", { name: "send-test" });
             const workspaceId = (workspace.result as { id: number }).id;
-            const run = await (db.test_get_run_by_session as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId });
+            const run = await db.test_get_run_by_session.get<{ id: number }>({ workspace_id: workspaceId });
 
             // op.send is the first client op — it lazily creates the
             // client loop. After it runs we can look up that loop.
             const response = await rpcCall(ws, 2, "op.send", { status: 200 });
             assert.equal((response.result as { status: number }).status, 200);
 
-            const clientLoop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ worker_id: run?.id });
-            const loop = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: clientLoop?.id });
+            const clientLoop = await db.test_get_loop_by_run.get<{ id: number }>({ worker_id: run?.id });
+            const loop = await db.test_get_loop_status.get<{ status: number }>({ id: clientLoop?.id });
             assert.equal(loop?.status, 200);
         } finally { ws.close(); }
     });

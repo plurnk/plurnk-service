@@ -5,7 +5,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const runPump = async (concurrency: string): Promise<{ stamped: number; maxActive: number }> => {
@@ -36,7 +35,7 @@ const runPump = async (concurrency: string): Promise<{ stamped: number; maxActiv
         for (let i = 0; i < 3; i++) await seedEntryWithChannel(db, { workspaceId, workerId, scheme: "worker", pathname: `/dup${i}`, channel: "body", content: "identical shared body across three entries", mimetype: "text/markdown" });
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         // Every body entry has a stamped deep_hash — fully derived exactly once.
-        const stamped = await (db.test_count_stamped_deep_hash as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId });
+        const stamped = await db.test_count_stamped_deep_hash.get<{ n: number }>({ workspace_id: workspaceId });
         return { stamped: stamped?.n ?? 0, maxActive };
     } finally {
         if (prev === undefined) delete process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY; else process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = prev;
@@ -107,11 +106,11 @@ test("a completed representative releases its duplicates while an unrelated repr
             reachedTwo,
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error("duplicates remained behind the slow representative")), 2_000)),
         ]);
-        const duringSlow = await (db.test_count_stamped_deep_hash as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId });
+        const duringSlow = await db.test_count_stamped_deep_hash.get<{ n: number }>({ workspace_id: workspaceId });
         assert.ok((duringSlow?.n ?? 0) >= 2, "the fast representative and a sibling stamp before the slow group completes");
         releaseSlow();
         await pump;
-        const final = await (db.test_count_stamped_deep_hash as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId });
+        const final = await db.test_count_stamped_deep_hash.get<{ n: number }>({ workspace_id: workspaceId });
         assert.equal(final?.n, 4, "all entries complete after the slow representative is released");
     } finally {
         releaseSlow();

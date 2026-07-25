@@ -5,7 +5,7 @@ import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, LineMarker, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
@@ -33,7 +33,7 @@ const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement 
 });
 
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {
-    const rows = await (db.test_fts_search as PrepMethod).all<{ pathname: string }>({ workspace_id: workspaceId, query });
+    const rows = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query });
     return rows.map((r) => r.pathname);
 };
 
@@ -66,7 +66,7 @@ test("[#186-cosine] the cosine SqlRite function ranks Float32-BLOB vectors", asy
     try {
         const blob = (arr: number[]) => Buffer.from(new Float32Array(arr).buffer);
         const sim = async (a: number[], b: number[]): Promise<number> => {
-            const r = await (db.test_cosine as PrepMethod).get<{ sim: number }>({ a: blob(a), b: blob(b) });
+            const r = await db.test_cosine.get<{ sim: number }>({ a: blob(a), b: blob(b) });
             assert.ok(r, "cosine returned a row");
             return r.sim;
         };
@@ -96,18 +96,18 @@ test("[#186-cosine-recall] semantic_rank searches every vector without a lexical
         await EntryManifest.maintainDerivations(ctx);  // FTS-indexes every entry
         const entryIds: number[] = [];
         for (const [p, , v] of ENTRIES) {
-            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: `/${p}` });
+            const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: `/${p}` });
             assert.ok(e);
             entryIds.push(e.id);
-            const derivation = await (db.test_derivation_for_entry as PrepMethod).get<{ id: number }>({ entry_id: e.id });
+            const derivation = await db.test_derivation_for_entry.get<{ id: number }>({ entry_id: e.id });
             assert.ok(derivation);
             // maintainDerivations stored a real one-chunk embedding; clear it and seed
             // the deterministic test vector as the artifact's single chunk.
-            await (db.embedding_delete as PrepMethod).run({ derivation_id: derivation.id });
-            await (db.embedding_set as PrepMethod).run({ derivation_id: derivation.id, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob(v), embedding_model: "test-model" });
+            await db.embedding_delete.run({ derivation_id: derivation.id });
+            await db.embedding_set.run({ derivation_id: derivation.id, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob(v), embedding_model: "test-model" });
         }
 
-        const r = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({
+        const r = await db.semantic_rank.all<{ pathname: string }>({
             workspace_id: workspaceId, scheme: "worker", entry_ids: JSON.stringify(entryIds),
             query_vector: blob([1, 0, 0]), embedding_model: "test-model", k: 1,
         });
@@ -130,16 +130,16 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         await new Worker().edit(editStmt(url("other.ts"), "payment unrelated text"), ctx);
         await EntryManifest.maintainDerivations(ctx);
         const derivationOf = async (p: string): Promise<number> => {
-            const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: p });
+            const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: p });
             assert.ok(e, `entry ${p} found`);
-            const derivation = await (db.test_derivation_for_entry as PrepMethod).get<{ id: number }>({ entry_id: e.id });
+            const derivation = await db.test_derivation_for_entry.get<{ id: number }>({ entry_id: e.id });
             assert.ok(derivation, `entry ${p} has a complete derivation`);
             return derivation.id;
         };
         const doc = await derivationOf("/doc.ts");
         const other = await derivationOf("/other.ts");
         const rankedEntryIds = await Promise.all(["/doc.ts", "/other.ts"].map(async (pathname) => {
-            const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: workspaceId,
                 owner_id: await Owner.commonsId(db, workspaceId),
                 scheme: "worker",
@@ -148,12 +148,12 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
             assert.ok(entry);
             return entry.id;
         }));
-        for (const id of [doc, other]) await (db.embedding_delete as PrepMethod).run({ derivation_id: id });
-        await (db.embedding_set as PrepMethod).run({ derivation_id: doc, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
-        await (db.embedding_set as PrepMethod).run({ derivation_id: doc, chunk_seq: 1, line_start: 3, line_end: 3, vector: blob([1, 0, 0]), embedding_model: "m" });
-        await (db.embedding_set as PrepMethod).run({ derivation_id: other, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
+        for (const id of [doc, other]) await db.embedding_delete.run({ derivation_id: id });
+        await db.embedding_set.run({ derivation_id: doc, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
+        await db.embedding_set.run({ derivation_id: doc, chunk_seq: 1, line_start: 3, line_end: 3, vector: blob([1, 0, 0]), embedding_model: "m" });
+        await db.embedding_set.run({ derivation_id: other, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
 
-        const r = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string }>({
+        const r = await db.semantic_rank_threshold.all<{ pathname: string }>({
             workspace_id: workspaceId, scheme: "worker", entry_ids: JSON.stringify(rankedEntryIds),
             query_vector: blob([1, 0, 0]), embedding_model: "m", threshold: 0.9, cap: -1,
         });
@@ -184,10 +184,10 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         const content = Array.from({ length: 40 }, () => "common filler words around here").join(" ") +
             "\nchloroplasts drive photosynthesis in green plants";
         await new Worker().edit(editStmt(url("bio.md"), content), ctx);
-        const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/bio.md" });
+        const e = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/bio.md" });
         assert.ok(e);
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: embedder }));
-        const stored = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: e.id });
+        const stored = await db.test_count_embeddings.get<{ n: number }>({ entry_id: e.id });
         assert.ok((stored?.n ?? 0) > 1, `the body tiled into multiple stored chunks (got ${stored?.n ?? 0})`);
         const r = await EntrySemantic.rankSemantic(db, workspaceId, "worker", [e.id], embedder, "photosynthesis chloroplasts", { first: 5, last: null });
         const hit = r.results.find((x) => x.pathname === "/bio.md");
@@ -234,7 +234,7 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         await mk("light.ts", "payment once");
         await mk("auth.ts", "authenticate user");
         const entryIds = await Promise.all(["/heavy.ts", "/light.ts", "/auth.ts"].map(async (pathname) => {
-            const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: workspaceId,
                 owner_id: await Owner.commonsId(db, workspaceId),
                 scheme: "worker",

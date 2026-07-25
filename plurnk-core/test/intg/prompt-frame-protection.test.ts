@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { foldStmt, editStmt, openStmt } from "./_dsl.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-grammar";
@@ -38,7 +37,7 @@ test("a FOLD of the prompt auto-READ is refused with the KILL steer (#382)", asy
         assert.equal(r.status, 403, "folding the task preview is illegal");
         assert.match(String(r.error), /FOLD the task preview.*KILL/s, "the steer names KILL as the deliberate path");
         // the prompt row stays expanded — the frame survives
-        const exp = await (db.test_prompt_expanded as PrepMethod).get<{ expanded: number }>({});
+        const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
         assert.equal(exp?.expanded, 1, "the prompt auto-READ is still open after the refused fold");
     } finally { await db.close(); }
 });
@@ -53,7 +52,7 @@ test("the EDIT foist is ordinary memory — OPEN then fold-back is legal curatio
         const folded = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.equal(folded.status, 200, "the fold BACK is legal — no one-way door on the frame body");
         // the preview stays open throughout — the frame survives the round trip
-        const exp = await (db.test_prompt_expanded as PrepMethod).get<{ expanded: number }>({});
+        const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
         assert.equal(exp?.expanded, 1, "the preview READ is untouched by the foist's round trip");
     } finally { await db.close(); }
 });
@@ -92,9 +91,9 @@ test("the grinder never folds the prompt frame — even on overflow (#382)", asy
     try {
         const { workspaceId, workerId, loopId } = await seedPromptWorker(db);
         // Fire the grinder's fold directly (as enforceBudget does on overflow) against turn 1.
-        const t1 = await (db.test_turn_id_by_seq as PrepMethod).get<{ id: number }>({ loop_id: loopId, sequence: 1 });
-        await (db.engine_grinder_fold_newest_turn as PrepMethod).run({ loop_id: loopId, turn_id: t1!.id });
-        const exp = await (db.test_prompt_expanded as PrepMethod).get<{ expanded: number }>({});
+        const t1 = await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: loopId, sequence: 1 });
+        await db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: t1!.id });
+        const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
         assert.equal(exp?.expanded, 1, "the grinder skipped the prompt — the task frame survives its reclamation");
     } finally { await db.close(); }
 });
@@ -115,7 +114,7 @@ test("sister workers' turn-1 prompts are DISTINCT rows at the same coordinate �
         const workerLoop = await insertLoop(db, childWorker, 1, "the worker task");
         await engine.runTurn({ provider: mkProvider(), workspaceId, workerId: childWorker, loopId: workerLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the worker task" }] });
 
-        const bodyAt = async (workerId: number) => (await (db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: "/1/%" }));
+        const bodyAt = async (workerId: number) => (await db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: "/1/%" }));
         const parentRows = await bodyAt(parentWorker);
         const workerRows = await bodyAt(childWorker);
         assert.equal(parentRows.length, 1, "the parent's prompt entry exists at its worker-qualified address");
@@ -133,9 +132,9 @@ test("OPEN/FOLD are recorded in the DB but suppressed from the packet render (#3
         // seed a genuine non-prompt row (a worker:/// note), then fold IT so the success records
         await engine.dispatch({ statement: editStmt(urlKnown("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
-        const dbRow = await (db.test_count_op as PrepMethod).get<{ n: number }>({ op: "FOLD" });
+        const dbRow = await db.test_count_op.get<{ n: number }>({ op: "FOLD" });
         assert.ok((dbRow?.n ?? 0) >= 1, "the FOLD is recorded in the DB (forensics)");
-        const rendered = await (db.engine_render_log as PrepMethod).all<{ op: string }>({ worker_id: workerId });
+        const rendered = await db.engine_render_log.all<{ op: string }>({ worker_id: workerId });
         assert.ok(!rendered.some((r) => r.op === "FOLD" || r.op === "OPEN"), "no OPEN/FOLD row reaches the packet render");
     } finally { await db.close(); }
 });
@@ -153,10 +152,10 @@ test("a successful KILL of a log item is suppressed from the render; a KILL of a
         const noteKill = await engine.dispatch({ statement: killStmt(urlKnown("worker:///scratch")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 3, origin: "model" });
         assert.ok(noteKill.status < 400, `KILL of the note succeeds — got ${noteKill.status}`);
 
-        const killCount = await (db.test_count_op as PrepMethod).get<{ n: number }>({ op: "KILL" });
+        const killCount = await db.test_count_op.get<{ n: number }>({ op: "KILL" });
         assert.ok((killCount?.n ?? 0) >= 2, "both KILLs are recorded in the DB (forensics)");
 
-        const rendered = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string | null }>({ worker_id: workerId });
+        const rendered = await db.engine_render_log.all<{ op: string; scheme: string | null }>({ worker_id: workerId });
         const killRows = rendered.filter((r) => r.op === "KILL");
         assert.ok(!killRows.some((r) => r.scheme === "log"), "the successful log-item KILL tombstone is suppressed from the render");
         assert.ok(killRows.some((r) => r.scheme === "worker"), "the KILL of the worker:// note — a world mutation — still renders");

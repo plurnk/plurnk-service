@@ -1,5 +1,5 @@
 import type { PlurnkStatement, ParsedPath } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
@@ -294,7 +294,7 @@ export default class ProposalLifecycle {
             : decision === "accept"
                 ? JSON.stringify({ status })
                 : JSON.stringify({ status, error: outcome });
-        await (this.#db.engine_resolve_log_entry as PrepMethod).run({
+        await this.#db.engine_resolve_log_entry.run({
             id: logEntryId, state, outcome, status_rx: status, rx,
         });
         return { status, outcome, body: resolution.body, ...(resolution.result ?? {}) };

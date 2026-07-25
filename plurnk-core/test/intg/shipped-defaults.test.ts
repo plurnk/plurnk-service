@@ -14,7 +14,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
@@ -69,14 +68,14 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done") as PlurnkStatement] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         // The distinctive personality line appears in the system-policy section and NOWHERE else.
         const marker = "You decompose non-trivial prompts";
         const carriers = packet.sections.filter((s) => s.content.includes(marker)).map((s) => s.name);
         assert.deepEqual(carriers, ["system-policy"], `the policy rides exactly one section; got ${carriers.join(", ")}`);
         assert.ok(packetSection(packet, "system-policy").includes(marker), "the section carries the personality");
         // And the turn-0 foists contain no POLICY doc READ — the doc path is retired for the policy.
-        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
+        const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
         assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted plurnk:///POLICY.md READ");
     } finally {
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;

@@ -9,7 +9,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 import { execStmt } from "./_dsl.ts";
 
@@ -47,10 +46,10 @@ test(
             await dispatchPromise;
             await exec.idle();
 
-            const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+            const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
             const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-            const entry = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname });
-            const stdout = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: entry!.id, name: "stdout" });
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+            const stdout = await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" });
             assert.doesNotMatch(stdout?.content ?? "", /do-not-leak-to-subprocess/, "plurnk's own env must not reach the EXEC subprocess");
         } finally {
             await db.close();

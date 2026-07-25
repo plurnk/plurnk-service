@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 
 // the schema DIR is derived from one exported schema (directory enumeration cannot go
@@ -64,7 +64,7 @@ const MAPPING: Record<string, SchemaMapping> = {
     ClientStatement: { kind: "skip", reason: "client-tier AST (PlurnkStatement + the client-only LOOK/BUFF ops, via parseClient); never persisted — the service contract is PlurnkStatement, op.look parses a READ" },
 };
 
-const TABLE_PREP: Record<string, string> = {
+const TABLE_PREP = {
     workspaces: "test_align_cols_sessions",
     runs: "test_align_cols_runs",
     loops: "test_align_cols_loops",
@@ -75,7 +75,7 @@ const TABLE_PREP: Record<string, string> = {
     log_entries: "test_align_cols_log_entries",
     schemes: "test_align_cols_schemes",
     providers: "test_align_cols_providers",
-};
+} as const;
 
 const loadSchema = async (name: string): Promise<{ required: string[] }> => {
     const text = await readFile(join(SCHEMA_DIR, `${name}.json`), "utf8");
@@ -84,14 +84,14 @@ const loadSchema = async (name: string): Promise<{ required: string[] }> => {
 };
 
 const columnsOf = async (db: Db, table: string): Promise<Map<string, { notnull: number; type: string }>> => {
-    const prepName = TABLE_PREP[table];
+    const prepName = TABLE_PREP[table as keyof typeof TABLE_PREP];
     if (prepName === undefined) throw new Error(`no test_align_cols_<${table}> PREP registered`);
-    const rows = await (db[prepName] as PrepMethod).all<{ name: string; type: string }>();
+    const rows = await db[prepName].all<{ name: string; type: string }>();
     return new Map(rows.map((r) => [r.name, { notnull: 0, type: r.type }]));
 };
 
 const tableExists = async (db: Db, table: string): Promise<boolean> => {
-    const row = await (db.test_align_table_exists as PrepMethod).get<{ name: string }>({ name: table });
+    const row = await db.test_align_table_exists.get<{ name: string }>({ name: table });
     return row !== undefined;
 };
 

@@ -12,7 +12,6 @@
 
 import type { SubscriptionCaps, SubscriptionHandle, ChannelState } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
-import type { PrepMethod } from "../Db.ts";
 import ChannelWrite from "../ChannelWrite.ts";
 import CapsResolve from "./CapsResolve.ts";
 import type LiveSubscriptions from "../LiveSubscriptions.ts";
@@ -86,7 +85,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const closeStatus = reason === "error" ? 500 : reason === "cancelled" ? 499 : 200;
         // Every channel of the entry → terminal state, then the registry row
         // closes, then the worker wakes with the scheme's summary.
-        const channels = await (this.#ctx.db.crud_read_channels as PrepMethod).all<{ name: string }>({ entry_id: entryId });
+        const channels = await this.#ctx.db.crud_read_channels.all<{ name: string }>({ entry_id: entryId });
         for (const { name } of channels) {
             await ChannelWrite.setChannelState(this.#ctx.db, {
                 entryId, channel: name, state,

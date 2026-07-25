@@ -15,7 +15,6 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 // Response from pre-parsed ops (clean turn) — mirrors the production wire
@@ -84,7 +83,7 @@ const setup = async () => {
 };
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) => {
-    const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId });
+    const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
     return JSON.parse(row?.packet ?? "{}") as {
         telemetryErrors: Array<Record<string, unknown>>;
         sections: Array<Record<string, unknown>>;
@@ -117,7 +116,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
 
         // The mirror is ALWAYS folded — even on the NOTICE turn (the auto-OPEN trigger is retired);
         // the model READs the folded row at line 2 when it cares.
-        const echo = (await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
+        const echo = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
             .find((r) => r.turn_id === t1.turnId && r.op === "model" && r.origin === "model");
         assert.ok(echo !== undefined && echo.expanded === 0, "the NOTICE turn's model echo stays folded");
     } finally { await db.close(); }
@@ -325,13 +324,13 @@ test("an actionless parse failure is a LOG ITEM (op='error', status 400) — que
         // The failure is a DURABLE log row — op='error', status_rx 400, actionless (no target).
         // It folds/kills/recalls like any log entry (§telemetry — errors are log items), so the
         // grinder's prior-turn rollback can reclaim it: one budget surface, the log.
-        const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; status_rx: number; scheme: string | null }>({ loop_id: loopId });
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string | null }>({ loop_id: loopId });
         const errRow = rows.find((r) => r.op === "error" && r.status_rx === 400);
         assert.ok(errRow !== undefined, "parse failure recorded as a log:///…/error item (status 400), not ephemeral telemetry");
         assert.equal(errRow!.scheme, null, "an error row is actionless — no target scheme");
 
         // No `error://` SCHEME namespace — errors live in the LOG (log:///), not a bespoke scheme.
-        const errorScheme = await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({
+        const errorScheme = await db.test_count_entries_by_session_scheme.get<{ n: number }>({
             workspace_id: workspaceId, scheme: "error",
         });
         assert.equal(errorScheme?.n ?? 0, 0, "no error:// scheme entries — errors are log items, queried via log:///");
@@ -364,7 +363,7 @@ test("the model echo is ALWAYS born FOLDED — errored and clean turns alike (th
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         const echo = async (turnId: number) =>
-            (await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
+            (await db.test_log_entries_by_loop.all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
                 .find((r) => r.turn_id === turnId && r.op === "model" && r.origin === "model");
 
         const e1 = await echo(t1.turnId);

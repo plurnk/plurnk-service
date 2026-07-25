@@ -7,7 +7,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { SchemeCtx } from "@plurnk/plurnk-schemes";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 
@@ -110,7 +109,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
             sequence: 1, origin: "client",
         });
         assert.equal(opened.status, 102, "scheme opened the subscription through public capabilities");
-        const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
+        const entry = await db.test_get_entry_by_path.get<{ id: number }>({
             workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
         });
         if (entry === undefined) throw new Error("stream entry missing");
@@ -128,11 +127,11 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
         assert.equal(result.status, 200, "scheme accepts cancel");
         assert.deepEqual(teardownCalls, [handle], "teardown callback fired with subscription handle");
 
-        const sub = await (db.test_get_subscription as PrepMethod).get<{ closed_at: string | null; close_status: number | null }>({ id: subId });
+        const sub = await db.test_get_subscription.get<{ closed_at: string | null; close_status: number | null }>({ id: subId });
         assert.ok(sub?.closed_at !== null, "subscription marked closed");
         assert.equal(sub?.close_status, 499, "close_status = 499");
 
-        const channelState = (await (db.test_get_channel as PrepMethod).get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
+        const channelState = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
         assert.equal(channelState, "closed", "channel state transitioned to closed");
 
         const active = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });

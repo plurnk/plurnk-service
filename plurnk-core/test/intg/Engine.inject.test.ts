@@ -7,7 +7,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
 test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, the per-loop ordinal), owner-keyed", async () => {
@@ -29,11 +28,11 @@ test("engine.inject: writes the loop's next prompt FRAME (prompt:///<loop>/<N>, 
 
         // The frame keys on the per-loop ORDINAL ({§prompt-loop-containment}): this fixture holds
         // no prior frames, so the inject is frame 1 — /1/1 — regardless of the landing turn.
-        const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
+        const entry = await db.test_get_entry_by_path.get<{ id: number }>({
             workspace_id: workspaceId, scheme: "prompt", pathname: "/1/1",
         });
         assert.ok(entry, "prompt frame exists at prompt:///1/1, owned by the worker");
-        const body = await (db.test_get_channel as PrepMethod).get<{ content: string }>({
+        const body = await db.test_get_channel.get<{ content: string }>({
             entry_id: entry.id, name: "body",
         });
         assert.equal(body?.content, "follow-up");
@@ -53,11 +52,11 @@ test("rapid injects are BOTH contained — distinct frames, nothing superseded (
         const r2 = await engine.inject(workerId, "second follow-up");
         assert.ok(r1 && r2, "both injects landed in the ACTIVE loop — no new loop while one is live");
 
-        const f1 = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/1" });
-        const f2 = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2" });
+        const f1 = await db.test_get_entry_by_path.get<{ id: number }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/1" });
+        const f2 = await db.test_get_entry_by_path.get<{ id: number }>({ workspace_id: workspaceId, scheme: "prompt", pathname: "/1/2" });
         assert.ok(f1 && f2, "two frames at consecutive ordinals — the ordinal key cannot collide");
-        const b1 = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: f1!.id, name: "body" });
-        const b2 = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: f2!.id, name: "body" });
+        const b1 = await db.test_get_channel.get<{ content: string }>({ entry_id: f1!.id, name: "body" });
+        const b2 = await db.test_get_channel.get<{ content: string }>({ entry_id: f2!.id, name: "body" });
         assert.equal(b1?.content, "first follow-up", "the earlier prompt is CONTAINED, never superseded");
         assert.equal(b2?.content, "second follow-up");
     } finally { await db.close(); }
@@ -75,7 +74,7 @@ test("engine.inject: returns null when no loop is currently active (status=102)"
 
         // Also returns null when a loop exists but it's terminal.
         const closedLoop = await insertLoop(db, workerId, 1, "done");
-        await (db.test_set_loop_status as PrepMethod).run({ id: closedLoop, status: 200 });
+        await db.test_set_loop_status.run({ id: closedLoop, status: 200 });
         const result2 = await engine.inject(workerId, "still orphan");
         assert.equal(result2, null, "loop at status=200 doesn't count as active");
     } finally { await db.close(); }
@@ -96,7 +95,7 @@ test("engine.inject: per-turn foist reads latest prompt body into packet.user.pr
         await engine.inject(workerId, "the new prompt the model should see");
 
         // Read the latest prompt body (what #buildRequestPacket would see).
-        const row = await (db.drain_get_latest_prompt_body_for_loop as PrepMethod).get<{ content: string }>({
+        const row = await db.drain_get_latest_prompt_body_for_loop.get<{ content: string }>({
             owner_id: workerId, pattern: "/1/%",
         });
         assert.equal(row?.content, "the new prompt the model should see");

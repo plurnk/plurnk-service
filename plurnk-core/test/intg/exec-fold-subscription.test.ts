@@ -9,7 +9,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import Log from "../../src/schemes/Log.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors } from "./_helpers.ts";
 import { foldStmt, urlPath } from "./_dsl.ts";
 
@@ -46,9 +45,9 @@ test("FOLD on a streaming exec's log row keeps the subscription live", async () 
         engine.resolveProposal(logEntryId, { decision: "accept" });
         await dispatchPromise;
 
-        const log = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await (db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ id: number }>({ scheme: "sh", pathname });
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
 
         // Mid-stream: FOLD the exec's log row (log:///1/1/1) — render-only curation.
         await new Promise((r) => setTimeout(r, 500));
@@ -56,12 +55,12 @@ test("FOLD on a streaming exec's log row keeps the subscription live", async () 
         assert.equal(fold.status, 200, "FOLD of the exec log row succeeds");
 
         // The subscription is STILL open — FOLD touched expanded, not the registry.
-        const midSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ closed_at: string | null }>({ worker_id: workerId, entry_id: entryRow!.id });
+        const midSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.equal(midSub?.closed_at, null, "FOLD did not cancel the live subscription");
 
         // The stream runs to its own completion, closing 200 (never 499 from the FOLD).
         await exec.idle();
-        const endSub = await (db.test_get_subscription_by_entry as PrepMethod).get<{ closed_at: string | null; close_status: number | null }>({ worker_id: workerId, entry_id: entryRow!.id });
+        const endSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null; close_status: number | null }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.ok(endSub?.closed_at, "subscription closes on the spawn's own exit");
         assert.equal(endSub?.close_status, 200, "clean 200 exit, not a 499 cancellation");
     } finally { await db.close(); }

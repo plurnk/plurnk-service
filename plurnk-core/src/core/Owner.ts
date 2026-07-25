@@ -1,4 +1,4 @@
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 
 // #527 {§entry-owner} — entry ownership. Every entry is owned by a worker row: the workspace's
@@ -15,18 +15,18 @@ export default class Owner {
     // (never a NULL owner: NULLs are distinct under UNIQUE, so a nullable owner_id would let
     // the shared-content identity fragment into duplicate colliding rows).
     static async commonsId(db: Db, workspaceId: number): Promise<number> {
-        const existing = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "commons" });
+        const existing = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "commons" });
         if (existing !== undefined) return existing.id;
-        const created = await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "commons", origin: "plurnk" });
+        const created = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "commons", origin: "plurnk" });
         if (created === undefined) throw new Error("Owner.commonsId: commons worker insert returned no row");
         return created.id;
     }
 
     // The reserved kernel row — worker://plurnk/, the runtime's own actor (§actor-boundary).
     static async kernelId(db: Db, workspaceId: number): Promise<number> {
-        const existing = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        const existing = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         if (existing !== undefined) return existing.id;
-        const created = await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
+        const created = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
         if (created === undefined) throw new Error("Owner.kernelId: kernel worker insert returned no row");
         return created.id;
     }
@@ -38,10 +38,10 @@ export default class Owner {
     // 404s without leaking existence.
     static async resolveStreamOwner(hostname: string | null | undefined, ctx: PlurnkSchemeContext): Promise<number | null> {
         if (hostname === null || hostname === undefined || hostname === "") return ctx.workerId;
-        const named = await (ctx.db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: hostname });
+        const named = await ctx.db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: hostname });
         if (named === undefined) return null;
         if (named.id === ctx.workerId) return named.id;
-        const permitted = await (ctx.db.owner_is_ancestor_or_self as PrepMethod).get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
+        const permitted = await ctx.db.owner_is_ancestor_or_self.get<{ permitted: number }>({ owner_id: named.id, reader_id: ctx.workerId });
         return permitted === undefined ? null : named.id;
     }
 }

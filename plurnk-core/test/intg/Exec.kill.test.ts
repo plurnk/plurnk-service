@@ -9,7 +9,6 @@ import type { ExecStatement, KillStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (command: string): ExecStatement => ({
@@ -56,7 +55,7 @@ test("Engine.dispatch: KILL aborts a running (backgrounded) exec — 200, spawn 
         assert.equal(started.status, 200, "host exec should background (200 started)");
 
         // Recover the stamped exec:/// coordinate from the log row.
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: execLogId });
+        const row = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: execLogId });
         const pathname = (JSON.parse(row?.attrs ?? "{}") as { pathname?: string }).pathname ?? "";
         assert.notEqual(pathname, "", "exec entry must carry a stamped pathname");
 

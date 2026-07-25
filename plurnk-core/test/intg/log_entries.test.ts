@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import LogEntry from "../../src/server/logEntry.ts";
 
@@ -18,7 +18,7 @@ const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnI
         tokens: 32,
         ...overrides,
     };
-    const row = await (db.test_log_entries_insert_full as PrepMethod).get<{ id: number }>(params);
+    const row = await db.test_log_entries_insert_full.get<{ id: number }>(params);
     if (row === undefined) throw new Error("log_entries insert returned no row");
     return row.id;
 };
@@ -42,7 +42,7 @@ test("fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", asy
 test("log_entries: table is STRICT", async () => {
     const db = await openMigrated();
     try {
-        const row = await (db.test_log_entries_table_sql as PrepMethod).get<{ sql: string }>();
+        const row = await db.test_log_entries_table_sql.get<{ sql: string }>();
         assert.match(row?.sql ?? "", /STRICT/);
     } finally { await db.close(); }
 });
@@ -51,8 +51,8 @@ test("log_entries: minimal insert — defaults populate", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-defaults");
-        const ins = await (db.test_log_entries_insert_minimal as PrepMethod).get<{ id: number }>({ worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId });
-        const row = await (db.test_log_entries_get_by_id as PrepMethod).get<{ version: number; at: string; suffix: string; tokens: number; signal: string | null; lineMarker: string | null }>({ id: ins?.id });
+        const ins = await db.test_log_entries_insert_minimal.get<{ id: number }>({ worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId });
+        const row = await db.test_log_entries_get_by_id.get<{ version: number; at: string; suffix: string; tokens: number; signal: string | null; lineMarker: string | null }>({ id: ins?.id });
         assert.equal(row?.version, 0);
         assert.match(row?.at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.suffix, "");
@@ -173,7 +173,7 @@ test("log_entries: signal polymorphism", async () => {
         await minimalLog(db, ctx, { sequence: 2, op: "SEND",  signal: JSON.stringify(200) });
         await minimalLog(db, ctx, { sequence: 3, op: "EXEC",  signal: JSON.stringify("node") });
         await minimalLog(db, ctx, { sequence: 4, op: "READ",  signal: null });
-        const rows = await (db.test_log_entries_signals_by_turn as PrepMethod).all<{ op: string; signal: string | null }>({ turn_id: ctx.turnId });
+        const rows = await db.test_log_entries_signals_by_turn.all<{ op: string; signal: string | null }>({ turn_id: ctx.turnId });
         assert.deepEqual(rows.map((r) => r.signal), ['["philosophy"]', '200', '"node"', null]);
     } finally { await db.close(); }
 });
@@ -183,7 +183,7 @@ test("log_entries: worker_id NOT NULL", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-norun");
         await assert.rejects(
-            () => (db.test_log_entries_insert_no_worker_id as PrepMethod).run({ loop_id: ctx.loopId, turn_id: ctx.turnId }),
+            () => db.test_log_entries_insert_no_worker_id.run({ loop_id: ctx.loopId, turn_id: ctx.turnId }),
             /NOT NULL constraint failed: log_entries\.worker_id/,
         );
     } finally { await db.close(); }
@@ -205,8 +205,8 @@ test("log_entries: ON DELETE CASCADE via turn", async () => {
         const ctx = await seedEnvelope(db, "ws-log-turncasc");
         await minimalLog(db, ctx, { sequence: 1 });
         await minimalLog(db, ctx, { sequence: 2 });
-        await (db.test_log_entries_delete_turns as PrepMethod).run({ id: ctx.turnId });
-        const remaining = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
+        await db.test_log_entries_delete_turns.run({ id: ctx.turnId });
+        const remaining = (await db.test_log_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }
 });
@@ -216,8 +216,8 @@ test("log_entries: full CASCADE chain", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-fullchain");
         await minimalLog(db, ctx);
-        await (db.test_sessions_delete as PrepMethod).run({ id: ctx.workspaceId });
-        const remaining = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
+        await db.test_sessions_delete.run({ id: ctx.workspaceId });
+        const remaining = (await db.test_log_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
     } finally { await db.close(); }
 });
@@ -233,10 +233,10 @@ test("log_entries: immutability trigger — UPDATE of core fields rejected", asy
         // the proposal lifecycle, but the original action's identity stays
         // pinned forever.
         await assert.rejects(
-            () => (db.test_log_entries_update_tx as PrepMethod).run({ tx: "tampered", id }),
+            () => db.test_log_entries_update_tx.run({ tx: "tampered", id }),
             /log_entries core fields are immutable/,
         );
-        const tx = (await (db.test_log_entries_get_tx_by_id as PrepMethod).get<{ tx: string }>({ id }))?.tx;
+        const tx = (await db.test_log_entries_get_tx_by_id.get<{ tx: string }>({ id }))?.tx;
         assert.match(tx ?? "", /^<<EDIT/);
     } finally { await db.close(); }
 });
@@ -246,8 +246,8 @@ test("log_entries: DELETE is allowed", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-delok");
         const id = await minimalLog(db, ctx);
-        await (db.test_log_entries_delete as PrepMethod).run({ id });
-        const count = (await (db.test_log_entries_count_all as PrepMethod).get<{ n: number }>())?.n;
+        await db.test_log_entries_delete.run({ id });
+        const count = (await db.test_log_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(count, 0);
     } finally { await db.close(); }
 });
@@ -266,7 +266,7 @@ test("log_entries: tokens negative rejected", async () => {
 test("log_entries: indexes exist", async () => {
     const db = await openMigrated();
     try {
-        const rows = await (db.test_log_entries_indexes as PrepMethod).all<{ name: string; sql: string }>();
+        const rows = await db.test_log_entries_indexes.all<{ name: string; sql: string }>();
         const names = rows.map((r) => r.name).sort();
         assert.deepEqual(names, [
             "log_entries_at",
@@ -285,7 +285,7 @@ test("log_entries: query log:///<L>/<T>/<A> address pattern", async () => {
         const ctx = await seedEnvelope(db, "ws-log-address");
         await minimalLog(db, ctx, { sequence: 1 });
         await minimalLog(db, ctx, { sequence: 2, op: "SEND" });
-        const row = await (db.test_log_entries_address_join as PrepMethod).get<{ op: string; loop_seq: number; turn_seq: number; sequence: number }>({ loop_seq: 1, turn_seq: 1, sequence: 2 });
+        const row = await db.test_log_entries_address_join.get<{ op: string; loop_seq: number; turn_seq: number; sequence: number }>({ loop_seq: 1, turn_seq: 1, sequence: 2 });
         assert.equal(row?.op, "SEND");
         assert.equal(row?.loop_seq, 1);
         assert.equal(row?.turn_seq, 1);

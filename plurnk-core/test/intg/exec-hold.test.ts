@@ -68,7 +68,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
         const t0 = Date.now();
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }], maxTurns: 5 });
         const elapsed = Date.now() - t0;
-        const turn2 = await (db.test_get_turn as import("../../src/core/Db.ts").PrepMethod).get<{ packet: string }>({ id: result.turnIds[1] });
+        const turn2 = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds[1] });
         return { result, elapsed, streams: streamsSection(turn2?.packet ?? "{}"), tag };
     } finally { await db.close(); }
 };

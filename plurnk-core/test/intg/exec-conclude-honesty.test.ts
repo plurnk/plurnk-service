@@ -64,7 +64,7 @@ test("a driver resolving 200 under abort is restamped 499 reaped — the service
     try {
         const result = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(result.status, 200, `the spawn started; got ${result.status}`);
-        const sub = await (db.test_open_subscription_for_run as import("../../src/core/Db.ts").PrepMethod).get<{ id: number }>({ worker_id: workerId });
+        const sub = await db.test_open_subscription_for_run.get<{ id: number }>({ worker_id: workerId });
         assert.ok(sub !== undefined, "the spawn's subscription is open");
         await engine.cancelSubscription(sub.id);
         const concluded = await waitFor(() => wakes.filter((w) => w.closeStatus !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });

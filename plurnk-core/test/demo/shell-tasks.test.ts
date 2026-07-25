@@ -18,7 +18,6 @@ import { execSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
 interface DemoOpts {
@@ -38,7 +37,7 @@ const runShellDemo = async ({ label, prompt, expected }: DemoOpts): Promise<void
 
         if (finalStatus !== 200 || !expected.test(lastContent)) {
             for (const turnId of turnIds) {
-                const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
+                const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
                 const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
                 console.error(`turn ${turnId} status=${row?.status}: ${(packet.assistant?.content ?? "").slice(0, 200)}`);
             }

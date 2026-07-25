@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, fullReplace } from "./_dsl.ts";
 
@@ -50,18 +49,18 @@ test("Known.edit: new entry — inserts entries row, body channel, tags", async 
         const result = await new Worker().edit(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 201);
         assert.ok(result.entryId !== null);
-        const entry = await (db.entry_read_lookup as PrepMethod).get<{ workspace_id: number; owner_id: number; scheme: string; pathname: string }>({
+        const entry = await db.entry_read_lookup.get<{ workspace_id: number; owner_id: number; scheme: string; pathname: string }>({
             workspace_id: workspaceId, scheme: "worker", pathname: "/countries/france/capital",
         });
         assert.ok((entry?.owner_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
         assert.equal(entry?.workspace_id, workspaceId);
         assert.equal(entry?.scheme, "worker");
         assert.equal(entry?.pathname, "/countries/france/capital");
-        const channel = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string; state: string }>({ entry_id: result.entryId, name: "body" });
+        const channel = await db.test_get_channel.get<{ content: string; mimetype: string; state: string }>({ entry_id: result.entryId, name: "body" });
         assert.equal(channel?.content, "Paris");
         assert.equal(channel?.mimetype, "text/markdown");
         assert.equal(channel?.state, "static");
-        const tags = await (db.test_list_entry_tags as PrepMethod).all<{ tag: string }>({ entry_id: result.entryId });
+        const tags = await db.test_list_entry_tags.all<{ tag: string }>({ entry_id: result.entryId });
         assert.deepEqual(tags.map((t) => t.tag), ["europe", "france"]);
     } finally { await db.close(); }
 });
@@ -75,7 +74,7 @@ test("Known.edit: second EDIT against same path — same entry id, body replaced
         const second = await k.edit(editStatement({ target: urlPath("worker", "/x"), body: "updated", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(second.status, 200);
         assert.equal(second.entryId, first.entryId, "entry id is stable across edits");
-        const channel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: first.entryId, name: "body" });
+        const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: first.entryId, name: "body" });
         assert.equal(channel?.content, "updated");
     } finally { await db.close(); }
 });
@@ -105,9 +104,9 @@ test("Known.edit: empty body clears the channel content (does not delete the ent
         const k = new Worker();
         const r1 = await k.edit(editStatement({ target: urlPath("worker", "/y"), body: "initial body" }), makeSchemeCtx({ db, workspaceId, workerId }));
         await k.edit(editStatement({ target: urlPath("worker", "/y"), body: null, lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const channel = await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: r1.entryId, name: "body" });
+        const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: r1.entryId, name: "body" });
         assert.equal(channel?.content, "");
-        const entryStillThere = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: r1.entryId });
+        const entryStillThere = await db.test_get_entry_by_id.get<{ pathname: string }>({ id: r1.entryId });
         assert.ok(entryStillThere !== undefined);
     } finally { await db.close(); }
 });
@@ -120,7 +119,7 @@ test("Known.edit: tags merge additively across multiple EDITs", async () => {
         const r = await k.edit(editStatement({ target, tags: ["france"], body: "a" }), makeSchemeCtx({ db, workspaceId, workerId }));
         await k.edit(editStatement({ target, tags: ["geography"], body: "b", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         await k.edit(editStatement({ target, tags: ["europe", "geography"], body: "c", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const tags = await (db.test_list_entry_tags as PrepMethod).all<{ tag: string }>({ entry_id: r.entryId });
+        const tags = await db.test_list_entry_tags.all<{ tag: string }>({ entry_id: r.entryId });
         assert.deepEqual(tags.map((t) => t.tag), ["europe", "france", "geography"]);
     } finally { await db.close(); }
 });
@@ -131,8 +130,8 @@ test("Known.edit: null tags signal and empty tag array both produce no tag rows"
         const k = new Worker();
         const r1 = await k.edit(editStatement({ target: urlPath("worker", "/no-tags"), tags: null, body: "body" }), makeSchemeCtx({ db, workspaceId, workerId }));
         const r2 = await k.edit(editStatement({ target: urlPath("worker", "/empty-tags"), tags: [], body: "body" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const count1 = (await (db.test_count_entry_tags as PrepMethod).get<{ n: number }>({ entry_id: r1.entryId }))?.n;
-        const count2 = (await (db.test_count_entry_tags as PrepMethod).get<{ n: number }>({ entry_id: r2.entryId }))?.n;
+        const count1 = (await db.test_count_entry_tags.get<{ n: number }>({ entry_id: r1.entryId }))?.n;
+        const count2 = (await db.test_count_entry_tags.get<{ n: number }>({ entry_id: r2.entryId }))?.n;
         assert.equal(count1, 0);
         assert.equal(count2, 0);
     } finally { await db.close(); }

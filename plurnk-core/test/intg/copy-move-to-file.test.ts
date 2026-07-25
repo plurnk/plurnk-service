@@ -12,7 +12,7 @@ import { join, dirname } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
@@ -31,9 +31,9 @@ const withWorkspace = async (fn: (root: string, ctx: Ctx) => Promise<void>): Pro
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4) });
         const workspaceId = await insertWorkspace(db, `cpmv-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: workspaceId, project_root: root });
+        await db.test_set_session_project_root.run({ id: workspaceId, project_root: root });
         // {§fs-write-surface} — a non-git root grants nothing; the fixture is the CLIENT granting creates.
-        await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
+        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "cpmv");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -45,7 +45,7 @@ const seedKnown = (ctx: Ctx, pathname: string, content: string) =>
     new Worker().edit(editStmt(urlPath("worker", `/${pathname}`), content), makeSchemeCtx({ db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId }));
 
 const knownEntry = (ctx: Ctx, pathname: string) =>
-    (ctx.db.test_get_entry_by_pathname_scheme as PrepMethod).get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "worker" });
+    ctx.db.test_get_entry_by_pathname_scheme.get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "worker" });
 
 // Materialize a FILE member the production way: on disk + a scheme=null entry + body channel +
 // synced_sig — so it's a tracked member (editable, movable, deletable), not untracked disk.
@@ -53,14 +53,14 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
     const abs = join(root, rel);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, content, "utf8");
-    const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${rel}` });
-    await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content, mimetype: "text/plain", tokens: 0 });
+    const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${rel}` });
+    await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content, mimetype: "text/plain", tokens: 0 });
     const st = await stat(abs);
-    await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: seeded?.id, synced_sig: `${st.mtimeMs}:${st.size}` });
+    await ctx.db.crud_set_synced_sig.run({ entry_id: seeded?.id, synced_sig: `${st.mtimeMs}:${st.size}` });
 };
 
 const fileMember = async (ctx: Ctx, rel: string) =>
-    (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${rel}` });
+    ctx.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${rel}` });
 
 const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 

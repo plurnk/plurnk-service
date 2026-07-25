@@ -7,7 +7,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { ExecStatement } from "@plurnk/plurnk-grammar";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -16,7 +15,7 @@ import { setTimeout as delay } from "node:timers/promises";
 // before closing the db (the subscription registry settles within a few ticks).
 const settle = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number): Promise<void> => {
     for (let i = 0; i < 40; i++) {
-        const open = await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "search" }).catch(() => undefined);
+        const open = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "search" }).catch(() => undefined);
         if ((open?.n ?? 0) === 0) { await delay(25); return; }
         await delay(25);
     }
@@ -81,8 +80,8 @@ test("an identical duplicate strikes and serves — 409 carrying the prior diges
         assert.equal(dup.status, 409, "the duplicate is a strike (409 — the rail counts it)");
         assert.deepEqual(dup.results, DIGEST, "…and SERVES the same results, verbatim, no prose");
         // the model-facing record: the 409 row exists with the results in its rx
-        const rows = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ worker_id: workerId }).catch(() => []);
-        const struck = await (db.test_count_op as PrepMethod).get<{ n: number }>({ op: "EXEC" });
+        const rows = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId }).catch(() => []);
+        const struck = await db.test_count_op.get<{ n: number }>({ op: "EXEC" });
         assert.ok((struck?.n ?? 0) >= 2, "both EXEC attempts are on the log — the duplicate is recorded, never erased");
     } finally { await settle(db, workspaceId).catch(() => {}); await db.close(); }
 });

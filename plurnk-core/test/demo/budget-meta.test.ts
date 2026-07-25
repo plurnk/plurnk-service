@@ -21,7 +21,7 @@ import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
@@ -62,13 +62,13 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
         const perTurn: number[] = [];
         for (const tid of turnIds) {
-            const r = await (s.db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: tid });
+            const r = await s.db.test_get_turn.get<{ packet: string }>({ id: tid });
             perTurn.push((JSON.parse(r?.packet ?? "{}") as { tokens?: number }).tokens ?? 0);
         }
         console.error(`[budget-meta:${opts.label}] floor=${floor} ceiling=${ceiling} turns=${turnIds.length} finalStatus=${finalStatus} turn1=${perTurn[0]} peak=${Math.max(0, ...perTurn)} perTurn=[${perTurn.join(",")}]`);
         const dump = async (): Promise<void> => {
             for (const turnId of turnIds) {
-                const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
+                const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
                 const packet = JSON.parse(row?.packet ?? "{}") as { assistant?: { content?: string } };
                 console.error(`--- turn ${turnId} status=${row?.status} ---\n${(packet.assistant?.content ?? "").slice(0, 1500)}`);
             }

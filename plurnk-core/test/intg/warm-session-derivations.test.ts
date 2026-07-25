@@ -14,7 +14,7 @@ import type { EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import type { TelemetryEvent } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import Owner from "../../src/core/Owner.ts";
@@ -34,7 +34,7 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {
-    const rows = await (db.test_fts_search as PrepMethod).all<{ pathname: string }>({ workspace_id: workspaceId, query });
+    const rows = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query });
     return rows.map((r) => r.pathname);
 };
 
@@ -99,7 +99,7 @@ test("[#587] workspace warm materializes a fresh repository before deriving it",
                 }
             },
         });
-        const workspace = await (db.envelope_insert_workspace as PrepMethod).get<{ id: number }>({
+        const workspace = await db.envelope_insert_workspace.get<{ id: number }>({
             name: `warm-repo-${crypto.randomUUID()}`, project_root: root, settings: "{}",
         });
         assert.ok(workspace);
@@ -109,7 +109,7 @@ test("[#587] workspace warm materializes a fresh repository before deriving it",
         await engine.warmWorkspaceDerivations(workspaceId);
         await rescan;
 
-        const body = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({
+        const body = await db.ops_read_channel.get<{ content: string }>({
             workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId),
             scheme: "file", pathname: "orientation.md", channel: "body",
         });

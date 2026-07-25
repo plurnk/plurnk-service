@@ -13,7 +13,6 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, makeHandlerCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
@@ -32,7 +31,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
 
         const written = await EntryCrud.writeEntry("/roster.html", { channels: { body: { content: ROSTER, mimetype: "text/html" } }, tags: [] }, ctx, "worker");
         assert.equal(written.status, 201);
-        const rows = await (db.entry_read_channels as PrepMethod).all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
+        const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
         assert.equal(rows[0].mimetype, "text/html", "the authored mimetype is preserved");
 
@@ -72,9 +71,9 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         await engine.dispatch({ statement: { op: "EXEC", suffix: "", signal: "fetchstub", target: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } } as ExecStatement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await quiesceExecs(schemes); // drains the fetch spawn's tail + entry() write — no race with db.close (#432)
 
-        const entry = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/news.example/a" });
+        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/news.example/a" });
         assert.ok(entry !== undefined, "the fetched page materialized");
-        const rows = await (db.entry_read_channels as PrepMethod).all<{ name: string; content: string; mimetype: string; tokens: number }>({ entry_id: entry.id });
+        const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string; tokens: number }>({ entry_id: entry.id });
         const byName = new Map(rows.map((r) => [r.name, r]));
         assert.equal(byName.get("body")?.mimetype, "text/markdown", "the decisive body is the projection");
         assert.match(byName.get("body")!.content, /Headline/, "the readable text survives");

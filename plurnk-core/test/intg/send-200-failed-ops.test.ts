@@ -5,7 +5,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 
 test("a failed op + SEND[200] same turn → 409; the NEXT turn's [200] concludes", async () => {
@@ -24,7 +23,7 @@ test("a failed op + SEND[200] same turn → 409; the NEXT turn's [200] concludes
             assert.equal(finalStatus, 200, "the loop concluded on the SECOND turn, failures weighed");
             assert.equal(turnIds.length, 2, "exactly two turns — the refusal forced one weigh turn, no more");
             await flush();
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: 2 });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: 2 });
             const sends = (rows ?? []).filter((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the first [200] was refused over the unseen failure");
             assert.match(sends[0]?.rx ?? "", /failed operation/, "the refusal names the failure, not a generic error");
@@ -53,7 +52,7 @@ test("this emission's PARSE errors gate the same-turn [200] (they mint as rows o
             assert.equal(finalStatus, 200);
             assert.ok(turnIds.length >= 2, "the parse error forced a weigh turn before concluding");
             await flush();
-            const rows = await (db.test_log_entries_by_loop as PrepMethod).all<{ op: string; origin: string; status_rx: number }>({ loop_id: 2 });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: 2 });
             const sends = (rows ?? []).filter((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the emission with a parse error cannot conclude 200");
         } finally { ws.close(); }

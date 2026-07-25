@@ -16,7 +16,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
 // A ~semantic READ-honors-FIND case (#286) asserts REAL vector ranking — re-enable the embedder the
@@ -59,7 +59,7 @@ const dispatchRows = async (
     // rows = the DELIVERIES: sequence 1 is the FIND selection-summary row (§matcher-selection-signal).
     const rows: Array<{ content?: string; startLine?: number | null; status?: number }> = [];
     for (let s = 2; s <= (result.rowsWritten ?? 0); s++) {
-        const row = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence: s });
+        const row = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence: s });
         if (row !== undefined) rows.push(JSON.parse(row.rx) as { content?: string; startLine?: number | null; status?: number });
     }
     return { result, rows };

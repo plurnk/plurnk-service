@@ -13,7 +13,6 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
 
@@ -151,9 +150,9 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         });
         assert.equal(result.status, 200, "spawn returns 200");
 
-        const worker = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
+        const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         if (worker === undefined) throw new Error("spawn must create a worker named 'worker' in the workspace");
-        const meta = await (db.fork_get_worker as PrepMethod).get<{ workspace_id: number; origin: string }>({ id: worker.id });
+        const meta = await db.fork_get_worker.get<{ workspace_id: number; origin: string }>({ id: worker.id });
         assert.equal(meta?.origin, "model", "spawned worker's origin is the spawning writer");
         assert.equal(meta?.workspace_id, workspaceId, "spawned run shares the workspace (sisters)");
 
@@ -199,7 +198,7 @@ test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", 
         // A sister 'worker' that already TERMINATED (its loop crossed into 200) — its name is spent.
         const dead = await insertWorker(db, workspaceId, null, "worker");
         const deadLoop = await insertLoop(db, dead, 1, "done");
-        await (db.test_set_loop_status as PrepMethod).run({ id: deadLoop, status: 200 });
+        await db.test_set_loop_status.run({ id: deadLoop, status: 200 });
 
         const result = await engine.dispatch({
             statement: spawnedWorker("worker", "fresh work"),
@@ -209,7 +208,7 @@ test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", 
         assert.equal(calls.length, 1, "the reclaimed spawn injects its fresh prompt");
         // The frozen-name/permanent-history invariant: the dead run keeps its name (a new row holds it
         // too) and resolution picks the NEWEST — the reclaimed run, not the corpse.
-        const resolved = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
+        const resolved = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         assert.notEqual(resolved?.id, dead, "worker_resolve_by_name resolves the fresh run, never the terminated one");
         assert.equal(calls[0]?.workerId, resolved?.id, "inject targets the reclaimed run");
     } finally { await db.close(); }
@@ -261,7 +260,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
         assert.equal(result.status, 400, "EDIT on the worker entity is rejected");
         assert.match(String((result as { error?: string }).error ?? ""), /COPY\(worker:\/\/|not editable/, "the rejection steers to COPY");
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
-        const worker = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
+        const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         assert.equal(worker, undefined, "no worker is created by a rejected EDIT");
     } finally { await db.close(); }
 });
@@ -327,7 +326,7 @@ test("entry KILL: a child naming upward is 404 (no existence leak); an ancestor 
         assert.equal(killed.status, 200, "KILL(worker://alpha/note.md) deletes the scratch entry");
         const gone = await engine.dispatch({ statement: readEntry("alpha", "note.md"), workspaceId, workerId: alpha, loopId: loopA, turnId: turnA, sequence: 4, origin: "model" });
         assert.equal(gone.status, 404, "the killed scratch entry is gone");
-        const runStill = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "alpha" });
+        const runStill = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "alpha" });
         assert.notEqual(runStill, undefined, "the worker alpha survives — KILL of an entry PATH is entry-delete, not run cancellation");
     } finally { await db.close(); }
 });
@@ -350,7 +349,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         const branchName = (result as { body?: string }).body ?? "";
         assert.equal(branchName, "recheck", "the branch carries the explicit name FORK gave it");
 
-        const branch = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: branchName });
+        const branch = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch run in the workspace");
         assert.notEqual(branch.id, workerId, "the branch is a distinct run");
         const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string };
@@ -382,7 +381,7 @@ test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard 
         });
         assert.equal(fork.status, 508, "fork at the ceiling is refused, hard");
 
-        const worker = await (db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
+        const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
         assert.equal(worker, undefined, "no worker is created past the ceiling");
         assert.equal(calls.length, 0, "no inject on a refused spawn/fork");
     } finally {
@@ -432,7 +431,7 @@ test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; eve
         const childTurn = await insertTurn(db, childLoop, 1, 102);
         const write = await engine.dispatch({ statement: editStmt(workerEntry("~", "note.md"), "scratch"), workspaceId, workerId: childId, loopId: childLoop, turnId: childTurn, sequence: 1, origin: "model" });
         assert.equal(write.status, 201, "own-space write creates the entry");
-        const stored = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: childId, scheme: "worker", pathname: "/note.md" });
+        const stored = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: childId, scheme: "worker", pathname: "/note.md" });
         if (stored === undefined) throw new Error("entry must be keyed (owner=child, /note.md) — the owner is the column, never the pathname");
 
         // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down).
@@ -462,7 +461,7 @@ test("the kernel's published surface worker://plurnk/ refuses model writes (403)
 
         const write = await engine.dispatch({ statement: editStmt(workerEntry("plurnk", "docs/tamper.md"), "overwrite the kernel doc"), workspaceId, workerId: meId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(write.status, 403, "a model write to the kernel's published surface is refused — read-only host authority");
-        const leaked = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", pathname: "/docs/tamper.md" });
+        const leaked = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: meId, scheme: "worker", pathname: "/docs/tamper.md" });
         assert.equal(leaked, undefined, "the refused write left nothing behind under any owner");
     } finally { await db.close(); }
 });
@@ -484,7 +483,7 @@ test("READ(worker://running-child) arms a join — the turn's bare SEND[102] PAR
         // 2. the turn's bare SEND[102] (continue) becomes a PARK — the blocking join, not a spin.
         const send = await engine.dispatch({ statement: sendStmt(102, null, null), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
         assert.equal((send.attrs as { join?: boolean } | undefined)?.join, true, "the bare continue was converted to a join-park");
-        const parked = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: parentLoop });
+        const parked = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
         assert.equal(parked?.status, 202, "the parent PARKED (202) awaiting the worker — the model never had to know SEND[102]<-1>");
     } finally { await db.close(); }
 });
@@ -499,7 +498,7 @@ test("a bare SEND[102] with NO armed join continues normally — the park is joi
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const send = await engine.dispatch({ statement: sendStmt(102, null, null), workspaceId, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.notEqual((send.attrs as { join?: boolean } | undefined)?.join, true, "no READ armed a join — a plain continue");
-        const status = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop });
+        const status = await db.test_get_loop_status.get<{ status: number }>({ id: loop });
         assert.notEqual(status?.status, 202, "the loop did not park — a bare continue without a join stays live");
     } finally { await db.close(); }
 });
@@ -527,7 +526,7 @@ test("KILL(run) is decisive — a same-turn KILL then SEND[200] concludes, no pr
         const kill = await engine.dispatch({ statement: killWorker, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(kill.status, 200, "KILL succeeds");
         // The DECISIVE claim: the worker's loop is terminal (499) SYNCHRONOUSLY — the same-turn gate reads it dead.
-        const wstatus = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: workerLoop });
+        const wstatus = await db.test_get_loop_status.get<{ status: number }>({ id: workerLoop });
         assert.equal(wstatus?.status, 499, "the killed worker's loop is 499 NOW, not next turn — KILL landed before the turn moved on");
         const send = await engine.dispatch({ statement: sendStmt(200, null, "done, worker killed"), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
         assert.notEqual(send.status, 409, `no premature-terminate 409 — the killed child is not live pending work; got ${send.status}`);
@@ -547,7 +546,7 @@ test("SEND[202]: a live obligation blocks; an empty join completes immediately",
         const eng1 = new Engine({ db, schemes: new SchemeRegistry() });
         const blocked = await eng1.dispatch({ statement: sendStmt(202, null, "awaiting worker"), workspaceId: s1, workerId: parent, loopId: pLoop, turnId: pTurn, sequence: 1, origin: "model" });
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
-        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
 
         // 202 + ∅ (no live work) → successful completion.
         const s2 = await insertWorkspace(db, `wait-void-${crypto.randomUUID()}`);
@@ -557,7 +556,7 @@ test("SEND[202]: a live obligation blocks; an empty join completes immediately",
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
         const satisfied = await eng2.dispatch({ statement: sendStmt(202, null, "standing by"), workspaceId: s2, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(satisfied.status, 200, "202 on an empty task group completes");
-        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 200, "the empty join is terminal");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "the empty join is terminal");
 
         // 202<-1> + ∅ — the marker cannot turn an empty join into a hang.
         const s3 = await insertWorkspace(db, `wait-hang-${crypto.randomUUID()}`);
@@ -568,7 +567,7 @@ test("SEND[202]: a live obligation blocks; an empty join completes immediately",
         const indef = { ...sendStmt(202, null, "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
         const noHang = await eng3.dispatch({ statement: indef, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
         assert.equal(noHang.status, 200, "202<-1> on nothing completes immediately");
-        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop3 }))?.status, 200, "no held-open 202");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop3 }))?.status, 200, "no held-open 202");
     } finally { await db.close(); }
 });
 
@@ -582,7 +581,7 @@ test("an already-drained join is a normal deliverable", async () => {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const waited = await engine.dispatch({ statement: sendStmt(202, null, "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
         assert.equal(waited.status, 200, "the empty join completes");
-        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: wLoop }))?.status, 200, "the loop concluded");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 200, "the loop concluded");
         const reader = await insertWorker(db, workspaceId);
         const collected = await new Worker().read(readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 200);
@@ -600,6 +599,6 @@ test("an idle join completes in the same turn", async () => {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const r = await engine.dispatch({ statement: sendStmt(202, null, "idle"), workspaceId, workerId: run, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the already-drained join completes");
-        assert.equal((await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loop }))?.status, 200, "no held-open 202");
+        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 200, "no held-open 202");
     } finally { await db.close(); }
 });

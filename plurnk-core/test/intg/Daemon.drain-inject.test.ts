@@ -6,7 +6,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
@@ -63,7 +62,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
             // 499; otherwise it fires into the spawn gap and asserts on a stream that never
             // opened (the flake this replaces — the kill path itself is sound).
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -135,7 +134,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
             // running exec, deterministically; otherwise it fires into the spawn gap and the
             // sleep leaks (the failure this replaces).
             await waitForDb(
-                async () => (await (db.test_count_entries_by_session_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_entries_by_session_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
             );
 
@@ -289,7 +288,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { auto: true } });
             // The exec is live + registered open.
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 1,
             );
 
@@ -298,10 +297,10 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
 
             // The registry reap closed the subscription — open→0, deterministically.
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 0,
             );
-            const closeStatus = (await (db.test_exec_close_status_by_session as PrepMethod).get<{ close_status: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.close_status;
+            const closeStatus = (await db.test_exec_close_status_by_session.get<{ close_status: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.close_status;
             assert.equal(closeStatus, 499, "the reaped exec subscription is closed at 499 in the registry");
         } finally { ws.close(); }
     });
@@ -329,7 +328,7 @@ test("a cancelled run is not revived by its straggler stream's conclusion", asyn
 
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "spawn then leave", flags: { auto: true } });
             await waitForDb(
-                async () => (await (db.test_count_open_subs_by_scheme as PrepMethod).get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n === 1,
             );
 
@@ -348,8 +347,8 @@ test("a cancelled run is not revived by its straggler stream's conclusion", asyn
             assert.match(wake.wakeAction, /^skipped-/, `the daemon skipped opening a loop; got ${wake.wakeAction}`);
 
             // The worker was not resurrected: its only loop is the original model loop.
-            const workerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))?.worker_id;
-            const loopCount = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: workerId }))?.n;
+            const workerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))?.worker_id;
+            const loopCount = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: workerId }))?.n;
             assert.equal(loopCount, 1, "no wake loop was opened in the cancelled run");
         } finally { ws.close(); }
     });

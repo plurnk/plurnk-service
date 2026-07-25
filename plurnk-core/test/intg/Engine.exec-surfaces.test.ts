@@ -10,7 +10,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
 
@@ -34,7 +33,7 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
             assert.ok((turnIds?.length ?? 0) >= 2, `expected at least 2 turns; got ${turnIds?.length}`);
 
             const turn2 = turnIds![1];
-            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turn2 });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
             assert.ok(
@@ -73,7 +72,7 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run it", flags: { auto: true } });
             assert.equal(finalStatus, 200);
             const last = turnIds![turnIds!.length - 1];
-            const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: last });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: last });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
             const deltas = entries.filter((e) => e.op === "READ" && e.origin === "plurnk" && String(e.target ?? "").includes("stdout"));

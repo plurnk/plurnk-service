@@ -1,12 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod, ExecMethod } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 
 test("workspaces: table is STRICT", async () => {
     const db = await openMigrated();
     try {
-        const row = await (db.test_sessions_table_sql as PrepMethod).get<{ sql: string }>();
+        const row = await db.test_sessions_table_sql.get<{ sql: string }>();
         assert.match(row?.sql ?? "", /STRICT/);
     } finally { await db.close(); }
 });
@@ -14,8 +13,8 @@ test("workspaces: table is STRICT", async () => {
 test("workspaces: insert with name only — defaults populate version, created_at, cost_pico, scheme_registry_additions", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_sessions_insert_name_only as PrepMethod).run({ name: "opus-1747400000" });
-        const row = await (db.test_sessions_get_by_name as PrepMethod).get<{
+        await db.test_sessions_insert_name_only.run({ name: "opus-1747400000" });
+        const row = await db.test_sessions_get_by_name.get<{
             id: number; version: number; name: string; created_at: string;
             cost_pico: number; scheme_registry_additions: string;
         }>({ name: "opus-1747400000" });
@@ -32,9 +31,9 @@ test("workspaces: insert with name only — defaults populate version, created_a
 test("workspaces: name UNIQUE — duplicate insert is rejected", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_sessions_insert_name_only as PrepMethod).run({ name: "workspace-a" });
+        await db.test_sessions_insert_name_only.run({ name: "workspace-a" });
         await assert.rejects(
-            () => (db.test_sessions_insert_name_only as PrepMethod).run({ name: "workspace-a" }),
+            () => db.test_sessions_insert_name_only.run({ name: "workspace-a" }),
             /UNIQUE constraint failed: workspaces\.name/,
         );
     } finally { await db.close(); }
@@ -44,7 +43,7 @@ test("workspaces: empty name rejected by CHECK (length > 0)", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => (db.test_sessions_insert_name_only as PrepMethod).run({ name: "" }),
+            () => db.test_sessions_insert_name_only.run({ name: "" }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -54,7 +53,7 @@ test("workspaces: negative cost_pico rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => (db.test_sessions_insert_with_cost as PrepMethod).run({ name: "workspace-b", cost_pico: -1 }),
+            () => db.test_sessions_insert_with_cost.run({ name: "workspace-b", cost_pico: -1 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -64,7 +63,7 @@ test("workspaces: negative version rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => (db.test_sessions_insert_with_version as PrepMethod).run({ name: "workspace-c", version: -1 }),
+            () => db.test_sessions_insert_with_version.run({ name: "workspace-c", version: -1 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -74,7 +73,7 @@ test("workspaces: malformed JSON in scheme_registry_additions rejected by CHECK 
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => (db.test_sessions_insert_with_sra as PrepMethod).run({ name: "workspace-d", sra: "{not json" }),
+            () => db.test_sessions_insert_with_sra.run({ name: "workspace-d", sra: "{not json" }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -84,8 +83,8 @@ test("workspaces: well-formed JSON object in scheme_registry_additions accepted"
     const db = await openMigrated();
     try {
         const sra = JSON.stringify([{ name: "wiki", model_visible: true, category: "external", default_scope: "workspace", default_channel: "body", writable_by: ["model"], volatile: false, handler: null }]);
-        await (db.test_sessions_insert_with_sra as PrepMethod).run({ name: "workspace-e", sra });
-        const row = await (db.test_sessions_get_sra as PrepMethod).get<{ scheme_registry_additions: string }>({ name: "workspace-e" });
+        await db.test_sessions_insert_with_sra.run({ name: "workspace-e", sra });
+        const row = await db.test_sessions_get_sra.get<{ scheme_registry_additions: string }>({ name: "workspace-e" });
         const parsed = JSON.parse(row?.scheme_registry_additions ?? "[]");
         assert.equal(parsed.length, 1);
         assert.equal(parsed[0].name, "wiki");
@@ -96,7 +95,7 @@ test("workspaces: NOT NULL enforced on name", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => (db.test_sessions_insert_no_name as ExecMethod)(),
+            () => db.test_sessions_insert_no_name(),
             /NOT NULL constraint failed: workspaces\.name/,
         );
     } finally { await db.close(); }
@@ -105,7 +104,7 @@ test("workspaces: NOT NULL enforced on name", async () => {
 test("workspaces: index sessions_created_at exists", async () => {
     const db = await openMigrated();
     try {
-        const row = await (db.test_sessions_index_exists as PrepMethod).get<{ name: string }>();
+        const row = await db.test_sessions_index_exists.get<{ name: string }>();
         assert.equal(row?.name, "sessions_created_at");
     } finally { await db.close(); }
 });
@@ -113,8 +112,8 @@ test("workspaces: index sessions_created_at exists", async () => {
 test("workspaces: explicit cost_pico value overrides default", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_sessions_insert_with_cost as PrepMethod).run({ name: "workspace-f", cost_pico: 12345 });
-        const row = await (db.test_sessions_get_cost as PrepMethod).get<{ cost_pico: number }>({ name: "workspace-f" });
+        await db.test_sessions_insert_with_cost.run({ name: "workspace-f", cost_pico: 12345 });
+        const row = await db.test_sessions_get_cost.get<{ cost_pico: number }>({ name: "workspace-f" });
         assert.equal(row?.cost_pico, 12345);
     } finally { await db.close(); }
 });
@@ -122,9 +121,9 @@ test("workspaces: explicit cost_pico value overrides default", async () => {
 test("workspaces: id auto-assigns on insert (INTEGER PRIMARY KEY rowid alias)", async () => {
     const db = await openMigrated();
     try {
-        await (db.test_sessions_insert_name_only as PrepMethod).run({ name: "workspace-g" });
-        await (db.test_sessions_insert_name_only as PrepMethod).run({ name: "workspace-h" });
-        const rows = await (db.test_sessions_list_ordered as PrepMethod).all<{ id: number; name: string }>();
+        await db.test_sessions_insert_name_only.run({ name: "workspace-g" });
+        await db.test_sessions_insert_name_only.run({ name: "workspace-h" });
+        const rows = await db.test_sessions_list_ordered.all<{ id: number; name: string }>();
         assert.equal(rows.length, 2);
         assert.equal(rows[1]!.id, rows[0]!.id + 1);
     } finally { await db.close(); }

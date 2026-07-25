@@ -19,7 +19,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
@@ -69,7 +69,7 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         // A's turn 2 pulls B's edit from the shared log as a FOLDED delta — A consulted no
         // per-worker snapshot; it learned its world moved purely through its own log.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
         assert.equal(delta!.source, String(workerB), "the delta is attributed to the sibling run that caused it");
@@ -99,14 +99,14 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
         // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a FOLDED delta, not a message.
         await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; pathname: string; source: string | null }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null }>({ worker_id: workerA });
         assert.ok(
             rows.some((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === String(workerB)),
             "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)",
         );
 
         // VOICE DOOR — *message*: an inject delivers a directed message onto A's own loop's next turn.
-        await (db.test_set_loop_status as PrepMethod).run({ id: loopA, status: 102 }); // A is the active loop
+        await db.test_set_loop_status.run({ id: loopA, status: 102 }); // A is the active loop
         const injected = await eng.inject(workerA, "a directed message for A");
         assert.notEqual(injected, null, "voice door: the inject found A's loop and delivered");
         assert.equal(injected!.loopId, loopA, "the message landed on A's loop — directed, not ambient");
@@ -135,7 +135,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
 
         // Turn 1 materializes notes.md from disk (first sight — no divergence).
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        const afterT1 = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null }>({ worker_id: workerA });
+        const afterT1 = await db.engine_render_log.all<{ origin: string; op: string; source: string | null }>({ worker_id: workerA });
         assert.ok(!afterT1.some((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file"), "first sight reconciles silently — no fs delta");
         await sleep(2);
 
@@ -144,7 +144,7 @@ test("an out-of-band disk change surfaces as a source=file delta — the plurnk 
 
         // Turn 2 — the plurnk worker logs the divergence as a source=file EDIT; A pulls it.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
@@ -185,7 +185,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
 
         // A's turn 2 pulls both terminations from the shared log: the 2xx deliverable born open, the abandonment folded.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await (db.engine_render_log as PrepMethod).all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ worker_id: workerA });
 
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a run-delta in A's log");

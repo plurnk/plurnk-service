@@ -1,5 +1,5 @@
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
@@ -237,8 +237,8 @@ export default class PacketBuilder {
         // This is what inject + the turn-1 foist write into. Falls back to
         // the runLoop caller's messages.user for tests that bypass the
         // foist mechanism entirely.
-        const loopSeqRow = await (this.#db.engine_loop_sequence as PrepMethod).get<{ sequence: number }>({ loop_id: loopId });
-        const promptRows = (await (this.#db.drain_get_all_prompt_bodies_for_loop as PrepMethod).all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopSeqRow?.sequence ?? loopId)}%` }))
+        const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
+        const promptRows = (await this.#db.drain_get_all_prompt_bodies_for_loop.all<{ content: string; pathname: string }>({ owner_id: workerId, pattern: `${promptLoopPrefix(loopSeqRow?.sequence ?? loopId)}%` }))
             .filter((r) => typeof r.content === "string" && r.content.length > 0);
         // §prompt-auto-read (owner): the section is a PATHS list (the errors shape — no bodies);
         // each prompt's content reaches the model through its foisted auto-READ in the log, and
@@ -286,16 +286,16 @@ export default class PacketBuilder {
         // attacker-reachable text may never ride system. The budget section carries its
         // {{tokensFree}} placeholders here; they resolve below once the assembled total is known.
         const inject = await readPacketInject(); // #240 — operator section, per-turn, fail-hard on a broken path
-        const workspaceRoot = (await (this.#db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
+        const workspaceRoot = (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
         const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
         const projectPolicy = await readProjectPolicy(workspaceRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
         // Child-orientation (§child-orientation): the live things THIS run holds — open streams +
         // unconcluded child workers — surfaced every turn as terse `* <status> <path>` pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. Empty → omitted.
-        const childStreams = (await (this.#db.engine_child_streams_open as PrepMethod).all<{ scheme: string; pathname: string }>({ worker_id: workerId }))
+        const childStreams = (await this.#db.engine_child_streams_open.all<{ scheme: string; pathname: string }>({ worker_id: workerId }))
             .map((s) => ({ status: "active", path: renderAddress(s.scheme, s.pathname) }));
-        const childWorkers = (await (this.#db.engine_child_workers_live as PrepMethod).all<{ name: string; status: number }>({ worker_id: workerId }))
+        const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
@@ -476,7 +476,7 @@ export default class PacketBuilder {
     // The capability sheet — the live tool surface (wired executor tags). §tools-capability-sheet
     // Mirror of Dispatcher.#loadLoopFlags — the packet reads the SAME persisted flags the gate does.
     async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
-        const row = await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId });
+        const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
         if (row === undefined) return DEFAULT_LOOP_FLAGS;
         try { return { ...DEFAULT_LOOP_FLAGS, ...JSON.parse(row.flags) as Partial<LoopFlags> }; }
         catch { return DEFAULT_LOOP_FLAGS; }
@@ -575,7 +575,7 @@ export default class PacketBuilder {
         // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
         // post-generate dispatch rows. §telemetry-uniform-error-channel, §grinder-overflow-error-row
         await this.#telemetry.mintEngineError("budget_overflow", { workerId, loopId, turnId, sequence: mintSequence });
-        await (this.#db.engine_grinder_fold_newest_turn as PrepMethod).run({ loop_id: loopId, turn_id: turnId });
+        await this.#db.engine_grinder_fold_newest_turn.run({ loop_id: loopId, turn_id: turnId });
         const current = await rebuild();
         return { packet: current, fit: measure(current) <= ceiling, struck: true };
     }
@@ -612,7 +612,7 @@ export default class PacketBuilder {
         // becomes a LogCoordinate-positioned TelemetryEvent — a terse pointer; the model READs the
         // row for its term + detail. Buffer events that point at the model's own emission keep their
         // ContentOffset position. info-level notices (progress) are not errors and never surface here.
-        const rows = await (this.#db.engine_render_telemetry_errors as PrepMethod).all<{
+        const rows = await this.#db.engine_render_telemetry_errors.all<{
             op: string; sequence: number; status_rx: number;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
@@ -640,7 +640,7 @@ export default class PacketBuilder {
         // client-origin SEND[200] row at sequence=0 of each new
         // turn-1. Prompts thus surface naturally in this query — no
         // synthetic / shim layer.
-        const rows = await (this.#db.engine_render_log as PrepMethod).all<{
+        const rows = await this.#db.engine_render_log.all<{
             loop_seq: number; turn_seq: number; sequence: number;
             origin: string; op: string; suffix: string; signal: string | null;
             scheme: string | null; username: string | null; password: string | null;

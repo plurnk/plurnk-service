@@ -15,7 +15,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 
@@ -65,9 +64,9 @@ test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the v
             tokenize: (t: string) => Math.ceil(t.length / 4),
         };
         await GitMembership.indexGitMembership(ctx);
-        const member = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "tracked.md" });
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "tracked.md" });
         assert.ok(member, "membership read the sandbox's ls-files, not the victim's");
-        const leak = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "victim-file.md" });
+        const leak = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "victim-file.md" });
         assert.equal(leak, undefined, "no victim file leaked into membership");
 
         // The victim is pristine: same HEAD, clean tree, no seed stacked on the lane branch.

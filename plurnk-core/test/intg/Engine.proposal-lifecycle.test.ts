@@ -10,7 +10,7 @@ import type { EditStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalResolution } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import { parseDsl } from "./_rpc.ts";
@@ -89,7 +89,7 @@ test("proposal: 202 scheme result pauses; accept resolves to 200", async () => {
         const { status, logEntryId } = await dispatchAndResolve(ctx.engine, ctx, { decision: "accept" });
         assert.equal(status, 200, "post-resolution status should be 200 (accepted)");
 
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; outcome: string | null }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "resolved");
         assert.equal(row?.status_rx, 200);
         assert.equal(row?.outcome, null);
@@ -102,7 +102,7 @@ test("proposal: reject transitions to state='failed', status=400, outcome='rejec
         const ctx = await setupEngine(db);
         const { status, logEntryId } = await dispatchAndResolve(ctx.engine, ctx, { decision: "reject" });
         assert.equal(status, 400);
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; outcome: string | null }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "failed");
         assert.equal(row?.status_rx, 400);
         assert.equal(row?.outcome, "rejected");
@@ -115,7 +115,7 @@ test("proposal: cancel transitions to state='cancelled', status=499, outcome='lo
         const ctx = await setupEngine(db);
         const { status, logEntryId } = await dispatchAndResolve(ctx.engine, ctx, { decision: "cancel" });
         assert.equal(status, 499);
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; outcome: string | null }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "cancelled");
         assert.equal(row?.status_rx, 499);
         assert.equal(row?.outcome, "loop_aborted");
@@ -129,7 +129,7 @@ test("proposal: caller-supplied outcome overrides the default", async () => {
         const { logEntryId } = await dispatchAndResolve(ctx.engine, ctx, {
             decision: "reject", outcome: "policy_veto",
         });
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ outcome: string | null }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.outcome, "policy_veto");
     } finally { await db.close(); }
 });
@@ -139,7 +139,7 @@ test("proposal: attrs from scheme persist into log_entries.attrs JSON", async ()
     try {
         const ctx = await setupEngine(db);
         const { logEntryId } = await dispatchAndResolve(ctx.engine, ctx, { decision: "accept" });
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ attrs: string }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
         const parsed = JSON.parse(row?.attrs ?? "{}") as { path?: string; patch?: string };
         assert.equal(parsed.path, "/proposed-test");
         assert.equal(parsed.patch, "@@ +x @@");
@@ -162,14 +162,14 @@ test("proposal: status=202 + state='proposed' rows hidden from the log section r
 
         // Render the log — proposed entry should be invisible.
         // engine_render_log is worker-scoped per SPEC §packet-terms (runs own log entries).
-        const rendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
+        const rendered = await db.engine_render_log.all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
         const proposedVisible = rendered.find((r) => r.status_rx === 202 && r.state === "proposed");
         assert.equal(proposedVisible, undefined, "proposed entries must be invisible to log render");
 
         // Now resolve and re-render — entry should surface.
         ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
         await pending;
-        const rerendered = await (db.engine_render_log as PrepMethod).all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
+        const rerendered = await db.engine_render_log.all<{ status_rx: number; state: string }>({ worker_id: ctx.workerId });
         const resolvedVisible = rerendered.find((r) => r.state === "resolved");
         assert.notEqual(resolvedVisible, undefined, "resolved entries must surface in log render");
         assert.equal(resolvedVisible?.status_rx, 200);
@@ -255,7 +255,7 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
         // Dispatch handled the already-drained join inline — it never paused.
         assert.equal(parkResult.status, 200, "the broadcast join ([102]<-1> on nothing) completes inline");
         // ...the entry is a resolved row, not a proposed one...
-        const parkRow = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number }>({ id: parkId });
+        const parkRow = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number }>({ id: parkId });
         assert.equal(parkRow?.state, "resolved", "the wait SEND is a resolved row, not a proposed entry");
         assert.equal(parkRow?.status_rx, 200);
         // ...and no loop/proposal was announced for it.
@@ -283,7 +283,7 @@ test("proposal: loop auto-approval engages when loops.flags.auto === true", asyn
     try {
         const ctx = await setupEngine(db);
         // Persist canonical loop auto-approval, then attach its listener.
-        await (db.engine_set_loop_flags as PrepMethod).run({
+        await db.engine_set_loop_flags.run({
             loop_id: ctx.loopId, flags: JSON.stringify({ auto: true }),
         });
         const Auto = (await import("../../src/server/auto.ts")).default;
@@ -298,7 +298,7 @@ test("proposal: loop auto-approval engages when loops.flags.auto === true", asyn
         });
         const logEntryId = await idDeferred.promise;
         assert.equal(result.status, 200, "loop auto-approval produces status 200");
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; outcome: string | null }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "resolved");
         assert.equal(row?.outcome, null);
     } finally { await db.close(); }
@@ -328,7 +328,7 @@ test("proposal: loop auto-approval does NOT engage when flags.auto is absent / f
         const logEntryId = await idDeferred.promise;
         // Auto doesn't engage → timeout fires → 499/cancelled/timeout.
         assert.equal(result.status, 499);
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; outcome: string | null }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "cancelled");
         assert.equal(row?.outcome, "timeout");
     } finally { await db.close(); }
@@ -355,7 +355,7 @@ test("proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (
         });
         const logEntryId = await idDeferred.promise;
         assert.equal(result.status, 499, "timeout produces a cancelled resolution → status 499");
-        const row = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; outcome: string | null }>({ id: logEntryId });
+        const row = await db.test_get_log_entry_by_id.get<{ state: string; outcome: string | null }>({ id: logEntryId });
         assert.equal(row?.state, "cancelled");
         assert.equal(row?.outcome, "timeout");
     } finally { await db.close(); }
@@ -384,7 +384,7 @@ test("the SHIPPED default is INDEFINITE — a stopped world waits for its human 
         const logEntryId = await idDeferred.promise;
         // Far past the old 300s-scaled window at test speed: the world stays stopped.
         await new Promise((r) => setTimeout(r, 250));
-        const pending = await (db.test_get_log_entry_by_id as PrepMethod).get<{ state: string }>({ id: logEntryId });
+        const pending = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
         assert.equal(pending?.state, "proposed", "still stopped — no synthetic cancel, however long the human takes");
         ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
         const result = await dispatchPromise;

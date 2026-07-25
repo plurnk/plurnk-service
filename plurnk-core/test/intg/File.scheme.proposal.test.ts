@@ -15,7 +15,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 
@@ -65,9 +65,9 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const workspaceId = await insertWorkspace(db, `file-${crypto.randomUUID()}`);
-        await (db.test_set_session_project_root as PrepMethod).run({ id: workspaceId, project_root: root });
+        await db.test_set_session_project_root.run({ id: workspaceId, project_root: root });
         // {§fs-write-surface} — a non-git root grants nothing; the fixture is the CLIENT granting creates.
-        await (db.crud_insert_workspace_constraint as PrepMethod).run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
+        await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "**" });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "file edit test");
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -90,10 +90,10 @@ test("file.edit: writes file on accept via applyResolution", async () => {
         // Materialize the member coherently — entry + body channel (= disk content) + synced_sig —
         // exactly as the production reconcile (#materializeMember) does. EDIT now bases its diff on
         // the body-channel snapshot (so the diff shows -hello), and the write-CAS has a sig to guard.
-        const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
-        await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content: "hello\n", mimetype: "text/plain", tokens: 0 });
+        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
+        await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content: "hello\n", mimetype: "text/plain", tokens: 0 });
         const seededStat = await stat(join(root, target));
-        await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
+        await ctx.db.crud_set_synced_sig.run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
 
         // {§edit-marker-required-on-existing} — the file exists, so the deliberate
         // full-rewrite escape hatch (<1,-1>) is required; this also proves it works.
@@ -105,7 +105,7 @@ test("file.edit: writes file on accept via applyResolution", async () => {
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
+        const row = await ctx.db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
         assert.equal(row?.state, "proposed");
         assert.equal(row?.status_rx, 202);
         const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string; canonical: string; patch: string; patched: string };
@@ -121,7 +121,7 @@ test("file.edit: writes file on accept via applyResolution", async () => {
         const onDisk = await readFile(join(root, target), "utf8");
         assert.equal(onDisk, "hello world\n");
         // The applied EDIT's rx carries the bounded structured receipt computed from what landed.
-        const applied = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ status_rx: number; rx: string }>({ id: logEntryId });
+        const applied = await ctx.db.test_get_log_entry_by_id.get<{ status_rx: number; rx: string }>({ id: logEntryId });
         assert.equal(applied?.status_rx, 200);
         const appliedRx = JSON.parse(applied?.rx ?? "{}") as {
             receipt?: { revision?: string; effect?: { context?: string } };
@@ -135,7 +135,7 @@ test("file.edit: rejection leaves file untouched; the rx carries the outcome as 
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC §membership edit gate)
-        await (ctx.db.crud_insert_workspace_entry as PrepMethod).get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
+        await ctx.db.crud_insert_workspace_entry.get({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
         await writeFile(join(root, target), "original\n", "utf8");
 
         const stmt = fileEditStmt(target, "should-not-land\n", fullReplace);
@@ -153,7 +153,7 @@ test("file.edit: rejection leaves file untouched; the rx carries the outcome as 
         assert.equal(onDisk, "original\n", "rejected EDIT must not touch disk");
         // The model-facing rx carries the one-word why — a mute {"status":400} reads as a
         // phantom failure the model can't act on (the fan-out dead-park).
-        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ rx: string }>({ id: logEntryId });
+        const row = await ctx.db.test_get_log_entry_by_id.get<{ rx: string }>({ id: logEntryId });
         assert.deepEqual(JSON.parse(row?.rx ?? "{}"), { status: 400, error: "reviewer_said_no" }, "rx = status + terse outcome token, nothing more");
     });
 });
@@ -194,7 +194,7 @@ test("file.edit: reviewer-modified acceptance receipts the content that actually
         ctx.engine.resolveProposal(logEntryId, { decision: "accept", body: reviewed });
         await dispatchPromise;
         assert.equal(await readFile(join(root, target), "utf8"), reviewed);
-        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ rx: string }>({ id: logEntryId });
+        const row = await ctx.db.test_get_log_entry_by_id.get<{ rx: string }>({ id: logEntryId });
         const rx = JSON.parse(row?.rx ?? "{}") as {
             receipt?: { revision?: string; effect?: { context?: string } };
         };
@@ -232,8 +232,8 @@ test("a markerless EDIT of an EXISTING file is refused, never a silent full repl
         await mkdir(join(root, "src"), { recursive: true });
         const original = "line one\nline two\nline three\n";
         await writeFile(join(root, target), original, "utf8");
-        const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
-        await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content: original, mimetype: "text/plain", tokens: 0 });
+        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
+        await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content: original, mimetype: "text/plain", tokens: 0 });
 
         // The run126 shape: a marker meant for the target landed inside the body text
         // instead (a model syntax slip), so the dispatched statement carries no marker at all.
@@ -266,8 +266,8 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
         // pre-existing file must be a member to be editable (SPEC §membership edit gate);
         // materialize the body channel too — the marker math below reads `original`.
         await writeFile(join(root, target), "original\n", "utf8");
-        const seeded = await (ctx.db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
-        await (ctx.db.ops_upsert_channel as PrepMethod).run({ entry_id: seeded?.id, name: "body", content: "original\n", mimetype: "text/plain", tokens: 0 });
+        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
+        await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content: "original\n", mimetype: "text/plain", tokens: 0 });
 
         // No file:/// prefix — the form the sysprompt teaches. The file exists, so the
         // marker is required (§edit-marker-required-on-existing).
@@ -280,7 +280,7 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
         });
         const logEntryId = await idDeferred.promise;
 
-        const row = await (ctx.db.test_get_log_entry_by_id as PrepMethod).get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
+        const row = await ctx.db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
         assert.equal(row?.status_rx, 202, "bare path EDIT must route to file scheme + propose");
         assert.equal(row?.state, "proposed");
         const attrs = JSON.parse(row?.attrs ?? "{}") as { path: string };

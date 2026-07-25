@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import type { PrepMethod, Db } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { sendStmt, editStmt, localPath } from "./_dsl.ts";
 
 // A ws stand-in: EventEmitter for "message", captured sends. The registered
@@ -34,7 +34,7 @@ test("the wall rules a legible 504 loop_timeout terminal", async () => {
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 50 });
         assert.equal(result.finalStatus, 504, "the wall's terminal is 504, never an outside kill");
         assert.equal(result.reason, "loop_timeout");
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 504, "the loop row carries the wall terminal");
     } finally {
         delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;

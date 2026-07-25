@@ -20,11 +20,15 @@
         ],
         "customConditions": [
             "plurnk-dev"
-        ]
+        ],
+        "paths": {
+            "@possumtech/sqlrite": [
+                "./SqlRite.d.ts"
+            ]
+        }
     },
     "include": [
         "src/**/*.ts",
-        "test/**/*.ts",
         "bin/**/*.ts"
     ],
     "exclude": [

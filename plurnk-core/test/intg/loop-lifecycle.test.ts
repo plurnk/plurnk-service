@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 test("loop transitions are guarded and terminal state is immutable", async () => {
@@ -44,7 +43,7 @@ test("structured cancellation atomically claims the unresolved descendant tree",
         assert.deepEqual(cancelled.workerIds, [grandchild, child], "descendants are returned deepest-first for process-local reap");
         assert.deepEqual(new Set(cancelled.loops.map(({ loopId }) => loopId)), new Set([childLoop, grandchildLoop]));
         const status = async (loopId: number): Promise<number | undefined> =>
-            (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+            (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(await status(rootLoop), 102, "includeRoot=false preserves the already-settling parent");
         assert.equal(await status(childLoop), 499);
         assert.equal(await status(grandchildLoop), 499);

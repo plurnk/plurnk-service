@@ -10,7 +10,6 @@ import type { ExecStatement, PlurnkStatement, ReadStatement } from "@plurnk/plur
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
@@ -101,16 +100,16 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         // committed and no write is left in flight to race the db.close below.
         await quiesceExecs(schemes);
         // The entry exists, with the SECOND write's content and BOTH tags (union, not replace).
-        const entry = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number; scheme: string }>({ pathname: "/example.org/turkeys" });
+        const entry = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.ok(entry !== undefined, "the https entry materialized (authority folded into the pathname)");
         assert.equal(entry.scheme, "https");
-        const tags = await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: entry.id });
+        const tags = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });
         assert.deepEqual(tags.map((t) => t.tag).sort(), ["second_query", "turkeys_query"], "the upsert UNIONED the slug tags across both writes");
         // The ambience: the reserved plurnk worker carries ONE narration row per write (2 here), the
         // fs-fiction shape — origin plurnk, source = the calling run, tokens on the meta line.
-        const plurnkWorker = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
+        const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists");
-        const rows = await (db.test_log_entries_by_run_op as PrepMethod).all<{ pathname: string; source: string; tokens: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const rows = await db.test_log_entries_by_run_op.all<{ pathname: string; source: string; tokens: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
         assert.equal(narrations[0]?.source, String(workerId), "source attributes the CALLING run");
@@ -121,7 +120,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         // The row is a FULL fiction — the journal records the write itself, not just that one happened:
         // tx carries the statement with the written content (replay/fork-complete), rx carries the
         // full-content span (§edit-result-render — a wholesale write's span IS the content, numbered).
-        const full = await (db.test_log_entries_by_run_op_full as PrepMethod).all<{ pathname: string; tx: string; rx: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const full = await db.test_log_entries_by_run_op_full.all<{ pathname: string; tx: string; rx: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const second = full.filter((r) => r.pathname === "/example.org/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");
         const tx = JSON.parse(second.tx) as { op: string; body: string };
@@ -146,7 +145,7 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
         const openLine = PacketWire.renderLog(view(false), countTokens);
         assert.ok(openLine.includes("1:wild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
-        const sig = await (db.test_log_entries_by_run_op_signal as PrepMethod).all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const sig = await db.test_log_entries_by_run_op_signal.all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
@@ -172,13 +171,13 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         assert.equal(queried.rowsWritten, 2, "one bounded FIND summary + one stored match delivery");
         assert.deepEqual(queried.fannedStatuses, [200]);
 
-        const delivered = await (db.log_read_by_coordinate as PrepMethod).get<{ scheme: string; pathname: string; rx: string }>({
+        const delivered = await db.log_read_by_coordinate.get<{ scheme: string; pathname: string; rx: string }>({
             worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 3,
         });
         assert.equal(delivered?.scheme, "https");
         assert.equal(delivered?.pathname, "/turkeys");
         assert.match(delivered?.rx ?? "", /wild turkeys are large birds, revised/);
-        const stored = await (db.test_entries_by_pathname as PrepMethod).get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
+        const stored = await db.test_entries_by_pathname.get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
@@ -196,7 +195,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
         });
         await quiesceExecs(schemes);
 
-        const stored = await (db.test_entries_by_pathname as PrepMethod).get<{ pathname: string }>({
+        const stored = await db.test_entries_by_pathname.get<{ pathname: string }>({
             pathname: "/example.org/people_(current)",
         });
         assert.equal(stored?.pathname, "/example.org/people_(current)",
@@ -206,7 +205,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
-        const delivered = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({
+        const delivered = await db.log_read_by_coordinate.get<{ rx: string }>({
             worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
         });
         assert.match(delivered?.rx ?? "", /spouse: Example Person/,
@@ -252,9 +251,9 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 102, "the HTTP handler fetched the resource; Dispatcher never synthesized FIND");
-        const stored = await (db.test_entries_by_pathname as PrepMethod).get<{ scheme: string; id: number }>({ pathname: "/example.org/" });
+        const stored = await db.test_entries_by_pathname.get<{ scheme: string; id: number }>({ pathname: "/example.org/" });
         assert.equal(stored?.scheme, "https");
-        const body = stored === undefined ? undefined : await (db.test_get_channel as PrepMethod).get<{ content: string }>({ entry_id: stored.id, name: "body" });
+        const body = stored === undefined ? undefined : await db.test_get_channel.get<{ content: string }>({ entry_id: stored.id, name: "body" });
         assert.equal(body?.content, "publisher home");
     } finally {
         globalThis.fetch = originalFetch;
@@ -286,18 +285,18 @@ test("entry(content:null) fetches through the guarded sink — live materializes
         await quiesceExecs(schemes);
 
         // The LIVE url: content:null drove a fetch through the sink → { body, mimetype } → the entry materialized.
-        const live = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number; scheme: string }>({ pathname: "/example.org/live" });
+        const live = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({ pathname: "/example.org/live" });
         assert.ok(live !== undefined, "content:null triggered the fetch and the live page materialized (authority folded)");
         assert.equal(live.scheme, "https");
         // A fetched html page stores its readable projection as the decisive text/markdown body (what READ serves).
-        const body = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
+        const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
         assert.equal(body?.mimetype, "text/markdown", "the fetched html projected to the decisive markdown body");
         assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
         assert.equal(browserFallbacks, 0, "a useful byte-response projection never invokes browser rendering");
 
         // The unavailable URL: the fake returned null, so the sink rejected and no HTTP entry materialized.
         // Search discovery membership is independently preserved by the search executor (#596).
-        const dead = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/example.org/dead" });
+        const dead = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/dead" });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
@@ -326,9 +325,9 @@ test("#596: an empty byte-response projection renders once, then stores only use
         });
         await quiesceExecs(schemes);
 
-        const live = await (db.test_entries_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/example.org/live" });
+        const live = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/live" });
         assert.ok(live !== undefined);
-        const body = await (db.test_get_channel as PrepMethod).get<{ content: string; mimetype: string }>({
+        const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({
             entry_id: live.id, name: "body",
         });
         assert.equal(browserFallbacks, 1);

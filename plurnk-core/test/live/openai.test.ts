@@ -8,7 +8,6 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop, seedEntry } from "../_live-harness.ts";
 
 test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes with it", async () => {
@@ -26,7 +25,7 @@ test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes w
 
         console.log(`\n=== multi-turn run (${turnIds.length} turns, final ${finalStatus}) ===`);
         for (const [i, turnId] of turnIds.entries()) {
-            const turn = await (s.db.test_get_turn as PrepMethod).get<{ status: number; packet: string; usage_completion: number }>({ id: turnId });
+            const turn = await s.db.test_get_turn.get<{ status: number; packet: string; usage_completion: number }>({ id: turnId });
             const packet = JSON.parse(turn?.packet ?? "{}") as { assistant: { content: string } };
             console.log(`\n--- turn ${i + 1} (status ${turn?.status}, ${turn?.usage_completion} tokens) ---`);
             console.log(packet.assistant.content);
@@ -51,7 +50,7 @@ test("live OpenAI: a single-shot store-and-reply terminates cleanly", async () =
         // The answer was stored where the prompt asked. Use the unbounded pathname query —
         // test_parser_entries_first is a LIMIT-1 helper (parser_roundtrip's single-entry world)
         // and against a multi-entry workspace DB only ever returns the first-inserted doc.
-        const pathnames = (await (s.db.test_parser_pathnames as PrepMethod).all<{ pathname: string }>()).map((e) => e.pathname);
+        const pathnames = (await s.db.test_parser_pathnames.all<{ pathname: string }>()).map((e) => e.pathname);
         assert.ok(
             pathnames.some((p) => /france|capital/.test(p)),
             `the answer was stored under worker:///france/capital; got ${JSON.stringify(pathnames)}`,

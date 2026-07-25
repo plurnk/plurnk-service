@@ -2,7 +2,7 @@
 // (signal, params, lineMarker, tx, rx) so the client receives
 // structured values, not opaque strings.
 
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { Db } from "../core/Db.ts";
 
 // Every log entry carries its logical coordinate — loop_seq/turn_seq/sequence — so the
 // client renders ordering without re-deriving it from DB keys. §methods-log-coordinate
@@ -48,7 +48,7 @@ export default class LogEntry {
     }
 
     static async fetchLogEntry(db: Db, id: number): Promise<LogEntryWire> {
-        const row = await (db.log_entry_by_id as PrepMethod).get<Record<string, unknown>>({ id });
+        const row = await db.log_entry_by_id.get<Record<string, unknown>>({ id });
         if (row === undefined) throw new Error(`log_entries row ${id} not found`);
         return {
             id: row.id as number,

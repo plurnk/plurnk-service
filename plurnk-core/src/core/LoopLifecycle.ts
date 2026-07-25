@@ -1,4 +1,4 @@
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 
 export interface CancelledLoop {
     loopId: number;
@@ -18,14 +18,14 @@ export default class LoopLifecycle {
     }
 
     async park(loopId: number, message: string): Promise<boolean> {
-        return (await (this.#db.lifecycle_park_loop as PrepMethod).get<{ id: number }>({
+        return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
             loop_id: loopId,
             message,
         })) !== undefined;
     }
 
     async wake(loopId: number): Promise<boolean> {
-        return (await (this.#db.lifecycle_wake_loop as PrepMethod).get<{ id: number }>({
+        return (await this.#db.lifecycle_wake_loop.get<{ id: number }>({
             loop_id: loopId,
         })) !== undefined;
     }
@@ -36,7 +36,7 @@ export default class LoopLifecycle {
         message: string | null,
         terminatedBy: "cancel" | null = null,
     ): Promise<boolean> {
-        return (await (this.#db.lifecycle_finish_loop as PrepMethod).get<{ id: number }>({
+        return (await this.#db.lifecycle_finish_loop.get<{ id: number }>({
             loop_id: loopId,
             status,
             message,
@@ -45,7 +45,7 @@ export default class LoopLifecycle {
     }
 
     async status(loopId: number): Promise<number> {
-        const row = await (this.#db.lifecycle_loop_status as PrepMethod).get<{ status: number }>({
+        const row = await this.#db.lifecycle_loop_status.get<{ status: number }>({
             loop_id: loopId,
         });
         if (row === undefined) throw new Error(`loop ${loopId} does not exist`);
@@ -53,7 +53,7 @@ export default class LoopLifecycle {
     }
 
     async turnIds(loopId: number): Promise<number[]> {
-        const rows = await (this.#db.lifecycle_loop_turns as PrepMethod).all<{ id: number }>({
+        const rows = await this.#db.lifecycle_loop_turns.all<{ id: number }>({
             loop_id: loopId,
         });
         return rows.map(({ id }) => id);
@@ -65,11 +65,11 @@ export default class LoopLifecycle {
             include_root: includeRoot ? 1 : 0,
             message: reason.slice(0, 500),
         };
-        const workers = await (this.#db.lifecycle_worker_tree as PrepMethod).all<{ worker_id: number }>({
+        const workers = await this.#db.lifecycle_worker_tree.all<{ worker_id: number }>({
             worker_id: params.worker_id,
             include_root: params.include_root,
         });
-        const loops = await (this.#db.lifecycle_cancel_worker_tree as PrepMethod).all<{
+        const loops = await this.#db.lifecycle_cancel_worker_tree.all<{
             loop_id: number;
             worker_id: number;
         }>(params);

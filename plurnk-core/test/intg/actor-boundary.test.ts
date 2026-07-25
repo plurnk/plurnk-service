@@ -15,7 +15,6 @@ import { join } from "node:path";
 import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
@@ -71,7 +70,7 @@ test("a packet renders one worker's log; a sibling worker's log is absent", asyn
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/from-a.md"), "a"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/from-b.md"), "b"), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // run A's packet is rendered from run A's log alone.
-        const packetA = await (db.engine_render_log as PrepMethod).all<{ pathname: string }>({ worker_id: a.workerId });
+        const packetA = await db.engine_render_log.all<{ pathname: string }>({ worker_id: a.workerId });
         assert.ok(packetA.some((r) => r.pathname.includes("from-a")), "run A's own log renders in its packet");
         assert.ok(packetA.every((r) => !r.pathname.includes("from-b")), "the sibling run B's log never enters run A's packet — invisibility is by run, no origin filter");
     } finally { db.close(); }
@@ -88,7 +87,7 @@ test("origin is attribution (provenance), never read to hide a row at render", a
         // A CLIENT-origin row living IN this worker must still render: the renderer
         // scopes by run, never hides by origin.
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/in-run.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client" });
-        const packet = await (db.engine_render_log as PrepMethod).all<{ pathname: string; origin: string }>({ worker_id: workerId });
+        const packet = await db.engine_render_log.all<{ pathname: string; origin: string }>({ worker_id: workerId });
         const row = packet.find((r) => r.pathname.includes("in-run"));
         assert.ok(row !== undefined, "an in-worker row renders regardless of origin");
         assert.equal(row!.origin, "client", "origin is carried as attribution, not consumed to hide the row");
@@ -116,21 +115,21 @@ test("an idle run wakes on an inject (voice), never on a delta (a sibling's shar
             // Run a loop to completion → the model worker is now IDLE (one loop).
             const ran = await runLoopToTerminal(ws, 2, { prompt: "first", flags: { auto: true } });
             const { loopId } = ran as { loopId: number };
-            const modelWorkerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
-            const loopsIdle = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
+            const loopsIdle = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
 
             // A DELTA: a client op.edit runs in the connection's OWN (client) run — a
             // sibling of the model worker (§connection-lifecycle) — touching a shared entry.
             // This is the environment door; it must NOT wake the idle model worker.
             await rpcCall(ws, 3, "op.edit", { target: "worker:///shared.md", content: "a sibling edit — ambient, not addressed to the model worker" });
-            const loopsAfterDelta = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            const loopsAfterDelta = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
             assert.equal(loopsAfterDelta, loopsIdle, "a delta (sibling shared-entry edit) does NOT wake the idle run — no new loop enqueued");
 
             // The VOICE door: inject a prompt into the same idle run → it wakes, a fresh
             // loop is enqueued on the model worker.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW — wake up" });
             assert.equal((injected.result as { action: string }).action, "enqueued_new_loop", "an inject (voice) wakes the idle run");
-            const loopsAfterInject = (await (db.test_count_loops_by_run as PrepMethod).get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            const loopsAfterInject = (await db.test_count_loops_by_run.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
             assert.equal(loopsAfterInject, loopsIdle + 1, "the inject enqueued exactly one new loop — the wake the delta did not cause");
         } finally { ws.close(); }
     });
@@ -157,23 +156,23 @@ test("runtime work is an ephemeral plurnk worker firing ops — the EDIT lands i
             try {
                 const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: "selfhost" })).result as { id: number }).id;
                 const { loopId } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number };
-                const modelWorkerId = (await (db.test_get_worker_id_by_loop as PrepMethod).get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
+                const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
 
                 // 1. The reserved plurnk worker exists, is distinct from the model worker, and OWNS the
                 //    materializing EDIT — an ordinary actor doing ops, not the engine writing privileged.
-                const plurnkWorker = (await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" }))!;
+                const plurnkWorker = (await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" }))!;
                 assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker was spawned to do the runtime work");
                 assert.notEqual(plurnkWorker.id, modelWorkerId, "the plurnk worker is a sibling actor, distinct from the model worker");
-                const plurnkLoop = await (db.test_get_loop_by_run as PrepMethod).get<{ id: number }>({ worker_id: plurnkWorker.id });
-                const plurnkLoopStatus = await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: plurnkLoop?.id });
+                const plurnkLoop = await db.test_get_loop_by_run.get<{ id: number }>({ worker_id: plurnkWorker.id });
+                const plurnkLoopStatus = await db.test_get_loop_status.get<{ status: number }>({ id: plurnkLoop?.id });
                 assert.equal(plurnkLoopStatus?.status, 200, "the runtime actor's ephemeral loop is terminal after its batch");
-                const plurnkLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
+                const plurnkLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
                 const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/SELFHOST.md");
                 assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk worker's log — an op, not a privileged engine pathway");
                 assert.equal(matEdit!.origin, "plurnk", "the op is attributed to the plurnk actor (origin=plurnk)");
 
                 // 2. The model worker's log NEVER carries that EDIT — isolation by worker holds; nothing privileged leaked in.
-                const modelLog = await (db.engine_render_log as PrepMethod).all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ worker_id: modelWorkerId });
+                const modelLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ worker_id: modelWorkerId });
                 assert.ok(!modelLog.some((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/SELFHOST.md"), "the model worker never sees the plurnk actor's EDIT — only the resulting entry, through the env door");
 
                 // 3. The environment door: the model worker reaches the entry the plurnk actor produced (a 200 READ),

@@ -1,7 +1,7 @@
 import { parsePath } from "@plurnk/plurnk-grammar";
 import type { PlurnkStatement, ParsedPath, LineMarker, PlurnkOp, ReadStatement, EditStatement } from "@plurnk/plurnk-grammar";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 import Owner from "./Owner.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -183,7 +183,7 @@ export default class Dispatcher {
     }
     async #workspaceRoot(workspaceId: number): Promise<string | null> {
         if (this.#rootCache.has(workspaceId)) return this.#rootCache.get(workspaceId) ?? null;
-        const row = await (this.#db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
+        const row = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;
         this.#rootCache.set(workspaceId, root);
         return root;
@@ -398,7 +398,7 @@ export default class Dispatcher {
             const flags = await this.#loadLoopFlags(loopId); // the proposal carries loop authority — §proposal-ownership-notification
             // #note10 — if the target diverged on disk this turn, the model's EDIT is based
             // on a stale read; flag it so a auto resolution rejects instead of clobbering.
-            const diverged = await (this.#db.engine_target_diverged_this_turn as PrepMethod).get<{ hit: number }>({ worker_id: workerId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
+            const diverged = await this.#db.engine_target_diverged_this_turn.get<{ hit: number }>({ worker_id: workerId, turn_id: turnId, scheme: target.scheme, pathname: target.pathname });
             const event: ProposalPendingEvent = {
                 logEntryId, workspaceId, workerId, loopId, turnId,
                 op: statement.op,
@@ -478,7 +478,7 @@ export default class Dispatcher {
     // ProposalPendingEvent.flags is constructed from this, and listeners
     // (Daemon broadcast, loop auto) share the result.
     async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
-        const row = await (this.#db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: loopId });
+        const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
         if (row === undefined) return DEFAULT_LOOP_FLAGS;
         try {
             const parsed = JSON.parse(row.flags) as Partial<LoopFlags>;
@@ -655,7 +655,7 @@ export default class Dispatcher {
 
         // A name is frozen per worker but reclaimable across time (§machine-processes-worker-origin): a LIVE
         // sister holding it is a 409 (legible, never a raw UNIQUE 500); a free/terminated name reclaims.
-        const live = await (this.#db.worker_live_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
+        const live = await this.#db.worker_live_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
         if (live !== undefined) return { status: 409, error: `worker '${name}' is already running` };
 
         if (statement.op === "FORK") {
@@ -665,7 +665,7 @@ export default class Dispatcher {
             return { status: 200, body: name };
         }
         // WORK — a fresh worker sister named <name>.
-        const row = await (this.#db.fork_insert_worker as PrepMethod).get<{ id: number }>({
+        const row = await this.#db.fork_insert_worker.get<{ id: number }>({
             workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin: ctx.writer,
         });
         if (row === undefined) throw new Error("run spawn: run insert returned no row");
@@ -757,7 +757,7 @@ export default class Dispatcher {
             if (name === "") return { status: 400, error: "worker:// kill requires a worker name or ~ (worker://<name>)" };
             let workerId = ctx.workerId;
             if (name !== "~") {
-                const row = await (this.#db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
+                const row = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
                 if (row === undefined) return { status: 404, error: `worker://${name} not found in this workspace` };
                 workerId = row.id;
             }
@@ -947,7 +947,7 @@ export default class Dispatcher {
         // — id/subtype/blobs come from the wire, absent when the turn had none.
         reasoningItems?: ReadonlyArray<{ id: string | null; subtype: string; encrypted: ReadonlyArray<{ data: string; format: string | null }> }>;
     }): Promise<number> {
-        const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
+        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin, source: null, op: "model", suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
@@ -959,7 +959,7 @@ export default class Dispatcher {
             attrs: reasoningItems !== undefined && reasoningItems.length > 0 ? JSON.stringify({ reasoning: reasoningItems }) : "{}",
         });
         if (row === undefined) throw new Error("Dispatcher.writeModelEntry: insert returned no row");
-        if (folded) await (this.#db.engine_fold_log_entry as PrepMethod).run({ id: row.id });
+        if (folded) await this.#db.engine_fold_log_entry.run({ id: row.id });
         return row.id;
     }
 
@@ -1069,10 +1069,10 @@ export default class Dispatcher {
     // discarded; 499 discards BY STATED INTENT and is never gated.
     async #pendingSet(workerId: number, turnId: number): Promise<string[]> {
         const pending: string[] = [];
-        const openSubs = await (this.#db.find_open_subscriptions_for_worker as PrepMethod).all<{ id: number }>({ worker_id: workerId });
+        const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
         if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("surviving streams");
-        const liveChild = await (this.#db.engine_worker_has_live_child as PrepMethod).get<{ live: number }>({ worker_id: workerId });
+        const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("surviving workers");
         const observations = await this.#pendingObservations(workerId, turnId);
         if (observations.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
@@ -1093,10 +1093,10 @@ export default class Dispatcher {
         childTerminations: boolean;
     }> {
         const [retrievals, streamTermination, childTermination] = await Promise.all([
-            (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId }),
-            (this.#db.engine_worker_has_undelivered_stream_term as PrepMethod)
+            this.#db.engine_turn_retrievals.all<{ id: number }>({ turn_id: turnId }),
+            this.#db.engine_worker_has_undelivered_stream_term
                 .get<{ pending: number }>({ worker_id: workerId }),
-            (this.#db.engine_worker_has_undelivered_child_term as PrepMethod)
+            this.#db.engine_worker_has_undelivered_child_term
                 .get<{ pending: number }>({ worker_id: workerId, turn_id: turnId }),
         ]);
         return {
@@ -1109,11 +1109,11 @@ export default class Dispatcher {
     // J — a live obligation to WAIT on: a spawned child or an open stream (NOT retrievals, which land
     // next turn regardless). The wait-side twin of #pendingSet's stream+child legs (§wait-obligation-matrix).
     async #hasLiveWork(workerId: number): Promise<boolean> {
-        const openSubs = await (this.#db.find_open_subscriptions_for_worker as PrepMethod).all<{ id: number }>({ worker_id: workerId });
+        const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
         if (openSubs.length > 0) return true;
         const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
         if (execHandler?.hasActiveSpawns?.(workerId) === true) return true;
-        const liveChild = await (this.#db.engine_worker_has_live_child as PrepMethod).get<{ live: number }>({ worker_id: workerId });
+        const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         return liveChild !== undefined;
     }
 
@@ -1209,7 +1209,7 @@ export default class Dispatcher {
             // packet, so concluding over them is concluding blind. Refused 409; next turn, the
             // errors in-log and weighed, [200] stands. [499] below is never gated — declaring
             // failure IS weighing it.
-            const failedRows = await (this.#db.engine_turn_failures as PrepMethod).all<{ id: number }>({ turn_id: turnId });
+            const failedRows = await this.#db.engine_turn_failures.all<{ id: number }>({ turn_id: turnId });
             const failCount = failedRows.length + (ctx.turnParseErrors ?? 0);
             if (failCount > 0) {
                 return { status: 409, error: `Termination attempted despite ${failCount} failed operation(s) this turn. The errors land in your log next turn — weigh them, then conclude (or SEND[499] to abandon).` };
@@ -1255,7 +1255,7 @@ export default class Dispatcher {
     ): Promise<DispatchResult> {
         if (schemeName === null) return { status: 400 };
         if (statement.op === "SEND" && statement.signal === 499 && statement.target?.kind === "url") {
-            const entry = await (this.#db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+            const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
                 owner_id: await Owner.commonsId(this.#db, ctx.workspaceId),
                 scheme: schemeName,
@@ -1327,7 +1327,7 @@ export default class Dispatcher {
         // Runtime comes from statement.signal (EXEC's runtime slot), resolvable for failed execs
         // too; empty/absent = the default shell.
         if (statement.op === "EXEC") {
-            const seqs = await (this.#db.engine_loop_turn_seqs as PrepMethod).get<{ loop_seq: number; turn_seq: number }>({
+            const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
                 loop_id: loopId, turn_id: turnId,
             });
             if (seqs === undefined) throw new Error(`Dispatcher.#writeLog: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
@@ -1347,7 +1347,7 @@ export default class Dispatcher {
         const attrs = JSON.stringify(attrsObj);
         const txJson = JSON.stringify(statement);
         const rxJson = JSON.stringify(result);
-        const row = await (this.#db.engine_insert_log_entry as PrepMethod).get<{ id: number }>({
+        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId,
             loop_id: loopId,
             turn_id: turnId,

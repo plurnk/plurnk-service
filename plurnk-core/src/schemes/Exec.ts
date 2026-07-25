@@ -6,7 +6,6 @@ import type { Executor } from "../core/ExecutorRegistry.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
-import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
@@ -207,7 +206,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // the program/data-source the executor runs (body = stdin). A stat-miss falls to the file arm so the
         // runtime reports its own not-found, never a dispatch 400. cwd otherwise = the workspace workspace
         // (project_root) — the directory File writes to, and what a data-source target resolves against.
-        const workspaceRow = await (core.db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: core.workspaceId });
+        const workspaceRow = await core.db.envelope_get_workspace.get<{ project_root: string | null }>({ id: core.workspaceId });
         const projectRoot = workspaceRow?.project_root ?? null;
         const localTarget = localPathFromTarget(statement.target);
         let routedTarget = localTarget;
@@ -511,17 +510,17 @@ export default class Exec extends CoreSchemeAdapterBase {
                 }
                 const written = await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, parsed.scheme);
                 if (narration === null) {
-                    const run = await (db.envelope_get_worker_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
-                        ?? await (db.envelope_insert_worker as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk", origin: "plurnk" });
+                    const run = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
+                        ?? await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk", origin: "plurnk" });
                     if (run === undefined) throw new Error("entry(): plurnk worker resolution returned no row");
-                    const loop = await (db.envelope_insert_client_loop as PrepMethod).get<{ id: number }>({ worker_id: run.id });
+                    const loop = await db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: run.id });
                     if (loop === undefined) throw new Error("entry(): loop insert returned no row");
-                    const seqRow = await (db.client_turn_next_sequence as PrepMethod).get<{ next: number }>({ loop_id: loop.id });
-                    const turn = await (db.client_turn_insert as PrepMethod).get<{ id: number }>({ loop_id: loop.id, sequence: seqRow?.next ?? 1, packet: "{}" });
+                    const seqRow = await db.client_turn_next_sequence.get<{ next: number }>({ loop_id: loop.id });
+                    const turn = await db.client_turn_insert.get<{ id: number }>({ loop_id: loop.id, sequence: seqRow?.next ?? 1, packet: "{}" });
                     if (turn === undefined) throw new Error("entry(): turn insert returned no row");
                     narration = { workerId: run.id, loopId: loop.id, turnId: turn.id, seq: 1 };
                 }
-                await (db.engine_insert_log_entry as PrepMethod).get({
+                await db.engine_insert_log_entry.get({
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence: narration.seq++,
                     // signal carries the tags — the SAME slot a model's EDIT[tags] uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
@@ -589,8 +588,8 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
             await ChannelWrite.closeSubscription(db, { subscriptionId, status: closeStatus });
 
-            const stdoutMeta = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
-            const stderrMeta = await (db.channel_meta as PrepMethod).get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });
+            const stdoutMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
+            const stderrMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });
             stdoutLength = stdoutMeta?.contentLength ?? 0;
             stderrLength = stderrMeta?.contentLength ?? 0;
         } finally {

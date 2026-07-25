@@ -5,7 +5,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { Paths } from "../../src/index.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import Owner from "../../src/core/Owner.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
@@ -122,7 +122,7 @@ const _viableWindow = Math.ceil((rulerCount(await readFile(Paths.instructionsSys
 export const viableWindow = (): number => _viableWindow;
 
 export const insertWorkspace = async (db: Db, name: string): Promise<number> => {
-    const row = await (db.test_insert_workspace as PrepMethod).get<{ id: number }>({ name });
+    const row = await db.test_insert_workspace.get<{ id: number }>({ name });
     if (row === undefined) throw new Error("insertWorkspace: insert returned no row");
     await Owner.commonsId(db, row.id); // {§entry-owner} — the workspace's commons row, eagerly (seeds' owner subselects resolve)
     return row.id;
@@ -130,7 +130,7 @@ export const insertWorkspace = async (db: Db, name: string): Promise<number> => 
 
 let workerCounter = 0;
 export const insertWorker = async (db: Db, workspaceId: number, parentWorkerId: number | null = null, name?: string): Promise<number> => {
-    const row = await (db.test_insert_worker as PrepMethod).get<{ id: number }>({
+    const row = await db.test_insert_worker.get<{ id: number }>({
         workspace_id: workspaceId, name: name ?? `run-test-${++workerCounter}-${Math.random().toString(36).slice(2, 8)}`, parent_worker_id: parentWorkerId,
     });
     if (row === undefined) throw new Error("insertWorker: insert returned no row");
@@ -138,7 +138,7 @@ export const insertWorker = async (db: Db, workspaceId: number, parentWorkerId: 
 };
 
 export const insertLoop = async (db: Db, workerId: number, sequence: number, prompt: string = ""): Promise<number> => {
-    const row = await (db.test_insert_loop as PrepMethod).get<{ id: number }>({
+    const row = await db.test_insert_loop.get<{ id: number }>({
         worker_id: workerId, sequence, prompt,
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
@@ -178,12 +178,12 @@ export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
 // workspace.create; tests that build workspaces piecemeal root them here — a direct UPDATE plus the
 // same creation-time membership resolve createClientEnvelope performs).
 export const rootWorkspace = async (db: Db, workspaceId: number, root: string): Promise<void> => {
-    await (db.test_set_session_root as PrepMethod).run({ id: workspaceId, project_root: root });
+    await db.test_set_session_root.run({ id: workspaceId, project_root: root });
     await GitMembership.resolveGitMembership(db, workspaceId, undefined);
 };
 
 export const insertTurn = async (db: Db, loopId: number, sequence: number, status: number = 200): Promise<number> => {
-    const row = await (db.test_insert_turn as PrepMethod).get<{ id: number }>({
+    const row = await db.test_insert_turn.get<{ id: number }>({
         loop_id: loopId, sequence, status, packet: MIN_PACKET,
     });
     if (row === undefined) throw new Error("insertTurn: insert returned no row");
@@ -219,14 +219,14 @@ export const seedEntryWithChannel = async (
         state?: "static" | "active" | "closed" | "errored";
     },
 ): Promise<number> => {
-    const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
+    const entry = await db.test_seed_entry_session.get<{ id: number }>({
         workspace_id: opts.workspaceId,
         owner_id: opts.ownerId ?? await Owner.commonsId(db, opts.workspaceId),
         scheme: opts.scheme ?? "worker",
         pathname: opts.pathname ?? "/x",
     });
     if (entry === undefined) throw new Error("seedEntryWithChannel: insert returned no row");
-    await (db.test_seed_channel as PrepMethod).run({
+    await db.test_seed_channel.run({
         entry_id: entry.id,
         name: opts.channel ?? "body",
         content: opts.content ?? "",

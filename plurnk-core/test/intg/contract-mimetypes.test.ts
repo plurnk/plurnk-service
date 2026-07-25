@@ -27,7 +27,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Log from "../../src/schemes/Log.ts";
 import File from "../../src/schemes/File.ts";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn,
@@ -130,12 +130,12 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
 
         // Seed a two-channel entry directly (production Known is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
-        const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
+        const entry = await db.test_seed_entry_session.get<{ id: number }>({
             workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/multi",
         });
         const entryId = entry!.id;
-        await (db.test_seed_channel as PrepMethod).run({ entry_id: entryId, name: "body", content: "keep me", mimetype: "text/plain", state: "static" });
-        await (db.test_seed_channel as PrepMethod).run({ entry_id: entryId, name: "summary", content: "delete me", mimetype: "text/plain", state: "static" });
+        await db.test_seed_channel.run({ entry_id: entryId, name: "body", content: "keep me", mimetype: "text/plain", state: "static" });
+        await db.test_seed_channel.run({ entry_id: entryId, name: "summary", content: "delete me", mimetype: "text/plain", state: "static" });
 
         const r = await engine.dispatch({
             statement: sendStmt(410, urlPath("worker", "/multi", "summary")) as SendStatement,
@@ -144,13 +144,13 @@ test("SEND[410](path#fragment) deletes only the named channel; siblings remain (
         assert.equal(r.status, 200, "410 on an existing channel succeeds");
 
         // Entry row survives.
-        const stillThere = await (db.test_get_entry_id_by_pathname as PrepMethod).get<{ id: number }>({ pathname: "/multi" });
+        const stillThere = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/multi" });
         assert.ok(stillThere !== undefined, "entry row remains — fragment delete is channel-scoped");
         // Named channel is gone.
-        const summary = await (db.test_get_channel as PrepMethod).get<{ name: string }>({ entry_id: entryId, name: "summary" });
+        const summary = await db.test_get_channel.get<{ name: string }>({ entry_id: entryId, name: "summary" });
         assert.equal(summary, undefined, "the named #summary channel was deleted");
         // Sibling channel untouched.
-        const body = await (db.test_get_channel as PrepMethod).get<{ name: string; content: string }>({ entry_id: entryId, name: "body" });
+        const body = await db.test_get_channel.get<{ name: string; content: string }>({ entry_id: entryId, name: "body" });
         assert.ok(body !== undefined, "sibling #body channel survives");
         assert.equal(body?.content, "keep me", "sibling content is intact — ONLY the named channel was removed");
     } finally { await db.close(); }
@@ -227,7 +227,7 @@ test("write resolves mimetype without firing the handler; render fires it", asyn
         );
         assert.equal(edited.status, 201, "write succeeded");
         // Confirm the write resolved the spy mimetype (detect ran, not the handler).
-        const channel = await (db.test_get_channel as PrepMethod).get<{ mimetype: string }>({ entry_id: edited.entryId, name: "body" });
+        const channel = await db.test_get_channel.get<{ mimetype: string }>({ entry_id: edited.entryId, name: "body" });
         assert.equal(channel?.mimetype, "text/x-spy", "write-time detect resolved the spy mimetype");
         assert.equal(previewCalls.length, 0, "§mimetype: scheme write did NOT invoke the handler's preview");
         assert.equal(queryCalls.length, 0, "§mimetype: scheme write did NOT invoke the handler's query");

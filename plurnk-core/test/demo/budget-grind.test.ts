@@ -14,7 +14,6 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
@@ -68,7 +67,7 @@ test("demo: budget grind — under a pinned ceiling, the model must curate to ke
             // fat emission is not a budget violation; only the request the grinder governs is.
             let peak = 0;
             for (const tid of turnIds) {
-                const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string }>({ id: tid });
+                const row = await s.db.test_get_turn.get<{ packet: string }>({ id: tid });
                 const p = JSON.parse(row?.packet ?? "{}") as { sections?: Array<{ tokens?: number }> };
                 peak = Math.max(peak, (p.sections ?? []).reduce((n, sec) => n + (sec.tokens ?? 0), 0));
             }

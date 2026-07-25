@@ -4,7 +4,6 @@ import Engine from "../../src/core/Engine.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 
 // #263 — loopUsage.contextTokens is the gauge's numerator: the LAST turn's prompt tokens (window
 // occupancy), distinct from the summed promptTokens (cost), which overcounts a growing context.
@@ -16,8 +15,8 @@ test("[#263] loopUsage.contextTokens is the last turn's prompt, not the summed t
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         // Two turns, a context that grows: prompts 100 then 250.
-        await (db.test_turns_insert_with_usage_prompt as PrepMethod).run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", val: 100 });
-        await (db.test_turns_insert_with_usage_prompt as PrepMethod).run({ loop_id: loopId, sequence: 2, status: 200, packet: "{}", val: 250 });
+        await db.test_turns_insert_with_usage_prompt.run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", val: 100 });
+        await db.test_turns_insert_with_usage_prompt.run({ loop_id: loopId, sequence: 2, status: 200, packet: "{}", val: 250 });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
         assert.equal(usage.promptTokens, 350, "promptTokens sums across turns (the cost figure)");
@@ -36,8 +35,8 @@ test("[#274] loopUsage.promptBudget is the last turn's model window — survives
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         // Turn 1 ran a 49k-window model; turn 2 switched to a 200k-window model.
-        await (db.test_turns_insert_with_prompt_and_context_size as PrepMethod).run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", prompt: 100, context_size: 49152 });
-        await (db.test_turns_insert_with_prompt_and_context_size as PrepMethod).run({ loop_id: loopId, sequence: 2, status: 200, packet: "{}", prompt: 250, context_size: 200000 });
+        await db.test_turns_insert_with_prompt_and_context_size.run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", prompt: 100, context_size: 49152 });
+        await db.test_turns_insert_with_prompt_and_context_size.run({ loop_id: loopId, sequence: 2, status: 200, packet: "{}", prompt: 250, context_size: 200000 });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
         assert.equal(usage.promptBudget, 200000, "promptBudget is the LAST turn's window — the switched-to model, not the stale default");
@@ -52,7 +51,7 @@ test("[#274] loopUsage.promptBudget is null when the provider reports no window"
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         // A windowless provider — usage_prompt set, usage_prompt_budget left NULL.
-        await (db.test_turns_insert_with_usage_prompt as PrepMethod).run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", val: 100 });
+        await db.test_turns_insert_with_usage_prompt.run({ loop_id: loopId, sequence: 1, status: 200, packet: "{}", val: 100 });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
         assert.equal(usage.promptBudget, null, "no window → null (the client omits the gauge)");

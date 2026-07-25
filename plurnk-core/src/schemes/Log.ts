@@ -1,6 +1,5 @@
 import type { FindStatement, FoldStatement, OpenStatement, ReadStatement } from "@plurnk/plurnk-grammar";
 import { LineMarkerOps } from "../content/index.ts";
-import type { PrepMethod } from "../core/Db.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
@@ -108,7 +107,7 @@ export default class Log extends CoreSchemeAdapterBase {
         const coord = parseCoordinate(pathname);
         if (coord === null) return { status: 400, content: null, mimetype: null };
 
-        const row = await (db.log_read_by_coordinate as PrepMethod).get<{
+        const row = await db.log_read_by_coordinate.get<{
             op: string;
             scheme: string | null;
             pathname: string | null;
@@ -151,8 +150,8 @@ export default class Log extends CoreSchemeAdapterBase {
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
         type Candidate = { coordinate: string; op: string; rx: string; mimetype_rx: string; tokens: number };
         const rows = tags.length > 0
-            ? await (db.log_find_candidates_tagged as PrepMethod).all<Candidate>({ worker_id: workerId, glob, tags: JSON.stringify(tags) })
-            : await (db.log_find_candidates as PrepMethod).all<Candidate>({ worker_id: workerId, glob });
+            ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, glob, tags: JSON.stringify(tags) })
+            : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, glob });
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({ key: r.coordinate, ...rxProjection(r.rx) }));
 
@@ -240,13 +239,13 @@ export default class Log extends CoreSchemeAdapterBase {
         const { db, workerId } = ctx;
         const coord = parseCoordinate(pathname);
         if (coord !== null && lineMarker === null) {
-            const row = await (db.log_id_by_coordinate as PrepMethod).get<{ id: number }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
+            const row = await db.log_id_by_coordinate.get<{ id: number }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
             return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
         }
         // §log-coordinate-hierarchy — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
-        const matched = await (db.log_match_coordinates as PrepMethod).all<{ id: number }>({ worker_id: workerId, glob });
+        const matched = await db.log_match_coordinates.all<{ id: number }>({ worker_id: workerId, glob });
         // Zero matches on a well-formed glob is a NO-OP SUCCESS, not an error (owner ruling): a
         // curation sweep that found nothing to curate steers nothing — 204 keeps it out of the
         // errors surface (>= 400), and the rx carries matched: 0, clearly shown.
@@ -270,7 +269,7 @@ export default class Log extends CoreSchemeAdapterBase {
         const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `malformed log target '${pathname}' — a coordinate (1/2/3), a prefix (1 or 1/2), or a glob (**/READ)` };
-        const matched = await (db.log_match_coordinates_tagged as PrepMethod).all<{ id: number }>({ worker_id: workerId, glob, tags: JSON.stringify(tags) });
+        const matched = await db.log_match_coordinates_tagged.all<{ id: number }>({ worker_id: workerId, glob, tags: JSON.stringify(tags) });
         if (matched.length === 0) return { status: 204, ids: [] };
         let selected = matched;
         if (statement.lineMarker !== null) {
@@ -291,7 +290,7 @@ export default class Log extends CoreSchemeAdapterBase {
             const rt = await this.#resolveByTags(statement, signal, ctx);
             if (rt.status === 204) return { status: 204, matched: 0 };
             if (rt.status !== 200) return { status: rt.status, ...(rt.error !== undefined ? { error: rt.error } : {}) };
-            for (const id of rt.ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded: 1 });
+            for (const id of rt.ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded: 1 });
             return { status: 200, matched: rt.ids.length };
         }
 
@@ -311,7 +310,7 @@ export default class Log extends CoreSchemeAdapterBase {
         if (expanded === 0) {
             const previewIds = new Set<number>();
             for (const id of r.ids) {
-                const row = await (ctx.db.log_row_target as PrepMethod).get<{ scheme: string | null; origin: string | null; op: string | null; loop_id: number | null }>({ id });
+                const row = await ctx.db.log_row_target.get<{ scheme: string | null; origin: string | null; op: string | null; loop_id: number | null }>({ id });
                 if (row?.scheme === "prompt" && row.origin === "plurnk" && row.op === "READ" && row.loop_id === ctx.loopId) previewIds.add(id);
             }
             if (previewIds.size > 0) {
@@ -319,12 +318,12 @@ export default class Log extends CoreSchemeAdapterBase {
                 if (ids.length === 0) return { status: 403, error: "Illegal attempt to FOLD the task preview. Use KILL if you want it removed." };
             }
         }
-        for (const id of ids) await (ctx.db.log_set_expanded_by_id as PrepMethod).run({ id, expanded });
+        for (const id of ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded });
         // §log-region-tagging — FOLD[tag] is the log's write-op: stamp the tags on the folded rows,
         // additively (§edit-tags-additive). Only the rows actually folded are tagged (a preview spared
         // above is neither folded nor tagged). OPEN with a signal never reaches here.
         if (expanded === 0 && signal.length > 0) {
-            for (const id of ids) for (const tag of signal) await (ctx.db.log_write_tag as PrepMethod).run({ log_entry_id: id, tag });
+            for (const id of ids) for (const tag of signal) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
         }
         return { status: 200, matched: ids.length };
     }
@@ -337,7 +336,7 @@ export default class Log extends CoreSchemeAdapterBase {
         const core = this.coreContext(ctx);
         const r = await this.#resolveIds(pathname.replace(/^\//, ""), null, core);
         if (r.status !== 200) return { status: r.status };
-        for (const id of r.ids) await (core.db.log_delete_by_id as PrepMethod).run({ id });
+        for (const id of r.ids) await core.db.log_delete_by_id.run({ id });
         return { status: 200 };
     }
 }

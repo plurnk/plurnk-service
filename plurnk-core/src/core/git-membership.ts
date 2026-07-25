@@ -33,7 +33,7 @@ import { readFile, glob, stat } from "node:fs/promises";
 import { resolve, relative, join, matchesGlob } from "node:path";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { MimetypeBinary } from "../content/index.ts";
-import type { Db, PrepMethod } from "./Db.ts";
+import type { Db } from "./Db.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import Owner from "./Owner.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
@@ -79,7 +79,7 @@ export default class GitMembership {
     // project_root for a workspace. NULL = headless (no membership). Read once per
     // resolution; the File scheme reads the same column for its own root.
     static async #loadWorkspaceRoot(db: Db, workspaceId: number): Promise<string | null> {
-        const row = await (db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: workspaceId });
+        const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         return row?.project_root ?? null;
     }
 
@@ -211,7 +211,7 @@ export default class GitMembership {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
         if (root === null) return null;   // headless — no disk surface to resolve
 
-        const constraints = await (db.crud_list_workspace_constraints as PrepMethod).all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
+        const constraints = await db.crud_list_workspace_constraints.all<{ effect: string; glob: string }>({ workspace_id: workspaceId });
         const hideGlobs = constraints.filter((c) => c.effect === "hide").map((c) => c.glob);
         const pickGlobs = constraints.filter((c) => c.effect === "pick").map((c) => c.glob);
         const viewGlobs = constraints.filter((c) => c.effect === "view").map((c) => c.glob);
@@ -270,15 +270,15 @@ export default class GitMembership {
         // Model-created ('client') members are never reclaimed.
         const commonsId = await Owner.commonsId(db, workspaceId);
         for (const pathname of desiredGit) {
-            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "git" });
+            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "git" });
         }
         for (const pathname of desiredPick) {
-            await (db.crud_register_workspace_member as PrepMethod).get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "constraint" });
+            await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "constraint" });
         }
-        const registered = await (db.crud_list_reconcilable_members as PrepMethod).all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
+        const registered = await db.crud_list_reconcilable_members.all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
         for (const m of registered) {
             if (!desiredSet.has(m.pathname)) {
-                await (db.crud_delete_entry as PrepMethod).run({ entry_id: m.id });
+                await db.crud_delete_entry.run({ entry_id: m.id });
             }
         }
         return desired;
@@ -369,7 +369,7 @@ export default class GitMembership {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
             throw err;
         }
-        const known = await (ctx.db.crud_get_member_sig as PrepMethod).get<{ id: number; synced_sig: string | null }>({
+        const known = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null }>({
             workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname,
         });
         if (known !== undefined && known.synced_sig === sig) return null;  // unchanged — the change-gate
@@ -380,7 +380,7 @@ export default class GitMembership {
             // class entry that READ-415s through readWorkspaceEntry's isBinaryMimetype
             // gate (#186), not a channel-less row that would read as 404.
             const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype } }, tags: [] }, ctx, "file");
-            if (r.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: r.entryId, synced_sig: sig });
+            if (r.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: r.entryId, synced_sig: sig });
             return null;  // binary bodies are empty markers — no text divergence to narrate
         }
         let buf: Buffer;
@@ -397,18 +397,18 @@ export default class GitMembership {
         // FTS'd/embedded/tokenized as text).
         if (buf.subarray(0, 8192).includes(0)) {
             const r = await EntryCrud.writeEntry(pathname, { channels: { body: { content: "", mimetype: "application/octet-stream" } }, tags: [] }, ctx, "file");
-            if (r.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: r.entryId, synced_sig: sig });
+            if (r.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: r.entryId, synced_sig: sig });
             return null;
         }
         const content = buf.toString("utf8");
         // §env-delta — capture an out-of-band disk change BEFORE the refresh overwrites
         // the entry: an existing body channel whose content differs from disk is an
         // ambient divergence (D5). writeEntry then refreshes the entry to disk truth.
-        const prior = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string }>({
+        const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
             workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname, channel: "body",
         });
         const result = await EntryCrud.writeEntry(pathname, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
-        if (result.entryId !== null) await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: result.entryId, synced_sig: sig });
+        if (result.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
         if (prior !== undefined && prior.content !== content && result.entryId !== null) {
             return { pathname, scheme: "file", entryId: result.entryId, channel: "body", before: prior.content, after: content };
         }

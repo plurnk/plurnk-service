@@ -1,7 +1,7 @@
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryCrud from "./_entry-crud.ts";
 import type { EditStatement, ReadStatement } from "@plurnk/plurnk-grammar";
-import type { Db, PrepMethod } from "../core/Db.ts";
+import type { Db } from "../core/Db.ts";
 import { decodePathParens } from "../core/path-decode.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
@@ -97,7 +97,7 @@ export default class EntryOps {
         }
 
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
-        const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
 
         // Non-default channel write requires the entry to exist (§channel-selection-fragment-on-nonexistent-404).
         if (existing === undefined && fragment !== null) {
@@ -113,7 +113,7 @@ export default class EntryOps {
 
         // 415 on binary entries (SPEC.md §op-invariants).
         if (existing !== undefined) {
-            const channel = await (db.ops_read_channel as PrepMethod).get<{ mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
+            const channel = await db.ops_read_channel.get<{ mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
             if (channel !== undefined && MimetypeBinary.isBinaryMimetype(channel.mimetype)) {
                 return { status: 415, entryId: existing.id, channel: targetChannel };
             }
@@ -126,7 +126,7 @@ export default class EntryOps {
         // surface diff in EDIT response so wrong-marker mistakes are visible).
         let originalContent = "";
         if (existing !== undefined) {
-            const channel = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
+            const channel = await db.ops_read_channel.get<{ content: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
             originalContent = channel?.content ?? "";
         }
 
@@ -167,7 +167,7 @@ export default class EntryOps {
             let addsTag = false;
             if (signalTags.length > 0) {
                 const have = new Set(
-                    (await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: existing.id })).map((r) => r.tag),
+                    (await db.crud_read_tags.all<{ tag: string }>({ entry_id: existing.id })).map((r) => r.tag),
                 );
                 addsTag = signalTags.some((t) => !have.has(t));
             }
@@ -177,7 +177,7 @@ export default class EntryOps {
         let entryId: number;
         let createdNow: boolean;
         if (existing === undefined) {
-            const row = await (db.crud_insert_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
+            const row = await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
             if (row === undefined) throw new Error("editWorkspaceEntry: insert returned no row");
             entryId = row.id;
             createdNow = true;
@@ -187,7 +187,7 @@ export default class EntryOps {
         }
 
         if (ctx.tokenize === undefined) throw new Error("editWorkspaceEntry: ctx.tokenize is required for token accounting");
-        await (db.ops_upsert_channel as PrepMethod).run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — §per-entry-channels-edit-writes-only-body
+        await db.ops_upsert_channel.run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — §per-entry-channels-edit-writes-only-body
         // NB: NO @graph derivation here — a scheme write resolves the mimetype
         // label but never invokes the mimetypes handler (§mimetype). The symbol index is
         // built engine-side at manifest-add (EntryManifest.buildManifestBody).
@@ -196,7 +196,7 @@ export default class EntryOps {
         for (const candidate of statements) {
             if (!Array.isArray(candidate.signal)) continue;
             for (const tag of candidate.signal) {
-                await (db.crud_write_tag as PrepMethod).run({ entry_id: entryId, tag });
+                await db.crud_write_tag.run({ entry_id: entryId, tag });
             }
         }
 
@@ -221,9 +221,9 @@ export default class EntryOps {
         const { db, workspaceId } = ctx;
         const pathname = EntryOps.#pathnameOf(statement);
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
-        const existing = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme: manifest.name, pathname });
+        const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme: manifest.name, pathname });
         if (existing === undefined) return { status: 404 };
-        await (db.crud_delete_entry as PrepMethod).run({ entry_id: existing.id });
+        await db.crud_delete_entry.run({ entry_id: existing.id });
         return { status: 200 };
     }
 
@@ -246,10 +246,10 @@ export default class EntryOps {
         // channel (the archive the decisive markdown body was projected from). A fragment still wins.
         let readChannel = targetChannel;
         if (fragment === null && statement.body !== null && statement.body.dialect === "xpath") {
-            const html = await (db.ops_read_channel as PrepMethod).get<{ content: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: "html" }, owner_id: ownerId });
+            const html = await db.ops_read_channel.get<{ content: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: "html" }, owner_id: ownerId });
             if (html !== undefined) readChannel = "html";
         }
-        const row = await (db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: readChannel }, owner_id: ownerId });
+        const row = await db.ops_read_channel.get<{ content: string; mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: readChannel }, owner_id: ownerId });
         // §read-read-404 + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (row === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel, error: `no entry at ${EntryManifest.toPath(scheme, pathname)}` };
@@ -261,9 +261,9 @@ export default class EntryOps {
         // `[tag]` filter: entry must have ALL requested tags. Mismatch = 404
         // (entry doesn't match the tag-scoped READ).
         if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
+            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
             if (entry === undefined) return { status: 404, content: null, mimetype: null, channel: targetChannel };
-            const tagRows = await (db.crud_read_tags as PrepMethod).all<{ tag: string }>({ entry_id: entry.id });
+            const tagRows = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });
             const have = new Set(tagRows.map((r) => r.tag));
             for (const want of statement.signal) {
                 if (!have.has(want)) return { status: 404, content: null, mimetype: null, channel: targetChannel };

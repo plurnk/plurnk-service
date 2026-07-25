@@ -5,12 +5,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { openMigrated } from "./_helpers.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 
 test("a migrated DB is stamped with the current schema version", async () => {
     const db = await openMigrated();
     try {
-        const row = await (db.test_schema_version as PrepMethod).get<{ v: number }>({});
+        const row = await db.test_schema_version.get<{ v: number }>({});
         assert.equal(row?.v, 5, "PRAGMA user_version carries the current migration stamp (v5: subscription publication selection) — external consumers gate on it");
     } finally { await db.close(); }
 });

@@ -5,7 +5,6 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-grammar";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 
 // These pin the TABULAR budget baseline; #440's default is the mermaid form (covered by [§budget-mermaid]).
@@ -30,7 +29,7 @@ test("the prompt ceiling derives from the provider window minus reserves — res
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const provider = new Mock({ contextWindow, responses: [response([sendStmt(200, "done")])] });
             const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-            return packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
+            return packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
         assert.match(await run(10000), /Token Ceiling 6500 /, "the provider window governs: 10000 − 3500 reserves");
         assert.match(await run(5000), /Token Ceiling 1500 /, "a narrower window: 5000 − 3500");
@@ -63,7 +62,7 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],
         });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { tokens: number; sections: Array<{ tokens: number }> };
         const budget = packetSection(packet, "budget");

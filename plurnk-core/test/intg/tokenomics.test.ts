@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import type { EditStatement, UrlPath, PlurnkStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -49,7 +48,7 @@ test("EDIT stores entry_channels.tokens from the model-agnostic ruler", async ()
         }) as { status: number; entryId: number | null };
         assert.equal(result.status, 201);
         assert.ok(result.entryId !== null);
-        const ch = await (db.tok_channel_tokens as PrepMethod).get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
+        const ch = await db.tok_channel_tokens.get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
         // The write-time stamp is the model-agnostic ruler (§tokenomics-agnostic-ruler): ceil(len/2).
         assert.equal(ch?.tokens, Math.ceil(content.length / 2));
         assert.ok((ch?.tokens ?? 0) > 0, "tokens populated at write, not the old hardcoded 0");
@@ -66,7 +65,7 @@ test("dispatched op stores log_entries.tokens from tx+rx", async () => {
             onDispatch: (id: number) => { logEntryId = id; },
         });
         assert.ok(logEntryId > 0, "a log entry was written");
-        const row = await (db.tok_log_tokens as PrepMethod).get<{ tokens: number }>({ id: logEntryId });
+        const row = await db.tok_log_tokens.get<{ tokens: number }>({ id: logEntryId });
         assert.ok((row?.tokens ?? 0) > 0, "log row tokens populated from tx+rx, not 0");
     } finally { await db.close(); }
 });
@@ -84,7 +83,7 @@ test("entry_channels.tokens honors an injected ruler override (test seam)", asyn
             statement: editStmt("/notes", "alpha beta gamma"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         }) as { status: number; entryId: number | null };
-        const ch = await (db.tok_channel_tokens as PrepMethod).get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
+        const ch = await db.tok_channel_tokens.get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
         assert.equal(ch?.tokens, 100, "the write stamp honors the injected tokenize (test seam); production injects the chars/2 ruler");
     } finally { await db.close(); }
 });
@@ -98,7 +97,7 @@ test("budget headline shows ceiling/usage/free, measured from the assembled pack
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const row = await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const budget = packetSection(JSON.parse(row!.packet), "budget");
         const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((?:<1|\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
@@ -122,7 +121,7 @@ test("budget groups render-weight by turn, oldest first", async () => {
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "a"), "alpha beta gamma delta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "b"), "epsilon zeta eta theta ".repeat(80)), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t3 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t3.turnId }))!.packet), "budget");
+        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t3.turnId }))!.packet), "budget");
         assert.match(budget, /Turns:\n\| turn \| tokens \|/, "per-turn table present");
         assert.match(budget, /\| 1\/1 \|/, "turn 1/1 row present");
         assert.match(budget, /\| 1\/2 \|/, "turn 1/2 row present");
@@ -146,7 +145,7 @@ test("budget lists the heaviest log entries by their log:/// handle, heaviest fi
         const heavy = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(60);
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "big"), heavy), anyEdit(anyUrl("worker", "small"), "x"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
+        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         assert.match(budget, /Heaviest items \(FOLD targets — folding reclaims their tokens\):\n\| item \| tokens \|/, "heaviest-items table present, verb attached — the lever is named where the targets are listed");
         // Every listed item is a log:/// handle (log items, not catalog entries), heaviest-first.
         const rows = budget.split("\n").filter((l) => /^\| log:\/\/\//.test(l));
@@ -168,7 +167,7 @@ test("budget headline shows usage as a percent of the ceiling", async () => {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
+        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((<1|\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `headline carries usage percent; got: ${budget}`);
         const ceiling = Number(m![1]); const usage = Number(m![2]); const pct = m![3];
@@ -204,7 +203,7 @@ test("the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floor
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
         // The STORED failure record renders the overshoot honestly — never clamped to hide the degenerate state.
-        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
+        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const m = budget.match(/Token Ceiling (\d+) · Token Usage (\d+) \((\d+)%\) · Tokens Free (\d+)/);
         assert.ok(m, `headline present; got: ${budget}`);
         const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);
@@ -226,7 +225,7 @@ test("a high-headroom window renders NO curation tables — headline only", asyn
         const reply = (ops: PlurnkStatement[]) => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops } }] });
         await engine.runTurn({ provider: reply([anyEdit(anyUrl("worker", "note"), "some content worth logging"), sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const t2 = await engine.runTurn({ provider: reply([sendStmt(200)]), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const budget = packetSection(JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
+        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet), "budget");
         assert.match(budget, /Token Ceiling \d+/, "the headline gauge always renders");
         assert.doesNotMatch(budget, /Heaviest items/, "no FOLD-target list at low occupancy");
         assert.doesNotMatch(budget, /Turns:/, "no per-turn table at low occupancy");

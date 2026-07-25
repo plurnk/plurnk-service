@@ -12,7 +12,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
@@ -30,7 +29,7 @@ test("scheme directory: the packet's `schemes` section is a terse directory belo
             messages: [{ role: "system", content: "PLURNK_MD" }, { role: "user", content: "go" }],
         });
 
-        const packet = JSON.parse((await (db.test_get_packet as PrepMethod).get<{ packet: string }>({ id: turnId }))!.packet);
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
         const definition = packetSection(packet, "definition");
         const schemes = packetSection(packet, "schemes");
 

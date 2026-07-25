@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Skill from "../../src/schemes/Skill.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, openStmt, foldStmt, fullReplace } from "./_dsl.ts";
 
@@ -18,7 +17,7 @@ test("Skill.edit: writes entry with scope='workspace' and scheme='skill'", async
     try {
         const r = await new Skill().edit(editStmt(urlPath("skill", "/shell/grep"), "find text in files using grep", ["shell", "search"]), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
         assert.equal(r.status, 201);
-        const entry = await (db.test_get_entry_by_id as PrepMethod).get<{ pathname: string }>({ id: r.entryId });
+        const entry = await db.test_get_entry_by_id.get<{ pathname: string }>({ id: r.entryId });
         assert.equal(entry?.pathname, "/shell/grep");
     } finally { await db.close(); }
 });
@@ -30,7 +29,7 @@ test("Skill: scheme isolation from known and unknown", async () => {
         const commons = new Worker();
         await skill.edit(editStmt(urlPath("skill", "/x"), "skill body"), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
         await commons.edit(editStmt(urlPath("worker", "/x"), "commons body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const rows = await (db.test_list_entry_schemes as PrepMethod).all<{ scheme: string }>();
+        const rows = await db.test_list_entry_schemes.all<{ scheme: string }>();
         assert.deepEqual(rows.map((r) => r.scheme).toSorted(), ["skill", "worker"], "same pathname, two schemes — scheme is part of the identity");
     } finally { await db.close(); }
 });

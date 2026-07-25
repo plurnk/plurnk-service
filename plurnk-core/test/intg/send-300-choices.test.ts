@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
@@ -14,7 +13,7 @@ import { sendStmt } from "./_dsl.ts";
 // affirmatively requests per workspace (settings.questions) — the enabled-path tests do exactly
 // what a real interactive client does.
 const enableQuestions = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number): Promise<void> => {
-    await (db.test_set_session_settings as PrepMethod).run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
+    await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
 };
 const withAsk = async <T>(fn: () => Promise<T>): Promise<T> => fn(); // enabled per-workspace now — wrapper retired in place
 
@@ -40,16 +39,16 @@ test("SEND[300] is a PROPOSAL — stop the world; the accept body IS the answer,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "deploy it" }],
         });
         await answered;
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "the loop CONTINUES — stop-the-world happened inside the turn, no park");
         assert.equal(r.status, 102, "the turn records a continue, never a 300 terminal");
-        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ op: string; status_rx: number; rx?: string }>({ turn_id: r.turnId });
+        const rows = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number; rx?: string }>({ turn_id: r.turnId });
         assert.equal(rows.find((row) => row.op === "SEND")?.status_rx, 200, "the resolved ask reads 200 — answered");
-        const attrs = await (db.test_get_log_entry_attrs_by_turn as PrepMethod).get<{ attrs: string }>({ turn_id: r.turnId, op: "SEND" });
+        const attrs = await db.test_get_log_entry_attrs_by_turn.get<{ attrs: string }>({ turn_id: r.turnId, op: "SEND" });
         const parsed = JSON.parse(attrs?.attrs ?? "{}") as { question?: string; choices?: string[] };
         assert.equal(parsed.question, "Which environment?", "attrs carry the question");
         assert.deepEqual(parsed.choices, ["production", "staging", "local"], "attrs carry the choice set — the client's chooser reads the loop/proposal it already renders");
-        const sendRow = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const sendRow = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         assert.match(sendRow.find((x) => x.status_rx === 200)?.rx ?? "", /staging/, "the ANSWER rides the ask's own rx — the model reads it next packet");
     } finally { await db.close(); }
 }); });
@@ -71,11 +70,11 @@ test("a bare [300] with no choices is an OPEN QUESTION — same proposal, never 
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const attrs = await (db.test_get_log_entry_attrs_by_turn as PrepMethod).get<{ attrs: string }>({ turn_id: r.turnId, op: "SEND" });
+        const attrs = await db.test_get_log_entry_attrs_by_turn.get<{ attrs: string }>({ turn_id: r.turnId, op: "SEND" });
         const parsed = JSON.parse(attrs?.attrs ?? "{}") as { question?: string; choices?: string[] };
         assert.equal(parsed.question, "What should the deploy tag be?", "the whole body is the question");
         assert.equal(parsed.choices, undefined, "no choices — the client renders free response only");
-        const sendRow = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const sendRow = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         assert.match(sendRow.find((x) => x.status_rx === 200)?.rx ?? "", /v2\.1\.0/, "the freeform answer rides the rx");
     } finally { await db.close(); }
 }); });
@@ -126,9 +125,9 @@ test("not enabled by default — a [300] without the client's request is refused
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "no park — nobody is watching to answer");
-        const rows = await (db.test_log_sequencees_by_turn as PrepMethod).all<{ op: string; status_rx: number }>({ turn_id: r.turnId });
+        const rows = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: r.turnId });
         assert.equal(rows.find((row) => row.op === "SEND")?.status_rx, 409, "the ask is refused with the self-decide steer");
     } finally { await db.close(); }
 });
@@ -137,7 +136,7 @@ test("settings.questions=true (the client's affirmative request) enables the wor
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `c300on-${crypto.randomUUID()}`);
-        await (db.test_set_session_settings as PrepMethod).run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
+        await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "ask");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -149,7 +148,7 @@ test("settings.questions=true (the client's affirmative request) enables the wor
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const answered = await (db.test_send_rows_for_run as PrepMethod).all<{ rx: string; status_rx: number }>({ worker_id: workerId });
+        const answered = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         assert.match(answered.find((x) => x.status_rx === 200)?.rx ?? "", /prod/, "the interactive workspace's ask STOPPED THE WORLD and got its answer — the client enabled it");
     } finally { await db.close(); }
 });
@@ -169,7 +168,7 @@ test("PLURNK_QUESTIONS=0 is a servicewide ceiling — the client's request canno
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
-        const loopStatus = (await (db.test_get_loop_status as PrepMethod).get<{ status: number }>({ id: loopId }))?.status;
+        const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "denied servicewide — even a requesting workspace cannot park an ask");
     } finally {
         await db.close();
