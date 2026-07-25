@@ -11,7 +11,17 @@ import type { DaemonSeam } from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
 import type { ToolResultMessage } from "./AguiPlus.ts";
 
-interface Thread { workerId: number; router: EventRouter; emit: (events: AguiEvent[]) => void; threadId: string; inputRunId: string; openStreams: Set<number>; deferredFinish: AguiEvent[] | null }
+interface Thread {
+    workerId: number;
+    loopId: number | null;
+    router: EventRouter;
+    emit: (events: AguiEvent[]) => void;
+    threadId: string;
+    inputRunId: string;
+    openStreams: Set<number>;
+    deferredFinish: AguiEvent[] | null;
+    pendingTerminations: unknown[];
+}
 
 // The engine needs only the run-flow slice of the seam (workspace-lifecycle and reads
 // belong to the Module edge above it) — declare exactly that.
@@ -38,6 +48,15 @@ export default class Portal {
             if (workspaceId === null) return; // global (workspace/created) handled out-of-band
             const entryId = (params as { entryId?: unknown }).entryId;
             for (const thread of this.#threads.get(workspaceId) ?? []) {
+                if (method === "loop/terminated") {
+                    const loopId = (params as { loopId?: unknown }).loopId;
+                    if (typeof loopId !== "number") continue;
+                    if (thread.loopId === null) {
+                        thread.pendingTerminations.push(params);
+                        continue;
+                    }
+                    if (thread.loopId !== loopId) continue;
+                }
                 if (method === "stream/event" && typeof entryId === "number") thread.openStreams.add(entryId);
                 if (method === "stream/concluded" && typeof entryId === "number") thread.openStreams.delete(entryId);
                 const out = thread.router.route(method, params);
@@ -70,7 +89,17 @@ export default class Portal {
     // at the drain).
     openThread(args: { workspaceId: number; workerId: number; threadId: string; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string }): unknown {
         const router = new EventRouter({ threadId: args.threadId, runId: args.inputRunId ?? String(args.workerId), modelWorkerId: args.modelWorkerId ?? null, workspaceId: args.workspaceId });
-        const t: Thread = { workerId: args.workerId, router, emit: args.emit, threadId: args.threadId, inputRunId: args.inputRunId ?? String(args.workerId), openStreams: new Set(), deferredFinish: null };
+        const t: Thread = {
+            workerId: args.workerId,
+            loopId: null,
+            router,
+            emit: args.emit,
+            threadId: args.threadId,
+            inputRunId: args.inputRunId ?? String(args.workerId),
+            openStreams: new Set(),
+            deferredFinish: null,
+            pendingTerminations: [],
+        };
         let set = this.#threads.get(args.workspaceId);
         if (set === undefined) { set = new Set(); this.#threads.set(args.workspaceId, set); }
         set.add(t);
@@ -94,15 +123,29 @@ export default class Portal {
 
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
-    async run(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean } }): Promise<{ loopId: number }> {
+    async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean } }): Promise<{ loopId: number }> {
         const pending = await this.#hitl.resurface(args.workspaceId);
         this.#fan(args.workspaceId, pending);
         const ack = await this.#seam.runLoop(args);
+        const bound = thread as Thread;
+        bound.loopId = ack.loopId;
+        const terminal = bound.pendingTerminations.find((params) => (params as { loopId?: unknown }).loopId === ack.loopId);
+        bound.pendingTerminations = [];
+        if (terminal !== undefined) {
+            const out = bound.router.route("loop/terminated", terminal);
+            if (out.length > 0) bound.emit(out);
+        }
         return { loopId: ack.loopId };
     }
 
     cancel(workerId: number): boolean { return this.#seam.cancelDrain(workerId); }
 
-    // A resume worker's tool-result → resolveProposal (true if it resolved a proposal).
-    resolve(message: ToolResultMessage): boolean { return this.#hitl.resolve(message); }
+    // A resume worker's tool-result binds this AG-UI run to the persisted
+    // proposal's continuation loop before resolving it.
+    async resolve(workspaceId: number, thread: unknown, message: ToolResultMessage): Promise<boolean> {
+        const resolution = await this.#hitl.resolve(workspaceId, message);
+        if (!resolution.resolved) return false;
+        (thread as Thread).loopId = resolution.loopId;
+        return true;
+    }
 }

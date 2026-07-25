@@ -482,10 +482,10 @@ BEGIN
 END;
 
 -- subscriptions
--- Subscription registry per SPEC §subscriptions. Exists ONLY for cancellation
--- routing (SEND[499] → lookup → scheme teardown). Closed rows persist
--- for forensics; partial unique index enforces one active subscription
--- per (run, entry).
+-- Durable subscription lifecycle per SPEC §subscriptions. The row records what
+-- the worker holds and routes cancellation to a separate process-local callable;
+-- it never serializes that callable. Closed rows persist for forensics; partial
+-- unique index enforces one active subscription per (worker, entry).
 CREATE TABLE IF NOT EXISTS subscriptions (
     id           INTEGER NOT NULL PRIMARY KEY,
     version      INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),

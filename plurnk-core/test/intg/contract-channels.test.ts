@@ -8,6 +8,8 @@ import Worker from "../../src/schemes/Worker.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, foldStmt } from "./_dsl.ts";
 
@@ -124,7 +126,10 @@ test("channels are keyed by (entry_id, name); same key collides, distinct names 
 test("the exec scheme transitions channel state across the connection lifecycle", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        const exec = new Exec();
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes });
+        engine.setExecutors(await testExecutors());
+        const exec = schemes.get("exec") as Exec;
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, writer: "model", executors: await testExecutors() });
         const pathname = "r-statelife";
 

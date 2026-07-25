@@ -5,6 +5,8 @@ import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../c
 import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
 import type { FindResult, MatchItem, Match } from "./_entry-find.ts";
+import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
+import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 
 type OpenFoldResult = { status: number; matched?: number; error?: string };
 
@@ -74,7 +76,7 @@ const paginate = <T>(items: T[], marker: { first: number; last: number | null })
     return { status: 200, items: items.slice(n - 1, m) };
 };
 
-export default class Log {
+export default class Log extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "log",
         channels: {},  // logs render through read(), not channel storage
@@ -92,8 +94,9 @@ export default class Log {
         example: "<<READ(log:///1/2/3)::READ",
     };
 
-    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<SchemeReadResult> {
-        const { db, workerId } = ctx;
+    async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<SchemeReadResult> {
+        const core = this.coreContext(ctx);
+        const { db, workerId } = core;
         if (statement.target === null) return { status: 400, content: null, mimetype: null };
         // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job (§log-region-tagging),
         // not a filter on a single-row read.
@@ -123,7 +126,7 @@ export default class Log {
             mimetype: underlyingMimetype,
             lineMarker: statement.lineMarker,
             body: statement.body,
-            mimetypes: ctx.mimetypes,
+            mimetypes: core.mimetypes,
         });
     }
 
@@ -133,8 +136,9 @@ export default class Log {
     // dialect works on log BY CONSTRUCTION and FIND(log)→READ(coordinate) composes like any scheme.
     // ~semantic stays 501 until the pump embeds log rows (epic S5); @graph is 501 (log rows carry
     // no symbol channels — an honest absence, not an exception).
-    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        const { db, workerId, mimetypes } = ctx;
+    async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
+        const core = this.coreContext(ctx);
+        const { db, workerId, mimetypes } = core;
         const empty = (status: number): FindResult => ({ status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] });
         if (statement.target === null) return empty(400);
         if (statement.body !== null && (statement.body.dialect === "semantic" || statement.body.dialect === "graph")) return empty(501);
@@ -212,13 +216,13 @@ export default class Log {
         return { status: 200, content: JSON.stringify(results), mimetype: "application/json", results, itemsTokenTotal, pathnames: seenPath.map((p) => `/${p}`), matches: fanMatches };
     }
 
-    async open(statement: OpenStatement, ctx: PlurnkSchemeContext): Promise<OpenFoldResult> {
-        return this.#setExpanded(statement, ctx, 1);
+    async open(statement: OpenStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
+        return this.#setExpanded(statement, this.coreContext(ctx), 1);
     }
 
     // FOLD toggles the expanded bit only — an active subscription stays alive. §subscriptions-fold-keeps-subscription
-    async fold(statement: FoldStatement, ctx: PlurnkSchemeContext): Promise<OpenFoldResult> {
-        return this.#setExpanded(statement, ctx, 0);
+    async fold(statement: FoldStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
+        return this.#setExpanded(statement, this.coreContext(ctx), 0);
     }
 
     // Resolve a log:/// target — a concrete coordinate, or a path-glob optionally paginated
@@ -321,10 +325,11 @@ export default class Log {
     // the only way to shed accumulated log rows in a long workspace (FOLD only collapses the
     // render; the row persists). Same resolution as OPEN/FOLD, DELETE instead of flip. KILL
     // carries no <L> result slot, so no pagination — a concrete coordinate or a path-glob.
-    async kill(pathname: string, _signal: number | null, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
-        const r = await this.#resolveIds(pathname.replace(/^\//, ""), null, ctx);
+    async kill(pathname: string, _signal: number | null, ctx: CoreSchemeCallContext): Promise<{ status: number; error?: string }> {
+        const core = this.coreContext(ctx);
+        const r = await this.#resolveIds(pathname.replace(/^\//, ""), null, core);
         if (r.status !== 200) return { status: r.status };
-        for (const id of r.ids) await (ctx.db.log_delete_by_id as PrepMethod).run({ id });
+        for (const id of r.ids) await (core.db.log_delete_by_id as PrepMethod).run({ id });
         return { status: 200 };
     }
 }

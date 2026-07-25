@@ -13,20 +13,20 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { SendStatement } from "@plurnk/plurnk-grammar";
+import type { ReadStatement } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+import type { SchemeCtx } from "@plurnk/plurnk-schemes";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
     insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors,
 } from "./_helpers.ts";
-import Owner from "../../src/core/Owner.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, sendStmt, execStmt } from "./_dsl.ts";
+import Owner from "../../src/core/Owner.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -47,17 +47,6 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
 
         const HANDLE = "fake-stream-handle-7";
         const teardownByHandle: string[] = [];
-        const teardownFns = new Map<string, () => void>([[HANDLE, () => teardownByHandle.push(HANDLE)]]);
-
-        const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "fakestream", pathname: "/feed/x",
-        });
-        if (entry === undefined) throw new Error("seed entry failed");
-        const entryId = entry.id;
-        await (db.test_seed_channel as PrepMethod).run({
-            entry_id: entryId, name: "data", content: "partial", mimetype: "text/plain", state: "active",
-        });
-        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "fakestream", handle: HANDLE });
 
         class FakeStream {
             static manifest = {
@@ -65,32 +54,46 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
                 category: "data" as const, scope: "workspace" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
-            async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number }> {
-                if (statement.signal !== 499) return { status: 501 };
+            async read(statement: ReadStatement, ctx: SchemeCtx): Promise<{ status: number }> {
                 const path = statement.target;
                 if (path === null || path.kind !== "url") return { status: 400 };
-                const e = await (ctx.db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-                    workspace_id: ctx.workspaceId, scheme: path.scheme, pathname: path.pathname,
+                await ctx.entries.write(path.pathname, {
+                    channels: { data: { content: "partial", mimetype: "text/plain", state: "active" } },
+                    tags: [],
                 });
-                if (e === undefined) return { status: 404 };
-                // Registry lookup — the whole point of §subscriptions: route by (run, entry) to scheme+handle.
-                const sub = await ChannelWrite.findActiveSubscription(ctx.db, { workerId: ctx.workerId, entryId: e.id });
-                if (sub === null) return { status: 404 };
-                if (sub.scheme !== "fakestream") return { status: 501 };
-                teardownFns.get(sub.handle)?.();
-                await ChannelWrite.closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
-                await ChannelWrite.setChannelState(ctx.db, { entryId: e.id, channel: "data", state: "closed" });
-                return { status: 200 };
+                await ctx.subscriptions.open(path.pathname, {
+                    cancel: async () => {
+                        teardownByHandle.push(HANDLE);
+                        await ctx.subscriptions.close("cancelled", "cancelled by SEND[499]");
+                    },
+                });
+                return { status: 102 };
             }
         }
 
         const schemes = new SchemeRegistry();
         schemes.register("fakestream", new FakeStream());
         const engine = new Engine({ db, schemes });
+        const opened = await engine.dispatch({
+            statement: {
+                op: "READ", suffix: "", signal: null, target: urlPath("fakestream", "/feed/x"),
+                lineMarker: null, body: null, position: { line: 1, column: 1 },
+            },
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+        });
+        assert.equal(opened.status, 102, "the public plugin opened its subscription");
+        const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
+            workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
+        });
+        if (entry === undefined) throw new Error("stream entry missing");
+        const entryId = entry.id;
+        const activeBefore = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
+        if (activeBefore === null) throw new Error("subscription missing");
+        const subId = activeBefore.id;
 
         const result = await engine.dispatch({
             statement: sendStmt(499, urlPath("fakestream", "/feed/x")),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
         });
 
         assert.equal(result.status, 200, "owning scheme accepted the cancel");

@@ -682,6 +682,6 @@ test("force-cancel via the SubscriptionHandle aborts the fetch → 499", async (
         assert.equal(r.status, 499);
         assert.equal(r.error?.kind, "aborted");
     });
-    assert.equal(inspect().closed?.reason, "error");
+    assert.equal(inspect().closed?.reason, "cancelled");
     assert.equal(inspect().closed?.outcome, "aborted");
 });

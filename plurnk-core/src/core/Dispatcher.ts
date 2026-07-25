@@ -16,13 +16,14 @@ import { decodePathParens } from "./path-decode.ts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import { DEFAULT_LOOP_FLAGS } from "./scheme-types.ts";
-import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
+import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify } from "./ChannelWrite.ts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryFind from "../schemes/_entry-find.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
+import type LiveSubscriptions from "./LiveSubscriptions.ts";
 
 // SPEC §scheme-surface: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -49,15 +50,13 @@ export type DispatchContext = {
 
 export type DispatchResult = { status: number; attrs?: object; [key: string]: unknown };
 
-import type { SchemeHandler } from "@plurnk/plurnk-schemes";
-// In-tree dispatch type (PlurnkSchemeContext/DispatchResult); the imported SchemeHandler
-// is the external contract (SchemeCtx) — #run borrows its op-key set, not its ctx shape.
-type SchemeMethod = (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult>;
+import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
+type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 
 interface SchemeWithCrud {
-    readEntry?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
-    writeEntry?: (pathname: string, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
-    deleteEntry?: (pathname: string, ctx: PlurnkSchemeContext) => Promise<DeleteEntryResult>;
+    readEntry?: (pathname: string, ctx: SchemeCtx) => Promise<ReadEntryResult>;
+    writeEntry?: (pathname: string, entry: EntryData, ctx: SchemeCtx) => Promise<WriteEntryResult>;
+    deleteEntry?: (pathname: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
 }
 
 // Op dispatch (§op-methods-op-dispatch): gates (writableBy, loop flags), the
@@ -85,8 +84,9 @@ export default class Dispatcher {
     // §join-blocking-collect (#354) — loops with a READ(worker://running-child) armed this turn; a bare
     // SEND[102] parks on it (blocking join). Engine-owned, twin of #parkDeadlines.
     #joinTargets: Set<number>;
+    #liveSubscriptions: LiveSubscriptions;
 
-    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, searchGate, parkDeadlines, joinTargets }: {
+    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -102,6 +102,7 @@ export default class Dispatcher {
         parkDeadlines?: Map<number, number>;
         searchGate?: import("./search-gate.ts").default;
         joinTargets?: Set<number>;
+        liveSubscriptions: LiveSubscriptions;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -118,21 +119,28 @@ export default class Dispatcher {
         this.#parkDeadlines = parkDeadlines ?? new Map();
         this.#searchGate = searchGate;
         this.#joinTargets = joinTargets ?? new Set();
+        this.#liveSubscriptions = liveSubscriptions;
     }
 
     // workspace → project_root, memoized: {§fs-namespace} fixes the root immutably at
     // workspace creation, so a process-lifetime cache can never go stale.
     #rootCache = new Map<number, string | null>();
 
-    #entryContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
+    #handlerContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
         const manifest = this.#schemes.manifestFor(scheme);
-        return manifest?.category !== "data" ? null : new SchemeCtxImpl(ctx, scheme, manifest);
+        return manifest === undefined ? null : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions);
+    }
+
+    #entryContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
+        const handlerCtx = this.#handlerContext(scheme, ctx);
+        return this.#schemes.manifestFor(scheme)?.category === "data" ? handlerCtx : null;
     }
 
     async #readEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
         const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
-        if (typeof handler?.readEntry === "function") return handler.readEntry(pathname, ctx);
-        const caps = this.#entryContext(scheme, ctx)?.entries;
+        const handlerCtx = this.#entryContext(scheme, ctx);
+        if (typeof handler?.readEntry === "function" && handlerCtx !== null) return handler.readEntry(pathname, handlerCtx);
+        const caps = handlerCtx?.entries;
         if (caps === undefined) return { status: 501, entry: null };
         const result = await caps.read(pathname, scheme === "prompt" ? "worker" : "commons");
         return {
@@ -145,16 +153,18 @@ export default class Dispatcher {
 
     async #writeEntry(scheme: string, pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
         const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
-        if (typeof handler?.writeEntry === "function") return handler.writeEntry(pathname, entry, ctx);
-        const caps = this.#entryContext(scheme, ctx)?.entries;
+        const handlerCtx = this.#entryContext(scheme, ctx);
+        if (typeof handler?.writeEntry === "function" && handlerCtx !== null) return handler.writeEntry(pathname, entry, handlerCtx);
+        const caps = handlerCtx?.entries;
         if (caps === undefined) return { status: 501, created: false, entryId: null };
         return caps.write(pathname, entry);
     }
 
     async #deleteEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
         const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
-        if (typeof handler?.deleteEntry === "function") return handler.deleteEntry(pathname, ctx);
-        const caps = this.#entryContext(scheme, ctx)?.entries;
+        const handlerCtx = this.#entryContext(scheme, ctx);
+        if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) return handler.deleteEntry(pathname, handlerCtx);
+        const caps = handlerCtx?.entries;
         return caps === undefined ? { status: 501 } : caps.delete(pathname);
     }
     async #workspaceRoot(workspaceId: number): Promise<string | null> {
@@ -292,12 +302,13 @@ export default class Dispatcher {
             if (effective.decision === "accept") {
                 const moveSource = (result.attrs as { moveSource?: { scheme: string; pathname: string } } | undefined)?.moveSource;
                 if (moveSource !== undefined) {
-                    const srcHandler = this.#schemes.get(moveSource.scheme) as (SchemeWithCrud & { applyResolution?: (a: { attrs: object }, c: PlurnkSchemeContext) => Promise<{ status: number }> }) | undefined;
+                    const srcHandler = this.#schemes.get(moveSource.scheme) as (SchemeWithCrud & { applyResolution?: (a: { attrs: object }, c: SchemeCtx) => Promise<{ status: number }> }) | undefined;
                     if (srcHandler !== undefined) {
                         const del = await this.#deleteEntry(moveSource.scheme, moveSource.pathname, schemeCtx);
                         // A host-effecting source-delete PROPOSES (202); the MOVE proposal already gated the whole
                         // create+kill, so apply the source-delete now — never raise a second review for one MOVE.
-                        if (del.status === 202 && del.attrs !== undefined && typeof srcHandler.applyResolution === "function") await srcHandler.applyResolution({ attrs: del.attrs }, schemeCtx);
+                        const sourceCtx = this.#handlerContext(moveSource.scheme, schemeCtx);
+                        if (del.status === 202 && del.attrs !== undefined && typeof srcHandler.applyResolution === "function" && sourceCtx !== null) await srcHandler.applyResolution({ attrs: del.attrs }, sourceCtx);
                     }
                 }
             }
@@ -604,11 +615,12 @@ export default class Dispatcher {
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. §exec
-        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: PlurnkSchemeContext, scheme?: string) => Promise<{ status: number; error?: string }> } | undefined;
+        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<{ status: number; error?: string }> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
-            return await killable.kill(pathnameFromPath(path), statement.signal, ctx, schemeName);
+            const handlerCtx = this.#handlerContext(schemeName, ctx);
+            return handlerCtx === null ? { status: 501 } : await killable.kill(pathnameFromPath(path), statement.signal, handlerCtx, schemeName);
         }
         if (schemeName === "worker") {
             // Entry-path present → KILL a worker-scope scratch ENTRY (delete it), self-only —
@@ -616,8 +628,9 @@ export default class Dispatcher {
             // entry; only the path-ABSENT form (worker://<name>) terminates the run-as-actor. §worker-scheme
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
-                const workerHandler = this.#schemes.get("worker") as { killEntry: (s: PlurnkStatement, c: PlurnkSchemeContext) => Promise<{ status: number; error?: string }> };
-                return await workerHandler.killEntry(statement, ctx);
+                const workerHandler = this.#schemes.get("worker") as { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<{ status: number; error?: string }> };
+                const handlerCtx = this.#handlerContext("worker", ctx);
+                return handlerCtx === null ? { status: 501 } : await workerHandler.killEntry(statement, handlerCtx);
             }
             // terminate — abort any worker by address; whoever holds it may end it.
             // `worker://self` = self. cancelWorker (→ Daemon.cancelDrain) aborts the worker's signal
@@ -1097,6 +1110,26 @@ export default class Dispatcher {
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
         if (schemeName === null) return { status: 400 };
+        if (statement.op === "SEND" && statement.signal === 499 && statement.target?.kind === "url") {
+            const entry = await (this.#db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+                workspace_id: ctx.workspaceId,
+                owner_id: await Owner.commonsId(this.#db, ctx.workspaceId),
+                scheme: schemeName,
+                pathname: pathnameFromPath(statement.target),
+            });
+            if (entry !== undefined) {
+                const subscription = await ChannelWrite.findActiveSubscription(this.#db, {
+                    workerId: ctx.workerId,
+                    entryId: entry.id,
+                });
+                if (subscription !== null && subscription.scheme === schemeName) {
+                    const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
+                    return cancelled
+                        ? { status: 200 }
+                        : { status: 500, error: `subscription ${subscription.id} is durable but has no live cancellation handle` };
+                }
+            }
+        }
         const handler = this.#schemes.get(schemeName) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
         if (handler === undefined) return { status: 501 };
         const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
@@ -1105,7 +1138,7 @@ export default class Dispatcher {
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         const manifest = this.#schemes.manifestFor(schemeName);
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-        return method.call(handler, statement, new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest));
+        return method.call(handler, statement, new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions));
     }
 
     // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/

@@ -312,7 +312,7 @@ export default class Http implements SchemeHandler {
         } catch (err) {
             const aborted = local.signal.aborted;
             const reason = aborted ? "aborted" : err instanceof Error ? err.message : String(err);
-            await ctx.subscriptions.close("error", reason);
+            await ctx.subscriptions.close(aborted ? "cancelled" : "error", reason);
             // 499 for client-cancelled, 502 for upstream/network/render failure.
             return Http.#bad(aborted ? 499 : 502, "http", aborted ? "aborted" : "fetch_failed", reason);
         } finally {

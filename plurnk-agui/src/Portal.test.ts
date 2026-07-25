@@ -34,9 +34,9 @@ test("a worker re-surfaces pending, drives the loop, then live events fan as AG-
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
 
-    const ack = await portal.run({ workspaceId: 3, workerId: 10, prompt: "go" });
+    const ack = await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "go" });
     assert.equal(ack.loopId, 77, "loop driven via runLoop");
     assert.deepEqual(m.workers[0], { workspaceId: 3, prompt: "go" });
     assert.ok(seen.some((e) => e.type === "TOOL_CALL_START"), "the pending stopped-world re-surfaced as a tool-call");
@@ -46,6 +46,21 @@ test("a worker re-surfaces pending, drives the loop, then live events fan as AG-
     m.fire(3, "log/entry", { entry: { id: 2, worker_id: 10, origin: "model", op: "SEND", coordinate: "1.1.1", tx: { body: "hi" }, turn_id: 1 } });
     assert.ok(seen.some((e) => e.type === "TEXT_MESSAGE_CONTENT"), "live speech rendered to the bound thread");
 
+    // Workspace topology is visible, but another loop's terminal must never
+    // conclude this AG-UI run.
+    seen.length = 0;
+    m.fire(3, "loop/terminated", {
+        loopId: 88, finalStatus: 499, hitMaxTurns: false, turnIds: [],
+        usage: { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
+    });
+    assert.equal(seen.length, 0, "a foreign loop terminal cannot end this run");
+
+    m.fire(3, "loop/terminated", {
+        loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1],
+        usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} },
+    });
+    assert.ok(seen.some((e) => e.type === "RUN_FINISHED"), "the bound loop terminal ends this run");
+
     // An event for an UNbound workspace is dropped, not misrouted.
     seen.length = 0;
     m.fire(99, "log/entry", { entry: { id: 3, worker_id: 1, origin: "model", op: "SEND", tx: { body: "x" } } });
@@ -54,18 +69,18 @@ test("a worker re-surfaces pending, drives the loop, then live events fan as AG-
 });
 
 test("a live proposal reaches the bound thread as a tool-call; resume resolves it; cancel cancels", async () => {
-    const m = mockSeam();
+    const m = mockSeam([{ logEntryId: 42, workerId: 10, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }]);
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
-    portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
 
     m.fire(3, "loop/proposal", { logEntryId: 42, op: "EDIT", target: { scheme: "file", pathname: "a.ts" }, body: "diff", attrs: {} });
     const start = seen.find((e) => e.type === "TOOL_CALL_START") as { toolCallId: string; toolCallName: string } | undefined;
     assert.equal(start?.toolCallId, "prop:42", "proposal fanned to the thread as a tool-call");
     assert.equal(start?.toolCallName, "request_approval");
 
-    assert.equal(portal.resolve({ toolCallId: "prop:42", content: JSON.stringify({ decision: "accept" }) }), true);
+    assert.equal(await portal.resolve(3, thread, { toolCallId: "prop:42", content: JSON.stringify({ decision: "accept" }) }), true);
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept" } });
 
     assert.equal(portal.cancel(10), true);

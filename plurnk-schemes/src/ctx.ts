@@ -179,7 +179,7 @@ export interface SubscriptionCaps {
     // Settle the subscription: set channel state (closed/errored), close the
     // registry row, and fire the worker wake ("stream concluded" + summary).
     // `outcome` carries the scheme's summary (exec: exit-code + byte-counts).
-    close(reason: "done" | "error", outcome?: string): Promise<void>;
+    close(reason: "done" | "error" | "cancelled", outcome?: string): Promise<void>;
 }
 
 // The force-cancel hook a streaming scheme hands to `open`. The engine's

@@ -13,6 +13,7 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
+import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
@@ -45,7 +46,7 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
 });
 
 export const makeHandlerCtx = (ctx: PlurnkSchemeContext, manifest: SchemeManifest): SchemeCtxImpl =>
-    new SchemeCtxImpl(ctx, manifest.name, manifest);
+    new SchemeCtxImpl(ctx, manifest.name, manifest, new LiveSubscriptions());
 
 // Boot-style executor registry for EXEC tests. Memoized — built once (discover
 // + probe the installed siblings), shared across the suite. Pass to

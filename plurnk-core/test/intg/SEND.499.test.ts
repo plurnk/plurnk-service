@@ -2,15 +2,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-grammar";
+import type { SendStatement, EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
-import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+import type { SchemeCtx } from "@plurnk/plurnk-schemes";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
-import Owner from "../../src/core/Owner.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -26,6 +25,11 @@ const sendStmt = (status: number, recipient: UrlPath | null = null, body: string
 
 const editStmt = (target: UrlPath, body: string | null = null): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
+    position: { line: 1, column: 1 },
+});
+
+const readStmt = (target: UrlPath): ReadStatement => ({
+    op: "READ", suffix: "", signal: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
@@ -72,20 +76,7 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const teardownCalls: string[] = [];
-        const handles = new Map<string, () => void>();
-
-        const entry = await (db.test_seed_entry_session as PrepMethod).get<{ id: number }>({
-            workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "fakestream", pathname: "/feed/x",
-        });
-        if (entry === undefined) throw new Error("seed entry failed");
-        const entryId = entry.id;
-        await (db.test_seed_channel as PrepMethod).run({
-            entry_id: entryId, name: "data", content: "", mimetype: "text/plain", state: "active",
-        });
-
         const handle = "fake-stream-1";
-        handles.set(handle, () => teardownCalls.push(handle));
-        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "fakestream", handle });
 
         class FakeStream {
             static manifest = {
@@ -93,32 +84,45 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                 category: "data" as const, scope: "workspace" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
-            async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number }> {
-                if (statement.signal !== 499) return { status: 501 };
+            async read(statement: ReadStatement, ctx: SchemeCtx): Promise<{ status: number }> {
                 const path = statement.target;
                 if (path === null || path.kind !== "url") return { status: 400 };
-                const e = await (ctx.db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
-                    workspace_id: ctx.workspaceId, scheme: path.scheme, pathname: path.pathname,
+                await ctx.entries.write(path.pathname, {
+                    channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
+                    tags: [],
                 });
-                if (e === undefined) return { status: 404 };
-                const sub = await ChannelWrite.findActiveSubscription(ctx.db, { workerId: ctx.workerId, entryId: e.id });
-                if (sub === null) return { status: 404 };
-                const cb = handles.get(sub.handle);
-                if (cb !== undefined) cb();
-                await ChannelWrite.closeSubscription(ctx.db, { subscriptionId: sub.id, status: 499 });
-                await ChannelWrite.setChannelState(ctx.db, { entryId: e.id, channel: "data", state: "closed" });
-                return { status: 200 };
+                await ctx.subscriptions.open(path.pathname, {
+                    cancel: async () => {
+                        teardownCalls.push(handle);
+                        await ctx.subscriptions.close("cancelled", "cancelled by SEND[499]");
+                    },
+                });
+                return { status: 102 };
             }
         }
 
         const schemes = new SchemeRegistry();
         schemes.register("fakestream", new FakeStream());
         const engine = new Engine({ db, schemes });
+        const opened = await engine.dispatch({
+            statement: readStmt(url("fakestream", "/feed/x")),
+            workspaceId, workerId, loopId, turnId,
+            sequence: 1, origin: "client",
+        });
+        assert.equal(opened.status, 102, "scheme opened the subscription through public capabilities");
+        const entry = await (db.test_get_entry_by_path as PrepMethod).get<{ id: number }>({
+            workspace_id: workspaceId, scheme: "fakestream", pathname: "/feed/x",
+        });
+        if (entry === undefined) throw new Error("stream entry missing");
+        const entryId = entry.id;
+        const activeBefore = await ChannelWrite.findActiveSubscription(db, { workerId, entryId });
+        if (activeBefore === null) throw new Error("subscription missing");
+        const subId = activeBefore.id;
 
         const result = await engine.dispatch({
             statement: sendStmt(499, url("fakestream", "/feed/x")),
             workspaceId, workerId, loopId, turnId,
-            sequence: 1, origin: "client",
+            sequence: 2, origin: "client",
         });
 
         assert.equal(result.status, 200, "scheme accepts cancel");

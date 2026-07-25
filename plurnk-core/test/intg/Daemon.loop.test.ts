@@ -122,10 +122,10 @@ test("loop.run streams log/entry notifications during execution", async () => {
             await rpcCall(ws, 1, "workspace.create", { name: "stream-test" });
             // loop.run returns immediately; wait for the loop to terminate so all its
             // log/entry notifications have fired before we inspect them.
-            await runLoopToTerminal(ws, 2, { prompt: "test" });
+            const terminal = await runLoopToTerminal(ws, 2, { prompt: "test" });
             await flush();
 
-            const captured = logEntries();
+            const captured = logEntries().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
             // §notifications / #198 — the turn-1 prompt-foist (system-origin EDIT, the
             // user's words entering the worker) broadcasts too, ahead of the model's ops —
             // and so does its auto-READ (§prompt-auto-read).
@@ -163,15 +163,17 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             await rpcCall(ws, 1, "workspace.create", { name: "term-test" });
             // loop.run returns immediately (100 accepted); the loop's outcome rides loop/terminated.
             const accept = await rpcCall(ws, 2, "loop.run", { prompt: "test" });
-            const ack = accept.result as { finalStatus: number; turnIds: number[] };
+            const ack = accept.result as { loopId: number; finalStatus: number; turnIds: number[] };
             assert.equal(ack.finalStatus, 100, "loop.run accepts immediately, not the terminal");
             assert.deepEqual(ack.turnIds, [], "the 100-ack carries turnIds — always present, never absent (#266)");
             const captured = await waitFor(
-                () => terminated() as Array<{ loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } }>,
+                () => terminated() as Array<{ workerId: number; loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);
             const params = captured[0];
+            assert.ok(params.workerId > 0, "terminal carries its owning workerId with the loopId");
+            assert.equal(params.loopId, ack.loopId, "terminal coordinate matches the acknowledged loop");
             assert.equal(params.finalStatus, 200);
             assert.equal(params.hitMaxTurns, false);
             // #197 — loop/terminated carries the loop's usage totals.

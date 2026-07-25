@@ -90,6 +90,83 @@ A mutating operation may pause as a proposal. Client-managed approval resumes
 the paused loop with an explicit decision. Loop automatic mode resolves eligible
 operations inside the daemon. These are separate paths with separate tests.
 
+## Lifecycle topology
+
+The durable history and the process that advances it are deliberately separate.
+A worker is durable history over a workspace; a drain is the process-local
+scheduler currently advancing that worker.
+
+```mermaid
+flowchart TD
+    W["Workspace<br/>durable shared world"] --> R["Worker<br/>durable private history"]
+    R --> L["Loop<br/>durable model work"]
+    R --> C["Child workers<br/>durable parent edges"]
+    R --> S["Subscription row + channels<br/>durable lifecycle and content"]
+    L --> T["Turns + log entries<br/>durable"]
+    L -. advanced by .-> D["Drain + cancellation scope<br/>process-local; one per worker"]
+    S -. torn down by .-> H["Cancellation callable<br/>process-local; one per open row"]
+
+    A["AG-UI run<br/>process-local client stream"] --> B["Exact workspace + worker + loop binding"]
+    B --> X["Matching terminal event<br/>controls the run"]
+    B --> O["Other workspace events<br/>ambient observation only"]
+```
+
+| State | Durable truth | Process-local owner |
+| --- | --- | --- |
+| Workspace and worker | Identity, shared entries, worker history and parent edge | None |
+| Queued loop (`100`) | Accepted work awaiting a drain | None until claimed |
+| Active loop (`102`) | Work claimed by a drain | Worker drain, provider call, cancellation scope |
+| Parked loop (`202`) | Suspended continuation awaiting a declared obligation | No drain; a child/subscription conclusion or directed prompt wakes it |
+| Terminal loop | Final status, message, usage, turns | None |
+| Open subscription | Entry, channels, owner worker, scheme, handle description | One registered cancellation callable |
+| Closed subscription | Close status (`200`, `499`, or failure), terminal channel state | None |
+| AG-UI run | No durable control authority | Portal thread bound to one exact worker and loop |
+
+```mermaid
+stateDiagram-v2
+    [*] --> Queued: prompt accepted
+    Queued --> Active: drain claims
+    Active --> Active: another turn
+    Active --> Parked: declared obligation remains
+    Parked --> Queued: obligation settles or prompt arrives
+    Active --> Terminal: conclude / fail / cancel
+    Parked --> Terminal: cancel
+    Terminal --> [*]
+```
+
+The durable subscription row answers *what the worker holds*. The live registry
+answers *how this daemon process tears it down*. Neither substitutes for the
+other. Likewise, workspace-scoped event fan-out is observational: it may show
+topology, streams, and sibling activity, but it cannot terminate or relabel an
+AG-UI run. Only the terminal event carrying that run's exact worker and loop
+coordinate controls it.
+
+### Restart recovery
+
+Boot reconciles durable state before opening client transports. Recovery is
+idempotent: interruption during recovery can be followed by the same recovery
+again without changing an already-settled result.
+
+The service first acquires an exclusive database-adjacent daemon lock. A live
+owner makes a second daemon or migration fail before either can mutate SQLite.
+The lock records the owning PID; a dead PID is a crash-stale claim and is
+replaced atomically, without a time-based lease guess. Read-only digest tooling
+does not acquire the writer lock.
+
+| Observed at boot | Recovery |
+| --- | --- |
+| Queued loop (`100`) | Preserve it and start its worker's drain. Accepted work is not lost. |
+| Active loop (`102`) | Settle `500` with an interruption message. Its drain and provider call vanished; replay could duplicate partially committed effects. |
+| Open subscription | Mark active channels errored and close the row `500`. Its callable owner cannot survive the process. |
+| Parked loop (`202`) with a live child obligation | Preserve it. The child's recovered drain or later conclusion supplies the wake edge. |
+| Parked loop (`202`) with no live obligation after reconciliation | Requeue it (`100`) and start its drain. It resumes in place and observes the settled obligation. |
+| Terminal loop or closed subscription | Preserve it unchanged. |
+
+Recovery then drains every queued worker. A child reaching any terminal state
+wakes its parked parent, including provider failure, external cancellation, and
+restart interruption. This propagation repeats through the durable parent
+edges, so recovery is a topology fixpoint rather than a leaf-only cleanup.
+
 ## State
 
 SQLite is the source of truth for daemon state. The principal relationships are:

@@ -94,6 +94,8 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 `SchemeCtx` is the stable semantic API for trusted in-process schemes, not a
 sandbox. The consumer injects its implementation; database layout and private
 service modules remain outside the compatibility contract.
+Consumers pass only this contract to handlers. Consumer-owned adapters inject
+their daemon collaborators separately instead of extending the context.
 
 ## Tests
 

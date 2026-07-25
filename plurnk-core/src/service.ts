@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
 import Daemon from "./server/Daemon.ts";
+import DaemonLock from "./server/DaemonLock.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
@@ -136,7 +137,7 @@ export default class Service {
         return n;
     }
 
-    static async #openDb(dbPath: string): Promise<Db> {
+    static async #openDb(dbPath: string, exclusive: boolean = false): Promise<Db> {
         const tuning: Record<string, number> = {};
         for (const [env, opt] of [
             ["PLURNK_SERVICE_SQLITE_TIMEOUT", "timeout"],
@@ -148,6 +149,7 @@ export default class Service {
             if (v !== undefined) tuning[opt] = v;
         }
         mkdirSync(dirname(dbPath), { recursive: true });
+        const lock = exclusive ? await DaemonLock.acquire(dbPath) : null;
         try {
             const db = await SqlRite.open({
                 path: dbPath,
@@ -155,8 +157,19 @@ export default class Service {
                 functions: [resolve(Service.#codeDir, `schemes/cosine${Service.#ext}`)],
                 ...tuning,
             });
+            if (lock !== null) {
+                const close = db.close.bind(db);
+                db.close = async () => {
+                    try {
+                        await close();
+                    } finally {
+                        await lock.release();
+                    }
+                };
+            }
             return db as unknown as Db;
         } catch (cause) {
+            await lock?.release();
             // SQLite's bare "disk I/O error" names neither file nor culprit. The classic footgun fails
             // exactly this way: the main DB was deleted while -wal/-shm sidecars survived (often still
             // held by a running daemon). Fail hard, legibly — name the path and the stale sidecars.
@@ -170,7 +183,7 @@ export default class Service {
 
     static async #migrate(): Promise<void> {
         const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
-        const db = await Service.#openDb(dbPath);
+        const db = await Service.#openDb(dbPath, true);
         try { process.stdout.write(`migrated: ${dbPath}\n`); }
         finally { await db.close(); }
     }
@@ -182,7 +195,6 @@ export default class Service {
         // it at boot via the seam). Production is single-listener (#357): no daemon WS port.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
-        const db = await Service.#openDb(dbPath);
         const alias = resolveActiveAlias();
         // #501 (owner ruling, gates 1.0.6) — SET-but-unresolvable is the silent-absence class, never
         // a modelless boot: PLURNK_MODEL=plurnk/jennifer (a provider/model PATH where an ALIAS name
@@ -198,46 +210,53 @@ export default class Service {
             );
         }
         const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
+        const db = await Service.#openDb(dbPath, true);
         const daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
-        // AG-UI plugin module (#355) — THE client surface, always on: its init runs at boot with the
-        // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
-        const aguiInit = AguiModule.init({
-            host, port,
-            ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
-            ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
-        });
-        // Capture the module so the banner reports the BOUND address, not the configured one —
-        // with PLURNK_PORT=0 the configured value is 0 and banner parsers get garbage.
-        let agui: Awaited<ReturnType<typeof aguiInit>> | null = null;
-        daemon.registerModule(async (seam) => { agui = await aguiInit(seam); });
-        await daemon.start(); // the daemon owns no transport (#364) — the agui module opens the one listener
-        const aguiAddr = (agui as Awaited<ReturnType<typeof aguiInit>> | null)?.address() ?? { host, port };
-        // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
-        // self-report returns info with the unknowns explicitly null — say which case this is).
-        const embedInfo = await daemon.mimetypes.embedderInfo();
-        if (embedInfo === null) {
-            process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Install @plurnk/plurnk-mimetypes-embeddings for vector search, or see README.md#semantic-search\n");
-        } else if (embedInfo.contextWindow === null) {
-            process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
-        }
-        // §tokenomics-window-partition coupling (F7): per-request numeric reasoning budgets are
-        // IGNORED by llama-server — when reasoning is on, only the box's --reasoning-budget launch
-        // flag clamps it, and it must equal the alias's resolved reasoning reserve. Unverifiable here, so
-        // say it loudly rather than let the reserve be fiction. (#472 — reads the post-#399 knob
-        // names; the shed pre-#399 knob names made this advisory dead code that could never fire.)
-        const reasoning = process.env.PLURNK_PROVIDERS_REASONING ?? "off";
-        if (reasoning !== "off") {
-            process.stderr.write(`plurnk-service: reasoning is ${reasoning} — llama-server ignores per-request numeric budgets; ensure the serving box launches with --reasoning-budget ${process.env.PLURNK_PROVIDERS_REASONING_BUDGET ?? "?"} or the budget is not enforced.\n`);
-        }
-        if (alias === null) {
-            process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);
-        }
-        const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
-        process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${aliasStr}\n`);
+        try {
+            // AG-UI plugin module (#355) — THE client surface, always on: its init runs at boot with the
+            // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
+            const aguiInit = AguiModule.init({
+                host, port,
+                ...(process.env.PLURNK_AGUI_TOKEN !== undefined && process.env.PLURNK_AGUI_TOKEN.length > 0 ? { token: process.env.PLURNK_AGUI_TOKEN } : {}),
+                ...(process.env.PLURNK_AGUI_MAX_TURNS !== undefined && process.env.PLURNK_AGUI_MAX_TURNS.length > 0 ? { maxTurns: Number(process.env.PLURNK_AGUI_MAX_TURNS) } : {}),
+            });
+            // Capture the module so the banner reports the BOUND address, not the configured one —
+            // with PLURNK_PORT=0 the configured value is 0 and banner parsers get garbage.
+            let agui: Awaited<ReturnType<typeof aguiInit>> | null = null;
+            daemon.registerModule(async (seam) => { agui = await aguiInit(seam); });
+            await daemon.start(); // the daemon owns no transport (#364) — the agui module opens the one listener
+            const aguiAddr = (agui as Awaited<ReturnType<typeof aguiInit>> | null)?.address() ?? { host, port };
+            // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
+            // self-report returns info with the unknowns explicitly null — say which case this is).
+            const embedInfo = await daemon.mimetypes.embedderInfo();
+            if (embedInfo === null) {
+                process.stderr.write("plurnk-service: embedder inactive — semantic ~query falls back to FTS keyword ranking. Install @plurnk/plurnk-mimetypes-embeddings for vector search, or see README.md#semantic-search\n");
+            } else if (embedInfo.contextWindow === null) {
+                process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
+            }
+            // §tokenomics-window-partition coupling (F7): per-request numeric reasoning budgets are
+            // IGNORED by llama-server — when reasoning is on, only the box's --reasoning-budget launch
+            // flag clamps it, and it must equal the alias's resolved reasoning reserve. Unverifiable here, so
+            // say it loudly rather than let the reserve be fiction. (#472 — reads the post-#399 knob
+            // names; the shed pre-#399 knob names made this advisory dead code that could never fire.)
+            const reasoning = process.env.PLURNK_PROVIDERS_REASONING ?? "off";
+            if (reasoning !== "off") {
+                process.stderr.write(`plurnk-service: reasoning is ${reasoning} — llama-server ignores per-request numeric budgets; ensure the serving box launches with --reasoning-budget ${process.env.PLURNK_PROVIDERS_REASONING_BUDGET ?? "?"} or the budget is not enforced.\n`);
+            }
+            if (alias === null) {
+                process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);
+            }
+            const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
+            process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${aliasStr}\n`);
 
-        const shutdown = async (): Promise<void> => { await daemon.stop(); await db.close(); process.exit(0); };
-        process.on("SIGINT", shutdown);
-        process.on("SIGTERM", shutdown);
+            const shutdown = async (): Promise<void> => { await daemon.stop(); await db.close(); process.exit(0); };
+            process.on("SIGINT", shutdown);
+            process.on("SIGTERM", shutdown);
+        } catch (cause) {
+            await daemon.stop().catch(() => {});
+            await db.close();
+            throw cause;
+        }
     }
 
     static async main(): Promise<void> {

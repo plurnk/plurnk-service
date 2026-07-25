@@ -10,6 +10,7 @@ import DbSubscriptionCaps from "../../src/core/caps/DbSubscriptionCaps.ts";
 import type { WakeWorkerPayload, StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
+import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 
 test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, close terminates + wakes", async () => {
     const db = await openMigrated();
@@ -25,7 +26,8 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
             wakeWorkerNotify: (p) => wakes.push(p),
         });
         const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain", stderr: "text/plain" }, "stdout"));
-        const subs = new DbSubscriptionCaps(ctx, "exec");
+        const liveSubscriptions = new LiveSubscriptions();
+        const subs = new DbSubscriptionCaps(ctx, "exec", liveSubscriptions);
 
         const seeded = await entries.write("/run", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },
@@ -34,8 +36,8 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         const entryId = seeded.entryId as number;
 
         // open → a live (un-aborted) signal
-        let cancelled = false;
-        const signal = await subs.open("/run", { cancel: () => { cancelled = true; } }, { publishedChannel: "stdout" });
+        let cancelCalls = 0;
+        const signal = await subs.open("/run", { cancel: () => { cancelCalls += 1; } }, { publishedChannel: "stdout" });
         assert.equal(signal.aborted, false);
         const subscription = await (db.find_active_subscription as PrepMethod).get<{ id: number }>({ worker_id: workerId, entry_id: entryId });
         const publication = await (db.test_subscription_published_channel as PrepMethod).get<{ published_channel: string | null }>({ id: subscription?.id });
@@ -61,10 +63,20 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
 
         // a worker abort propagates to the subscription signal AND force-cancels the handle
         await entries.write("/run2", { channels: { stdout: { content: "", mimetype: "text/plain" } }, tags: [] });
-        const signal2 = await subs.open("/run2", { cancel: () => { cancelled = true; } });
+        const signal2 = await subs.open("/run2", { cancel: () => { cancelCalls += 1; } });
+        const entry2 = await entries.read("/run2");
+        assert.equal(entry2.status, 200);
+        const sub2 = await (db.find_open_subscriptions_for_worker as PrepMethod).all<{ id: number }>({ worker_id: workerId });
+        const cancelledId = sub2.at(-1)?.id;
+        assert.ok(cancelledId !== undefined);
         parentAbort.abort();
         assert.equal(signal2.aborted, true, "run abort propagates to the subscription signal");
-        assert.equal(cancelled, true, "run abort force-cancels the sibling handle");
+        assert.equal(cancelCalls, 1, "run abort force-cancels the sibling handle");
+        assert.equal(await liveSubscriptions.cancel(cancelledId), true);
+        assert.equal(cancelCalls, 1, "the registry reap coalesces with signal cancellation");
+        await subs.close("cancelled", "worker cancelled");
+        const cancelledRow = await (db.test_get_subscription as PrepMethod).get<{ close_status: number }>({ id: cancelledId });
+        assert.equal(cancelledRow?.close_status, 499, "cancelled settlement is durable 499");
 
         // open on an absent entry → throws (a subscription needs its entry)
         await assert.rejects(() => subs.open("/missing", { cancel: () => {} }), /no entry/);

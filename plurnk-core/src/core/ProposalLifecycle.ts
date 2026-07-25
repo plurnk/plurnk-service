@@ -9,6 +9,8 @@ import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
+import type LiveSubscriptions from "./LiveSubscriptions.ts";
+import type { SchemeCtx } from "@plurnk/plurnk-schemes";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
@@ -85,6 +87,7 @@ export default class ProposalLifecycle {
     #executors: () => ExecutorRegistry | undefined;
     // Per-loop abort signal, owned by Engine.runLoop — thunked.
     #loopSignal: (loopId: number) => AbortSignal | undefined;
+    #liveSubscriptions: LiveSubscriptions;
     // Proposal lifecycle: pending dispatch pauses waiting for resolution.
     // Dispatch awaits the promise when a scheme returns status 202;
     // Engine.resolveProposal feeds the resolution back in. Map is per-log-
@@ -97,7 +100,7 @@ export default class ProposalLifecycle {
     // chains come later if a real consumer needs them.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, telemetry, streamEventNotify, wakeWorkerNotify, tokenize, mimetypes, executors, loopSignal }: {
+    constructor({ db, schemes, telemetry, streamEventNotify, wakeWorkerNotify, tokenize, mimetypes, executors, loopSignal, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         telemetry: TelemetryChannel;
@@ -107,6 +110,7 @@ export default class ProposalLifecycle {
         mimetypes?: Mimetypes;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
+        liveSubscriptions: LiveSubscriptions;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -117,6 +121,7 @@ export default class ProposalLifecycle {
         this.#mimetypes = mimetypes;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
+        this.#liveSubscriptions = liveSubscriptions;
     }
 
     // External API to feed a resolution into a pending proposal. Called by
@@ -202,7 +207,7 @@ export default class ProposalLifecycle {
             : schemeNameOf(statement.target);
         if (schemeName === null) return resolution;
         const handler = this.#schemes.get(schemeName) as
-            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: PlurnkSchemeContext) => Promise<{ status: number; outcome?: string; body?: string }> }
+            | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<{ status: number; outcome?: string; body?: string }> }
             | undefined;
         if (handler === undefined || typeof handler.applyResolution !== "function") return resolution;
         try {
@@ -226,7 +231,7 @@ export default class ProposalLifecycle {
             };
             const manifest = this.#schemes.manifestFor(schemeName);
             if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-            const applyResult = await handler.applyResolution(request, new SchemeCtxImpl(applyCtx, schemeName, manifest));
+            const applyResult = await handler.applyResolution(request, new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions));
             if (applyResult.status >= 400) {
                 return {
                     decision: "reject",

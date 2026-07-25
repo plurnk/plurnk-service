@@ -89,16 +89,17 @@ test("turn boundaries are STEPs; termination closes the step and flags the outco
     assert.equal(first[1]?.type, "STEP_STARTED");
     const second = tr.logEntry(entry({ op: "PLAN", turn_id: 2, tx: "{}" }));
     assert.deepEqual(second.slice(1, 3).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
-    const term: TerminatedNotification = { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2], usage: { promptTokens: 10, completionTokens: 5, costPico: 0, contextTokens: 10, promptBudget: 6848, meta: {} } };
+    const term: TerminatedNotification = { workerId: 2, loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2], usage: { promptTokens: 10, completionTokens: 5, costPico: 0, contextTokens: 10, promptBudget: 6848, meta: {} } };
     const done = tr.terminated(term);
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
 });
 
-test("plurnk.terminated carries the full terminal truth (workspaceId, loopId, turnIds, costPico) for a client's json record", () => {
+test("plurnk.terminated carries the full terminal truth (workspaceId, workerId, loopId, turnIds, costPico) for a client's json record", () => {
     const tr = new Translator({ threadId: "th-1", runId: "run-1", workspaceId: 512 });
-    const term: TerminatedNotification = { loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3], usage: { promptTokens: 10, completionTokens: 5, costPico: 4200, contextTokens: 10, promptBudget: 6848, meta: { balancePico: 99 } } };
+    const term: TerminatedNotification = { workerId: 2, loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3], usage: { promptTokens: 10, completionTokens: 5, costPico: 4200, contextTokens: 10, promptBudget: 6848, meta: { balancePico: 99 } } };
     const custom = tr.terminated(term).find((e) => (e as { name?: string }).name === "plurnk.terminated") as { value: TerminatedNotification & { workspaceId: number | null } };
     assert.equal(custom.value.workspaceId, 512, "daemon workspaceId — one json schema across transports");
+    assert.equal(custom.value.workerId, 2, "workerId stays paired with its owning loop");
     assert.equal(custom.value.loopId, 77, "loopId — absent from core events");
     assert.deepEqual(custom.value.turnIds, [1, 2, 3], "turn count for the record");
     assert.equal(custom.value.usage.costPico, 4200, "costPico — dropped by the budget STATE_DELTA");
@@ -107,7 +108,7 @@ test("plurnk.terminated carries the full terminal truth (workspaceId, loopId, tu
 
 test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     const tr = t();
-    const term: TerminatedNotification = { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3, 4], usage: { promptTokens: 4321, completionTokens: 99, costPico: 0, contextTokens: 4321, promptBudget: 35840, meta: {} } };
+    const term: TerminatedNotification = { workerId: 2, loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1, 2, 3, 4], usage: { promptTokens: 4321, completionTokens: 99, costPico: 0, contextTokens: 4321, promptBudget: 35840, meta: {} } };
     const delta = tr.terminated(term).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
     assert.equal(delta.delta.find((d) => d.path === "/budget/promptBudget")?.value, 35840, "the effective prompt budget (service#345), never recomputed");
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
@@ -129,7 +130,7 @@ test("a proposal projects with everything the frontend needs to answer", () => {
 
 test("a non-200 termination is RUN_ERROR carrying the status", () => {
     const tr = t();
-    const term: TerminatedNotification = { loopId: 1, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage: { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: null, meta: {} } };
+    const term: TerminatedNotification = { workerId: 2, loopId: 1, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage: { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: null, meta: {} } };
     const events = tr.terminated(term);
     const error = events.find((e) => e.type === "RUN_ERROR") as { code?: string };
     assert.equal(error?.code, "500");

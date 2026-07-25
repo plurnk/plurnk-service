@@ -23,6 +23,8 @@ import { renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
+import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 
 type ExecResult = { status: number; body?: string; attrs?: object; error?: string };
 
@@ -101,7 +103,7 @@ export const resolveStreamStatement = async <S extends { target: ReadStatement["
 // fallback, dead-as-null). Injectable because the guard refuses localhost.
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
-export default class Exec {
+export default class Exec extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "exec",
         channels: { stdout: "text/stream", stderr: "text/stream" },
@@ -124,6 +126,7 @@ export default class Exec {
     readonly #fetchWeb: WebFetch;
     readonly #closeWebFetcher: () => Promise<void>;
     constructor(fetchWeb?: WebFetch) {
+        super();
         const webFetcher = new WebFetcher();
         if (fetchWeb === undefined) {
             this.#fetchWeb = (url, opts) => webFetcher.fetch(url, opts);
@@ -167,9 +170,10 @@ export default class Exec {
     // is no auto-escalation here. The full #203 status matrix: 200 killed (in-flight) · 410
     // killed-earlier (a prior abort closed the stream 499) · 304 already-exited (closed
     // with any other terminal status) · 404 unknown (no subscription for that coordinate).
-    async kill(pathname: string, signal: number | null, ctx: PlurnkSchemeContext, scheme = "exec"): Promise<{ status: number; error?: string }> {
+    async kill(pathname: string, signal: number | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<{ status: number; error?: string }> {
+        const core = this.coreContext(ctx);
         for (const entry of this.#activeAborts.values()) {
-            if (entry.workerId === ctx.workerId && entry.pathname === pathname) {
+            if (entry.workerId === core.workerId && entry.pathname === pathname) {
                 entry.controller.abort(ExecAbort.killReason(signal));
                 return { status: 200 };
             }
@@ -178,20 +182,10 @@ export default class Exec {
         // caller's own subscription (coordinates duplicate across workers, {§stream-owner-scoped}).
         // The error answers in the model's OWN runtime-tag address (sh:///…), never the retired
         // internal `exec` scheme (#527, {§fs-answer-in-canon}) — the model KILLs what it addressed.
-        const terminal = await ChannelWrite.execTerminalStatus(ctx.db, { workspaceId: ctx.workspaceId, workerId: ctx.workerId, pathname });
+        const terminal = await ChannelWrite.execTerminalStatus(core.db, { workspaceId: core.workspaceId, workerId: core.workerId, pathname });
         if (terminal === null) return { status: 404, error: `no active stream at ${scheme}://${pathname}` };
         if (terminal === 499) return { status: 410, error: `${scheme}://${pathname} was killed earlier` };
         return { status: 304 };
-    }
-
-    // Registry-routed reap (§worker-lifecycle-total-reap): the daemon's cancel iterates
-    // the worker's open subscriptions and calls this per id, aborting the spawn's
-    // controller directly. Idempotent — a no-op if the spawn already finished or this
-    // id isn't ours. Distinct from kill (by pathname, the model's KILL op): this is by
-    // subscription id, the worker-level reap that does not depend on the signal listener.
-    // Always a teardown — the bounded housekeeping reap, never the model's bare signal.
-    abortSubscription(subscriptionId: number): void {
-        this.#activeAborts.get(subscriptionId)?.controller.abort(ExecAbort.teardownReason());
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
@@ -202,7 +196,8 @@ export default class Exec {
     // applyResolution spawns the subprocess; output streams into the
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
     // (e.g. sh:///1/1/2, §exec/#240). The model READs that entry on a subsequent turn.
-    async exec(statement: ExecStatement, ctx: PlurnkSchemeContext): Promise<ExecResult> {
+    async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
+        const core = this.coreContext(ctx);
         let command = statement.body ?? "";
         // #201 — a plurnk-scheme target carries content the scheme resolves at
         // apply-time; an empty body is then legal (the target IS the script).
@@ -211,7 +206,7 @@ export default class Exec {
         // the program/data-source the executor runs (body = stdin). A stat-miss falls to the file arm so the
         // runtime reports its own not-found, never a dispatch 400. cwd otherwise = the workspace workspace
         // (project_root) — the directory File writes to, and what a data-source target resolves against.
-        const workspaceRow = await (ctx.db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: ctx.workspaceId });
+        const workspaceRow = await (core.db.envelope_get_workspace as PrepMethod).get<{ project_root: string | null }>({ id: core.workspaceId });
         const projectRoot = workspaceRow?.project_root ?? null;
         const localTarget = localPathFromTarget(statement.target);
         let routedTarget = localTarget;
@@ -229,7 +224,7 @@ export default class Exec {
 
         const requested = typeof statement.signal === "string" ? statement.signal : "";
         let runtime = requested === "" ? "sh" : requested; // empty signal = default shell
-        if (ctx.executors === undefined) throw new Error("exec dispatched without an executor registry");
+        if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
         // §exec-runtime-fallthrough (#350, the execs architect's resolution to the go-501 saga):
         // an UNREGISTERED tag falls through to the shell with the tag as the command word —
         // EXEC[go]:test ./... runs as sh: `go test ./...`. Per-tool runtimes (go/cargo/make/npm)
@@ -238,7 +233,7 @@ export default class Exec {
         // signal is data, not guesswork), and a typo'd tag becomes the shell's own clear 127.
         // No new surface: anything expressible as EXEC[foo]:bar was expressible as EXEC[sh]:foo bar.
         let fellThroughFrom: string | null = null;
-        if (requested !== "" && ctx.executors.entry(runtime) === undefined && ctx.executors.entry("sh") !== undefined) {
+        if (requested !== "" && core.executors.entry(runtime) === undefined && core.executors.entry("sh") !== undefined) {
             fellThroughFrom = runtime;
             command = command.length > 0 ? `${runtime} ${command}` : runtime;
             runtime = "sh";
@@ -247,16 +242,16 @@ export default class Exec {
         // workspace's client layer disables is ABSENT for this workspace — refused like an unavailable
         // runtime. Checked on the EFFECTIVE runtime: a fall-through rides sh's gate, so a workspace
         // that disabled sh gets the refusal, never a side door.
-        const workspaceExecs = (await WorkspaceSettings.read(ctx.db, ctx.workspaceId)).execs;
+        const workspaceExecs = (await WorkspaceSettings.read(core.db, core.workspaceId)).execs;
         if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
             return { status: 501, error: `\`${runtime}\` is disabled for this workspace by client policy (PLURNK_EXECS_*)` };
         }
-        const resolved = ctx.executors.entry(runtime); // registry resolves the runtime tag; unknown/unavailable → 501 — §exec-registry-resolves
+        const resolved = core.executors.entry(runtime); // registry resolves the runtime tag; unknown/unavailable → 501 — §exec-registry-resolves
         if (resolved === undefined) {
-            return { status: 501, error: `\`${runtime}\` is not a configured runtime. available: ${ctx.executors.availableRuntimes().join(", ")}` };
+            return { status: 501, error: `\`${runtime}\` is not a configured runtime. available: ${core.executors.availableRuntimes().join(", ")}` };
         }
         if (fellThroughFrom !== null) {
-            ctx.pushTelemetry?.({ source: "exec:dispatch", kind: "exec_runtime_fallthrough", message: `EXEC[${fellThroughFrom}] fell through to sh`, requested: fellThroughFrom, level: "info" } as never);
+            core.pushTelemetry?.({ source: "exec:dispatch", kind: "exec_runtime_fallthrough", message: `EXEC[${fellThroughFrom}] fell through to sh`, requested: fellThroughFrom, level: "info" } as never);
         }
         if (!resolved.available) {
             const why = resolved.detail === undefined ? "" : `: ${resolved.detail}`;
@@ -299,8 +294,9 @@ export default class Exec {
 
     async applyResolution(
         args: { attrs: object; body?: string },
-        ctx: PlurnkSchemeContext,
+        ctx: CoreSchemeCallContext,
     ): Promise<{ status: number; outcome?: string; body?: string; error?: string }> {
+        const core = this.coreContext(ctx);
         const attrs = args.attrs as Partial<ExecAttrs>;
         let command = typeof attrs.command === "string" ? attrs.command : "";
         const pathname = attrs.pathname;
@@ -318,7 +314,7 @@ export default class Exec {
         let tempPath: string | null = null;
         if (attrs.schemeTarget !== undefined) {
             const { scheme, pathname: tPath, fragment } = attrs.schemeTarget;
-            const read = await EntryCrud.readEntry(tPath, ctx, scheme);
+            const read = await EntryCrud.readEntry(tPath, core, scheme);
             if (read.entry === null) return { status: 404, outcome: "scheme_target_not_found" };
             const channels = read.entry.channels;
             const channelName = fragment ?? (channels.body !== undefined ? "body" : Object.keys(channels)[0]);
@@ -328,7 +324,7 @@ export default class Exec {
             if (command.length === 0) {
                 command = content;
             } else {
-                tempPath = join(tmpdir(), `plurnk-exec-${ctx.workspaceId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
+                tempPath = join(tmpdir(), `plurnk-exec-${core.workspaceId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
                 await writeFile(tempPath, content, "utf8");
                 target = tempPath;
             }
@@ -345,8 +341,8 @@ export default class Exec {
         // channels from its declared topology (Q1(b) in plurnk-service#174 —
         // executor declares, scheme honors). Each executor declares its own
         // shape (subprocess → stdout/stderr; search → results; etc.).
-        if (ctx.executors === undefined) return { status: 500, outcome: "no_executor_registry" };
-        const resolved = ctx.executors.entry(runtime);
+        if (core.executors === undefined) return { status: 500, outcome: "no_executor_registry" };
+        const resolved = core.executors.entry(runtime);
         if (resolved === undefined) return { status: 500, outcome: "no_executor" };
         // #485 — the per-tool effect (execs Effect: read/host/pure) rides the hold predicate so a
         // suffixed PLURNK_SERVICE_EXEC_HOLD entry (`github:read`) can hold one tool-class and not another.
@@ -362,11 +358,11 @@ export default class Exec {
         const seed: EntryData = { channels: seedChannels, tags: [] };
         // §exec — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
-        const { entryId } = await EntryCrud.writeEntry(pathname, seed, ctx, runtime, ctx.workerId);
+        const { entryId } = await EntryCrud.writeEntry(pathname, seed, core, runtime, core.workerId);
         if (entryId === null) return { status: 500, outcome: "entry_write_failed" };
 
-        const subscriptionId = await ChannelWrite.openSubscription(ctx.db, {
-            workerId: ctx.workerId, entryId, scheme: runtime,
+        const subscriptionId = await ChannelWrite.openSubscription(core.db, {
+            workerId: core.workerId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${command}` : command,
             pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // §exec-poll — hibernation wake cadence
             turnScoped: attrs.turnScoped === true, // §exec-poll — `<0>` reaped at the next pre-turn
@@ -374,8 +370,8 @@ export default class Exec {
 
         const controller = new AbortController();
         let unlink = (): void => {};
-        if (ctx.signal !== undefined) {
-            const parent = ctx.signal;
+        if (core.signal !== undefined) {
+            const parent = core.signal;
             // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
             // captured here, stable for the loop). The parent only aborts on FORCEFUL loop
             // teardown — a 202-graceful loop lets its spawns outlive, never firing this — so
@@ -389,11 +385,14 @@ export default class Exec {
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { workerId: ctx.workerId, pathname, runtime, effect, controller, unlink });
+        this.#activeAborts.set(subscriptionId, { workerId: core.workerId, pathname, runtime, effect, controller, unlink });
+        this.liveSubscriptions().register(subscriptionId, {
+            cancel: () => controller.abort(ExecAbort.teardownReason()),
+        });
 
         const tail = this.#runExecutor({
             executor: resolved.executor,
-            runtime, command, cwd, target, ctx, pathname,
+            runtime, command, cwd, target, ctx: core, pathname,
             entryId, subscriptionId, signal: controller.signal, controller, tempPath,
             timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
         });
@@ -602,6 +601,7 @@ export default class Exec {
             if (tempPath !== null) await unlink(tempPath).catch(() => {});
             this.#activeAborts.get(subscriptionId)?.unlink();
             this.#activeAborts.delete(subscriptionId);
+            this.liveSubscriptions().unregister(subscriptionId);
             this.#activeSpawns.delete(subscriptionId);
 
             // Every worker backgrounds now (§exec-stream) — wake a parked loop on completion so the
@@ -619,27 +619,30 @@ export default class Exec {
         return closeStatus;
     }
 
-    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
-        const owner = await resolveStreamStatement(statement, ctx);
+    async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
+        const core = this.coreContext(ctx);
+        const owner = await resolveStreamStatement(statement, core);
         if (owner === null) return { status: 404, content: null, mimetype: null, channel: null };
-        return EntryOps.readWorkspaceEntry(owner.statement, ctx, Exec.manifest, owner.ownerId);
+        return EntryOps.readWorkspaceEntry(owner.statement, core, Exec.manifest, owner.ownerId);
     }
 
-    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
-        const owner = await resolveStreamStatement(statement, ctx);
+    async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
+        const core = this.coreContext(ctx);
+        const owner = await resolveStreamStatement(statement, core);
         if (owner === null) return { status: 404, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
-        return EntryFind.findWorkspaceEntries(owner.statement, ctx, Exec.manifest, owner.ownerId);
+        return EntryFind.findWorkspaceEntries(owner.statement, core, Exec.manifest, owner.ownerId);
     }
 
-    async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        return EntryCrud.readEntry(pathname, ctx, Exec.manifest.name, ctx.workerId);
+    async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
+        const core = this.coreContext(ctx);
+        return EntryCrud.readEntry(pathname, core, Exec.manifest.name, core.workerId);
     }
 
-    async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
-        return EntryCrud.writeEntry(pathname, entry, ctx, Exec.manifest.name);
+    async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
+        return EntryCrud.writeEntry(pathname, entry, this.coreContext(ctx), Exec.manifest.name);
     }
 
-    async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
-        return EntryCrud.deleteEntry(pathname, ctx, Exec.manifest.name);
+    async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
+        return EntryCrud.deleteEntry(pathname, this.coreContext(ctx), Exec.manifest.name);
     }
 }

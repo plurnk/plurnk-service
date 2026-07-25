@@ -87,6 +87,7 @@ export interface ProposalNotification {
 }
 
 export interface TerminatedNotification {
+    workerId: number;
     loopId: number;
     finalStatus: number;
     hitMaxTurns: boolean;

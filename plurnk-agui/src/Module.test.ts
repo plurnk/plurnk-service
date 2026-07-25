@@ -42,7 +42,7 @@ const mockSeam = () => {
         listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
         look: async () => ({ status: 200, content: "looked" }),
     };
-    const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} } })));
+    const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", { loopId: 9, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} } })));
     const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
     return { seam, resolves, loopRuns, finish, emit };
 };
@@ -79,7 +79,7 @@ test("a workspace's stream events FAN to every open run (never last-binder-wins)
         await new Promise((r) => setTimeout(r, 60));
         emit(3, "stream/event", { entryId: 5, scheme: "exec", content: "alpha" });
         emit(3, "stream/concluded", { entryId: 5, closeStatus: 200 });
-        emit(3, "loop/terminated", { loopId: 1, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} } });
+        emit(3, "loop/terminated", { loopId: 9, finalStatus: 200, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} } });
         const [ea, eb] = await Promise.all([a, b]);
         const hasExecActivity = (evs: AguiEvent[]) => evs.some((e) => e.type === "ACTIVITY_SNAPSHOT" && (e as { messageId?: string }).messageId === "stream-5");
         assert.ok(hasExecActivity(ea), "run A received the exec stream activity");
@@ -111,6 +111,7 @@ test("an action run executes via the seam: result custom + RUN_FINISHED, no loop
 
 test("a resume tool-result resolves the paused proposal without driving a loop", async () => {
     const { seam, resolves } = mockSeam();
+    seam.pendingProposals = async () => [{ logEntryId: 42, workerId: 10, loopId: 1, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }];
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         const events = await post(mod.address().port, {

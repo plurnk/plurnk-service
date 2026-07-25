@@ -137,24 +137,21 @@ test("#598: a parked loop retains its provider across daemon restart", async () 
         first = undefined;
 
         second = new Daemon({ db, provider: boot });
-        await second.start();
         const terminated: Array<{ loopId: number; finalStatus: number }> = [];
         second.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/terminated") terminated.push(params as { loopId: number; finalStatus: number });
         });
-        const resumed = await second.runLoop({
-            workspaceId: envelope.workspaceId,
-            workerId,
-            prompt: "resume the parked loop after restart",
-            alias: "restartb",
-            model: "openai/restart-provider-b",
-            flags: { auto: true },
-        });
-        assert.equal(resumed.loopId, started.loopId, "restart resumes the same durable loop");
+        await second.start();
         await waitFor(
             () => terminated,
             (events) => events.some((event) => event.loopId === started.loopId && event.finalStatus === 200),
             { timeoutMs: 6000 },
+        );
+        const loops = await (db.test_list_loops_all as PrepMethod).all<{ id: number; worker_id: number }>({});
+        assert.deepEqual(
+            loops.filter((loop) => loop.worker_id === workerId).map((loop) => loop.id),
+            [started.loopId],
+            "boot resumes the same durable loop without minting a prompt or loop",
         );
         assert.equal(selected.remaining, 0, "B generated before and after daemon restart");
         assert.equal(boot.remaining, 1, "restart never substituted boot-default A");

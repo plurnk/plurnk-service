@@ -159,8 +159,10 @@ export default class ChannelWrite {
         notify(meta.workspace_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
-    // The subscription registry — open/find/close — is how a stream's cancellation
-    // (SEND[499] / KILL) routes to the right live subscription. §subscriptions-subscription-registry-routes-cancellation
+    // The durable half of subscription ownership. Its row identifies what is
+    // open; the process-local LiveSubscriptions registry owns the exact callable
+    // used by SEND[499] / KILL.
+    // §subscriptions-subscription-registry-routes-cancellation
     static async openSubscription(
         db: Db,
         { workerId, entryId, scheme, handle, pollSeconds, turnScoped, publishedChannel }: {
@@ -204,10 +206,9 @@ export default class ChannelWrite {
     }
 
     // The worker's still-open subscriptions — the registry-routed reap
-    // (§worker-lifecycle-total-reap). A cancel iterates these and aborts each via the
-    // owning scheme, so a backgrounded exec is reaped regardless of in-process
-    // AbortSignal-listener timing (R1): the registry is the source of truth, the
-    // signal an optimization.
+    // (§worker-lifecycle-total-reap). A cancel iterates these durable identities
+    // and invokes each exact callable through LiveSubscriptions, so a
+    // backgrounded exec is reaped regardless of AbortSignal-listener timing.
     static async findOpenSubscriptionsForWorker(
         db: Db,
         workerId: number,

@@ -47,14 +47,17 @@ export default class ProposalHitl {
         return pending.flatMap((p) => proposalToolCall(ProposalHitl.#normalize(p)));
     }
 
-    // A resume worker's tool-result → resolveProposal. Returns true if it resolved a
-    // proposal (false = not a plurnk proposal tool-result; the caller handles it as
-    // an ordinary message).
-    resolve(message: ToolResultMessage): boolean {
+    // A resume worker's tool-result → resolveProposal. Resolve the persisted
+    // proposal first so the caller can bind its response stream to the exact
+    // continuation loop before resolution can emit a terminal event.
+    async resolve(workspaceId: number, message: ToolResultMessage): Promise<{ resolved: false } | { resolved: true; loopId: number }> {
         const res = resolutionFromToolResult(message);
-        if (res === null) return false;
+        if (res === null) return { resolved: false };
+        const pending = await this.#seam.pendingProposals(workspaceId);
+        const proposal = pending.find((item) => item.logEntryId === res.logEntryId);
+        if (proposal === undefined) throw new Error(`proposal ${res.logEntryId} is not pending in workspace ${workspaceId}`);
         this.#seam.resolveProposal(res.logEntryId, { decision: res.decision, ...(res.body !== undefined ? { body: res.body } : {}) });
-        return true;
+        return { resolved: true, loopId: proposal.loopId };
     }
 
     // The DB-shaped pending row → the ProposalNotification AguiPlus renders. attrs/tx

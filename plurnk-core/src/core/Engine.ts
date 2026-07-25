@@ -24,6 +24,7 @@ import { editedSpan } from "../content/index.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
 import SearchGate from "./search-gate.ts";
+import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -184,6 +185,7 @@ export default class Engine {
     readonly searchGate = new SearchGate();
     #proposals: ProposalLifecycle;
     #dispatcher: Dispatcher;
+    readonly #liveSubscriptions = new LiveSubscriptions();
 
     // Per-loop AbortController for cancellation propagation into scheme
     // ctx.signal. runLoop creates one at entry, cleans up at end. Engine
@@ -348,6 +350,8 @@ export default class Engine {
             wakeWorkerNotify,
             injectWorker,
             pushTelemetry: (workspaceId, loopId, event) => this.#telemetry.push(workspaceId, loopId, event),
+            defaultChannelFor: (scheme) => schemes.defaultChannelFor(scheme),
+            liveSubscriptions: this.#liveSubscriptions,
         });
         this.#strikes = new StrikeRail();
         this.#packets = new PacketBuilder({ db, schemes, telemetry: this.#telemetry, executors });
@@ -355,6 +359,7 @@ export default class Engine {
             db, schemes, telemetry: this.#telemetry,
             streamEventNotify, wakeWorkerNotify,
             tokenize: this.#tokenize, mimetypes: this.#mimetypes, executors, loopSignal,
+            liveSubscriptions: this.#liveSubscriptions,
         });
         this.#dispatcher = new Dispatcher({ searchGate: this.searchGate,
             db, schemes, mimetypes: this.#mimetypes,
@@ -364,6 +369,7 @@ export default class Engine {
             streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker,
             parkDeadlines: this.parkDeadlines,
             joinTargets: this.joinTargets,
+            liveSubscriptions: this.#liveSubscriptions,
         });
     }
 
@@ -1576,11 +1582,12 @@ export default class Engine {
     // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its
     // terminal output surfaces born-OPEN through the stream-delta path (§exec-stream).
     async #reapTurnScopedStreams(workerId: number): Promise<void> {
-        const open = await (this.#db.find_open_turn_scoped_subscriptions_for_worker as PrepMethod).all<{ id: number; scheme: string }>({ worker_id: workerId });
-        for (const { id, scheme } of open) {
-            const handler = this.#schemes.get(scheme) as { abortSubscription?: (subscriptionId: number) => void } | undefined;
-            handler?.abortSubscription?.(id);
-        }
+        const open = await (this.#db.find_open_turn_scoped_subscriptions_for_worker as PrepMethod).all<{ id: number }>({ worker_id: workerId });
+        await Promise.all(open.map(({ id }) => this.#liveSubscriptions.cancel(id)));
+    }
+
+    cancelSubscription(subscriptionId: number): Promise<boolean> {
+        return this.#liveSubscriptions.cancel(subscriptionId);
     }
 
     // §env-delta — exec streams as an instance of the ambient-observe machine:

@@ -204,5 +204,5 @@ test("cancel: the composed abort signal closes the socket", async () => {
     localAbort.abort(); // loop.cancel → onAbort → socket.close → close listener → settle
     await read;
     assert.deepEqual(sock.closed, { code: 1000, reason: "cancelled" });
-    assert.equal(inspect().closed?.reason, "done");
+    assert.equal(inspect().closed?.reason, "cancelled");
 });

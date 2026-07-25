@@ -128,7 +128,7 @@ export default class Ws implements SchemeHandler {
         let messages = 0;
         let settled = false;
         return await new Promise<PassthroughResult>((resolve) => {
-            const settle = (result: PassthroughResult, reason: "done" | "error", outcome: string) => {
+            const settle = (result: PassthroughResult, reason: "done" | "error" | "cancelled", outcome: string) => {
                 if (settled) return;
                 settled = true;
                 this.#sockets.delete(key);
@@ -144,7 +144,11 @@ export default class Ws implements SchemeHandler {
                 settle(Ws.#bad(502, "ws_error", reason), "error", reason);
             });
             socket.addEventListener("close", (event) => {
-                settle({ shape: "passthrough", status: 102 }, "done", `ws closed (${event.code ?? 0}); ${messages} messages`);
+                settle(
+                    { shape: "passthrough", status: composed.aborted ? 499 : 102 },
+                    composed.aborted ? "cancelled" : "done",
+                    `ws closed (${event.code ?? 0}); ${messages} messages`,
+                );
             });
         });
     }

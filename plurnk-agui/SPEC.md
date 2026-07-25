@@ -122,13 +122,19 @@ only the thread's model worker projects onto the core vocabulary. Foreign-run ro
 `plurnk.row`/`plurnk.ambient` — visible to rich clients as topology, never interleaved
 into the conversation a generic frontend renders.
 
-## Broadcast fan {§agui-broadcast-fan}
+## Event fan and run settlement {§agui-broadcast-fan}
 
-One workspace fans EVERY event to ALL its open runs — the WS-wire semantics preserved:
-each concurrent SSE is an independent subscriber with its own render router. This is a
-broadcast, never a single "current" binding: a resumed exec's output, a loop's rows, and a
-proposal's TOOL_CALL triple all reach every open run of the workspace. Two consequences the
-module OWNS and a client MUST handle:
+Workspace information fans to every open run: ambient rows, stream activity,
+and proposal tool calls remain visible across the workspace, with each SSE
+using its own render router. Terminal control does not fan. A message run binds
+to the exact `loopId` returned by `loop.run`; a proposal-resume run binds to the
+pending proposal's persisted `loopId` before resolving it. Only that loop's
+`loop/terminated` event may emit `plurnk.terminated` and close the SSE.
+Terminations that race ahead of the `loop.run` acknowledgement are held until
+the loop identity is known. A sibling, child, or concurrent loop can therefore
+remain visible as topology without ending or relabelling this run.
+
+Two consequences the module owns and a client must handle:
 
 - **Multiplicity.** A proposal-paused action's result and a workspace stream event arrive
   on every open run — so a client with N concurrent runs sees N copies. Clients demux/dedupe
@@ -136,7 +142,7 @@ module OWNS and a client MUST handle:
   through one shared handler (e.g. a single dispatch) must SERIALIZE its management runs —
   one action in flight, the rest queued — or a background action's stream steals the shared
   slot. Both first-party clients do exactly this (nvim's management lane, svc#504).
-- **No silent drop.** The fan never routes to a lone last-binder — a regression to that
+- **No silent drop.** Workspace information never routes to a lone last-binder — a regression to that
   shape is what svc#504 reported (a client-side single-slot handler, since fixed) and is
   pinned against here.
 

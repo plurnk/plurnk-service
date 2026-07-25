@@ -15,19 +15,22 @@ import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import type { PrepMethod } from "../Db.ts";
 import ChannelWrite from "../ChannelWrite.ts";
 import CapsResolve from "./CapsResolve.ts";
+import type LiveSubscriptions from "../LiveSubscriptions.ts";
 
 export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string | null;
+    readonly #liveSubscriptions: LiveSubscriptions;
     #pathname: string | null = null;
     #entryId: number | null = null;
     #subscriptionId: number | null = null;
     #publishedChannel: string | null = null;
     #unlink: () => void = () => {};
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string | null) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string | null, liveSubscriptions: LiveSubscriptions) {
         this.#ctx = ctx;
         this.#scheme = scheme;
+        this.#liveSubscriptions = liveSubscriptions;
     }
 
     async open(pathname: string, handle: SubscriptionHandle, options?: { publishedChannel?: string }): Promise<AbortSignal> {
@@ -40,13 +43,23 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         // Compose the worker signal with a fresh controller; a worker abort also
         // force-cancels the sibling's handle.
         const controller = new AbortController();
+        this.#liveSubscriptions.register(subscriptionId, {
+            cancel: async () => {
+                controller.abort("subscription cancelled");
+                await handle.cancel();
+            },
+        });
         const parent = this.#ctx.signal;
         if (parent !== undefined) {
-            if (parent.aborted) { void handle.cancel(); controller.abort(parent.reason); }
+            const cancel = (): void => {
+                void this.#liveSubscriptions.cancel(subscriptionId).catch((err: unknown) => {
+                    console.error("subscription cancellation failed:", err);
+                });
+            };
+            if (parent.aborted) cancel();
             else {
-                const onAbort = (): void => { void handle.cancel(); controller.abort(parent.reason); };
-                parent.addEventListener("abort", onAbort, { once: true });
-                this.#unlink = (): void => parent.removeEventListener("abort", onAbort);
+                parent.addEventListener("abort", cancel, { once: true });
+                this.#unlink = (): void => parent.removeEventListener("abort", cancel);
             }
         }
         this.#pathname = pathname;
@@ -65,12 +78,12 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         });
     }
 
-    async close(reason: "done" | "error", outcome?: string): Promise<void> {
+    async close(reason: "done" | "error" | "cancelled", outcome?: string): Promise<void> {
         const entryId = this.#entryId;
         const subscriptionId = this.#subscriptionId;
         if (entryId === null || subscriptionId === null) throw new Error("subscriptions.close: no open subscription");
         const state: ChannelState = reason === "error" ? "errored" : "closed";
-        const closeStatus = reason === "error" ? 500 : 200;
+        const closeStatus = reason === "error" ? 500 : reason === "cancelled" ? 499 : 200;
         // Every channel of the entry → terminal state, then the registry row
         // closes, then the worker wakes with the scheme's summary.
         const channels = await (this.#ctx.db.crud_read_channels as PrepMethod).all<{ name: string }>({ entry_id: entryId });
@@ -81,6 +94,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
             });
         }
         await ChannelWrite.closeSubscription(this.#ctx.db, { subscriptionId, status: closeStatus });
+        this.#liveSubscriptions.unregister(subscriptionId);
         this.#unlink();
         const target = this.#scheme === null ? `file://${this.#pathname}` : `${this.#scheme}://${this.#pathname}`;
         this.#ctx.wakeWorkerNotify?.({

@@ -10,6 +10,8 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { FindResult } from "./_entry-find.ts";
 import Owner from "../core/Owner.ts";
 import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-grammar";
+import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
+import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 
 // #379 (owner ruling) — a loop the ENGINE concluded (∅-collapse) or the CLIENT killed (cancel)
 // must not present its last words as a deliverable: run42's workers parked on nothing, the
@@ -33,7 +35,7 @@ export const markTerminal = (terminatedBy: string | null, message: string | null
 // included, which is what makes the kernel's surface the trust boundary with no guard to forget.
 // Path-absent forms are control on the worker-as-actor: READ collects the deliverable, SEND ircs;
 // WORK spawns / FORK forks (Dispatcher); EDIT on the bare entity is rejected.
-export default class Worker {
+export default class Worker extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "worker",
         channels: { body: "text/markdown" },
@@ -87,7 +89,8 @@ export default class Worker {
         return { ...statement, target: { ...t, hostname: null } };
     }
 
-    async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult & { error?: string }> {
+    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult & { error?: string }> {
+        const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
         if (authority === null) return { status: 400, entryId: null, channel: null, error: "worker:// requires a worker target" };
         const entryPath = Worker.#entryPath(statement.target);
@@ -96,24 +99,26 @@ export default class Worker {
         // (grammar 0.74.55): WORK(worker://<name>) spawns a worker; FORK(worker://<name>) forks a branch.
         if (entryPath === "") return { status: 400, entryId: null, channel: null, error: "worker:// entity is not editable — WORK(worker://<name>) to spawn a worker, FORK(worker://<name>) to fork a branch" };
 
-        const resolved = await Worker.#resolveAuthority(authority, ctx);
+        const resolved = await Worker.#resolveAuthority(authority, core);
         if (resolved === null) return { status: 404, entryId: null, channel: null, error: `worker://${authority} not found` };
         if (!resolved.writable) return { status: 403, entryId: null, channel: null, error: "a named worker's space is read-only — write to worker:///... (the commons) or worker://~/... (your own)" };
-        return EntryOps.editWorkspaceEntry(Worker.#stripAuthority(statement), ctx, Worker.manifest, resolved.ownerId);
+        return EntryOps.editWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
     // KILL an ENTRY (path present). Same write-scoping as EDIT: self + commons only. The
     // path-ABSENT KILL form is worker cancellation, handled in Dispatcher.#handleKill.
-    async killEntry(statement: KillStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
+    async killEntry(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<{ status: number; error?: string }> {
+        const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
         if (authority === null) return { status: 400, error: "worker:// requires a worker target" };
-        const resolved = await Worker.#resolveAuthority(authority, ctx);
+        const resolved = await Worker.#resolveAuthority(authority, core);
         if (resolved === null) return { status: 404, error: `worker://${authority} not found` };
         if (!resolved.writable) return { status: 403, error: "a named worker's space is read-only — KILL entries in worker:///... (the commons) or worker://~/... (your own)" };
-        return EntryOps.deleteWorkspaceEntry(Worker.#stripAuthority(statement), ctx, Worker.manifest, resolved.ownerId);
+        return EntryOps.deleteWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
-    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+    async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
+        const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
         if (authority === null) return { status: 400, content: null, mimetype: null, channel: null };
         const entryPath = Worker.#entryPath(statement.target);
@@ -123,7 +128,7 @@ export default class Worker {
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
         if (entryPath === "") {
             if (authority === "" || authority === "~") return { status: 400, content: null, mimetype: null, channel: null }; // collect names a WORKER
-            const row = await (ctx.db.worker_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: ctx.workspaceId, name: authority });
+            const row = await (core.db.worker_deliverable_by_name as PrepMethod).get<{ status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: authority });
             if (row === undefined) return { status: 404, content: `worker://${authority} not found in this workspace`, mimetype: "text/markdown", channel: null };
             // §join-blocking-collect (#354) — a still-running worker is a BLOCKING JOIN: the READ
             // arms the join (awaitWorker), and the turn's bare SEND[102] parks until the worker delivers.
@@ -132,9 +137,9 @@ export default class Worker {
             return { status: 200, content: markTerminal(row.terminated_by, row.terminal_message) ?? `[ worker '${authority}' concluded with no deliverable (status ${row.status}) ]`, mimetype: "text/markdown", channel: null };
         }
         // Path-present: an entry read — commons / own / ancestry-gated named space.
-        const resolved = await Worker.#resolveAuthority(authority, ctx);
+        const resolved = await Worker.#resolveAuthority(authority, core);
         if (resolved === null) return { status: 404, content: null, mimetype: null, channel: null };
-        return EntryOps.readWorkspaceEntry(Worker.#stripAuthority(statement), ctx, Worker.manifest, resolved.ownerId);
+        return EntryOps.readWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
     // Terminal loop statuses (§lifecycle-terms) — a loop here has DELIVERED; anything else is still running.
@@ -142,16 +147,17 @@ export default class Worker {
 
     // FIND draws from the resolved principal's space alone: worker:///** the commons,
     // worker://~/** your own, worker://<name>/** a named space (ancestry-gated like READ).
-    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
+    async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
+        const core = this.coreContext(ctx);
         // A regex-kind target (#pattern#flags) has no authority slot — it draws from the commons.
         if (statement.target !== null && statement.target.kind === "regex") {
-            return EntryFind.findWorkspaceEntries(statement, ctx, Worker.manifest, await Owner.commonsId(ctx.db, ctx.workspaceId));
+            return EntryFind.findWorkspaceEntries(statement, core, Worker.manifest, await Owner.commonsId(core.db, core.workspaceId));
         }
         const authority = Worker.#authority(statement.target);
         if (authority === null) return { status: 400, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
-        const resolved = await Worker.#resolveAuthority(authority, ctx);
+        const resolved = await Worker.#resolveAuthority(authority, core);
         if (resolved === null) return { status: 404, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
-        const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), ctx, Worker.manifest, resolved.ownerId);
+        const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
         // The catalog renders the empty-authority form; a non-empty queried authority re-applies —
         // in results AND the serialized content the packet renders — so every path the model sees
         // is the address it typed (worker://~/x, worker://beta/x).
@@ -164,34 +170,35 @@ export default class Worker {
 
     // The entry-copy seam ({§worker-authority-carving}) — pathname-keyed, COMMONS-scoped: the
     // dispatcher refuses a non-empty authority upstream, so these faces only ever see worker:///….
-    async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        return EntryCrud.readEntry(pathname, ctx, Worker.manifest.name);
+    async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
+        return EntryCrud.readEntry(pathname, this.coreContext(ctx), Worker.manifest.name);
     }
 
-    async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
-        return EntryCrud.writeEntry(pathname, entry, ctx, Worker.manifest.name);
+    async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
+        return EntryCrud.writeEntry(pathname, entry, this.coreContext(ctx), Worker.manifest.name);
     }
 
-    async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
-        return EntryCrud.deleteEntry(pathname, ctx, Worker.manifest.name);
+    async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
+        return EntryCrud.deleteEntry(pathname, this.coreContext(ctx), Worker.manifest.name);
     }
 
-    async send(statement: SendStatement, ctx: PlurnkSchemeContext): Promise<{ status: number; error?: string }> {
+    async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<{ status: number; error?: string }> {
+        const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
         if (authority === null) return { status: 400, error: "worker:// irc requires a worker (worker://<name>)" };
         // An ENTRY-path SEND is the entry-SEND law (410 deletes, 499 cancels, else 501) on the
         // resolved principal; write-scoping holds — a named space takes no 410.
         if (Worker.#entryPath(statement.target) !== "") {
-            const resolved = await Worker.#resolveAuthority(authority, ctx);
+            const resolved = await Worker.#resolveAuthority(authority, core);
             if (resolved === null) return { status: 404, error: `worker://${authority} not found` };
             if (!resolved.writable && statement.signal === 410) return { status: 403, error: "a named worker's space is read-only" };
-            return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), ctx, Worker.manifest.name, resolved.ownerId);
+            return EntrySend.sendToWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest.name, resolved.ownerId);
         }
         if (authority === "") return { status: 400, error: "worker:// irc requires a worker (worker://<name>)" };
-        if (ctx.injectWorker === undefined) throw new Error("run.send: injectWorker capability absent");
-        let workerId = ctx.workerId;
+        if (core.injectWorker === undefined) throw new Error("run.send: injectWorker capability absent");
+        let workerId = core.workerId;
         if (authority !== "~") {
-            const row = await (ctx.db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, name: authority });
+            const row = await (core.db.worker_resolve_by_name as PrepMethod).get<{ id: number }>({ workspace_id: core.workspaceId, name: authority });
             if (row === undefined) return { status: 404, error: `worker://${authority} not found in this workspace` };
             workerId = row.id;
         }
@@ -200,9 +207,9 @@ export default class Worker {
         // §worker-delegation-inherits-flags — an irc that RESUMES a parked loop keeps that loop's
         // own flags (inject ignores these there); a fresh loop raised by the message acts on
         // the sender's behalf and carries the sender's authority.
-        const row = await (ctx.db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: ctx.loopId });
+        const row = await (core.db.engine_get_loop_flags as PrepMethod).get<{ flags: string }>({ loop_id: core.loopId });
         const flags = row === undefined ? undefined : { ...DEFAULT_LOOP_FLAGS, ...(JSON.parse(row.flags) as Partial<LoopFlags>) };
-        await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId, prompt, flags });
+        await core.injectWorker({ workspaceId: core.workspaceId, workerId, prompt, flags });
         return { status: 200 };
     }
 }

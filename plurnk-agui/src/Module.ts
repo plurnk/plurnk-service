@@ -244,7 +244,7 @@ export default class Module {
         // Terminate-resume, the resume half: a tool-result message resolves the paused
         // proposal; the continued loop streams on THIS run. No new loop is driven.
         const toolResult = [...(input.messages ?? [])].reverse().find((m) => m.role === "tool") as { toolCallId?: string; content?: string } | undefined;
-        if (toolResult !== undefined && this.#portal.resolve(toolResult)) {
+        if (toolResult !== undefined && await this.#portal.resolve(workspaceId, boundRun, toolResult)) {
             req.on("close", finish); // client hangup on a resume just detaches; the loop already runs
             return;
         }
@@ -256,7 +256,7 @@ export default class Module {
             const history = await this.#seam.readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
             if (history !== null) emit([...this.#threadRouterReplay(workspaceId, history)]);
         }
-        await this.#portal.run({
+        await this.#portal.run(boundRun, {
             workspaceId, workerId, prompt: lastUser.content,
             ...(typeof forwarded?.maxTurns === "number" ? { maxTurns: forwarded.maxTurns } : this.#opts.maxTurns !== undefined ? { maxTurns: this.#opts.maxTurns } : {}),
             ...(typeof forwarded?.flags === "object" && forwarded.flags !== null ? { flags: forwarded.flags as { auto?: boolean } } : {}),

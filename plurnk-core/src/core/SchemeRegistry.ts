@@ -35,6 +35,7 @@ export default class SchemeRegistry {
     // Handler store. Dispatcher supplies one context implementation to bundled
     // and discovered schemes alike.
     #handlers = new Map<string, object>();
+    #coreServices: CoreSchemeServices | undefined;
     #attributions: string[] = []; // #249 — declared attribution tags of discovered external schemes
     // §exec — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
     // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
@@ -64,10 +65,13 @@ export default class SchemeRegistry {
 
     register(name: string, handler: object): void {
         if (this.#handlers.has(name)) throw new Error(`scheme '${name}' is already registered`);
+        const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
+        if (this.#coreServices !== undefined && typeof bindCore === "function") bindCore.call(handler, this.#coreServices);
         this.#handlers.set(name, handler);
     }
 
     bindCore(services: CoreSchemeServices): void {
+        this.#coreServices = services;
         for (const handler of new Set(this.#handlers.values())) {
             const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
             if (typeof bindCore === "function") bindCore.call(handler, services);

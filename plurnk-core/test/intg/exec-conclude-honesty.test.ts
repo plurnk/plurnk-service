@@ -65,7 +65,7 @@ test("a driver resolving 200 under abort is restamped 499 reaped — the service
         assert.equal(result.status, 200, `the spawn started; got ${result.status}`);
         const sub = await (db.test_open_subscription_for_run as import("../../src/core/Db.ts").PrepMethod).get<{ id: number }>({ worker_id: workerId });
         assert.ok(sub !== undefined, "the spawn's subscription is open");
-        (schemes.get("exec") as Exec).abortSubscription(sub.id);
+        await engine.cancelSubscription(sub.id);
         const concluded = await waitFor(() => wakes.filter((w) => w.closeStatus !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });
         assert.equal(concluded[0].closeStatus, 499, "the reaped run concluded 499, not the driver's claimed 200");
         assert.match(concluded[0].summary, /reaped/, "the summary says reaped — no synthetic 'completed (exit -1)' success");

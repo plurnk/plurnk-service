@@ -162,9 +162,15 @@ its implementation.
 - `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the run-wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
 - `projection` — `readable(content, mimetype)` asks the consumer's configured mimetype family for the model-facing text projection. Acquisition schemes own bytes/DOM; they do not instantiate or second-guess the reader family. `null` means no readable projection.
-- `subscriptions` — streaming lifecycle: `open(pathname, handle)` returns a worker+teardown-composed `AbortSignal` and takes a force-cancel `SubscriptionHandle`; `notifyChunk(channel, chunk, mimetype?)` is **fused** (append + stream/event in one call), with an optional per-call `mimetype` that retypes the channel to the content's actual type (passed statelessly per chunk; the impl writes only on change; the manifest channel mimetype is the pre-fetch seed default — plurnk-service#226); `close(reason, outcome?)` composites channel state + registry close + run wake. Designed against Exec (two-channel, cancel-tested).
+- `subscriptions` — streaming lifecycle: `open(pathname, handle)` atomically binds durable subscription identity to the consumer's process-local live-handle registry, returns a worker+teardown-composed `AbortSignal`, and takes a force-cancel `SubscriptionHandle`; routed cancellation both invokes the handle and aborts that signal. `notifyChunk(channel, chunk, mimetype?)` is **fused** (append + stream/event in one call), with an optional per-call `mimetype` that retypes the channel to the content's actual type (passed statelessly per chunk; the impl writes only on change; the manifest channel mimetype is the pre-fetch seed default — plurnk-service#226). `close("done" | "error" | "cancelled", outcome?)` composites channel state, durable status (200/500/499), live-handle unregister, and run wake. Designed against Exec (two-channel, cancel-tested).
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in plurnk-service's index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set (plurnk-service#180).
+
+The consumer passes exactly this public context to every handler. Bundled
+adapters that also implement daemon-owned lifecycle behavior receive those
+collaborators separately at construction or binding time; consumers must not
+decorate `SchemeCtx` with database handles, registries, tokenizers, notifier
+callbacks, or other private service state.
 
 **Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation and `body` is the resolver-approved body, when present. The hook returns `{ status, outcome?, body? }`: a status below 400 completes the accept; a failure rejects it with the returned outcome.
 

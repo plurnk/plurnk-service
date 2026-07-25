@@ -7,6 +7,7 @@ import SchemeRegistry from "./SchemeRegistry.ts";
 import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type TelemetryChannel from "./TelemetryChannel.ts";
+import LiveSubscriptions from "./LiveSubscriptions.ts";
 
 test("workerApply invokes a discovered scheme through the public proposal context", async () => {
     const schemes = new SchemeRegistry();
@@ -30,6 +31,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         tokenize: (text) => text.length,
         executors: () => undefined as ExecutorRegistry | undefined,
         loopSignal: () => undefined,
+        liveSubscriptions: new LiveSubscriptions(),
     });
     const statement = {
         op: "EDIT",

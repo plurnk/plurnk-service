@@ -14,6 +14,8 @@ import EntryFind from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
 import type { ReadEntryResult, EntryData, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
+import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
+import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 
 // Resolved + §membership-change-gated-sync disk-write target, or the error status to return.
 type WriteTarget =
@@ -63,7 +65,7 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 // write, so it flows through the SAME §membership gate as EDIT (#resolveWriteTarget) — a
 // 202 proposal, then applyResolution() writes on accept — never an ungated overwrite (the
 // `.env`-wipe this guard prevents). COPY/MOVE *from* file:/// is readEntry (read-only).
-export default class File {
+export default class File extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "file",
         storedScheme: "file",  // {§entry-identity-no-null} — file rows persist under the reserved 'file' scheme (a NULL identity component voids the UNIQUE index; run59/#545); renders as a bare path
@@ -84,11 +86,12 @@ export default class File {
     // body / binary-415 / tag-404 are all handled there; a non-member has no entry
     // → 404, the same gate Known runs on. Disk is reached only at the materialize
     // and write-back edges (git-membership, applyResolution) — never on a read.
-    async read(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<ReadResult> {
+    async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
+        const core = this.coreContext(ctx);
         // {§fs-namei} — canonicalize ONCE, up front: resolution never depends on what exists
         // (the old fold-on-miss retry was existence-dependent meaning, run59's disease class).
-        const canon = File.#canonTarget(statement, await loadWorkspaceRoot(ctx.db, ctx.workspaceId));
-        return EntryOps.readWorkspaceEntry(canon ?? statement, ctx, File.manifest);
+        const canon = File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
+        return EntryOps.readWorkspaceEntry(canon ?? statement, core, File.manifest);
     }
 
     // {§fs-namei}/{§fs-canonical-name} — the ONE statement-normalizing seam: every model
@@ -117,23 +120,25 @@ export default class File {
         return Namespace.canonicalizeSpelling(raw, root);
     }
 
-    async find(statement: FindStatement, ctx: PlurnkSchemeContext): Promise<FindResult> {
+    async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
+        const core = this.coreContext(ctx);
         // {§fs-namei} — canonicalize the glob's path portion before the candidate scan, the
         // same seam READ/EDIT use; a bare `notes.md` and `/notes.md` scan identically.
-        const canon = File.#canonTarget(statement, await loadWorkspaceRoot(ctx.db, ctx.workspaceId));
-        return EntryFind.findWorkspaceEntries(canon ?? statement, ctx, File.manifest);
+        const canon = File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
+        return EntryFind.findWorkspaceEntries(canon ?? statement, core, File.manifest);
     }
 
     // COPY/MOVE FROM file:/// — read-only, gated by entry-existence (a non-member
     // has no entry → 404). The write-back side (writeEntry) is deliberately absent;
     // see the SECURITY note above.
-    async readEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
+    async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
+        const core = this.coreContext(ctx);
         // §scheme-address — normalize the model-typed path (bare `brief.md`) to its `/rel` member key,
         // the same parity READ/EDIT/deleteEntry have. Without it a COPY/MOVE FROM a bare file path
         // misses the canonical-stored member and 404s a source that plainly exists.
-        const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
+        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
         const key = root === null ? pathname : Namespace.canonicalize(pathname, root);
-        return EntryCrud.readEntry(key ?? pathname, ctx, "file");
+        return EntryCrud.readEntry(key ?? pathname, core, "file");
     }
 
     // §membership disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -216,11 +221,12 @@ export default class File {
     // with a udiff body for client review + attrs carrying the full patched
     // content. Engine writes the proposed log entry, pauses dispatch, and
     // calls applyResolution() (below) after the proposal accepts.
-    async edit(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<EditResult> {
+    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
+        const core = this.coreContext(ctx);
         if (statement.target === null) return { status: 400, error: "EDIT requires a path" };
         const pathname = statement.target.kind === "regex" ? statement.target.raw
             : decodePathParens(statement.target.kind === "url" ? statement.target.pathname : statement.target.raw); // #239 item 4
-        const target = await this.#resolveWriteTarget(pathname, ctx);
+        const target = await this.#resolveWriteTarget(pathname, core);
         if (!target.ok) return { status: target.status, error: target.error };
         const { canonical, rel, fileExists, original, mimetype, baseSig, admittedBy } = target;
 
@@ -257,10 +263,11 @@ export default class File {
     // ProposalLifecycle.workerApply routes the accept back here via the dest scheme;
     // applyResolution() writes the file + registers the entry. The copied content
     // is the source's body channel (full replacement — files are body-only).
-    async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
+    async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {
+        const core = this.coreContext(ctx);
         const bodyChannel = entry.channels.body;
         if (bodyChannel === undefined) return { status: 400, created: false, entryId: null };
-        const target = await this.#resolveWriteTarget(pathname, ctx);
+        const target = await this.#resolveWriteTarget(pathname, core);
         if (!target.ok) return { status: target.status, created: false, entryId: null };
         const { canonical, rel, fileExists, original, baseSig, admittedBy } = target;
         const patched = bodyChannel.content;
@@ -276,20 +283,21 @@ export default class File {
     // The accepted result returns the editedSpan diff as its body, so the EDIT row
     // itself carries the line-numbered confirmation of what changed — parity with the
     // entry-scheme EDIT's span; default-folding reclaims it at the next turn boundary.
-    async applyResolution(args: ApplyArgs, ctx: PlurnkSchemeContext): Promise<ApplyResult> {
+    async applyResolution(args: ApplyArgs, ctx: CoreSchemeCallContext): Promise<ApplyResult> {
+        const core = this.coreContext(ctx);
         const { attrs, body } = args;
         // Delete-apply (deferred behind review — the KILL proposal, or the MOVE source-delete gated by
         // its dest proposal): unlink the host file + deregister the entry on accept. A real unlink
         // failure surfaces as 500, never a silent noop; ENOENT ⇒ file already gone, still deregister.
         if (typeof attrs.deletePath === "string") {
-            const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
+            const root = await loadWorkspaceRoot(core.db, core.workspaceId);
             if (root === null) return { status: 500, outcome: "no project_root" };
             try {
                 await rm(join(root, attrs.deletePath));
             } catch (err) {
                 if ((err as NodeJS.ErrnoException).code !== "ENOENT") return { status: 500, outcome: "delete_failed", body: err instanceof Error ? err.message : String(err) };
             }
-            await EntryCrud.deleteEntry(attrs.deletePath, ctx, "file");
+            await EntryCrud.deleteEntry(attrs.deletePath, core, "file");
             return { status: 200 };
         }
         const canonical = attrs.canonical;
@@ -348,18 +356,18 @@ export default class File {
             const { entryId } = await EntryCrud.writeEntry(relPath, {
                 channels: { body: { content: patched, mimetype } },
                 tags: [],
-            }, ctx, "file");
+            }, core, "file");
             // {§fs-write-surface} — stamp the grantor the blind-write closure PROVED at propose
             // time; provenance never waits for the reconcile to guess what was already known.
             const admitted = (args.attrs as { admittedBy?: string }).admittedBy;
             if (entryId !== null && (admitted === "client" || admitted === "git")) {
-                await (ctx.db.crud_stamp_origin as PrepMethod).run({ entry_id: entryId, membership_origin: admitted });
+                await (core.db.crud_stamp_origin as PrepMethod).run({ entry_id: entryId, membership_origin: admitted });
             }
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
             // write as the synced state — not an FsDivergence narrated back at the model.
             if (entryId !== null) {
                 const landed = await stat(canonical);
-                await (ctx.db.crud_set_synced_sig as PrepMethod).run({ entry_id: entryId, synced_sig: `${landed.mtimeMs}:${landed.size}` });
+                await (core.db.crud_set_synced_sig as PrepMethod).run({ entry_id: entryId, synced_sig: `${landed.mtimeMs}:${landed.size}` });
             }
         } catch (err) {
             // Disk write succeeded; entry registration failed. Surface
@@ -380,12 +388,13 @@ export default class File {
     // DESTRUCTIVE, so it PROPOSES for review (202), exactly as edit() does — never an ungated unlink.
     // §membership — only a MEMBER reaches the proposal; a non-member is invisible (404), so untracked
     // disk is never probed or touched. applyResolution unlinks + deregisters on accept.
-    async deleteEntry(pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
-        const root = await loadWorkspaceRoot(ctx.db, ctx.workspaceId);
+    async deleteEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<DeleteEntryResult> {
+        const core = this.coreContext(ctx);
+        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
         if (root === null) return { status: 400 };
         const rel = Namespace.canonicalize(pathname, root);
         if (rel === null) return { status: 404 };
-        const member = await (ctx.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: rel });
+        const member = await (core.db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: core.workspaceId, owner_id: await Owner.commonsId(core.db, core.workspaceId), scheme: "file", pathname: rel });
         if (member === undefined) return { status: 404 };
         return { status: 202, attrs: { deletePath: rel } };
     }

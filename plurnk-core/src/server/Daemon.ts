@@ -581,8 +581,47 @@ export default class Daemon {
             await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
         }
 
+        await this.#recoverLifecycle();
+
         // #364 — the daemon opens NO transport, ever: plugin modules open theirs via the seam.
         for (const init of this.#moduleInits) await init(this);
+    }
+
+    async #recoverLifecycle(): Promise<void> {
+        await (this.#db.recovery_fail_active_loops as PrepMethod).run({});
+        await (this.#db.recovery_error_orphan_subscription_channels as PrepMethod).run({});
+        await (this.#db.recovery_fail_orphan_subscriptions as PrepMethod).run({});
+        await (this.#db.recovery_resume_unblocked_parks as PrepMethod).run({});
+
+        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
+        const maxTurns = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50");
+        const queued = await (this.#db.recovery_queued_workers as PrepMethod).all<{
+            worker_id: number;
+            workspace_id: number;
+        }>({});
+        for (const row of queued) {
+            const started = await this.#ensureDrain({
+                workspaceId: row.workspace_id,
+                workerId: row.worker_id,
+                systemPrompt,
+                maxTurns,
+            });
+            started?.drainPromise.catch((err: unknown) => {
+                console.error(`recovered drain failed for worker ${row.worker_id}:`, err);
+            });
+        }
+
+        const parked = await (this.#db.recovery_parked_workers as PrepMethod).all<{
+            worker_id: number;
+            workspace_id: number;
+        }>({});
+        for (const row of parked) {
+            await this.#schedulePollWake(
+                row.workspace_id,
+                row.worker_id,
+                systemPrompt,
+            );
+        }
     }
 
     async stop(): Promise<void> {
@@ -886,6 +925,7 @@ export default class Daemon {
                     this.#owedWakes.delete(workerId); // the loop concluded (non-202) — no park to honor a held wake at
                     const usage = await this.#engine.loopUsage(loopRow.id);
                     this.#broadcast({ workspaceId }, "loop/terminated", {
+                        workerId,
                         loopId: loopRow.id,
                         finalStatus: result.finalStatus,
                         hitMaxTurns: result.hitMaxTurns,
@@ -927,7 +967,7 @@ export default class Daemon {
                         const message = String(controller.signal.reason ?? "user_cancelled").slice(0, 500);
                         await (this.#db.engine_loop_cancel_external as PrepMethod).run({ loop_id: currentLoopId, message });
                         this.#broadcast({ workspaceId }, "loop/terminated", {
-                            loopId: currentLoopId, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage, message,
+                            workerId, loopId: currentLoopId, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage, message,
                         });
                     }
                     if (!firstSettled) {
@@ -956,7 +996,7 @@ export default class Daemon {
                         await (this.#db.engine_loop_set_status as PrepMethod).run({ loop_id: currentLoopId, status: 500, message });
                         const usage = await this.#engine.loopUsage(currentLoopId);
                         this.#broadcast({ workspaceId }, "loop/terminated", {
-                            loopId: currentLoopId, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage, message,
+                            workerId, loopId: currentLoopId, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage, message,
                         });
                     }
                     if (!firstSettled) {
@@ -980,7 +1020,12 @@ export default class Daemon {
         // Topology join (§run-lifecycle): when this drain exits having CONCLUDED the worker, wake its parent
         // if parked. Runs after the drain fully tears down (settled promise) so the quiescence check sees
         // final state; speculative (#onDrainExit no-ops unless the worker concluded AND the parent is parked).
-        drainPromise.then(() => this.#onDrainExit(workspaceId, workerId, systemPrompt)).catch(() => {});
+        void drainPromise.then(
+            () => this.#onDrainExit(workspaceId, workerId, systemPrompt),
+            () => this.#onDrainExit(workspaceId, workerId, systemPrompt),
+        ).catch((err: unknown) => {
+            console.error(`parent wake after worker ${workerId} settlement failed:`, err);
+        });
         // Swallow unhandled rejections (drain aborts with no awaiter); the
         // error already surfaced via firstLoopPromise or was logged inside.
         drainPromise.catch(() => {});
@@ -1075,32 +1120,34 @@ export default class Daemon {
         // signal is the optimization path — the fast, listener-driven reap.
         const scope = this.#workerAborts.get(workerId);
         if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
-        // #380, the PARKED case — a 202-blocked loop has no drain to observe the abort (the
-        // drain tears down on 202), so before this a cancelled park stayed 202 forever with no
-        // terminal and no broadcast. Terminalize the worker's live loops (102/202; queued 100 stays
-        // enqueued) with provenance and broadcast each. With a live drain its abort catch does
-        // this instead — skipping here keeps the broadcast single.
-        if (!hadDrain) {
-            void (async () => {
-                const message = reason.slice(0, 500);
-                const dead = await (this.#db.engine_worker_cancel_live_loops as PrepMethod).all<{ id: number }>({ worker_id: workerId, message });
-                if (dead.length === 0) return;
-                const srow = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: workerId });
-                if (srow === undefined) return;
-                for (const { id } of dead) {
-                    const usage = await this.#engine.loopUsage(id);
-                    this.#broadcast({ workspaceId: srow.workspace_id }, "loop/terminated", {
-                        loopId: id, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage, message,
-                    });
-                }
-            })().catch((err: unknown) => {
-                console.error(`cancelDrain(${workerId}) live-loop terminalize failed:`, err);
-            });
-        }
-        // Total reap by the REGISTRY (§worker-lifecycle-total-reap): the durable source
-        // of truth. Every open subscription the worker holds, aborted via its owning
-        // scheme — independent of the signal-listener timing, so an exec mid-spawn
-        // (registry row written before it is killable) is reaped too. A late spawn
+        // #380, the PARKED case — status 202 can become durable just before the drain
+        // unregisters itself. Snapshotting `hadDrain` is therefore not sufficient: the
+        // abort catch may own a live 102, while a drain that already returned 202 owns
+        // nothing. Reconcile after that exact drain settles, then atomically claim any
+        // remaining 102/202 rows. The query makes this single-writer: if the abort catch
+        // already terminalized its loop, there is no row here and no duplicate broadcast.
+        const interruptedDrain = this.#activeDrains.get(workerId)?.promise;
+        void (async () => {
+            if (interruptedDrain !== undefined) await interruptedDrain.catch(() => {});
+            const message = reason.slice(0, 500);
+            const dead = await (this.#db.engine_worker_cancel_live_loops as PrepMethod).all<{ id: number }>({ worker_id: workerId, message });
+            if (dead.length === 0) return;
+            const srow = await (this.#db.drain_get_worker_workspace as PrepMethod).get<{ workspace_id: number }>({ worker_id: workerId });
+            if (srow === undefined) return;
+            for (const { id } of dead) {
+                const usage = await this.#engine.loopUsage(id);
+                this.#broadcast({ workspaceId: srow.workspace_id }, "loop/terminated", {
+                    workerId, loopId: id, finalStatus: 499, hitMaxTurns: false, turnIds: [], usage, message,
+                });
+            }
+        })().catch((err: unknown) => {
+            console.error(`cancelDrain(${workerId}) live-loop terminalize failed:`, err);
+        });
+        // Total reap by the subscription contract (§worker-lifecycle-total-reap):
+        // durable rows enumerate everything the worker holds; the process-local
+        // registry owns each callable teardown. This is independent of signal-listener
+        // timing, so an exec mid-spawn (its row written before it is killable) is
+        // reaped too. A late spawn
         // (registering after this) self-aborts against its captured, now-aborted
         // epoch (§exec-timeout). Idempotent; fire-and-forget (the
         // abort is sync, the registry read async; the 499 conclusion surfaces async).
@@ -1118,18 +1165,14 @@ export default class Daemon {
         return exec?.hasActiveSpawns?.(workerId) ?? false;
     }
 
-    // The registry-routed reap (§worker-lifecycle-total-reap): every open subscription
-    // the worker holds, aborted via its owning scheme. The durable answer to "reap
-    // everything" — the in-process AbortSignal listener is the optimization, this is
-    // the source of truth: an exec mid-spawn (registry row written before it is
-    // killable) or a background exec from any past loop is caught regardless of
-    // listener timing. Idempotent — a stream the signal already reaped is a no-op.
+    // The contract-routed reap (§worker-lifecycle-total-reap): durable rows enumerate
+    // every open subscription; the live registry invokes its exact callable owner.
+    // The worker signal is only the fast path. An exec mid-spawn or a background exec
+    // from a past loop is caught regardless of listener timing. Idempotent — a stream
+    // the signal already reaped shares the same registry cancellation.
     async #reapWorkerStreams(workerId: number): Promise<void> {
         const open = await ChannelWrite.findOpenSubscriptionsForWorker(this.#db, workerId);
-        for (const { id, scheme } of open) {
-            const handler = this.#schemes.get(scheme) as { abortSubscription?: (subscriptionId: number) => void } | undefined;
-            handler?.abortSubscription?.(id);
-        }
+        await Promise.all(open.map(({ id }) => this.#engine.cancelSubscription(id)));
     }
 
     /**
