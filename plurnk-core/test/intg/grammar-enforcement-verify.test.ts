@@ -9,7 +9,7 @@ import type { Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 
 const fakeProvider = (content: string): Provider => ({
-    model: "fake", contextWindow: 1000,
+    model: "fake", contextWindow: 1000, constrainsOutput: true,
     generate: async () => ({ assistant: { content, reasoning: null, usage: { prompt: 1, completion: 3, reasoning: 0, cached: 0, total: 4 }, finishReason: "stop", model: "fake" }, assistantRaw: null }),
     countTokens: () => 1, costFor: () => 0,
 }) as unknown as Provider;
@@ -22,7 +22,7 @@ test("an enforcing backend passes verification", async () => {
 test("an UNCONSTRAINED backend fails hard — never a silent unconstrained boot", async () => {
     await assert.rejects(
         () => ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("hello, I am unconstrained"), { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" }),
-        (err: Error) => /grammar enforcement is OFF/.test(err.message) && /never transported|grammarStyle/.test(err.message),
+        (err: Error) => /GBNF enforcement failed/.test(err.message) && /unconstrained output/.test(err.message),
         "the boot refuses to run with dark rails, with a legible cause",
     );
 });
@@ -33,20 +33,17 @@ test("no grammar requested → verification is a no-op", async () => {
     // no throw = unconstrained is a legitimate deliberate mode
 });
 
-test("a NON-CLAIMING backend (constrainsOutput:false) boots with a notice — the global default is safe (#336)", async () => {
-    // A grammarStyle-'none' provider drops the grammar cleanly (never on the wire), so a global
-    // GBNF default must not refuse boot against it. The probe is SKIPPED entirely — generate()
-    // here would return garbage, proving the gate fired before any probe.
+test("a configured GBNF fails hard when the provider does not advertise local transport", async () => {
     const nonClaiming = { ...fakeProvider("garbage the probe would reject"), constrainsOutput: false } as unknown as Provider;
-    await ProviderInstantiate.verifyGrammarEnforcement(nonClaiming, { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" });
-    // no throw = boots unconstrained on this alias, with the stderr notice
+    await assert.rejects(
+        () => ProviderInstantiate.verifyGrammarEnforcement(nonClaiming, { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" }),
+        /does not advertise GBNF transport/,
+    );
 
-    // And the claim gates HARD the other way: constrainsOutput true (or absent — the legacy
-    // interface) still runs the end-to-end probe and refuses on unconstrained output (#34).
     const claiming = { ...fakeProvider("unconstrained ramble"), constrainsOutput: true } as unknown as Provider;
     await assert.rejects(
         () => ProviderInstantiate.verifyGrammarEnforcement(claiming, { PLURNK_PROVIDERS_GBNF: "plurnk.gbnf" }),
-        /grammar enforcement is OFF/,
+        /GBNF enforcement failed/,
         "a CLAIMING backend that returns unconstrained output still fails hard",
     );
 });
@@ -55,7 +52,7 @@ test("a PER-ALIAS grammar (bare empty) STILL verifies — the #353 regression gu
     // The bug this pins: after GBNF went per-alias (#352), the verify read the BARE knob (now
     // empty), so a grammar riding a suffix (turboderp) SKIPPED verification — enforced but
     // unconfirmed, the #34 hole reopened. The env below is the shape live/demo actually ships:
-    // bare OFF, the active alias opts in via its suffix. The verify must resolve per-alias and run.
+    // bare unset, the active local alias opts in via its suffix. The verify must resolve per-alias and run.
     const env = { PLURNK_PROVIDERS_GBNF: "", PLURNK_MODEL: "rig", PLURNK_MODEL_rig: "openai/local", PLURNK_PROVIDERS_GBNF_rig: "plurnk.gbnf" };
     // An UNCONSTRAINED backend must now FAIL (proving the verify ran, not skipped): if it were
     // still reading the empty bare knob it would silently return and this would not throw.

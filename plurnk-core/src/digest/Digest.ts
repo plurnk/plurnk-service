@@ -218,13 +218,11 @@ export default class Digest {
         const tokens = `prompt=${turn.usage_prompt} completion=${turn.usage_completion} cached=${turn.usage_cached}`;
         const cost = turn.usage_cost_pico > 0 ? ` cost=$${(turn.usage_cost_pico / 1e12).toFixed(6)}` : "";
         const finishReason = turn.finish_reason ?? "—";
-        // #498 — rail truth on the human line: attached+ok stays quiet-positive; anything else shouts.
-        // {§rail-truth-engine-verdict} three-valued railsAttached ("client"/"delegated"); boolean-era
-        // specimens (provider-graded, pre-#534) render true as client, false as OFF.
+        // #498 — render only observed constraint metadata. Absence is ordinary and
+        // makes no claim about endpoint-owned model settings.
         const tm = Digest.#parseJson(turn.meta ?? "null", null) as { railsAttached?: boolean | string; railsVerdict?: string } | null;
         const attached = tm?.railsAttached;
-        const rails = attached === undefined ? ""
-            : attached === false ? " rails=OFF"
+        const rails = attached === undefined || attached === false ? ""
             : ` rails=${attached === true ? "client" : attached}:${tm?.railsVerdict ?? "attached"}`;
         const model = turn.model ?? "—";
         const errs = (m.logEntriesByTurn.get(turn.id) ?? []).filter((le) => le.status_rx >= 400).length;

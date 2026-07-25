@@ -25,8 +25,7 @@ const installFetch = (chunks: unknown[]) => {
     return calls;
 };
 
-// Fake fetch returning one non-streamed JSON body — for the paths the spine
-// demotes off SSE (a response_format grammar). Captures the request the same way.
+// Fake fetch returning one non-streamed JSON body. Captures the request too.
 const installFetchJson = (payload: unknown) => {
     const calls: { url: string; init: RequestInit }[] = [];
     mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
@@ -371,15 +370,14 @@ test("reasoningStyle 'effort_explicit': off SENDS none, adaptive OMITS (#403 —
 });
 
 test("the family temperature default rides every request; caller sampling overrides it (#30)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "response_format" });
-    // default rides with the grammar (non-streamed demotion path)
-    let calls = installFetchJson(jsonChoice);
-    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
     mock.restoreAll();
     // explicit caller sampling wins over the default
-    calls = installFetchJson(jsonChoice);
-    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"', sampling: { temperature: 0.7 } });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "r", messages: [], sampling: { temperature: 0.7 } });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.7);
     mock.restoreAll();
     // temperature is now the UNIVERSAL default: present without a grammar too
@@ -419,24 +417,6 @@ test("#567: DRY + repeat_last_n ride the llamacpp path when set; unset leaves th
     mock.restoreAll();
 });
 
-test("effort_explicit: intent maps IDENTICALLY with and without a grammar — the #32 clamp is lifted (reasoning+rails coexist)", async () => {
-    const warned: Array<string | Error> = [];
-    mock.method(process, "emitWarning", (msg: string | Error) => { warned.push(msg); });
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "on", budget: 8192 }, retryAttempts: 0, reasoningStyle: "effort_explicit", grammarStyle: "response_format", source: "provider:test" });
-    // grammar transported → intent STILL flows through (canary-verified: the mask
-    // covers only content; clamping to "none" was the plan-less #331 regression)
-    let calls = installFetchJson(jsonChoice);
-    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
-    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
-    assert.equal(warned.filter((w) => String(w).includes("clamped")).length, 0, "no clamp warning — the clamp is gone");
-    mock.restoreAll();
-    // no grammar → same mapping
-    const p2 = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "on", budget: 8192 }, retryAttempts: 0, reasoningStyle: "effort_explicit", grammarStyle: "response_format" });
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p2.generate({ workerId: "r", messages: [] });
-    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
-});
-
 test("llamacpp grammar path: temperature default + the managed repeat-penalty floor", async () => {
     const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -447,15 +427,9 @@ test("llamacpp grammar path: temperature default + the managed repeat-penalty fl
 });
 
 test("#426: the repeat penalty rides EVERY request rail-off, keyed per backend (cloud degeneration guard)", async () => {
-    // response_format cloud (fireworks) with NO grammar - the firefast case that went out bare
-    const fw = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "response_format" });
-    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await fw.generate({ workerId: "r", messages: [] });
-    assert.equal(JSON.parse(calls[0].init.body as string).repetition_penalty, 1.15);
-    mock.restoreAll();
-    // llama.cpp with NO grammar carries its key too (unconstrained local is guarded now)
+    // llama.cpp with NO grammar carries its key too (unconstrained local is guarded)
     const llama = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
-    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await llama.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).repeat_penalty, 1.15);
     mock.restoreAll();
@@ -607,32 +581,6 @@ test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor
     assert.equal(body.grammar, 'root ::= "x"');
     assert.equal(body.repeat_penalty, 1.15);
     assert.equal("response_format" in body, false);
-});
-
-test("grammar transport 'response_format': response_format.grammar, no top-level grammar (Fireworks)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "response_format" });
-    const calls = installFetchJson(jsonChoice);   // response_format grammar demotes off SSE
-    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
-    const body = JSON.parse(calls[0].init.body as string);
-    assert.deepEqual(body.response_format, { type: "grammar", grammar: 'root ::= "x"' });
-    assert.equal("grammar" in body, false);          // not the llama.cpp shape
-    assert.equal("repeat_penalty" in body, false);   // llama.cpp spelling not used here
-    assert.equal(body.repetition_penalty, 1.15);     // the floor still rides (OpenAI-compat spelling, #20)
-});
-
-// A response_format grammar is the one case the spine drops streaming for, even
-// with streaming on (default): fireworks mislabels the streamed grammar output
-// as reasoning_content but returns it as content non-streamed (§13). The demotion
-// is per-request — a grammarless call on the same provider still streams.
-test("response_format grammar demotes THIS request off SSE; grammarless calls still stream", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "response_format" });
-    const jsonCalls = installFetchJson(jsonChoice);
-    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
-    assert.equal("stream" in JSON.parse(jsonCalls[0].init.body as string), false);   // no SSE flag
-    mock.restoreAll();
-    const sseCalls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });                                   // no grammar → streams
-    assert.equal(JSON.parse(sseCalls[0].init.body as string).stream, true);           // SSE flag present
 });
 
 test("grammar transport 'none' (default): the grammar is never sent — no silent unconstrained", async () => {

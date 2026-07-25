@@ -303,7 +303,6 @@ export default class Engine {
 
     // Cached plurnk GBNF — read once on the first constrained generate (#189).
     #gbnfCache = new Map<string, string>();  // variant name -> GBNF text (per-alias selection, #353)
-    #railAnnounced = new Set<string>();  // #488 — one rail-state line per alias, positive drill-visible signal
 
     // {§rail-truth-engine-verdict} — the verify GAP (a configured grammar @plurnk/gbnf can't
     // parse): warn once per message, never per turn; the turn records railsVerdict "unverifiable".
@@ -399,43 +398,32 @@ export default class Engine {
         this.#executors.register(tag, entry);
     }
 
-    // Grammar-constrained sampling (#189): when PLURNK_PROVIDERS_GBNF is enabled
-    // (the only knob — default-on in .env.defaults), hand the provider the plurnk
-    // GBNF (the full shipped multi-op root, read once + cached). The provider
-    // attaches it iff the backend supports it and silently drops it otherwise —
-    // capability is providers' concern, not ours. Pure plumbing grammar→provider.
+    // Optional local-model constrained sampling (#189). The PLURNK language is
+    // always parsed by ANTLR; this separately supplies a GBNF artifact to a
+    // backend that explicitly supports constrained sampling.
     async #grammarConstraint(provider: Provider): Promise<string | undefined> {
         // PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant to constrain sampling to (#225):
         // a bare name (`plurnk-strict.gbnf` | `plurnk.gbnf`) is a variant shipped by
         // @plurnk/plurnk-grammar; an absolute/relative path is a BYO grammar. Empty or "0"
-        // disables — unconstrained generation.
+        // disables the optional constraint.
         //
         // PER ALIAS (#353): resolved PLURNK_PROVIDERS_GBNF_<alias> over the bare fallback (providers'
         // scopeEnvToAlias), scoped by the alias that built this provider. GBNF only helps backends
-        // that constrain sampling (llama-server, response_format backends); a cloud model that IGNORES the grammar
-        // gets a filter-mode divergence event every turn for nothing. So the bare default is OFF
-        // and the GBNF-capable aliases opt IN via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
+        // that constrain sampling (llama-server). The bare default is unset and
+        // local-model aliases opt in via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
         // #488 — the rail must be VERIFIABLE, never silently off. Two guards:
         // (1) the alias fallback is only trusted when NO per-alias GBNF opt-ins exist: an
         //     unregistered provider in a process that configured suffixed rails could fall back
         //     to a DIFFERENT active alias, miss the suffix, and run unconstrained — the silent
         //     severance class run78 demonstrated (free decode, fabricated logs, CLEAN telemetry).
-        // (2) every resolution states itself ONCE on stderr — "grammar rail: <alias> → <variant>/OFF" —
-        //     so any drill capture positively shows rail state; absence of the line is greppable.
         const registered = ProviderInstantiate.aliasOf(provider);
         const fallback = registered === undefined ? resolveActiveAlias(process.env)?.alias : undefined;
         if (registered === undefined && fallback === undefined && Object.keys(process.env).some((k) => k.startsWith("PLURNK_PROVIDERS_GBNF_"))) {
-            throw new Error("grammar rail: provider has no registered alias and no active alias resolves, while per-alias PLURNK_PROVIDERS_GBNF_* rails are configured — refusing to run unconstrained (#488).");
+            throw new Error("GBNF constraint: provider has no registered alias and no active alias resolves, while per-alias PLURNK_PROVIDERS_GBNF_* constraints are configured");
         }
         const alias = registered ?? fallback ?? "";
         const variant = scopeEnvToAlias(process.env, alias, ["PLURNK_PROVIDERS_GBNF"]).PLURNK_PROVIDERS_GBNF;
-        if (variant === undefined || variant === "" || variant === "0") {
-            if (!this.#railAnnounced.has(alias)) {
-                this.#railAnnounced.add(alias);
-                process.stderr.write(`plurnk-engine: grammar rail: ${alias || "(bare)"} → OFF (no PLURNK_PROVIDERS_GBNF for this alias)\n`);
-            }
-            return undefined;
-        }
+        if (variant === undefined || variant === "" || variant === "0") return undefined;
         const hit = this.#gbnfCache.get(variant);
         if (hit !== undefined) return hit;
         const path = variant.startsWith("/") || variant.startsWith(".")
@@ -443,7 +431,7 @@ export default class Engine {
             : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-grammar/${variant}`));
         const text = await readFile(path, "utf8");  // unresolvable/unreadable throws — a configured rail never silently degrades
         this.#gbnfCache.set(variant, text);
-        process.stderr.write(`plurnk-engine: grammar rail: ${alias || "(bare)"} → ${variant} (${text.length} chars)\n`);
+        process.stderr.write(`plurnk-engine: GBNF constraint: ${alias || "(bare)"} → ${variant} (${text.length} chars)\n`);
         return text;
     }
 
@@ -1207,16 +1195,15 @@ export default class Engine {
                     : {}),
             });
         }
-        // {§rail-truth-engine-verdict} (#534) — the engine grades every emission against its own
-        // grammar contract, on every path: delegated enforcement changes who CONSTRAINS, never who
-        // verifies (verification sharing a failure domain with the enforcer is not verification).
-        // Keys merge OVER the provider's transitional railsMeta at the close stamp below.
-        let railKeys: { railsAttached: "client" | "delegated"; railsVerdict: string } | undefined;
+        // {§rail-truth-engine-verdict} (#534) — a configured local GBNF constraint is
+        // independently graded by the engine. Endpoint-owned constraints arrive only
+        // through provider metadata; absence of local configuration says nothing about them.
+        let railKeys: { railsAttached: "client"; railsVerdict: string } | undefined;
         if (railGrammar !== undefined) {
             let verdict: ReturnType<typeof validateGbnf> | null = null;
             try { verdict = validateGbnf(railGrammar, packetAssistant.content); }
             catch (cause) { Engine.#warnRailVerdictGapOnce((cause as Error).message); }
-            railKeys = { railsAttached: provider.constrainsOutput === true ? "client" : "delegated", railsVerdict: verdict?.status ?? "unverifiable" };
+            railKeys = { railsAttached: "client", railsVerdict: verdict?.status ?? "unverifiable" };
             const providerGraded = (response.telemetry ?? []).some((e) => e.kind === "grammar_unenforced");
             if (verdict !== null && verdict.status !== "accept" && !providerGraded) {
                 const located = this.#offsetToLineColumn(packetAssistant.content, verdict.pos);

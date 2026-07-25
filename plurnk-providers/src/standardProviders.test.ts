@@ -298,10 +298,10 @@ test("openai: a garbage PLURNK_PROVIDERS_LLAMA_SERVER value fails hard", async (
     );
 });
 
-test("constrainsOutput: fireworks (static response_format) reports true; groq reports false", async () => {
+test("constrainsOutput: cloud providers do not claim local GBNF transport", async () => {
     mockEndpoint();
     const fw = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
-    assert.equal(fw!.constrainsOutput, true);
+    assert.equal(fw!.constrainsOutput, false);
     const gq = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     assert.equal(gq!.constrainsOutput, false);
 });
@@ -868,9 +868,7 @@ test("plurnk: reads its window from upstream but stays a plain OpenAI client —
     mock.restoreAll();
 });
 
-// — fireworks carries GBNF via response_format.grammar (cloud GBNF, #grammarStyle) —
-
-test("fireworks: a grammar transports as response_format.grammar (not the llama.cpp top-level field)", async () => {
+test("fireworks: caller GBNF is not transported to the cloud API", async () => {
     let body = "";
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } }); }
@@ -879,7 +877,7 @@ test("fireworks: a grammar transports as response_format.grammar (not the llama.
     const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, "accounts/fireworks/models/deepseek-v4-pro");
     await p!.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     const b = JSON.parse(body);
-    assert.deepEqual(b.response_format, { type: "grammar", grammar: 'root ::= "ok"' });
+    assert.equal("response_format" in b, false);
     assert.equal("grammar" in b, false);
     mock.restoreAll();
 });

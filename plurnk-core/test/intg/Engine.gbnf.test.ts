@@ -26,11 +26,11 @@ const runOneTurn = async (mock: Mock, name: string): Promise<void> => {
 
 // PLURNK_PROVIDERS_GBNF SELECTS the GBNF variant (#189/#225): a variant name
 // resolves to that grammar and reaches the provider verbatim; 0/empty → nothing
-// does. The service resolves + plumbs it; the provider applies-or-drops per backend.
+// does. The service resolves and supplies it only when explicitly configured.
 test("PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias's suffix wins over the bare fallback (#353)", async () => {
     // The daemon test's active alias (whatever the local .env selects) decides via its suffixed
-    // knob. Bare is the fallback: GBNF only helps sampling-constraining backends, so it ships OFF
-    // by default and each GBNF-capable alias opts in via a PLURNK_PROVIDERS_GBNF_<alias> suffix.
+    // knob. Bare is the fallback: GBNF is optional local constrained sampling, so
+    // it is unset by default and a local alias opts in with its suffix.
     const dsl = "<<SEND[200]:ok:SEND";
     // Alias-agnostic: resolve whichever alias the test cascade selected (.env.test's PLURNK_MODEL,
     // over .env's alias defs) and set ITS GBNF suffix — never a hardcoded name, so this holds
@@ -41,7 +41,7 @@ test("PLURNK_PROVIDERS_GBNF is PER ALIAS — the active alias's suffix wins over
     const keys = ["PLURNK_PROVIDERS_GBNF", suffixKey];
     const orig = keys.map((k) => process.env[k]);
     try {
-        process.env.PLURNK_PROVIDERS_GBNF = "";  // bare OFF
+        process.env.PLURNK_PROVIDERS_GBNF = "";  // bare unset
         process.env[suffixKey] = "plurnk.gbnf";  // the active alias opts IN
         // Window must clear the bundled generation-envelope floor (REASONING+COMPLETION+SAFETY
         // ≈ 66.5k, plurnk-core/.env.defaults). 8192 fell UNDER it, so the budget derivation threw

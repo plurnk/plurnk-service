@@ -336,7 +336,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       reasoning, reasoningStyle,   // {mode,budget} intent + style: "none"|"think"|"include_reasoning"|"effort"|"effort_explicit"|"template"|"anthropic"
       temperature, repeatPenalty, frequencyPenalty,  // sampling + anti-degeneration floor; frequency_penalty guards the plain cloud path (#426)
       countTokens, costFor,  // strategies; default heuristic / free
-      grammarStyle,          // "none" | "llamacpp" | "response_format" — GBNF wire shape (§13); default "none"
+      grammarStyle,          // "none" | "llamacpp" — optional local GBNF transport (§13)
       gbnfDebug,             // PLURNK_PROVIDERS_GBNF_DEBUG: validate a grammar locally + throw on invalid, but DON'T send it (§13); default false
       streaming,             // SSE transport; default true (false → one non-streamed JSON)
       supportsSlotPinning, slotCount,  // INTERNAL slot-affinity wiring (run→id_slot); never consumer-facing
@@ -379,37 +379,39 @@ The `TelemetryEvent` shape is mirrored **locally** (`./telemetry.ts`), structura
 
 ## §13 Grammar-constrained sampling (GBNF)
 
-`@plurnk/plurnk-grammar` ships `@plurnk/plurnk-grammar/plurnk.gbnf` — a generated llama.cpp grammar constraining sampling to the canonical plurnk form. Ownership splits three ways:
+GBNF is an optional aid for local llama.cpp hobbyists, not the PLURNK language
+contract and not a baseline cloud capability. The canonical language is parsed
+by `@plurnk/plurnk-grammar`'s ANTLR grammar. That package also ships a generated
+`plurnk.gbnf` whose language is a tested subset of the canonical grammar.
 
 - **plurnk-grammar** owns the artifact (canonical-form GBNF, `L(GBNF) ⊂ L(ANTLR)` invariant, tests).
-- **This layer** owns capability detection, transport, **and enforcement verification**: `generate({ …, grammar })` attaches the string **verbatim** as the `grammar` body field when the backend supports it, sends no grammar-related field otherwise (cloud APIs reject unknown params), and — when it did transport a grammar — checks that the response actually conforms. The provider never chooses or modifies the grammar.
-- **The consumer** owns policy: whether to constrain a given call, and which root variant to send (e.g. the `root ::= statement` single-statement substitution that forces EOS at the close tag — the shipped `statement+` root never forces EOS, so greedy generation runs to `max_tokens`).
+- **This layer** detects or accepts an operator pin for llama-server, transports
+  the caller's GBNF verbatim as its top-level `grammar` field, and reports
+  conformance. Cloud providers never receive a grammar-related field.
+- **The consumer** decides whether to configure a local constraint and which
+  artifact to send. Endpoint-managed constraints are endpoint settings, not a
+  provider capability inferred from their absence here.
 
-**Sampling guard (anti-degeneration, #426).** Degeneration into repetition loops is NOT grammar-specific -- greedy/low-temperature decoding loops on the plain cloud path too -- so the penalty rides **every** request, not just grammar'd ones, and never relies on server launch flags. The wire field is keyed on the backend (`grammarStyle`): `repeat_penalty` on `llamacpp` (the managed multiplier floor, `PLURNK_PROVIDERS_REPEAT_PENALTY`, canonical `1.15`), `repetition_penalty` on `response_format`/Fireworks (same floor, the OpenAI-compat spelling, verified honored #20), and `frequency_penalty` on `none`/plain cloud (`PLURNK_PROVIDERS_FREQUENCY_PENALTY`, canonical `0.4` -- the OpenAI-standard field, since the llama.cpp `repeat_penalty` multiplier isn't accepted there). A hard grammar makes the loop WORSE (masking removes the model's natural exits), which is why the floor was born on the grammar path; #426 promoted it to the universal guard it always needed to be. (Probed live on llama.cpp b894 + gemma-4-26B; reference: plurnk-grammar `test/llama/gbnf-live.test.ts`.)
+`grammarStyle` is `"none"` or `"llamacpp"`. A llama-server fingerprint or
+`PLURNK_PROVIDERS_LLAMA_SERVER=1` selects `"llamacpp"`; all other providers
+remain `"none"`. `constrainsOutput` is true only for the former.
 
-**The cap is still required -- and the provider now supplies its default (#507 doctrine revision).** The repeat-penalty floor suppresses short repetition cycles, NOT long-cycle degeneration: under the multi-op root (optional EOS) at near-greedy temperatures, a constrained emission can answer correctly in its first tokens and then loop to the **context wall** (observed live: 30,736 junk tokens to `finish_reason: length` -- providers#10). The former letter ("no layer defaults a cap; the consumer must bring the envelope") is revised by the owner-ruled #507 migration: the provider OWNS the default envelope (`reasoningReserve + completionReserve`, derived from the detected window), the consumer applies it as its `maxTokens` and MAY override per call -- the caller's explicit cap always wins on the wire. The spirit strengthens: nothing decodes unbounded silently, and bounding no longer depends on every consumer hand-tuning knobs.
+When a grammar is transported, the provider independently validates returned
+content with `@plurnk/gbnf`. A non-accept verdict attaches
+`grammar_unenforced` telemetry without discarding the completed response.
+`meta.railsAttached` and `meta.railsVerdict` record the observed local
+transport and verdict. If the validator cannot parse the supplied grammar, the
+provider emits `PLURNK_GRAMMAR_UNVERIFIABLE`.
 
-**Native reasoning and the grammar COEXIST on llama-server; the sanctioned think block is the protection, not the hazard (#488 postmortem).** With `enable_thinking: true`, the server auto-gates the grammar around the SANCTIONED reasoning block — the model thinks up front (routed to `reasoning_content`), then content decodes constrained. Verified: a 26-run baseline green under exactly this configuration, and ZERO grammar rejects across every #488 "railless" specimen (`@plurnk/gbnf` verdicts: accept or cap-truncated incomplete — the rail never left). The #488 rails-win-the-channel clamp (grammar forces `enable_thinking:false`) is REVERTED: closing the channel starves a reasoning-tuned model of its outlet, and it ESCAPES mid-content into the raw thought channel — which the server then discards while the decode runs unconstrained and billed (measured: 12,288 completion tokens billed, 1,033 chars visible, reasoning empty). So intent maps identically under a transported grammar, and the failure mode is SURFACED instead of traded against:
-- **Per-request rail state on `meta` (#488):** every observed-grammar response carries `meta.railsAttached` (was the grammar transported) and `meta.railsVerdict` (`accept | incomplete | reject | unverifiable` from the conformance check) — the consumer's turn row then answers "did the rail ride, and did the output conform" PER TURN from the run db, so rail presence is never again inferred from output shape.
-- **Channel-escape telemetry (#488):** billed completion tokens vastly exceeding every visible channel (`usage.completion > countTokens(content) + countTokens(reasoning) + 64`; countTokens overcounts text, so the excess is real vanishing) attaches a `grammar_unenforced` event naming the vanished balance — the run105 class (escape into a discarded reasoning block) is loud, not invisible. With the channel closed, the model reasons **inside the DSL**: the canonical grammar's required `PLAN` statement is a free-text body the model fills with genuine step-by-step reasoning before acting (probed live, b894+gemma: correct chain-of-thought inside `<<PLAN:…:PLAN`, then a clean `SEND`, `finish_reason: stop`). The `PLAN` element belongs to the consumer's grammar contract; the provider's only job is closing the native channel deterministically.
+`PLURNK_PROVIDERS_GBNF_DEBUG` validates and withholds an otherwise transportable
+local grammar, then reports how the unconstrained output diverges. It is a
+development diagnostic, not a cloud compatibility mode.
 
-**Grammar transport — same GBNF, different wire shapes (`grammarStyle`, default `"none"`).** Backends carry the *same* grammar string differently:
-- **`"llamacpp"`** — top-level `grammar` field + the repeat-penalty floor (`PLURNK_PROVIDERS_REPEAT_PENALTY`, §9). Detected from the §11 probe: only llama-server rows on `GET /v1/models` carry a `meta` block. This is any local llama-server (e.g. the generic `openai` provider fronting llama.cpp). `plurnk` opts out via `detectLlamaServer: false` — it reads a window but is treated as a plain OpenAI endpoint, never fingerprinted and never sent a grammar.
-- **`"response_format"`** — `response_format: { type: "grammar", grammar }` **+ the repeat-penalty floor (`PLURNK_PROVIDERS_REPEAT_PENALTY`, canonical 1.15)** (the OpenAI-compat spelling). **Fireworks** (set statically, `grammarStyle: "response_format"`). Verified live: a forcing grammar constrains the output, and `repetition_penalty` is honored (#20). ⚠️ Fireworks' *streamed* response mislabels grammar-constrained output as `reasoning_content`, so `generate` drops streaming **for that request only** when a grammar is attached under `response_format` — the non-streamed JSON returns it as `content` (the contract is atomic either way). Grammarless calls on the same provider still stream. Live-confirmed on `deepseek-v4-flash`/`-pro`.
-- **`"none"`** — the grammar is **not sent** (never silently — a constrained consumer must not mistake unconstrained output for enforced).
-
-vLLM/Deepinfra was probed and does **not** expose working GBNF over its OpenAI-compat surface (`guided_grammar` silently ignored; `response_format` accepts only `'text'`) — deliberately left `"none"`. Bespoke siblings opt in via config when their backend qualifies. Capability stays provider-internal.
-
-**Enforcement verification (the response side).** Transporting the grammar is necessary but not sufficient — a backend can silently drop the `grammar` field, mislabel the constrained channel (the Fireworks `reasoning_content` case above), or leak unconstrained prose. So when `generate` *did* transport a grammar (`grammarStyle !== "none"`), it validates the returned `content` against that grammar with **`@plurnk/gbnf`** — a zero-dependency, faithful TypeScript port of llama.cpp's own grammar engine, differentially tested against the compiled C validator, hence authoritative for the `llamacpp` path. (This is `@plurnk/gbnf`, the generic GBNF *validator* — **not** `@plurnk/plurnk-grammar`, the plurnk artifact + parser the framework still never depends on; §11.) The check is a grammar-**conformance** test against a string the provider already holds, carrying zero plurnk-DSL semantics, so it does not breach §7/§8 (no `content`→`PlurnkStatement[]` parse).
-
-- **Observed, never adjudicated.** Any non-`accept` verdict — a `reject` (a code point the grammar forbids) or an `incomplete` (a valid prefix that never reached a terminal state) — attaches a `grammar_unenforced` telemetry event to the returned response, message naming the divergence and `position` carrying its code-point offset. The bytes and usage flow regardless; policy is the consumer's.
-- **Verify gap is non-fatal.** If the validator cannot even parse the grammar the backend accepted (a port-vs-llama.cpp divergence), `generate` does **not** fail a transport that may have worked — it skips the check and emits a `process` warning (`code: "PLURNK_GRAMMAR_UNVERIFIABLE"`). That gap is a validator bug to fix, not a backend failure.
-
-**Debug mode — diagnose grammar/model conflicts unconstrained (`PLURNK_PROVIDERS_GBNF_DEBUG`).** An optional, off-by-default toggle (`0`/empty = off; any other value = on; the standard-provider config field is `gbnfDebug`). When on and a grammar would be transported, `generate` first validates it with `@plurnk/gbnf` **before any wire call** and **throws fail-hard on a malformed grammar**; it then **withholds** the grammar so the model generates **unconstrained** — and runs that free output back through the grammar to locate the exact code point where the model's natural output diverges.
-
-Crucially, this path does **NOT throw** (#24). Non-conformance is *expected* here — the model ran free — so a throw would discard the very bytes you're debugging (and, in a service loop, collapse the turn to empty and cascade). Instead `generate` **returns normally**: the model's emission rides the response (`assistant.content` + `assistant.reasoning`, both channels intact), and the conflict is attached as a **non-fatal `grammar_unenforced` `TelemetryEvent`** in `ProviderResponse.telemetry`, carrying the divergence `position` (a code-point offset into `content`). The consumer renders the model its own emission around `position` — the same self-correction affordance it already gives plurnk-DSL parse errors — instead of looping on a description it can't act on. A `SEND[200]` the grammar's `no200` rule forbids, or a `</think>` the committed-`PLAN` region rejects, surfaces as data the model can fix, not an exception that erases the turn. (Contrast the **constrained** path above, which still throws: there the backend was *told* to enforce and didn't — a hard failure.) Withholding-without-verifying would be indistinguishable from sending no grammar at all — the verification is the point. Leave it off in production, where a constrained call should actually constrain.
-
-Zero grammar dependency (§11) is preserved: the GBNF string arrives per call; this package never imports the artifact.
+Hard constraints can amplify repetition and do not replace the normal output
+envelope. The llama.cpp path therefore carries its configured
+`repeat_penalty`; ordinary cloud requests use the standard configured
+`frequency_penalty`. The GBNF string still arrives per call, so this package
+does not depend on the PLURNK grammar artifact.
 
 ## §14 Data capture — logprobs + verbatim body (#36)
 

@@ -129,14 +129,9 @@ export default class ProviderInstantiate {
         return provider;
     }
 
-    // §grammar-enforcement-verified-at-boot — the rails are useless if silently OFF. The openai
-    // provider only transports the grammar when its boot probe DETECTS llama-server (grammarStyle
-    // 'llamacpp'); any probe hiccup silently falls back to 'none' — unconstrained generation, no
-    // signal, and the whole grammar contract dark (weeks of "gemma strokes" were unconstrained
-    // gemma). The Provider interface exposes no capability to introspect this, so we VERIFY the
-    // contract end to end: when the operator requested a grammar, force a trivial one and confirm
-    // the backend actually constrained the output. Anything else FAILS HARD at boot — a legible
-    // refusal to run beats silent garbage that reads as model failure. No-op when GBNF is off.
+    // A configured GBNF is an explicit local constrained-sampling contract. Verify
+    // that the provider both claims the capability and enforces a forcing grammar.
+    // Endpoint-owned settings are outside this knob and outside this verification.
     static #VERIFY_TOKEN = "PLURNK-RAILS-LIVE";
     static async verifyGrammarEnforcement(provider: Provider, env: NodeJS.ProcessEnv = process.env): Promise<void> {
         // #353 — resolve GBNF PER ALIAS, exactly as Engine.#grammarConstraint does. The per-alias
@@ -147,18 +142,12 @@ export default class ProviderInstantiate {
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(env)?.alias ?? "";
         const gbnf = scopeEnvToAlias(env, alias, ["PLURNK_PROVIDERS_GBNF"]).PLURNK_PROVIDERS_GBNF;
         if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // rails not requested — nothing to verify
-        // #336 — gate on the provider's own claim: a grammarStyle-'none' provider DROPS the grammar
-        // cleanly (never on the wire, constrainsOutput:false), so a global GBNF default must not
-        // refuse boot against it — the rails are simply not in play for this backend. The #34 hole
-        // stays closed: wherever the provider CLAIMS constrainsOutput, the end-to-end verify below
-        // still fails hard; and a llama-server whose /v1/models probe raced to 'none' is cured
-        // deterministically by PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1, which the notice names.
-        if (provider.constrainsOutput === false) {
-            process.stderr.write(
-                `plurnk-service: PLURNK_PROVIDERS_GBNF=${gbnf} configured; '${provider.model}' does not transport grammars — enforcement rides the backend (delegated) and the engine verifies every emission per turn ({§rail-truth-engine-verdict}). `
-                + `If this backend is a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 so client-side transport engages.\n`,
+        if (provider.constrainsOutput !== true) {
+            throw new Error(
+                `PLURNK_PROVIDERS_GBNF=${gbnf} configures local constrained sampling, but '${provider.model}' does not advertise GBNF transport. `
+                + `Configure this knob only for a supported local llama-server; endpoint-managed constraints require no service-side GBNF setting. `
+                + `If this is a llama-server, set PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 when automatic detection is unavailable.`,
             );
-            return;
         }
         const forcing = `root ::= "${ProviderInstantiate.#VERIFY_TOKEN}"`;
         let content: string;
@@ -188,11 +177,10 @@ export default class ProviderInstantiate {
         }
         if (content !== ProviderInstantiate.#VERIFY_TOKEN) {
             throw new Error(
-                `grammar enforcement is OFF: PLURNK_PROVIDERS_GBNF=${gbnf} requests constrained sampling, but '${provider.model}' returned UNCONSTRAINED output to a forcing grammar `
+                `GBNF enforcement failed: PLURNK_PROVIDERS_GBNF=${gbnf} requests constrained sampling, but '${provider.model}' returned unconstrained output to a forcing grammar `
                 + `(expected ${JSON.stringify(ProviderInstantiate.#VERIFY_TOKEN)}, got ${JSON.stringify(content.slice(0, 40))}). `
-                + `The provider likely failed to detect the llama-server backend (grammarStyle 'none') — the grammar was never transported. `
-                + `Refusing to boot: unconstrained generation reads as model failure and hides that the rails are dark. `
-                + `Check the backend is a live llama-server (/v1/models must carry a per-model 'meta'), or unset PLURNK_PROVIDERS_GBNF to run unconstrained deliberately.`,
+                + `Refusing to boot because the configured local constraint was not enforced. `
+                + `Check the llama-server capability or remove the PLURNK_PROVIDERS_GBNF setting.`,
             );
         }
     }

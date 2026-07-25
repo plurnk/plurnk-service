@@ -39,13 +39,17 @@ These are relationships *between* flags. Set them as a unit.
 
 - **The window partition is exact.** `promptBudget = min(PLURNK_SERVICE_CONTEXT_WINDOW, real window) − REASONING − COMPLETION − SAFETY`; `REASONING + COMPLETION` is the per-call `max_tokens`. Shipped invariant: any window ≥ 77Ki partitions to **exactly 65536** prompt tokens (`78848 − 4096 − 8192 − 1024`). Reserves exceeding the window fail the boot. *(Pinned: `Engine.budget` / `shipped-defaults`.)*
 - **Reasoning capacity is one number in three places.** `PLURNK_SERVICE_REASONING` (the partition's reserve) **must equal** `PLURNK_PROVIDERS_THINKING_CAPACITY` (the provider's thinking cap) **must equal** the serving box's `--reasoning-budget` launch flag. llama-server ignores per-request numeric budgets, so only the launch flag clamps it; a mismatch makes the reserve fiction. The daemon warns at boot when thinking is on. *(Pinned: `shipped-defaults` asserts the first equality.)*
-- **Grammar rails ship on, gated on the provider's claim (#336).** A backend that doesn't enforce grammars drops it cleanly — the daemon boots with a notice, unconstrained on that alias. A backend that CLAIMS enforcement (`constrainsOutput`) is **verified end-to-end at boot** and fails hard if it returns unconstrained output. Daemon-global — not alias-scoped (one backend per daemon). For a known llama-server alias, pin `PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1` — it transports the grammar deterministically instead of probing `/v1/models` (a probe race once silently disabled the rails). *(Pinned: `grammar-enforcement-verify`.)*
+- **Local GBNF is optional.** The PLURNK language is always parsed normally.
+  Local llama-server users may set `PLURNK_PROVIDERS_GBNF_<alias>`; transport
+  and enforcement are verified at boot. Cloud and endpoint-managed aliases
+  leave it unset. Pin `PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1` only when a
+  llama-server cannot be fingerprinted reliably.
 - **A think-trained model must think somewhere.** `PLURNK_PROVIDERS_THINKING=off` reroutes a reasoning model's thought into the grammar's legal free zone as prose. Keep it `on` with a capacity; providers auto-clamp thinking on in-band grammar backends, so one setting is right everywhere.
 
 ## Profiles (examples, not a decision tree — adapt to the real box)
 
 - **Local GPU (llama-server).** `PLURNK_MODEL_local="openai/<name>"`, `OPENAI_BASE_URL=http://127.0.0.1:<port>`, `PLURNK_MODEL=local`, `PLURNK_PROVIDERS_LLAMA_SERVER_local=1`, thinking `on`/`4096` **with the box launched `--reasoning-budget 4096`**. Full rails, exact tokenization.
-- **Cloud, bring-your-own-key.** `PLURNK_MODEL_cloud="openrouter/<model>"`, `OPENROUTER_API_KEY=…`, `PLURNK_MODEL=cloud`. No `LLAMA_SERVER` pin (not llama-server); a `response_format`-grammar backend auto-clamps thinking to none.
+- **Cloud, bring-your-own-key.** `PLURNK_MODEL_cloud="openrouter/<model>"`, `OPENROUTER_API_KEY=…`, `PLURNK_MODEL=cloud`. No local GBNF or `LLAMA_SERVER` pin.
 - **plurnk.ai endpoint.** `PLURNK_MODEL_plurnk="plurnk/plurnk"`, `PLURNK_API_KEY=…`, `PLURNK_MODEL=plurnk`.
 - **Headless / CI / constrained container.** A CPU-only box should NOT disable semantic search — it should point derivation at a real embedder: `PLURNK_MIMETYPES_EMBED_BASE_URL` (any OpenAI-compatible `/v1/embeddings` — a host GPU turns a CPU-hours corpus grind into seconds). Weak hardware is the target workload, not a reason to shed capability; `PLURNK_SERVICE_EMBED_DISABLE=1` exists for test lanes that deterministically assert non-semantic behavior, nothing else. Consider `PLURNK_SERVICE_MAX_TURNS=<n>` as a cost cap, `PLURNK_SERVICE_GIT_ALLOWED=0` to lock out git in a sandbox.
 

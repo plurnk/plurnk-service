@@ -10,7 +10,7 @@ The plurnk teaching corpus. Markdown consumed by [plurnk-service](https://github
 
 ## The teaching split
 
-**Grammar teaches the language; docs teaches the world.** [plurnk-grammar](https://github.com/plurnk/plurnk-grammar)'s `plurnk.md` owns op syntax and the DSL (GBNF-coupled, moves with the grammar). This package owns scheme behavior, delegation workflow, disposition, and standing rules — the corpus tuned against live model behavior (steer wording, weak-model teaching, pressure habits).
+**Grammar teaches the language; docs teach the world.** [plurnk-grammar](https://github.com/plurnk/plurnk-grammar)'s ANTLR grammar and `plurnk.md` own op syntax and the model-facing language. This package owns scheme behavior, delegation workflow, disposition, and standing rules — the corpus tuned against live model behavior (steer wording, weak-model teaching, pressure habits).
 
 ## Contract
 
@@ -23,4 +23,3 @@ plurnk-service resolves these files from this package (`Paths`), pins the versio
 **The requiem acceptance gate.** Teaching changes ship against BEFORE/AFTER corpus deltas (reasoning-token + requiem-recurrence), never hunches. Triage separates legibility debt from load-bearing discipline pain: the FOLD/KILL burden, the compression, and the dialect count are the PRODUCT (the model curating its own context) — never sanded off because models complain. A re-probe against >=0.76.5 is owed (grammar lane).
 
 **Example doctrine (Arecibo teaching).** Concrete over placeholder — a live model spawned a worker literally named 'name' from a (worker://name) table cell within a day of shipping; placeholders in reserved-bracket forms are doubly banned. Bare-gesture register per section — op-teaching lines carry the gesture, the mechanism stays the engine's; match the surrounding register. Distribution is load-bearing — clustered examples teach false couplings; rebalance coverage, never add runtime prose. TIME is a distribution axis — dynamics teach as protocol-accurate worked multi-turn traces (the Delegation breath), never prose essays; an inaccurate trace (same-turn READ+200) models the wrong protocol.
-

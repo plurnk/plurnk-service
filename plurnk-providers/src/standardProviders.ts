@@ -59,15 +59,7 @@ type StandardProviderSpec = {
     // not already include it.
     flexBaseStrip?: boolean;
     reasoningStyle: ReasoningStyle;
-    // How this backend carries a GBNF grammar (default "none" — not sent). A
-    // probeNctx entry is upgraded to "llamacpp" when the probe sees a
-    // llama-server; cloud backends that support GBNF set their shape statically
-    // (fireworks → "response_format", verified live).
-    grammarStyle?: GrammarStyle;
-    // SSE streaming (default true). The streaming transport is dropped
-    // per-request only when it would break a feature (a response_format grammar
-    // arrives mislabeled as reasoning_content under fireworks' stream); leave
-    // unset to keep streaming on for every other call. See OpenAICompat.generate.
+    // SSE streaming (default true).
     streaming?: boolean;
     // Constant model-id prefix the backend requires but the alias shouldn't
     // repeat (fireworks → "accounts/fireworks/models/", so the alias is just
@@ -155,7 +147,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
         baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "effort_explicit", grammarStyle: "response_format", modelPrefix: "accounts/fireworks/models/", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
+        reasoningStyle: "effort_explicit", modelPrefix: "accounts/fireworks/models/", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
         apiKeyVar: ["DEEPINFRA_API_KEY", "DEEPINFRA_API_TOKEN", "DEEPINFRA_TOKEN"], apiKeyRequired: true,
@@ -289,7 +281,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         apiKeyVar: "PLURNK_API_KEY", apiKeyRequired: true,
         apiKeyMessage: "PLURNK_API_KEY not found. Acquire one at https://plurnk.ai . Plurnk also supports local models and alternative cloud provider configurations.",
         apiKeyRejectedMessage: "PLURNK_API_KEY was rejected by plurnk.ai (invalid or expired). Verify it at https://plurnk.ai .",
-        reasoningStyle: "none", grammarStyle: "none", tokenizerEnvVar: "PLURNK_TOKENIZER",
+        reasoningStyle: "none", tokenizerEnvVar: "PLURNK_TOKENIZER",
         probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico", suppressTuningFloors: true,
     },
 });
@@ -449,12 +441,12 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // hinge on whether the operator pinned PLURNK_PROVIDERS_CONTEXT_WINDOW. For
     // contextWindow itself, explicit env still wins over the probed n_ctx.
     let contextWindow = contextWindowFromEnv(env, name);
-    // Grammar shape: a static spec choice (e.g. fireworks → "response_format"),
-    // upgraded to "llamacpp" when the probe fingerprints a llama-server. Slot
+    // GBNF transport is upgraded to "llamacpp" only when the probe fingerprints
+    // a llama-server. Slot
     // pinning is llama-server-only, so it keys on that same fingerprint. A spec
     // can opt out of the fingerprint entirely (detectLlamaServer: false → plurnk)
     // to read the window but stay a plain remote OpenAI server.
-    let grammarStyle: GrammarStyle = spec.grammarStyle ?? "none";
+    let grammarStyle: GrammarStyle = "none";
     let supportsSlotPinning = false;
     let slotCount: number | null = null;
     let eosText: string | undefined;
@@ -500,7 +492,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
             // un-upgraded, but NEVER silently (#34) — rails going dark without a
             // signal cost the consumer weeks of misattributed rambles.
             emitWarningOnce(
-                `${name} provider: llama-server detection failed after ${probeAttempts} attempts — grammar transport stays OFF (grammarStyle "none"). If this endpoint IS a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER=1 (or its _<alias> form).`,
+                `${name} provider: llama-server detection failed after ${probeAttempts} attempts — local capabilities are unknown. If this endpoint is a llama-server, pin PLURNK_PROVIDERS_LLAMA_SERVER=1 (or its _<alias> form).`,
                 "PLURNK_PROBE_FAILED",
             );
         }

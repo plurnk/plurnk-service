@@ -88,7 +88,7 @@ test("[#488] an UNREGISTERED provider may not guess an alias while per-alias rai
             const { workspaceId, workerId, loopId } = await envelope(db);
             await assert.rejects(
                 () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }),
-                /grammar rail: provider has no registered alias/,
+                /GBNF constraint: provider has no registered alias/,
             );
         } finally { for (const [k, v] of savedModels) process.env[k] = v; }
     } finally {
@@ -117,11 +117,9 @@ test("[#488] a configured-but-unloadable variant fails LOUD — a broken rail is
     }
 });
 
-// {§rail-truth-engine-verdict} (#534) — the engine grades the emission against its OWN grammar
-// contract on every path; a provider that never transported the grammar (constrainsOutput unset —
-// the delegated/hosted shape) still gets per-turn rail truth in turns.meta. Provider self-
-// attestation shares a failure domain with the enforcer; the engine's verdict does not.
-test("delegated path: the engine stamps railsAttached + railsVerdict from its own grading (#534)", async () => {
+// {§rail-truth-engine-verdict} (#534) — the engine independently grades the
+// configured local constraint instead of trusting provider self-attestation.
+test("local GBNF path: the engine stamps client attachment + its own verdict (#534)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "verdict.gbnf");
     await writeFile(gbnfPath, 'root ::= "OK"\n');
@@ -134,19 +132,19 @@ test("delegated path: the engine stamps railsAttached + railsVerdict from its ow
         const { workspaceId, workerId, loopId } = await envelope(db);
 
         // accept — the emission is a complete sentence of the contract grammar.
-        const accept = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "OK", reasoning: null } }] }) as unknown as Provider;
+        const accept = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "OK", reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
         ProviderInstantiate.registerAlias(accept, "verdictbox");
         const t1 = await engine.runTurn({ provider: accept, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const meta1 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t1.turnId }))!.meta) as Record<string, unknown>;
-        assert.equal(meta1.railsAttached, "delegated", "no constrainsOutput claim → the contract is delegated; the engine verifies");
+        assert.equal(meta1.railsAttached, "client");
         assert.equal(meta1.railsVerdict, "accept", "conforming emission grades accept");
 
         // reject — same contract, diverging emission.
-        const reject = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "<<PLAN::PLAN\n<<SEND[200]:done:SEND", reasoning: null } }] }) as unknown as Provider;
+        const reject = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "<<PLAN::PLAN\n<<SEND[200]:done:SEND", reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
         ProviderInstantiate.registerAlias(reject, "verdictbox");
         const t2 = await engine.runTurn({ provider: reject, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const meta2 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t2.turnId }))!.meta) as Record<string, unknown>;
-        assert.equal(meta2.railsAttached, "delegated");
+        assert.equal(meta2.railsAttached, "client");
         assert.equal(meta2.railsVerdict, "reject", "diverging emission grades reject — an unconstrained backend self-names per turn");
     } finally {
         if (prior === undefined) delete process.env[key]; else process.env[key] = prior;

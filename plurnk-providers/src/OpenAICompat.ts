@@ -29,12 +29,9 @@ import { emitWarningOnce } from "./warnings.ts";
 // (canary-verified; the #32 clamp is lifted — it caused the plan-less service#331).
 export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "template" | "anthropic";
 
-// How a caller-supplied GBNF grammar is carried on the wire — backends accept
-// different shapes for the SAME GBNF (probed/configured, never guessed; §13); the
-// wire shape per style lives in #grammarBody. "none" means the grammar is NOT sent
-// (never silently — so a constrained consumer can't mistake unconstrained output
-// for enforced).
-export type GrammarStyle = "none" | "llamacpp" | "response_format";
+// GBNF transport is a local llama-server capability. "none" means no
+// service-managed constrained sampling; endpoint-owned settings are not inferred.
+export type GrammarStyle = "none" | "llamacpp";
 
 export type OpenAICompatConfig = {
     model: string;
@@ -444,31 +441,25 @@ export default class OpenAICompatProvider implements Provider {
         return { id_slot: slot };
     }
 
-    // Grammar transport (SPEC §13): carry the caller-supplied GBNF in the shape
-    // the backend accepts. Same grammar, different wire field per backend; an
-    // unsupported/unknown backend sends NO field at all (cloud APIs 400 on
-    // unknowns, and a silent send would let a constrained consumer mistake
-    // unconstrained output for enforced).
+    // Optional local llama-server GBNF transport (SPEC §13). Unsupported
+    // backends receive no grammar-related field.
     #grammarBody(grammar: string | undefined): Record<string, unknown> {
         if (grammar === undefined) return {};
         switch (this.#grammarStyle) {
             // Greedy decoding under hard constraint loops without a repeat-penalty
-            // floor (#9, SPEC §13) — every grammar path carries it. llama.cpp spells
-            // it `repeat_penalty`; the OpenAI-compat (Fireworks) shape is `repetition_penalty`
-            // (verified honored live, #20).
+            // floor (#9, SPEC §13) — llama.cpp spells it `repeat_penalty`.
             case "llamacpp": return { grammar, repeat_penalty: this.#repeatPenalty };
-            case "response_format": return { response_format: { type: "grammar", grammar }, repetition_penalty: this.#repeatPenalty };
             case "none": return {};
         }
     }
 
     // Anti-degeneration DEFAULT on EVERY request (#426), keyed to the backend's wire
-    // convention - NOT grammar-bound. GBNF is a local rail (off for cloud), so a cloud
+    // convention - NOT grammar-bound. GBNF is a local constraint, so a cloud
     // alias runs the sampler bare: firefast (deepseek/fireworks) ran 4/86 bench turns
     // straight to the token cap on pure looped repetition (run52). Ships next to
     // temperature so caller `sampling` can tune it; the grammar path re-asserts it as a
-    // managed FLOOR in #grammarBody. Per backend: llama.cpp/response_format take the
-    // repeat_penalty MULTIPLIER; the plain cloud path ("none") can't, so it gets
+    // managed FLOOR in #grammarBody. llama.cpp takes the repeat_penalty
+    // MULTIPLIER; the plain cloud path ("none") can't, so it gets
     // frequency_penalty - OpenAI-standard, accepted by every OpenAI-compat backend (verified
     // live: together/deepinfra/fireworks; it is OpenAI's own param, so real OpenAI takes it too).
     #repetitionPenaltyBody(): Record<string, unknown> {
@@ -485,7 +476,6 @@ export default class OpenAICompatProvider implements Provider {
                     ...(this.#dryAllowedLength !== undefined ? { dry_allowed_length: this.#dryAllowedLength } : {}),
                 } : {}),
             };
-            case "response_format": return { repetition_penalty: this.#repeatPenalty };
             case "none": return this.#frequencyPenalty > 0 ? { frequency_penalty: this.#frequencyPenalty } : {};
         }
     }
@@ -640,13 +630,7 @@ export default class OpenAICompatProvider implements Provider {
         // signal spans them all. Retry only the transient classifications, prefer
         // a server Retry-After over the backoff, and let the caller's abort cut
         // through both the in-flight request and the backoff sleep.
-        // Stream by default, but fall back to one non-streamed JSON for the one
-        // case it breaks: a response_format grammar (fireworks) streams its
-        // constrained output mislabeled as reasoning_content, yet returns it as
-        // content non-streamed. The atomic dump is correct either way, so the
-        // demotion is scoped to exactly that request, not the whole provider.
-        const grammarBreaksStream = sendGrammar !== undefined && this.#grammarStyle === "response_format";
-        const transport = this.#streaming && !grammarBreaksStream ? chatCompletionStream : chatCompletion;
+        const transport = this.#streaming ? chatCompletionStream : chatCompletion;
 
         // Per-request headers = static auth/routing + any first-party telemetry.
         const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn);
