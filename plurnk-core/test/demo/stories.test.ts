@@ -295,7 +295,9 @@ test("story: self-audit — the model critiques its own packet for errors and am
         console.error(story.lastContent);
         console.error("===== END SELF-AUDIT =====\n");
         assert.equal(story.finalStatus, 200, "the audit loop concludes cleanly");
-        assert.ok(story.lastContent.trim().length > 0, "the model returned findings");
+        const listsFinding = /(?:^|\n)\s*\d+[.)]\s+\S/m.test(story.lastContent);
+        const explicitlyFindsNone = /\b(?:no|did not find any)\s+(?:material\s+)?(?:errors|issues|inconsistencies|ambiguities|findings)\b/i.test(story.lastContent);
+        assert.ok(listsFinding || explicitlyFindsNone, `the audit must list a numbered finding or explicitly report none; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 
