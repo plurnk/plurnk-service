@@ -442,6 +442,43 @@ test("lineMarkerEditBatch applies disjoint ranges against one snapshot", () => {
     assert.equal(r.result, "one\nTWO\n2.5\nthree\nFOUR\n");
 });
 
+test("lineMarkerEditBatch is invariant to the authored order of disjoint edits", () => {
+    const source = "one\ntwo\nthree\nfour\n";
+    const edits = [
+        { marker: { marks: [2] as [number] }, body: "TWO\n2.5" },
+        { marker: { marks: [4] as [number] }, body: "FOUR" },
+    ];
+    const forward = Slicer.lineMarkerEditBatch(source, edits);
+    const reverse = Slicer.lineMarkerEditBatch(source, edits.toReversed());
+    assert.equal(forward.status, 200);
+    assert.equal(reverse.status, 200);
+    assert.equal(reverse.result, forward.result);
+});
+
+test("lineMarkerEditBatch preserves three distant snapshot ranges across different deltas", () => {
+    const source = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
+    const r = Slicer.lineMarkerEditBatch(source, [
+        { marker: { marks: [5, 6] }, body: "middle A\nmiddle B\nmiddle C\nmiddle D" },
+        { marker: { marks: [2] }, body: "upper A\nupper B" },
+        { marker: { marks: [10, 11] }, body: "lower" },
+    ]);
+    assert.equal(r.status, 200);
+    assert.equal(r.result, [
+        "line 1", "upper A", "upper B", "line 3", "line 4",
+        "middle A", "middle B", "middle C", "middle D",
+        "line 7", "line 8", "line 9", "lower", "line 12",
+    ].join("\n"));
+});
+
+test("lineMarkerEditBatch composes one prepend and one append at distinct snapshot boundaries", () => {
+    const r = Slicer.lineMarkerEditBatch("middle\n", [
+        { marker: { marks: [-1] }, body: "last" },
+        { marker: { marks: [0] }, body: "first" },
+    ]);
+    assert.equal(r.status, 200);
+    assert.equal(r.result, "first\nmiddle\nlast\n");
+});
+
 test("lineMarkerEditBatch rejects overlap without producing a partial result", () => {
     const r = Slicer.lineMarkerEditBatch("one\ntwo\nthree\nfour\n", [
         { marker: { marks: [2, 3] }, body: "middle" },

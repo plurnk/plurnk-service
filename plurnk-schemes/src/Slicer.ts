@@ -49,7 +49,7 @@ export default class Slicer {
         const last = marker.marks.length > 1 ? marker.marks[1] : null;
         if (last === null) {
             if (first === 0) return { kind: "before-first", start: 0, end: 0 };
-            if (first === -1) return { kind: "after-last", start: 0, end: 0 };
+            if (first === -1) return { kind: "after-last", start: totalLines, end: totalLines };
             // Fractional single mark <N.frac> is an insert point between lines,
             // not a position to replace (#18): insert after line floor(N.frac).
             // floor 0 = prepend, floor totalLines = append.
