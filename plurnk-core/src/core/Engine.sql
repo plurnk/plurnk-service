@@ -111,7 +111,7 @@ SELECT 1 AS hit
 FROM log_entries
 WHERE worker_id = $worker_id AND turn_id = $turn_id
   AND origin = 'plurnk' AND source = 'file' AND op = 'EDIT'
-  AND scheme = $scheme AND pathname = $pathname
+  AND scheme IS $scheme AND pathname = $pathname
 LIMIT 1;
 
 -- PREP: engine_list_workspace_entry_tags

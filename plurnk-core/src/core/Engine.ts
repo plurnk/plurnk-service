@@ -1663,7 +1663,10 @@ export default class Engine {
             await (this.#db.engine_insert_log_entry as PrepMethod).get({
                 worker_id: run.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                 origin: "plurnk", source: "file", op: "EDIT", suffix: "", signal: null,
-                scheme: d.scheme, username: null, password: null, hostname: null, port: null,
+                // `file` is an entry-routing scheme, never a stored log scheme. Match
+                // Dispatcher.#extractTarget so the fiction and a model's file EDIT
+                // address the same nullable log key.
+                scheme: d.scheme === "file" ? null : d.scheme, username: null, password: null, hostname: null, port: null,
                 pathname: d.pathname, params: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain",
                 rx: JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span }), mimetype_rx: "application/json",
