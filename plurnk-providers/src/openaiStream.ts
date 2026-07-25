@@ -9,6 +9,7 @@ type StreamRequest = {
     headers: Record<string, string>;
     body: Record<string, unknown>;
     signal: AbortSignal;
+    fetch: ProviderFetch;
     // #36: assemble the verbatim wire body onto StreamResponse.rawBody. Off by
     // default so a serving turn never pays the reassembly/retention cost.
     captureRawBody?: boolean;
@@ -16,6 +17,8 @@ type StreamRequest = {
 
 import type { RawUsage } from "./usage.ts";
 import type { TokenLogprob } from "./types.ts";
+
+export type ProviderFetch = typeof globalThis.fetch;
 
 // Sealed reasoning (#482, widened per client). A relay backend (OpenRouter
 // fronting OpenAI o-series) returns the chain-of-thought ENCRYPTED as
@@ -135,7 +138,7 @@ const parseRetryAfter = (header: string | null): number | null => {
 // the Provider contract is atomic either way, so the transport is free to
 // choose. The fetch timeout (AbortSignal) bounds the wait; there is no proxy
 // between us and the backend that would idle out a non-streamed request.
-export const chatCompletion = async ({ url, headers, body, signal, captureRawBody }: StreamRequest): Promise<StreamResponse> => {
+export const chatCompletion = async ({ url, headers, body, signal, fetch, captureRawBody }: StreamRequest): Promise<StreamResponse> => {
     const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
@@ -167,7 +170,7 @@ export const chatCompletion = async ({ url, headers, body, signal, captureRawBod
     };
 };
 
-export const chatCompletionStream = async ({ url, headers, body, signal, captureRawBody }: StreamRequest): Promise<StreamResponse> => {
+export const chatCompletionStream = async ({ url, headers, body, signal, fetch, captureRawBody }: StreamRequest): Promise<StreamResponse> => {
     const requestBody = { ...body, stream: true, stream_options: { include_usage: true } };
 
     const response = await fetch(url, {

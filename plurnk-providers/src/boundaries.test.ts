@@ -22,3 +22,29 @@ test("provider source does not import the PLURNK parser", () => {
         assert.ok(!/from\s+["']@plurnk\/plurnk-grammar/.test(source), `${file} imports the parser`);
     }
 });
+
+test("#608: the OpenAI-compatible entrypoint excludes Node-owned provider machinery", () => {
+    const allowed = new Set([
+        "OpenAICompat.ts",
+        "env.ts",
+        "openai.ts",
+        "openaiStream.ts",
+        "telemetry.ts",
+        "types.ts",
+        "usage.ts",
+        "warnings.ts",
+    ]);
+    const pending = ["openai.ts"];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+        const file = pending.pop()!;
+        if (visited.has(file)) continue;
+        visited.add(file);
+        assert.ok(allowed.has(file), `runtime-neutral entrypoint reaches ${file}`);
+        const source = readFileSync(join(root, file), "utf8");
+        assert.doesNotMatch(source, /from\s+["']node:/, `${file} imports a Node built-in`);
+        for (const match of source.matchAll(/from\s+["']\.\/([^"']+)\.ts["']/g)) {
+            pending.push(`${match[1]}.ts`);
+        }
+    }
+});

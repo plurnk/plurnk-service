@@ -10,7 +10,7 @@
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { Reasoning, ReserveSpec } from "./env.ts";
-import { chatCompletionStream, chatCompletion, OpenAiHttpError, isEdgeStatus, type StreamResponse } from "./openaiStream.ts";
+import { chatCompletionStream, chatCompletion, OpenAiHttpError, isEdgeStatus, type ProviderFetch, type StreamResponse } from "./openaiStream.ts";
 import { normalizeUsage } from "./usage.ts";
 import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
@@ -41,6 +41,7 @@ export type OpenAICompatConfig = {
     url: string;                              // fully-resolved chat-completions URL
     fetchTimeoutMs: number;
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
+    fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails (#419), narrows to required with the interface
     reasoningStyle?: ReasoningStyle;          // default "none"
     countTokens?: (text: string) => number;   // default chars/2 upper-bound heuristic
@@ -238,6 +239,7 @@ export default class OpenAICompatProvider implements Provider {
     #url: string;
     #fetchTimeoutMs: number;
     #headers: Record<string, string>;
+    #fetch: ProviderFetch;
     #hasApiKey = false;
     #apiKeyRejectedMessage: string | undefined;
     #eosText: string | undefined;
@@ -283,6 +285,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#url = config.url;
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#headers = config.headers ?? {};
+        this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
         this.#contextWindow = config.contextWindow ?? null;
         this.#reasoning = config.reasoning;
         // Loud guard: an out-of-date consumer (stale plugin dist) omitting the
@@ -325,7 +328,7 @@ export default class OpenAICompatProvider implements Provider {
         const { tokenizeUrl } = config;
         if (tokenizeUrl !== undefined) {
             this.tokenize = async (text: string): Promise<number[]> => {
-                const res = await fetch(tokenizeUrl, {
+                const res = await this.#fetch(tokenizeUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", ...this.#headers },
                     body: JSON.stringify({ content: text }),
@@ -653,7 +656,7 @@ export default class OpenAICompatProvider implements Provider {
             const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
             const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
             try {
-                raw = await transport({ url: this.#url, headers, body, signal: effectiveSignal, captureRawBody: this.#rawBody });
+                raw = await transport({ url: this.#url, headers, body, signal: effectiveSignal, fetch: this.#fetch, captureRawBody: this.#rawBody });
                 break;
             } catch (err) {
                 // Caller-initiated abort is cancellation — never retried or wrapped.

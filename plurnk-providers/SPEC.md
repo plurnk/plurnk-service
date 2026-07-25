@@ -128,6 +128,29 @@ interface ProviderUsage {
 
 Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`; `completion` excludes reasoning; **billable output = `completion + reasoning`**. Providers report reasoning THREE ways: inside `completion_tokens` (OpenAI, via `completion_tokens_details.reasoning_tokens`), only as the `total - prompt - completion` gap (Gemini), or folded into `completion_tokens` with NO itemization while shipping the reasoning as TEXT (Fireworks, #425). The framework's `normalizeUsage` (§11) collapses all three to this invariant -- re-splitting the Fireworks case by the emitted text lengths, sum-preserving so cost is unchanged -- so siblings on `OpenAICompatProvider` get it for free.
 
+### OpenAI-compatible request execution
+
+`OpenAICompatConfig.fetch?: ProviderFetch`, where `ProviderFetch` is
+`typeof globalThis.fetch`, selects request execution for one provider instance.
+When omitted, the provider uses `globalThis.fetch`. The same function MUST
+execute streaming completions, buffered completions, retries, and optional
+backend tokenization. The provider supplies its complete URL, headers, body,
+and effective `AbortSignal`; an injected implementation MUST preserve those Web
+API semantics.
+
+Injection changes only how a shaped request executes. Request construction,
+response and error interpretation, retry policy, cancellation and timeout
+signals, usage and reasoning normalization, telemetry, and raw capture remain
+owned by `OpenAICompatProvider`. The function is per-instance; replacing
+`globalThis.fetch` is not part of the contract. A platform or vendor binding
+adapter belongs to its consuming integration and returns a fetch-compatible
+`Response`.
+
+The `@plurnk/plurnk-providers/openai` subpath is the runtime-neutral import
+surface for this contract. Its transitive module graph MUST NOT import provider
+discovery, registries, filesystem access, or environment-owned construction.
+The package root remains the Node daemon integration surface.
+
 ### Promises
 
 - `assistant.content` is the **verbatim** model emission. Consumer parses via `@plurnk/plurnk-grammar` — providers MUST NOT parse. plurnk uses a **tools-in-body** design: tool invocations are expressed as plurnk DSL *inside the message content*, never via a provider's native tool-calling API, so `content` is always raw text and providers never request, parse, or translate native tool calls.[^tools]

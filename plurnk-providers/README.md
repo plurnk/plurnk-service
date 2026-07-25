@@ -50,6 +50,27 @@ the environment, model name, and optional per-alias base URL. It returns a
 Packages using an OpenAI-compatible API should construct
 `OpenAICompatProvider`; other protocols implement `Provider` directly.
 
+The runtime-neutral `@plurnk/plurnk-providers/openai` entrypoint exports the
+OpenAI-compatible provider and its Web API transport types without importing
+package discovery, environment loading, or the provider registry. A consumer
+with its own request facility can inject a fetch-compatible implementation per
+instance:
+
+```ts
+import { OpenAICompatProvider } from "@plurnk/plurnk-providers/openai";
+
+const provider = new OpenAICompatProvider({
+  ...config,
+  fetch: providerFetch,
+});
+```
+
+The injected function receives the same URL, headers, body, and `AbortSignal`
+as the default `globalThis.fetch`. It owns only execution of that request;
+request shaping, response parsing, retries, usage, reasoning, raw capture, and
+telemetry remain provider behavior. Vendor binding adapters and their
+configuration belong to the consuming integration.
+
 Discovery scans installed npm packages for `plurnk.kind === "provider"`.
 Duplicate provider names are errors. `PLURNK_PLUGINS_TRUSTED_ONLY` can restrict
 third-party discovery.

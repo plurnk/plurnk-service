@@ -38,6 +38,101 @@ const installFetchJson = (payload: unknown) => {
 
 const jsonChoice = { model: "m", choices: [{ message: { content: "x" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
 
+const injectedBase = {
+    model: "m",
+    url: "https://example.test/v1/chat/completions",
+    fetchTimeoutMs: 5000,
+    temperature: 0.2,
+    repeatPenalty: 1.15,
+    retryDelayMs: 1,
+    retryAttempts: 0,
+    reasoning: { mode: "off" as const, budget: null },
+};
+
+test("#608: per-instance fetch owns streaming and buffered requests", async () => {
+    const calls: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
+    const streamingFetch: typeof globalThis.fetch = async (input, init) => {
+        calls.push({ input, init });
+        return new Response(sseStream([
+            { model: "wire-model", choices: [{ delta: { content: "streamed", reasoning_content: "thought" }, finish_reason: "stop" }] },
+            { choices: [], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } },
+        ]), { status: 200 });
+    };
+    const bufferedFetch: typeof globalThis.fetch = async (input, init) => {
+        calls.push({ input, init });
+        return new Response(JSON.stringify({
+            ...jsonChoice,
+            choices: [{ message: { content: "buffered" }, finish_reason: "stop" }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+
+    const streamed = await new OpenAICompatProvider({ ...injectedBase, fetch: streamingFetch, rawBody: true })
+        .generate({ workerId: "stream", messages: [{ role: "user", content: "hello" }] });
+    const buffered = await new OpenAICompatProvider({ ...injectedBase, fetch: bufferedFetch, streaming: false })
+        .generate({ workerId: "buffer", messages: [{ role: "user", content: "hello" }] });
+
+    assert.equal(streamed.assistant.content, "streamed");
+    assert.equal(streamed.assistant.reasoning, "thought");
+    assert.ok(streamed.rawBody !== undefined);
+    assert.equal(buffered.assistant.content, "buffered");
+    assert.equal(calls.length, 2);
+    assert.equal(String(calls[0].input), injectedBase.url);
+    assert.equal(calls[0].init?.method, "POST");
+    assert.ok(calls[0].init?.signal instanceof AbortSignal);
+    assert.equal(JSON.parse(String(calls[0].init?.body)).stream, true);
+    assert.equal(JSON.parse(String(calls[1].init?.body)).stream, undefined);
+});
+
+test("#608: caller cancellation and provider timeout reach an injected fetch", async () => {
+    const pendingFetch: typeof globalThis.fetch = async (_input, init) =>
+        new Promise((_resolve, reject) => {
+            const signal = init?.signal;
+            signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+    const caller = new AbortController();
+    const callerProvider = new OpenAICompatProvider({ ...injectedBase, fetch: pendingFetch });
+    const callerRequest = callerProvider.generate({ workerId: "cancel", messages: [], signal: caller.signal });
+    caller.abort(new Error("operator cancelled"));
+    await assert.rejects(callerRequest, /operator cancelled/);
+
+    const timeoutProvider = new OpenAICompatProvider({ ...injectedBase, fetch: pendingFetch, fetchTimeoutMs: 1 });
+    await assert.rejects(
+        timeoutProvider.generate({ workerId: "timeout", messages: [] }),
+        (error: ProviderError) => error.kind === "network_failure",
+    );
+});
+
+test("#608: per-instance fetch owns tokenization and retry attempts", async () => {
+    const calls: string[] = [];
+    let generationAttempts = 0;
+    const providerFetch: typeof globalThis.fetch = async (input) => {
+        calls.push(String(input));
+        if (String(input).endsWith("/tokenize")) {
+            return new Response(JSON.stringify({ tokens: [10, 20] }), { status: 200 });
+        }
+        generationAttempts++;
+        if (generationAttempts === 1) return new Response("busy", { status: 503 });
+        return new Response(sseStream([
+            { model: "m", choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+            { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
+        ]), { status: 200 });
+    };
+    const provider = new OpenAICompatProvider({
+        ...injectedBase,
+        fetch: providerFetch,
+        retryAttempts: 1,
+        tokenizeUrl: "https://example.test/tokenize",
+    });
+
+    assert.deepEqual(await provider.tokenize?.("hello"), [10, 20]);
+    assert.equal((await provider.generate({ workerId: "retry", messages: [] })).assistant.content, "ok");
+    assert.deepEqual(calls, [
+        "https://example.test/tokenize",
+        injectedBase.url,
+        injectedBase.url,
+    ]);
+});
+
 // Sequenced fetch mock for retry tests: each entry is one HTTP response. A 200
 // streams its chunks; any other status returns that error (with an optional
 // retry-after header). The last entry repeats once the script runs out.

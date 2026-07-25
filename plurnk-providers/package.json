@@ -31,6 +31,11 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./openai": {
+            "plurnk-dev": "./src/openai.ts",
+            "types": "./dist/openai.d.ts",
+            "default": "./dist/openai.js"
+        },
         "./package.json": "./package.json"
     },
     "files": [

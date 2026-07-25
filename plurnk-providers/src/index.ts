@@ -37,7 +37,7 @@ export type { OpenAICompatConfig, ReasoningStyle, GrammarStyle } from "./OpenAIC
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";
 export { chatCompletionStream, chatCompletion, OpenAiHttpError } from "./openaiStream.ts";
-export type { StreamResponse, EncryptedReasoningItem } from "./openaiStream.ts";
+export type { StreamResponse, EncryptedReasoningItem, ProviderFetch } from "./openaiStream.ts";
 export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv, resolveReserve } from "./env.ts";
 export type { Reasoning, ReasoningMode, ReserveSpec } from "./env.ts";
 export { normalizeUsage, computeCost } from "./usage.ts";
