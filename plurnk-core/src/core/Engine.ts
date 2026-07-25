@@ -44,6 +44,7 @@ import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
+import { scheduleTurnOps } from "./turn-scheduler.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -1341,12 +1342,13 @@ export default class Engine {
         // §broken-packet-no-dispatch (#566) — the severed frame dispatches NOTHING (rationale +
         // status handling at the brokenPacket definition above).
         let realCommands = 0;
-        const opsToDispatch = brokenPacket ? [] : packetAssistant.ops.filter(
+        const admittedOps = brokenPacket ? [] : packetAssistant.ops.filter(
             (op) =>
                 op.op === "PLAN"
                 || (op.op === "SEND" && typeof op.signal === "number" && op.signal >= 200)
                 || realCommands++ < maxCommands,
         );
+        const opsToDispatch = scheduleTurnOps(admittedOps);
         // A broken packet's ops aren't max_commands drops — they're refused wholesale, and the
         // output_truncated 413 already tells the model why; don't also mint max_commands_exceeded.
         const droppedCount = brokenPacket ? 0 : opsCount - opsToDispatch.length;
