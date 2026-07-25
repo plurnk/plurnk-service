@@ -8,14 +8,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
-import { execStmt } from "./_dsl.ts";
+import { execStmt, sendStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { waitFor } from "./_rpc.ts";
 
 let wireN = 0;
-const wire = async (run: (args: { signal: AbortSignal }) => Promise<{ status: number; exitCode?: number }>) => {
+const wire = async (run: Executor["run"]) => {
     const tag = `honesty${++wireN}`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
@@ -26,9 +27,9 @@ const wire = async (run: (args: { signal: AbortSignal }) => Promise<{ status: nu
     engine.hotloadRuntime(tag, {
         executor: {
             runtime: tag, glyph: "?",
-            get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, protocol: `${tag}:`, channels: { results: "text/stream" }, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
-            get channels() { return {}; },
+            get channels() { return { results: { mimetype: "text/stream", defaultState: "active" as const } }; },
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run,
@@ -69,5 +70,30 @@ test("a driver resolving 200 under abort is restamped 499 reaped — the service
         const concluded = await waitFor(() => wakes.filter((w) => w.closeStatus !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });
         assert.equal(concluded[0].closeStatus, 499, "the reaped run concluded 499, not the driver's claimed 200");
         assert.match(concluded[0].summary, /reaped/, "the summary says reaped — no synthetic 'completed (exit -1)' success");
+    } finally { await db.close(); }
+});
+
+test("a completed but unobserved stream keeps a same-turn wait alive for its next-packet OPEN", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async (args) => {
+        args.write("results", "Alice\n");
+        return { status: 200, exitCode: 0 };
+    });
+    try {
+        const started = await engine.dispatch({
+            statement: execStmt(tag, "go"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(started.status, 200);
+        await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+
+        const waited = await engine.dispatch({
+            statement: sendStmt(202, null, "waiting"),
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(
+            waited.status,
+            102,
+            "closed is not observed: the loop continues so the terminal stream READ can land next packet",
+        );
     } finally { await db.close(); }
 });

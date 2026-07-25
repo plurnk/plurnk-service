@@ -1074,13 +1074,36 @@ export default class Dispatcher {
         if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("surviving streams");
         const liveChild = await (this.#db.engine_worker_has_live_child as PrepMethod).get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("surviving workers");
-        const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
-        if (retrievals.length > 0) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
-        // §send-undelivered-child-term — a worker that concluded DURING this turn's generation is no
-        // longer "live" but its deliverable hasn't reached any packet yet; concluding discards it.
-        const undelivered = await (this.#db.engine_worker_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ worker_id: workerId, turn_id: turnId });
-        if (undelivered !== undefined) pending.push("worker results that arrived during this turn (they land NEXT turn)");
+        const observations = await this.#pendingObservations(workerId, turnId);
+        if (observations.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
+        if (observations.streamTerminations) {
+            pending.push("completed stream results that land in the NEXT packet's Log");
+        }
+        if (observations.childTerminations) pending.push("worker results that arrived during this turn (they land NEXT turn)");
         return pending;
+    }
+
+    // Results cross an observation boundary only when they have appeared in a
+    // packet. Completion alone is not delivery. Keep the three next-packet
+    // producers in one classifier so SEND[200]'s discard gate and SEND[202]'s
+    // empty-join decision cannot disagree about what remains unseen.
+    async #pendingObservations(workerId: number, turnId: number): Promise<{
+        retrievals: boolean;
+        streamTerminations: boolean;
+        childTerminations: boolean;
+    }> {
+        const [retrievals, streamTermination, childTermination] = await Promise.all([
+            (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId }),
+            (this.#db.engine_worker_has_undelivered_stream_term as PrepMethod)
+                .get<{ pending: number }>({ worker_id: workerId }),
+            (this.#db.engine_worker_has_undelivered_child_term as PrepMethod)
+                .get<{ pending: number }>({ worker_id: workerId, turn_id: turnId }),
+        ]);
+        return {
+            retrievals: retrievals.length > 0,
+            streamTerminations: streamTermination !== undefined,
+            childTerminations: childTermination !== undefined,
+        };
     }
 
     // J — a live obligation to WAIT on: a spawned child or an open stream (NOT retrievals, which land
@@ -1137,15 +1160,14 @@ export default class Dispatcher {
                 this.#parkDeadlines.set(loopId, seconds);
                 return { status: 202, attrs: { waiting: seconds } };
             }
-            const retrievals = await (this.#db.engine_turn_retrievals as PrepMethod).all<{ id: number }>({ turn_id: turnId });
-            if (retrievals.length > 0) return { status: 102 }; // R lands next turn — continue, don't conclude over it
-            // §send-undelivered-child-term — the fan-out race: a worker that concluded DURING this
-            // turn's generation is not live (J misses it), but its collect delta is queued for the
-            // NEXT build. The wait is NOT on nothing — the results are on the doorstep. Parking
-            // would hang (the wake edges already fired into an unparked run); R semantics: continue,
-            // the deltas land next turn, the model weighs them and concludes.
-            const undelivered = await (this.#db.engine_worker_has_undelivered_child_term as PrepMethod).get<{ pending: number }>({ worker_id: workerId, turn_id: turnId });
-            if (undelivered !== undefined) return { status: 102 };
+            // Retrievals, fast stream conclusions, and child conclusions are
+            // all complete-but-unobserved. Their wake edge may already have
+            // fired, so do not park; continue directly to the packet that
+            // materializes them.
+            const observations = await this.#pendingObservations(workerId, turnId);
+            if (observations.retrievals || observations.streamTerminations || observations.childTerminations) {
+                return { status: 102 };
+            }
             // The joined set is already drained. Awaiting an empty task group completes
             // immediately; it never parks and needs no corrective model turn.
             const finished = await this.#lifecycle.finish(loopId, 200, raw === "" ? null : raw);

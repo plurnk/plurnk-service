@@ -451,6 +451,31 @@ UPDATE log_entries
 SELECT id FROM log_entries
 WHERE turn_id = $turn_id AND origin = 'model' AND op IN ('READ', 'FIND', 'OPEN');
 
+-- PREP: engine_worker_has_undelivered_stream_term
+-- A stream may finish between its EXEC and a same-turn SEND. It is then no longer
+-- live, but its terminal bytes have not crossed the pre-turn observation boundary:
+-- no foisted terminal READ exists yet. Treat that closed result like a same-turn
+-- retrieval or child termination so an empty join cannot conclude over unseen work.
+SELECT 1 AS pending
+FROM subscriptions s
+JOIN entries e ON e.id = s.entry_id
+WHERE s.worker_id = $worker_id
+  AND s.closed_at IS NOT NULL
+  AND EXISTS (
+      SELECT 1 FROM entry_channels ec
+      WHERE ec.entry_id = e.id AND length(ec.content) > 0
+  )
+  AND NOT EXISTS (
+      SELECT 1 FROM log_entries le
+      WHERE le.worker_id = $worker_id
+        AND le.origin = 'plurnk'
+        AND le.op = 'READ'
+        AND le.scheme = e.scheme
+        AND le.pathname = e.pathname
+        AND json_extract(le.attrs, '$.terminal') = 1
+  )
+LIMIT 1;
+
 -- PREP: engine_turn_failures
 -- §send-200-failed-ops — THIS turn's failed op results (the model's own ops, status >= 400), whose
 -- errors the model cannot have seen (they land next packet). A [200] over them concludes blind

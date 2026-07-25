@@ -215,6 +215,26 @@ test("render guard: every content-emitting op applies the N:\\t convention unifo
     }
 });
 
+test("an oversized auto-opened terminal stream is preview-bounded and retains its READ address", () => {
+    const output = Array.from({ length: 40 }, (_, i) => `stream line ${i + 1}`).join("\n");
+    const rendered = PacketWire.renderLog([{
+        coordinate: "1/2/1",
+        origin: "plurnk",
+        op: "READ",
+        status: 200,
+        target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" },
+        rx: { status: 200, mimetype: "text/stream", content: output, startLine: 1 },
+        folded: false,
+    }], tok);
+    assert.match(rendered, /1:stream line 1/, "the terminal output arrives OPEN");
+    assert.doesNotMatch(rendered, /stream line 30/, "the pushed tail cannot bypass the arrival bound");
+    assert.match(
+        rendered,
+        /arrival preview — the full stream output is 40 line\(s\), \d+ chars: READ sh:\/\/\/1\/1\/1#stdout/,
+        "the cut points at the complete addressable stream",
+    );
+});
+
 test("log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
     const system = {
         system_definition: "SD",

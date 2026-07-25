@@ -450,10 +450,14 @@ export default class PacketWire {
                 // cut mid-line; the render can). Model-authored READs stay self-invited — untouched.
                 const promptPush = e.origin === "plurnk" && op === "READ"
                     && e.target !== null && typeof e.target === "object" && (e.target as { scheme?: string }).scheme === "prompt";
-                if (promptPush) {
+                const streamPush = e.origin === "plurnk" && op === "READ" && mimetype === "text/stream";
+                if (promptPush || streamPush) {
                     const arrival = PacketWire.#arrivalPreview(rx.content);
                     body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, arrival.text, mimetype, start);
-                    if (arrival.cut) body += `\n… arrival preview — the full prompt is ${rx.content.split("\n").length} line(s), ${rx.content.length} chars: READ ${target}`;
+                    if (arrival.cut) {
+                        const noun = streamPush ? "stream output" : "prompt";
+                        body += `\n… arrival preview — the full ${noun} is ${rx.content.split("\n").length} line(s), ${rx.content.length} chars: READ ${target}`;
+                    }
                 } else {
                     body = PacketWire.#renderContentBody(target ?? `log:///${coordinate}`, rx.content, mimetype, start);
                 }
