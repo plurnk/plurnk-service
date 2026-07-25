@@ -105,21 +105,6 @@ export default class EntryFind {
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
-        if (statement.body !== null && statement.body.dialect === "semantic") {
-            // ~query: embed the query text, then cosine-rank every vector in scope.
-            // Each ranked chunk is a (file, span) item — a file may appear
-            // more than once (#286, no dedup). 501 when no embeddings handler is installed.
-            // An absent marker uses the service's declared top-K; an explicit marker overrides it.
-            const { mimetypes } = ctx;
-            if (mimetypes === undefined) return { status: 501, matches: [] };
-            const marker = statement.lineMarker === null
-                ? { first: EntrySemantic.defaultTopK(), last: null }
-                : LineMarkerOps.firstLast(statement.lineMarker);
-            const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.workspaceId, scheme, mimetypes, statement.body.raw, marker);
-            if (ranked.status !== 200) return { status: ranked.status, matches: [] };
-            return { status: 200, matches: ranked.results.map((x) => ({ pathname: x.pathname, span: { lineStart: x.lineStart, lineEnd: x.lineEnd } })) };
-        }
-
         const scopePathname = EntryFind.#scopePathnameOf(statement);
         // {§fs-errno} — the green-lie pin (#545): a FIND whose target is an EXACT path (no glob,
         // no folder scope) that resolves to NO entry is ENOENT with its fact — certifying empty
@@ -151,11 +136,13 @@ export default class EntryFind {
         // Candidates are workspace-scoped — a FIND never reaches across workspaces (§find-scoped-isolation)
         // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
         // other scheme draws from the commons.
-        let candidates = await (db.find_workspace_entry_candidates as PrepMethod).all<{ entry_id: number; pathname: string; content: string; mimetype: string }>({
+        type Candidate = { entry_id: number; pathname: string; content?: string; mimetype?: string };
+        const semantic = statement.body?.dialect === "semantic";
+        let candidates = await (db[semantic ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"] as PrepMethod).all<Candidate>({
             workspace_id: workspaceId,
             owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId),
             scheme,
-            channel: manifest.defaultChannel,
+            ...(semantic ? {} : { channel: manifest.defaultChannel }),
             scope_pathname: scopeGlob,
             tags: tagsParam,
         });
@@ -173,7 +160,27 @@ export default class EntryFind {
         // Every dialect resolves to (file, span) items — one per match (#286). A body-less FIND
         // selects the whole entry (span: null); a matcher selects spans within it.
         let matches: SourceMatch[];
-        if (statement.body === null) {
+        if (statement.body !== null && statement.body.dialect === "semantic") {
+            // Semantic rank is exhaustive within the SAME target/tag candidate set as every
+            // other matcher. Passing entry identities into the ranker preserves top-K meaning:
+            // constrain first, then rank, never rank the corpus and discard out-of-scope hits.
+            const { mimetypes } = ctx;
+            if (mimetypes === undefined) return { status: 501, matches: [] };
+            const marker = statement.lineMarker === null
+                ? { first: EntrySemantic.defaultTopK(), last: null }
+                : LineMarkerOps.firstLast(statement.lineMarker);
+            const ranked = await EntrySemantic.rankSemantic(
+                ctx.db,
+                ctx.workspaceId,
+                scheme,
+                candidates.map(({ entry_id }) => entry_id),
+                mimetypes,
+                statement.body.raw,
+                marker,
+            );
+            if (ranked.status !== 200) return { status: ranked.status, matches: [] };
+            matches = ranked.results.map((x) => ({ pathname: x.pathname, span: { lineStart: x.lineStart, lineEnd: x.lineEnd } }));
+        } else if (statement.body === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, span: null }));
         } else if (statement.body.dialect === "graph") {
             // @graph (plurnk-service#186): body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
@@ -188,12 +195,15 @@ export default class EntryFind {
             if (mimetypes === undefined) throw new Error("EntryFind.#matchPathnames: body matcher requires the mimetypes capability in ctx");
             // §find-source-agnostic — the shared content-matcher primitive (Log.find runs the same
             // one over log rows). Candidates key by pathname; each hit becomes a Match.
-            const r = await Matcher.matchCandidates(statement.body, candidates.map((c) => ({ key: c.pathname, content: c.content, mimetype: c.mimetype })), mimetypes);
+            const r = await Matcher.matchCandidates(statement.body, candidates.map((c) => {
+                if (c.content === undefined || c.mimetype === undefined) throw new Error("EntryFind.#matchPathnames: content candidate is incomplete");
+                return { key: c.pathname, content: c.content, mimetype: c.mimetype };
+            }), mimetypes);
             if (r.status !== 200) return { status: r.status, matches: [] };
             matches = r.matches.map((m) => ({ pathname: m.key, span: m.span, ...(m.path !== undefined ? { path: m.path } : {}) }));
         }
 
-        if (statement.lineMarker !== null) {
+        if (statement.lineMarker !== null && statement.body?.dialect !== "semantic") {
             const page = EntryFind.#paginate(matches, LineMarkerOps.firstLast(statement.lineMarker));
             if (page.status !== 200) return { status: page.status, matches: [] };
             matches = page.items ?? [];

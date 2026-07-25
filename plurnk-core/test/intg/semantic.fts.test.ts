@@ -4,7 +4,7 @@
 import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-grammar";
+import type { EditStatement, FindStatement, LineMarker, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import type { Db, PrepMethod } from "../../src/core/Db.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
@@ -24,6 +24,11 @@ const url = (pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body,
+    position: { line: 1, column: 1 },
+});
+const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement => ({
+    op: "FIND", suffix: "", signal: null, target,
+    lineMarker: { marks: [k] }, body: { dialect: "semantic", raw: query } as MatcherBody,
     position: { line: 1, column: 1 },
 });
 
@@ -89,9 +94,11 @@ test("[#186-cosine-recall] semantic_rank searches every vector without a lexical
         ];
         for (const [p, c] of ENTRIES) await new Worker().edit(editStmt(url(p), c), ctx);
         await EntryManifest.maintainDerivations(ctx);  // FTS-indexes every entry
+        const entryIds: number[] = [];
         for (const [p, , v] of ENTRIES) {
             const e = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: `/${p}` });
             assert.ok(e);
+            entryIds.push(e.id);
             const derivation = await (db.test_derivation_for_entry as PrepMethod).get<{ id: number }>({ entry_id: e.id });
             assert.ok(derivation);
             // maintainDerivations stored a real one-chunk embedding; clear it and seed
@@ -101,7 +108,7 @@ test("[#186-cosine-recall] semantic_rank searches every vector without a lexical
         }
 
         const r = await (db.semantic_rank as PrepMethod).all<{ pathname: string }>({
-            workspace_id: workspaceId, scheme: "worker",
+            workspace_id: workspaceId, scheme: "worker", entry_ids: JSON.stringify(entryIds),
             query_vector: blob([1, 0, 0]), embedding_model: "test-model", k: 1,
         });
         assert.deepEqual(r.map((x) => x.pathname), ["/auth.ts"],
@@ -131,13 +138,23 @@ test("[#chunk-maxpool] semantic_rank_threshold max-pools chunks — a hit in a n
         };
         const doc = await derivationOf("/doc.ts");
         const other = await derivationOf("/other.ts");
+        const rankedEntryIds = await Promise.all(["/doc.ts", "/other.ts"].map(async (pathname) => {
+            const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+                workspace_id: workspaceId,
+                owner_id: await Owner.commonsId(db, workspaceId),
+                scheme: "worker",
+                pathname,
+            });
+            assert.ok(entry);
+            return entry.id;
+        }));
         for (const id of [doc, other]) await (db.embedding_delete as PrepMethod).run({ derivation_id: id });
         await (db.embedding_set as PrepMethod).run({ derivation_id: doc, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
         await (db.embedding_set as PrepMethod).run({ derivation_id: doc, chunk_seq: 1, line_start: 3, line_end: 3, vector: blob([1, 0, 0]), embedding_model: "m" });
         await (db.embedding_set as PrepMethod).run({ derivation_id: other, chunk_seq: 0, line_start: 1, line_end: 1, vector: blob([0, 1, 0]), embedding_model: "m" });
 
         const r = await (db.semantic_rank_threshold as PrepMethod).all<{ pathname: string }>({
-            workspace_id: workspaceId, scheme: "worker",
+            workspace_id: workspaceId, scheme: "worker", entry_ids: JSON.stringify(rankedEntryIds),
             query_vector: blob([1, 0, 0]), embedding_model: "m", threshold: 0.9, cap: -1,
         });
         assert.deepEqual(r.map((x) => x.pathname), ["/doc.ts"],
@@ -172,7 +189,7 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: embedder }));
         const stored = await (db.test_count_embeddings as PrepMethod).get<{ n: number }>({ entry_id: e.id });
         assert.ok((stored?.n ?? 0) > 1, `the body tiled into multiple stored chunks (got ${stored?.n ?? 0})`);
-        const r = await EntrySemantic.rankSemantic(db, workspaceId, "worker", embedder, "photosynthesis chloroplasts", { first: 5, last: null });
+        const r = await EntrySemantic.rankSemantic(db, workspaceId, "worker", [e.id], embedder, "photosynthesis chloroplasts", { first: 5, last: null });
         const hit = r.results.find((x) => x.pathname === "/bio.md");
         assert.ok(hit, "the deep chunk was embedded + stored, and ~query retrieved its entry via max-pool");
         assert.ok(hit.lineStart >= 1 && hit.lineEnd >= hit.lineStart, `the winning chunk's span rides out (got ${hit.lineStart}-${hit.lineEnd})`);
@@ -216,20 +233,49 @@ test("[#fts-fallback] no embedder → ~query<K> degrades to an FTS keyword rank;
         await mk("heavy.ts", "payment refund payment\nmore");
         await mk("light.ts", "payment once");
         await mk("auth.ts", "authenticate user");
+        const entryIds = await Promise.all(["/heavy.ts", "/light.ts", "/auth.ts"].map(async (pathname) => {
+            const entry = await (db.crud_find_workspace_entry as PrepMethod).get<{ id: number }>({
+                workspace_id: workspaceId,
+                owner_id: await Owner.commonsId(db, workspaceId),
+                scheme: "worker",
+                pathname,
+            });
+            assert.ok(entry);
+            return entry.id;
+        }));
 
         // No embedder: process() yields no embedding channel → the fallback fires.
-        const noEmbedder = { process: async () => ({}), embedderInfo: () => null } as unknown as Mimetypes;
+        const noEmbedder = {
+            process: async () => ({}),
+            embedderInfo: () => null,
+            rowsForLines: async (_input: unknown, spans: Array<{ line: number; endLine: number }>) =>
+                spans.map(({ line, endLine }) => ({ row: line, endRow: endLine })),
+        } as unknown as Mimetypes;
         await EntryManifest.maintainDerivations(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }));
 
-        const topK = await EntrySemantic.rankSemantic(db, workspaceId, "worker", noEmbedder, "payment", { first: 5, last: null });
+        const topK = await EntrySemantic.rankSemantic(db, workspaceId, "worker", entryIds, noEmbedder, "payment", { first: 5, last: null });
         assert.equal(topK.status, 200, "no embedder no longer 501s the top-K form");
         assert.deepEqual(topK.results.map((x) => x.pathname), ["/heavy.ts", "/light.ts"],
             "BM25 ranks heavy (two hits) above light (one); auth (no keyword) excluded by the narrow");
         const heavy = topK.results.find((x) => x.pathname === "/heavy.ts");
         assert.ok(heavy && heavy.lineStart === 1 && heavy.lineEnd === 2, `whole-entry span, no chunk vectors (got ${heavy?.lineStart}-${heavy?.lineEnd})`);
 
+        const exactMiss = await new Worker().find(
+            semanticStmt(url("auth.ts"), "payment", 5),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
+        );
+        assert.deepEqual(exactMiss.results, [],
+            "semantic ranking is constrained by the exact target before ranking — matches elsewhere never leak in");
+        const exactHit = await new Worker().find(
+            semanticStmt(url("heavy.ts"), "payment", 5),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
+        );
+        assert.equal(exactHit.status, 200);
+        assert.deepEqual(exactHit.results.map((x) => x.path), ["worker:///heavy.ts"],
+            "an exact target ranks only that entry");
+
         // The similarity-threshold form needs a cosine score the FTS half can't supply.
-        const thresh = await EntrySemantic.rankSemantic(db, workspaceId, "worker", noEmbedder, "payment", { first: 0.5, last: null });
+        const thresh = await EntrySemantic.rankSemantic(db, workspaceId, "worker", entryIds, noEmbedder, "payment", { first: 0.5, last: null });
         assert.equal(thresh.status, 501, "the <0.x> threshold form is cosine-intrinsic → 501 without an embedder");
     } finally { db.close(); }
 });

@@ -34,6 +34,7 @@ WITH ranked AS (
     WHERE d.state = 'complete'
       AND e.workspace_id = $workspace_id
       AND e.scheme = $scheme
+      AND e.id IN (SELECT value FROM json_each($entry_ids))
 )
 SELECT pathname, line_start, line_end FROM ranked
 WHERE rn = 1
@@ -54,6 +55,7 @@ WITH ranked AS (
     WHERE d.state = 'complete'
       AND e.workspace_id = $workspace_id
       AND e.scheme = $scheme
+      AND e.id IN (SELECT value FROM json_each($entry_ids))
 )
 SELECT pathname, line_start, line_end FROM ranked
 WHERE rn = 1 AND score >= $threshold
@@ -74,5 +76,6 @@ JOIN entries e ON e.deep_hash = d.deep_hash
 WHERE f.content MATCH $fts_query
   AND e.workspace_id = $workspace_id
   AND e.scheme = $scheme
+  AND e.id IN (SELECT value FROM json_each($entry_ids))
 ORDER BY bm25(entry_fts)
 LIMIT $k;

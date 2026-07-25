@@ -12,7 +12,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { WebFetch } from "../../src/schemes/Exec.ts";
 import type { PrepMethod } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import EntryManifest from "../../src/schemes/_entry-manifest.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime, target: null,
@@ -172,6 +174,31 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         assert.match(delivered?.rx ?? "", /wild turkeys are large birds, revised/);
         const stored = await (db.test_entries_by_pathname as PrepMethod).get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
+    } finally { await quiesceExecs(schemes); await db.close(); }
+});
+
+test("an exact HTTPS semantic READ cannot leak or retarget a match from another authority", async () => {
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-semantic-scope", webScheme: true });
+    try {
+        await engine.dispatch({
+            statement: execStmt(tag, "turkeys"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        await quiesceExecs(schemes);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes: DEFAULT_MIMETYPES });
+        await EntryCrud.writeEntry("/other.example/cake", {
+            channels: { body: { content: "preheat the oven and frost the birthday cake", mimetype: "text/markdown" } },
+            tags: [],
+        }, ctx, "https");
+        await EntryManifest.maintainDerivations(ctx);
+
+        const queried = await engine.dispatch({
+            statement: parseOne("<<READ(https://example.org/turkeys):~birthday cake:READ") as ReadStatement,
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(queried.status, 204);
+        assert.equal(queried.rowsWritten, 1,
+            "the semantic miss is one honest row; other.example is never fabricated beneath example.org");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
 

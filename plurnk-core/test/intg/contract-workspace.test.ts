@@ -545,7 +545,7 @@ test("NUL-headed content is a binary marker regardless of the extension's lying 
         assert.equal(row.mimetype, "application/octet-stream", "the sniff overrode the label");
         assert.equal(row.content, "", "binary bodies are empty markers");
         const fts = await (db.semantic_rank_fts as PrepMethod).all<{ pathname: string }>({
-            fts_query: "binary OR tail", workspace_id: ctx.workspaceId, scheme: "file", k: 5,
+            fts_query: "binary OR tail", workspace_id: ctx.workspaceId, scheme: "file", entry_ids: "[]", k: 5,
         });
         assert.deepEqual(fts, [], "no keyword ghost of the blob");
     });

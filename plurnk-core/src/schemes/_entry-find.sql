@@ -30,3 +30,23 @@ WHERE e.workspace_id = $workspace_id
   )
 ORDER BY e.pathname;
 
+-- PREP: find_workspace_entry_candidate_ids
+-- Relation matchers need the same target/tag candidate set without loading every
+-- candidate body across the SQL boundary. The ranker joins these identities to
+-- derivations and performs exhaustive ranking within the selected set.
+SELECT e.id AS entry_id, e.pathname
+FROM entries e
+WHERE e.workspace_id = $workspace_id
+  AND e.owner_id = $owner_id
+  AND e.scheme = $scheme
+  AND ($scope_pathname IS NULL OR e.pathname GLOB $scope_pathname)
+  AND (
+    json_array_length(COALESCE($tags, '[]')) = 0
+    OR e.id IN (
+        SELECT entry_id FROM entry_tags
+        WHERE tag IN (SELECT value FROM json_each(COALESCE($tags, '[]')))
+        GROUP BY entry_id
+        HAVING COUNT(DISTINCT tag) = json_array_length(COALESCE($tags, '[]'))
+    )
+  )
+ORDER BY e.pathname;
