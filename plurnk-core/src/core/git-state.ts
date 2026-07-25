@@ -38,11 +38,8 @@ export default class GitState {
         const root = row?.project_root ?? null;
         if (root === null) return null;
         if (process.env.PLURNK_SERVICE_GIT_NATIVE !== "1") {
-            try {
-                return await GitIso.status(root);
-            } catch {
-                return null;  // not a git worktree (or unborn HEAD) — fail closed, no telemetry
-            }
+            if (await GitIso.repoToplevel(root) === null) return null;
+            return GitIso.status(root);
         }
         let stdout: string;
         try {

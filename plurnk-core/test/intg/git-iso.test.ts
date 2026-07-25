@@ -11,7 +11,7 @@ import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import GitIso from "../../src/core/git-iso.ts";
+import GitIso, { GitIsoError } from "../../src/core/git-iso.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import GitState from "../../src/core/git-state.ts";
 import { openMigrated, insertWorkspace, rootWorkspace } from "./_helpers.ts";
@@ -142,6 +142,57 @@ test("a linked worktree workspace root resolves membership + status through iso 
         await db.close();
         await rm(linked, { recursive: true, force: true });
         await rm(main, { recursive: true, force: true });
+    }
+});
+
+test("an unsupported isomorphic-git repository fails with the native-backend remedy on membership and status (#572)", async () => {
+    const root = await seedRepo("iso-index-v3-");
+    const db = await openMigrated();
+    const prior = process.env.PLURNK_SERVICE_GIT_NATIVE;
+    try {
+        await writeFile(join(root, "tracked.md"), "# tracked\n");
+        git(root, "add", "tracked.md");
+        commit(root, "seed");
+        // Extended index flags force Git to retain index format v3. isomorphic-git
+        // 1.40 rejects that real repository shape with "Unsupported dircache version: 3".
+        git(root, "update-index", "--index-version", "3");
+        git(root, "update-index", "--skip-worktree", "tracked.md");
+
+        const workspaceId = await insertWorkspace(db, `iso-v3-${crypto.randomUUID()}`);
+        // Do not use rootWorkspace: it deliberately performs creation-time
+        // membership resolution, which is one of the failures asserted below.
+        await db.test_set_session_root.run({ id: workspaceId, project_root: root });
+        delete process.env.PLURNK_SERVICE_GIT_NATIVE;
+
+        const actionable = (error: unknown): boolean => {
+            assert.ok(error instanceof GitIsoError);
+            assert.match(error.message, /Unsupported dircache version: 3/);
+            assert.match(error.message, /PLURNK_SERVICE_GIT_NATIVE=1/);
+            assert.ok(error.cause instanceof Error, "the isomorphic-git failure is preserved as the cause");
+            return true;
+        };
+        await assert.rejects(
+            () => GitMembership.resolveGitMembership(db, workspaceId, undefined),
+            actionable,
+            "workspace membership surfaces the shared backend error",
+        );
+        await assert.rejects(
+            () => GitState.status(db, workspaceId, undefined),
+            actionable,
+            "status does not swallow the same repository incompatibility",
+        );
+
+        process.env.PLURNK_SERVICE_GIT_NATIVE = "1";
+        assert.ok(
+            (await GitMembership.resolveGitMembership(db, workspaceId, undefined)).includes("tracked.md"),
+            "the documented native backend reads the same repository",
+        );
+        assert.ok(await GitState.status(db, workspaceId, undefined), "native status succeeds too");
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_GIT_NATIVE;
+        else process.env.PLURNK_SERVICE_GIT_NATIVE = prior;
+        await db.close();
+        await rm(root, { recursive: true, force: true });
     }
 });
 

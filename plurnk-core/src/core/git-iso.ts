@@ -15,7 +15,37 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { GitStatus } from "./git-state.ts";
 
+export class GitIsoError extends Error {
+    constructor(root: string, operation: string, cause: unknown) {
+        const detail = typeof cause === "object"
+            && cause !== null
+            && "data" in cause
+            && typeof cause.data === "object"
+            && cause.data !== null
+            && "message" in cause.data
+            && typeof cause.data.message === "string"
+            ? cause.data.message
+            : cause instanceof Error
+                ? cause.message.trim().split("\n").filter((line) => line.length > 0).at(-1)
+                : String(cause);
+        super(
+            `isomorphic-git could not read repository "${root}" while ${operation}: ${detail ?? "unknown failure"}. `
+            + "Set PLURNK_SERVICE_GIT_NATIVE=1 to use the system Git backend.",
+            { cause },
+        );
+        this.name = "GitIsoError";
+    }
+}
+
 export default class GitIso {
+    static async #read<T>(root: string, operation: string, read: () => Promise<T>): Promise<T> {
+        try {
+            return await read();
+        } catch (cause) {
+            throw new GitIsoError(root, operation, cause);
+        }
+    }
+
     // One STAGE walk serves both member classes: `blob` entries are the tracked files
     // (parity with `ls-files --stage` sans mode-160000), `commit` entries are submodule
     // gitlinks — repo boundaries the untracked scan must never descend. Memoized on the
@@ -52,7 +82,8 @@ export default class GitIso {
     // filter: only blob entries (files + symlinks) are members; a `commit` entry is a submodule
     // boundary (a separate declared repo) and a `tree` is walk hierarchy, never a file.
     static async trackedFiles(root: string, cache: object): Promise<string[]> {
-        return (await GitIso.#stageEntries(root, cache)).blobs;
+        return GitIso.#read(root, "reading tracked files", async () =>
+            (await GitIso.#stageEntries(root, cache)).blobs);
     }
 
     // Untracked-but-not-ignored files — parity with `git ls-files --others --exclude-standard`,
@@ -67,6 +98,10 @@ export default class GitIso {
     // and a directory carrying its own `.git` (an embedded plain repo) is a boundary listed as
     // the single entry `dir/`, exactly as native does.
     static async untrackedFiles(root: string, cache: object): Promise<string[]> {
+        return GitIso.#read(root, "reading untracked files", () => GitIso.#untrackedFiles(root, cache));
+    }
+
+    static async #untrackedFiles(root: string, cache: object): Promise<string[]> {
         const { blobs, gitlinks } = await GitIso.#stageEntries(root, cache);
         const tracked = new Set(blobs);
         const boundaries = new Set(gitlinks);
@@ -142,10 +177,13 @@ export default class GitIso {
     }
 
     // Working-tree status — parity with `git status --porcelain --branch`: branch, ahead/behind
-    // the configured upstream, and staged/unstaged/untracked counts. Throws on a non-repo /
-    // unborn-HEAD root (no commit yet); the caller maps that to null = no telemetry, the same
-    // fail-closed contract the native arm's catch applies.
+    // the configured upstream, and staged/unstaged/untracked counts. Repository incompatibilities
+    // surface as GitIsoError; GitState distinguishes the ordinary non-repo case before this call.
     static async status(root: string): Promise<GitStatus> {
+        return GitIso.#read(root, "reading working-tree status", () => GitIso.#status(root));
+    }
+
+    static async #status(root: string): Promise<GitStatus> {
         const cache = {};
         const branch = await git.currentBranch({ fs, dir: root, fullname: false }) ?? "HEAD";  // detached → HEAD, as porcelain renders it
         const matrix = await git.statusMatrix({ fs, dir: root, cache });
