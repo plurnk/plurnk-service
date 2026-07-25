@@ -67,6 +67,32 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     portal.stop();
 });
 
+test("a terminal arriving before the loop acknowledgement settles only its matching run", async () => {
+    const m = mockSeam();
+    let acknowledge!: (value: { action: "enqueued_new_loop"; loopId: number }) => void;
+    m.seam.runLoop = async () => new Promise((resolve) => { acknowledge = resolve; });
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "nvim", emit: (events) => seen.push(...events) });
+    const running = portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "fast" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const termination = (loopId: number) => ({
+        loopId, finalStatus: 200, hitMaxTurns: false, turnIds: [],
+        usage: { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
+    });
+    m.fire(3, "loop/terminated", termination(88));
+    m.fire(3, "loop/terminated", termination(77));
+    assert.equal(seen.length, 0, "pre-ack terminals are buffered, never guessed");
+
+    acknowledge({ action: "enqueued_new_loop", loopId: 77 });
+    assert.deepEqual(await running, { loopId: 77 });
+    assert.equal(seen.filter((event) => event.type === "RUN_FINISHED").length, 1, "only the acknowledged loop settles the run");
+    portal.stop();
+});
+
 test("a worker with a durable proposal re-presents its interrupt instead of starting new work", async () => {
     const pending: PendingProposal[] = [{ logEntryId: 5, workerId: 10, loopId: 1, turnId: 1, op: "EXEC", suffix: "", scheme: "sh", pathname: null, tx: "ls", attrs: null }];
     const m = mockSeam(pending);
