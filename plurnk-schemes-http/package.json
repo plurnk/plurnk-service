@@ -49,6 +49,7 @@
     },
     "files": [
         "dist/**/*",
+        "scripts/**/*",
         ".env.defaults",
         "docs/**/*",
         "README.md",
@@ -61,6 +62,7 @@
         "test": "npm run test:lint && npm run test:unit",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",
+        "postinstall": "node scripts/install-browser.mjs",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test",
         "prepack": "npm run build"
     },

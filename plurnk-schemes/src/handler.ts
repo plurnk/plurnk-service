@@ -51,6 +51,7 @@ export interface SchemeHandler {
     // Optional process-lifecycle hook for handlers that own pooled resources
     // (browser processes, sockets, client connections). The consumer calls this
     // once after in-flight scheme work drains and before its backing stores close.
+    ready?(): Promise<void>;
     close?(): Promise<void>;
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 

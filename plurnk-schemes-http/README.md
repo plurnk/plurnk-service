@@ -23,7 +23,7 @@ Response status + headers land in the `header` channel; the body in `body` (the 
 ## Design
 
 - **Streaming via the capability `subscriptions` lifecycle** (`open` → `notifyChunk` → `close`). `open()` returns the worker+teardown-composed `AbortSignal`; a `SubscriptionHandle` is registered so the engine routes `SEND[499]` cancellation to the in-flight `fetch`.
-- **No runtime dependencies** — `fetch`, `AbortController`, `TextDecoder`, `ReadableStream` are Node ≥25 built-ins.
+- **Batteries-included rendering** — installation provisions Playwright's compatible Chromium and daemon boot verifies it. Explicit remote, system-browser, and rendering-disabled modes are documented in the shipped `.env.defaults`; there is no browser guessing or silent fallback.
 - **DB-free** — reaches the substrate only through `ctx` capabilities (`subscriptions`, `entries`), never a raw DB handle (plurnk-schemes SPEC §5). This is what the keystone capability ctx made possible.
 
 ## Install
@@ -33,6 +33,7 @@ npm i @plurnk/plurnk-schemes-http && plurnk start
 ```
 
 Plugin discovery registers it at boot (`package.json#plurnk.kind === "scheme"`).
+No browser setup is required for the default installation.
 
 ## Tests
 

@@ -572,6 +572,7 @@ export default class Daemon {
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their ctx in SchemeCtxImpl (#195).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
+        await this.#schemes.ready();
 
         // Reconcile the kernel-published documentation surface once per existing workspace.
         // Installed capabilities and operator configuration are now fully known; model loops

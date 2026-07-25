@@ -53,10 +53,11 @@ interface PwBrowser {
     close(): Promise<void>;
 }
 export interface ChromiumEngine {
-    launch(opts: { headless: boolean; args: ReadonlyArray<string> }): Promise<PwBrowser>;
-    connect(wsEndpoint: string): Promise<PwBrowser>;
+    launch(opts: { headless: boolean; args: ReadonlyArray<string>; executablePath?: string }): Promise<PwBrowser>;
+    connectOverCDP(endpoint: string): Promise<PwBrowser>;
 }
 export type ChromiumFactory = () => Promise<ChromiumEngine>;
+export type BrowserMode = "managed" | "remote" | "system" | "disabled";
 
 // `document` exists only inside page.evaluate (the browser context, where the
 // callback is serialized and run). Declared narrowly so the salvage probe
@@ -113,8 +114,26 @@ export const requireNumEnv = (key: string): number => {
 
 // Default factory: lazy-import the real chromium. The cast bridges Playwright's
 // full type to our structural view at the single trusted library boundary.
-const defaultFactory: ChromiumFactory = async () =>
-    (await import("playwright")).chromium as unknown as ChromiumEngine;
+const defaultFactory: ChromiumFactory = async () => {
+    process.env.PLAYWRIGHT_BROWSERS_PATH ??= "0";
+    return (await import("playwright")).chromium as unknown as ChromiumEngine;
+};
+
+const browserConfig = (): { mode: BrowserMode; endpoint?: string; executablePath?: string } => {
+    const raw = process.env.PLURNK_SCHEMES_HTTP_BROWSER;
+    if (raw === undefined) throw new Error("Browser: required env PLURNK_SCHEMES_HTTP_BROWSER is unset — see .env.defaults");
+    if (!["managed", "remote", "system", "disabled"].includes(raw)) {
+        throw new Error(`Browser: PLURNK_SCHEMES_HTTP_BROWSER=${raw} must be managed, remote, system, or disabled`);
+    }
+    const mode = raw as BrowserMode;
+    const endpoint = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS;
+    const executablePath = process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH;
+    if (mode === "remote" && !endpoint) throw new Error("Browser: remote mode requires PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS");
+    if (mode === "system" && !executablePath) throw new Error("Browser: system mode requires PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH");
+    if (mode !== "remote" && endpoint) throw new Error(`Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS is incompatible with ${mode} mode`);
+    if (mode !== "system" && executablePath) throw new Error(`Browser: PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH is incompatible with ${mode} mode`);
+    return { mode, ...(endpoint ? { endpoint } : {}), ...(executablePath ? { executablePath } : {}) };
+};
 
 export default class Browser {
     #factory: ChromiumFactory;
@@ -129,6 +148,12 @@ export default class Browser {
     // Inject a factory in tests; production lazy-imports playwright.
     constructor(factory: ChromiumFactory = defaultFactory) {
         this.#factory = factory;
+    }
+
+    async ready(): Promise<BrowserMode> {
+        const { mode } = browserConfig();
+        if (mode !== "disabled") await this.#getBrowser();
+        return mode;
     }
 
     // Render a URL to its final serialized DOM. Opens a page in the worker's
@@ -195,23 +220,27 @@ export default class Browser {
         }
     }
 
-    // Get-or-launch the warm chromium. Connects to a remote CDP endpoint via
-    // PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS if set (shared / Lightpanda /
-    // browserless), else launches locally. Single browser across all workers;
+    // Get-or-launch the warm chromium under the one explicitly selected mode.
+    // Single browser across all workers;
     // per-worker isolation is at the context layer. Relaunches if chromium dies
     // (OOM/segfault/WS teardown) leaves the handle stale.
     async #getBrowser(): Promise<PwBrowser> {
         this.#touchIdle();
         if (this.#browser) return this.#browser;
         this.#launching ??= (async () => {
+            const config = browserConfig();
+            if (config.mode === "disabled") throw new Error("Browser: HTML rendering is disabled by PLURNK_SCHEMES_HTTP_BROWSER=disabled");
             const chromium = await this.#factory();
-            const ws = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS;
-            if (ws) return chromium.connect(ws);
+            if (config.mode === "remote") return chromium.connectOverCDP(config.endpoint!);
             const args: string[] = [];
             if (process.env.PLURNK_SCHEMES_HTTP_NO_SANDBOX === "1") args.push("--no-sandbox");
             const heapMb = process.env.PLURNK_SCHEMES_HTTP_CHROMIUM_HEAP_MB;
             if (heapMb) args.push(`--js-flags=--max-old-space-size=${heapMb}`);
-            return chromium.launch({ headless: true, args });
+            return chromium.launch({
+                headless: true,
+                args,
+                ...(config.mode === "system" ? { executablePath: config.executablePath } : {}),
+            });
         })();
         const browser = await this.#launching;
         this.#launching = null;

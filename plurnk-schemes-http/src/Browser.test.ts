@@ -25,6 +25,7 @@ const timeoutError = () => Object.assign(new Error("Timeout 30000ms exceeded"), 
 
 const makeEngine = (cfg: FakeConfig = {}) => {
     const calls = { newContext: 0, newPage: 0, pageClose: 0, contextClose: 0, launch: 0, connect: 0 };
+    const launchOptions: Array<{ executablePath?: string }> = [];
     const contextOptions: Array<{ isMobile?: boolean; userAgent?: string } | undefined> = [];
     const makePage = () => ({
         async goto() {
@@ -45,10 +46,10 @@ const makeEngine = (cfg: FakeConfig = {}) => {
         async close() {},
     });
     const engine = {
-        async launch() { calls.launch++; return makeBrowser(); },
-        async connect() { calls.connect++; return makeBrowser(); },
+        async launch(options: { executablePath?: string }) { calls.launch++; launchOptions.push(options); return makeBrowser(); },
+        async connectOverCDP() { calls.connect++; return makeBrowser(); },
     } as unknown as ChromiumEngine;
-    return { engine, calls, contextOptions };
+    return { engine, calls, contextOptions, launchOptions };
 };
 
 test("render: returns status, headers, and the serialized DOM", async () => {
@@ -69,6 +70,70 @@ test("render: launches locally (no CDP endpoint) and serializes", async () => {
     assert.equal(calls.launch, 1);
     assert.equal(calls.connect, 0);
     await browser.close();
+});
+
+test("ready: verifies the managed browser before the first render", async () => {
+    const { engine, calls } = makeEngine();
+    const browser = new Browser(() => Promise.resolve(engine));
+    assert.equal(await browser.ready(), "managed");
+    assert.equal(calls.launch, 1);
+    await browser.close();
+});
+
+test("ready: remote mode requires and verifies its CDP endpoint", async () => {
+    const previous = process.env.PLURNK_SCHEMES_HTTP_BROWSER;
+    const previousEndpoint = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS;
+    process.env.PLURNK_SCHEMES_HTTP_BROWSER = "remote";
+    process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS = "http://browser.test:9222";
+    try {
+        const { engine, calls } = makeEngine();
+        const browser = new Browser(() => Promise.resolve(engine));
+        assert.equal(await browser.ready(), "remote");
+        assert.equal(calls.connect, 1);
+        assert.equal(calls.launch, 0);
+        await browser.close();
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_BROWSER;
+        else process.env.PLURNK_SCHEMES_HTTP_BROWSER = previous;
+        if (previousEndpoint === undefined) delete process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS;
+        else process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS = previousEndpoint;
+    }
+});
+
+test("ready: system mode launches only the configured executable", async () => {
+    const previous = process.env.PLURNK_SCHEMES_HTTP_BROWSER;
+    const previousPath = process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH;
+    process.env.PLURNK_SCHEMES_HTTP_BROWSER = "system";
+    process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH = "/opt/chromium";
+    try {
+        const { engine, calls, launchOptions } = makeEngine();
+        const browser = new Browser(() => Promise.resolve(engine));
+        assert.equal(await browser.ready(), "system");
+        assert.equal(calls.launch, 1);
+        assert.equal(launchOptions[0]?.executablePath, "/opt/chromium");
+        await browser.close();
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_BROWSER;
+        else process.env.PLURNK_SCHEMES_HTTP_BROWSER = previous;
+        if (previousPath === undefined) delete process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH;
+        else process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH = previousPath;
+    }
+});
+
+test("ready: disabled mode performs no browser work and render fails clearly", async () => {
+    const previous = process.env.PLURNK_SCHEMES_HTTP_BROWSER;
+    process.env.PLURNK_SCHEMES_HTTP_BROWSER = "disabled";
+    try {
+        const { engine, calls } = makeEngine();
+        const browser = new Browser(() => Promise.resolve(engine));
+        assert.equal(await browser.ready(), "disabled");
+        assert.equal(calls.launch, 0);
+        await assert.rejects(browser.render("https://example.com/", { workerId: 1 }), /HTML rendering is disabled/);
+        await browser.close();
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_BROWSER;
+        else process.env.PLURNK_SCHEMES_HTTP_BROWSER = previous;
+    }
 });
 
 test("salvage: networkidle timeout with substantive body text → returns html, status 200", async () => {

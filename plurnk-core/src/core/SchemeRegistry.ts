@@ -105,6 +105,17 @@ export default class SchemeRegistry {
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
 
+    // Process-readiness boundary for plugin-owned runtime capabilities. Discovery
+    // alone proves only that a handler can be imported; ready() proves resources
+    // advertised as available at boot can actually be opened.
+    async ready(): Promise<void> {
+        const handlers = new Set(this.#handlers.values());
+        for (const handler of handlers) {
+            const ready = (handler as { ready?: () => Promise<void> }).ready;
+            if (ready !== undefined) await ready.call(handler);
+        }
+    }
+
     // Process-lifecycle boundary for plugin-owned pools/sockets/connections. Runtime
     // aliases may share a handler, so close each object identity exactly once.
     async close(): Promise<void> {

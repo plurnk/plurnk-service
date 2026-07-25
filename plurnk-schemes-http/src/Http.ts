@@ -56,6 +56,7 @@ const documentation = await readFile(new URL("../docs/http.md", import.meta.url)
 
 // What Http needs from the render foundation — narrow, so tests inject a fake.
 interface Renderer {
+    ready?(): Promise<string>;
     render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult>;
     close?(): Promise<void>;
 }
@@ -88,6 +89,11 @@ export default class Http implements SchemeHandler {
     readonly #browser: Renderer;
     constructor(browser: Renderer = new Browser()) {
         this.#browser = browser;
+    }
+
+    async ready(): Promise<void> {
+        const mode = await this.#browser.ready?.();
+        if (mode !== undefined) console.info(`http renderer: ${mode}`);
     }
 
     async close(): Promise<void> {
