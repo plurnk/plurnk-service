@@ -12,6 +12,7 @@ import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
 import Owner from "../core/Owner.ts";
 import { foldAuthorityIntoPath } from "../core/plurnk-uri.ts";
+import { decodePathParens } from "../core/path-decode.ts";
 import EntryFind from "./_entry-find.ts";
 import type { ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
@@ -473,7 +474,10 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const fetched = await materialized;
                 if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
                 let { body, mimetype } = fetched;
-                const pathname = foldAuthorityIntoPath(parsed.hostname, parsed.pathname);
+                // External URLs arrive in transport-safe spelling, while entry identity uses
+                // the grammar's canonical resolved path. Store the decoded identity; renderers
+                // encode parentheses again when the address returns to the model.
+                const pathname = decodePathParens(foldAuthorityIntoPath(parsed.hostname, parsed.pathname));
                 const prior = await EntryCrud.readEntry(pathname, ctx, parsed.scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
                 // The web-fetch entry point: a fetched html page stores the handler's readable

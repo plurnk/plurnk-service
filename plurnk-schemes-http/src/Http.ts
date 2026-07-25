@@ -417,7 +417,11 @@ export default class Http implements SchemeHandler {
     // prefetch sink does. Routing (`https` rides the HTTP handler) remains
     // separate from storage (`https` remains https).
     static #pathname(target: UrlPath): string {
-        return target.hostname ? `/${target.hostname}${target.pathname}` : target.pathname;
+        const folded = target.hostname ? `/${target.hostname}${target.pathname}` : target.pathname;
+        // `%28`/`%29` are the grammar-safe transport spelling of literal path
+        // parentheses. Entry storage is canonical; the packet renderer encodes
+        // them again when presenting an address to the model.
+        return folded.replace(/%28/giu, "(").replace(/%29/giu, ")");
     }
 
     // Known-hostile-host rewrite — the ONE bounded, first-party exception

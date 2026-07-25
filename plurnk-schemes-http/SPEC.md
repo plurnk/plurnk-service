@@ -25,6 +25,10 @@ static manifest: SchemeManifest = {
 
 `https` routes through the registered `http` handler, but routing is not identity: entries retain the addressed protocol and fold authority into their storage pathname (`https` + `/example.com/page`). Thus two hosts never collide and `http://` never aliases `https://`.
 
+Entry identity is the resolved URL path, not its grammar-safe spelling. `%28` and
+`%29` materialized from search or received in a model address canonicalize to
+literal parentheses in storage; model-facing renderers encode them again.
+
 ## §2 Op surface {§op-surface}
 
 Implemented against the DB-free `SchemeCtx` (no `ctx.db`):

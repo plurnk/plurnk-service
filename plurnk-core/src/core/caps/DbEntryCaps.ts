@@ -31,7 +31,11 @@ export default class DbEntryCaps implements EntryCaps {
     constructor(ctx: PlurnkSchemeContext, scheme: string, manifest: SchemeManifest) {
         this.#ctx = ctx;
         this.#scheme = scheme;
-        this.#manifest = manifest;
+        // One handler may own multiple addressed protocols (http/https, ws/wss).
+        // Every cap surface must operate in the identity the caller addressed:
+        // direct CRUD already uses #scheme; standard operations derive identity
+        // from manifest.name, so give them the same addressed face.
+        this.#manifest = manifest.name === scheme ? manifest : { ...manifest, name: scheme };
         this.operations = {
             editBatch: (statements, owner) => this.#editBatch(statements, owner),
             read: (statement, owner) => this.#read(statement, owner),

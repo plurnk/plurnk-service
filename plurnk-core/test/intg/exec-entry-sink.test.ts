@@ -32,7 +32,7 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string; webScheme?: boolean }) => {
+const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: string; webScheme?: boolean; encodedPath?: boolean }) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
     // "one name, one owner" (#289) rejects a second hotload of the same tag onto the shared registry.
     const tag = opts?.tag ?? "stubsearch";
@@ -55,6 +55,12 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args) => {
+                if (opts?.encodedPath) {
+                    await args.entry?.("https://example.org/people_%28current%29", "heading\nspouse: Example Person\nfooter", { tags: ["people_query"], mimetype: "text/markdown" });
+                    args.write("results", "[]", "application/json");
+                    args.setState("results", "closed");
+                    return { status: 200, exitCode: 0 };
+                }
                 if (opts?.nullContent) {
                     const entry = args.entry as WidenedEntry | undefined;
                     await entry?.("https://example.org/live", null, { tags: ["turkeys_query"] });
@@ -174,6 +180,37 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         assert.match(delivered?.rx ?? "", /wild turkeys are large birds, revised/);
         const stored = await (db.test_entries_by_pathname as PrepMethod).get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
+    } finally { await quiesceExecs(schemes); await db.close(); }
+});
+
+test("search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
+    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+        tag: "stubsearch-encoded-path",
+        webScheme: true,
+        encodedPath: true,
+    });
+    try {
+        await engine.dispatch({
+            statement: execStmt(tag, "people"),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        await quiesceExecs(schemes);
+
+        const stored = await (db.test_entries_by_pathname as PrepMethod).get<{ pathname: string }>({
+            pathname: "/example.org/people_(current)",
+        });
+        assert.equal(stored?.pathname, "/example.org/people_(current)",
+            "ingestion stores one canonical decoded identity");
+        const read = await engine.dispatch({
+            statement: parseOne("<<READ(https://example.org/people_%28current%29)<2,2>::READ") as ReadStatement,
+            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(read.status, 200);
+        const delivered = await (db.log_read_by_coordinate as PrepMethod).get<{ rx: string }>({
+            worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
+        });
+        assert.match(delivered?.rx ?? "", /spouse: Example Person/,
+            "the grammar-safe address resolves the canonical entry and applies its scope");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
 
