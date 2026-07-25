@@ -63,11 +63,11 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 - **PLAN** — required at the beginning of a turn.
 - **FIND** (retrieval) — returns a JSON array of matches. Each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
 - **READ** (retrieval) — returns lines of matching content, each prefixed with its line number.
-- **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<row,row>` with literal body content, never patterns. Without `<scope>`, it replaces the whole entry, or creates it if absent.
+- **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<row,row>` with literal body content, never patterns. Without `<scope>`, it creates an absent entry; an existing entry requires current rows.
 - **EDIT nesting** — add a single-digit (or label) suffix when nesting ops, as in `EDIT1 … :EDIT:EDIT1`.
 - **OPEN** (retrieval) — reveals a folded log item's body at the cost of its `tokens` (`display` goes `folded` to `open`). A `display: none` item has no body to reveal.
 - **FOLD** — hides an open log item's body to reclaim context (`display` goes `open` to `folded`). Its `tokens` field shows what an OPEN costs.
-- **EXEC** — produces output stream channels on the next turn that you can then FIND, READ, or KILL.
+- **EXEC** — produces a `<runtime>:///<loop>/<turn>/<item>` output stream on the next turn. You can then FIND, READ, or KILL it; append a channel such as `#stderr` when needed.
 - **KILL** — deletes files and entries, erases log items, and kills streams.
 - **SEND** — submits the turn: `[102]` continue, `[202]` wait for workers, streams, and retrievals, `[200]` terminate once all have returned.
 
@@ -95,7 +95,9 @@ Plurnk Service treemaps every file, entry, and item, allowing every pattern filt
 * The universal resource path is formatted as a URI for everything but file paths (bare, project-relative).
 * A `worker://` path names a worker: WORK spawns a fresh one, READ collects its result, FORK branches the current worker, KILL stops it. A path beneath it, like `worker://checker/notes.md`, is an entry in that worker's namespace.
 * The `worker://` authority is the owner: `~` is you (`worker://~/draft`), empty is the shared commons (`worker:///notes`), a name is another worker (`worker://checker/`).
-* Log item paths are nested (`log:///1/2/3` is loop/turn/item) and accept bulk pattern operations (FOLD, OPEN, KILL).
+* Log item paths are nested (`log:///1/2/3` is loop/turn/item).
+* An optional `/OP` suffix such as `/READ` labels the same log item.
+* Log paths accept bulk pattern operations (FOLD, OPEN, KILL).
 * Append `#channel` to select a channel (e.g. `#stdout`, `#stderr`); absent, the scheme's default channel is used.
 * Path suffix (`.json`, `.md`, `.txt`, etc.) declares mimetype.
 * Percent-encode reserved characters in paths: `)`→`%29`, `<`→`%3C`.
