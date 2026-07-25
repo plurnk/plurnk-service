@@ -1,6 +1,29 @@
-# Whole-product dogfood gate
+# Metaproject agentic-readiness gate
 
-This is the release-defining acceptance gate for PLURNK as a daily-driver agent system. It tests the assembled product through the outside client; it does not replace package installation, deterministic integration, live-model, or benchmark gates.
+This is an opt-in milestone qualification for using PLURNK to develop the complete
+PLURNK metaproject. It is intentionally expensive: a fresh run semantically
+prepares the complete repository forest before asking a floor model to orient
+itself through the outside client. Run it when the focused package, integration,
+demo, live-model, and modest-candidate paths are already healthy—not as a routine
+debugging loop or ordinary release gate.
+
+Invoke it with:
+
+```sh
+npm run readiness:metaproject -- --model <alias> --requiem --preserve
+```
+
+This gate does not replace the evidence ladder that qualifies it:
+
+1. Deterministic package and integration coverage proves owned contracts.
+2. An assembled modest-repository candidate smoke proves the production client
+   and daemon can work together.
+3. Focused `live/demo` stories are toy tasks that establish the system is sane
+   enough to test seriously.
+4. The separate bench lane runs real third-party agentic benchmarks and preserves
+   their digest, reasoning, and requiem evidence.
+5. Only after those layers are healthy does this full-forest run ask whether
+   PLURNK is ready to develop PLURNK itself.
 
 The gate belongs to `plurnk-meta` because it crosses family ownership: canonical service installation, optional-provider assembly, the outside client, project membership, AG-UI, proposal review, model routing, persistence, and forensic digestion.
 

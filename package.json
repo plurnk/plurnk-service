@@ -59,7 +59,7 @@
         "release:externals": "node scripts/release-external-packages.mjs",
         "external:census": "node plurnk-meta/scripts/external-package-census.mjs",
         "candidate": "node scripts/candidate.mjs",
-        "acceptance:orientation": "node scripts/orientation.mjs"
+        "readiness:metaproject": "node scripts/orientation.mjs"
     },
     "devDependencies": {
         "@types/node": "^26.1.1",

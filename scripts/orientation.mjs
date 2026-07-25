@@ -27,7 +27,7 @@ const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT;
 if (timeout === undefined) throw new Error("PLURNK_ACCEPTANCE_TIMEOUT is not configured");
 const prompt = readFileSync(resolve(import.meta.dirname, "fixtures", "orientation-prompt.md"), "utf8").trim();
 
-const usage = "usage: npm run acceptance:orientation -- --model <alias> [--requiem] [--preserve]";
+const usage = "usage: npm run readiness:metaproject -- --model <alias> [--requiem] [--preserve]";
 const args = process.argv.slice(2);
 const valueAfter = (flag) => {
     const index = args.indexOf(flag);
