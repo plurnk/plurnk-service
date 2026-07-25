@@ -20,7 +20,7 @@ const operatorEnv = resolve(homedir(), ".plurnk", ".env");
 if (existsSync(operatorEnv)) process.loadEnvFile(operatorEnv);
 process.loadEnvFile(resolve(serviceRoot, "plurnk-meta", ".env.defaults"));
 
-const projectRoot = resolve(process.env.PLURNK_ACCEPTANCE_PROJECT_ROOT ?? resolve(serviceRoot, "..", "repo"));
+const projectRoot = resolve(process.env.PLURNK_ACCEPTANCE_PROJECT_ROOT ?? resolve(serviceRoot, ".."));
 const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(projectRoot, "plurnk"));
 const benchmarksRoot = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(projectRoot, "..", "benchmarks"));
 const timeout = process.env.PLURNK_ACCEPTANCE_TIMEOUT;

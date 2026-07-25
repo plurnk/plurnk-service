@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(root, "..", "repo", "plurnk"));
-const benchmarks = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(root, "..", "benchmarks"));
+const clientRoot = resolve(process.env.PLURNK_CLIENT_CHECKOUT ?? resolve(root, "..", "plurnk"));
+const benchmarks = resolve(process.env.PLURNK_BENCHMARKS ?? resolve(root, "..", "..", "benchmarks"));
 mkdirSync(benchmarks, { recursive: true });
 const stateDir = mkdtempSync(resolve(benchmarks, "candidate-"));
 const dbPath = resolve(stateDir, "plurnk.db");

@@ -22,7 +22,7 @@ import { caretRange, compatibleRange, exactVersion, supportsVersion } from "./re
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MONOREPO = resolve(HERE, "..");
-const ROOT = process.env.PLURNK_EXTERNAL_REPOS_ROOT ?? resolve(MONOREPO, "..", "repo");
+const ROOT = process.env.PLURNK_EXTERNAL_REPOS_ROOT ?? resolve(MONOREPO, "..");
 const DRY = process.argv.includes("--dry-run");
 
 const version = JSON.parse(await readFile(join(MONOREPO, "package.json"), "utf8")).workspaces

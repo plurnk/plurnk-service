@@ -7,7 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const metaRoot = resolve(here, "..");
 const monorepoRoot = resolve(metaRoot, "..");
 const repositoryRoot = process.env.PLURNK_EXTERNAL_REPOS_ROOT
-    ?? resolve(monorepoRoot, "..", "repo");
+    ?? resolve(monorepoRoot, "..");
 const registryPath = join(metaRoot, "external-packages.json");
 
 const ownerOf = (name) =>
@@ -45,7 +45,7 @@ export const census = () => {
     }
     const independent = packages.filter((entry) => entry.release === "independent").length;
     return {
-        root: repositoryRoot === resolve(monorepoRoot, "..", "repo")
+        root: repositoryRoot === resolve(monorepoRoot, "..")
             ? "«repo forest»"
             : repositoryRoot,
         count: packages.length,
