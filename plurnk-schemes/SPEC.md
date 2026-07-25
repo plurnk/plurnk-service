@@ -173,6 +173,9 @@ There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in pl
 DB-coupled entry/channel machinery — CRUD + write-time tokenization, the
 standard entry operations, channel writes, and subscription registry — lives
 in the consumer. This package defines their stable interfaces and pure helpers.
+Raw CRUD methods are not a parallel handler protocol. For `data` schemes whose
+handlers omit resource-specific storage hooks, engine-owned COPY/MOVE/KILL
+orchestration uses the manifest-bound `ctx.entries` implementation.
 
 ## §5 Trusted extension contract {§trusted-extension}
 

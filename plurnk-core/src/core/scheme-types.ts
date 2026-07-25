@@ -1,7 +1,6 @@
-// Per-call scheme context (DB-coupled). Framework-grade types
-// (SchemeManifest, SchemeFlagAffinity, WriterTier, LoopFlags) re-export from
-// the in-tree ./types.ts and ./results.ts — folded in from the former
-// @plurnk/plurnk-schemes plugin; the uniform contract belongs in the service.
+// Core-internal operation context. Public scheme handlers receive the
+// DB-independent SchemeCtx from @plurnk/plurnk-schemes; this shape remains for
+// daemon orchestration and the bundled adapters that own core lifecycle state.
 
 import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -21,7 +20,7 @@ export type {
 } from "./types.ts";
 export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 
-// Shared read-result shape for the in-tree read schemes (Log/File); de-dups the
+// Shared read-result shape for the core-owned read schemes (Log/File); de-dups the
 // per-scheme local copies. `error`/`reason` are optional — set by schemes that
 // surface a not-found / denial; matchers fill startLine/matches.
 export type SchemeReadResult = {
@@ -37,21 +36,10 @@ export type SchemeReadResult = {
     awaitWorker?: string;
 };
 
-// Per-call helper. Engine constructs a fresh ctx for every op invocation.
-// PlurnkSchemeContext stays in plurnk-service because it carries `db` (the
-// concrete Db type) and the notifier hooks.
-//
-// PR-2 (schemes 0.3.0, ctx.ts) ships the DB-free capability contract —
-// SchemeCtx + entries/channels/tags/notify/subscriptions caps — as INTERFACES
-// only, so a third-party `@plurnk/plurnk-schemes-*` sibling never has to touch
-// db. plurnk-service injects the db-backed impl behind that seam
-// (`core/caps/Db*Caps.ts`), one cap at a time, over the same
-// _entry-*/ChannelWrite helpers the in-tree schemes use during transition.
-// All six caps are wired in SchemeCtxImpl (#180 met) and plurnk-schemes-http
-// validates the seam end-to-end; the in-tree schemes still read ctx.db, so
-// migrating them onto the caps is the remaining (non-blocking) transition.
-// `visibility` is dropped — entry visibility is gone post-teardown
-// (OPEN/FOLD is log-only).
+// Engine constructs this context for its own orchestration. SchemeCtxImpl
+// projects it into the public capability contract before invoking a plugin.
+// Core-owned adapters receive their daemon dependencies separately; this type
+// must not escape as an extension API.
 export interface PlurnkSchemeContext {
     readonly db: Db;
     readonly workspaceId: number;
