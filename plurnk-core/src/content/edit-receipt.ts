@@ -124,15 +124,22 @@ export const editReceipt = (
     const beforeExtent = unit === "lines" ? before.length : itemCount(original);
     const afterExtent = unit === "lines" ? after.length : itemCount(updated);
     let offset = 0;
-    const effects = edits
-        .map((edit) => ({ edit, source: sourceRange(edit.marker, beforeExtent) }))
+    const effectsByIndex: Array<{
+        marker: string;
+        source: { start: number; end: number; removed: number };
+        inserted: number;
+        resultStart: number;
+        resultEnd: number;
+    } | undefined> = new Array(edits.length);
+    edits
+        .map((edit, index) => ({ edit, index, source: sourceRange(edit.marker, beforeExtent) }))
         .sort((a, b) => a.source.start - b.source.start)
-        .map(({ edit, source }) => {
+        .forEach(({ edit, index, source }) => {
             const inserted = countBody(edit.body);
             const resultStart = source.start + offset;
             const resultEnd = inserted === 0 ? resultStart - 1 : resultStart + inserted - 1;
             offset += inserted - source.removed;
-            return {
+            effectsByIndex[index] = {
                 marker: markerText(edit.marker),
                 source,
                 inserted,
@@ -140,6 +147,10 @@ export const editReceipt = (
                 resultEnd,
             };
         });
+    const effects = effectsByIndex.map((effect, index) => {
+        if (effect === undefined) throw new Error(`EDIT receipt calculation omitted effect ${index}`);
+        return effect;
+    });
 
     const joinRadiusRaw = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     const joinRadius = Number(joinRadiusRaw);

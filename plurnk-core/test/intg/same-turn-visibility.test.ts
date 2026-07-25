@@ -35,7 +35,7 @@ test("same-turn visibility: an EDIT-created known entry is FINDable in the SAME 
 test("MODE batches same-resource EDITs against one snapshot before an authored-earlier READ (#619)", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<PLAN:create fixture:PLAN\n<<EDIT(worker:///mode.md):one\ntwo\nthree\nfour:EDIT\n<<SEND[102]:fixture created:SEND", 10),
-        makeMockResponse("<<PLAN:observe the settled edits:PLAN\n<<READ(worker:///mode.md)::READ\n<<EDIT(worker:///mode.md)<2>:TWO\n2.5:EDIT\n<<EDIT(worker:///mode.md)<4>:FOUR:EDIT\n<<SEND[102]:mutated and observed:SEND", 10),
+        makeMockResponse("<<PLAN:observe the settled edits:PLAN\n<<READ(worker:///mode.md)::READ\n<<EDIT(worker:///mode.md)<4>:FOUR:EDIT\n<<EDIT(worker:///mode.md)<2>:TWO\n2.5:EDIT\n<<SEND[102]:mutated and observed:SEND", 10),
         makeMockResponse("<<PLAN:conclude:PLAN\n<<SEND[200]:done:SEND", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -59,8 +59,8 @@ test("MODE batches same-resource EDITs against one snapshot before an authored-e
             assert.match(edits[0].receipt?.revision ?? "", /^[a-f0-9]{64}$/);
             assert.equal(edits[0].receipt?.revision, edits[1].receipt?.revision, "both rows identify the one committed resource revision");
             assert.deepEqual(edits.map((row) => row.receipt?.effect), [
-                { requested: "<2>", source: "2", result: "2-3", removed: 1, inserted: 2, context: "1:one\n2:TWO\n3:2.5\n4:three\n5:FOUR" },
                 { requested: "<4>", source: "4", result: "5", removed: 1, inserted: 1, context: "3:2.5\n4:three\n5:FOUR" },
+                { requested: "<2>", source: "2", result: "2-3", removed: 1, inserted: 2, context: "1:one\n2:TWO\n3:2.5\n4:three\n5:FOUR" },
             ]);
         } finally { ws.close(); }
     });

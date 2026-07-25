@@ -22,6 +22,37 @@ test("editReceipt correlates disjoint edits to one bounded resulting revision", 
     assert.doesNotMatch(receipt.effects[0]?.context ?? "", /6:five/);
 });
 
+test("editReceipt preserves authored statement correlation while computing snapshot offsets", () => {
+    const receipt = editReceipt(
+        "one\ntwo\nthree\nfour\n",
+        "one\nTWO\n2.5\nthree\nFOUR\n",
+        [
+            { marker: { marks: [4] }, body: "FOUR" },
+            { marker: { marks: [2] }, body: "TWO\n2.5" },
+        ],
+    );
+    assert.deepEqual(receipt.effects.map(({ requested, source, result }) => ({ requested, source, result })), [
+        { requested: "<4>", source: "4", result: "5" },
+        { requested: "<2>", source: "2", result: "2-3" },
+    ]);
+});
+
+test("editReceipt reports creation, prepend, append, and deletion boundaries explicitly", () => {
+    const cases = [
+        { original: "", updated: "a\nb", marker: { marks: [1, -1] as [number, number] }, body: "a\nb", expected: { source: "1^", result: "1-2", removed: 0, inserted: 2 } },
+        { original: "b", updated: "a\nb", marker: { marks: [0] as [number] }, body: "a", expected: { source: "1^", result: "1", removed: 0, inserted: 1 } },
+        { original: "a", updated: "a\nb", marker: { marks: [-1] as [number] }, body: "b", expected: { source: "2^", result: "2", removed: 0, inserted: 1 } },
+        { original: "a\nb", updated: "a", marker: { marks: [2] as [number] }, body: "", expected: { source: "2", result: "2^", removed: 1, inserted: 0 } },
+    ];
+    for (const { original, updated, marker, body, expected } of cases) {
+        const effect = editReceipt(original, updated, [{ marker, body }]).effects[0];
+        assert.deepEqual(
+            effect === undefined ? undefined : { source: effect.source, result: effect.result, removed: effect.removed, inserted: effect.inserted },
+            expected,
+        );
+    }
+});
+
 test("editReceipt fails hard when its context tuning is missing or malformed", () => {
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     try {
