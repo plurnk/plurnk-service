@@ -254,8 +254,9 @@ body fields; the lexer is unaware):
 - Regex anchors `^` and `$` go inside the hashes: `#^foo$#`. Flag
   semantics (`i`, `g`, `m`, `s`, `u`) follow ECMAScript.
 - Xpath body begins with `//` (descendant-or-self axis).
-- Semantic body is a free-text similarity query; threshold and range
-  narrowing ride the host statement's `<scope>` slot (§7).
+- Semantic body is a free-text similarity query. With no `<scope>`, the
+  consumer chooses its default result count; an integer overrides that count,
+  while threshold and range narrowing ride `<scope>` (§7).
 - Graph body is a code-graph reference query: `@symbol` (neighborhood),
   `@<symbol` (inbound references), `@>symbol` (outbound references).
   No parse step in grammar; resolution is service-side.

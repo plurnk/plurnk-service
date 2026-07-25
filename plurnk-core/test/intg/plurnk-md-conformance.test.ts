@@ -220,8 +220,8 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
     } finally { db.close(); }
 });
 
-// plurnk.md (grammar 0.21.0): `<<FIND(worker:///**)<5>:~french revolutionary history:FIND`
-// — RAG semantic similarity, top-K via <L>. Runs against the REAL embedder
+// plurnk.md: `<<FIND(worker:///**):~constitutional history:FIND`
+// — markerless RAG semantic similarity, using the service-owned default top-K. Runs against the REAL embedder
 // (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings) — the production tile+embed
 // path, not a model-free stub. Semantics is normal intg coverage; the model load is an
 // accepted cost (AGENTS: no fast-tier carve-out that hides a working feature). The body
@@ -235,8 +235,8 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
         await new Worker().edit(editStmt(url("a"), "the french revolution and the storming of the bastille"), ctx);
         await new Worker().edit(editStmt(url("b"), "a recipe for chocolate cake"), ctx);
         await EntryManifest.maintainDerivations(ctx);  // store real embeddings via the plugin
-        const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }, { marks: [1] }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
+        const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a"], "top-1 returns the closest semantic document");
+        assert.equal(r.results[0]?.path, "worker:///a", "markerless semantic FIND ranks the closest document first");
     } finally { db.close(); }
 });

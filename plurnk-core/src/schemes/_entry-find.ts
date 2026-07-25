@@ -108,11 +108,14 @@ export default class EntryFind {
         if (statement.body !== null && statement.body.dialect === "semantic") {
             // ~query: embed the query text, then cosine-rank every vector in scope.
             // Each ranked chunk is a (file, span) item — a file may appear
-            // more than once (#286, no dedup). 501 when no embeddings handler is installed. <L> carries the rank marker.
+            // more than once (#286, no dedup). 501 when no embeddings handler is installed.
+            // An absent marker uses the service's declared top-K; an explicit marker overrides it.
             const { mimetypes } = ctx;
             if (mimetypes === undefined) return { status: 501, matches: [] };
-            if (statement.lineMarker === null) return { status: 400, matches: [] };  // ~query needs a rank marker, e.g. ~query<10>
-            const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.workspaceId, scheme, mimetypes, statement.body.raw, LineMarkerOps.firstLast(statement.lineMarker));
+            const marker = statement.lineMarker === null
+                ? { first: EntrySemantic.defaultTopK(), last: null }
+                : LineMarkerOps.firstLast(statement.lineMarker);
+            const ranked = await EntrySemantic.rankSemantic(ctx.db, ctx.workspaceId, scheme, mimetypes, statement.body.raw, marker);
             if (ranked.status !== 200) return { status: ranked.status, matches: [] };
             return { status: 200, matches: ranked.results.map((x) => ({ pathname: x.pathname, span: { lineStart: x.lineStart, lineEnd: x.lineEnd } })) };
         }

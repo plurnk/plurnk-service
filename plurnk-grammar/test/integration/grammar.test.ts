@@ -1026,7 +1026,7 @@ test("MatcherBody: semantic returns dialect + raw (natural language query)", () 
     assert.equal(b.raw, "~distributed consensus algorithms");
 });
 
-test("MatcherBody: semantic dispatches with top-K via <L>", () => {
+test("MatcherBody: semantic accepts an explicit top-K override via <L>", () => {
     const result = PlurnkParser.parseStatements("<<FIND(known://**)<5>:~graph algorithms:FIND");
     const item = result.items[0];
     if (item.kind !== "statement" || item.statement.op !== "FIND") return;

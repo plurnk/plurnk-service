@@ -49,7 +49,7 @@
         },
         "SemanticBody": {
             "title": "SemanticBody",
-            "description": "Semantic similarity query. Body is `~phrase` — natural language after the tilde, no parse step. Resolution happens service-side via the deep-embed channel; top-K narrowing via `<Result>` on the host statement.",
+            "description": "Semantic similarity query. Body is `~phrase` — natural language after the tilde, no parse step. Resolution happens service-side via the deep-embed channel; omitted `<Result>` uses the consumer's default count, while an explicit value narrows the results.",
             "type": "object",
             "required": ["dialect", "raw"],
             "additionalProperties": false,

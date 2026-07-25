@@ -11,6 +11,15 @@ type EmbedderInfo = NonNullable<Awaited<ReturnType<Mimetypes["embedderInfo"]>>>;
 import EntryChunk from "./_entry-chunk.ts";
 
 export default class EntrySemantic {
+    static defaultTopK(): number {
+        const raw = process.env.PLURNK_SERVICE_SEMANTIC_TOP_K;
+        const value = Number(raw);
+        if (!Number.isSafeInteger(value) || value < 1) {
+            throw new Error(`PLURNK_SERVICE_SEMANTIC_TOP_K must be a positive safe integer, got ${JSON.stringify(raw)}`);
+        }
+        return value;
+    }
+
     static maxEmbedSize(): number {
         const raw = process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
         const value = Number(raw);

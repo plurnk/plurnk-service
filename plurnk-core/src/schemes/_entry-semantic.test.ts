@@ -21,6 +21,23 @@ const capable = {
 // A dormant embedder: no capability surface; never tiles.
 const dormant = { embedderInfo: async () => null, process: async () => ({ embedding: undefined, embeddingModel: undefined }) } as unknown as Mimetypes;
 
+test("EntrySemantic.defaultTopK reads and validates the service-owned semantic result default", () => {
+    const prev = process.env.PLURNK_SERVICE_SEMANTIC_TOP_K;
+    try {
+        process.env.PLURNK_SERVICE_SEMANTIC_TOP_K = "12";
+        assert.equal(EntrySemantic.defaultTopK(), 12);
+        for (const invalid of ["", "0", "-1", "1.5", "unsafe"]) {
+            process.env.PLURNK_SERVICE_SEMANTIC_TOP_K = invalid;
+            assert.throws(() => EntrySemantic.defaultTopK(), /must be a positive safe integer/);
+        }
+        delete process.env.PLURNK_SERVICE_SEMANTIC_TOP_K;
+        assert.throws(() => EntrySemantic.defaultTopK(), /got undefined/);
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEMANTIC_TOP_K;
+        else process.env.PLURNK_SERVICE_SEMANTIC_TOP_K = prev;
+    }
+});
+
 test("EntrySemantic.deriveEmbeddings: capable embedder tiles a large body losslessly, embeds each chunk (#plan-semantics)", async () => {
     const prev = process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS;
     process.env.PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS = "20"; // force tiling regardless of the .env.defaults default

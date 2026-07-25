@@ -144,10 +144,12 @@ YOU MUST include line numbers (e.g. `<356>` or `<42,67>`) when editing an existi
 Editing by line is exacting work. Use the precise, current file or entry positions from recent READ operations.
 
 ```plurnk
+<<FIND(worker:///**):~constitutional history:FIND
 <<FIND(worker:///**)<0.7>:~france:FIND
 <<READ(worker:///**)<0.5,10,20>:~poland:READ
 ```
 
+- FIND returns the service's default number of highest-ranked semantic results.
 - FIND retrieves results with a semantic score of 0.7 or greater.
 - READ retrieves the 10th-20th results with a semantic score of 0.5 or greater.
 
@@ -254,7 +256,7 @@ Each line is a standalone op example — a valid statement on its own, never a t
 
 ```plurnk
 <<FIND(config/**/*.xml)://user[@role='admin']:FIND
-<<FIND(worker:///**)<5>:~french revolutionary history:FIND
+<<FIND(worker:///**):~french revolutionary history:FIND
 <<FIND(worker:///**)<0.7>:~french territorial concessions:FIND
 <<FIND(log:///**/error):#budget overflow|budget exceeded#i:FIND
 <<FIND[history](worker:///**):revolution:FIND
