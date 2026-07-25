@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Module from "../../src/Module.ts";
 import type { DaemonSeam } from "../../src/DaemonSeam.ts";
-import type { AguiEvent } from "../../src/types.ts";
+import { EventType, type AguiEvent } from "../../src/types.ts";
 
 const SERVICE = resolve(import.meta.dirname, "../../../plurnk-service");
 
@@ -45,9 +45,12 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
                 threadId: "inproc-smoke",
-                workerId: "run-1",
-                messages: [{ role: "user", content: "Reply with exactly one short sentence: say pong." }],
-                forwardedProps: { plurnk: { projectRoot: sandbox, flags: { auto: true }, maxTurns: 6 } },
+                runId: "run-1",
+                state: {},
+                messages: [{ id: "message-1", role: "user", content: "Reply with exactly one short sentence: say pong." }],
+                tools: [],
+                context: [],
+                forwardedProps: { plurnk: { workspace: "inproc-smoke", projectRoot: sandbox, flags: { auto: true }, maxTurns: 6 } },
             }),
         });
         assert.equal(res.status, 200);
@@ -74,7 +77,7 @@ test("in-process module: boot plug-point → AG-UI+ run → real model → SSE",
         assert.equal(types[1], "STATE_SNAPSHOT", "reads ride STATE on connect (AG-UI+)");
         const snap = events[1] as { snapshot: { plurnk: { providers: Array<{ active: boolean }> } } };
         assert.ok(snap.snapshot.plurnk.providers.some((p) => p.active), "the active provider is in STATE");
-        assert.ok(types.includes("TEXT_MESSAGE_CONTENT"), "the model's reply rendered as assistant speech");
+        assert.ok(types.includes(EventType.TEXT_MESSAGE_CONTENT), "the model's reply rendered as assistant speech");
         const speech = events.filter((e) => e.type === "TEXT_MESSAGE_CONTENT").map((e) => (e as { delta: string }).delta).join("");
         assert.match(speech, /pong/i, "the reply answers the prompt");
         assert.equal(types[types.length - 1], "RUN_FINISHED", "the worker closes clean");

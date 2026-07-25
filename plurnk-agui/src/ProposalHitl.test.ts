@@ -19,17 +19,18 @@ const mockSeam = (pending: PendingProposal[] = []) => {
     return { seam, fire: (s: number | null, m: string, p: unknown) => handler?.(s, m, p), resolves, subscribed: () => handler !== null };
 };
 
-const emitted: Array<{ workspaceId: number; events: AguiEvent[] }> = [];
-const collect = () => { emitted.length = 0; return (workspaceId: number, events: AguiEvent[]) => emitted.push({ workspaceId, events }); };
+const emitted: Array<{ workspaceId: number; workerId: number; events: AguiEvent[] }> = [];
+const collect = () => { emitted.length = 0; return (workspaceId: number, workerId: number, events: AguiEvent[]) => emitted.push({ workspaceId, workerId, events }); };
 
 test("start(): a loop/proposal event → a tool-call fanned to that workspace", () => {
     const m = mockSeam();
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();
     assert.ok(m.subscribed(), "subscribed to the event source");
-    m.fire(7, "loop/proposal", { logEntryId: 42, op: "EDIT", target: { scheme: "file", pathname: "README.md" }, body: "diff", attrs: {} });
+    m.fire(7, "loop/proposal", { logEntryId: 42, workerId: 9, op: "EDIT", target: { scheme: "file", pathname: "README.md" }, body: "diff", attrs: {} });
     assert.equal(emitted.length, 1);
     assert.equal(emitted[0].workspaceId, 7, "fanned to the event's workspace");
+    assert.equal(emitted[0].workerId, 9, "addressed to the proposal's owning worker");
     assert.equal(emitted[0].events[0].type, "TOOL_CALL_START");
     assert.equal((emitted[0].events[0] as { toolCallId: string }).toolCallId, "prop:42");
     // an unrelated event is ignored
@@ -39,12 +40,12 @@ test("start(): a loop/proposal event → a tool-call fanned to that workspace", 
     assert.ok(!m.subscribed(), "stop() unsubscribes");
 });
 
-test("resolve(): a resume tool-result → resolveProposal; a foreign tool-result is left alone", async () => {
+test("resolve(): a complete standard resume resolves the exact worker proposal", async () => {
     const m = mockSeam([{ logEntryId: 42, workerId: 1, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }]);
     const hitl = new ProposalHitl(m.seam, collect());
-    assert.deepEqual(await hitl.resolve(3, { toolCallId: "prop:42", content: JSON.stringify({ decision: "accept", body: "edited" }) }), { resolved: true, loopId: 7 });
+    assert.deepEqual(await hitl.resolve(3, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited" } }]), { loopId: 7, workerId: 1 });
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited" } });
-    assert.deepEqual(await hitl.resolve(3, { toolCallId: "call_frontend_tool_9", content: "{}" }), { resolved: false }, "not a plurnk proposal → not resolved");
+    await assert.rejects(hitl.resolve(3, [{ interruptId: "call_frontend_tool_9", status: "resolved", payload: {} }]), /unknown PLURNK interrupt/);
     assert.equal(m.resolves.length, 1, "the foreign tool-result issued no resolve");
 });
 

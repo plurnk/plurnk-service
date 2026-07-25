@@ -6,11 +6,12 @@
 // §1 proposals/[300] questions → tool-calls (terminate-resume HITL); §2 reads →
 // shared STATE. This is the flagship choreography de-risked as logic before code.
 
-import type { AguiEvent, ProposalNotification } from "./types.ts";
+import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
+import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 // ── §1 — stop-the-world → tool-call ──────────────────────────────────
-// toolCallId correlates the TERMINATING worker's TOOL_CALL with the RESUME worker's
-// tool-result → the exact pending proposal. Encodes the logEntryId: `prop:<id>`.
+// toolCallId correlates the terminating run's TOOL_CALL and interrupt with the next
+// run's ResumeEntry → the exact pending proposal. Encodes the logEntryId: `prop:<id>`.
 export const proposalToolCallId = (logEntryId: number): string => `prop:${logEntryId}`;
 export const logEntryIdFromToolCallId = (toolCallId: string): number | null => {
     const m = /^prop:(\d+)$/.exec(toolCallId);
@@ -29,32 +30,36 @@ export const proposalToolName = (op: string): string => (op === "SEND" ? "reques
 export const proposalToolCall = (p: ProposalNotification): AguiEvent[] => {
     const toolCallId = proposalToolCallId(p.logEntryId);
     return [
-        { type: "TOOL_CALL_START", toolCallId, toolCallName: proposalToolName(p.op) },
-        { type: "TOOL_CALL_ARGS", toolCallId, delta: JSON.stringify({ op: p.op, target: p.target, body: p.body, attrs: p.attrs, staleClobberRisk: p.staleClobberRisk ?? false }) },
-        { type: "TOOL_CALL_END", toolCallId },
+        { type: EventType.TOOL_CALL_START, toolCallId, toolCallName: proposalToolName(p.op) },
+        { type: EventType.TOOL_CALL_ARGS, toolCallId, delta: JSON.stringify({ op: p.op, target: p.target, body: p.body, attrs: p.attrs, staleClobberRisk: p.staleClobberRisk ?? false }) },
+        { type: EventType.TOOL_CALL_END, toolCallId },
     ];
 };
 
-// The inverse — a resume worker's tool-result → resolveProposal args, or null if the
-// message isn't a plurnk proposal tool-result. `content` is the decision JSON
-// ({decision, body?}); a bare "accept"/"reject"/"cancel" string is tolerated.
-export interface ToolResultMessage { toolCallId?: string; content?: string; role?: string }
+export const proposalInterrupt = (logEntryId: number): Interrupt => ({
+    id: proposalToolCallId(logEntryId),
+    reason: "tool_call",
+    toolCallId: proposalToolCallId(logEntryId),
+    message: "Review the requested action.",
+    responseSchema: {
+        type: "object",
+        properties: {
+            decision: { type: "string", enum: ["accept", "reject", "cancel"] },
+            body: { type: "string" },
+        },
+        required: ["decision"],
+    },
+});
+
+// The inverse — a standard resume entry resolves the durable PLURNK proposal.
 export interface Resolution { logEntryId: number; decision: "accept" | "reject" | "cancel"; body?: string }
-export const resolutionFromToolResult = (m: ToolResultMessage): Resolution | null => {
-    if (typeof m.toolCallId !== "string") return null;
-    const logEntryId = logEntryIdFromToolCallId(m.toolCallId);
+export const resolutionFromResume = (entry: ResumeEntry): Resolution | null => {
+    const logEntryId = logEntryIdFromToolCallId(entry.interruptId);
     if (logEntryId === null) return null;
-    let decision: string | undefined;
-    let body: string | undefined;
-    if (typeof m.content === "string" && m.content.length > 0) {
-        try {
-            const parsed = JSON.parse(m.content) as { decision?: string; body?: string };
-            decision = parsed.decision;
-            body = parsed.body;
-        } catch {
-            decision = m.content.trim(); // tolerate a bare decision string
-        }
-    }
+    if (entry.status === "cancelled") return { logEntryId, decision: "cancel" };
+    const payload = entry.payload as { decision?: unknown; body?: unknown } | undefined;
+    const decision = payload?.decision;
+    const body = typeof payload?.body === "string" ? payload.body : undefined;
     if (decision !== "accept" && decision !== "reject" && decision !== "cancel") return null;
     return { logEntryId, decision, ...(body !== undefined ? { body } : {}) };
 };
@@ -67,8 +72,8 @@ export interface AguiPlusState {
     workspaces?: Array<{ id: number; name: string }>;
     constraints?: Array<{ effect: string; glob: string }>;
 }
-export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({ type: "STATE_SNAPSHOT", snapshot: { plurnk: s } });
-export const stateDelta = (patches: Array<{ op: string; path: string; value?: unknown }>): AguiEvent => ({ type: "STATE_DELTA", delta: patches });
+export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({ type: EventType.STATE_SNAPSHOT, snapshot: { plurnk: s } });
+export const stateDelta = (patches: Array<{ op: string; path: string; value?: unknown }>): AguiEvent => ({ type: EventType.STATE_DELTA, delta: patches });
 
 // ── §3 — management actions: forwardedProps in, CUSTOM out ────────────
 // Reads are STATE (§2); ACTIONS are verbs (rename, set-root, constrain, exec, fork,
@@ -88,4 +93,4 @@ export const parseAction = (forwardedProps: unknown): ActionRequest | null => {
 };
 export type ActionOutcome = { ok: true; result?: unknown } | { ok: false; error: string };
 export const actionResult = (kind: string, outcome: ActionOutcome): AguiEvent =>
-    ({ type: "CUSTOM", name: "plurnk.action.result", value: { kind, ...outcome } });
+    ({ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind, ...outcome } });

@@ -1,15 +1,15 @@
 // The in-process module's orchestration engine (plurnk-agui#2). Composes the seam +
 // the render router + the HITL core into the worker flow: subscribe ONCE to the event
 // source, fan each event to the bound thread for its workspace, drive/cancel loops via
-// the seam, and route a resume tool-result to resolveProposal. Transport-agnostic —
+// the seam, and route standard resume entries to resolveProposal. Transport-agnostic —
 // the HTTP/SSE listener (the outward edge) and workspace establishment (workspace-lifecycle
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
 import ProposalHitl from "./ProposalHitl.ts";
 import type { DaemonSeam } from "./DaemonSeam.ts";
-import type { AguiEvent } from "./types.ts";
-import type { ToolResultMessage } from "./AguiPlus.ts";
+import { EventType, type AguiEvent } from "./types.ts";
+import type { ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
     workerId: number;
@@ -37,8 +37,7 @@ export default class Portal {
 
     constructor(seam: PortalSeam) {
         this.#seam = seam;
-        // HITL fans its tool-calls through the same workspace→thread route as the router.
-        this.#hitl = new ProposalHitl(seam, (workspaceId, events) => this.#fan(workspaceId, events));
+        this.#hitl = new ProposalHitl(seam, (workspaceId, workerId, events) => this.#emitToWorker(workspaceId, workerId, events));
     }
 
     // One subscription for the whole module: render each event to its workspace's thread.
@@ -64,7 +63,7 @@ export default class Portal {
                 if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
                     const deferred = thread.deferredFinish;
                     thread.deferredFinish = null;
-                    thread.emit([...deferred, { type: "RUN_FINISHED", threadId: thread.threadId, runId: thread.inputRunId }]);
+                    thread.emit([...deferred, { type: EventType.RUN_FINISHED, threadId: thread.threadId, runId: thread.inputRunId, outcome: { type: "success" } }]);
                 }
             }
         });
@@ -76,9 +75,11 @@ export default class Portal {
         this.#off = null;
     }
 
-    #fan(workspaceId: number, events: AguiEvent[]): void {
+    #emitToWorker(workspaceId: number, workerId: number, events: AguiEvent[]): void {
         if (events.length === 0) return;
-        for (const t of this.#threads.get(workspaceId) ?? []) t.emit(events);
+        for (const t of this.#threads.get(workspaceId) ?? []) {
+            if (t.workerId === workerId) t.emit(events);
+        }
     }
 
     // Bind a client's SSE to a workspace/run. The emit consumer ends its stream when it
@@ -115,7 +116,7 @@ export default class Portal {
     finishRun(workspaceId: number, events: AguiEvent[]): void {
         for (const t of this.#threads.get(workspaceId) ?? []) {
             if (t.openStreams.size > 0) { t.deferredFinish = events; continue; } // defer past live streams (event-driven, no timer)
-            t.emit([...events, { type: "RUN_FINISHED", threadId: t.threadId, runId: t.inputRunId }]);
+            t.emit([...events, { type: EventType.RUN_FINISHED, threadId: t.threadId, runId: t.inputRunId, outcome: { type: "success" } }]);
         }
     }
 
@@ -123,9 +124,12 @@ export default class Portal {
 
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
-    async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean } }): Promise<{ loopId: number }> {
-        const pending = await this.#hitl.resurface(args.workspaceId);
-        this.#fan(args.workspaceId, pending);
+    async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean } }): Promise<{ loopId: number } | null> {
+        const pending = await this.#hitl.resurface(args.workspaceId, args.workerId);
+        if (pending.length > 0) {
+            (thread as Thread).emit(pending);
+            return null;
+        }
         const ack = await this.#seam.runLoop(args);
         const bound = thread as Thread;
         bound.loopId = ack.loopId;
@@ -140,12 +144,12 @@ export default class Portal {
 
     cancel(workerId: number): boolean { return this.#seam.cancelDrain(workerId); }
 
-    // A resume worker's tool-result binds this AG-UI run to the persisted
-    // proposal's continuation loop before resolving it.
-    async resolve(workspaceId: number, thread: unknown, message: ToolResultMessage): Promise<boolean> {
-        const resolution = await this.#hitl.resolve(workspaceId, message);
-        if (!resolution.resolved) return false;
-        (thread as Thread).loopId = resolution.loopId;
-        return true;
+    // A standard resume run binds to the persisted continuation before
+    // releasing every addressed interrupt.
+    async resolve(workspaceId: number, thread: unknown, entries: ResumeEntry[]): Promise<void> {
+        const resolution = await this.#hitl.resolve(workspaceId, entries);
+        const bound = thread as Thread;
+        bound.workerId = resolution.workerId;
+        bound.loopId = resolution.loopId;
     }
 }

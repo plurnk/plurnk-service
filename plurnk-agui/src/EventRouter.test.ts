@@ -5,13 +5,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import EventRouter from "./EventRouter.ts";
+import { EventType } from "./types.ts";
 
 const router = () => new EventRouter({ threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3 });
 
 test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
     const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, origin: "model", op: "SEND", coordinate: "1.2.3", tx: { body: "hello" }, turn_id: 1 } });
     const types = evs.map((e) => e.type);
-    assert.ok(types.includes("TEXT_MESSAGE_START") && types.includes("TEXT_MESSAGE_CONTENT") && types.includes("TEXT_MESSAGE_END"), "assistant speech rendered");
+    assert.ok(types.includes(EventType.TEXT_MESSAGE_START) && types.includes(EventType.TEXT_MESSAGE_CONTENT) && types.includes(EventType.TEXT_MESSAGE_END), "assistant speech rendered");
 });
 
 test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISHED", () => {

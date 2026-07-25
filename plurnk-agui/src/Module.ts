@@ -4,9 +4,9 @@
 //
 // This is the SINGLE-INTERFACE surface (AG-UI+), not the legacy bridge dialect:
 //   POST /  — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
-//   stopped-world emits a request_approval/request_user_input TOOL_CALL and the worker
-//   FINISHES (the loop stays paused in-engine); the resume arrives as the next worker's
-//   tool-result message → resolveProposal → the continued loop streams there.
+//   stopped-world emits a request_approval/request_user_input TOOL_CALL and finishes
+//   with an AG-UI interrupt outcome (the loop stays paused in-engine); the next run's
+//   standard resume entries resolve the durable proposal and continue the exact loop.
 //   Reads ride STATE_SNAPSHOT on RUN_STARTED; no /plurnk/rpc, no /resolve.
 // An AG-UI threadId IS a plurnk workspace (`<prefix>-<threadId>`); the envelope's
 // modelWorkerId binds the thread (no lazy inference — createWorkspace returns it).
@@ -17,7 +17,9 @@ import { stateSnapshot, parseAction, actionResult, type ActionRequest, type Acti
 import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
 import { PlurnkParser } from "@plurnk/plurnk-grammar";
 import { authorize as mcpAuthorize, poll as mcpPoll } from "@plurnk/plurnk-execs-mcp";
-import type { AguiEvent, RunAgentInput } from "./types.ts";
+import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
+import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
+import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
 
 export interface ModuleOptions {
     host: string;
@@ -104,7 +106,7 @@ export default class Module {
             // invisible to the event parser — the stream reads as a silent death. Emit a
             // legible terminal RUN_ERROR frame instead (501 for the no-model case), then end.
             const code = /no provider configured|no model|unknown alias/i.test(message) ? "501" : "500";
-            res.write(`data: ${JSON.stringify({ type: "RUN_ERROR", message, code })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: EventType.RUN_ERROR, message, code })}\n\n`);
             res.end();
         }
     }
@@ -156,15 +158,14 @@ export default class Module {
     }
 
     async #run(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        const input = JSON.parse(await Module.#body(req)) as RunAgentInput;
-        if (typeof input.threadId !== "string" || input.threadId.length === 0) throw new Error("RunAgentInput.threadId required");
+        const input: RunAgentInput = RunAgentInputSchema.parse(JSON.parse(await Module.#body(req)));
         const forwarded = (input.forwardedProps as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
 
         // Control plane FIRST: a management action that doesn't live in a world (and an
         // unknown kind, which is no worker at all) answers without binding — or forging — a
         // workspace. Only world-scoped actions and conversations reach #envelope below.
-        const early = parseAction(input.forwardedProps);
-        if (early !== null && !Module.#WORLD_SCOPED.has(early.kind)) return await this.#controlRun(early, input, res);
+        const action = parseAction(input.forwardedProps);
+        if (action !== null && !Module.#WORLD_SCOPED.has(action.kind)) return await this.#controlRun(action, input, res);
 
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
         const workspaceId = env.workspaceId;
@@ -176,7 +177,7 @@ export default class Module {
 
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
-        let pausedOnProposal = false;
+        const interrupts: Interrupt[] = [];
         // The heartbeat (agui#3): a long model generation emits NO events, and consumer
         // stacks kill silent bodies (undici's default 300s bodyTimeout — bench's
         // 'terminated' deaths at 371s/711s = last event + 300s). An SSE comment frame
@@ -195,18 +196,27 @@ export default class Module {
                 res.write(`data: ${JSON.stringify(e)}\n\n`);
                 // Terminate-resume, the terminate half: a proposal tool-call ENDS this
                 // run (the loop stays paused in-engine awaiting the resume run).
-                if (e.type === "TOOL_CALL_END" && (e as { toolCallId: string }).toolCallId.startsWith("prop:")) pausedOnProposal = true;
+                if (e.type === "TOOL_CALL_END") {
+                    const logEntryId = logEntryIdFromToolCallId((e as { toolCallId: string }).toolCallId);
+                    if (logEntryId !== null) interrupts.push(proposalInterrupt(logEntryId));
+                }
                 if (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR") finish();
             }
-            if (pausedOnProposal && !finished) {
-                res.write(`data: ${JSON.stringify({ type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId })}\n\n`);
+            if (interrupts.length > 0 && !finished) {
+                res.write(`data: ${JSON.stringify({
+                    type: EventType.RUN_FINISHED,
+                    threadId: input.threadId,
+                    runId: input.runId,
+                    outcome: { type: "interrupt", interrupts: interrupts.splice(0) },
+                })}\n\n`);
                 finish();
             }
         };
 
-        const boundRun = this.#portal.openThread({ workspaceId, workerId, threadId: input.threadId, emit, modelWorkerId: workerId, inputRunId: input.runId });
+        const lifecycleWorkerId = action?.kind === "op.exec" || action?.kind === "op.parse" ? env.workerId : workerId;
+        const boundRun = this.#portal.openThread({ workspaceId, workerId: lifecycleWorkerId, threadId: input.threadId, emit, modelWorkerId: workerId, inputRunId: input.runId });
         emit([
-            { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+            { type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId },
             stateSnapshot({ providers: this.#seam.listProviders().aliases, workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot } }),
         ]);
         if (finished) return;
@@ -216,7 +226,6 @@ export default class Module {
         // seam; the outcome rides the workspace's CURRENT thread binding (Portal.finishRun),
         // never this closure — a proposal-gated action (op.exec → 202) terminates THIS
         // run and completes after the resume run rebinds the stream.
-        const action = parseAction(input.forwardedProps);
         if (action !== null) {
             const finishAction = (outcome: ActionOutcome): void => {
                 const events = [actionResult(action.kind, outcome)];
@@ -225,7 +234,7 @@ export default class Module {
                 // (results would cross streams). Only a proposal-pause (this stream already
                 // terminated) hands off to the workspace binding, which the resume run rebinds.
                 if (!finished) {
-                    emit([...events, { type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId }]);
+                    emit([...events, { type: EventType.RUN_FINISHED, threadId: input.threadId, runId: input.runId, outcome: { type: "success" } }]);
                     return;
                 }
                 this.#portal.finishRun(workspaceId, events);
@@ -241,16 +250,18 @@ export default class Module {
             return;
         }
 
-        // Terminate-resume, the resume half: a tool-result message resolves the paused
-        // proposal; the continued loop streams on THIS run. No new loop is driven.
-        const toolResult = [...(input.messages ?? [])].reverse().find((m) => m.role === "tool") as { toolCallId?: string; content?: string } | undefined;
-        if (toolResult !== undefined && await this.#portal.resolve(workspaceId, boundRun, toolResult)) {
+        // AG-UI interrupt resume: this is a NEW run on the same thread. Bind it
+        // to the durable continuation before releasing the proposal.
+        if (input.resume !== undefined) {
+            await this.#portal.resolve(workspaceId, boundRun, input.resume);
             req.on("close", finish); // client hangup on a resume just detaches; the loop already runs
             return;
         }
 
-        const lastUser = [...(input.messages ?? [])].reverse().find((m) => m.role === "user");
-        if (lastUser?.content === undefined || lastUser.content.length === 0) throw new Error("RunAgentInput.messages must carry a user message or a tool result");
+        const lastUser = [...input.messages].reverse().find((m) => m.role === "user");
+        if (lastUser === undefined) throw new Error("RunAgentInput.messages must carry a user message");
+        if (typeof lastUser.content !== "string") throw new Error("PLURNK currently requires textual user message content");
+        if (lastUser.content.length === 0) throw new Error("RunAgentInput.messages must carry a non-empty user message");
 
         if (reattached) {
             const history = await this.#seam.readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
@@ -281,7 +292,7 @@ export default class Module {
             // writes the terminal frame AND finish()es on RUN_ERROR — one door out.
             const message = err instanceof Error ? err.message : String(err);
             const code = /no provider configured|no model|unknown alias/i.test(message) ? "501" : "500";
-            emit([{ type: "RUN_ERROR", message, code }]);
+            emit([{ type: EventType.RUN_ERROR, message, code }]);
         }
     }
 
@@ -291,10 +302,10 @@ export default class Module {
     async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
-        emit({ type: "RUN_STARTED", threadId: input.threadId, runId: input.runId });
+        emit({ type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId });
         const outcome = await this.#action(action, null).catch((err: unknown): ActionOutcome => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
         emit(actionResult(action.kind, outcome));
-        emit({ type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId });
+        emit({ type: EventType.RUN_FINISHED, threadId: input.threadId, runId: input.runId, outcome: { type: "success" } });
         res.end();
     }
 
@@ -443,7 +454,7 @@ export default class Module {
 
     #threadRouterReplay(workspaceId: number, entries: Array<Record<string, unknown>>): AguiEvent[] {
         // Replay via the thread's own router (MESSAGES_SNAPSHOT of the model SENDs).
-        const messages: Array<{ id: string; role: string; content: string }> = [];
+        const messages: Array<{ id: string; role: "assistant"; content: string }> = [];
         for (const e of entries) {
             if (e.op === "SEND" && e.origin === "model") {
                 const tx = e.tx as { body?: unknown } | null | undefined;
@@ -451,7 +462,7 @@ export default class Module {
                 if (body.length > 0) messages.push({ id: String(e.coordinate ?? e.id), role: "assistant", content: body });
             }
         }
-        return [{ type: "MESSAGES_SNAPSHOT", messages }];
+        return [{ type: EventType.MESSAGES_SNAPSHOT, messages }];
     }
 
     static #body(req: IncomingMessage): Promise<string> {

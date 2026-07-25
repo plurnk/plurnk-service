@@ -1,22 +1,23 @@
 // The in-process HITL core (service#355 hooks B + C + A-resolve; plurnk-agui#2 WS-1).
 // Subscribes to the daemon's event source, renders each stopped-world proposal as an
 // AG-UI tool-call (via AguiPlus), re-surfaces a workspace's pending proposals on
-// (re)connect, and maps a resume worker's tool-result back to resolveProposal. The
+// (re)connect, and maps standard resume entries back to resolveProposal. The
 // engine's pause/gate/applyResolution stay core; this is the view + the round-trip.
 
 import type { AguiEvent, ProposalNotification } from "./types.ts";
 import type { DaemonSeam, PendingProposal } from "./DaemonSeam.ts";
-import { proposalToolCall, resolutionFromToolResult, type ToolResultMessage } from "./AguiPlus.ts";
+import { proposalToolCall, resolutionFromResume } from "./AguiPlus.ts";
+import type { ResumeEntry } from "@ag-ui/core";
 
 // The HITL core needs only the proposal slice of the seam — declare exactly that.
 type HitlSeam = Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal">;
 
 export default class ProposalHitl {
     #seam: HitlSeam;
-    #emit: (workspaceId: number, events: AguiEvent[]) => void; // fan-out to the workspace's client(s)
+    #emit: (workspaceId: number, workerId: number, events: AguiEvent[]) => void;
     #off: (() => void) | null = null;
 
-    constructor(seam: HitlSeam, emit: (workspaceId: number, events: AguiEvent[]) => void) {
+    constructor(seam: HitlSeam, emit: (workspaceId: number, workerId: number, events: AguiEvent[]) => void) {
         this.#seam = seam;
         this.#emit = emit;
     }
@@ -31,7 +32,8 @@ export default class ProposalHitl {
             // continuation, so a tool-call strictly means client-owned.
             const flags = (params as ProposalNotification).flags as Record<string, unknown> | undefined;
             if (flags?.auto === true || flags?.noProposals === true) return;
-            this.#emit(workspaceId, proposalToolCall(params as ProposalNotification));
+            const proposal = params as ProposalNotification;
+            this.#emit(workspaceId, proposal.workerId, proposalToolCall(proposal));
         });
     }
 
@@ -42,22 +44,39 @@ export default class ProposalHitl {
 
     // Re-surface a workspace's pending stopped-worlds on (re)connect — a days-old
     // question is discoverable, not lost — each as a tool-call the frontend renders.
-    async resurface(workspaceId: number): Promise<AguiEvent[]> {
-        const pending = await this.#seam.pendingProposals(workspaceId);
+    async resurface(workspaceId: number, workerId?: number): Promise<AguiEvent[]> {
+        const pending = (await this.#seam.pendingProposals(workspaceId))
+            .filter((p) => workerId === undefined || p.workerId === workerId);
         return pending.flatMap((p) => proposalToolCall(ProposalHitl.#normalize(p)));
     }
 
-    // A resume worker's tool-result → resolveProposal. Resolve the persisted
-    // proposal first so the caller can bind its response stream to the exact
-    // continuation loop before resolution can emit a terminal event.
-    async resolve(workspaceId: number, message: ToolResultMessage): Promise<{ resolved: false } | { resolved: true; loopId: number }> {
-        const res = resolutionFromToolResult(message);
-        if (res === null) return { resolved: false };
-        const pending = await this.#seam.pendingProposals(workspaceId);
-        const proposal = pending.find((item) => item.logEntryId === res.logEntryId);
-        if (proposal === undefined) throw new Error(`proposal ${res.logEntryId} is not pending in workspace ${workspaceId}`);
-        this.#seam.resolveProposal(res.logEntryId, { decision: res.decision, ...(res.body !== undefined ? { body: res.body } : {}) });
-        return { resolved: true, loopId: proposal.loopId };
+    // A standard AG-UI resume run must address every pending interrupt for its
+    // exact worker before any proposal is released.
+    async resolve(workspaceId: number, entries: ResumeEntry[]): Promise<{ loopId: number; workerId: number }> {
+        const allPending = await this.#seam.pendingProposals(workspaceId);
+        const resolutions = entries.map(resolutionFromResume);
+        if (resolutions.some((r) => r === null)) throw new Error("resume contains an unknown PLURNK interrupt");
+        const resolved = resolutions as Array<NonNullable<(typeof resolutions)[number]>>;
+        const received = new Set(resolved.map((r) => r.logEntryId));
+        const addressed = allPending.filter((p) => received.has(p.logEntryId));
+        if (addressed.length !== received.size) throw new Error("resume contains an interrupt that is not pending");
+        const workerIds = new Set(addressed.map((p) => p.workerId));
+        if (workerIds.size !== 1) throw new Error("one resume run cannot resolve interrupts for multiple workers");
+        const workerId = [...workerIds][0];
+        const pending = allPending.filter((p) => p.workerId === workerId);
+        const expected = new Set(pending.map((p) => p.logEntryId));
+        if (expected.size !== received.size || [...expected].some((id) => !received.has(id))) {
+            throw new Error(`resume must address every pending interrupt for worker ${workerId}`);
+        }
+        const loopIds = new Set(pending.map((p) => p.loopId));
+        if (loopIds.size !== 1) throw new Error(`worker ${workerId} has pending interrupts across multiple loops`);
+        for (const res of resolved) {
+            this.#seam.resolveProposal(res.logEntryId, {
+                decision: res.decision,
+                ...(res.body !== undefined ? { body: res.body } : {}),
+            });
+        }
+        return { loopId: [...loopIds][0], workerId };
     }
 
     // The DB-shaped pending row → the ProposalNotification AguiPlus renders. attrs/tx

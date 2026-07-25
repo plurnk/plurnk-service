@@ -2,7 +2,7 @@
 // from @ag-ui/client — the exact engine under `npx create-ag-ui-app` frontends —
 // drives a REAL model worker against the in-process module. Their verifier validates
 // every event; a spec drift is THEIR rejection, not our opinion. Env-gated like the
-// go-live smoke; devDep only (the runtime stays family-internal, §agui-zero-dep).
+// go-live smoke against the official client.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

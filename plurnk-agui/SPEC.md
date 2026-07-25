@@ -17,7 +17,7 @@ recompute them.
   (attach if it exists, create with exactly that name otherwise — no prefix, no forging). The
   workspace is REQUIRED: a worker has no existence without a world, so its absence is a contract
   violation the module rejects (500) — never a workspace forged from the `threadId`. The
-  `threadId` is the conversation — a RUN over that world, and the name is the identity at
+  `threadId` is the conversation over that world, and the name is the identity at
   BOTH levels: `threadId` == the workspace name binds the workspace's MODEL run (the default
   conversation, `ensureModelWorker` — origin identifies it, never a name parse); a DISTINCT
   `threadId` names its own conversation worker — found by name if it exists (forks and prior
@@ -25,11 +25,11 @@ recompute them.
   if it doesn't. World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
   `run.fork`) operate on the THREAD's conversation, never blindly on the model worker.
   Extended context persists across AG-UI runs because the worker's log does.
-- **Family-internal runtime deps only** {§agui-zero-dep} — `@plurnk/*` packages (the grammar,
-  for edge parsing) are welcome, exact-pinned; third-party runtime deps (e.g. `@ag-ui/core`
-  with its Zod) stay out. Event shapes remain hand-defined plain JSON
-  (`src/types.ts`); the SSE encoding is `data: <json>\n\n`.
-  a zero-dependency implementation avoids coupling the runtime to an SDK.
+- **AG-UI owns the client lifecycle** {§agui-run-authority} — `threadId`, `runId`,
+  `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, interrupt outcomes, and `RunAgentInput.resume`
+  follow the official `@ag-ui/core` schemas. PLURNK does not maintain a parallel client
+  lifecycle dialect. PLURNK owns the internal worker/loop/turn topology and projects it
+  through standard events plus namespaced `plurnk.*` extensions.
 
 ## The projection {§agui-projection}
 
@@ -44,7 +44,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `log/entry` other op (model) | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` op=model (mirror) | a correlated `REASONING_START` / `REASONING_ENCRYPTED_VALUE`* / `REASONING_END` span when the reasoning-item `attrs.reasoning` is present (see §agui-sealed-reasoning); otherwise nothing — forensic |
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
-| `loop/proposal` | `CUSTOM plurnk.proposal` |
+| `loop/proposal` | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
 | `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (200) or `RUN_ERROR` (else) |
 | `telemetry/event` | `CUSTOM plurnk.telemetry` |
 | `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475) |
@@ -68,8 +68,8 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   `format` has no AG-UI slot; it rides `plurnk.row` losslessly. A non-array carrier is invalid.
   An item with a null/absent `id` or an unknown
   `subtype` is DROPPED (uncorrelatable → agui never coins an id or coerces a subtype).
-- **The custom namespace** {§agui-custom-namespace} — everything plurnk-specific rides
-  `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`, `plurnk.proposal`,
+- **The custom namespace** {§agui-custom-namespace} — plurnk-specific metadata rides
+  `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
   `plurnk.telemetry`, `plurnk.stream`, `plurnk.quiesced`, `plurnk.terminated` — the full loop
   outcome the budget `STATE_DELTA` can't hold). Generic frontends skip unknown customs; plurnk-aware frontends render
   them richly. Nothing plurnk-specific ever masquerades as a core event.
@@ -91,19 +91,20 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 - **Reattach replays** {§agui-replay} — a rediscovered thread (the module restarted, a second
   frontend arrived) attaches to its existing workspace by name→id and opens ORIENTED: the model
   worker's SENDs replay as `MESSAGES_SNAPSHOT` (the conversation spine; everything else stays
-  reachable via live `plurnk.row`), and every pending stop-the-world proposal re-surfaces
-  immediately via the daemon's `proposal.list` — the indefinite-wait ruling's client half: a
-  days-old question is discoverable, never a mystery hang.
+  reachable via live `plurnk.row`). Pending proposals remain durable and are presented as
+  interrupts when the owning conversation is resumed; a days-old question is discoverable,
+  never converted into a mystery hang.
 
 ## Stop-the-world {§agui-proposal-resolve}
 
-Every daemon proposal — file edits, MCP auths, `[300]` operator questions (service#346) —
-surfaces as `CUSTOM plurnk.proposal` carrying `{logEntryId, op, target, body, attrs, flags}`
-(`attrs.question`/`attrs.choices` for questions). The frontend answers via
-`POST /resolve {threadId, logEntryId, decision, body?}` — a passthrough to the daemon's
-`loop.resolve`, where an accept `body` is the answer. The SSE stream stays open while the
-world is stopped — **indefinitely by default** (service ruling: a stopped world waits for its
-human; the timeout is operator opt-in) — and the worker resumes on resolution.
+Every client-owned daemon proposal — file edits, MCP auths, `[300]` operator questions
+(service#346) — emits an AG-UI tool call and terminates run A with
+`RUN_FINISHED.outcome.type = "interrupt"`. The durable loop remains paused indefinitely
+by default; absence is not an answer. Run B on the same thread supplies standard
+`RunAgentInput.resume` entries. Each entry correlates through `interruptId = toolCallId =
+"prop:<logEntryId>"`; the module resolves every pending interrupt for that worker, binds
+run B to the persisted loop, and releases it. A resume containing foreign, partial, or
+multi-worker interrupt sets fails before any proposal is released.
 
 ## The action surface {§agui-management-plane}
 
@@ -124,21 +125,22 @@ into the conversation a generic frontend renders.
 
 ## Event fan and run settlement {§agui-broadcast-fan}
 
-Workspace information fans to every open run: ambient rows, stream activity,
-and proposal tool calls remain visible across the workspace, with each SSE
+Workspace information fans to every open run: ambient rows and stream activity
+remain visible across the workspace, with each SSE
 using its own render router. Terminal control does not fan. A message run binds
 to the exact `loopId` returned by `loop.run`; a proposal-resume run binds to the
 pending proposal's persisted `loopId` before resolving it. Only that loop's
 `loop/terminated` event may emit `plurnk.terminated` and close the SSE.
-Terminations that race ahead of the `loop.run` acknowledgement are held until
+Proposal tool calls and interrupt outcomes route only to the proposal's owning
+worker; interrupting sibling runs would violate AG-UI run identity. Terminations
+that race ahead of the `loop.run` acknowledgement are held until
 the loop identity is known. A sibling, child, or concurrent loop can therefore
 remain visible as topology without ending or relabelling this run.
 
 Two consequences the module owns and a client must handle:
 
-- **Multiplicity.** A proposal-paused action's result and a workspace stream event arrive
-  on every open run — so a client with N concurrent runs sees N copies. Clients demux/dedupe
-  by `logEntryId` (proposals) and by run identity (results). A client that funnels all runs
+- **Multiplicity.** Workspace stream information may arrive on every open run. A client
+  that funnels all runs
   through one shared handler (e.g. a single dispatch) must SERIALIZE its management runs —
   one action in flight, the rest queued — or a background action's stream steals the shared
   slot. Both first-party clients do exactly this (nvim's management lane, svc#504).
@@ -148,7 +150,9 @@ Two consequences the module owns and a client must handle:
 
 ## The worker endpoint {§agui-run-endpoint}
 
-`POST /` (or `/agui`) with an AG-UI `RunAgentInput` body: the last `user` message becomes the
+`POST /` (or `/agui`) accepts a schema-valid AG-UI `RunAgentInput`: the last textual
+`user` message becomes the
 `loop.run` prompt (`maxTurns`/`flags.auto` from env); the response is `text/event-stream`,
-one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Loop auto never answers
+one `data:` line per event, ending after `RUN_FINISHED`/`RUN_ERROR`. Multimodal user content
+is rejected until the model-loop seam supports it deliberately. Loop auto never answers
 a question — that is the daemon's own rule; the module inherits it.

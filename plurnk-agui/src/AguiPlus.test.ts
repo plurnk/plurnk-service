@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { proposalToolCall, proposalToolCallId, proposalToolName, resolutionFromToolResult, stateSnapshot, stateDelta, parseAction, actionResult } from "./AguiPlus.ts";
+import { proposalToolCall, proposalToolCallId, proposalToolName, resolutionFromResume, stateSnapshot, stateDelta, parseAction, actionResult } from "./AguiPlus.ts";
 import type { ProposalNotification } from "./types.ts";
 
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
@@ -33,7 +33,7 @@ test("AG-UI-conventional names: a [300] question elicits input, a side-effect re
     assert.equal((proposalToolCall(proposal({ op: "SEND" }))[0] as { toolCallName: string }).toolCallName, "request_user_input");
 });
 
-test("THE round-trip: run N's tool-call → run N+1's tool-result maps back to the exact proposal", () => {
+test("THE round-trip: run N's interrupt → run N+1's resume maps back to the exact proposal", () => {
     // Run N: two concurrent stopped worlds terminate their runs as tool-calls.
     const a = proposalToolCall(proposal({ logEntryId: 42, op: "EDIT" }));
     const b = proposalToolCall(proposal({ logEntryId: 99, op: "EXEC" }));
@@ -41,24 +41,23 @@ test("THE round-trip: run N's tool-call → run N+1's tool-result maps back to t
     const idB = (b[0] as { toolCallId: string }).toolCallId;
     assert.notEqual(idA, idB, "distinct proposals get distinct toolCallIds");
 
-    // Run N+1 for each: the frontend replies with a tool-result carrying that id.
-    const resA = resolutionFromToolResult({ toolCallId: idA, content: JSON.stringify({ decision: "accept" }) });
-    const resB = resolutionFromToolResult({ toolCallId: idB, content: JSON.stringify({ decision: "reject" }) });
+    // Run N+1 for each: the frontend resumes the exact interrupt.
+    const resA = resolutionFromResume({ interruptId: idA, status: "resolved", payload: { decision: "accept" } });
+    const resB = resolutionFromResume({ interruptId: idB, status: "resolved", payload: { decision: "reject" } });
     assert.deepEqual(resA, { logEntryId: 42, decision: "accept" }, "id → the right paused proposal, accepted");
     assert.deepEqual(resB, { logEntryId: 99, decision: "reject" }, "the other id → the other proposal, rejected");
 });
 
 test("an edited-body approval carries the frontend's body through to resolveProposal", () => {
     const id = proposalToolCallId(7);
-    const res = resolutionFromToolResult({ toolCallId: id, content: JSON.stringify({ decision: "accept", body: "the human's edit" }) });
+    const res = resolutionFromResume({ interruptId: id, status: "resolved", payload: { decision: "accept", body: "the human's edit" } });
     assert.deepEqual(res, { logEntryId: 7, decision: "accept", body: "the human's edit" });
 });
 
-test("resolutionFromToolResult: tolerant of a bare decision, strict on garbage", () => {
-    assert.deepEqual(resolutionFromToolResult({ toolCallId: "prop:5", content: "cancel" }), { logEntryId: 5, decision: "cancel" });
-    assert.equal(resolutionFromToolResult({ toolCallId: "call_openai_xyz", content: "accept" }), null, "a non-plurnk toolCallId isn't a proposal resolution");
-    assert.equal(resolutionFromToolResult({ toolCallId: "prop:5", content: JSON.stringify({ decision: "maybe" }) }), null, "an invalid decision is rejected, not coerced");
-    assert.equal(resolutionFromToolResult({ content: "accept" }), null, "no toolCallId → not a resolution");
+test("resolutionFromResume: standard cancellation and strict payload validation", () => {
+    assert.deepEqual(resolutionFromResume({ interruptId: "prop:5", status: "cancelled" }), { logEntryId: 5, decision: "cancel" });
+    assert.equal(resolutionFromResume({ interruptId: "call_openai_xyz", status: "resolved", payload: { decision: "accept" } }), null, "a non-plurnk interrupt isn't a proposal resolution");
+    assert.equal(resolutionFromResume({ interruptId: "prop:5", status: "resolved", payload: { decision: "maybe" } }), null, "an invalid decision is rejected, not coerced");
 });
 
 test("reads → STATE: snapshot nests under plurnk; delta passes patches through", () => {

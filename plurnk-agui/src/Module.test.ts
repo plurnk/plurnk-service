@@ -47,8 +47,19 @@ const mockSeam = () => {
     return { seam, resolves, loopRuns, finish, emit };
 };
 
-const post = async (port: number, body: object): Promise<AguiEvent[]> => {
-    const res = await fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const standardInput = (body: Record<string, unknown>): Record<string, unknown> => ({
+    runId: typeof body.runId === "string" ? body.runId : typeof body.workerId === "string" ? body.workerId : crypto.randomUUID(),
+    state: {},
+    tools: [],
+    context: [],
+    ...body,
+    messages: Array.isArray(body.messages)
+        ? body.messages.map((message, index) => ({ id: `message-${index}`, ...(message as Record<string, unknown>) }))
+        : [],
+});
+
+const post = async (port: number, body: Record<string, unknown>): Promise<AguiEvent[]> => {
+    const res = await fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(body)) });
     assert.equal(res.status, 200);
     const text = await res.text();
     return text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
@@ -56,8 +67,8 @@ const post = async (port: number, body: object): Promise<AguiEvent[]> => {
 
 // A streaming reader that stays OPEN, collecting events until the connection ends —
 // lets a test hold two concurrent runs on one workspace and observe fan-out live.
-const openStream = (port: number, body: object): Promise<AguiEvent[]> =>
-    fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+const openStream = (port: number, body: Record<string, unknown>): Promise<AguiEvent[]> =>
+    fetch(`http://127.0.0.1:${port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput(body)) })
         .then((res) => res.text())
         .then((text) => text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent));
 
@@ -109,20 +120,17 @@ test("an action run executes via the seam: result custom + RUN_FINISHED, no loop
     } finally { await mod.close(); }
 });
 
-test("a resume tool-result resolves the paused proposal without driving a loop", async () => {
+test("a standard resume resolves the paused proposal without driving a new loop", async () => {
     const { seam, resolves } = mockSeam();
-    seam.pendingProposals = async () => [{ logEntryId: 42, workerId: 10, loopId: 1, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }];
+    seam.pendingProposals = async () => [{ logEntryId: 42, workerId: 77, loopId: 1, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }];
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
         const events = await post(mod.address().port, {
-            threadId: "t2", workerId: "r1", forwardedProps: { plurnk: { workspace: "t2" } },
-            messages: [
-                { role: "assistant", content: "" },
-                { role: "tool", toolCallId: "prop:42", content: JSON.stringify({ decision: "accept", body: "edited" }) },
-            ],
+            threadId: "t2", runId: "r1", forwardedProps: { plurnk: { workspace: "t2" } },
+            resume: [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited" } }],
         });
         assert.equal(events[0].type, "RUN_STARTED");
-        assert.deepEqual(resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited" } }, "the tool-result reached resolveProposal");
+        assert.deepEqual(resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited" } }, `the resume reached resolveProposal: ${JSON.stringify(events)}`);
     } finally { await mod.close(); }
 });
 
@@ -182,7 +190,7 @@ test("NO workspace prop is a HARD ERROR (500) — a worker has no world to forge
     seam.createWorkspace = async (a) => { created++; return { workspaceId: 9, workspaceName: a.name ?? "x", projectRoot: null, workerId: 1, workerName: "c", modelWorkerId: 2, clientLoopId: null }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "solo", workerId: "r1", messages: [{ role: "user", content: "hi" }] }) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "solo", runId: "r1", messages: [{ role: "user", content: "hi" }] })) });
         assert.equal(res.status, 500, "the missing workspace surfaces as an honest 500, not a fabricated 200");
         const body = await res.json() as { error: string };
         assert.match(body.error, /forwardedProps\.plurnk\.workspace \(a workspace name\) is required/);
@@ -334,7 +342,7 @@ test("SSE heartbeat: a silent run stays alive — comment frames flow between ev
     seam.runLoop = async (a) => { setTimeout(() => finish(a.workspaceId), 200); return { action: "enqueued_new_loop", loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0, heartbeatMs: 40 })(seam);
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "w", workerId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } }) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         const raw = await res.text();
         const beats = (raw.match(/^: hb$/gm) ?? []).length;
         assert.ok(beats >= 2, `the silent window carried heartbeats (got ${beats}) — no client bodyTimeout can starve mid-generate`);
@@ -370,7 +378,7 @@ test("a post-headers runLoop throw becomes a legible RUN_ERROR frame, not a sile
     const before = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
     const mod = await Module.init({ host: "127.0.0.1", port: 0 })(seam);
     try {
-        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } }) });
+        const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
         assert.equal(res.status, 200, "the SSE opened before the throw");
         const frames = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as { type: string; message?: string; code?: string });
         const err = frames.find((e) => e.type === "RUN_ERROR");

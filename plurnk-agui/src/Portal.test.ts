@@ -28,18 +28,17 @@ const mockSeam = (pending: PendingProposal[] = []) => {
     return { seam, fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)), workers, resolves, cancelled: () => cancelled };
 };
 
-test("a worker re-surfaces pending, drives the loop, then live events fan as AG-UI", async () => {
-    const pending: PendingProposal[] = [{ logEntryId: 5, workerId: 1, loopId: 1, turnId: 1, op: "EXEC", suffix: "", scheme: "sh", pathname: null, tx: "ls", attrs: null }];
-    const m = mockSeam(pending);
+test("a worker without pending interrupts drives the loop, then live events fan as AG-UI", async () => {
+    const m = mockSeam();
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
     const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
 
     const ack = await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "go" });
+    assert.ok(ack !== null);
     assert.equal(ack.loopId, 77, "loop driven via runLoop");
     assert.deepEqual(m.workers[0], { workspaceId: 3, prompt: "go" });
-    assert.ok(seen.some((e) => e.type === "TOOL_CALL_START"), "the pending stopped-world re-surfaced as a tool-call");
 
     // A live model SEND fans to the thread as assistant speech.
     seen.length = 0;
@@ -68,6 +67,20 @@ test("a worker re-surfaces pending, drives the loop, then live events fan as AG-
     portal.stop();
 });
 
+test("a worker with a durable proposal re-presents its interrupt instead of starting new work", async () => {
+    const pending: PendingProposal[] = [{ logEntryId: 5, workerId: 10, loopId: 1, turnId: 1, op: "EXEC", suffix: "", scheme: "sh", pathname: null, tx: "ls", attrs: null }];
+    const m = mockSeam(pending);
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (events) => seen.push(...events) });
+
+    assert.equal(await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }), null);
+    assert.equal(m.workers.length, 0, "a pending interrupt blocks a new internal loop");
+    assert.ok(seen.some((event) => event.type === "TOOL_CALL_END"), "the durable interrupt is presented again");
+    portal.stop();
+});
+
 test("a live proposal reaches the bound thread as a tool-call; resume resolves it; cancel cancels", async () => {
     const m = mockSeam([{ logEntryId: 42, workerId: 10, loopId: 7, turnId: 1, op: "EDIT", suffix: "", scheme: "file", pathname: "a", tx: "", attrs: null }]);
     const seen: AguiEvent[] = [];
@@ -75,12 +88,12 @@ test("a live proposal reaches the bound thread as a tool-call; resume resolves i
     portal.start();
     const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", emit: (evs) => seen.push(...evs) });
 
-    m.fire(3, "loop/proposal", { logEntryId: 42, op: "EDIT", target: { scheme: "file", pathname: "a.ts" }, body: "diff", attrs: {} });
+    m.fire(3, "loop/proposal", { logEntryId: 42, workerId: 10, op: "EDIT", target: { scheme: "file", pathname: "a.ts" }, body: "diff", attrs: {} });
     const start = seen.find((e) => e.type === "TOOL_CALL_START") as { toolCallId: string; toolCallName: string } | undefined;
     assert.equal(start?.toolCallId, "prop:42", "proposal fanned to the thread as a tool-call");
     assert.equal(start?.toolCallName, "request_approval");
 
-    assert.equal(await portal.resolve(3, thread, { toolCallId: "prop:42", content: JSON.stringify({ decision: "accept" }) }), true);
+    await portal.resolve(3, thread, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept" } }]);
     assert.deepEqual(m.resolves[0], { logEntryId: 42, resolution: { decision: "accept" } });
 
     assert.equal(portal.cancel(10), true);

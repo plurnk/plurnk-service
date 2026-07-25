@@ -6,7 +6,7 @@
 // so this router deliberately leaves loop/proposal to it — one owner per concern.
 
 import Translator from "./Translator.ts";
-import type { AguiEvent, LogEntryNotification, TerminatedNotification } from "./types.ts";
+import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification } from "./types.ts";
 
 export default class EventRouter {
     #t: Translator;
@@ -29,7 +29,7 @@ export default class EventRouter {
                 // an exec/search stream is 'in-progress activity between chat messages'. A
                 // replace-snapshot per event is the stateless conformant form — each carries the
                 // full current view; activityType is the stream's scheme (SEARCH/EXEC/…).
-                { type: "CUSTOM", name: "plurnk.stream", value: params },
+                { type: EventType.CUSTOM, name: "plurnk.stream", value: params },
                 EventRouter.#activity(params),
             ];
             case "loop/proposal": return []; // ProposalHitl owns HITL (terminate-resume tool-call)
@@ -43,11 +43,14 @@ export default class EventRouter {
     // payload; replace = true (each is the complete current view — stateless, conformant).
     static #activity(params: unknown): AguiEvent {
         const p = (params ?? {}) as { entryId?: number; scheme?: string };
+        const content = params !== null && typeof params === "object"
+            ? params as Record<string, unknown>
+            : { value: params };
         return {
-            type: "ACTIVITY_SNAPSHOT",
+            type: EventType.ACTIVITY_SNAPSHOT,
             messageId: `stream-${p.entryId ?? 0}`,
             activityType: typeof p.scheme === "string" && p.scheme.length > 0 ? p.scheme.toUpperCase() : "STREAM",
-            content: params,
+            content,
             replace: true,
         };
     }

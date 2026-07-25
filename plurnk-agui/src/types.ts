@@ -1,54 +1,12 @@
-// The AG-UI event vocabulary this bridge emits — hand-defined from the protocol spec
-// (https://docs.ag-ui.com), deliberately WITHOUT the @ag-ui/* SDK dependency: the shapes are
-// plain JSON and the protocol is young. When the
-// official SDK stabilizes, adopting it is a types-only swap (§agui-zero-dep).
+// Standard wire shapes come from the protocol package. PLURNK-specific richness
+// rides CUSTOM events under the `plurnk.` namespace.
 //
 // Plurnk-specific richness the core vocabulary can't hold (fold state, coordinates, tags,
 // proposals) rides CUSTOM events under the `plurnk.` namespace — generic frontends skip them,
 // plurnk-aware frontends render them richly (§agui-custom-namespace).
 
-export type AguiEvent =
-    // runId is AG-UI's OWN noun — the id of THIS run (one POST /), echoed from
-    // RunAgentInput.runId. NOT plurnk's retired run noun: plurnk workers ride the
-    // plurnk.* customs as workerId. The standard face keeps the protocol's fields.
-    | { type: "RUN_STARTED"; threadId: string; runId: string }
-    | { type: "RUN_FINISHED"; threadId: string; runId: string }
-    | { type: "RUN_ERROR"; message: string; code?: string }
-    | { type: "STEP_STARTED"; stepName: string }
-    | { type: "STEP_FINISHED"; stepName: string }
-    | { type: "TEXT_MESSAGE_START"; messageId: string; role: "assistant" }
-    | { type: "TEXT_MESSAGE_CONTENT"; messageId: string; delta: string }
-    | { type: "TEXT_MESSAGE_END"; messageId: string }
-    | { type: "REASONING_START"; messageId: string }
-    | { type: "REASONING_MESSAGE_START"; messageId: string }
-    | { type: "REASONING_MESSAGE_CONTENT"; messageId: string; delta: string }
-    | { type: "REASONING_MESSAGE_END"; messageId: string }
-    | { type: "REASONING_END"; messageId: string }
-    // Sealed reasoning (o1-class encrypted COT). @ag-ui/core shape — subtype/entityId/
-    // encryptedValue, NOT messageId/value. entityId correlates to the reasoning-item id
-    // the span is keyed by. (#482)
-    | { type: "REASONING_ENCRYPTED_VALUE"; subtype: "message" | "tool-call"; entityId: string; encryptedValue: string }
-    | { type: "TOOL_CALL_START"; toolCallId: string; toolCallName: string; parentMessageId?: string }
-    | { type: "TOOL_CALL_ARGS"; toolCallId: string; delta: string }
-    | { type: "TOOL_CALL_END"; toolCallId: string }
-    | { type: "TOOL_CALL_RESULT"; toolCallId: string; messageId: string; content: string }
-    | { type: "MESSAGES_SNAPSHOT"; messages: Array<{ id: string; role: string; content: string }> }
-    | { type: "STATE_SNAPSHOT"; snapshot: unknown }
-    | { type: "STATE_DELTA"; delta: Array<{ op: string; path: string; value?: unknown }> }
-    | { type: "ACTIVITY_SNAPSHOT"; messageId: string; activityType: string; content: unknown; replace?: boolean }
-    | { type: "ACTIVITY_DELTA"; messageId: string; activityType: string; patch: Array<{ op: string; path: string; value?: unknown }> }
-    | { type: "RAW"; event: unknown; source?: string }
-    | { type: "CUSTOM"; name: string; value: unknown };
-
-// AG-UI's run input (the POST body). Only the fields this bridge consumes are typed;
-// the rest pass through untouched (forwardedProps etc. are the frontend's business).
-export interface RunAgentInput {
-    threadId: string;
-    runId: string;   // AG-UI's run id (the protocol's field — official clients send this)
-    messages?: Array<{ role: string; content?: string }>;
-    state?: unknown;
-    forwardedProps?: unknown;
-}
+export { EventType } from "@ag-ui/core";
+export type { AGUIEvent as AguiEvent, RunAgentInput } from "@ag-ui/core";
 
 // The daemon wire — the slice of the plurnk JSON-RPC protocol this bridge consumes.
 // The daemon owns these shapes; the module consumes them from the in-process seam.

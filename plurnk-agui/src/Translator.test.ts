@@ -114,20 +114,6 @@ test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
 });
 
-test("a proposal projects with everything the frontend needs to answer", () => {
-    const tr = t();
-    const events = tr.proposal({
-        logEntryId: 42, workspaceId: 1, workerId: 2, loopId: 3, turnId: 4,
-        op: "SEND", target: { scheme: null, pathname: null }, body: "",
-        attrs: { question: "Which environment?", choices: ["prod", "staging"] }, flags: { auto: true },
-    });
-    assert.equal(events.length, 1);
-    const e = events[0] as { name: string; value: { logEntryId: number; attrs: { question?: string; choices?: string[] } } };
-    assert.equal(e.name, "plurnk.proposal");
-    assert.equal(e.value.logEntryId, 42, "the resolve handle");
-    assert.deepEqual(e.value.attrs.choices, ["prod", "staging"], "the chooser payload — POST /resolve answers it");
-});
-
 test("a non-200 termination is RUN_ERROR carrying the status", () => {
     const tr = t();
     const term: TerminatedNotification = { workerId: 2, loopId: 1, finalStatus: 500, hitMaxTurns: false, turnIds: [], usage: { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: null, meta: {} } };
@@ -160,11 +146,11 @@ test("the workspace log replays as MESSAGES_SNAPSHOT — model SENDs are the con
     assert.ok(snap.messages.every((m) => m.role === "assistant"));
 });
 
-test("zero runtime dependencies — the standing decision, enforced", async () => {
+test("runtime protocol and family dependencies are declared explicitly", async () => {
     const { readFile } = await import("node:fs/promises");
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { dependencies?: Record<string, string> };
     const deps = Object.keys(pkg.dependencies ?? {});
-    assert.ok(deps.every((d) => d.startsWith("@plurnk/")), `only family-internal runtime deps (operator ruling 2026-07-10); found: ${deps.join(", ")} (SPEC §agui-zero-dep)`);
+    assert.ok(deps.includes("@ag-ui/core"), "the standard wire types and schemas are a direct runtime dependency");
     // Vacuous-pass guard: the grammar is a RUNTIME import (Module's op.parse) — it must
     // live in dependencies, not devDependencies (npm --save-exact updates an existing
     // devDep in place; this caught a 0.6.0 packaging bug).

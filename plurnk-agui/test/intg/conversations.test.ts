@@ -19,7 +19,7 @@ const gated = await access(join(SERVICE, "src/server/Daemon.ts")).then(() => fal
 const action = async (port: number, threadId: string, workspace: string, kind: string, params: Record<string, unknown> = {}): Promise<{ ok: boolean; result?: Record<string, unknown>; error?: string }> => {
     const res = await fetch(`http://127.0.0.1:${port}/`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ threadId, workerId: "r", messages: [], forwardedProps: { plurnk: { workspace, action: { kind, ...params } } } }),
+        body: JSON.stringify({ threadId, runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [], forwardedProps: { plurnk: { workspace, action: { kind, ...params } } } }),
     });
     assert.equal(res.status, 200);
     const events = (await res.text()).split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
