@@ -9,6 +9,8 @@ import type {
     MimeSymbol,
     QueryDialect,
     QueryMatch,
+    LineSpan,
+    RowSpan,
 } from "./types.ts";
 
 // Content shape that handler methods accept. Text mimetypes receive `string`;
@@ -96,6 +98,13 @@ export default class BaseHandler {
     extent(content: HandlerContent): number | Promise<number> {
         if (typeof content !== "string") return 0;
         return countLines(content);
+    }
+
+    // Map source-line footprints to the rows consumed by scoped READ. The
+    // default navigation surface is line-oriented, so the coordinates are
+    // identical. Structural handlers override this mapping.
+    rowsForLines(_content: HandlerContent, lines: ReadonlyArray<LineSpan>): ReadonlyArray<RowSpan> | Promise<ReadonlyArray<RowSpan>> {
+        return lines.map(({ line, endLine }) => ({ row: line, endRow: endLine }));
     }
 
     // Throw on malformed content. Default no-op. Sync or async; the framework

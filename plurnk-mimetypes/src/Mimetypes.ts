@@ -15,9 +15,11 @@ import type {
     DiscoverOptions,
     Discovery,
     HandlerMetadata,
+    LineSpan,
     MimeRef,
     MimeSymbol,
     QueryMatch,
+    RowSpan,
 } from "./types.ts";
 
 // SPEC §5 / §12.1 (#17, #24): channels process() can materialize, computed
@@ -401,7 +403,23 @@ export default class Mimetypes {
 
         // String → classify by leading prefix; parsed body → dispatch verbatim.
         const parsed = typeof matcher === "string" ? parseBodyMatcher(matcher) : matcher;
-        return handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
+        const matches = await handler.query(content, parsed.dialect, parsed.pattern, parsed.flags);
+        return Promise.all(matches.map(async (match) => match.lines === undefined
+            ? match
+            : { ...match, rows: await handler.rowsForLines(content, match.lines) }));
+    }
+
+    // Translate source-line spans into the exact row coordinates scoped READ
+    // accepts for this mimetype.
+    async rowsForLines(input: ProcessInput, lines: ReadonlyArray<LineSpan>): Promise<ReadonlyArray<RowSpan>> {
+        const mimetype = await this.detect(input);
+        if (mimetype === null) throw new ReferenceError("Mimetypes.rowsForLines: no mimetype could be resolved for input");
+        const info = this.#discovery!.handlers.get(mimetype) ?? null;
+        const content = await this.#resolveContent(input, info?.binary ?? false);
+        if (content === null) throw new ReferenceError(`Mimetypes.rowsForLines: content unreadable for ${mimetype}`);
+        const handler = await this.getHandler(mimetype);
+        if (handler === null) throw new ReferenceError(`Mimetypes.rowsForLines: no handler discovered for ${mimetype}`);
+        return handler.rowsForLines(content, lines);
     }
 
     // Degraded ProcessResult when the grammar isn't installed (SPEC §7/§13.4,

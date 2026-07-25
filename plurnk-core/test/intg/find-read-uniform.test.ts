@@ -214,7 +214,50 @@ test("[#286] FIND with a matcher emits one item per match, each carrying its (fi
         const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**):*target*:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 2, "two matches in one file → two items");
-        assert.deepEqual(r.results.map((x) => x.matchSpan), [{ lineStart: 1, lineEnd: 1 }, { lineStart: 3, lineEnd: 3 }], "each item carries the span it matched");
+        assert.deepEqual(r.results.map((x) => x.matchSpan), [
+            { lineStart: 1, lineEnd: 1, rowStart: 1, rowEnd: 1 },
+            { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 },
+        ], "unstructured matches expose identical source-line and readable-row coordinates");
+    } finally { await db.close(); }
+});
+
+test("FIND coordinates compose into scoped READ for structured JSON", async () => {
+    const { db, workspaceId, workerId, ctx } = await setup();
+    try {
+        await seedRaw(ctx, "users.json", [
+            "[",
+            "  {",
+            '    "name": "Alice",',
+            '    "role": "admin"',
+            "  },",
+            "  {",
+            '    "name": "Bob",',
+            '    "role": "user"',
+            "  }",
+            "]",
+        ].join("\n"));
+        const worker = new Worker();
+        const found = await worker.find(
+            parseOp<FindStatement>('<<FIND(worker:///users.json):$[?(@.role=="admin")]:FIND', "FIND"),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.deepEqual(found.results[0]?.matchSpan, {
+            lineStart: 2,
+            lineEnd: 5,
+            rowStart: 1,
+            rowEnd: 1,
+        });
+        const span = found.results[0]?.matchSpan;
+        assert.ok(span);
+        const read = await worker.read(
+            {
+                ...parseOp<ReadStatement>("<<READ(worker:///users.json)<1,1>::READ", "READ"),
+                lineMarker: { marks: [span.rowStart, span.rowEnd] },
+            },
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.equal(read.status, 200);
+        assert.deepEqual(JSON.parse(read.content ?? ""), [{ name: "Alice", role: "admin" }]);
     } finally { await db.close(); }
 });
 

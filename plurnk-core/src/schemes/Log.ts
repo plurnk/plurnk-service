@@ -163,7 +163,15 @@ export default class Log extends CoreSchemeAdapterBase {
             if (mimetypes === undefined) return empty(501);
             const r = await Matcher.matchCandidates(statement.body, projected, mimetypes);
             if (r.status !== 200) return empty(r.status);
-            matches = r.matches.map((m) => ({ pathname: m.key, span: m.span, ...(m.path !== undefined ? { path: m.path } : {}) }));
+            matches = r.matches.map((m) => ({
+                pathname: m.key,
+                span: m.span === null ? null : {
+                    ...m.span,
+                    rowStart: m.span.lineStart,
+                    rowEnd: m.span.lineEnd,
+                },
+                ...(m.path !== undefined ? { path: m.path } : {}),
+            }));
         }
         if (statement.lineMarker !== null) {
             const page = paginate(matches, LineMarkerOps.firstLast(statement.lineMarker));

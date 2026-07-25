@@ -114,7 +114,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | OP     | `[signal]`        | `(path)` | `body`                  | `<scope>`     |
 |--------|-------------------|----------|-------------------------|---------------|
 | FIND   | tag filter (CSV)  | required | pattern matcher         | result-set pagination |
-| READ   | tag filter (CSV)  | required | pattern matcher         | per-entry lines |
+| READ   | tag filter (CSV)  | required | pattern matcher         | per-entry rows |
 | EDIT   | tags (CSV)        | required | content (empty body clears the entry) | entry lines |
 | COPY   | tags to apply (CSV) | required | destination URI (plain resource copy — the worker-fork overload was retired for the dedicated FORK verb, 0.74.54) | entry lines |
 | MOVE   | tags to apply (CSV) | required | destination URI       | entry lines |
@@ -145,7 +145,7 @@ EDIT line-marker semantics (single source of authority):
 
 | OP   | Produces |
 |------|----------|
-| FIND | JSON array of catalog objects — each carries its `path` plus per-channel `mimetype`, `tokens`, and `lines` (plus `matchSpan`/`matchPath` on matcher hits) |
+| FIND | JSON array of catalog objects — each carries its `path` plus per-channel `mimetype`, `tokens`, and `lines` (plus `matchSpan` with source-line and readable-row coordinates, and `matchPath`, on matcher hits) |
 | READ | content of matched entries, line-numbered `N:\t` (whole source lines, never extracted values) |
 | EDIT | status; resulting entry content on success |
 | COPY | status; destination path on success |

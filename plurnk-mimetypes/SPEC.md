@@ -35,6 +35,8 @@ interface Handler {
     extent(content: HandlerContent): number | Promise<number>;
     // Body-matcher dispatch (§11). Default implementation on BaseHandler.
     query(content: HandlerContent, dialect: QueryDialect, pattern: string, flags?: string): Promise<QueryMatch[]>;
+    // Map source footprints to the rows consumed by scoped READ.
+    rowsForLines(content: HandlerContent, lines: ReadonlyArray<LineSpan>): ReadonlyArray<RowSpan> | Promise<ReadonlyArray<RowSpan>>;
     // Rendered outline — format(extractRaw). Diagnostic / human surface.
     symbolsRaw(content: HandlerContent): Promise<string>;
 }
@@ -376,6 +378,7 @@ interface QueryMatch {
     readonly matched: unknown;                          // polymorphic per dialect (see below)
     readonly matching?: string;                         // resolved canonical locator when disambiguating
     readonly lines?: ReadonlyArray<{ line: number; endLine: number }>; // source footprint (#41)
+    readonly rows?: ReadonlyArray<{ row: number; endRow: number }>;    // scoped-READ coordinates
 }
 ```
 
@@ -386,6 +389,8 @@ interface QueryMatch {
 - **xpath** — the matched element's `pk:line`..`pk:endLine`; for an element that carries none of its own (a key-projected child like `<name>greet</name>`), **the nearest enclosing `pk:line`-bearing ancestor** (walked up the element tree).
 
 **Dialect symmetry (#41) is a hard invariant.** The jsonpath ancestor-walk and the xpath ancestor-walk are deliberately the same rule expressed in two trees, so for a given source construct **both dialects resolve to the same span**. Neither dialect ever fakes a line: `lines` is **absent** only for **node-less computed scalars** — xpath `count()`/`string()`/`sum()`/`boolean()` — which synthesize a value out of many nodes (or none) and so live nowhere in the source; jsonpath has no equivalent node-less form. Consumers render the spans for READ and fall back to `matched` when `lines` is absent. The invariant is enforced, not assumed — see the conformance harness (§14).
+
+**Readable-row coordinates (`rows`).** `Mimetypes.query` maps every source span through the handler's `rowsForLines` method. The default maps lines identically to rows. A structural handler overrides it when scoped READ navigates a rendered item surface; application/json maps a source footprint to the top-level array items or object properties containing it. The returned row span is therefore directly reusable as scoped READ input without losing source-line provenance.
 
 `matched` is polymorphic by extractor:
 

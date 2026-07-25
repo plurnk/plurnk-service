@@ -793,15 +793,15 @@ export default class Dispatcher {
         return p.endsWith("/") && schemeName !== null && this.#schemes.manifestFor(schemeName)?.folderScopes === true;
     }
 
-    // Clone the READ onto one concrete match — the FIND already matched, so the per-match READ
-    // delivers content at the span: strip the body (no re-match) and set <L> to the span. A null
-    // span (body-less folder/glob fan-out) reads the whole entry. #286
-    static #retargetRead(statement: PlurnkStatement, pathname: string, span: { lineStart: number; lineEnd: number } | null): PlurnkStatement {
+    // Clone the READ onto one concrete match — the FIND already matched, so strip the body
+    // (no re-match) and set <L> to its readable-row span. A null span (body-less folder/glob
+    // fan-out) reads the whole entry. #286
+    static #retargetRead(statement: PlurnkStatement, pathname: string, span: { rowStart: number; rowEnd: number } | null): PlurnkStatement {
         const t = statement.target;
         const target = t !== null && t.kind === "url"
             ? { ...t, pathname, raw: `${t.scheme}://${pathname}` }
             : { ...(t as { raw: string }), raw: pathname };
-        const lineMarker = span !== null ? { marks: [span.lineStart, span.lineEnd] } : null;
+        const lineMarker = span !== null ? { marks: [span.rowStart, span.rowEnd] } : null;
         return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body: null } as PlurnkStatement;
     }
 
@@ -824,14 +824,14 @@ export default class Dispatcher {
         } as PlurnkStatement;
     }
 
-    static #storedEntryMatchRead(statement: PlurnkStatement, pathname: string, span: { lineStart: number; lineEnd: number } | null, storage: boolean): PlurnkStatement {
+    static #storedEntryMatchRead(statement: PlurnkStatement, pathname: string, span: { rowStart: number; rowEnd: number } | null, storage: boolean): PlurnkStatement {
         const target = statement.target;
         if (target === null || target.kind !== "url") return Dispatcher.#retargetRead(statement, pathname, span);
         const hostPrefix = target.hostname === null ? null : `/${target.hostname}`;
         const displayPath = hostPrefix !== null && pathname.startsWith(`${hostPrefix}/`)
             ? pathname.slice(hostPrefix.length)
             : pathname;
-        const lineMarker = span === null ? null : { marks: [span.lineStart, span.lineEnd] };
+        const lineMarker = span === null ? null : { marks: [span.rowStart, span.rowEnd] };
         return {
             ...statement,
             target: storage
@@ -854,7 +854,7 @@ export default class Dispatcher {
         const found = standardEntryManifest === null
             ? await this.#run(schemeName, findStatement, ctx)
             : await EntryFind.findWorkspaceEntries(Dispatcher.#foldStoredEntryAuthority(findStatement) as Extract<PlurnkStatement, { op: "FIND" }>, ctx, standardEntryManifest) as unknown as DispatchResult;
-        const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number } | null }> | undefined) ?? [];
+        const matches = (found.matches as Array<{ pathname: string; span: { lineStart: number; lineEnd: number; rowStart: number; rowEnd: number } | null }> | undefined) ?? [];
         const overflow = typeof found.overflow === "number" ? found.overflow : null;
         // §find-count-not-contents applies to WORK as well as rendering. A READ
         // over an over-budget selection writes the bounded FIND summary plus one
@@ -879,10 +879,10 @@ export default class Dispatcher {
             onDispatch?.(id);
             return { ...result, rowsWritten: 1 };
         }
-        // One READ row per MATCH — the span's source lines (or the whole entry for a body-less
-        // folder/glob). The match span is SOURCE LINES, so deliver via a raw line-slice — NOT the
-        // scheme's <L> (which is item-index for application/json, structural for xml). Read each
-        // distinct entry's content once, then line-slice per match. #286
+        // One READ row per MATCH — deliver its source lines (or the whole entry for a body-less
+        // folder/glob) while the logged statement carries the corresponding readable-row scope.
+        // The delivery uses a raw line-slice rather than reinterpreting provenance as the scheme's
+        // structural <L>. Read each distinct entry's content once, then line-slice per match. #286
         // §matcher-selection-signal — the SELECTION SUMMARY row: the internal FIND that located
         // the matches is WRITTEN (op=FIND, its full result — per-hit matchSpan + matchPath, the
         // canonical dialect coordinate) before the per-match deliveries, exactly as if the model

@@ -313,6 +313,19 @@ describe("ApplicationJson — query (jsonpath against parsed value)", () => {
         assert.deepEqual(out[0].lines, [{ line: 6, endLine: 6 }]);
     });
 
+    it("maps source lines to the top-level rows consumed by scoped READ", () => {
+        assert.deepEqual(
+            h.rowsForLines(src, [
+                { line: 3, endLine: 3 },
+                { line: 6, endLine: 6 },
+            ]),
+            [
+                { row: 1, endRow: 1 },
+                { row: 2, endRow: 2 },
+            ],
+        );
+    });
+
     it("throws QueryParseFailureError on malformed JSON", async () => {
         await assert.rejects(
             async () => { await h.query("{not json", "jsonpath", "$.x"); },

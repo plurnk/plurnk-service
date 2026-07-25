@@ -100,8 +100,8 @@ test("a content match emits one item per match, each carrying its (file, span) (
         assert.equal(r.status, 200);
         const byPath = new Map(r.results.map((row) => [row.path, row] as const));
         // Each match is a (file, span) item — the span is where the matcher hit (plurnk.md:31).
-        assert.deepEqual(byPath.get("worker:///a")?.matchSpan, { lineStart: 3, lineEnd: 3 }, "the item carries the span where the matcher hit");
-        assert.deepEqual(byPath.get("worker:///b")?.matchSpan, { lineStart: 2, lineEnd: 2 });
+        assert.deepEqual(byPath.get("worker:///a")?.matchSpan, { lineStart: 3, lineEnd: 3, rowStart: 3, rowEnd: 3 }, "the item carries source and readable coordinates");
+        assert.deepEqual(byPath.get("worker:///b")?.matchSpan, { lineStart: 2, lineEnd: 2, rowStart: 2, rowEnd: 2 });
         assert.equal(byPath.has("worker:///c"), false, "a miss excludes the entry entirely — no item");
     } finally { db.close(); }
 });

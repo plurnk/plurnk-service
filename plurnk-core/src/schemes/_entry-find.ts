@@ -31,11 +31,15 @@ import EntrySemantic from "./_entry-semantic.ts";
 // file with N matches yields N items. span === null for a body-less FIND (the whole entry). #286
 // §matcher-selection-signal — `path` is the hit's canonical coordinate in the plugin's own
 // dialect ($['users'][0]['name']; an xpath node path), when the dialect provides one. The
-// selection signal that survives the degenerate single-line case: spans stay the line-oriented
-// tent pole; the path tells the model WHICH hit each (identical) span was.
-export interface Match { pathname: string; span: { lineStart: number; lineEnd: number } | null; path?: string; }
+// selection signal that survives the degenerate single-line case: source lines preserve
+// provenance, readable rows compose into scoped READ, and the path tells the model WHICH hit
+// each otherwise-identical span was.
+export interface MatchSpan { lineStart: number; lineEnd: number; rowStart: number; rowEnd: number; }
+interface SourceSpan { lineStart: number; lineEnd: number; }
+interface SourceMatch { pathname: string; span: SourceSpan | null; path?: string; }
+export interface Match { pathname: string; span: MatchSpan | null; path?: string; }
 // A FIND result row: the entry's catalog row plus the span it matched at (absent for body-less).
-export type MatchItem = CatalogEntry & { matchSpan?: { lineStart: number; lineEnd: number }; matchPath?: string };
+export type MatchItem = CatalogEntry & { matchSpan?: MatchSpan; matchPath?: string };
 
 export interface FindResult {
     status: number;
@@ -96,7 +100,7 @@ export default class EntryFind {
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
         explicitOwnerId?: number,
-    ): Promise<{ status: number; matches: Match[] }> {
+    ): Promise<{ status: number; matches: SourceMatch[] }> {
         if (statement.target === null) return { status: 400, matches: [] };
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
@@ -165,7 +169,7 @@ export default class EntryFind {
 
         // Every dialect resolves to (file, span) items — one per match (#286). A body-less FIND
         // selects the whole entry (span: null); a matcher selects spans within it.
-        let matches: Match[];
+        let matches: SourceMatch[];
         if (statement.body === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, span: null }));
         } else if (statement.body.dialect === "graph") {
@@ -194,6 +198,59 @@ export default class EntryFind {
         return { status: 200, matches };
     }
 
+    static async #addReadableRows(
+        matches: readonly SourceMatch[],
+        ctx: PlurnkSchemeContext,
+        manifest: SchemeManifest,
+        explicitOwnerId?: number,
+    ): Promise<Match[]> {
+        if (matches.every(({ span }) => span === null)) return matches.map((match) => ({ ...match, span: null }));
+        if (ctx.mimetypes === undefined) throw new Error("EntryFind.#addReadableRows: matched entries require the mimetypes capability");
+        const scheme = EntryCrud.identityScheme(manifest);
+        const ownerId = explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId);
+        const grouped = new Map<string, number[]>();
+        for (let index = 0; index < matches.length; index += 1) {
+            const match = matches[index];
+            if (match.span === null) continue;
+            const indices = grouped.get(match.pathname) ?? [];
+            indices.push(index);
+            grouped.set(match.pathname, indices);
+        }
+        const resolved: Match[] = matches.map((match) => ({ ...match, span: null }));
+        for (const [pathname, indices] of grouped) {
+            const row = await (ctx.db.ops_read_channel as PrepMethod).get<{ content: string; mimetype: string }>({
+                workspace_id: ctx.workspaceId,
+                owner_id: ownerId,
+                scheme,
+                pathname,
+                channel: manifest.defaultChannel,
+            });
+            if (row === undefined) throw new Error(`EntryFind.#addReadableRows: matched entry ${pathname} has no default channel`);
+            const rows = await ctx.mimetypes!.rowsForLines(
+                { content: row.content, hint: row.mimetype },
+                indices.map((index) => ({
+                    line: matches[index].span!.lineStart,
+                    endLine: matches[index].span!.lineEnd,
+                })),
+            );
+            if (rows.length !== indices.length) throw new Error(`EntryFind.#addReadableRows: ${pathname} returned ${rows.length} rows for ${indices.length} spans`);
+            for (let offset = 0; offset < indices.length; offset += 1) {
+                const index = indices[offset];
+                const match = matches[index];
+                const readable = rows[offset];
+                resolved[index] = {
+                    ...match,
+                    span: {
+                        ...match.span!,
+                        rowStart: readable.row,
+                        rowEnd: readable.endRow,
+                    },
+                };
+            }
+        }
+        return resolved;
+    }
+
     // FIND result = the scheme's catalog rows, filtered to the matched entries and kept in
     // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
     // {mimetype, tokens, lines}, tags, seconds) — FIND is the filtered, navigable slice of
@@ -201,6 +258,7 @@ export default class EntryFind {
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
         if (match.status !== 200) return { status: match.status, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [], ...((match as { error?: string }).error !== undefined ? { error: (match as { error?: string }).error } : {}) }; // {§fs-errno} — the ENOENT fact rides through
+        const readableMatches = await EntryFind.#addReadableRows(match.matches, ctx, manifest, explicitOwnerId);
         const scheme = EntryCrud.identityScheme(manifest);
         // The catalog row is keyed by its addressable path; align each match to its row through
         // the same EntryManifest.toPath the catalog uses (single source of truth). Match order is
@@ -218,7 +276,7 @@ export default class EntryFind {
         // the only thing distinguishing them; `matches` (the fan-out's delivery list) dedups by
         // (pathname, span) — N hits on one source line deliver that line ONCE, no identical-row noise.
         const seenSpan = new Set<string>();
-        for (const m of match.matches) {
+        for (const m of readableMatches) {
             const row = byPath.get(EntryManifest.toPath(scheme, m.pathname));
             if (row === undefined) continue;
             results.push(m.span !== null ? { ...row, matchSpan: m.span, ...(m.path !== undefined ? { matchPath: m.path } : {}) } : row);

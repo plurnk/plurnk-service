@@ -171,6 +171,14 @@ export interface LineSpan {
     readonly endLine: number;
 }
 
+// A 1-indexed, inclusive span in the handler's model-readable navigation
+// surface. For line-navigable content rows equal source lines. Structural
+// handlers map source footprints to the top-level items READ scopes.
+export interface RowSpan {
+    readonly row: number;
+    readonly endRow: number;
+}
+
 export interface QueryMatch {
     // The structured value at the hit — always present (issue #41).
     readonly matched: unknown;
@@ -182,4 +190,7 @@ export interface QueryMatch {
     // boolean()) — those synthesize a value out of many nodes (or none) and so
     // live nowhere in the source. We never fake a line for them.
     readonly lines?: ReadonlyArray<LineSpan>;
+    // The corresponding READ coordinates. Mimetypes.query guarantees these
+    // whenever `lines` are present.
+    readonly rows?: ReadonlyArray<RowSpan>;
 }

@@ -29,10 +29,10 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 |------|----------------|-----------------|--------------------|--------------------|------|
 | PLAN | -              | -               | -                  | :plan, free text:  | PLAN |
 | FIND | [filter tags]? | (path)          | <result,result>?   | :pattern:?         | FIND |
-| READ | [filter tags]? | (path)          | <line,line>?       | :pattern:?         | READ |
-| EDIT | [apply tags]?  | (path)          | <line,line>?       | :literal text:?    | EDIT |
-| COPY | [apply tags]?  | (path)          | <line,line>?       | :destination path: | COPY |
-| MOVE | [apply tags]?  | (path)          | <line,line>?       | :destination path: | MOVE |
+| READ | [filter tags]? | (path)          | <row,row>?         | :pattern:?         | READ |
+| EDIT | [apply tags]?  | (path)          | <row,row>?         | :literal text:?    | EDIT |
+| COPY | [apply tags]?  | (path)          | <row,row>?         | :destination path: | COPY |
+| MOVE | [apply tags]?  | (path)          | <row,row>?         | :destination path: | MOVE |
 | OPEN | [filter tags]? | (log path)      | <result,result>?   | :pattern:?         | OPEN |
 | FOLD | [apply tags]?  | (log path)      | <result,result>?   | :pattern:?         | FOLD |
 | EXEC | [executor]?    | (path)?         | <timeout, poll>?   | :code:?            | EXEC |
@@ -40,6 +40,8 @@ A `?` marks an optional field, as in the Syntax line; unmarked fields are requir
 | FORK | -              | (worker://recheck) | -                  | :hint:?            | FORK |
 | KILL | [signal]?      | (path)          | -                  | ::                 | KILL |
 | SEND | [submit code]? | (recipient)?    | <timeout, poll>?   | :message:          | SEND |
+
+FIND reports source `lineStart`/`lineEnd` and readable `rowStart`/`rowEnd`. Scope READ with rows; rows equal lines for unstructured text.
 
 Below is every op's form — a reference catalog, not a turn (a turn opens with `PLAN` and closes with a `SEND` submit code).
 
@@ -61,7 +63,7 @@ Below is every op's form — a reference catalog, not a turn (a turn opens with 
 - **PLAN** — required at the beginning of a turn.
 - **FIND** (retrieval) — returns a JSON array of matches. Each object carries its path and per-channel mimetype, tokens, and lines. READ a hit's path to view it.
 - **READ** (retrieval) — returns lines of matching content, each prefixed with its line number.
-- **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<line,line>` with literal body content, never patterns. Without `<scope>`, it replaces the whole entry, or creates it if absent.
+- **EDIT** — only for creating or modifying files and entries; never edit log items. It replaces the selected `<row,row>` with literal body content, never patterns. Without `<scope>`, it replaces the whole entry, or creates it if absent.
 - **EDIT nesting** — add a single-digit (or label) suffix when nesting ops, as in `EDIT1 … :EDIT:EDIT1`.
 - **OPEN** (retrieval) — reveals a folded log item's body at the cost of its `tokens` (`display` goes `folded` to `open`). A `display: none` item has no body to reveal.
 - **FOLD** — hides an open log item's body to reclaim context (`display` goes `open` to `folded`). Its `tokens` field shows what an OPEN costs.
