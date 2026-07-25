@@ -302,6 +302,10 @@ SELECT cosine($a, $b) AS sim;
 -- [§worker-delegation-inherits-flags] — every loop's persisted flags, delegation-tree-wide.
 SELECT id, worker_id, flags FROM loops ORDER BY id;
 
+-- PREP: test_workers_with_parent
+-- Deterministic topology identity: real child workers, their names, and their parent edge.
+SELECT id, name, parent_worker_id, origin FROM workers ORDER BY id;
+
 -- PREP: test_edit_states
 -- [§worker-delegation-inherits-flags] — EDIT rows' proposal states: a delegated child's EDIT
 -- must land resolved (inherited auto), never proposed/cancelled into the void.

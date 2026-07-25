@@ -114,12 +114,21 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
         makeMockResponse("<<SEND[200]:w2 done:SEND", 10),                                       // w2
         makeMockResponse("<<SEND[200]:both done:SEND", 10),                                     // parent t3 (woken by w2)
     ] });
-    await withDaemon(mock, async (_db, _daemon, addr) => {
+    await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "sequential" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "two jobs in sequence", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the parent parked, woke on w1, spawned+parked again, woke on w2, then concluded");
+            const workers = await (db.test_workers_with_parent as PrepMethod).all<{ id: number; name: string; parent_worker_id: number | null; origin: string }>({});
+            const modelWorkers = workers.filter(({ origin }) => origin === "model");
+            const parent = modelWorkers.find(({ parent_worker_id: parentId }) => parentId === null);
+            assert.ok(parent, `the topology has a root model worker; got ${JSON.stringify(modelWorkers)}`);
+            assert.deepEqual(
+                modelWorkers.filter(({ parent_worker_id: parentId }) => parentId === parent.id).map(({ name }) => name),
+                ["w1", "w2"],
+                "the sequential path created both named child workers under the same parent — terminal output alone is not proof",
+            );
         } finally { ws.close(); }
     });
 });

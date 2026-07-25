@@ -1,7 +1,7 @@
-// Topology demos — a REAL model (gemma) composing parent/child worker topologies: delegate, fan-out,
-// pipeline. These exercise worker:// spawn + SEND[202] hibernation + the child-wake + reading the
-// collect-delta on resume. Forensic by intent: a stumble teaches us where the TEACHING is thin
-// (spawn syntax? when to 202 vs 200? noticing the folded collect-delta?), not just pass/fail.
+// Topology probes — a REAL model is invited, never forced, to compose parent/child worker
+// topologies. Task correctness is the demo verdict; observed worker creation is reported
+// separately and is NOT a release gate. Deterministic integration owns the lifecycle contract,
+// while bench evaluates whether models choose and use delegation effectively.
 //
 // AUTO-PROMPTING NOTE (owner's injection smell): there is none here. The child's prompt is the
 // model's verbatim EDIT body (it authors it); the parent's wake is resume-in-place — the child's
@@ -10,7 +10,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Db, PrepMethod } from "../../src/core/Db.ts";
+import type { PrepMethod } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -35,10 +35,12 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
         throw err;
     }
     const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
-    console.error(`[topo:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
+    const workers = await (s.db.envelope_list_workers_for_workspace as PrepMethod).all<{ id: number; name: string; origin: string }>({ workspace_id: s.workspaceId });
+    const modelWorkers = workers.filter(({ origin }) => origin === "model");
+    const delegatedWorkers = Math.max(0, modelWorkers.length - 1);
+    console.error(`[topo:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns} delegatedWorkers=${delegatedWorkers} delegation=${delegatedWorkers > 0 ? "observed" : "not-observed"}`);
     const dump = async (): Promise<void> => {
         // All runs in the workspace — see the children too, not just the parent.
-        const workers = await (s.db.envelope_list_workers_for_workspace as PrepMethod).all<{ id: number; name: string }>({ workspace_id: s.workspaceId });
         console.error(`workers: ${workers.map((r) => `${r.id}:${r.name}`).join(", ")}`);
         for (const turnId of turnIds) {
             const row = await (s.db.test_get_turn as PrepMethod).get<{ packet: string; status: number }>({ id: turnId });
@@ -46,24 +48,22 @@ const runStory = async (opts: { label: string; prompt: string; maxTurns?: number
             console.error(`--- turn ${turnId} status=${row?.status} ---\n${(packet.assistant?.content ?? "").slice(0, 1500)}`);
         }
     };
-    return { db: s.db as Db, finalStatus, lastContent, turnIds, dump, cleanup: async () => { await s.cleanup(); await fixture.cleanup(); } };
+    return { finalStatus, lastContent, delegatedWorkers, dump, cleanup: async () => { await s.cleanup(); await fixture.cleanup(); } };
 };
 
-test("topo: delegate a lookup to a child worker and report its result", { timeout: TIMEOUT }, async () => {
-    // The simplest topology: spawn one worker, hibernate, wake on its conclusion, report what it found.
+test("topo probe: answer a lookup task that invites delegation", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "delegate",
         prompt: "Have a separate worker look up the project codename in notes.md, then tell me what it found.",
     });
     try {
         if (story.finalStatus !== 200 || !/phoenix/i.test(story.lastContent)) await story.dump();
-        assert.equal(story.finalStatus, 200, "the parent delegated, hibernated, woke on the child, and concluded");
-        assert.match(story.lastContent, /phoenix/i, `final reply carries the worker's result; got: ${story.lastContent.slice(0, 200)}`);
+        assert.equal(story.finalStatus, 200, "the lookup task concluded");
+        assert.match(story.lastContent, /phoenix/i, `final reply carries the correct result; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 
-test("topo: fan-out three workers and join their results", { timeout: TIMEOUT }, async () => {
-    // Fan-out + join: three parallel workers, hibernate, wake as each concludes, aggregate.
+test("topo probe: answer a multi-part task that invites fan-out", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "fanout",
         prompt: "src/config.json has three settings: db, pool, and host. Have a separate worker look up each one, then give me all three values together.",
@@ -72,13 +72,12 @@ test("topo: fan-out three workers and join their results", { timeout: TIMEOUT },
     try {
         const ok = /db\.internal/.test(story.lastContent);
         if (story.finalStatus !== 200 || !ok) await story.dump();
-        assert.equal(story.finalStatus, 200, "the parent fanned out, waited for all workers, and concluded");
-        assert.match(story.lastContent, /db\.internal/, `the joined report includes the host value; got: ${story.lastContent.slice(0, 250)}`);
+        assert.equal(story.finalStatus, 200, "the multi-part task concluded");
+        assert.match(story.lastContent, /db\.internal/, `the report includes the host value; got: ${story.lastContent.slice(0, 250)}`);
     } finally { await story.cleanup(); }
 });
 
-test("topo: a two-stage pipeline of dependent workers", { timeout: TIMEOUT }, async () => {
-    // Sequential dependency: worker A's result feeds worker B. The parent waits between stages.
+test("topo probe: answer a dependent two-stage task that invites a pipeline", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "pipeline",
         prompt: "First have a worker count how many users are in data/users.json. Then have a second worker check whether that count is more than 2. Give me the final yes-or-no answer.",
@@ -86,7 +85,7 @@ test("topo: a two-stage pipeline of dependent workers", { timeout: TIMEOUT }, as
     });
     try {
         if (story.finalStatus !== 200) await story.dump();
-        assert.equal(story.finalStatus, 200, "the parent ran both stages, hibernating between, and concluded");
+        assert.equal(story.finalStatus, 200, "the dependent task concluded");
         assert.match(story.lastContent, /\byes\b/i, `3 users IS more than 2 → the final answer is yes; got: ${story.lastContent.slice(0, 250)}`);
     } finally { await story.cleanup(); }
 });
