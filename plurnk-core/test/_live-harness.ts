@@ -36,7 +36,7 @@ export interface LiveWorkspace {
 // Every live/demo worker is a self-contained benchmark artifact. The filesystem
 // allocates a unique, human-readable directory; nothing counts, reuses, moves,
 // or conditionally sweeps it. DB, workspace label, and digest stay together.
-const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(import.meta.dirname, "../../..", "benchmarks");
+const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(import.meta.dirname, "../../../..", "benchmarks");
 
 const claimRunDir = async (workspace: string): Promise<string> => {
     await mkdir(BENCHMARKS, { recursive: true });
