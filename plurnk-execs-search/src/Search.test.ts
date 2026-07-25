@@ -179,7 +179,7 @@ test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and 
     process.env.PLURNK_EXECS_SEARCH_RAW = "1";
     const calls: string[] = [];
     routes([raw]);
-    cap = await invoke("search", "q", { entry: async (path) => { calls.push(path); } });
+    cap = await invoke("search", "q", { entry: async (path) => { calls.push(path); return path; } });
     assert.deepEqual(JSON.parse(cap.writes[0].chunk), [raw], "RAW → verbatim upstream, engine field intact");
     assert.equal(calls.length, 0, "RAW skips the prefetch pass — entry() never called");
     delete process.env.PLURNK_EXECS_SEARCH_RAW;
@@ -190,7 +190,7 @@ test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and 
 test("entry(): the executor hands each unique candidate url to the sink as a prefetch request (url, null, [slug])", async () => {
     routes([{ title: "a", url: "https://8.8.8.8/a" }]);
     const calls: { path: string; content: string | null; opts: { tags: string[]; mimetype?: string } }[] = [];
-    await invoke("search", "Pie Recipes!", { entry: async (path, content, opts) => { calls.push({ path, content, opts }); } });
+    await invoke("search", "Pie Recipes!", { entry: async (path, content, opts) => { calls.push({ path, content, opts }); return path; } });
 
     assert.equal(calls.length, 1, "one prefetch request per unique candidate");
     assert.equal(calls[0].path, "https://8.8.8.8/a", "the candidate url is the prefetch path");
@@ -199,13 +199,28 @@ test("entry(): the executor hands each unique candidate url to the sink as a pre
     assert.equal(calls[0].opts.mimetype, undefined, "no mimetype supplied — the consumer determines it");
 });
 
+test("#607: the digest uses the sink's canonical model address, not SearXNG's raw URL", async () => {
+    const raw = "https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)";
+    const canonical = "https://en.wikipedia.org/wiki/Igor_Smirnov_%28politician%29";
+    routes([{ title: "Igor Smirnov", url: raw }]);
+    const { writes } = await invoke("search", "Igor Smirnov spouse", {
+        entry: async (path) => {
+            assert.equal(path, raw, "the consumer receives the untouched external URL");
+            return canonical;
+        },
+    });
+    assert.deepEqual(JSON.parse(writes[0].chunk), [
+        { title: "Igor Smirnov", url: canonical, materialized: true },
+    ]);
+});
+
 test("#596: a rejected entry() is scrubbed from the model-facing digest", async () => {
     routes([
         { title: "a", url: "https://8.8.8.8/a" },
         { title: "b", url: "https://8.8.8.9/b" },
     ]);
     const { writes } = await invoke("search", "q", {
-        entry: async (path) => { if (path.includes("8.8.8.9")) throw new Error("consumer fetch refused — body unavailable"); },
+        entry: async (path) => { if (path.includes("8.8.8.9")) throw new Error("consumer fetch refused — body unavailable"); return path; },
     });
     assert.deepEqual(JSON.parse(writes[0].chunk), [
         { title: "a", url: "https://8.8.8.8/a", materialized: true },
@@ -219,7 +234,7 @@ test("search acquisition emits bounded aggregate progress with no candidate URLs
     }));
     routes(results);
     const { events } = await invoke("search", "private query words", {
-        entry: async (path) => { if (path.includes("example3.")) throw new Error("dead"); },
+        entry: async (path) => { if (path.includes("example3.")) throw new Error("dead"); return path; },
     });
     const progress = events.filter((event) => event.kind === "search_progress");
 
@@ -254,7 +269,7 @@ test("dedupe: two candidates with the same url request the prefetch once and lis
         { title: "a-again", url: "https://8.8.8.8/a" },
     ]);
     const requested: string[] = [];
-    const { writes } = await invoke("search", "q", { entry: async (path) => { requested.push(path); } });
+    const { writes } = await invoke("search", "q", { entry: async (path) => { requested.push(path); return path; } });
     assert.equal(JSON.parse(writes[0].chunk).length, 1, "the duplicate url lists once");
     assert.deepEqual(requested, ["https://8.8.8.8/a"], "the duplicate url is handed to entry() exactly once");
 });
@@ -268,6 +283,7 @@ test("#596 regression: materialization scrubbing preserves the upstream order of
     const { writes } = await invoke("search", "Scott Bessent recent remarks AI", {
         entry: async (path) => {
             if (path.includes("news.example")) throw new Error("publisher rejected automated page fetch");
+            return path;
         },
     });
     const rows = JSON.parse(writes[0].chunk) as { title: string; materialized: boolean }[];
@@ -298,7 +314,7 @@ test("the executor NEVER fetches a candidate page url — only the SearXNG /sear
         { title: "a", url: "https://8.8.8.8/a" },
         { title: "b", url: "https://8.8.8.9/b" },
     ]);
-    await invoke("search", "q", { entry: async () => {} });
+    await invoke("search", "q", { entry: async (path) => path });
     assert.equal(fetched.length, 1, "exactly one fetch — the SearXNG endpoint");
     assert.equal(new URL(fetched[0]).pathname, "/search");
     assert.equal(fetched.filter((u) => !u.includes("searxng.test")).length, 0, "no candidate url is ever fetched");
@@ -308,7 +324,7 @@ test("slugify: lowercase, non-alphanumerics collapse to single underscores, trim
     const tag = async (query: string): Promise<string> => {
         routes([{ title: "t", url: "https://8.8.8.8/t" }]);
         let seen: string[] = [];
-        await invoke("search", query, { entry: async (_p, _c, opts) => { seen = opts.tags; } });
+        await invoke("search", query, { entry: async (path, _c, opts) => { seen = opts.tags; return path; } });
         return seen[0];
     };
     assert.equal(await tag("Who was the 15th President?"), "who_was_the_15th_president");
@@ -321,7 +337,7 @@ test("limit caps the candidates — only capped rows ride the digest and get a p
     routes(results);
     process.env.PLURNK_EXECS_SEARCH_LIMIT = "3";
     const requested: string[] = [];
-    const { writes } = await invoke("search", "q", { entry: async (path) => { requested.push(path); } });
+    const { writes } = await invoke("search", "q", { entry: async (path) => { requested.push(path); return path; } });
     delete process.env.PLURNK_EXECS_SEARCH_LIMIT;
 
     assert.equal(JSON.parse(writes[0].chunk).length, 3, "digest capped to LIMIT");

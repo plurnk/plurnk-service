@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-grammar";
-import { decodePathParens } from "../../src/core/path-decode.ts";
+import { decodePathParens, encodePathParens } from "../../src/core/path-decode.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
@@ -14,6 +14,11 @@ test("decodePathParens decodes only %28/%29 — other percent-sequences + litera
     assert.equal(decodePathParens("/dir/file%28v1%29.txt"), "/dir/file(v1).txt");
     assert.equal(decodePathParens("/a%28b%29c%28d%29"), "/a(b)c(d)");
     assert.equal(decodePathParens("/50%off %20literal.txt"), "/50%off %20literal.txt", "%20 + a literal % are untouched — only parens are grammar-encoded");
+});
+
+test("encodePathParens produces the model-facing inverse without touching existing escapes", () => {
+    assert.equal(encodePathParens("/wiki/Igor_(politician)"), "/wiki/Igor_%28politician%29");
+    assert.equal(encodePathParens("/wiki/Igor_%28politician%29"), "/wiki/Igor_%28politician%29");
 });
 
 const enc = (pathname: string): UrlPath => ({

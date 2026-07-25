@@ -386,7 +386,7 @@ export default class AstBuilder {
 
     static #targetFromCtx(ctx: TargetContext | null, pos: Position): ParsedPath | null {
         if (ctx === null) return null;
-        const text = ctx.TARGET_TEXT()?.getText() ?? "";
+        const text = ctx.TARGET_TEXT().map((token) => token.getText()).join("");
         return AstBuilder.parsePath(text, pos);
     }
 

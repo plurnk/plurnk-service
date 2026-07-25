@@ -226,22 +226,21 @@ export default class Search extends BaseExecutor {
         };
         if (entry && unique.length > 0) reportProgress("fetching");
         const verdicts = await Promise.all(unique.map(async (r) => {
-            if (!entry) return true;
-            let accepted = false;
+            if (!entry) return r.url!;
+            let address: string | null = null;
             try {
-                await entry(r.url!, null, { tags: [slug] });
-                accepted = true;
+                address = await entry(r.url!, null, { tags: [slug] });
             } catch {
-                accepted = false;
+                address = null;
             } finally {
                 completed++;
-                if (accepted) materialized++;
+                if (address !== null) materialized++;
                 // At most ~10 intermediate notices regardless of result count,
                 // plus start and terminal. Progress is aggregate: no URL ledger.
                 const step = Math.max(1, Math.ceil(unique.length / 10));
                 if (completed < unique.length && completed % step === 0) reportProgress("fetching");
             }
-            return accepted;
+            return address;
         }));
         if (entry && unique.length > 0) reportProgress("complete");
         if (signal.aborted) {
@@ -254,12 +253,12 @@ export default class Search extends BaseExecutor {
         // outright (a 68KB/query hard 413). Title + url + a snippet (optionally
         // bounded) — the OPEN chooser context; sizes ride the ambient entry rows.
         const snippetMax = process.env.PLURNK_EXECS_SEARCH_SNIPPET;
-        const results = unique.map(({ title, url, content, publishedDate }, i) => ({
+        const results = unique.map(({ title, content, publishedDate }, i) => ({
             title,
-            url,
+            url: verdicts[i],
             snippet: snippetMax && content ? content.slice(0, Number(snippetMax)) : content,
             ...(publishedDate ? { publishedDate } : {}),
-            ...(entry ? { materialized: verdicts[i] } : {}),
+            ...(entry ? { materialized: verdicts[i] !== null } : {}),
         })).filter((result) => !entry || result.materialized);
         write("results", JSON.stringify(results));
         setState("results", "closed");

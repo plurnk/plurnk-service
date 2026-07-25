@@ -456,9 +456,9 @@ export const buildModel = (): GModel => {
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
     // Target — two alternatives, both `(`-`)`-delimited slots:
-    //   target-inner : an OPAQUE blob, any non-`)`/`<`/control run. The grammar does not
-    //     litigate what a path contains (scheme, host, glob, channel): that is the
-    //     visitor's job. Mirrors the ANTLR `TARGET_INNER` mode (`~[)<\r\n]`).
+    //   target-inner : the canonical generation subset — an opaque blob with
+    //     parentheses percent-encoded. ANTLR deliberately accepts balanced raw
+    //     parentheses too, but the rail generates one low-ambiguity spelling.
     //   target-regex : a `#…#flags` path-name regex. The `#` fences bound it, so a `)`
     //     MAY appear inside (regex groups: `(#(draft|final)/.*#i)`) — the slot-closing
     //     `)` comes after the flags. Mirrors the ANTLR `TARGET_REGEX` rule; without this
@@ -470,7 +470,7 @@ export const buildModel = (): GModel => {
         [lit("("), ref("target-inner"), lit(")")],
         [lit("("), ref("target-regex"), lit(")")],
     ]);
-    model.set("target-inner", [[plus(cls([...CONTROL_RANGES, ...C(")<\r\n")], true))]]);
+    model.set("target-inner", [[plus(cls([...CONTROL_RANGES, ...C("()<\r\n")], true))]]);
     model.set("target-regex", [[lit("#"), star(ref("target-rx-char")), lit("#"), star(cls([R("a", "z"), R("A", "Z")]))]]);
     // Regex content: an escaped char (`\#` for a literal hash) or any non-`#`/newline.
     // `\` + non-newline is a strict subset of ANTLR's `'\\' .` (which also allows newline).

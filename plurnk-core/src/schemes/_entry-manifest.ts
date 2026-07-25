@@ -13,6 +13,7 @@
 // in the schemes/entry layer, not the engine — building a scheme's catalog is the schemes' job.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import { encodePathParens } from "../core/path-decode.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import type { PrepMethod } from "../core/Db.ts";
 import { matchSearchExclusion, type ProcessResult } from "@plurnk/plurnk-mimetypes";
@@ -34,7 +35,7 @@ export default class EntryManifest {
     static toPath(scheme: string | null, pathname: string): string {
         // File keys are stored in wire canon already ({§fs-canonical-name}, storage ≡ wire —
         // bare git-pathspec keys): render is identity, exactly what `git ls-files` prints.
-        if (scheme === "file") return pathname;
+        if (scheme === "file") return encodePathParens(pathname);
         if (scheme === null) throw new Error(`entry '${pathname}' carries a NULL scheme — pre-v2 row survived the heal ({§entry-identity-no-null})`);
         // {§entry-owner} — the owner rides the owner_id column, never the pathname; render the
         // empty-authority form. A face that queried a non-empty authority re-applies it to the

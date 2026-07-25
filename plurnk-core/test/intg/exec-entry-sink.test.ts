@@ -21,7 +21,7 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 
 // #455 — ExecArgs.entry widens to `content: string | null` in the execs lane; core's sink already honors
 // null (fetch-through), so the null-content stub casts args.entry to the widened shape to drive that path.
-type WidenedEntry = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<void>;
+type WidenedEntry = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<string>;
 
 const parseOne = (input: string): PlurnkStatement => {
     const parsed = PlurnkParser.parse(`<<PLAN::PLAN\n${input}`);

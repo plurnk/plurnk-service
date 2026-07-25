@@ -13,6 +13,7 @@
 // empty-authority schemes, so it folds unconditionally (a no-op there).
 
 import type { ParsedPath } from "@plurnk/plurnk-grammar";
+import { encodePathParens } from "./path-decode.ts";
 
 // Bare paths default to the file scheme per plurnk.md (grammar sysprompt):
 // "Bare paths (no scheme) default to local relative project file paths."
@@ -47,14 +48,15 @@ export function promptLoopPrefix(loopSeq: number): string {
 }
 
 export function renderAddress(scheme: string, pathname: string): string {
+    const encoded = encodePathParens(pathname);
     if (scheme === "plurnk" && pathname.split("/").filter((s) => s.length > 0).length >= 2) {
-        return `plurnk://${pathname.replace(/^\//, "")}`;
+        return `plurnk://${encoded.replace(/^\//, "")}`;
     }
     // #370 — the worker IS the authority (§worker-scheme): a stored row whose authority was folded into
     // Web URLs carry a real host in the pathname's first segment — render it as the authority
     // (run42 sweep: the entry-sink's materialized pages rendered https:///en.wikipedia.org/...).
     // worker:// renders :/// — the owner rides owner_id ({§entry-owner}), so empty authority IS
     // the canonical stored form; a querying face re-applies its authority (~/name) for display.
-    if (scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss") return `${scheme}://${pathname.replace(/^\//, "")}`;
-    return `${scheme}://${pathname}`;
+    if (scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss") return `${scheme}://${encoded.replace(/^\//, "")}`;
+    return `${scheme}://${encoded}`;
 }

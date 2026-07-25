@@ -17,6 +17,7 @@ tokens {
 private openTag: string = "";
 private openTagLine: number = 0;
 private openTagColumn: number = 0;
+private targetDepth: number = 0;
 
 private setOpenTag(): void {
     this.openTag = this.text.substring(2);
@@ -191,7 +192,7 @@ SLOTS_WS       : [ \t\r\n]+ -> skip ;
 SLOTS_LB_TAGS  : '[' { !this.isSendOp() && !this.isExecOp() && !this.isKillOp() }? -> type(LBRACKET), mode(SIGNAL_TAGS) ;
 SLOTS_LB_INT   : '[' { this.isSendOp() || this.isKillOp() }?    -> type(LBRACKET), mode(SIGNAL_INT) ;
 SLOTS_LB_IDENT : '[' { this.isExecOp() }?                       -> type(LBRACKET), mode(SIGNAL_IDENT) ;
-SLOTS_LPAREN   : '(' -> type(LPAREN), mode(TARGET) ;
+SLOTS_LPAREN   : '(' { this.targetDepth = 0; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_L        : L_PATTERN -> type(L_MARKER) ;
 // Single-colon empty-body close (narrow toleration): `:OP<suffix>` at a statement boundary
 // closes the op with no body, so `<<READ(t):READ` (HEREDOC-natural) parses instead of running
@@ -254,7 +255,9 @@ mode TARGET;
 // predicate requires the next char to be `)`, so this fires ONLY for a whole-target
 // regex; a `#`-leading path that isn't a clean regex falls through to TARGET_INNER.
 TARGET_REGEX : '#' ('\\' . | ~[#\r\n])* '#' [a-zA-Z]* { this.inputStream.LA(1) === 0x29 }? -> type(TARGET_TEXT) ;
-TARGET_INNER : (~[)<\r\n] | '<' ~[)<\r\n])+ -> type(TARGET_TEXT) ;
+TARGET_INNER : (~[()<\r\n] | '<' ~[()<\r\n])+ -> type(TARGET_TEXT) ;
+TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
+TARGET_NEST_END  : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;
 TARGET_END   : ')' -> type(RPAREN), mode(SLOTS) ;
 
 // ============================================================================

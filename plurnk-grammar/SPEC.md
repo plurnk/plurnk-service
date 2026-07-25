@@ -187,15 +187,14 @@ validation, not ingestion. {§worker-name}
 Two RFC concessions justify the relaxation:
 
 1. RFC 3986 lists `)` as a sub-delim — a valid path character. Plurnk
-   reserves a literal `)` to close the path slot and provides no escape
-   mechanism. A path that needs a literal paren **percent-encodes it**
-   (`%28` / `%29`) — the complete, standards-aligned answer:
-   `(https://en.wikipedia.org/wiki/Mercury_%28planet%29)` parses, where
-   `(…Mercury_(planet))` would not. (`(` alone is fine as content; only
-   `)` terminates.) A balanced-paren or escape grammar was considered and
-   rejected: balanced counting is incomplete for unbalanced parens, and
-   both re-complicate the deliberately-opaque target slot for a case
-   percent-encoding already covers. For *matching* a parenthesized name,
+   uses a depth-zero `)` to close the path slot. The parser tolerates balanced
+   parentheses, so `(https://en.wikipedia.org/wiki/Mercury_(planet))` is
+   understandable input, but the canonical wire spelling percent-encodes every
+   path parenthesis (`%28` / `%29`). Producers render external addresses that
+   way before presenting them to the model, and the generation rail admits only
+   that spelling. Unbalanced literal parentheses cannot be distinguished from
+   the outer slot syntax and therefore require encoding.
+   For *matching* a parenthesized name,
    glob (`Mercury_*planet*`) or a `#…#` regex is the natural form.
 2. Bulk Pattern Matching extends path segments with glob
    metacharacters (`*`, `**`, `?`, `[…]`) that fall outside the RFC

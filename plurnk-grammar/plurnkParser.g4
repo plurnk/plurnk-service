@@ -170,6 +170,6 @@ midSignal   : LBRACKET INT? RBRACKET ;                   // mid-comms SEND: a pl
 dispSignal  : LBRACKET DISPOSITION RBRACKET ;            // terminal SEND: a disposition code
 identSignal : LBRACKET IDENT? RBRACKET ;
 
-target      : LPAREN TARGET_TEXT? RPAREN ;
+target      : LPAREN TARGET_TEXT* RPAREN ;
 lineMarker  : L_MARKER ;
 body        : BODY_TEXT+ ;

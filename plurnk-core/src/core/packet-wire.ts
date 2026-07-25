@@ -15,6 +15,7 @@
 
 import { MimetypeBinary } from "../content/index.ts";
 import { renderAddress } from "./plurnk-uri.ts";
+import { encodePathParens } from "./path-decode.ts";
 import type { GitStatus } from "./git-state.ts";
 
 // PacketSection is the canonical packet shape: an ordered list of named,
@@ -289,7 +290,7 @@ export default class PacketWire {
         // #370 — a null scheme is a workspace file, whose member key is /rel but whose MODEL-FACING
         // form is the bare relative path (the catalog lists data/users.json; FIND returns it; the
         // model types it). Rendering /data/users.json minted a second spelling of the same file.
-        if (scheme === null || scheme === undefined) return path.replace(/^\//, "");
+        if (scheme === null || scheme === undefined) return encodePathParens(path.replace(/^\//, ""));
         return renderAddress(scheme, path);
     }
 
@@ -543,7 +544,7 @@ export default class PacketWire {
         // namespace schemes (plurnk/known) fold their authority into the path and fall through.
         const host = typeof target.hostname === "string" && target.hostname.length > 0 ? target.hostname : null;
         const rendered = host !== null && typeof target.scheme === "string" && target.scheme.length > 0
-            ? `${target.scheme}://${host}${target.port ? `:${target.port}` : ""}${target.pathname ?? ""}`
+            ? `${target.scheme}://${host}${target.port ? `:${target.port}` : ""}${encodePathParens(target.pathname ?? "")}`
             : PacketWire.#renderModelUri(target.scheme, target.pathname);
         if (rendered.length === 0) return null;
         // The channel fragment (#stdout/#stderr) is part of the address — a stream delta has to

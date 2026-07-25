@@ -457,7 +457,7 @@ export default class Exec {
         // turn per spawn, not per entry.
         let entryChain: Promise<unknown> = Promise.resolve();
         let narration: { workerId: number; loopId: number; turnId: number; seq: number } | null = null;
-        const entrySink = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }): Promise<void> => {
+        const entrySink = (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }): Promise<string> => {
             const parsed = parsePath(path);
             if (parsed === null || parsed.kind !== "url" || parsed.scheme === null) return Promise.reject(new Error(`entry(): '${path.slice(0, 80)}' is not a URL`));
             if (content !== null && opts.mimetype === undefined) return Promise.reject(new Error("entry(): mimetype is required when content is provided"));
@@ -470,7 +470,7 @@ export default class Exec {
             const materialized: Promise<WebFetchResult | null> = content === null
                 ? this.#fetchWeb(path, { signal })
                 : Promise.resolve({ body: content, mimetype: opts.mimetype as string });
-            const op = async (): Promise<void> => {
+            const op = async (): Promise<string> => {
                 const fetched = await materialized;
                 if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
                 let { body, mimetype } = fetched;
@@ -535,6 +535,7 @@ export default class Exec {
                     // ambience, not a human/model action waterfall item.
                     attrs: JSON.stringify({ tags, kind: "entry_materialized" }),
                 });
+                return renderAddress(parsed.scheme, pathname);
             };
             const run = entryChain.then(op, op);
             entryChain = run.then(() => undefined, () => undefined);

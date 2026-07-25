@@ -30,6 +30,11 @@ test("renderAddress: known keeps empty-authority :///; url schemes take the auth
     // A folded-authority web address renders the authority form — the first segment IS the host
     // (the run42 sweep caught https:///en.wikipedia.org minted into packets).
     assert.equal(renderAddress("http", "/en.wikipedia.org/wiki/Paris"), "http://en.wikipedia.org/wiki/Paris");
+    assert.equal(
+        renderAddress("https", "/en.wikipedia.org/wiki/Igor_Smirnov_(politician)"),
+        "https://en.wikipedia.org/wiki/Igor_Smirnov_%28politician%29",
+        "model-facing addresses encode target delimiters",
+    );
 });
 
 test("schemeNameOf: https rides http; ws rides wss — two first-class schemes, one package (#473)", () => {

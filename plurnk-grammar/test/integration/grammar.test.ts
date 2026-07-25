@@ -20,6 +20,22 @@ test("ex 4 — bare READ, empty body", () => {
     assert.equal(statementsOf("<<READ(https://www.britannica.com/biography/Donald-Rumsfeld)::READ").length, 1);
 });
 
+test("#607: balanced parentheses are ordinary URL target content", () => {
+    const source = "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)):#spouse|wife|married|Zhannetta|Lotnik#i:READ";
+    const result = PlurnkParser.parseStatements(source);
+    assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
+    const item = result.items.find((candidate) => candidate.kind === "statement");
+    if (item?.kind !== "statement" || item.statement.op !== "READ") assert.fail("expected READ");
+    assert.equal(item.statement.target?.raw, "https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)");
+});
+
+test("#607: unmatched target parentheses require percent-encoding", () => {
+    assert.ok(errorsOf("<<READ(https://example.test/a)b)::READ").length > 0);
+    assert.ok(errorsOf("<<READ(https://example.test/a(b)::READ").length > 0);
+    assert.equal(errorsOf("<<READ(https://example.test/a%28b)::READ").length, 0);
+    assert.equal(errorsOf("<<READ(https://example.test/a%29b)::READ").length, 0);
+});
+
 test("ex 12 — EDIT with empty body (clear)", () => {
     assert.equal(statementsOf("<<EDIT(known://countries/france/capital)::EDIT").length, 1);
 });

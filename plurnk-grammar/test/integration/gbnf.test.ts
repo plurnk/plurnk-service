@@ -667,10 +667,14 @@ test("GBNF: path-name regex target may contain `)` (groups derive via the #…# 
     // The `#…#` fences bound the regex, so a grouped alternation derives under GBNF now.
     assert.equal(derives("statement", "<<FIND(#(draft|final)/.*#i)::FIND"), true);
     assert.equal(derives("statement", "<<FIND(#a(b)c#)::FIND"), true);
-    // plain (non-`#`) targets are unaffected — still the opaque inner blob
+    // Plain targets use the canonical encoded spelling. ANTLR accepts balanced
+    // raw parentheses, but GBNF is a narrow generation rail, not ANTLR Jr.
     assert.equal(derives("statement", "<<FIND(worker:///**)::FIND"), true);
-    // a literal `)` outside a `#…#` regex is still NOT derivable (delimiter; percent-encode)
+    assert.equal(derives("statement", "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_(politician))::READ"), false);
+    assert.equal(derives("statement", "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_%28politician%29)::READ"), true);
+    // Unbalanced delimiters are still not derivable; percent-encode those.
     assert.equal(derives("statement", "<<FIND(a)b)::FIND"), false);
+    assert.equal(derives("statement", "<<FIND(a(b)::FIND"), false);
     // `<` in a path stays excluded (encode `%3C`) — strict-generate over ANTLR's tolerance
     assert.equal(derives("statement", "<<FIND(a<b)::FIND"), false);
 });
