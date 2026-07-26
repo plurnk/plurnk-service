@@ -50,3 +50,24 @@ test("inject with MATCHING or ABSENT flags folds into the live loop untouched (#
         } finally { ws.close(); }
     });
 });
+
+test("inject cannot silently replace a live loop's durable maxTurns ceiling", async () => {
+    await withDaemon(heldLoopMock(), async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "max-turns-conflict" });
+            const proposals = subscribeNotifications(ws, "loop/proposal");
+            await rpcCall(ws, 2, "loop.run", { prompt: "start working", maxTurns: 5 });
+            await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
+
+            const matching = await rpcCall(ws, 3, "loop.run", { prompt: "same ceiling", maxTurns: 5 });
+            assert.equal((matching.result as { action: string }).action, "injected_next_turn");
+
+            const conflicted = await rpcCall(ws, 4, "loop.run", { prompt: "different ceiling", maxTurns: 6 });
+            assert.ok(conflicted.error, "the ceiling-changing fold is refused");
+            assert.match(conflicted.error!.message, /maxTurns is loop-scoped and immutable/);
+        } finally {
+            ws.close();
+        }
+    });
+});

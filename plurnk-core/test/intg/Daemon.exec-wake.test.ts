@@ -239,6 +239,45 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
     });
 });
 
+test("wake-on-completion preserves the durable loop's cumulative maxTurns ceiling", async () => {
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl("echo ceiling")),
+            mockResponse("<<SEND[200]:must not receive a second model turn:SEND"),
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-max-turns" });
+            const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
+            const accepted = await rpcCall(ws, 2, "loop.run", {
+                prompt: "run once, park, and exhaust the durable loop ceiling",
+                flags: { auto: true },
+                maxTurns: 1,
+            });
+            const loopId = (accepted.result as { loopId: number }).loopId;
+
+            const seen = await waitFor(
+                () => terminatedEvents() as Array<{
+                    loopId: number; finalStatus: number; hitMaxTurns: boolean; turnIds: number[];
+                }>,
+                (events) => events.some((event) => event.loopId === loopId),
+                { timeoutMs: 6000 },
+            );
+            const terminal = seen.find((event) => event.loopId === loopId);
+            assert.equal(terminal?.finalStatus, 429);
+            assert.equal(terminal?.hitMaxTurns, true);
+            assert.equal(terminal?.turnIds.length, 1, "the pre-park turn counts against the same durable ceiling");
+            assert.equal(mock.remaining, 1, "resume terminates before asking the provider for a second turn");
+        } finally {
+            ws.close();
+        }
+    });
+});
+
 test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op-active-loop)", async () => {
     // Loop emits exec + a SEND[102] continuation per turn — the loop
     // stays active across multiple turns. The exec finishes mid-loop;

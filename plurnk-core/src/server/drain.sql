@@ -4,8 +4,8 @@
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, provider_spec)
-VALUES ($worker_id, $sequence, 100, $prompt, $provider_spec)
+INSERT INTO loops (worker_id, sequence, status, prompt, provider_spec, max_turns)
+VALUES ($worker_id, $sequence, 100, $prompt, $provider_spec, $max_turns)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
@@ -20,7 +20,10 @@ WHERE id = (
     ORDER BY sequence ASC
     LIMIT 1
 )
-RETURNING id, sequence, prompt, flags;
+RETURNING id, sequence, prompt, flags, max_turns;
+
+-- PREP: drain_get_loop_max_turns
+SELECT max_turns FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_current_loop_for_worker
 -- The worker's current NON-TERMINAL loop — active (102) or parked (202). At most one per worker

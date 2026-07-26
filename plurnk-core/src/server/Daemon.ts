@@ -252,7 +252,7 @@ export default class Daemon {
         const { action, loopId, turnSeq } = await this.inject({
             ...rest,
             ...(flags !== undefined ? { flags } : {}),
-            ...(maxTurns >= 0 ? { maxTurns } : {}),
+            maxTurns,
             providerSpec: selection,
             systemPrompt,
         });
@@ -306,6 +306,15 @@ export default class Daemon {
                 + `requested '${requested.alias}' (${requested.provider}/${requested.model}). `
                 + "Cancel or conclude the loop before hot-swapping models.",
             );
+        }
+    }
+
+    async #assertLoopMaxTurns(loopId: number, requested: number | undefined): Promise<void> {
+        if (requested === undefined) return;
+        const durable = await this.#db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: loopId });
+        if (durable === undefined) throw new Error(`inject: loop ${loopId} has no durable turn ceiling`);
+        if (durable.max_turns !== requested) {
+            throw new Error(`inject: the prompt would fold into loop ${loopId} with maxTurns ${durable.max_turns}, not requested ${requested} — maxTurns is loop-scoped and immutable; cancel or conclude the loop before opening one with a different ceiling`);
         }
     }
 
@@ -638,7 +647,6 @@ export default class Daemon {
         await this.#db.recovery_resume_unblocked_parks.run({});
 
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-        const maxTurns = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50");
         const queued = await this.#db.recovery_queued_workers.all<{
             worker_id: number;
             workspace_id: number;
@@ -648,7 +656,6 @@ export default class Daemon {
                 workspaceId: row.workspace_id,
                 workerId: row.worker_id,
                 systemPrompt,
-                maxTurns,
             });
             started?.drainPromise.catch((err: unknown) => {
                 console.error(`recovered drain failed for worker ${row.worker_id}:`, err);
@@ -778,7 +785,10 @@ export default class Daemon {
         if (this.#activeDrains.has(workerId)) {
             await this.#assertFoldPosture(workerId, args.flags); // #368 — a fold never silently discards intent
             const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
-            if (active !== undefined) await this.#assertLoopProvider(active.id, args.providerSpec);
+            if (active !== undefined) {
+                await this.#assertLoopProvider(active.id, args.providerSpec);
+                await this.#assertLoopMaxTurns(active.id, args.maxTurns);
+            }
             const result = await this.#engine.inject(workerId, prompt);
             if (result !== null) {
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq };
@@ -795,11 +805,11 @@ export default class Daemon {
             if (slept !== undefined) {
                 await this.#assertFoldPosture(workerId, args.flags, slept.id); // #368 — the resume path drops nothing silently either
                 await this.#assertLoopProvider(slept.id, args.providerSpec);
+                await this.#assertLoopMaxTurns(slept.id, args.maxTurns);
                 const injected = await this.#engine.inject(workerId, prompt);
                 await this.#lifecycle.wake(slept.id);
                 const started = await this.#ensureDrain({
                     workspaceId, workerId, systemPrompt: args.systemPrompt,
-                    maxTurns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
                 });
                 return { action: "injected_next_turn", loopId: slept.id, ...(injected?.turnSeq !== undefined ? { turnSeq: injected.turnSeq } : {}), ...(started ?? {}) };
             }
@@ -811,6 +821,7 @@ export default class Daemon {
         const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
             worker_id: workerId, sequence: seqRow.next, prompt,
             provider_spec: JSON.stringify(args.providerSpec),
+            max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
         });
         if (loopRow === undefined) throw new Error("inject: loop enqueue returned no row");
         const loopId = loopRow.id;
@@ -837,7 +848,6 @@ export default class Daemon {
         // keys its fast-path response on that.
         const started = await this.#ensureDrain({
             workspaceId, workerId, systemPrompt: args.systemPrompt,
-            maxTurns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
         });
         return { action: "enqueued_new_loop", loopId, ...(started ?? {}) };
     }
@@ -857,12 +867,12 @@ export default class Daemon {
      */
     #startDrain(opts: {
         workspaceId: number; workerId: number;
-        systemPrompt: string; maxTurns: number;
+        systemPrompt: string;
     }): {
         firstLoopPromise: Promise<DrainLoopResult>;
         drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
     } {
-        const { workspaceId, workerId, systemPrompt, maxTurns } = opts;
+        const { workspaceId, workerId, systemPrompt } = opts;
         // The drain runs under the worker's cancellation scope (shared with the
         // execs its loops spawn), so loop.cancel/shutdown abort it as a unit.
         const controller = this.#workerSignal(workerId);
@@ -878,7 +888,7 @@ export default class Daemon {
         let firstSettled = false;
 
         const claim = () => this.#db.drain_claim_next_loop.get<{
-            id: number; sequence: number; prompt: string;
+            id: number; sequence: number; prompt: string; max_turns: number;
         }>({ worker_id: workerId });
 
         const drainPromise = (async () => {
@@ -919,7 +929,7 @@ export default class Daemon {
                         })().catch((e: unknown) => console.error("log/entry broadcast failed:", e instanceof Error ? e.message : String(e)));
                     };
                     const result = await this.#engine.runLoop({
-                        provider, workspaceId, workerId, loopId: loopRow.id, maxTurns,
+                        provider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
                         messages: [
                             { role: "system", content: systemPrompt },
                             { role: "user", content: loopRow.prompt },
@@ -1109,7 +1119,7 @@ export default class Daemon {
     // strands on a cancel/resume race (I6 no-lost-loop). Otherwise start one.
     #ensureDrain(opts: {
         workspaceId: number; workerId: number;
-        systemPrompt: string; maxTurns: number;
+        systemPrompt: string;
     }): Promise<{
         firstLoopPromise: Promise<DrainLoopResult>;
         drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
@@ -1138,6 +1148,8 @@ export default class Daemon {
         const fresh = await this.#db.drain_enqueue_loop.get<{ id: number }>({
             worker_id: workerId, sequence: seqRow.next, prompt: orphan.body,
             provider_spec: orphan.provider_spec,
+            max_turns: (await this.#db.drain_get_loop_max_turns.get<{ max_turns: number }>({ loop_id: endedLoopId }))?.max_turns
+                ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
         });
         if (fresh === undefined) throw new Error("reconcileOrphanedWake: enqueue returned no row");
         if (orphan.flags !== null) {
@@ -1284,7 +1296,7 @@ export default class Daemon {
                 await this.#lifecycle.wake(slept.id);
                 const started = await this.#ensureDrain({
                     workspaceId: payload.workspaceId, workerId: payload.workerId,
-                    systemPrompt, maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
+                    systemPrompt,
                 });
                 this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
                     ...payload, wakeAction: "resumed-loop", wakeLoopId: slept.id,
@@ -1386,7 +1398,6 @@ export default class Daemon {
         await this.#lifecycle.wake(slept.id);
         const started = await this.#ensureDrain({
             workspaceId, workerId, systemPrompt,
-            maxTurns: Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
         });
         started?.drainPromise?.catch((err: unknown) => {
             console.error("wake-parked resume drain failed:", err instanceof Error ? err.message : String(err));

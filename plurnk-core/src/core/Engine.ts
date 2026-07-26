@@ -512,7 +512,10 @@ export default class Engine {
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
     }): Promise<{ turnIds: number[]; finalStatus: number; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "loop_timeout" | "external" | null }> {
-        const turnIds: number[] = [];
+        // A 202 park suspends this durable loop and a later wake re-enters runLoop.
+        // Its ceiling therefore counts every prior turn, not merely this process-local
+        // execution segment.
+        const turnIds = await this.#lifecycle.turnIds(loopId);
         const suddenDeathThreshold = maxTurns - maxStrikes;
 
         // Per-loop AbortController for scheme-side cancellation propagation.

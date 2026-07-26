@@ -30,6 +30,7 @@ const enqueueLoop = async (
         sequence,
         prompt,
         provider_spec: JSON.stringify(providerSpec),
+        max_turns: 50,
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
     return row.id;
