@@ -1,6 +1,7 @@
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
 import TurndownService from "turndown";
+import { wrapMarkdown } from "./wrapMarkdown.ts";
 
 // The single readable-text projection backing both content() (the content
 // channel) and toText() (the regex/glob query surface + the framework's
@@ -52,7 +53,7 @@ export function htmlToMarkdown(html: string): string | undefined {
         articleHtml = readableBody(document);
     }
 
-    const markdown = turndown.turndown(articleHtml).trim();
+    const markdown = wrapMarkdown(turndown.turndown(articleHtml).trim());
     return markdown.length === 0 ? undefined : markdown;
 }
 

@@ -59,6 +59,14 @@ describe("TextHtml — content channel (SPEC §18)", () => {
         assert.ok(md.includes("[ExampleLink](https://example.com)"), "markdown link present");
     });
 
+    it("wraps projected prose at the configured default", () => {
+        const prose = `${"readable prose ".repeat(30)}`.trim();
+        const md = h.content(`<article><p>${prose}</p></article>`) as string;
+        assert.ok(md.split("\n").length > 1, "the dense source paragraph gained line boundaries");
+        assert.ok(md.split("\n").every((line) => line.length <= 100), "ordinary prose respects the 100-column floor");
+        assert.equal(md.replaceAll("\n", " "), prose);
+    });
+
     it("falls back to body markdown for a non-article fragment (<form>)", () => {
         const md = h.content("<form><h2>Sign up</h2><p>Enter your details below.</p></form>");
         assert.equal(typeof md, "string");

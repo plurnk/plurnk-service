@@ -40,11 +40,12 @@
     },
     "files": [
         "dist/**/*",
+        ".env.defaults",
         "README.md"
     ],
     "scripts": {
         "test:lint": "tsc --noEmit",
-        "test:unit": "node --conditions=plurnk-dev --test src/**/*.test.ts",
+        "test:unit": "node --conditions=plurnk-dev --env-file=.env.defaults --test src/**/*.test.ts",
         "test": "npm run test:lint && npm run test:unit",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:dist",

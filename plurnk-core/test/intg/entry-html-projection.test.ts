@@ -41,6 +41,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
 });
 
 test("a FETCHED html page (via the exec sink) projects: decisive markdown body + raw #html archive", async () => {
+    const rawHtml = `<html><head><script>ads()</script></head><body><h1>Headline</h1><p>${"the body text remains readable ".repeat(20)}</p></body></html>`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
@@ -55,7 +56,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args: { entry?: (p: string, c: string, o: object) => Promise<void>; write: (c: string, x: string, m: string) => void; setState: (c: string, s: string) => void }) => {
-                await args.entry?.("https://news.example/a", "<html><head><script>ads()</script></head><body><h1>Headline</h1><p>the body text</p></body></html>", { tags: ["q"], mimetype: "text/html" });
+                await args.entry?.("https://news.example/a", rawHtml, { tags: ["q"], mimetype: "text/html" });
                 args.write("results", "[]", "application/json");
                 args.setState("results", "closed");
                 return { status: 200, exitCode: 0 };
@@ -78,7 +79,11 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
         assert.equal(byName.get("body")?.mimetype, "text/markdown", "the decisive body is the projection");
         assert.match(byName.get("body")!.content, /Headline/, "the readable text survives");
         assert.ok(!byName.get("body")!.content.includes("<script>"), "the markup does not");
-        assert.match(byName.get("html")?.content ?? "", /<script>ads\(\)/, "the raw page is archived under #html for xpath");
+        assert.ok(
+            byName.get("body")!.content.split("\n").every((line) => line.length <= 100),
+            "the decisive Markdown projection has bounded prose lines",
+        );
+        assert.equal(byName.get("html")?.content, rawHtml, "the raw #html archive remains byte-for-byte faithful");
         assert.ok(byName.get("body")!.tokens < byName.get("html")!.tokens, "the price is the projection's, not the scaffolding's");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
