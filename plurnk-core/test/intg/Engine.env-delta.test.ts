@@ -79,6 +79,40 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
     }
 });
 
+test("an environment delta preserves typed source attributes for model-facing projection", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `typed-delta-${crypto.randomUUID()}`);
+        const observer = await insertWorker(db, workspaceId);
+        const observerLoop = await insertLoop(db, observer, 1, "go");
+        const plurnk = await insertWorker(db, workspaceId, null, "plurnk");
+        const plurnkLoop = await insertLoop(db, plurnk, 1);
+        const plurnkTurn = await insertTurn(db, plurnkLoop, 1);
+        const eng = makeEngine(db);
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await sleep(2);
+        await db.engine_insert_log_entry.get({
+            worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
+            origin: "plurnk", source: String(observer), op: "EDIT", suffix: "", signal: null,
+            scheme: "https", username: null, password: null, hostname: "example.org", port: null,
+            pathname: "/page", params: null, fragment: null, lineMarker: null,
+            tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 201, span: "1:page" }), mimetype_rx: "application/json",
+            status_rx: 201, tokens: 1, state: "resolved", outcome: null,
+            attrs: JSON.stringify({ kind: "entry_materialized", tags: ["query"] }),
+        });
+
+        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; attrs: string }>({ worker_id: observer });
+        const delta = rows.find((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname === "/page");
+        assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized", tags: ["query"] });
+    } finally {
+        await db.close();
+    }
+});
+
 test("exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
     // Both doors in one place. (Was a stale `unbuilt` todo stub — the voice door IS built: inject,
     // and irc through it, resume parked runs in place, #55.) No third channel — by design.

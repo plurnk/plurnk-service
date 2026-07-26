@@ -208,7 +208,7 @@ WHERE l.worker_id = $worker_id AND t.id != $turn_id;
 -- (origin=plurnk on the reserved 'plurnk' run); excludes this worker's own rows and
 -- other workers' already-materialized deltas (origin=plurnk on a real run). plurnk:///
 -- entries (manifest/prompt/doc) never surface. This is the environment door (§actor-boundary-two-doors); the voice door is inject.
-SELECT le.worker_id, le.scheme, le.pathname, le.rx, le.source
+SELECT le.worker_id, le.scheme, le.pathname, le.rx, le.source, le.attrs
 FROM log_entries le
 JOIN workers r ON r.id = le.worker_id
 WHERE r.workspace_id = $workspace_id
@@ -228,10 +228,10 @@ ORDER BY le.at;
 -- 'file'); rx reuses the originating row's result span (§edit-result-render).
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
-    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded
+    op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx, expanded, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source,
-    'EDIT', $scheme, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0
+    'EDIT', $scheme, $pathname, '', 'text/plain', $rx, 'application/json', 200, 0, $attrs
 );
 
 -- PREP: engine_worker_stream_channels

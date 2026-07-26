@@ -1547,7 +1547,7 @@ export default class Engine {
         const since = boundary?.since ?? null;
         if (since === null) return 0;  // first turn — nothing prior; the model reads current state fresh
         const rows = await this.#db.engine_pull_env_deltas.all<{
-            worker_id: number; scheme: string | null; pathname: string; rx: string; source: string | null;
+            worker_id: number; scheme: string | null; pathname: string; rx: string; source: string | null; attrs: string;
         }>({ workspace_id: workspaceId, worker_id: workerId, since });
         let written = 0;
         for (const r of rows) {
@@ -1555,7 +1555,7 @@ export default class Engine {
             // rx reuses the originating row's result span — the edit as it looked then.
             await this.#db.engine_insert_env_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
-                source: r.source ?? String(r.worker_id), scheme: r.scheme, pathname: r.pathname, rx: r.rx,
+                source: r.source ?? String(r.worker_id), scheme: r.scheme, pathname: r.pathname, rx: r.rx, attrs: r.attrs,
             });
             written++;
         }

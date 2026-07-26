@@ -129,17 +129,20 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         assert.equal(rx.span, "1:wild turkeys are large birds, revised", "rx.span is the DECISIVE stored form (the readable projection), line-numbered — not the raw markup");
 
         // The packet gate (the render the model actually sees): folded by default the meta line
-        // carries the honest OPEN cost — real tokens + lines, `-` marker, no body riding; opened,
-        // the span renders under the fence. Never again a `* {...,"tokens":0}` row hiding a page.
+        // projects the machine-created entry as an ordinary system READ, carrying the honest OPEN
+        // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
         const view = (folded: boolean): object[] => [{
             coordinate: "1/1/2", origin: "plurnk", op: "EDIT", suffix: "", signal: null,
             target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", params: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
-            folded, source: String(workerId), attrs: null,
+            folded, source: String(workerId), attrs: { kind: "entry_materialized", tags: ["turkeys_query"] },
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view(true), countTokens);
-        assert.match(foldedLine, /"display":"folded"/, "a sink EDIT row is folded by default — display:folded, OPENable");
+        assert.match(foldedLine, /"op":"READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
+        assert.match(foldedLine, /"path":"log:\/\/\/1\/1\/2\/READ"/, "the model-facing log handle agrees with the projected operation");
+        assert.doesNotMatch(foldedLine, /"op":"EDIT"/, "the internal storage operation does not leak into model reasoning");
+        assert.match(foldedLine, /"display":"folded"/, "a sink resource row is folded by default — display:folded, OPENable");
         assert.match(foldedLine, /"tokens":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
         assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");

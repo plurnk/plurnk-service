@@ -367,13 +367,24 @@ export default class PacketWire {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
-            const path = PacketWire.#entryPath(coordinate, op);
+            // An executor entry sink is durably journaled as the system EDIT that
+            // created the entry. That storage fact is not the model-facing action:
+            // the resulting resource is ordinary readable state pushed into its
+            // environment. Project it as a folded system READ so the log advertises
+            // the available operation instead of implying that the model or another
+            // agent authored a mutation. The coordinate still resolves the same
+            // underlying row; the typed attrs preserve exact replay/client semantics.
+            const materializedEntry = e.origin === "plurnk" && op === "EDIT"
+                && e.attrs !== null && typeof e.attrs === "object"
+                && (e.attrs as { kind?: unknown }).kind === "entry_materialized";
+            const renderedOp = materializedEntry ? "READ" : op;
+            const path = PacketWire.#entryPath(coordinate, renderedOp);
             if (path !== null) meta.path = path;
             if (typeof e.origin === "string") meta.origin = e.origin;
             // §env-delta: the environment-delta cause (a sibling run or a scheme),
             // rendered when present; absent ⇒ the owning run itself (self).
             if (typeof e.source === "string" && e.source.length > 0) meta.run = e.source;
-            if (op !== null) meta.op = op;
+            if (renderedOp !== null) meta.op = renderedOp;
             if (typeof e.status === "number") meta.status = e.status;
             const target = PacketWire.#renderActionTarget(e.target);
             if (target !== null) meta.target = target;
