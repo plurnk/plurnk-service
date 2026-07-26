@@ -162,6 +162,34 @@ test("instantiateProvider: per-alias knobs scope through to the provider (per-al
     mock.restoreAll();
 });
 
+test("#622: two Fireworks aliases independently select default and priority service tiers", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const env = {
+        ...fullEnv,
+        FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
+        FIREWORKS_API_KEY: "fw",
+        PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
+        PLURNK_PROVIDERS_SERVICE_TIER_fast: "priority",
+        PLURNK_PROVIDERS_SERVICE_TIER_standard: "default",
+    };
+    const imports = async () => ({});
+    const discover = async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() });
+    const fast = await instantiateProvider("fireworks", env, "accounts/fireworks/routers/glm-5p2-fast", imports, discover, undefined, "fast");
+    const standard = await instantiateProvider("fireworks", env, "deepseek-v4-pro", imports, discover, undefined, "standard");
+    await fast.generate({ workerId: "fast-worker", messages: [] });
+    await standard.generate({ workerId: "standard-worker", messages: [] });
+    assert.deepEqual(bodies.map((body) => body.service_tier), ["priority", "default"]);
+    assert.deepEqual(bodies.map((body) => body.model), [
+        "accounts/fireworks/routers/glm-5p2-fast",
+        "accounts/fireworks/models/deepseek-v4-pro",
+    ]);
+    mock.restoreAll();
+});
+
 test("loadActiveProvider: resolves the alias cascade end-to-end via the scan", async () => {
     resetDiscoveryCache();
     const env = { ...fullEnv, PLURNK_MODEL: "opus", PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest" } as NodeJS.ProcessEnv;

@@ -66,6 +66,12 @@ type StandardProviderSpec = {
     // `fireworks/deepseek-v4-pro`). Prepended idempotently to form the wire id,
     // which is ALSO the catalog key (models.dev keys fireworks-ai on the full id).
     modelPrefix?: string;
+    // A fully qualified model namespace that bypasses modelPrefix. Fireworks
+    // uses sibling models/, routers/, and deployments/ resource collections.
+    qualifiedModelPrefix?: string;
+    // Fixed request tiers supported by this provider. An unset knob means the
+    // provider default; configured values are validated and sent every call.
+    serviceTiers?: readonly string[];
     // First-party telemetry forwarding. ONLY the plurnk hosted endpoint sets
     // this — it forwards the consumer's per-turn `attributions` (contributor
     // credit) and `client` (originating frontend) as `Plurnk-Attribution` /
@@ -147,7 +153,11 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
     fireworks: {
         apiKeyVar: "FIREWORKS_API_KEY", apiKeyRequired: true,
         baseUrlVar: "FIREWORKS_BASE_URL", chatPath: "/chat/completions",
-        reasoningStyle: "effort_explicit", modelPrefix: "accounts/fireworks/models/", tokenizerEnvVar: "FIREWORKS_TOKENIZER",
+        reasoningStyle: "effort_explicit",
+        modelPrefix: "accounts/fireworks/models/",
+        qualifiedModelPrefix: "accounts/fireworks/",
+        serviceTiers: ["auto", "default", "flex", "priority"],
+        tokenizerEnvVar: "FIREWORKS_TOKENIZER",
     },
     deepinfra: {
         apiKeyVar: ["DEEPINFRA_API_KEY", "DEEPINFRA_API_TOKEN", "DEEPINFRA_TOKEN"], apiKeyRequired: true,
@@ -409,7 +419,8 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // The on-the-wire model id: a backend-required constant prefix (fireworks)
     // prepended idempotently, so the operator's alias carries only the distinctive
     // tail. This id is what the backend, the probe, AND the catalog key on.
-    const wireModel = spec.modelPrefix !== undefined && !model.startsWith(spec.modelPrefix)
+    const qualified = spec.qualifiedModelPrefix !== undefined && model.startsWith(spec.qualifiedModelPrefix);
+    const wireModel = spec.modelPrefix !== undefined && !qualified && !model.startsWith(spec.modelPrefix)
         ? `${spec.modelPrefix}${model}`
         : model;
 
@@ -436,6 +447,17 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     );
     const url = resolveUrl(spec, env, name, baseUrlOverride);
     const fetchTimeoutMs = parseRequiredInt(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name);
+    const serviceTier = (() => {
+        const raw = env.PLURNK_PROVIDERS_SERVICE_TIER;
+        if (raw === undefined || raw.length === 0) return undefined;
+        if (spec.serviceTiers === undefined) {
+            throw new Error(`${name} provider: PLURNK_PROVIDERS_SERVICE_TIER is not supported`);
+        }
+        if (!spec.serviceTiers.includes(raw)) {
+            throw new Error(`${name} provider: PLURNK_PROVIDERS_SERVICE_TIER must be one of ${spec.serviceTiers.map((tier) => JSON.stringify(tier)).join(", ")} (got "${raw}")`);
+        }
+        return raw;
+    })();
 
     // The probe always runs for probeNctx specs — grammar capability must not
     // hinge on whether the operator pinned PLURNK_PROVIDERS_CONTEXT_WINDOW. For
@@ -599,6 +621,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         firstPartyMetadata: spec.firstPartyMetadata,
         apiKeyRejectedMessage: spec.apiKeyRejectedMessage,
         promptCacheKey: spec.promptCacheKey ?? true, // #518: default-on for standard providers (OpenAI-standard field, 6/6 backends verified accept it); per-spec opt-out below
+        serviceTier,
         balanceMetaKey: spec.balanceMetaKey,
         supportsSlotPinning,
         slotCount,

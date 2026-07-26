@@ -51,6 +51,9 @@ export type OpenAICompatConfig = {
     // false -- a backend that strict-validates unknown fields 400s, so enable only
     // where the field is accepted. Same identity that already drives slot affinity.
     promptCacheKey?: boolean;
+    // Optional provider-configured service tier. Unlike caller sampling, this is
+    // a fixed deployment choice and therefore wins on every request.
+    serviceTier?: string;
     gbnfDebug?: boolean;                        // PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar locally + throw on invalid, but DON'T transport it (run unconstrained); default false
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
@@ -256,6 +259,7 @@ export default class OpenAICompatProvider implements Provider {
     #source: string;
     #grammarStyle: GrammarStyle;
     #promptCacheKey: boolean;
+    #serviceTier: string | undefined;
     #gbnfDebug: boolean;
     #streaming: boolean;
     #firstPartyMetadata: boolean;
@@ -306,6 +310,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#promptCacheKey = config.promptCacheKey ?? false;
+        this.#serviceTier = config.serviceTier;
         this.#gbnfDebug = config.gbnfDebug ?? false;
         this.#streaming = config.streaming ?? true;
         this.#firstPartyMetadata = config.firstPartyMetadata ?? false;
@@ -610,6 +615,7 @@ export default class OpenAICompatProvider implements Provider {
             // the router's per-model tuning must not be overridden by client floors.
             ...(this.#tuningFloors ? { temperature: this.#temperature, ...this.#repetitionPenaltyBody() } : {}),
             ...this.#samplingBody(sampling),
+            ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
             model: this.#model,
             messages,
             ...this.#reasoningBody(),

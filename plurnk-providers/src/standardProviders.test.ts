@@ -884,24 +884,50 @@ test("fireworks: caller GBNF is not transported to the cloud API", async () => {
 
 // — fireworks modelPrefix: the alias carries only the distinctive tail —
 
-const fireworksWireModel = async (alias: string): Promise<string> => {
+const fireworksWireBody = async (model: string, env: NodeJS.ProcessEnv = {}): Promise<Record<string, unknown>> => {
     let body = "";
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } }); }
         return new Response("{}", { status: 200 });
     });
-    const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, alias);
+    const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw", ...env }, model);
     await p!.generate({ workerId: "r", messages: [] });
     mock.restoreAll();
-    return JSON.parse(body).model;
+    return JSON.parse(body) as Record<string, unknown>;
 };
 
 test("fireworks: a bare alias is prefixed with accounts/fireworks/models/ on the wire", async () => {
-    assert.equal(await fireworksWireModel("deepseek-v4-pro"), "accounts/fireworks/models/deepseek-v4-pro");
+    assert.equal((await fireworksWireBody("deepseek-v4-pro")).model, "accounts/fireworks/models/deepseek-v4-pro");
 });
 
-test("fireworks: an already-prefixed id is left unchanged (idempotent prepend)", async () => {
-    assert.equal(await fireworksWireModel("accounts/fireworks/models/deepseek-v4-pro"), "accounts/fireworks/models/deepseek-v4-pro");
+test("fireworks: fully qualified model and router ids are preserved verbatim", async () => {
+    assert.equal((await fireworksWireBody("accounts/fireworks/models/deepseek-v4-pro")).model, "accounts/fireworks/models/deepseek-v4-pro");
+    assert.equal((await fireworksWireBody("accounts/fireworks/routers/glm-5p2-fast")).model, "accounts/fireworks/routers/glm-5p2-fast");
+});
+
+test("fireworks: configured service tier is fixed on the wire and invalid values fail hard", async () => {
+    const body = await fireworksWireBody("deepseek-v4-pro", { PLURNK_PROVIDERS_SERVICE_TIER: "priority" });
+    assert.equal(body.service_tier, "priority");
+    assert.equal((await fireworksWireBody("deepseek-v4-pro", { PLURNK_PROVIDERS_SERVICE_TIER: "flex" })).service_tier, "flex");
+    await assert.rejects(
+        standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw", PLURNK_PROVIDERS_SERVICE_TIER: "urgent" }, "deepseek-v4-pro"),
+        /PLURNK_PROVIDERS_SERVICE_TIER must be one of "auto", "default", "flex", "priority"/,
+    );
+});
+
+test("fireworks: configured tier wins over per-call sampling; unset retains per-call intent", async () => {
+    let bodies: Record<string, unknown>[] = [];
+    mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const fixed = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw", PLURNK_PROVIDERS_SERVICE_TIER: "priority" }, "deepseek-v4-pro");
+    await fixed!.generate({ workerId: "r", messages: [], sampling: { service_tier: "default" } });
+    const flexible = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, "deepseek-v4-pro");
+    await flexible!.generate({ workerId: "r", messages: [], sampling: { service_tier: "priority" } });
+    assert.deepEqual(bodies.map((body) => body.service_tier), ["priority", "priority"]);
+    bodies = [];
+    mock.restoreAll();
 });
 
 test("#518 prompt_cache_key: default-ON for a standard provider (workerId), OFF for anthropic (cache_control)", async () => {
