@@ -57,7 +57,7 @@ interface TurnRow {
     meta: string | null;  // #498 — provider passthrough (timings, railsAttached/railsVerdict); digest consumers need rail truth
 }
 interface LogRow {
-    id: number; turn_id: number; sequence: number;
+    id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
     origin: string; attrs: string;
     op: string; scheme: string | null; hostname: string | null; port: number | null;
     pathname: string | null; fragment: string | null;
@@ -153,7 +153,7 @@ export default class Digest {
                 errLine = `\n    → ${Digest.#summarize(msg, 140)}`;
             }
         }
-        return `  ← ${le.op}[${le.status_rx}] ${target}${state}${outcome}${fail}${errLine}`;
+        return `  ← [${le.origin}] ${le.op}[${le.status_rx}] ${target}${state}${outcome}${fail}${errLine}`;
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but
@@ -183,7 +183,7 @@ export default class Digest {
             const attrs = Digest.#parseJson(first.attrs, {}) as { kind?: unknown };
             const materialized = first.origin === "plurnk" && first.op === "EDIT" && attrs.kind === "entry_materialized";
             if (materialized) {
-                return `  ← materialized entries[${first.status_rx}] ×${count} (seq ${firstSeq}–${lastSeq})`;
+                return `  ← [plurnk] materialized entries[${first.status_rx}] ×${count} (seq ${firstSeq}–${lastSeq})`;
             }
             const line = Digest.#renderOpLine(first);
             return count === 1 ? line : `${line} ×${count} (seq ${firstSeq}–${lastSeq})`;
@@ -390,7 +390,8 @@ export default class Digest {
                 meta: Digest.#parseJson(t.meta ?? "null", null),
             })),
             log_entries: m.logEntries.map((le) => ({
-                id: le.id, turn_id: le.turn_id, sequence: le.sequence,
+                id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
+                turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
                 op: le.op, target: Digest.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,
             })),

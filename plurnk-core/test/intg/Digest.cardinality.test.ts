@@ -11,11 +11,14 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
+    let workerId = 0;
+    let loopId = 0;
+    let turnId = 0;
     try {
         const workspaceId = await insertWorkspace(db, "digest-cardinality");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "amplify");
-        const turnId = await insertTurn(db, loopId, 1, 200);
+        workerId = await insertWorker(db, workspaceId);
+        loopId = await insertLoop(db, workerId, 1, "amplify");
+        turnId = await insertTurn(db, loopId, 1, 200);
         const insert = async (
             sequence: number,
             origin: "model" | "plurnk",
@@ -45,11 +48,26 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
     try {
         Digest.run({ dbPath, digestDir });
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
-        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { log_entries: Array<{ target: string | null }> };
-        assert.match(markdown, /READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
-        assert.match(markdown, /READ\[200\] https:\/\/en\.wikipedia\.org\/wiki\/Paris/);
-        assert.match(markdown, /materialized entries\[200\] ×12 \(seq 51–62\)/);
+        const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
+            log_entries: Array<{
+                worker_id: number; loop_id: number; turn_id: number;
+                origin: string; target: string | null;
+            }>;
+        };
+        assert.match(markdown, /\[model\] READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
+        assert.match(markdown, /\[model\] READ\[200\] https:\/\/en\.wikipedia\.org\/wiki\/Paris/);
+        assert.match(markdown, /\[plurnk\] materialized entries\[200\] ×12 \(seq 51–62\)/);
         assert.equal(json.log_entries.length, 63, "machine-readable evidence remains lossless");
+        assert.deepEqual(
+            json.log_entries[0],
+            {
+                id: 1, worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+                origin: "model", op: "READ", target: "https://example.test/whale",
+                status_rx: 200, state: "resolved", outcome: null,
+            },
+            "JSON preserves the row's actor and lifecycle coordinates",
+        );
+        assert.equal(json.log_entries[50]?.origin, "plurnk", "JSON distinguishes automatic materialization from model actions");
         assert.equal(json.log_entries.at(-1)?.target, "https://en.wikipedia.org/wiki/Paris", "JSON preserves an explicit URL authority");
     } finally {
         await rm(dir, { recursive: true, force: true });
