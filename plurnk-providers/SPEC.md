@@ -204,8 +204,9 @@ Defaults use four evidence states:
 Measured evidence outranks documented evidence when they conflict. A portable
 nonzero tuning default requires measured or documented semantics that actually
 generalize across its scope. Accepted evidence permits transport but never
-justifies a magnitude. `scripts/probe-capabilities.mjs` records acceptance and
-rejection only; it is not an effectiveness benchmark.
+justifies a magnitude. PLURNK does not maintain a provider-characterization
+harness; upstream provider contracts and focused regression specimens own that
+knowledge.
 
 Each provider's `fromEnv` reads these:
 
