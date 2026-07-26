@@ -16,6 +16,7 @@ import { scopeEnvToAlias } from "./env.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
 import { contextWindowFromEnv } from "./env.ts";
+import { withProviderDefaults } from "./defaults.ts";
 
 // Two injectable seams, both defaulting to production behavior and never passed
 // by real callers: the module importer (tests exercise the bespoke path without
@@ -45,6 +46,7 @@ export const instantiateProvider = async (
     baseUrl?: string, // per-alias endpoint override (PLURNK_BASEURL_<alias>); threaded to both tiers
     alias?: string, // the alias this instantiation serves — scopes PLURNK_PROVIDERS_<KNOB>_<alias> overrides
 ): Promise<Provider> => {
+    env = withProviderDefaults(env);
     // Per-alias knob scoping overlays _<alias>-suffixed knobs onto their bare
     // names before any resolver reads them.
     if (alias !== undefined) env = scopeEnvToAlias(env, alias);

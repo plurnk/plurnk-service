@@ -171,6 +171,33 @@ test("instantiateProvider: per-alias knobs scope through to the provider (per-al
     mock.restoreAll();
 });
 
+test("#633: public construction applies the package floor to a sparse consumer environment", async () => {
+    const provider = await instantiateProvider(
+        "fireworks",
+        { FIREWORKS_API_KEY: "fw" },
+        "deepseek-v4-pro",
+        async () => ({}),
+        mapOf({}),
+    );
+    assert.equal(provider.model, "accounts/fireworks/models/deepseek-v4-pro");
+});
+
+test("#633: an explicit malformed operator override still fails at its owning contract", async () => {
+    await assert.rejects(
+        () => instantiateProvider(
+            "fireworks",
+            {
+                FIREWORKS_API_KEY: "fw",
+                PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "malformed",
+            },
+            "deepseek-v4-pro",
+            async () => ({}),
+            mapOf({}),
+        ),
+        /fireworks provider: PLURNK_PROVIDERS_PROMPT_CACHE_KEY must be "0" or "1"/,
+    );
+});
+
 test("#622: two Fireworks aliases independently select default and priority service tiers", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {

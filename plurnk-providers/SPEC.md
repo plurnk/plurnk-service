@@ -116,6 +116,12 @@ Every operational value is an environment knob documented in `.env.defaults`.
 There are no hidden tuning constants. Every `PLURNK_PROVIDERS_*` knob may be
 scoped to an alias by appending `_<alias>`; the scoped value wins.
 
+The public Node provider registry applies this package's committed
+`.env.defaults` as a set-if-unset operational floor. Consumers pass their
+operator environment, not a manually composed copy of the provider floor.
+Explicit operator values always win and invalid explicit values fail at the
+knob's owning contract.
+
 The universal groups are:
 
 - reasoning activation and optional explicit budget;
