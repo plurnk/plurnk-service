@@ -316,10 +316,27 @@ test("READ SSE: an event split across network chunks reassembles", async () => {
 
 test("READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
     const { ctx, inspect } = makeCtx();
-    await withFetch(mockFetch(200, "OK", ["data: crlf\r\n\r\n"], { "content-type": "text/event-stream" }), async () => {
+    await withFetch(mockFetch(200, "OK", ["data: crlf\r", "\n\r", "\n"], { "content-type": "text/event-stream" }), async () => {
         await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
     });
     assert.deepEqual(sseBody(inspect().chunks), ["crlf\n"]);
+});
+
+test("READ SSE: an oversized incomplete event fails the remote stream", async () => {
+    const previous = process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS;
+    process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS = "8";
+    try {
+        const { ctx, inspect } = makeCtx();
+        await withFetch(mockFetch(200, "OK", ["data: this event never terminates"], { "content-type": "text/event-stream" }), async () => {
+            const result = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+            assert.equal(result.status, 502);
+            assert.match(result.error?.message ?? "", /max buffer size of 8/);
+        });
+        assert.equal(inspect().closed?.reason, "error");
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS;
+        else process.env.PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS = previous;
+    }
 });
 
 test("READ: rendered HTML archives the DOM while body carries the model-facing projection", async () => {

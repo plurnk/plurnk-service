@@ -19,9 +19,10 @@
 // The SEND `[code]` is loop disposition (102/200/…), never the HTTP status —
 // the real 2xx/4xx comes back in the response `header`/`body` channels.
 //
-// `fetch` is the scheme's purpose. No runtime dependencies: `fetch` and
-// `AbortController` are Node built-ins.
+// `fetch` is the scheme's purpose. Node owns acquisition; eventsource-parser
+// owns the WHATWG event-stream framing used by SSE responses.
 
+import { createParser, type ParseError } from "eventsource-parser";
 import type {
     SchemeCtx,
     SubscriptionHandle,
@@ -365,44 +366,45 @@ export default class Http implements SchemeHandler {
         await ctx.subscriptions.notifyChunk(HEADER, lines.join("\n"), "text/plain");
     }
 
-    // Drain an SSE body, dispatching one BODY chunk per event — the event's
-    // `data` field(s) joined by \n, framing stripped (SPEC §sse). Events split on
-    // a blank line; CRs normalized so \r\n frames parse. Comment lines (`:`) and
-    // non-`data` fields (event/id/retry) drop day-one — payloads, not the wire.
-    // No reconnection day-one (Last-Event-ID is a schemes-http follow-up).
+    // Drain an SSE body through the standard streaming parser and dispatch one
+    // BODY chunk per event. event/id/retry/comments remain transport metadata:
+    // this projection publishes data, not the wire, and does not reconnect.
     static async #streamEvents(ctx: SchemeCtx, response: Response): Promise<PassthroughResult> {
         if (response.body === null) {
             await ctx.subscriptions.close("done", "SSE stream; empty body");
             return { shape: "passthrough", status: 102 };
         }
         const decoder = new TextDecoder();
-        let buffer = "";
+        const pending: string[] = [];
+        let fatal: ParseError | null = null;
         let events = 0;
-        for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
-            buffer += decoder.decode(chunk, { stream: true }).replace(/\r\n?/g, "\n");
-            let sep: number;
-            while ((sep = buffer.indexOf("\n\n")) !== -1) {
-                const data = Http.#eventData(buffer.slice(0, sep));
-                buffer = buffer.slice(sep + 2);
-                if (data === null) continue;
+        const parser = createParser({
+            maxBufferSize: requireNumEnv("PLURNK_SCHEMES_HTTP_SSE_MAX_BUFFER_CHARS"),
+            onEvent: ({ data }) => pending.push(data),
+            // Unknown fields and invalid retry hints are irrelevant to this
+            // non-reconnecting data projection. Buffer exhaustion is fatal.
+            onError: (error) => {
+                if (error.type === "max-buffer-size-exceeded") fatal = error;
+            },
+        });
+        const publish = async () => {
+            for (const data of pending.splice(0)) {
                 events += 1;
                 await ctx.subscriptions.notifyChunk(BODY, `${data}\n`, "text/plain");
             }
+        };
+        for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
+            parser.feed(decoder.decode(chunk, { stream: true }));
+            if (fatal !== null) throw fatal;
+            await publish();
         }
+        const tail = decoder.decode();
+        if (tail.length > 0) parser.feed(tail);
+        parser.reset({ consume: true });
+        if (fatal !== null) throw fatal;
+        await publish();
         await ctx.subscriptions.close("done", `SSE stream; ${events} events`);
         return { shape: "passthrough", status: 102 };
-    }
-
-    // One SSE frame → its `data` payload (multiple `data:` lines joined by \n,
-    // one optional leading space after the colon stripped), or null when the
-    // frame carried no `data` field at all.
-    static #eventData(frame: string): string | null {
-        const data: string[] = [];
-        for (const line of frame.split("\n")) {
-            if (!line.startsWith("data:")) continue;
-            data.push(line.slice(5).replace(/^ /, ""));
-        }
-        return data.length > 0 ? data.join("\n") : null;
     }
 
     // Reconstruct the absolute URL from the parsed UrlPath. `raw` is the
