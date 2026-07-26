@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-agui",
-    "version": "1.3.10",
+    "version": "1.3.11",
     "description": "AG-UI HTTP and SSE interface for the PLURNK daemon",
     "type": "module",
     "license": "MIT",
@@ -59,7 +59,7 @@
     },
     "dependencies": {
         "@ag-ui/core": "^0.0.57",
-        "@plurnk/plurnk-execs-mcp": "1.3.10",
-        "@plurnk/plurnk-grammar": "1.3.10"
+        "@plurnk/plurnk-execs-mcp": "1.3.11",
+        "@plurnk/plurnk-grammar": "1.3.11"
     }
 }

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-search",
-    "version": "1.3.10",
+    "version": "1.3.11",
     "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches search/news/images/… runtime tags to a SearXNG instance.",
     "keywords": [
         "plurnk",
@@ -97,6 +97,6 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.3.10"
+        "@plurnk/plurnk-execs": "^1.3.11"
     }
 }
