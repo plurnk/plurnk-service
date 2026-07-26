@@ -24,8 +24,9 @@ interface FakeConfig {
 const timeoutError = () => Object.assign(new Error("Timeout 30000ms exceeded"), { name: "TimeoutError" });
 
 const makeEngine = (cfg: FakeConfig = {}) => {
-    const calls = { newContext: 0, newPage: 0, pageClose: 0, contextClose: 0, launch: 0, connect: 0 };
-    const launchOptions: Array<{ executablePath?: string }> = [];
+    const calls = { newContext: 0, newPage: 0, pageClose: 0, contextClose: 0, launch: 0, connect: 0, connectOverCDP: 0 };
+    const launchOptions: Array<{ channel?: string; executablePath?: string; headless?: boolean; chromiumSandbox?: boolean; timeout?: number }> = [];
+    const endpoints: string[] = [];
     const contextOptions: Array<{ isMobile?: boolean; userAgent?: string } | undefined> = [];
     const makePage = () => ({
         async goto() {
@@ -46,10 +47,27 @@ const makeEngine = (cfg: FakeConfig = {}) => {
         async close() {},
     });
     const engine = {
-        async launch(options: { executablePath?: string }) { calls.launch++; launchOptions.push(options); return makeBrowser(); },
-        async connectOverCDP() { calls.connect++; return makeBrowser(); },
+        async launch(options: { channel?: string; executablePath?: string }) { calls.launch++; launchOptions.push(options); return makeBrowser(); },
+        async connect(endpoint: string) { calls.connect++; endpoints.push(endpoint); return makeBrowser(); },
+        async connectOverCDP(endpoint: string) { calls.connectOverCDP++; endpoints.push(endpoint); return makeBrowser(); },
     } as unknown as ChromiumEngine;
-    return { engine, calls, contextOptions, launchOptions };
+    return { engine, calls, contextOptions, launchOptions, endpoints };
+};
+
+const withEnv = async (values: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> => {
+    const previous = new Map(Object.keys(values).map((key) => [key, process.env[key]]));
+    for (const [key, value] of Object.entries(values)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+    try {
+        await fn();
+    } finally {
+        for (const [key, value] of previous) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
 };
 
 test("render: returns status, headers, and the serialized DOM", async () => {
@@ -63,77 +81,108 @@ test("render: returns status, headers, and the serialized DOM", async () => {
     await browser.close();
 });
 
-test("render: launches locally (no CDP endpoint) and serializes", async () => {
+test("render: launches the bundled browser by default and serializes", async () => {
     const { engine, calls } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
     await browser.render("https://example.com/", { workerId: 1 });
     assert.equal(calls.launch, 1);
     assert.equal(calls.connect, 0);
+    assert.equal(calls.connectOverCDP, 0);
     await browser.close();
 });
 
-test("ready: verifies the managed browser before the first render", async () => {
-    const { engine, calls } = makeEngine();
+test("ready: verifies launch before the first render and maps Playwright options", async () => {
+    const { engine, calls, launchOptions } = makeEngine();
     const browser = new Browser(() => Promise.resolve(engine));
-    assert.equal(await browser.ready(), "managed");
+    assert.equal(await browser.ready(), "launch");
     assert.equal(calls.launch, 1);
+    assert.deepEqual(launchOptions[0], {
+        headless: true,
+        chromiumSandbox: false,
+        timeout: 30000,
+        args: [],
+    });
     await browser.close();
 });
 
-test("ready: remote mode requires and verifies its CDP endpoint", async () => {
-    const previous = process.env.PLURNK_SCHEMES_HTTP_BROWSER;
-    const previousEndpoint = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS;
-    process.env.PLURNK_SCHEMES_HTTP_BROWSER = "remote";
-    process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS = "http://browser.test:9222";
-    try {
-        const { engine, calls } = makeEngine();
+test("ready: connect uses a Playwright protocol endpoint", async () => {
+    await withEnv({
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "connect",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT: "ws://browser.test/playwright",
+    }, async () => {
+        const { engine, calls, endpoints } = makeEngine();
         const browser = new Browser(() => Promise.resolve(engine));
-        assert.equal(await browser.ready(), "remote");
+        assert.equal(await browser.ready(), "connect");
         assert.equal(calls.connect, 1);
+        assert.equal(calls.connectOverCDP, 0);
         assert.equal(calls.launch, 0);
+        assert.deepEqual(endpoints, ["ws://browser.test/playwright"]);
         await browser.close();
-    } finally {
-        if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_BROWSER;
-        else process.env.PLURNK_SCHEMES_HTTP_BROWSER = previous;
-        if (previousEndpoint === undefined) delete process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS;
-        else process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS = previousEndpoint;
-    }
+    });
 });
 
-test("ready: system mode launches only the configured executable", async () => {
-    const previous = process.env.PLURNK_SCHEMES_HTTP_BROWSER;
-    const previousPath = process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH;
-    process.env.PLURNK_SCHEMES_HTTP_BROWSER = "system";
-    process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH = "/opt/chromium";
-    try {
+test("ready: connectOverCDP attaches to a running Chromium browser", async () => {
+    await withEnv({
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "connectOverCDP",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT: "http://browser.test:9222",
+    }, async () => {
+        const { engine, calls, endpoints } = makeEngine();
+        const browser = new Browser(() => Promise.resolve(engine));
+        assert.equal(await browser.ready(), "connectOverCDP");
+        assert.equal(calls.connect, 0);
+        assert.equal(calls.connectOverCDP, 1);
+        assert.equal(calls.launch, 0);
+        assert.deepEqual(endpoints, ["http://browser.test:9222"]);
+        await browser.close();
+    });
+});
+
+test("ready: launch supports a regular browser channel", async () => {
+    await withEnv({ PLURNK_SCHEMES_HTTP_PLAYWRIGHT_CHANNEL: "chrome" }, async () => {
+        const { engine, launchOptions } = makeEngine();
+        const browser = new Browser(() => Promise.resolve(engine));
+        assert.equal(await browser.ready(), "launch");
+        assert.equal(launchOptions[0]?.channel, "chrome");
+        await browser.close();
+    });
+});
+
+test("ready: launch supports an exact executable path", async () => {
+    await withEnv({ PLURNK_SCHEMES_HTTP_PLAYWRIGHT_EXECUTABLE_PATH: "/opt/chromium" }, async () => {
         const { engine, calls, launchOptions } = makeEngine();
         const browser = new Browser(() => Promise.resolve(engine));
-        assert.equal(await browser.ready(), "system");
+        assert.equal(await browser.ready(), "launch");
         assert.equal(calls.launch, 1);
         assert.equal(launchOptions[0]?.executablePath, "/opt/chromium");
         await browser.close();
-    } finally {
-        if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_BROWSER;
-        else process.env.PLURNK_SCHEMES_HTTP_BROWSER = previous;
-        if (previousPath === undefined) delete process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH;
-        else process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH = previousPath;
-    }
+    });
 });
 
-test("ready: disabled mode performs no browser work and render fails clearly", async () => {
-    const previous = process.env.PLURNK_SCHEMES_HTTP_BROWSER;
-    process.env.PLURNK_SCHEMES_HTTP_BROWSER = "disabled";
-    try {
+test("ready: disabled performs no browser work and render fails clearly", async () => {
+    await withEnv({
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_TIMEOUT: undefined,
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_HEADLESS: undefined,
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_CHROMIUM_SANDBOX: undefined,
+    }, async () => {
         const { engine, calls } = makeEngine();
         const browser = new Browser(() => Promise.resolve(engine));
         assert.equal(await browser.ready(), "disabled");
         assert.equal(calls.launch, 0);
         await assert.rejects(browser.render("https://example.com/", { workerId: 1 }), /HTML rendering is disabled/);
         await browser.close();
-    } finally {
-        if (previous === undefined) delete process.env.PLURNK_SCHEMES_HTTP_BROWSER;
-        else process.env.PLURNK_SCHEMES_HTTP_BROWSER = previous;
-    }
+    });
+});
+
+test("configuration rejects incompatible Playwright selections", async () => {
+    await withEnv({
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "launch",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_CHANNEL: "chrome",
+        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_EXECUTABLE_PATH: "/opt/chromium",
+    }, async () => {
+        const { engine } = makeEngine();
+        await assert.rejects(new Browser(() => Promise.resolve(engine)).ready(), /mutually exclusive/);
+    });
 });
 
 test("salvage: networkidle timeout with substantive body text → returns html, status 200", async () => {

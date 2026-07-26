@@ -52,12 +52,24 @@ interface PwBrowser {
     on(event: "disconnected", cb: () => void): void;
     close(): Promise<void>;
 }
+interface PwLaunchOptions {
+    headless: boolean;
+    chromiumSandbox: boolean;
+    timeout: number;
+    args: ReadonlyArray<string>;
+    channel?: string;
+    executablePath?: string;
+}
+interface PwConnectOptions {
+    timeout: number;
+}
 export interface ChromiumEngine {
-    launch(opts: { headless: boolean; args: ReadonlyArray<string>; executablePath?: string }): Promise<PwBrowser>;
-    connectOverCDP(endpoint: string): Promise<PwBrowser>;
+    launch(opts: PwLaunchOptions): Promise<PwBrowser>;
+    connect(endpoint: string, opts: PwConnectOptions): Promise<PwBrowser>;
+    connectOverCDP(endpoint: string, opts: PwConnectOptions): Promise<PwBrowser>;
 }
 export type ChromiumFactory = () => Promise<ChromiumEngine>;
-export type BrowserMode = "managed" | "remote" | "system" | "disabled";
+export type PlaywrightMethod = "launch" | "connect" | "connectOverCDP" | "disabled";
 
 // `document` exists only inside page.evaluate (the browser context, where the
 // callback is serialized and run). Declared narrowly so the salvage probe
@@ -119,20 +131,59 @@ const defaultFactory: ChromiumFactory = async () => {
     return (await import("playwright")).chromium as unknown as ChromiumEngine;
 };
 
-const browserConfig = (): { mode: BrowserMode; endpoint?: string; executablePath?: string } => {
-    const raw = process.env.PLURNK_SCHEMES_HTTP_BROWSER;
-    if (raw === undefined) throw new Error("Browser: required env PLURNK_SCHEMES_HTTP_BROWSER is unset — see .env.defaults");
-    if (!["managed", "remote", "system", "disabled"].includes(raw)) {
-        throw new Error(`Browser: PLURNK_SCHEMES_HTTP_BROWSER=${raw} must be managed, remote, system, or disabled`);
+const requireBoolEnv = (key: string): boolean => {
+    const raw = process.env[key];
+    if (raw !== "0" && raw !== "1") throw new Error(`Browser: required env ${key} must be 0 or 1 — see .env.defaults`);
+    return raw === "1";
+};
+
+type BrowserConfig =
+    | { method: "disabled" }
+    | { method: "launch"; options: PwLaunchOptions }
+    | { method: "connect"; endpoint: string; options: PwConnectOptions }
+    | { method: "connectOverCDP"; endpoint: string; options: PwConnectOptions };
+
+const browserConfig = (): BrowserConfig => {
+    const raw = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD;
+    if (raw === undefined) throw new Error("Browser: required env PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD is unset — see .env.defaults");
+    if (!["launch", "connect", "connectOverCDP", "disabled"].includes(raw)) {
+        throw new Error(`Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD=${raw} must be launch, connect, connectOverCDP, or disabled`);
     }
-    const mode = raw as BrowserMode;
-    const endpoint = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS;
-    const executablePath = process.env.PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH;
-    if (mode === "remote" && !endpoint) throw new Error("Browser: remote mode requires PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS");
-    if (mode === "system" && !executablePath) throw new Error("Browser: system mode requires PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH");
-    if (mode !== "remote" && endpoint) throw new Error(`Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_WS is incompatible with ${mode} mode`);
-    if (mode !== "system" && executablePath) throw new Error(`Browser: PLURNK_SCHEMES_HTTP_EXECUTABLE_PATH is incompatible with ${mode} mode`);
-    return { mode, ...(endpoint ? { endpoint } : {}), ...(executablePath ? { executablePath } : {}) };
+    const method = raw as PlaywrightMethod;
+    const endpoint = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT;
+    const channel = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_CHANNEL;
+    const executablePath = process.env.PLURNK_SCHEMES_HTTP_PLAYWRIGHT_EXECUTABLE_PATH;
+    if ((method === "connect" || method === "connectOverCDP") && !endpoint) {
+        throw new Error(`Browser: ${method} requires PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT`);
+    }
+    if (method !== "connect" && method !== "connectOverCDP" && endpoint) {
+        throw new Error(`Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_ENDPOINT is incompatible with ${method}`);
+    }
+    if (method !== "launch" && (channel || executablePath)) {
+        throw new Error(`Browser: Playwright channel and executable path are incompatible with ${method}`);
+    }
+    if (channel && executablePath) {
+        throw new Error("Browser: PLURNK_SCHEMES_HTTP_PLAYWRIGHT_CHANNEL and PLURNK_SCHEMES_HTTP_PLAYWRIGHT_EXECUTABLE_PATH are mutually exclusive");
+    }
+    if (method === "disabled") return { method };
+    const timeout = requireNumEnv("PLURNK_SCHEMES_HTTP_PLAYWRIGHT_TIMEOUT");
+    if (method === "connect" || method === "connectOverCDP") {
+        return { method, endpoint: endpoint!, options: { timeout } };
+    }
+    const args: string[] = [];
+    const heapMb = process.env.PLURNK_SCHEMES_HTTP_CHROMIUM_HEAP_MB;
+    if (heapMb) args.push(`--js-flags=--max-old-space-size=${heapMb}`);
+    return {
+        method,
+        options: {
+            headless: requireBoolEnv("PLURNK_SCHEMES_HTTP_PLAYWRIGHT_HEADLESS"),
+            chromiumSandbox: requireBoolEnv("PLURNK_SCHEMES_HTTP_PLAYWRIGHT_CHROMIUM_SANDBOX"),
+            timeout,
+            args,
+            ...(channel ? { channel } : {}),
+            ...(executablePath ? { executablePath } : {}),
+        },
+    };
 };
 
 export default class Browser {
@@ -150,10 +201,10 @@ export default class Browser {
         this.#factory = factory;
     }
 
-    async ready(): Promise<BrowserMode> {
-        const { mode } = browserConfig();
-        if (mode !== "disabled") await this.#getBrowser();
-        return mode;
+    async ready(): Promise<PlaywrightMethod> {
+        const { method } = browserConfig();
+        if (method !== "disabled") await this.#getBrowser();
+        return method;
     }
 
     // Render a URL to its final serialized DOM. Opens a page in the worker's
@@ -229,18 +280,11 @@ export default class Browser {
         if (this.#browser) return this.#browser;
         this.#launching ??= (async () => {
             const config = browserConfig();
-            if (config.mode === "disabled") throw new Error("Browser: HTML rendering is disabled by PLURNK_SCHEMES_HTTP_BROWSER=disabled");
+            if (config.method === "disabled") throw new Error("Browser: HTML rendering is disabled by PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD=disabled");
             const chromium = await this.#factory();
-            if (config.mode === "remote") return chromium.connectOverCDP(config.endpoint!);
-            const args: string[] = [];
-            if (process.env.PLURNK_SCHEMES_HTTP_NO_SANDBOX === "1") args.push("--no-sandbox");
-            const heapMb = process.env.PLURNK_SCHEMES_HTTP_CHROMIUM_HEAP_MB;
-            if (heapMb) args.push(`--js-flags=--max-old-space-size=${heapMb}`);
-            return chromium.launch({
-                headless: true,
-                args,
-                ...(config.mode === "system" ? { executablePath: config.executablePath } : {}),
-            });
+            if (config.method === "connect") return chromium.connect(config.endpoint, config.options);
+            if (config.method === "connectOverCDP") return chromium.connectOverCDP(config.endpoint, config.options);
+            return chromium.launch(config.options);
         })();
         const browser = await this.#launching;
         this.#launching = null;
