@@ -37,3 +37,36 @@ test("[#525] an alias-scoped provider knob binds at construction — the per-ali
     );
     assert.equal(provider.contextWindow, 8000, "the alias-scoped pin binds — min(cap, served) has a cap to bind with");
 });
+
+test("[#528] a pollable provider keeps its natural window when an alias prompt cap is set", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+        if (String(input).endsWith("/models")) {
+            return new Response(JSON.stringify({
+                data: [{
+                    id: "served.gguf",
+                    meta: { n_ctx: 49_152 },
+                }],
+            }), { status: 200 });
+        }
+        if (String(input).endsWith("/props")) {
+            return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        }
+        throw new Error(`unexpected request: ${String(input)}`);
+    }) as typeof fetch;
+    try {
+        const provider = await ProviderInstantiate.instantiateProvider(
+            { alias: "tight", provider: "openai", model: "local", baseUrl: "http://local.test/v1" },
+            {
+                ...process.env,
+                PLURNK_PROVIDERS_CONTEXT_WINDOW_TIGHT: "1",
+                PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500",
+                PLURNK_PROVIDERS_PROBE_ATTEMPTS: "1",
+                PLURNK_PROVIDERS_PROBE_DELAY: "0",
+            },
+        );
+        assert.equal(provider.contextWindow, 49_152);
+    } finally {
+        globalThis.fetch = realFetch;
+    }
+});

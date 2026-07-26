@@ -186,10 +186,21 @@ const executeModel = async (
         ...(reasoning === undefined ? {} : { reasoning }),
         ...(providerOptions === undefined ? {} : { providerOptions }),
     };
+    const firstNonSystem = request.messages.findIndex((message) => message.role !== "system");
+    const instructionCount = firstNonSystem === -1 ? request.messages.length : firstNonSystem;
+    if (request.messages.slice(instructionCount).some((message) => message.role === "system")) {
+        throw new Error("provider messages: system instructions must precede conversational messages");
+    }
+    const instructions = request.messages.slice(0, instructionCount).map(({ content }) => ({
+        role: "system" as const,
+        content,
+    }));
+    const messages = request.messages.slice(instructionCount);
     const common = {
         model,
-        messages: request.messages.length > 0
-            ? request.messages
+        ...(instructions.length === 0 ? {} : { instructions }),
+        messages: messages.length > 0
+            ? messages
             : [{ role: "user" as const, content: "" }],
         maxRetries: request.retryAttempts,
         abortSignal: request.signal,

@@ -94,7 +94,11 @@ export default class ProviderInstantiate {
             undefined,
             undefined,
             alias.baseUrl,
-            alias.alias,
+            // #construct already materialized the alias-scoped environment.
+            // Passing the alias here would scope it a second time and restore
+            // the CONTEXT_WINDOW pin that core deliberately removed as a
+            // prompt-only cap.
+            undefined,
         );
     }
 

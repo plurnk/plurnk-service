@@ -96,6 +96,37 @@ test("the adapter preserves PLURNK request extensions and response evidence", as
     assert.deepEqual(result.rawBody, responseBody);
 });
 
+test("the adapter maps leading system messages to AI SDK instructions", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const fetch: typeof globalThis.fetch = async (_url, init) => {
+        calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({
+            model: "m",
+            choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    await executeOpenAICompatible({
+        url: "https://example.test/v1/chat/completions",
+        model: "m",
+        headers: {},
+        body: {},
+        messages: [
+            { role: "system", content: "system contract" },
+            { role: "user", content: "hello" },
+        ],
+        fetchTimeoutMs: 1000,
+        retryAttempts: 0,
+        streaming: false,
+        captureRawBody: false,
+        fetch,
+    });
+    assert.deepEqual(calls[0]?.messages, [
+        { role: "system", content: "system contract" },
+        { role: "user", content: "hello" },
+    ]);
+});
+
 test("the adapter preserves nonstandard reasoning accounting after SDK parsing", async (t) => {
     const execute = (responseBody: object) => executeOpenAICompatible({
         ...request,
