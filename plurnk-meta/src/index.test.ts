@@ -50,12 +50,12 @@ test("packageDirs: merges npm's nested peer graph with ancestor packages, neares
         await mkdir(join(outer, "@plurnk", "plurnk-schemes-http"), { recursive: true });
         await mkdir(join(outer, "@plurnk", "plurnk-providers"), { recursive: true });
         await mkdir(join(inner, "@plurnk", "plurnk-providers"), { recursive: true });
-        await mkdir(join(inner, "@plurnk", "plurnk-providers-cloudflare"), { recursive: true });
+        await mkdir(join(inner, "@acme", "ai-provider"), { recursive: true });
 
         const candidates = await Meta.packageDirs(inner);
         assert.deepEqual(candidates.map((candidate) => candidate.name).toSorted(), [
+            "@acme/ai-provider",
             "@plurnk/plurnk-providers",
-            "@plurnk/plurnk-providers-cloudflare",
             "@plurnk/plurnk-schemes-http",
         ]);
         assert.equal(candidates.find((candidate) => candidate.name === "@plurnk/plurnk-providers")?.dir,

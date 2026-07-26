@@ -1,6 +1,5 @@
-// Env-parsing helpers shared by every provider's fromEnv factory. Each was
-// copy-pasted per sibling with only the error-message prefix differing; the
-// `label` parameter (the provider name) restores that prefix from one source.
+// Env-parsing helpers shared by provider construction. `label` keeps failures
+// local to the selected provider.
 
 export const parseRequiredInt = (raw: string | undefined, name: string, label: string): number => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
@@ -169,6 +168,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_REPEAT_PENALTY",
     "PLURNK_PROVIDERS_FREQUENCY_PENALTY",
     "PLURNK_PROVIDERS_SERVICE_TIER",
+    "PLURNK_PROVIDERS_PROMPT_CACHE_KEY",
     "PLURNK_PROVIDERS_REPEAT_LAST_N",
     "PLURNK_PROVIDERS_DRY_MULTIPLIER",
     "PLURNK_PROVIDERS_DRY_BASE",
@@ -183,8 +183,8 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // Materialize an alias-scoped VIEW of env: for each known knob with a
 // `_<alias>`-suffixed key (suffix case-folds to the alias, matching the
 // PLURNK_MODEL_/PLURNK_BASEURL_ convention), overlay it onto the bare name.
-// Providers keep reading plain vars — scoping is entirely the caller's overlay,
-// so fromEnv implementations (and plugins) need zero changes.
+// Provider construction keeps reading plain vars; scoping is the registry's
+// single overlay.
 //
 // `knobs` (optional) lets a CONSUMER scope its OWN closed knob list with this
 // same parser — e.g. the service's window-partition vars (PLURNK_SERVICE_CONTEXT_WINDOW/

@@ -6,8 +6,8 @@
 // The pure helpers (parseAliasesFromEnv, resolveActiveAlias) live in
 // @plurnk/plurnk-providers as framework-grade env parsing.
 
-import { resolveActiveAlias, scopeEnvToAlias, isStandardProvider, standardProviderFromEnv } from "@plurnk/plurnk-providers";
-import type { Provider, ProviderAlias, ProviderFactory } from "@plurnk/plurnk-providers";
+import { instantiateProvider as instantiateFrameworkProvider, resolveActiveAlias, scopeEnvToAlias } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
     // One provider per (provider, model, baseUrl) for the process lifetime: a provider is
@@ -87,36 +87,15 @@ export default class ProviderInstantiate {
     }
 
     static async #constructWith(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
-        // Standard providers (openai-compat + groq/deepinfra/...) construct via
-        // the framework's factory — it carries probeNctx (auto-detect the
-        // endpoint's n_ctx, so a local llama-server isn't a no-window black box
-        // that disables the budget grinder + tokensFree) and the shared
-        // OpenAICompat transport. `openai` here replaces the former
-        // @plurnk/plurnk-providers-openai sibling verbatim.
-        if (isStandardProvider(alias.provider)) {
-            // alias.baseUrl MUST thread through — it's the per-alias PLURNK_BASEURL_<alias>
-            // override. Drop it and every openai-compat alias silently collapses to a shared
-            // OPENAI_BASE_URL (or fails hard), so a multi-endpoint setup runs the wrong box.
-            const provider = await standardProviderFromEnv(alias.provider, env, alias.model, alias.baseUrl);
-            if (provider === null) throw new Error(`standard provider '${alias.provider}' returned null for model '${alias.model}'`);
-            return provider;
-        }
-        // Bespoke siblings (ollama/openrouter/google/xai/cloudflare): dynamic-
-        // import the package's own fromEnv factory.
-        const packageName = `@plurnk/plurnk-providers-${alias.provider}`;
-        let mod: { default: ProviderFactory };
-        try {
-            mod = await import(packageName);
-        } catch (cause) {
-            throw new Error(`provider package ${packageName} not installed (alias '${alias.alias}' requires it)`, { cause });
-        }
-        const factory = mod.default;
-        if (typeof factory?.fromEnv !== "function") {
-            throw new Error(
-                `${packageName}: default export must have a static \`fromEnv(env, model)\` factory`,
-            );
-        }
-        return await factory.fromEnv(env, alias.model, alias.baseUrl !== undefined ? { baseUrl: alias.baseUrl } : undefined);
+        return instantiateFrameworkProvider(
+            alias.provider,
+            env,
+            alias.model,
+            undefined,
+            undefined,
+            alias.baseUrl,
+            alias.alias,
+        );
     }
 
     // Convenience: resolve + instantiate in one call. Returns null when no

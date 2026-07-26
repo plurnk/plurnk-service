@@ -4,7 +4,7 @@
 // and HOME) so the model's commands run as the project expects — but never plurnk's
 // own secrets: the `PLURNK_*` config (all of plurnk's knobs are prefixed; see
 // .env.defaults) and the provider API keys plurnk-providers reads. The provider key-vars
-// are sourced from STANDARD_PROVIDERS so the denylist tracks the provider set rather
+// are sourced from the vendored models.dev provider catalog so the denylist tracks the provider set rather
 // than a hand-maintained list that drifts as providers are added.
 //
 // A denylist, not an allowlist: a subprocess needs the long tail of inherited vars
@@ -12,24 +12,25 @@
 // stripped. The service owns this policy; the executor (plurnk-execs SubprocessExecutor,
 // plurnk-execs#8) spawns with the env it is handed.
 
-import { STANDARD_PROVIDERS } from "@plurnk/plurnk-providers";
+import { providerCredentialEnvNames } from "@plurnk/plurnk-models";
 
 export default class ExecEnv {
-    // apiKeyVar is optional (providers 0.9.0): an anonymous provider like `plurnk`
-    // has none. It loses no secret here — plurnk's PLURNK_API_KEY cred is
-    // already stripped by the PLURNK_ prefix rule below — so drop the empties.
-    static #providerKeys: ReadonlySet<string> = new Set(
-        Object.values(STANDARD_PROVIDERS)
-            .map((spec) => spec.apiKeyVar)
-            .filter((v): v is string => v !== undefined),
-    );
-
     // Read at call time (not memoized) so a secret set into process.env after boot is
     // still scoped out of the next spawn.
     static scoped(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+        const providerKeys = new Set(
+            providerCredentialEnvNames(),
+        );
+        for (const [key, value] of Object.entries(env)) {
+            if (!key.startsWith("PLURNK_PROVIDERS_PROVIDER_") || !key.endsWith("_API_KEY_ENV")) continue;
+            for (const name of value?.split(",") ?? []) {
+                const trimmed = name.trim();
+                if (trimmed.length > 0) providerKeys.add(trimmed);
+            }
+        }
         const out: NodeJS.ProcessEnv = {};
         for (const [key, value] of Object.entries(env)) {
-            if (key.startsWith("PLURNK_") || ExecEnv.#providerKeys.has(key)) continue;  // plurnk's own — never to a subprocess
+            if (key.startsWith("PLURNK_") || providerKeys.has(key)) continue;  // plurnk's own — never to a subprocess
             out[key] = value;
         }
         return out;

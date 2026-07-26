@@ -2,22 +2,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 
-// Scope-agnostic discovery of installed provider packages (SPEC §5, #12/#14).
+// Scope-agnostic discovery of installed AI SDK provider packages (SPEC §5).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
 // under `<cwd>/node_modules` — scoped (`@scope/name`) and unscoped — and keep
 // the ones declaring `plurnk.kind === "provider"`. Scope-agnostic so a THIRD
 // PARTY can publish a provider under their own scope (`@acme/llm-provider-foo`)
-// and have it discovered with no involvement from us; first-party plugins
-// hoist flat via @plurnk/plurnk-providers-all so they land in the same scan.
+// and have it discovered without involvement from PLURNK.
 //
 // A provider package maps ONE name → its package specifier (unlike execs, whose
 // runtime tags are a per-package array). The name is the alias-cascade provider
 // segment (PLURNK_MODEL_<alias>=<name>/<model>). A name collision between two
 // installed packages is a FAIL-HARD ambiguity the operator must resolve.
 //
-// The standard-provider table (./standardProviders.ts) is a separate, closed
-// tier-1 resolved before this scan — discovery covers tier 2 (bespoke + third
-// party) only. Precedence and standard-name shadowing live in ProviderRegistry.
+// Cataloged and operator-declared providers resolve before this scan.
 //
 // Host plugin trust gate (PLURNK_PLUGINS_TRUSTED_ONLY, #15 / plurnk-service#229)
 // — enforced uniformly across the four scope-agnostic families. An untrusted

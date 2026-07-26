@@ -553,46 +553,6 @@
             "platformDependencies": [
                 "@plurnk/plurnk-mimetypes"
             ]
-        },
-        {
-            "dir": "plurnk-providers-cloudflare",
-            "name": "@plurnk/plurnk-providers-cloudflare",
-            "release": "managed",
-            "owner": "providers",
-            "pushable": true,
-            "platformDependencies": [
-                "@plurnk/plurnk-providers"
-            ]
-        },
-        {
-            "dir": "plurnk-providers-google",
-            "name": "@plurnk/plurnk-providers-google",
-            "release": "managed",
-            "owner": "providers",
-            "pushable": true,
-            "platformDependencies": [
-                "@plurnk/plurnk-providers"
-            ]
-        },
-        {
-            "dir": "plurnk-providers-openrouter",
-            "name": "@plurnk/plurnk-providers-openrouter",
-            "release": "managed",
-            "owner": "providers",
-            "pushable": true,
-            "platformDependencies": [
-                "@plurnk/plurnk-providers"
-            ]
-        },
-        {
-            "dir": "plurnk-providers-xai",
-            "name": "@plurnk/plurnk-providers-xai",
-            "release": "managed",
-            "owner": "providers",
-            "pushable": true,
-            "platformDependencies": [
-                "@plurnk/plurnk-providers"
-            ]
         }
     ]
 }

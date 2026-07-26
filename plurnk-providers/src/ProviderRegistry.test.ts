@@ -2,7 +2,6 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./ProviderRegistry.ts";
 
-const fakeProvider = { contextWindow: 1, model: "m", countTokens: () => 0, calculateCost: () => 0, generate: async () => { throw new Error("unused"); } };
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
     async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), attributions: new Map<string, string | string[]>() });
 
@@ -10,16 +9,16 @@ const mapOf = (entries: Record<string, string>, skipped: Record<string, string> 
 // exercise the resolution + two-tier instantiation this module owns; the active
 // alias is driven end-to-end by loadActiveProvider below.
 
-// — two-tier instantiation (SPEC §5) —
+// — provider resolution (SPEC §5) —
 
 const fullEnv = Object.freeze({
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
     PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT: "0",
-    PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0.4", PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0.4", PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0", PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "1",
     OPENAI_BASE_URL: "http://x",
 });
 
-test("instantiateProvider: standard name resolves in-framework, no scan, no import", async () => {
+test("instantiateProvider: cataloged name resolves in-framework, no scan, no import", async () => {
     resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
         if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -36,24 +35,33 @@ test("instantiateProvider: standard name resolves in-framework, no scan, no impo
     mock.restoreAll();
 });
 
-test("instantiateProvider: bespoke name resolves via the scan and imports the discovered package", async () => {
+test("instantiateProvider: an installed AI SDK provider resolves through discovery", async () => {
     resetDiscoveryCache();
     const calls: unknown[] = [];
-    const p = await instantiateProvider("openrouter", { ...fullEnv }, "anthropic/claude-opus-latest",
-        async (specifier) => { calls.push(specifier); return { default: { fromEnv: async (_e: NodeJS.ProcessEnv, model: string) => { calls.push(model); return fakeProvider; } } }; },
-        mapOf({ openrouter: "@plurnk/plurnk-providers-openrouter" }));
-    assert.equal(p, fakeProvider);
-    assert.deepEqual(calls, ["@plurnk/plurnk-providers-openrouter", "anthropic/claude-opus-latest"]);
+    const p = await instantiateProvider("acme", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "model-a",
+        async (specifier) => {
+            calls.push(specifier);
+            return { default: { languageModel: (model: string) => { calls.push(model); return {} as never; } } };
+        },
+        mapOf({ acme: "@acme/ai-provider" }));
+    assert.equal(p.model, "model-a");
+    assert.equal(p.contextWindow, 8192);
+    assert.deepEqual(calls, ["@acme/ai-provider", "model-a"]);
 });
 
-test("instantiateProvider: a per-alias baseUrl is passed to a bespoke factory as the 3rd-arg option", async () => {
+test("instantiateProvider: a per-alias baseUrl drives the built-in Ollama probe", async () => {
     resetDiscoveryCache();
-    let received: unknown;
+    const calls: string[] = [];
+    mock.method(globalThis, "fetch", async (url: string) => {
+        calls.push(String(url));
+        return new Response(JSON.stringify({ model_info: { "qwen.context_length": 32768 } }));
+    });
     await instantiateProvider("ollama", { ...fullEnv }, "qwen2.5-coder",
-        async () => ({ default: { fromEnv: async (_e: NodeJS.ProcessEnv, _m: string, options?: unknown) => { received = options; return fakeProvider; } } }),
-        mapOf({ ollama: "@plurnk/plurnk-providers-ollama" }),
+        async () => ({}),
+        mapOf({}),
         "http://nook:11434");
-    assert.deepEqual(received, { baseUrl: "http://nook:11434" });
+    assert.deepEqual(calls, ["http://nook:11434/api/show"]);
+    mock.restoreAll();
 });
 
 test("instantiateProvider: a per-alias baseUrl drives the standard openai probe to the override host", async () => {
@@ -74,14 +82,14 @@ test("instantiateProvider: a per-alias baseUrl drives the standard openai probe 
 test("instantiateProvider: a THIRD-PARTY scope is discovered — name maps to its package", async () => {
     resetDiscoveryCache();
     const imports: string[] = [];
-    const p = await instantiateProvider("foo", { ...fullEnv }, "m",
-        async (specifier) => { imports.push(specifier); return { default: { fromEnv: async () => fakeProvider } }; },
+    const p = await instantiateProvider("foo", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096" }, "m",
+        async (specifier) => { imports.push(specifier); return { default: { languageModel: () => ({} as never) } }; },
         mapOf({ foo: "@acme/acme-provider-foo" }));
-    assert.equal(p, fakeProvider);
+    assert.equal(p.model, "m");
     assert.deepEqual(imports, ["@acme/acme-provider-foo"]); // not an @plurnk/ specifier
 });
 
-test("instantiateProvider: a standard name is authoritative — a scanned package of the same name is shadowed", async () => {
+test("instantiateProvider: a cataloged name is authoritative — a scanned package of the same name is shadowed", async () => {
     resetDiscoveryCache();
     mock.method(globalThis, "fetch", async (url: string) => {
         if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -100,7 +108,7 @@ test("instantiateProvider: unknown provider throws — no standard, no discovere
     resetDiscoveryCache();
     await assert.rejects(
         () => instantiateProvider("nope", { ...fullEnv }, "m", async () => ({}), mapOf({})),
-        /unknown provider "nope": not a standard provider, and no installed package declares plurnk\.kind:"provider" with name "nope"/,
+        /unknown provider "nope"/,
     );
 });
 
@@ -116,13 +124,13 @@ test("instantiateProvider: an untrusted (skipped) provider gives a precise error
     assert.deepEqual(imports, []); // never imported an untrusted package
 });
 
-test("instantiateProvider: discovered package without a fromEnv factory throws (factory shape, SPEC )", async () => {
+test("instantiateProvider: discovered package must export an AI SDK provider", async () => {
     resetDiscoveryCache();
     await assert.rejects(
         () => instantiateProvider("broken", { ...fullEnv }, "m",
             async () => ({ default: {} }),
             mapOf({ broken: "@acme/acme-provider-broken" })),
-        /@acme\/acme-provider-broken default export is not a Provider factory/,
+        /@acme\/acme-provider-broken default export is not an AI SDK provider/,
     );
 });
 
@@ -174,6 +182,8 @@ test("#622: two Fireworks aliases independently select default and priority serv
         FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
         FIREWORKS_API_KEY: "fw",
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
+        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_REASONING_STYLE: "effort_explicit",
+        PLURNK_PROVIDERS_TOP_LOGPROBS: "2",
         PLURNK_PROVIDERS_SERVICE_TIER_fast: "priority",
         PLURNK_PROVIDERS_SERVICE_TIER_standard: "default",
     };
@@ -184,6 +194,9 @@ test("#622: two Fireworks aliases independently select default and priority serv
     await fast.generate({ workerId: "fast-worker", messages: [] });
     await standard.generate({ workerId: "standard-worker", messages: [] });
     assert.deepEqual(bodies.map((body) => body.service_tier), ["priority", "default"]);
+    assert.deepEqual(bodies.map((body) => body.prompt_cache_key), ["fast-worker", "standard-worker"]);
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["none", "none"]);
+    assert.deepEqual(bodies.map((body) => body.top_logprobs), [2, 2]);
     assert.deepEqual(bodies.map((body) => body.model), [
         "accounts/fireworks/routers/glm-5p2-fast",
         "accounts/fireworks/models/deepseek-v4-pro",
@@ -191,13 +204,13 @@ test("#622: two Fireworks aliases independently select default and priority serv
     mock.restoreAll();
 });
 
-test("loadActiveProvider: resolves the alias cascade end-to-end via the scan", async () => {
+test("loadActiveProvider: resolves the alias cascade to an installed AI SDK provider", async () => {
     resetDiscoveryCache();
-    const env = { ...fullEnv, PLURNK_MODEL: "opus", PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest" } as NodeJS.ProcessEnv;
+    const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096", PLURNK_MODEL: "custom", PLURNK_MODEL_custom: "acme/model-a" } as NodeJS.ProcessEnv;
     const p = await loadActiveProvider(env,
-        async () => ({ default: { fromEnv: async () => fakeProvider } }),
-        mapOf({ openrouter: "@plurnk/plurnk-providers-openrouter" }));
-    assert.equal(p, fakeProvider);
+        async () => ({ default: { languageModel: () => ({} as never) } }),
+        mapOf({ acme: "@acme/ai-provider" }));
+    assert.equal(p.model, "model-a");
 });
 
 test("loadActiveProvider: throws a named error when no alias is active", async () => {

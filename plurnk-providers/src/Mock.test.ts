@@ -109,7 +109,7 @@ test("Mock: exhausted queue throws a specific error", async () => {
 // -- #507: the reserve surface lives on the Provider CONTRACT, and Mock drives core's partition suite --
 
 test("#507 the reserve getters are on the Provider interface (not just the concrete class)", () => {
-    // Typing against the CONTRACT is the check a getter-only-on-OpenAICompat surface fails.
+    // Typing against the contract catches a getter-only concrete surface.
     const prevR = process.env.PLURNK_PROVIDERS_REASONING_RESERVE;
     try {
         process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "10%";

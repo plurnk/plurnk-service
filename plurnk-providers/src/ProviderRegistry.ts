@@ -3,18 +3,19 @@
 // overrides) lives in @plurnk/plurnk-aliases — the zero-dep parser shared with
 // thin clients (#27); this module resolves the active alias to a Provider.
 //
-// Two-tier resolution (SPEC §5): tier 1 is the closed standard-provider table;
-// tier 2 is a SCOPE-AGNOSTIC node_modules scan (discover()) for packages
-// declaring `plurnk.kind:"provider"` — first-party plugins (installed flat
-// via @plurnk/plurnk-providers-all) AND third-party providers under any scope.
-// The framework is contract-only — it does NOT depend on its plugins; the
-// scan is what surfaces them (#12/#14).
+// Resolution order (SPEC §5): models.dev catalog → PLURNK provider declaration
+// → local protocol adapter → scope-agnostic AI SDK plugin discovery. Generic
+// provider facts belong to models.dev or operator config; PLURNK owns only the
+// stable Provider contract and product-specific local behavior.
 
-import type { Provider, ProviderFactory } from "./types.ts";
-import { isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
+import type { AiSdkProviderPlugin, Provider } from "./types.ts";
+import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
 import { discover, type DiscoverOptions, type Discovery } from "./discover.ts";
 import { resolveActiveAlias } from "@plurnk/plurnk-aliases";
 import { scopeEnvToAlias } from "./env.ts";
+import { ollamaProviderFromEnv } from "./ollama.ts";
+import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
+import { contextWindowFromEnv } from "./env.ts";
 
 // Two injectable seams, both defaulting to production behavior and never passed
 // by real callers: the module importer (tests exercise the bespoke path without
@@ -33,10 +34,8 @@ const providerPackages = async (discoverFn: DiscoverFn, env: NodeJS.ProcessEnv):
     return discoveredCache;
 };
 
-// Two-tier resolution (SPEC §5): tier 1 standard table → tier 2 discovered
-// package (scope-agnostic scan, trust-gated) → fail-hard. The standard table is
-// authoritative — a scanned package whose name duplicates a standard one is
-// shadowed here (never reached), since tier 1 returns first.
+// Catalog and explicit declarations are authoritative. Discovery is the
+// extensibility seam for an AI SDK provider that neither source describes.
 export const instantiateProvider = async (
     name: string,
     env: NodeJS.ProcessEnv,
@@ -46,14 +45,13 @@ export const instantiateProvider = async (
     baseUrl?: string, // per-alias endpoint override (PLURNK_BASEURL_<alias>); threaded to both tiers
     alias?: string, // the alias this instantiation serves — scopes PLURNK_PROVIDERS_<KNOB>_<alias> overrides
 ): Promise<Provider> => {
-    // Per-alias knob scoping: overlay any _<alias>-suffixed knob onto its bare
-    // name so both tiers (and every fromEnv) read plain vars, per-alias-resolved.
+    // Per-alias knob scoping overlays _<alias>-suffixed knobs onto their bare
+    // names before any resolver reads them.
     if (alias !== undefined) env = scopeEnvToAlias(env, alias);
-    if (isStandardProvider(name)) {
-        const standard = await standardProviderFromEnv(name, env, model, baseUrl);
-        if (standard === null) throw new Error(`provider "${name}": standard registry resolution failed`);
-        return standard;
-    }
+    const catalog = catalogProviderFromEnv(name, env, model, baseUrl);
+    if (catalog !== null) return catalog;
+    if (name === "ollama") return ollamaProviderFromEnv(env, model, baseUrl === undefined ? undefined : { baseUrl });
+    if (name === "openai" || name === "plurnk") return compatibleProviderFromEnv(name, env, model, baseUrl);
     const { registry, skipped } = await providerPackages(discoverFn, env);
     const specifier = registry.get(name);
     if (specifier === undefined) {
@@ -61,7 +59,7 @@ export const instantiateProvider = async (
         if (declined !== undefined) {
             throw new Error(`provider "${name}" resolves to ${declined}, but it is untrusted under PLURNK_PLUGINS_TRUSTED_ONLY — add it to the allowlist (or publish under @plurnk/)`);
         }
-        throw new Error(`unknown provider "${name}": not a standard provider, and no installed package declares plurnk.kind:"provider" with name "${name}"`);
+        throw new Error(`unknown provider "${name}": absent from models.dev, operator declarations, local adapters, and installed AI SDK provider plugins`);
     }
     let mod: unknown;
     try {
@@ -69,11 +67,24 @@ export const instantiateProvider = async (
     } catch (cause) {
         throw new Error(`provider "${name}" resolves to ${specifier}, but importing it failed`, { cause });
     }
-    const factory = (mod as { default?: ProviderFactory }).default;
-    if (factory === undefined || typeof factory.fromEnv !== "function") {
-        throw new Error(`${specifier} default export is not a Provider factory (missing static fromEnv)`);
+    const sdkProvider = (mod as { default?: AiSdkProviderPlugin }).default;
+    if (sdkProvider === undefined || typeof sdkProvider.languageModel !== "function") {
+        throw new Error(`${specifier} default export is not an AI SDK provider (missing languageModel)`);
     }
-    return await factory.fromEnv(env, model, baseUrl !== undefined ? { baseUrl } : undefined);
+    if (baseUrl !== undefined) {
+        throw new Error(`${specifier}: PLURNK_BASEURL_${alias ?? "<alias>"} cannot reconfigure an installed AI SDK provider; declare the provider through PLURNK_PROVIDERS_PROVIDER_* instead`);
+    }
+    const contextWindow = contextWindowFromEnv(env, name);
+    if (contextWindow === null) {
+        throw new Error(`${specifier}: PLURNK_PROVIDERS_CONTEXT_WINDOW must be set because Models.dev has no metadata for provider "${name}"`);
+    }
+    return providerFromSdkModel({
+        name,
+        env,
+        model,
+        languageModel: sdkProvider.languageModel(model),
+        contextWindow,
+    });
 };
 
 // Test-only: drop the memoized discovery so a fresh scan/injection runs next.

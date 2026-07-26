@@ -96,11 +96,11 @@ Dependency direction (from root to leaf):
 
 - **`plurnk-grammar`** — root. Owns the JSON-Schema contracts (Packet, TelemetryEvent, AST shapes), the ANTLR parser that turns model output into `PlurnkStatement[]`, and `PlurnkParseError` with its `toTelemetryEvent()` helper. Nothing in the ecosystem can speak the DSL without it; everything else pins it exactly.
 - **Framework siblings** consume grammar and define their own author-facing contracts:
-    - `plurnk-providers` — Provider/Alias types, `parseAliasesFromEnv`, `resolveActiveAlias`, `Mock`, `ProviderUsage` (currency-aware, includes `reasoning`). Vendor-specific implementations are children: `plurnk-providers-openai`, `-google`, `-ollama`, `-openrouter`, `-cloudflare`, `-xai`.
+    - `plurnk-providers` — Provider/Alias types, AI SDK adaptation, Models.dev-backed provider resolution, local endpoint probes, `Mock`, and normalized usage. Ordinary vendor protocols belong to official AI SDK providers; only genuinely new protocol bindings require a provider plugin.
     - `plurnk-mimetypes` — handler base classes, discovery, the fitting algorithm, and the match primitives (`queryGlob`/`queryRegex`/`queryJsonpathObject`/`queryXpathString`) the service's matcher dispatches over (§matcher-dispatch). Handler children are per-mimetype: `plurnk-mimetypes-text-{python,typescript,markdown,html,csv,plain}`, `plurnk-mimetypes-application-{json,yaml,toml,pdf}`, …
     - `plurnk-schemes` — scheme-author types (`SchemeManifest`, `WriterTier`, `LoopFlags`), result-shape contracts (`EntryResult` / `ProposalResult` / `PassthroughResult`), slicing primitives, matcher helpers, `schemeError(...)` constructor. Future scheme children: `plurnk-schemes-http`, `plurnk-schemes-git`, …
     - `plurnk-execs` — `BaseExecutor`, `SubprocessExecutor`, runtime resolver, discovery. Children declare runtimes: `plurnk-execs-sh`, future `plurnk-execs-search`, `plurnk-execs-node`, …
-- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), discovers installed mimetype handlers + provider vendors + executor siblings at boot, and exposes an in-process seam to client-interface modules. Packet assembly is service-owned (§packet).
+- **`plurnk-service`** (this repo) — consumes all of the above. Implements the engine, dispatches ops through scheme handlers, hosts the in-tree set of schemes (`plurnk`, `log`, `exec`, `known`, `unknown`, `skill`, `file`), resolves model providers, discovers installed mimetype handlers and executor siblings at boot, and exposes an in-process seam to client-interface modules. Packet assembly is service-owned (§packet).
 - **`plurnk`** (client) — terminal UI consuming the AG-UI+ client surface. Renders daemon events and contains no engine logic.
 
 The grammar is the contract. The frameworks consume the contract and add author-facing surfaces. The service consumes the frameworks and runs the engine. The client consumes the service and renders to humans. Each tier is its own published package; each tier's evolution happens in its own repo.
@@ -273,7 +273,13 @@ Deferred (#249): grounding the attribution value in real per-turn value flow rat
 
 ### §provider-instantiation Provider instantiation
 
-Model alias parsing (`parseAliasesFromEnv` / `resolveActiveAlias`) lives in [`@plurnk/plurnk-providers`](https://github.com/plurnk/plurnk-providers). {§provider-instantiation-alias-resolution} Dynamic provider instantiation (`instantiateProvider` / `loadActiveProvider`) lives in `src/core/ProviderInstantiate.ts` here — `import()` resolves package specifiers relative to the calling module, so the dynamic-import path stays in the consumer where the `@plurnk/plurnk-providers-<vendor>` packages are installed.
+Model alias parsing and provider construction live in
+[`@plurnk/plurnk-providers`](https://github.com/plurnk/plurnk-providers).
+`src/core/ProviderInstantiate.ts` delegates to that owner and adds only
+service-side caching, per-loop selection, context-cap handling, and local GBNF
+verification. Cataloged providers use Models.dev metadata and official AI SDK
+bindings; an operator declaration covers an uncataloged compatible endpoint;
+plugin discovery is the last protocol-extension seam. {§provider-instantiation-alias-resolution}
 
 **Optional local GBNF is verified at boot.** {§grammar-enforcement-verified-at-boot}
 The ANTLR grammar always defines and validates the PLURNK language. Separately,
@@ -296,7 +302,7 @@ PLURNK_MODEL_opus=openrouter/anthropic/claude-opus-latest
 PLURNK_MODEL=gemma
 ```
 
-First path segment = provider plugin; rest = provider's own model id.
+First path segment = provider name; rest = provider-native model id.
 
 ### §mock-provider Mock provider (sibling fixture)
 
@@ -837,10 +843,10 @@ Scoped-package scan with manifest field:
 
 1. Each package declares its kind:
    ```json
-   { "name": "@plurnk/plurnk-providers-openrouter",
-     "plurnk": { "kind": "provider", "name": "openrouter" } }
+   { "name": "@acme/ai-provider",
+     "plurnk": { "kind": "provider", "name": "acme" } }
    ```
-2. Boot scans `node_modules/@plurnk/*/package.json`, filters by `plurnk` field, dynamic-imports matches.
+2. Boot scans installed scoped and unscoped packages, filters by `plurnk` field, and dynamic-imports matches.
 3. Load order: deterministic alphabetical.
 4. Collision on `(kind, name)` is fail-hard.
 5. Operator flow: `npm i @plurnk/plurnk-<kind>-<name> && plurnk start`. Zero config.
@@ -855,7 +861,9 @@ Env vars configure installed plugins; never declare existence. Filesystem is the
 
 Plugin discovery (§plugin-discovery) registers whatever's in `node_modules/@plurnk/*`.
 
-**Providers in-tree:** none. `Mock` (the intg-only test fixture + worked example) is a sibling, `@plurnk/plurnk-providers` (§mock-provider); `ProviderInstantiate.ts` dynamically imports the selected provider package.
+**Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
+operator declarations, local adapters, and finally installed AI SDK provider
+plugins. `Mock` is its integration fixture. Core contains no vendor protocol.
 
 **Mimetypes in-tree:** none. Framework + handlers are all siblings.
 

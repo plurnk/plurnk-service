@@ -1,16 +1,15 @@
-// Shared OpenAI-compatible provider. Implements the universal generate()
+// PLURNK adapter over an AI SDK language model. Implements the universal generate()
 // spine — signal merging, the SSE call, usage mapping, finishReason
 // normalization, response assembly — that every sibling had duplicated.
 //
-// Composition, not inheritance: the per-provider deltas (resolved URL, auth
-// headers, reasoning translation style, tokenizer, cost) arrive as config.
-// A sibling's fromEnv probes whatever it needs (catalog, pricing, context
-// window), builds the config, and returns `new OpenAICompatProvider(config)`.
-// Pure-config providers come from ./standardProviders.ts with no sibling at all.
+// Composition, not inheritance: an official AI SDK language model supplies the
+// ordinary vendor protocol. The compatible URL path remains only for PLURNK
+// extensions and local endpoint probes the SDK cannot represent.
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { Reasoning, ReserveSpec } from "./env.ts";
-import { executeOpenAICompatible } from "./aiSdkTransport.ts";
+import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
+import type { LanguageModel } from "ai";
 import { toProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 import { emitWarningOnce } from "./warnings.ts";
@@ -34,9 +33,10 @@ export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" |
 // service-managed constrained sampling; endpoint-owned settings are not inferred.
 export type GrammarStyle = "none" | "llamacpp";
 
-export type OpenAICompatConfig = {
+export type AiSdkProviderConfig = {
     model: string;
-    url: string;                              // fully-resolved chat-completions URL
+    url?: string;                             // OpenAI-compatible chat-completions URL
+    languageModel?: LanguageModel;            // native AI SDK provider model
     fetchTimeoutMs: number;
     streamIdleTimeoutMs?: number;             // streamed body inter-chunk deadline; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
@@ -190,9 +190,10 @@ const describeUnenforced = (v: Exclude<Verdict, { status: "accept" }>): string =
     return `grammar not enforced: output is an incomplete match of the transported grammar — a valid prefix of ${v.pos} code points that never terminated`;
 };
 
-export default class OpenAICompatProvider implements Provider {
+export default class AiSdkProvider implements Provider {
     #model: string;
-    #url: string;
+    #url: string | undefined;
+    #languageModel: LanguageModel | undefined;
     #fetchTimeoutMs: number;
     #streamIdleTimeoutMs: number | undefined;
     #headers: Record<string, string>;
@@ -236,9 +237,13 @@ export default class OpenAICompatProvider implements Provider {
     // the honest capability signal for every other backend.
     tokenize?: (text: string) => Promise<number[]>;
 
-    constructor(config: OpenAICompatConfig) {
+    constructor(config: AiSdkProviderConfig) {
         this.#model = config.model;
         this.#url = config.url;
+        this.#languageModel = config.languageModel;
+        if ((this.#url === undefined) === (this.#languageModel === undefined)) {
+            throw new Error(`${config.source ?? "provider"}: configure exactly one AI SDK model or OpenAI-compatible URL`);
+        }
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
         this.#streamIdleTimeoutMs = config.streamIdleTimeoutMs;
         this.#headers = config.headers ?? {};
@@ -249,7 +254,7 @@ export default class OpenAICompatProvider implements Provider {
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
         if (typeof config.temperature !== "number" || typeof config.repeatPenalty !== "number") {
-            throw new Error(`${config.source ?? "provider"}: OpenAICompatConfig requires temperature + repeatPenalty (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY) — rebuild against providers >= 0.33.0`);
+            throw new Error(`${config.source ?? "provider"}: AiSdkProviderConfig requires temperature + repeatPenalty (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY)`);
         }
         this.#temperature = config.temperature;
         this.#repeatPenalty = config.repeatPenalty;
@@ -582,20 +587,53 @@ export default class OpenAICompatProvider implements Provider {
         const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
         let raw;
         try {
-            raw = await executeOpenAICompatible({
-                url: this.#url,
-                model: this.#model,
-                headers,
-                body,
-                messages,
-                signal,
-                fetch: this.#fetch,
-                fetchTimeoutMs: this.#fetchTimeoutMs,
-                streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
-                retryAttempts: this.#retryAttempts,
-                streaming: this.#streaming,
-                captureRawBody: this.#rawBody,
-            });
+            raw = this.#languageModel === undefined
+                ? await executeOpenAICompatible({
+                    url: this.#url!,
+                    model: this.#model,
+                    headers,
+                    body,
+                    messages,
+                    signal,
+                    fetch: this.#fetch,
+                    fetchTimeoutMs: this.#fetchTimeoutMs,
+                    streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
+                    retryAttempts: this.#retryAttempts,
+                    streaming: this.#streaming,
+                    captureRawBody: this.#rawBody,
+                })
+                : await executeAiSdkModel({
+                    languageModel: this.#languageModel,
+                    headers,
+                    messages,
+                    signal,
+                    fetchTimeoutMs: this.#fetchTimeoutMs,
+                    streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
+                    retryAttempts: this.#retryAttempts,
+                    streaming: this.#streaming,
+                    captureRawBody: this.#rawBody,
+                    temperature: this.#tuningFloors
+                        ? (typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature)
+                        : typeof sampling?.temperature === "number" ? sampling.temperature : undefined,
+                    topP: typeof sampling?.top_p === "number" ? sampling.top_p : undefined,
+                    topK: typeof sampling?.top_k === "number" ? sampling.top_k : undefined,
+                    presencePenalty: typeof sampling?.presence_penalty === "number" ? sampling.presence_penalty : undefined,
+                    frequencyPenalty: typeof sampling?.frequency_penalty === "number"
+                        ? sampling.frequency_penalty
+                        : this.#tuningFloors && this.#frequencyPenalty > 0 ? this.#frequencyPenalty : undefined,
+                    stopSequences: typeof sampling?.stop === "string"
+                        ? [sampling.stop]
+                        : Array.isArray(sampling?.stop) && sampling.stop.every((value) => typeof value === "string")
+                            ? sampling.stop
+                            : undefined,
+                    seed: typeof sampling?.seed === "number" ? sampling.seed : undefined,
+                    maxOutputTokens: maxTokens,
+                    reasoning: this.#reasoning.mode === "off"
+                        ? "none"
+                        : this.#reasoning.mode === "adaptive"
+                            ? "provider-default"
+                            : effortFromBudget(this.#reasoning.budget!),
+                });
         } catch (err) {
             if (signal?.aborted) throw err;
             const pe = toProviderError(err, this.#source);

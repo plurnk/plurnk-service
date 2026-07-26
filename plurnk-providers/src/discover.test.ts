@@ -26,14 +26,14 @@ const buildModules = async (t: TestContext, packages: Record<string, unknown>): 
 
 test("discover: the node_modules scan is scope-agnostic — third-party scopes are found", async (t) => {
     const root = await buildModules(t, {
-        "@plurnk/plurnk-providers-openrouter": { name: "@plurnk/plurnk-providers-openrouter", plurnk: { kind: "provider", name: "openrouter" } },
+        "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
         "@acme/acme-provider-foo": { name: "@acme/acme-provider-foo", plurnk: { kind: "provider", name: "foo" } },
         "unscoped-provider-bar": { name: "unscoped-provider-bar", plurnk: { kind: "provider", name: "bar" } },
         "left-pad": { name: "left-pad" },                                   // no plurnk block → ignored
         "@plurnk/plurnk-execs-git": { name: "@plurnk/plurnk-execs-git", plurnk: { kind: "exec", runtimes: [] } }, // wrong kind → ignored
     });
     const { registry } = await discover({ cwd: root });
-    assert.deepEqual([...registry.keys()].sort(), ["bar", "foo", "openrouter"]);
+    assert.deepEqual([...registry.keys()].sort(), ["bar", "foo", "native"]);
     assert.equal(registry.get("foo"), "@acme/acme-provider-foo");      // third-party scope resolves
     assert.equal(registry.get("bar"), "unscoped-provider-bar");        // unscoped resolves
 });
@@ -49,12 +49,12 @@ test("discover: a provider package missing plurnk.name is ignored, not crashed",
 
 test("discover: a name claimed by two packages is a fail-hard collision", async (t) => {
     const root = await buildModules(t, {
-        "@plurnk/plurnk-providers-xai": { name: "@plurnk/plurnk-providers-xai", plurnk: { kind: "provider", name: "xai" } },
-        "@acme/rival-xai": { name: "@acme/rival-xai", plurnk: { kind: "provider", name: "xai" } },
+        "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
+        "@acme/rival-native": { name: "@acme/rival-native", plurnk: { kind: "provider", name: "native" } },
     });
     await assert.rejects(
         () => discover({ cwd: root }),
-        /provider name collision: 'xai' claimed by both/,
+        /provider name collision: 'native' claimed by both/,
     );
 });
 
@@ -64,11 +64,11 @@ test("discover: node_modules entries with no package.json or malformed JSON are 
     await fs.mkdir(path.join(nm, "no-manifest"), { recursive: true });                  // a dir, no package.json
     await fs.mkdir(path.join(nm, "broken"), { recursive: true });
     await fs.writeFile(path.join(nm, "broken", "package.json"), "{ not json", "utf-8");  // malformed
-    const good = path.join(nm, "@plurnk", "plurnk-providers-ollama");
+    const good = path.join(nm, "@plurnk", "plurnk-provider-native");
     await fs.mkdir(good, { recursive: true });
-    await fs.writeFile(path.join(good, "package.json"), JSON.stringify({ name: "@plurnk/plurnk-providers-ollama", plurnk: { kind: "provider", name: "ollama" } }), "utf-8");
+    await fs.writeFile(path.join(good, "package.json"), JSON.stringify({ name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } }), "utf-8");
     const { registry } = await discover({ cwd: root });
-    assert.deepEqual([...registry.keys()], ["ollama"]); // only the well-formed provider survives
+    assert.deepEqual([...registry.keys()], ["native"]); // only the well-formed provider survives
 });
 
 test("discover: surfaces plurnk.attribution (string or string[]) for registered providers (#21)", async (t) => {
@@ -94,7 +94,7 @@ test("discover: missing node_modules yields an empty registry, not an error", as
 // — trust gate (PLURNK_PLUGINS_TRUSTED_ONLY, #15) —
 
 const trustFixture = (t: TestContext) => buildModules(t, {
-    "@plurnk/plurnk-providers-openrouter": { name: "@plurnk/plurnk-providers-openrouter", plurnk: { kind: "provider", name: "openrouter" } },
+    "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
     "@acme/acme-provider-foo": { name: "@acme/acme-provider-foo", plurnk: { kind: "provider", name: "foo" } },
 });
 
@@ -102,7 +102,7 @@ test("trust gate OFF (unset/empty/0): every provider is trusted", async (t) => {
     const root = await trustFixture(t);
     for (const gate of [undefined, "", "0"]) {
         const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_PLUGINS_TRUSTED_ONLY: gate } as NodeJS.ProcessEnv });
-        assert.deepEqual([...registry.keys()].sort(), ["foo", "openrouter"]);
+        assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
         assert.equal(skipped.size, 0);
     }
 });
@@ -110,7 +110,7 @@ test("trust gate OFF (unset/empty/0): every provider is trusted", async (t) => {
 test("trust gate ON: @plurnk/* always trusted; third party declined → skipped, not registered", async (t) => {
     const root = await trustFixture(t);
     const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_PLUGINS_TRUSTED_ONLY: "1" } as NodeJS.ProcessEnv });
-    assert.deepEqual([...registry.keys()], ["openrouter"]);          // @plurnk/* survives
+    assert.deepEqual([...registry.keys()], ["native"]);              // @plurnk/* survives
     assert.equal(registry.has("foo"), false);                        // third party not registered
     assert.equal(skipped.get("foo"), "@acme/acme-provider-foo");     // …recorded for a precise error
 });
@@ -118,6 +118,6 @@ test("trust gate ON: @plurnk/* always trusted; third party declined → skipped,
 test("trust gate ON with an allowlist: a named third-party package is trusted", async (t) => {
     const root = await trustFixture(t);
     const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_PLUGINS_TRUSTED_ONLY: "@acme/acme-provider-foo" } as NodeJS.ProcessEnv });
-    assert.deepEqual([...registry.keys()].sort(), ["foo", "openrouter"]);
+    assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
     assert.equal(skipped.size, 0);
 });

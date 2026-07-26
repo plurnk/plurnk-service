@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { lookup, catalogSnapshot } from "./index.ts";
+import { lookup, lookupProvider, resolveModel, catalogSnapshot, providerCatalogSnapshot, providerCredentialEnvNames } from "./index.ts";
 
 test("lookup: a known cloud model resolves to context window + pricing", () => {
     const info = lookup("openrouter", "anthropic/claude-sonnet-4");
@@ -35,21 +35,33 @@ test("lookup: an unknown/local model is a miss (null) — the probe owns that ca
     assert.equal(lookup("nonprovider", "whatever"), null);     // unknown provider
 });
 
-test("catalogSnapshot: only plurnk-supported providers are vendored, each non-empty", () => {
-    // The vendored set = the KEEP list in generate.mjs (those models.dev actually
-    // has). Asserted as a subset so a models.dev-side rename surfaces, not a bare count.
-    const ALLOWED = new Set([
-        "openai", "groq", "deepseek", "mistral", "togetherai", "fireworks-ai",
-        "deepinfra", "openrouter", "ollama-cloud", "google", "cloudflare-workers-ai",
-        "xai", "anthropic",
-        "moonshotai", "alibaba", "zai", "tencent-tokenhub", "minimax", "stepfun",
-        "siliconflow", "modelscope",
-    ]);
+test("resolveModel: a unique provider-native suffix resolves without a PLURNK vendor table", () => {
+    const resolved = resolveModel("fireworks", "deepseek-v4-pro");
+    assert.equal(resolved?.id, "accounts/fireworks/models/deepseek-v4-pro");
+});
+
+test("provider catalog carries Models.dev's AI SDK construction facts", () => {
+    assert.deepEqual(lookupProvider("google"), providerCatalogSnapshot().google);
+    assert.equal(lookupProvider("google")?.npm, "@ai-sdk/google");
+    assert.ok(lookupProvider("google")?.env.includes("GEMINI_API_KEY"));
+    assert.equal(lookupProvider("cloudflare")?.id, "cloudflare-workers-ai");
+});
+
+test("provider credential names exclude non-secret endpoint coordinates", () => {
+    const names = providerCredentialEnvNames();
+    assert.ok(names.includes("OPENAI_API_KEY"));
+    assert.ok(names.includes("AWS_SECRET_ACCESS_KEY"));
+    assert.equal(names.includes("AWS_REGION"), false);
+    assert.equal(names.includes("CLOUDFLARE_ACCOUNT_ID"), false);
+});
+
+test("catalogSnapshot: every vendored provider has models with usable context", () => {
     const snap = catalogSnapshot();
+    const providers = providerCatalogSnapshot();
     const ids = Object.keys(snap);
     assert.ok(ids.length > 0);
     for (const id of ids) {
-        assert.ok(ALLOWED.has(id), `unexpected vendored provider "${id}"`);
+        assert.ok(providers[id] !== undefined, `provider facts missing for "${id}"`);
         assert.ok(Object.keys(snap[id]).length > 0, `"${id}" vendored empty`);
     }
 });

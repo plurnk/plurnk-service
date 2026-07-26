@@ -1,5 +1,5 @@
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
-import { generateText, streamText, type LanguageModelUsage } from "ai";
+import { generateText, streamText, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
 import { z } from "zod/v4";
 import type { ChatMessage, FinishReason, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
@@ -144,42 +144,63 @@ export type AiSdkTransportResponse = {
     rawBody?: unknown;
 };
 
-export const executeOpenAICompatible = async (
-    request: AiSdkTransportRequest,
+export type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | "fetch"> & {
+    languageModel: LanguageModel;
+    providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
+    temperature?: number;
+    topP?: number;
+    topK?: number;
+    presencePenalty?: number;
+    frequencyPenalty?: number;
+    stopSequences?: string[];
+    seed?: number;
+    maxOutputTokens?: number;
+    reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "none" | "provider-default";
+};
+
+const executeModel = async (
+    request: AiSdkModelRequest,
 ): Promise<AiSdkTransportResponse> => {
-    const provider = createOpenAICompatible({
-        name: "plurnk",
-        baseURL: baseUrl(request.url),
-        headers: request.headers,
-        fetch: request.fetch,
-        includeUsage: true,
-        transformRequestBody: (sdkBody) => ({
-            ...sdkBody,
-            ...request.body,
-            stream: sdkBody.stream,
-            ...(sdkBody.stream_options !== undefined
-                ? { stream_options: sdkBody.stream_options }
-                : {}),
-        }),
-    });
-    const model = provider.languageModel(request.model, { errorStructure });
+    const {
+        languageModel: model,
+        providerOptions,
+        temperature,
+        topP,
+        topK,
+        presencePenalty,
+        frequencyPenalty,
+        stopSequences,
+        seed,
+        maxOutputTokens,
+        reasoning,
+    } = request;
+    const settings = {
+        ...(temperature === undefined ? {} : { temperature }),
+        ...(topP === undefined ? {} : { topP }),
+        ...(topK === undefined ? {} : { topK }),
+        ...(presencePenalty === undefined ? {} : { presencePenalty }),
+        ...(frequencyPenalty === undefined ? {} : { frequencyPenalty }),
+        ...(stopSequences === undefined ? {} : { stopSequences }),
+        ...(seed === undefined ? {} : { seed }),
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+        ...(reasoning === undefined ? {} : { reasoning }),
+        ...(providerOptions === undefined ? {} : { providerOptions }),
+    };
     const common = {
         model,
-        // The stable Provider contract permits an empty message list. AI SDK
-        // validates its prompt before transformRequestBody runs, so give that
-        // validator a harmless placeholder; the transformed wire body above
-        // still carries the caller's exact `messages` value.
         messages: request.messages.length > 0
             ? request.messages
             : [{ role: "user" as const, content: "" }],
         maxRetries: request.retryAttempts,
         abortSignal: request.signal,
+        headers: request.headers,
         timeout: {
             totalMs: request.fetchTimeoutMs,
             ...(request.streamIdleTimeoutMs !== undefined && request.streamIdleTimeoutMs > 0
                 ? { chunkMs: request.streamIdleTimeoutMs }
                 : {}),
         },
+        ...settings,
     } as const;
 
     if (!request.streaming) {
@@ -190,14 +211,14 @@ export const executeOpenAICompatible = async (
         const rawBody = result.response.body;
         const values = [rawBody];
         const evidence = extractEvidence(values);
-        const reasoning = evidence.reasoning || result.reasoningText || "";
+        const reasoningText = evidence.reasoning || result.reasoningText || "";
         return {
             model: result.response.modelId,
             content: result.text,
-            reasoning,
+            reasoning: reasoningText,
             finishReason: finishReasonOf(result.rawFinishReason),
-            usage: wireUsageOf(values, reasoning, result.text)
-                ?? usageOf(result.usage, reasoning, result.text),
+            usage: wireUsageOf(values, reasoningText, result.text)
+                ?? usageOf(result.usage, reasoningText, result.text),
             metadata: metadataOf(values),
             reasoningEncrypted: evidence.reasoningEncrypted,
             logprobs: evidence.logprobs,
@@ -219,19 +240,53 @@ export const executeOpenAICompatible = async (
     if (streamError !== undefined) throw streamError;
     const evidence = extractEvidence(rawChunks);
     const content = await result.text;
-    const reasoning = evidence.reasoning || (await result.reasoningText) || "";
+    const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
     return {
         model: (await result.response).modelId,
         content,
-        reasoning,
+        reasoning: reasoningText,
         finishReason: finishReasonOf(await result.rawFinishReason),
-        usage: wireUsageOf(rawChunks, reasoning, content)
-            ?? usageOf(await result.usage, reasoning, content),
+        usage: wireUsageOf(rawChunks, reasoningText, content)
+            ?? usageOf(await result.usage, reasoningText, content),
         metadata: metadataOf(rawChunks),
         reasoningEncrypted: evidence.reasoningEncrypted,
         logprobs: evidence.logprobs,
         ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
     };
+};
+
+export const executeAiSdkModel = executeModel;
+
+export const executeOpenAICompatible = async (
+    request: AiSdkTransportRequest,
+): Promise<AiSdkTransportResponse> => {
+    const provider = createOpenAICompatible({
+        name: "plurnk",
+        baseURL: baseUrl(request.url),
+        headers: request.headers,
+        fetch: request.fetch,
+        includeUsage: true,
+        transformRequestBody: (sdkBody) => ({
+            ...sdkBody,
+            ...request.body,
+            stream: sdkBody.stream,
+            ...(sdkBody.stream_options !== undefined
+                ? { stream_options: sdkBody.stream_options }
+                : {}),
+        }),
+    });
+    const model = provider.languageModel(request.model, { errorStructure });
+    return executeModel({
+        languageModel: model,
+        headers: {},
+        messages: request.messages,
+        signal: request.signal,
+        fetchTimeoutMs: request.fetchTimeoutMs,
+        streamIdleTimeoutMs: request.streamIdleTimeoutMs,
+        retryAttempts: request.retryAttempts,
+        streaming: request.streaming,
+        captureRawBody: request.captureRawBody,
+    });
 };
 
 const extractEvidence = (values: unknown[]): {

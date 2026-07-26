@@ -3,6 +3,7 @@
 // is the wire-reported CoT only.
 
 import type { TelemetryEvent } from "./telemetry.ts";
+import type { LanguageModel } from "ai";
 
 export interface ChatMessage {
     role: "system" | "user" | "assistant";
@@ -208,12 +209,8 @@ export interface ProviderOptions {
     readonly baseUrl?: string;
 }
 
-// Each provider package's default export MUST be a factory:
-//   static fromEnv(env, model, options?) → Provider | Promise<Provider>
-// `model` is the second positional arg because PLURNK_MODEL_<alias>=<provider>/<model>
-// is parsed by the registry; the resolved model id flows through. `options` is an
-// optional third arg (per-alias overrides, e.g. baseUrl); a factory that ignores
-// it keeps working unchanged.
-export interface ProviderFactory {
-    fromEnv(env: NodeJS.ProcessEnv, model: string, options?: ProviderOptions): Provider | Promise<Provider>;
+// A discovered provider plugin default-exports an AI SDK provider. PLURNK owns
+// the adapter into Provider; the plugin owns only its protocol binding.
+export interface AiSdkProviderPlugin {
+    languageModel(model: string): LanguageModel;
 }

@@ -1,14 +1,12 @@
 // @plurnk/plurnk-models — a build-time-vendored snapshot of model metadata
 // (context window + pricing) sourced from models.dev.
 //
-// FALLBACK ONLY. Live provider data always wins: a backend's probed context
-// window and a provider's fetched per-token pricing are ground truth and may
-// change; this snapshot is the last resort when no live source is available
-// (e.g. a cloud model the endpoint doesn't self-report). Consumers resolve in
-// this order — env override → live probe/fetch → THIS catalog → null. Never let
-// a stale snapshot shadow a live value, especially cost.
+// Cloud provider facts come from this release-time snapshot. Local endpoint
+// probes and explicit operator pins win where present. There is no runtime
+// dependency on models.dev and no parallel PLURNK vendor table.
 
 import catalog from "./catalog.json" with { type: "json" };
+import providers from "./providers.json" with { type: "json" };
 
 export type ModelCost = {
     readonly inputPer1M: number;        // USD per 1M input tokens
@@ -24,11 +22,17 @@ export type ModelInfo = {
     readonly cost?: ModelCost;          // absent when models.dev had no pricing
 };
 
+export type ProviderInfo = {
+    readonly id: string;
+    readonly npm: string;
+    readonly env: readonly string[];
+    readonly api?: string;
+};
+
 // plurnk provider name → models.dev provider id. Identity for most; these
-// diverge (verified against api.json). Keep in sync with KEEP in generate.mjs.
-// The Chinese hosts map to the INTERNATIONAL id (USD pricing), matching the
-// standard provider's default intl base; minimax/stepfun/siliconflow/modelscope
-// are identity. volcengine/baichuan/qianfan have no models.dev entry at all.
+// diverge from the operator-friendly PLURNK alias (verified against api.json).
+// The Chinese hosts map to the international catalog id (USD pricing).
+// volcengine/baichuan/qianfan have no models.dev entry.
 const PROVIDER_IDS: Readonly<Record<string, string>> = Object.freeze({
     together: "togetherai",
     fireworks: "fireworks-ai",
@@ -38,9 +42,11 @@ const PROVIDER_IDS: Readonly<Record<string, string>> = Object.freeze({
     dashscope: "alibaba",
     zhipu: "zai",
     hunyuan: "tencent-tokenhub",
+    bedrock: "amazon-bedrock",
 });
 
 const data = catalog as Record<string, Record<string, ModelInfo>>;
+const providerData = providers as Record<string, ProviderInfo>;
 
 // Snapshot metadata for the FALLBACK lookup. Returns null on a miss — the
 // caller MUST already have preferred any live value; a null here means "no
@@ -52,6 +58,38 @@ export const lookup = (provider: string, model: string): ModelInfo | null => {
     return data[id]?.[model] ?? null;
 };
 
+export const resolveModel = (
+    provider: string,
+    model: string,
+): { readonly id: string; readonly info: ModelInfo } | null => {
+    const id = PROVIDER_IDS[provider] ?? provider;
+    const models = data[id];
+    if (models === undefined) return null;
+    const exact = models[model];
+    if (exact !== undefined) return { id: model, info: exact };
+    const suffix = `/${model}`;
+    const matches = Object.entries(models).filter(([candidate]) => candidate.endsWith(suffix));
+    return matches.length === 1
+        ? { id: matches[0]![0], info: matches[0]![1] }
+        : null;
+};
+
+export const lookupProvider = (provider: string): ProviderInfo | null => {
+    const id = PROVIDER_IDS[provider] ?? provider;
+    return providerData[id] ?? null;
+};
+
 // The raw snapshot, for a consumer that wants to enumerate (e.g. a client's
 // model picker). Read-only; do not mutate.
 export const catalogSnapshot = (): Readonly<Record<string, Readonly<Record<string, ModelInfo>>>> => data;
+
+export const providerCatalogSnapshot = (): Readonly<Record<string, ProviderInfo>> => providerData;
+
+// models.dev's `env` mixes credentials with non-secret endpoint coordinates
+// such as AWS_REGION and CLOUDFLARE_ACCOUNT_ID. Only conventional credential
+// names belong in a subprocess denylist.
+export const providerCredentialEnvNames = (): readonly string[] =>
+    [...new Set(Object.values(providerData)
+        .flatMap((provider) => provider.env)
+        .filter((name) => /(?:API_KEY|TOKEN|SECRET|ACCESS_KEY_ID|PASSWORD|CREDENTIAL)/.test(name)))]
+        .toSorted();

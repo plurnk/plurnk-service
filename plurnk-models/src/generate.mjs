@@ -1,6 +1,6 @@
-// Release-time generator. Fetches the models.dev catalog and vendors a pruned,
-// committed snapshot (src/catalog.json) carrying only the two fields plurnk
-// uses as a FALLBACK — context window + pricing. Run on the release cadence:
+// Release-time generator. Fetches models.dev and vendors the provider facts
+// needed to construct an AI SDK provider plus the pruned model metadata PLURNK
+// consumes. Run on the release cadence:
 //   npm run generate
 // The snapshot is committed; there is NO network at install or runtime. Live
 // provider data always wins over this snapshot (see README) — it only fills the
@@ -12,20 +12,22 @@ import { fileURLToPath } from "node:url";
 
 const SOURCE = "https://models.dev/api.json";
 
-// The models.dev provider ids backing plurnk's supported providers. Kept in sync
-// with PROVIDER_IDS in index.ts (our provider name → models.dev id). We vendor
-// ONLY these — leaner than the full 145-provider catalog, and exactly the set a
-// plurnk daemon can actually serve.
-const KEEP = [
-    "openai", "groq", "deepseek", "mistral", "togetherai", "fireworks-ai",
-    "deepinfra", "openrouter", "ollama-cloud", "google", "cloudflare-workers-ai",
-    "xai", "anthropic",
-    // Chinese cloud hosts (international ids → USD pricing). The standard-provider
-    // names that diverge from these ids are mapped in PROVIDER_IDS. volcengine /
-    // baichuan / qianfan have NO models.dev provider, so they carry no fallback.
-    "moonshotai", "alibaba", "zai", "tencent-tokenhub", "minimax", "stepfun",
-    "siliconflow", "modelscope",
-];
+// Package mechanics are the only support boundary. Vendor membership comes
+// entirely from models.dev: every provider using an SDK package we ship is
+// included automatically.
+const SUPPORTED_NPM = new Set([
+    "@ai-sdk/amazon-bedrock",
+    "@ai-sdk/anthropic",
+    "@ai-sdk/deepinfra",
+    "@ai-sdk/google",
+    "@ai-sdk/groq",
+    "@ai-sdk/mistral",
+    "@ai-sdk/openai",
+    "@ai-sdk/openai-compatible",
+    "@ai-sdk/togetherai",
+    "@ai-sdk/xai",
+    "@openrouter/ai-sdk-provider",
+]);
 
 // One models.dev model entry → our pruned ModelInfo, or null if it has no usable
 // context window (the field we anchor on).
@@ -55,10 +57,16 @@ if (!res.ok) throw new Error(`models.dev fetch failed: ${res.status}`);
 const db = await res.json();
 
 const catalog = {};
+const providersCatalog = {};
 let providers = 0, models = 0, dropped = 0;
-for (const id of KEEP) {
-    const entry = db[id];
-    if (entry === undefined) { console.warn(`! models.dev has no provider "${id}" — skipped`); continue; }
+for (const [id, entry] of Object.entries(db)) {
+    if (!SUPPORTED_NPM.has(entry.npm)) continue;
+    providersCatalog[id] = {
+        id: entry.id,
+        npm: entry.npm,
+        env: entry.env ?? [],
+        ...(entry.api === undefined ? {} : { api: entry.api }),
+    };
     const out = {};
     for (const [modelId, m] of Object.entries(entry.models ?? {})) {
         const info = prune(m);
@@ -71,4 +79,5 @@ for (const id of KEEP) {
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 await fs.writeFile(path.join(dir, "catalog.json"), JSON.stringify(catalog, null, 0) + "\n", "utf-8");
+await fs.writeFile(path.join(dir, "providers.json"), JSON.stringify(providersCatalog, null, 0) + "\n", "utf-8");
 console.log(`vendored ${models} models across ${providers} providers (${dropped} dropped for no context window) from ${SOURCE}`);
