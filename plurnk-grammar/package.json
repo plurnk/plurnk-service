@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-grammar",
-    "version": "1.3.6",
+    "version": "1.3.7",
     "description": "ANTLR4 grammar for the Plurnk LLM agent protocol",
     "type": "module",
     "license": "MIT",
