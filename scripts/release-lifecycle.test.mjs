@@ -2,11 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("release lifecycle builds and gates once before script-free publication", async () => {
+test("release lifecycle stamps, commits, then builds and gates before script-free publication", async () => {
     const root = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
     const versionSteps = root.scripts["release:version"];
-    assert.match(versionSteps, /npm run build && node scripts\/release-gates\.mjs/);
+    assert.equal(versionSteps, "node scripts/release-prepare.mjs");
 
+    const prepare = await readFile(new URL("./release-prepare.mjs", import.meta.url), "utf8");
+    assert.match(prepare, /\["scripts\/release-version\.mjs", version\]/);
+    assert.doesNotMatch(prepare, /release-gates|npm", \["run", "build"/);
     const publish = await readFile(new URL("./release-publish.mjs", import.meta.url), "utf8");
+    const preBuildClean = publish.indexOf('assertClean("before build")');
+    const build = publish.indexOf('["run", "build"]');
+    const gates = publish.indexOf('["scripts/release-gates.mjs"]');
+    const postGateClean = publish.indexOf('assertClean("after gates")');
+    const firstPublish = publish.indexOf('["publish", "-w", name');
+    assert.ok(preBuildClean >= 0 && preBuildClean < build);
+    assert.ok(build < gates && gates < postGateClean && postGateClean < firstPublish);
     assert.match(publish, /\["publish", "-w", name, "--access", "public", "--ignore-scripts"\]/);
 });

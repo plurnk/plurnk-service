@@ -52,7 +52,7 @@
         "test": "node scripts/drill.mjs",
         "build": "npm run build --workspaces --if-present",
         "deps:check": "node scripts/deps-preflight.mjs",
-        "release:version": "npm run generate -w plurnk-models && node scripts/deps-preflight.mjs && npm run build && node scripts/release-gates.mjs && node plurnk-meta/scripts/external-package-census.mjs --write && node scripts/release-version.mjs",
+        "release:version": "node scripts/release-prepare.mjs",
         "release:order": "node scripts/release-order.mjs",
         "release:publish": "node scripts/release-publish.mjs",
         "release:externals": "node scripts/release-external-packages.mjs",

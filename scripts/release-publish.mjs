@@ -1,10 +1,11 @@
 // The deterministic publish machine (#505 post-mortem). Replaces the shell loop whose piped
-// exit codes masked a refused publish and announced a torn release. Four laws, mechanized:
-//   1. npm's REAL exit code — execFile rejects on nonzero; a refused publish HALTS the train.
-//   2. Nothing counts as published until the REGISTRY SERVES the stamped version (bounded poll).
-//   3. The run ends with the consumer-install verification: temp dir, install the root package
+// exit codes masked a refused publish and announced a torn release. Five laws, mechanized:
+//   1. The committed stamp is clean, then built and gated before the first publish.
+//   2. npm's REAL exit code — execFile rejects on nonzero; a refused publish HALTS the train.
+//   3. Nothing counts as published until the REGISTRY SERVES the stamped version (bounded poll).
+//   4. The run ends with the consumer-install verification: temp dir, install the root package
 //      from the registry, dep tree counted, boot probe, live listener — as a GATE, not a courtesy.
-//   4. The script's green exit is the ONLY state that permits a release announcement.
+//   5. The script's green exit is the ONLY state that permits a release announcement.
 // Idempotent: a package the registry already serves at the stamp is skipped — a torn release
 // rerun publishes exactly the missing rungs (the #505 recovery, mechanized).
 import { execFile, spawn } from "node:child_process";
@@ -17,6 +18,26 @@ import { setTimeout as sleep } from "node:timers/promises";
 const run = promisify(execFile);
 const ROOT_PKG = "@plurnk/plurnk-service";
 const BOOT_PORT = 17821;
+
+const assertClean = async (phase) => {
+    const dirty = (await run("git", ["status", "--porcelain"])).stdout.trim();
+    if (dirty !== "") {
+        throw new Error(`release-publish requires a clean committed stamp ${phase}:\n${dirty}`);
+    }
+};
+const runVisible = (command, args) => new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: "inherit" });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0
+        ? resolve()
+        : reject(new Error(`${command} ${args.join(" ")} failed (exit ${code})`)));
+});
+
+await assertClean("before build");
+console.log("release-publish: building and gating the committed stamp");
+await runVisible("npm", ["run", "build"]);
+await runVisible("node", ["scripts/release-gates.mjs"]);
+await assertClean("after gates");
 
 const root = JSON.parse(await fs.readFile("package.json", "utf8"));
 const order = [];
@@ -45,11 +66,8 @@ console.log(`release-publish: ${order.length} workspaces at ${version}`);
 for (const { name } of order) {
     if (await served(name) === version) { console.log(`  serves  ${name}`); continue; }
     console.log(`  publish ${name}`);
-    // release:version already built every workspace and ran every complete
-    // prepublishOnly gate against this candidate before stamping. Re-running
-    // lifecycle scripts here duplicates the expensive proof after the train has
-    // left and can tear an otherwise valid release. Publish the gated artifacts
-    // exactly as they stand; consumer install verification remains below.
+    // The committed stamp was built and gated once above. Publication remains
+    // script-free so no package can mutate or re-prove itself mid-train.
     await run("npm", ["publish", "-w", name, "--access", "public", "--ignore-scripts"], { maxBuffer: 16 * 1024 * 1024 }); // Law 1: rejects on refusal
     await awaitServed(name);
 }

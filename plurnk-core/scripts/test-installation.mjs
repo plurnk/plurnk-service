@@ -4,7 +4,7 @@
 // fresh install has NO active model (the #307 no-phone-home posture): the pointer surfaces instead.
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
@@ -43,7 +43,15 @@ ok(existsSync(bin), "plurnk-service bin linked in the sandbox");
 
 const mods = resolve(sandbox, "node_modules");
 const installedRoot = resolve(mods, "@plurnk", "plurnk-service");
+const installedPackage = JSON.parse(readFileSync(resolve(installedRoot, "package.json"), "utf8"));
+const buildInfo = JSON.parse(readFileSync(resolve(installedRoot, "dist", "build-info.json"), "utf8"));
 const installedRequire = createRequire(resolve(installedRoot, "package.json"));
+const revision = execFileSync("git", ["-C", resolve(import.meta.dirname, ".."), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const dirty = execFileSync("git", ["-C", resolve(import.meta.dirname, ".."), "status", "--porcelain"], { encoding: "utf8" }).trim() !== "";
+ok(buildInfo.package === installedPackage.name, "packed build provenance names the installed package");
+ok(buildInfo.version === installedPackage.version, "packed build provenance matches the installed package version");
+ok(buildInfo.revision === revision, "packed build provenance matches the checkout revision");
+ok(buildInfo.dirty === dirty, "packed build provenance reports checkout cleanliness");
 
 ok(existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "embedder ships OOTB (default-on bundle member)");
 for (const [providerPackage, provider] of [
