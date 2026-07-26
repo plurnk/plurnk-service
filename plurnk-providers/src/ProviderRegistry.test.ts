@@ -198,6 +198,56 @@ test("#633: an explicit malformed operator override still fails at its owning co
     );
 });
 
+test("#634: a catalog provider with unknown model metadata never falls through to plugin discovery", async () => {
+    let scanned = false;
+    await assert.rejects(
+        () => instantiateProvider(
+            "cloudflare",
+            {
+                CLOUDFLARE_ACCOUNT_ID: "account",
+                CLOUDFLARE_API_TOKEN: "token",
+            },
+            "vendor/model-outside-snapshot",
+            async () => { throw new Error("plugin import must not run"); },
+            async () => {
+                scanned = true;
+                return {
+                    registry: new Map([["cloudflare", "@plurnk/plurnk-providers-cloudflare"]]),
+                    skipped: new Map(),
+                    attributions: new Map(),
+                };
+            },
+        ),
+        /cloudflare provider: context window unresolved for "vendor\/model-outside-snapshot" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot/,
+    );
+    assert.equal(scanned, false);
+});
+
+test("#634: explicit metadata constructs an out-of-snapshot Cloudflare model in the consolidated transport", async () => {
+    let scanned = false;
+    const provider = await instantiateProvider(
+        "cloudflare",
+        {
+            CLOUDFLARE_ACCOUNT_ID: "account",
+            CLOUDFLARE_API_TOKEN: "token",
+            PLURNK_PROVIDERS_CONTEXT_WINDOW: "128000",
+        },
+        "vendor/model-outside-snapshot",
+        async () => { throw new Error("plugin import must not run"); },
+        async () => {
+            scanned = true;
+            return {
+                registry: new Map([["cloudflare", "@plurnk/plurnk-providers-cloudflare"]]),
+                skipped: new Map(),
+                attributions: new Map(),
+            };
+        },
+    );
+    assert.equal(provider.model, "vendor/model-outside-snapshot");
+    assert.equal(provider.contextWindow, 128000);
+    assert.equal(scanned, false);
+});
+
 test("#622: two Fireworks aliases independently select default and priority service tiers", async () => {
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {

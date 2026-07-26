@@ -90,11 +90,34 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
 });
 
 test("cataloged unknown model fails unless its context is explicit", () => {
-    assert.equal(catalogProviderFromEnv("xai", env, "not-in-the-catalog"), null);
+    assert.throws(
+        () => catalogProviderFromEnv("xai", env, "not-in-the-catalog"),
+        /context window unresolved/,
+    );
     const provider = catalogProviderFromEnv("xai", {
         ...env,
         XAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
     }, "not-in-the-catalog");
     assert.equal(provider?.contextWindow, 8192);
+});
+
+test("explicit operator rates price out-of-snapshot models and override catalog rates", () => {
+    const priced = {
+        ...env,
+        XAI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
+        PLURNK_PROVIDERS_INPUT_USD_PER_MILLION: "2",
+        PLURNK_PROVIDERS_CACHE_READ_USD_PER_MILLION: "0.5",
+        PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION: "8",
+    };
+    const usage = {
+        prompt: 1_000_000,
+        cached: 250_000,
+        completion: 500_000,
+        reasoning: 500_000,
+        total: 2_000_000,
+    };
+    assert.equal(catalogProviderFromEnv("xai", priced, "not-in-the-catalog")?.calculateCost(usage), 9.625);
+    assert.equal(catalogProviderFromEnv("openai", priced, "gpt-4.1-mini")?.calculateCost(usage), 9.625);
 });

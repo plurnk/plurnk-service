@@ -8,6 +8,7 @@ import {
     promptCacheKeyFromEnv,
     reasoningFromEnv,
     resolveReserve,
+    tokenRatesFromEnv,
     type ReserveSpec,
 } from "./env.ts";
 import AiSdkProvider, { type ReasoningStyle } from "./AiSdkProvider.ts";
@@ -75,14 +76,16 @@ export const providerFromSdkModel = ({
                 ? configuredReasoning
                 : { tokens: Math.round(completionTokens / 2) };
 
-    const cost = info?.cost;
-    const calculateCost = cost === undefined
+    const configuredRates = tokenRatesFromEnv(env, name);
+    const catalogCost = info?.cost;
+    const rates = configuredRates ?? (catalogCost === undefined ? null : {
+        input: catalogCost.inputPer1M,
+        output: catalogCost.outputPer1M,
+        cached: catalogCost.cacheReadPer1M ?? catalogCost.inputPer1M,
+    });
+    const calculateCost = rates === null
         ? undefined
-        : (usage: ProviderUsage): number => calculateCostUsd(usage, {
-            input: cost.inputPer1M,
-            output: cost.outputPer1M,
-            cached: cost.cacheReadPer1M ?? cost.inputPer1M,
-        });
+        : (usage: ProviderUsage): number => calculateCostUsd(usage, rates);
 
     return new AiSdkProvider({
         model,
@@ -120,8 +123,12 @@ export const catalogProviderFromEnv = (
     const resolved = resolveModel(name, model);
     const contextOverride = contextWindowFromEnv(env, name);
     if (lookupProvider(name) === null && configuredProviderInfo(name, env) === null) return null;
-    if (name === "openai" && resolved === null) return null;
-    if (resolved === null && contextOverride === null) return null;
+    if ((name === "openai" || name === "ollama") && resolved === null) return null;
+    if (resolved === null && contextOverride === null) {
+        throw new Error(
+            `${name} provider: context window unresolved for "${model}" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot`,
+        );
+    }
     const wireModel = resolved?.id ?? model;
     const sdk = createSdkModel(name, wireModel, env, baseUrlOverride);
     if (sdk === null) return null;

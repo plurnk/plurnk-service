@@ -55,14 +55,18 @@ const shedRenamed = (env: NodeJS.ProcessEnv, oldName: string, newName: string, l
 // Data-capture knobs (#36), read identically by every provider (standard AND
 // plugin) so the opt-in surface is one source of truth. Both OFF by default —
 // the flag is the isolation, so serving turns request and carry nothing.
-//   PLURNK_PROVIDERS_TOP_LOGPROBS   non-negative int = the OpenAI `top_logprobs`
-//     count (set -> request per-token logprobs; unset -> off). Per-alias-scopable.
+//   PLURNK_PROVIDERS_TOP_LOGPROBS   "off" or a non-negative int = the OpenAI
+//     `top_logprobs` count (0 captures the chosen token only). Unset -> off.
+//     Per-alias-scopable, so "off" can override process-wide capture.
 //   PLURNK_PROVIDERS_RAWBODY   truthy (not ""/"0") → attach the verbatim wire
 //     body to response.rawBody. Per-alias-scopable.
 export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { topLogprobs: number | null; rawBody: boolean } => {
     shedRenamed(env, "PLURNK_PROVIDERS_LOGPROB", "PLURNK_PROVIDERS_TOP_LOGPROBS", label, "the OpenAI wire term"); // lexicon-allow
+    const topLogprobs = env.PLURNK_PROVIDERS_TOP_LOGPROBS === "off"
+        ? null
+        : parseOptionalInt(env.PLURNK_PROVIDERS_TOP_LOGPROBS, "PLURNK_PROVIDERS_TOP_LOGPROBS", label);
     return {
-        topLogprobs: parseOptionalInt(env.PLURNK_PROVIDERS_TOP_LOGPROBS, "PLURNK_PROVIDERS_TOP_LOGPROBS", label),
+        topLogprobs,
         rawBody: env.PLURNK_PROVIDERS_RAWBODY !== undefined && env.PLURNK_PROVIDERS_RAWBODY !== "" && env.PLURNK_PROVIDERS_RAWBODY !== "0",
     };
 };
@@ -74,6 +78,25 @@ export const dataCaptureFromEnv = (env: NodeJS.ProcessEnv, label: string): { top
 export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): number | null => {
     shedRenamed(env, "PLURNK_PROVIDERS_CONTEXT_SIZE", "PLURNK_PROVIDERS_CONTEXT_WINDOW", label, "the industry term, #472"); // lexicon-allow
     return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
+};
+
+export type ProviderTokenRates = { input: number; cached: number; output: number };
+
+export const tokenRatesFromEnv = (env: NodeJS.ProcessEnv, label: string): ProviderTokenRates | null => {
+    const inputName = "PLURNK_PROVIDERS_INPUT_USD_PER_MILLION";
+    const cachedName = "PLURNK_PROVIDERS_CACHE_READ_USD_PER_MILLION";
+    const outputName = "PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION";
+    const configured = [inputName, cachedName, outputName]
+        .some((name) => env[name] !== undefined && env[name] !== "");
+    if (!configured) return null;
+    const input = parseRequiredFloat(env[inputName], inputName, label, 0);
+    return {
+        input,
+        cached: env[cachedName] === undefined || env[cachedName] === ""
+            ? input
+            : parseRequiredFloat(env[cachedName], cachedName, label, 0),
+        output: parseRequiredFloat(env[outputName], outputName, label, 0),
+    };
 };
 
 // The generation-envelope reserves (#507, owner-ruled migration): how much of a
@@ -169,6 +192,9 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_REASONING",
     "PLURNK_PROVIDERS_CONTEXT_WINDOW",
+    "PLURNK_PROVIDERS_INPUT_USD_PER_MILLION",
+    "PLURNK_PROVIDERS_CACHE_READ_USD_PER_MILLION",
+    "PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION",
     "PLURNK_PROVIDERS_RETRY_ATTEMPTS",
     "PLURNK_PROVIDERS_FETCH_TIMEOUT",
     "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT",

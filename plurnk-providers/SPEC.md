@@ -129,6 +129,8 @@ The universal groups are:
 - request, stream-idle, retry, and probe budgets;
 - local GBNF and llama-server capability pins;
 - context-window and generation-envelope overrides;
+- explicit input, cached-input, and output USD-per-million rates for models
+  absent from the snapshot or deliberate operator overrides;
 - opt-in logprob and raw-body capture.
 
 Operator secrets and machine-specific values never belong in committed
@@ -150,7 +152,10 @@ defaults.
 5. A precise unknown-provider error.
 
 Earlier sources are authoritative. Installed plugins cannot shadow a cataloged
-or explicitly declared name.
+or explicitly declared name. This remains true when a named model is absent
+from the Models.dev snapshot: construction requires an explicit
+`PLURNK_PROVIDERS_CONTEXT_WINDOW` and never falls through to a same-name
+plugin.
 
 Model IDs resolve exactly first. A unique catalog suffix is accepted to avoid
 forcing a vendor-owned resource prefix into PLURNK aliases. Ambiguous suffixes

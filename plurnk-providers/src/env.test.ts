@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningFromEnv, tokenRatesFromEnv } from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
@@ -46,6 +46,31 @@ test("requireEnv: returns the value or throws a named error", () => {
     assert.throws(() => requireEnv("", "GROQ_API_KEY", "groq"), /must be set/);
 });
 
+test("tokenRatesFromEnv is all-or-nothing, with cached input defaulting to input", () => {
+    assert.equal(tokenRatesFromEnv({}, "cloudflare"), null);
+    assert.deepEqual(tokenRatesFromEnv({
+        PLURNK_PROVIDERS_INPUT_USD_PER_MILLION: "0.435",
+        PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION: "0.87",
+    }, "cloudflare"), {
+        input: 0.435,
+        cached: 0.435,
+        output: 0.87,
+    });
+    assert.deepEqual(tokenRatesFromEnv({
+        PLURNK_PROVIDERS_INPUT_USD_PER_MILLION: "3",
+        PLURNK_PROVIDERS_CACHE_READ_USD_PER_MILLION: "0.3",
+        PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION: "15",
+    }, "cloudflare"), {
+        input: 3,
+        cached: 0.3,
+        output: 15,
+    });
+    assert.throws(
+        () => tokenRatesFromEnv({ PLURNK_PROVIDERS_INPUT_USD_PER_MILLION: "1" }, "cloudflare"),
+        /PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION must be set/,
+    );
+});
+
 // — per-alias knob scoping (per-alias scoping doctrine, user 2026-07-03) —
 
 test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
@@ -84,6 +109,7 @@ test("#36 dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPRO
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" } as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "3", PLURNK_PROVIDERS_RAWBODY: "1" } as NodeJS.ProcessEnv, "x"), { topLogprobs: 3, rawBody: true });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "0" } as NodeJS.ProcessEnv, "x"), { topLogprobs: 0, rawBody: false }); // set-to-0 = on, chosen-token only
+    assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "off" } as NodeJS.ProcessEnv, "x"), { topLogprobs: null, rawBody: false });
 });
 
 test("OpenAI-lexicon shed: a still-set PLURNK_PROVIDERS_LOGPROB fails hard with the rename pointer", async () => {
