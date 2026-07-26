@@ -180,6 +180,7 @@ export default class Daemon {
         this.#engine.onProposalPending((event) => {
             this.#broadcast({ workspaceId: event.workspaceId }, "loop/proposal", {
                 logEntryId: event.logEntryId,
+                workerId: event.workerId,
                 loopId: event.loopId,
                 turnId: event.turnId,
                 op: event.op,

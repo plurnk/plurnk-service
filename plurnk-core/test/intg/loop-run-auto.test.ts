@@ -168,8 +168,9 @@ test("loop/proposal notification carries flags.auto", async () => {
             }
             assert.ok(captured.length > 0, "loop/proposal notification expected");
             const params = captured[0] as {
-                logEntryId: number; flags?: { auto?: boolean };
+                logEntryId: number; workerId?: number; flags?: { auto?: boolean };
             };
+            assert.equal(typeof params.workerId, "number", "proposal identifies its owning worker for client routing");
             assert.ok(params.flags !== undefined, "flags must be on loop/proposal payload");
             assert.equal(params.flags!.auto, false, "auto defaults to false");
 
