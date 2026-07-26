@@ -40,7 +40,7 @@ SELECT COUNT(*) AS n FROM workers WHERE workspace_id = $workspace_id AND name LI
 SELECT id, name FROM workers WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: envelope_list_workers_for_workspace
-SELECT id, name, created_at, cost_pico, origin
+SELECT id, name, created_at, cost_usd, origin
 FROM workers
 WHERE workspace_id = $workspace_id
 ORDER BY created_at DESC;
@@ -71,7 +71,7 @@ RETURNING id;
 UPDATE loops SET status = $status WHERE id = $loop_id AND status = 102;
 
 -- PREP: envelope_list_workspaces
-SELECT id, name, project_root, created_at, cost_pico
+SELECT id, name, project_root, created_at, cost_usd
 FROM workspaces
 ORDER BY created_at DESC;
 

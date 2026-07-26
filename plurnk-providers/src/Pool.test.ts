@@ -28,7 +28,7 @@ const backend = (opts: FakeOpts = {}) => {
         ...(opts.completionReserve !== undefined ? { completionReserve: opts.completionReserve } : {}),
         ...(opts.tokenize ? { tokenize: async (t: string) => [t.length] } : {}),
         countTokens: (t: string) => t.length,
-        costFor: () => opts.cost ?? 0,
+        calculateCost: () => opts.cost ?? 0,
         generate: async (args: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> => {
             served.push(args.workerId);
             if (opts.throws !== undefined) throw opts.throws;
@@ -88,10 +88,10 @@ test("Pool: tokenize is exposed iff every backend has it", () => {
     assert.equal(new Pool([backend({ tokenize: true }).b, backend({ tokenize: false }).b]).tokenize, undefined);
 });
 
-test("Pool: countTokens + costFor delegate to a backend", () => {
+test("Pool: countTokens + calculateCost delegate to a backend", () => {
     const p = new Pool([backend({ cost: 42 }).b]);
     assert.equal(p.countTokens("abcd"), 4);
-    assert.equal(p.costFor({ prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 }), 42);
+    assert.equal(p.calculateCost({ prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 }), 42);
 });
 
 // --- dispatch: round-robin + affinity ---

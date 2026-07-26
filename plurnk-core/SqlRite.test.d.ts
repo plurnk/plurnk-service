@@ -469,7 +469,7 @@ export class SqlRiteSync {
 	test_turns_insert_with_prompt_and_context_size: SqlRiteSyncPreparedStatements;
 	test_turns_insert_with_usage_completion: SqlRiteSyncPreparedStatements;
 	test_turns_insert_with_usage_cached: SqlRiteSyncPreparedStatements;
-	test_turns_insert_with_usage_cost_pico: SqlRiteSyncPreparedStatements;
+	test_turns_insert_with_usage_cost_usd: SqlRiteSyncPreparedStatements;
 	test_turns_insert_all_usage: SqlRiteSyncPreparedStatements;
 	test_turns_get_full: SqlRiteSyncPreparedStatements;
 	test_turns_get_usage: SqlRiteSyncPreparedStatements;
@@ -934,7 +934,7 @@ export default class SqlRite {
 	test_turns_insert_with_prompt_and_context_size: SqlRitePreparedStatements;
 	test_turns_insert_with_usage_completion: SqlRitePreparedStatements;
 	test_turns_insert_with_usage_cached: SqlRitePreparedStatements;
-	test_turns_insert_with_usage_cost_pico: SqlRitePreparedStatements;
+	test_turns_insert_with_usage_cost_usd: SqlRitePreparedStatements;
 	test_turns_insert_all_usage: SqlRitePreparedStatements;
 	test_turns_get_full: SqlRitePreparedStatements;
 	test_turns_get_usage: SqlRitePreparedStatements;

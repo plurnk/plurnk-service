@@ -83,7 +83,7 @@ export default class Pool implements Provider {
     }
 
     countTokens(text: string): number { return this.#backends[0].countTokens(text); }
-    costFor(usage: ProviderUsage): number { return this.#backends[0].costFor(usage); }
+    calculateCost(usage: ProviderUsage): number { return this.#backends[0].calculateCost(usage); }
 
     // --- dispatch ---
 

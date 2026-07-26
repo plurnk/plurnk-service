@@ -43,7 +43,7 @@ export type OpenAICompatConfig = {
     contextWindow?: number | null;              // default null; caller resolves-or-fails (#419), narrows to required with the interface
     reasoningStyle?: ReasoningStyle;          // default "none"
     countTokens?: (text: string) => number;   // default chars/2 upper-bound heuristic
-    costFor?: (usage: ProviderUsage) => number; // default () => 0
+    calculateCost?: (usage: ProviderUsage) => number; // default () => 0
     source?: string;                           // telemetry source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
     // #518: send the OpenAI-standard `prompt_cache_key` set to workerId, so a
@@ -60,7 +60,6 @@ export type OpenAICompatConfig = {
     firstPartyMetadata?: boolean;              // forward per-turn attributions + client as Plurnk-* headers (plurnk only); default false
     apiKeyRejectedMessage?: string;            // #537: friendly hint when a PRESENT key is 401/403-rejected (distinct from unset); default undefined
     eosText?: string;                          // #539: server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
-    balanceMetaKey?: string;                    // top-level response field carrying account balance (pico-USD) → validated meta.balancePico (plurnk only, #23); default unset
     // Slot affinity wiring (provider-INTERNAL — never consumer-facing, #11).
     supportsSlotPinning?: boolean;             // backend accepts an `id_slot` body field (llama-server); default false
     slotCount?: number | null;                 // probed slot count for pinning backends; default null
@@ -257,7 +256,7 @@ export default class OpenAICompatProvider implements Provider {
     #retryDelayMs: number;
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
-    #costFor: (usage: ProviderUsage) => number;
+    #calculateCost: (usage: ProviderUsage) => number;
     #source: string;
     #grammarStyle: GrammarStyle;
     #promptCacheKey: boolean;
@@ -265,7 +264,6 @@ export default class OpenAICompatProvider implements Provider {
     #gbnfDebug: boolean;
     #streaming: boolean;
     #firstPartyMetadata: boolean;
-    #balanceMetaKey: string | undefined;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
@@ -309,7 +307,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#retryAttempts = config.retryAttempts;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
-        this.#costFor = config.costFor ?? (() => 0);
+        this.#calculateCost = config.calculateCost ?? (() => 0);
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#promptCacheKey = config.promptCacheKey ?? false;
@@ -320,7 +318,6 @@ export default class OpenAICompatProvider implements Provider {
         this.#apiKeyRejectedMessage = config.apiKeyRejectedMessage;
         this.#eosText = config.eosText;
         this.#hasApiKey = "Authorization" in this.#headers;
-        this.#balanceMetaKey = config.balanceMetaKey;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
         this.#topLogprobs = config.topLogprobs ?? null;
@@ -370,7 +367,7 @@ export default class OpenAICompatProvider implements Provider {
     get constrainsOutput(): boolean { return this.#grammarStyle !== "none"; }
 
     countTokens(text: string): number { return this.#countTokens(text); }
-    costFor(usage: ProviderUsage): number { return this.#costFor(usage); }
+    calculateCost(usage: ProviderUsage): number { return this.#calculateCost(usage); }
 
     // Maps the reasoning INTENT (off | adaptive | on+budget, #33) to the
     // backend's wire mechanism — including under a transported grammar. The #32
@@ -566,18 +563,10 @@ export default class OpenAICompatProvider implements Provider {
     }
 
     // Per-turn metadata bag (#23): pass the backend's non-standard top-level fields
-    // (the transport's `chunkMetadata`) through VERBATIM, then normalize the known
-    // keys we hold a contract for — the spec's balance field → a validated
-    // `balancePico` (finite pico-USD; dropped if non-numeric), renamed off its raw
-    // key so the consumer reads one canonical name. Undefined when nothing's there;
-    // the service merges this into its Turn metadata and filters what reaches clients.
+    // through verbatim. Providers do not reinterpret vendor currency or account
+    // metadata; a monetary value carries its own amount and currency.
     #buildMeta(chunkMetadata: Record<string, unknown>): Record<string, unknown> | undefined {
         const meta: Record<string, unknown> = { ...chunkMetadata };
-        if (this.#balanceMetaKey !== undefined) {
-            const raw = meta[this.#balanceMetaKey];
-            delete meta[this.#balanceMetaKey];
-            if (typeof raw === "number" && Number.isFinite(raw)) meta.balancePico = raw;
-        }
         return Object.keys(meta).length > 0 ? meta : undefined;
     }
 

@@ -234,17 +234,17 @@ test("identity getters and defaults", () => {
     assert.equal(p.contextWindow, null); // default
     assert.equal(p.countTokens(""), 0);
     assert.equal(p.countTokens("four"), 2); // default heuristic ceil(4/2) upper bound
-    assert.equal(p.costFor({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // default free
+    assert.equal(p.calculateCost({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // default free
 });
 
-test("injected countTokens and costFor are used", () => {
+test("injected countTokens and calculateCost are used", () => {
     const p = new OpenAICompatProvider({
         model: "m", url: "http://x", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
         countTokens: (t) => t.length,
-        costFor: (u) => u.total * 2,
+        calculateCost: (u) => u.total * 2,
     });
     assert.equal(p.countTokens("abc"), 3);
-    assert.equal(p.costFor({ prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 5 }), 10);
+    assert.equal(p.calculateCost({ prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 5 }), 10);
 });
 
 test("generate maps a streamed response into ProviderResponse", async () => {
@@ -704,31 +704,15 @@ test("gbnfDebug: an INVALID grammar throws before any wire call — it never rea
     assert.equal(calls.length, 0); // fail-hard before the fetch — grammar never transported
 });
 
-// — meta bag: pass-through extras + validated known keys (#23) —
+// — meta bag: verbatim provider metadata (#23) —
 
-test("meta: the spec's balance field is normalized to a validated meta.balancePico", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
-    installFetchJson({ ...jsonChoice, balance_pico: 4_200_000 });
+test("meta: passes backend fields through without reinterpreting monetary values", async () => {
+    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const balance = { amount: "0.0000042", currency: "XMR" };
+    installFetchJson({ ...jsonChoice, balance, system_fingerprint: "fp_abc" });
     const res = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(res.meta?.balancePico, 4_200_000);
-    assert.equal("balance_pico" in (res.meta ?? {}), false); // raw key renamed to the canonical balancePico
-});
-
-test("meta: passes the backend's extra top-level fields through verbatim (every provider)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false }); // no balanceMetaKey
-    installFetchJson({ ...jsonChoice, balance_pico: 4_200_000, system_fingerprint: "fp_abc" });
-    const res = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(res.meta?.balance_pico, 4_200_000); // passed through raw — no balance contract on this provider
+    assert.deepEqual(res.meta?.balance, balance);
     assert.equal(res.meta?.system_fingerprint, "fp_abc");
-    assert.equal("balancePico" in (res.meta ?? {}), false); // not normalized without the key
-});
-
-test("meta: a non-numeric balance is dropped, never surfaced as balancePico (null-honest)", async () => {
-    const p = new OpenAICompatProvider({ model: "m", url: "http://x", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryDelayMs: 1, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, balanceMetaKey: "balance_pico" });
-    installFetchJson({ ...jsonChoice, balance_pico: "lots" });
-    const res = await p.generate({ workerId: "r", messages: [] });
-    assert.equal("balancePico" in (res.meta ?? {}), false);
-    assert.equal("balance_pico" in (res.meta ?? {}), false); // raw dropped too — the known key is validated away
 });
 
 // — first-party telemetry headers (attribution + client, SPEC §5) —

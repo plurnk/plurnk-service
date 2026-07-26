@@ -121,8 +121,8 @@ test("generate failure carries the provider:ollama telemetry source (SPEC )", as
     });
 });
 
-test("fromEnv: costFor returns 0 (local models are free)", async () => {
+test("fromEnv: calculateCost returns 0 (local models are free)", async () => {
     mockShow({ model_info: { "phi.context_length": 8192 } });
     const p = await Ollama.fromEnv({ ...baseEnv }, "phi:latest");
-    assert.equal(p.costFor({ prompt: 100000, completion: 50000, reasoning: 0, cached: 10000, total: 160000 }), 0);
+    assert.equal(p.calculateCost({ prompt: 100000, completion: 50000, reasoning: 0, cached: 10000, total: 160000 }), 0);
 });

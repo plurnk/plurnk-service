@@ -15,17 +15,17 @@ const MIN_PACKET = JSON.stringify({
     assistantRaw: null,
 });
 
-const insertTurnWithCost = async (db: Db, loopId: number, sequence: number, costPico: number): Promise<number> => {
+const insertTurnWithCost = async (db: Db, loopId: number, sequence: number, costUsd: number): Promise<number> => {
     const row = await db.test_cost_insert_turn.get<{ id: number }>({
-        loop_id: loopId, sequence, packet: MIN_PACKET, cost_pico: costPico,
+        loop_id: loopId, sequence, packet: MIN_PACKET, cost_usd: costUsd,
     });
     if (row === undefined) throw new Error("turn insert returned no row");
     return row.id;
 };
 
 const costs = async (db: Db, workspaceId: number, workerId: number) => ({
-    run: (await db.test_cost_run.get<{ cost_pico: number }>({ id: workerId }))?.cost_pico ?? 0,
-    workspace: (await db.test_cost_session.get<{ cost_pico: number }>({ id: workspaceId }))?.cost_pico ?? 0,
+    run: (await db.test_cost_run.get<{ cost_usd: number }>({ id: workerId }))?.cost_usd ?? 0,
+    workspace: (await db.test_cost_session.get<{ cost_usd: number }>({ id: workspaceId }))?.cost_usd ?? 0,
 });
 
 test("cost rollups: turn insert propagates to run AND workspace", async () => {
@@ -100,9 +100,9 @@ test("cost rollups: forked worker's turn rolls into the same workspace", async (
         const loopF = await insertLoop(db, forkId, 1);
         await insertTurnWithCost(db, loopT, 1, 100);
         await insertTurnWithCost(db, loopF, 1, 200);
-        const trunkCost = (await db.test_cost_run.get<{ cost_pico: number }>({ id: trunkId }))?.cost_pico;
-        const forkCost = (await db.test_cost_run.get<{ cost_pico: number }>({ id: forkId }))?.cost_pico;
-        const workspaceCost = (await db.test_cost_session.get<{ cost_pico: number }>({ id: workspaceId }))?.cost_pico;
+        const trunkCost = (await db.test_cost_run.get<{ cost_usd: number }>({ id: trunkId }))?.cost_usd;
+        const forkCost = (await db.test_cost_run.get<{ cost_usd: number }>({ id: forkId }))?.cost_usd;
+        const workspaceCost = (await db.test_cost_session.get<{ cost_usd: number }>({ id: workspaceId }))?.cost_usd;
         assert.equal(trunkCost, 100);
         assert.equal(forkCost, 200);
         assert.equal(workspaceCost, 300);
@@ -127,7 +127,7 @@ test("cost rollups: turns across different workspaces are isolated", async () =>
     } finally { await db.close(); }
 });
 
-test("cost rollups: UPDATE OF usage_cost_pico propagates the delta", async () => {
+test("cost rollups: UPDATE OF usage_cost_usd propagates the delta", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-cost-update");
@@ -136,25 +136,25 @@ test("cost rollups: UPDATE OF usage_cost_pico propagates the delta", async () =>
         const turnId = await insertTurnWithCost(db, loopId, 1, 1000);
         let c = await costs(db, workspaceId, workerId);
         assert.equal(c.run, 1000);
-        await db.test_cost_update_turn.run({ cost_pico: 1500, id: turnId });
+        await db.test_cost_update_turn.run({ cost_usd: 1500, id: turnId });
         c = await costs(db, workspaceId, workerId);
         assert.equal(c.run, 1500);
         assert.equal(c.workspace, 1500);
-        await db.test_cost_update_turn.run({ cost_pico: 800, id: turnId });
+        await db.test_cost_update_turn.run({ cost_usd: 800, id: turnId });
         c = await costs(db, workspaceId, workerId);
         assert.equal(c.run, 800);
         assert.equal(c.workspace, 800);
     } finally { await db.close(); }
 });
 
-test("cost rollups: UPDATE with same usage_cost_pico is a no-op", async () => {
+test("cost rollups: UPDATE with same usage_cost_usd is a no-op", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-cost-noop");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurnWithCost(db, loopId, 1, 1000);
-        await db.test_cost_update_turn.run({ cost_pico: 1000, id: turnId });
+        await db.test_cost_update_turn.run({ cost_usd: 1000, id: turnId });
         const c = await costs(db, workspaceId, workerId);
         assert.equal(c.run, 1000);
         assert.equal(c.workspace, 1000);
@@ -174,17 +174,16 @@ test("cost rollups: zero-cost turn is a no-op for rollup", async () => {
     } finally { await db.close(); }
 });
 
-test("cost rollups: large cost values don't overflow", async () => {
+test("cost rollups: ordinary USD values retain fractional precision", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-cost-large");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
-        const oneUsdInPico = 1_000_000_000_000;
-        await insertTurnWithCost(db, loopId, 1, oneUsdInPico);
-        await insertTurnWithCost(db, loopId, 2, oneUsdInPico * 2);
+        await insertTurnWithCost(db, loopId, 1, 1.25);
+        await insertTurnWithCost(db, loopId, 2, 2.5);
         const c = await costs(db, workspaceId, workerId);
-        assert.equal(c.run, oneUsdInPico * 3);
-        assert.equal(c.workspace, oneUsdInPico * 3);
+        assert.equal(c.run, 3.75);
+        assert.equal(c.workspace, 3.75);
     } finally { await db.close(); }
 });

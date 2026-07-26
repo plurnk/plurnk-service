@@ -11,6 +11,6 @@
         "family": { "type": "string", "minLength": 1, "description": "Model family (e.g. \"gemma\", \"llama\", \"qwen\", \"claude\", \"gpt\", \"gemini\")." },
         "model": { "type": "string", "minLength": 1, "description": "Specific model id (e.g. \"gemma3-12b\")." },
         "contextSize": { "type": "integer", "minimum": 1, "description": "Total context window in tokens." },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 code; the unit `cost_pico` is denominated in." }
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 code for provider cost estimates." }
     }
 }

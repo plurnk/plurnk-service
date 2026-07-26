@@ -111,7 +111,7 @@ export const evaluateOrientation = (record, digest) => {
         failed,
         checks,
         model: digest?.turns?.findLast?.((turn) => typeof turn?.model === "string")?.model ?? null,
-        costPico: record?.usage?.costPico ?? null,
+        costUsd: record?.usage?.costUsd ?? null,
     };
 };
 

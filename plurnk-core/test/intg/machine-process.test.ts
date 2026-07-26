@@ -142,13 +142,13 @@ test("#254 — a fork inherits the log but spends no new money: workspace cost i
         // Give the parent turn a real cost — the rollup triggers carry it to run + workspace.
         await db.engine_close_turn.run({
             id: turnId, status: 200, packet: "{}",
-            usage_prompt: 100, usage_completion: 50, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 1000,
+            usage_prompt: 100, usage_completion: 50, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 1000,
             finish_reason: null, model: "mock", meta: "{}",
         });
         const workspaceCost = async () =>
-            (await db.envelope_list_workspaces.all<{ id: number; cost_pico: number }>({})).find((s) => s.id === workspaceId)?.cost_pico;
+            (await db.envelope_list_workspaces.all<{ id: number; cost_usd: number }>({})).find((s) => s.id === workspaceId)?.cost_usd;
         const workerCost = async (rid: number) =>
-            (await db.envelope_list_workers_for_workspace.all<{ id: number; cost_pico: number }>({ workspace_id: workspaceId })).find((r) => r.id === rid)?.cost_pico;
+            (await db.envelope_list_workers_for_workspace.all<{ id: number; cost_usd: number }>({ workspace_id: workspaceId })).find((r) => r.id === rid)?.cost_usd;
 
         assert.equal(await workspaceCost(), 1000, "baseline: the parent turn's cost rolled up to the workspace");
         assert.equal(await workerCost(workerId), 1000, "baseline: and to the parent run");
@@ -157,7 +157,7 @@ test("#254 — a fork inherits the log but spends no new money: workspace cost i
 
         // The fork copied the log (history) but charged nothing — no new generation happened.
         assert.equal(await workspaceCost(), 1000, "workspace cost is NOT double-counted by the fork — true lifetime spend");
-        assert.equal(await workerCost(branchWorkerId), 0, "the branch's cost_pico starts at 0 — it accrues only what IT generates");
+        assert.equal(await workerCost(branchWorkerId), 0, "the branch's cost_usd starts at 0 — it accrues only what IT generates");
         assert.equal(await workerCost(workerId), 1000, "the parent worker's cost is untouched");
     } finally { db.close(); }
 });

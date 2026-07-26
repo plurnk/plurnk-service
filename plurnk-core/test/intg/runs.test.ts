@@ -32,7 +32,7 @@ test("runs: trunk run insert — null parent_worker_id, defaults populate", asyn
         await db.test_runs_insert.run({ workspace_id: workspaceId, name: n("trunk") });
         const row = await db.test_runs_get_by_session.get<{
             id: number; version: number; workspace_id: number; name: string; created_at: string;
-            parent_worker_id: number | null; cost_pico: number;
+            parent_worker_id: number | null; cost_usd: number;
         }>({ workspace_id: workspaceId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
@@ -40,7 +40,7 @@ test("runs: trunk run insert — null parent_worker_id, defaults populate", asyn
         assert.match(row?.name ?? "", /^run-trunk-\d+$/);
         assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.parent_worker_id, null);
-        assert.equal(row?.cost_pico, 0);
+        assert.equal(row?.cost_usd, 0);
     } finally { await db.close(); }
 });
 
@@ -133,12 +133,12 @@ test("runs: ON DELETE CASCADE via parent_worker_id — deleting a parent run rem
     } finally { await db.close(); }
 });
 
-test("runs: negative cost_pico rejected by CHECK", async () => {
+test("runs: negative cost_usd rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-negcost");
         await assert.rejects(
-            () => db.test_runs_insert_cost.run({ workspace_id: workspaceId, name: n("negcost"), cost_pico: -1 }),
+            () => db.test_runs_insert_cost.run({ workspace_id: workspaceId, name: n("negcost"), cost_usd: -1 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }

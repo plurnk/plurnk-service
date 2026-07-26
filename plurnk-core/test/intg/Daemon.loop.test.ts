@@ -21,7 +21,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             // #197 — loop/terminated carries usage summed over the loop's turns.
             assert.equal(result.usage?.completionTokens, 142, "completion tokens summed from the turn");
             assert.equal(result.usage?.promptTokens, 0);
-            assert.equal(result.usage?.costPico, 0);
+            assert.equal(result.usage?.costUsd, 0);
 
             const entryCount = (await db.test_count_entries.get<{ n: number }>())?.n;
             // worker:///france/capital + the prompt frame (2 base — no manifest.json entry, the
@@ -167,7 +167,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             assert.equal(ack.finalStatus, 100, "loop.run accepts immediately, not the terminal");
             assert.deepEqual(ack.turnIds, [], "the 100-ack carries turnIds — always present, never absent (#266)");
             const captured = await waitFor(
-                () => terminated() as Array<{ workerId: number; loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costPico: number } }>,
+                () => terminated() as Array<{ workerId: number; loopId: number; finalStatus: number; hitMaxTurns: boolean; usage: { promptTokens: number; completionTokens: number; costUsd: number } }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);

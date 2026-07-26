@@ -14,7 +14,7 @@ import OpenAICompatProvider, { type ReasoningStyle, type GrammarStyle } from "./
 import { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, reasoningFromEnv, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv, resolveReserve, type ReserveSpec } from "./env.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { providerSource } from "./telemetry.ts";
-import { computeCost } from "./usage.ts";
+import { calculateCostUsd } from "./usage.ts";
 import { lookup } from "@plurnk/plurnk-models";
 
 type StandardProviderSpec = {
@@ -91,9 +91,6 @@ type StandardProviderSpec = {
     // Default ON for standard providers (OpenAI-standard field, broadly accepted);
     // set false to opt a backend out (e.g. anthropic's cache_control mechanism).
     promptCacheKey?: boolean;
-    // Top-level response field the endpoint reports account balance (pico-USD) in,
-    // surfaced as ProviderResponse.balancePico (plurnk only, #23). Absent elsewhere.
-    balanceMetaKey?: string;
     // RETIRED knob (#27→mimetypes#44): exact client-side tokenizer families were
     // removed with the tokenizer shed — the var is kept ONLY to fail hard with a
     // migration pointer when an operator still sets it.
@@ -292,7 +289,7 @@ export const STANDARD_PROVIDERS: Readonly<Record<string, StandardProviderSpec>> 
         apiKeyMessage: "PLURNK_API_KEY not found. Acquire one at https://plurnk.ai . Plurnk also supports local models and alternative cloud provider configurations.",
         apiKeyRejectedMessage: "PLURNK_API_KEY was rejected by plurnk.ai (invalid or expired). Verify it at https://plurnk.ai .",
         reasoningStyle: "none", tokenizerEnvVar: "PLURNK_TOKENIZER",
-        probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, balanceMetaKey: "balance_pico", suppressTuningFloors: true,
+        probeNctx: true, detectLlamaServer: false, firstPartyMetadata: true, suppressTuningFloors: true,
     },
 });
 
@@ -526,7 +523,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
     // window for a known cloud model (groq/deepseek/mistral/…, which don't
     // probe). A local llama-server model misses the catalog and keeps its
     // probed n_ctx. Standard providers carry NO live pricing, so the catalog is
-    // the sole — never shadowing — cost source; per-1M USD → pico-USD/token (×1e6).
+    // the sole — never shadowing — cost source, expressed in USD per 1M tokens.
     // A relay with a catalogContextLookup (bedrock) resolves its window via the
     // underlying model's publisher and carries NO catalog cost (native rate ≠ relay
     // rate, #22); everyone else keys the catalog directly on (name, wireModel).
@@ -551,12 +548,12 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         );
     }
     const cost = fallback?.cost;
-    const costFor = cost === undefined
+    const calculateCost = cost === undefined
         ? undefined
-        : (usage: ProviderUsage): number => computeCost(usage, {
-            input: cost.inputPer1M * 1e6,
-            output: cost.outputPer1M * 1e6,
-            cached: (cost.cacheReadPer1M ?? cost.inputPer1M) * 1e6,
+        : (usage: ProviderUsage): number => calculateCostUsd(usage, {
+            input: cost.inputPer1M,
+            output: cost.outputPer1M,
+            cached: cost.cacheReadPer1M ?? cost.inputPer1M,
         });
 
     // #507: completion cap — when the catalog reports a maxOutput, use
@@ -610,7 +607,7 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", name),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         reasoningStyle,
-        costFor,
+        calculateCost,
         source: providerSource(name),
         grammarStyle,
         // Optional debug toggle (off by default): validate a transported grammar
@@ -624,7 +621,6 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         apiKeyRejectedMessage: spec.apiKeyRejectedMessage,
         promptCacheKey: spec.promptCacheKey ?? true, // #518: default-on for standard providers (OpenAI-standard field, 6/6 backends verified accept it); per-spec opt-out below
         serviceTier,
-        balanceMetaKey: spec.balanceMetaKey,
         supportsSlotPinning,
         slotCount,
         eosText,

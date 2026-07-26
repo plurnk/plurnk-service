@@ -11,7 +11,7 @@ acceptance goal is tracked in #583. A missing live issue feed is a remaining con
     finalStatus: 200,
     hitMaxTurns: false,
     timedOut: false,
-    usage: { costPico: 42 },
+    usage: { costUsd: 42 },
     turns: [{
         turn: 1,
         ops: [
@@ -41,7 +41,7 @@ test("orientation verdict accepts a terminal, inspected, evidence-bearing report
     assert.equal(verdict.pass, true);
     assert.deepEqual(verdict.failed, []);
     assert.equal(verdict.model, "endpoint/model");
-    assert.equal(verdict.costPico, 42);
+    assert.equal(verdict.costUsd, 42);
 });
 
 test("orientation verdict rejects a plausible answer that did not inspect its evidence", () => {

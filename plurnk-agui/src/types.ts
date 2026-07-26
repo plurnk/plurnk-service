@@ -53,7 +53,7 @@ export interface TerminatedNotification {
     usage: {
         promptTokens: number;
         completionTokens: number;
-        costPico: number;
+        costUsd: number;
         contextTokens: number;
         promptBudget: number | null;
         meta: Record<string, unknown>;

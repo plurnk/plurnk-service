@@ -16,7 +16,7 @@ FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns
 SELECT id, loop_id, sequence, status, packet,
-       usage_prompt, usage_completion, usage_cached, usage_cost_pico,
+       usage_prompt, usage_completion, usage_cached, usage_cost_usd,
        finish_reason, model, meta, timestamp
 FROM turns ORDER BY loop_id, sequence;
 
@@ -38,7 +38,7 @@ SELECT
     COALESCE(SUM(t.usage_prompt), 0) AS total_prompt,
     COALESCE(SUM(t.usage_completion), 0) AS total_completion,
     COALESCE(SUM(t.usage_cached), 0) AS total_cached,
-    COALESCE(SUM(t.usage_cost_pico), 0) AS total_cost_pico,
+    COALESCE(SUM(t.usage_cost_usd), 0) AS total_cost_usd,
     (SELECT t2.status FROM turns t2 JOIN loops l2 ON t2.loop_id = l2.id
      WHERE l2.worker_id = r.id ORDER BY l2.sequence DESC, t2.sequence DESC LIMIT 1) AS last_status
 FROM workers r

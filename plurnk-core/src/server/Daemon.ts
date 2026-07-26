@@ -18,7 +18,7 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 // (workspace/created), {workspaceId} = workspace-scoped. "this" retired with the per-connection leg.
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
-export interface DrainLoopResult { loopId: number; finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costPico: number } }
+export interface DrainLoopResult { loopId: number; finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
 import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
@@ -1001,7 +1001,7 @@ export default class Daemon {
                     // is the loop's TERMINAL state (499), delivered via loop/terminated (loop.run no
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     const usage = currentLoopId === null
-                        ? { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: null, meta: {} }
+                        ? { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: null, meta: {} }
                         : await this.#engine.loopUsage(currentLoopId);
                     if (currentLoopId !== null) {
                         // #380 (owner ruling) — the cancel is allowed but provenanced: the ROW goes

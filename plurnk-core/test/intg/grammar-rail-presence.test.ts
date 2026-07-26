@@ -31,7 +31,7 @@ const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: str
         get contextWindow() { return base.contextWindow; },
         get model() { return base.model; },
         countTokens: (s: string) => base.countTokens(s),
-        costFor: (u: never) => base.costFor(u),
+        calculateCost: (u: never) => base.calculateCost(u),
         generate: (args: { grammar?: string }) => { calls.push({ grammar: args.grammar }); return base.generate(args as never); },
     } as unknown as Provider;
     return { provider, calls };

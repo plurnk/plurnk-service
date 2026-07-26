@@ -550,7 +550,7 @@ test("bedrock: contextWindow resolves from the catalog via the inference-profile
     // MECHANISM (non-null, positive), never the literal - a catalog refresh must not break the build.
     assert.ok(p!.contextWindow !== null && p!.contextWindow > 0, `expected a catalog-resolved window, got ${p!.contextWindow}`);
     // cost is NOT taken from the native anthropic rate (bedrock marks up) — stays 0
-    assert.equal(p!.costFor({ prompt: 1_000_000, completion: 1_000_000, reasoning: 0, cached: 0, total: 2_000_000 }), 0);
+    assert.equal(p!.calculateCost({ prompt: 1_000_000, completion: 1_000_000, reasoning: 0, cached: 0, total: 2_000_000 }), 0);
 });
 
 test("bedrock: a publisher the catalog lacks (meta) fails hard (cloud, no probe); PLURNK_PROVIDERS_CONTEXT_WINDOW still wins", async () => {
@@ -585,11 +585,11 @@ test("standard provider: a catalog hit fills contextWindow + cost when there's n
     assert.ok(p !== null);
     assert.equal(p.contextWindow, info.contextWindow); // catalog window, no probe needed
     if (info.cost !== undefined) {
-        // 1M output tokens → outputPer1M USD, in pico-USD (per-1M ×1e6 per token).
-        const c = p.costFor({ prompt: 0, completion: 1_000_000, reasoning: 0, cached: 0, total: 1_000_000 });
-        assert.equal(c, Math.round(info.cost.outputPer1M * 1e6 * 1_000_000));
+        // One million output tokens cost exactly the catalog's per-million USD rate.
+        const c = p.calculateCost({ prompt: 0, completion: 1_000_000, reasoning: 0, cached: 0, total: 1_000_000 });
+        assert.equal(c, info.cost.outputPer1M);
     } else {
-        assert.equal(p.costFor({ prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 2 }), 0);
+        assert.equal(p.calculateCost({ prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 2 }), 0);
     }
 });
 
@@ -828,27 +828,17 @@ test("plurnk: a set-but-rejected key (401) surfaces the distinct #537 rejected h
     assert.equal(seen.filter((s) => s.url.endsWith("/chat/completions")).length, 1); // terminal — never retried, distinct message
 });
 
-test("plurnk: normalizes the endpoint's balance_pico into meta.balancePico (#23)", async () => {
+test("plurnk: passes currency-explicit balance metadata through (#23)", async () => {
     mock.method(globalThis, "fetch", async (url: string) => {
         const u = String(url);
         if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "plurnk", meta: { n_ctx: 49152 } }] }), { status: 200 });
         // plurnk has detectLlamaServer:false → streams; balance rides as a top-level field on a chunk.
-        const sse = 'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}],"balance_pico":880000000}\n\ndata: [DONE]';
+        const sse = 'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}],"balance":{"amount":"0.00000088","currency":"XMR"}}\n\ndata: [DONE]';
         return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(sse)); c.close(); } }), { status: 200 });
     });
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     const res = await p!.generate({ workerId: "r", messages: [] });
-    assert.equal(res.meta?.balancePico, 880000000);
-    mock.restoreAll();
-});
-
-test("a third-party (non-plurnk) provider never NORMALIZES balancePico — only plurnk holds that contract", async () => {
-    mock.method(globalThis, "fetch", async () =>
-        new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}],"balance_pico":880000000}\n\ndata: [DONE]')); c.close(); } }), { status: 200 }));
-    const p = await standardProviderFromEnv("groq", { ...baseEnv, GROQ_API_KEY: "k", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
-    const res = await p!.generate({ workerId: "r", messages: [] });
-    assert.equal("balancePico" in (res.meta ?? {}), false); // groq has no balanceMetaKey — no normalization
-    assert.equal(res.meta?.balance_pico, 880000000);          // but the raw field still passes through (every-provider meta)
+    assert.deepEqual(res.meta?.balance, { amount: "0.00000088", currency: "XMR" });
     mock.restoreAll();
 });
 

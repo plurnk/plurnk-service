@@ -36,7 +36,7 @@ interface Provider {
 
     // Tokenomic primitives (synchronous, pure)
     countTokens(text: string): number;
-    costFor(usage: ProviderUsage): number;  // pico-USD (1e-12 USD)
+    calculateCost(usage: ProviderUsage): number;  // estimated USD
 
     // OPTIONAL capability: exact tokenization served by the backend's own vocab
     // (llama-server /tokenize). Probe-gated — undefined means the backend can't.
@@ -114,7 +114,7 @@ interface ProviderResponse {
         model: string;              // wire-reported (may differ from requested for relay providers)
     };
     assistantRaw: unknown;          // verbatim wire response for forensics
-    meta?: Record<string, unknown>; // per-turn provider→client bag: backend extra fields passed through + validated known keys (e.g. balancePico, pico-USD); absent when empty (#23)
+    meta?: Record<string, unknown>; // verbatim per-turn provider metadata; absent when empty (#23)
 }
 
 interface ProviderUsage {
@@ -159,7 +159,7 @@ The package root remains the Node daemon integration surface.
 - `assistant.usage` is authoritative and follows the invariant above. Fill `0`s when the wire response omits a breakdown.
 - `countTokens` is **synchronous**, returns a non-negative integer, deterministic for the same input. Without an exact tokenizer family configured it is the **chars/2 UPPER BOUND** — deliberately conservative (real agentic text measures ~2.9–3.2 chars/token on gemma/deepseek, so the former chars/4 silently UNDERcounted 20–27%; a fallback may overcount, never under) — and it is **surfaced at construction** (`process.emitWarning`, code `PLURNK_TOKENIZER_HEURISTIC`), never silent. Exact counting is the tokenizer seam's job (mimetypes family), fed by `tokenize()` where available.
 - `tokenize?` is an **optional async capability**: token ids in the model's real vocabulary, served by the backend itself (llama-server's native root `/tokenize`, surfaced when the §11 probe fingerprints a llama-server and `detectLlamaServer` isn't false). `tokenize === undefined` is the honest "backend can't" signal. Exact-counting consumers prefer it over any client-side tokenizer data — the local model's own vocab needs no bundled `tokenizer.json` at all.
-- `costFor` is **pure**, returns pico-USD non-negative integer. Returns `0` for siblings with no known rates (local Ollama, generic OpenAI-compat shims).
+- `calculateCost` is **pure**, returns USD non-negative integer. Returns `0` for siblings with no known rates (local Ollama, generic OpenAI-compat shims).
 - `contextWindow` resolves to `null` when a PROBING provider (openai/llama-server) can't determine the window (consumer treats null as "no budget info"); a CLOUD provider with no window source FAILS HARD instead (#419, §11).
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
@@ -272,7 +272,7 @@ The framework is **contract-only**: it does not depend on provider plugins. The 
 - `signal` is wired to the worker's AbortController.
 - `generate` is single-call per turn. No parallel calls on the same instance.
 - `assistantRaw` is opaque to the consumer (forensics-only).
-- `meta` is the per-turn provider→client metadata bag: the backend's **non-standard top-level response fields passed through verbatim** (every provider), PLUS **validated known keys** the framework holds a contract for — currently `balancePico` (a finite pico-USD number normalized from the plurnk endpoint's balance field, renamed off its raw key; dropped if non-numeric). Absent when the backend reported no extras. The consumer (service) merges `meta` into its Turn metadata and filters what reaches the client; it reads `meta`, never mines `assistantRaw` (#23).
+- `meta` is the per-turn provider→client metadata bag: the backend's non-standard top-level response fields pass through verbatim. Monetary metadata carries an explicit decimal-string `amount` and `currency`; the provider never guesses or converts its unit. Absent when the backend reported no extras. The consumer (service) merges `meta` into its Turn metadata and filters what reaches the client; it reads `meta`, never mines `assistantRaw` (#23).
 - `countTokens` is cheap by contract; consumer calls frequently.
 
 ## §7 Provider → engine guarantees
@@ -284,7 +284,7 @@ The framework is **contract-only**: it does not depend on provider plugins. The 
 - **Atomic.** One `generate` call resolves with one complete `ProviderResponse`. No streaming partial resolves (v0).
 - **Honors `signal`.** Aborted calls reject; resources free; no orphaned connections.
 - **Single model.** One provider instance speaks to one model.
-- **Synchronous `countTokens`, pure `costFor`.** No I/O, no async, no state beyond cached tokenizer artifacts.
+- **Synchronous `countTokens`, pure `calculateCost`.** No I/O, no async, no state beyond cached tokenizer artifacts.
 
 ## §8 Forbidden
 
@@ -325,9 +325,9 @@ A sibling package satisfies the contract when:
 
 1. Default export is a class with `static fromEnv(env, model, options?)` factory.
 2. Instance exposes `contextWindow: number | null` and `model: string` (non-empty).
-3. Instance exposes `countTokens(text): number` and `costFor(usage): number`.
+3. Instance exposes `countTokens(text): number` and `calculateCost(usage): number`.
 4. `countTokens("")` returns `0`; `countTokens("…")` returns a non-negative integer.
-5. `costFor({prompt:0,completion:0,reasoning:0,cached:0,total:0})` returns `0` (or non-negative pico-USD for non-free models).
+5. `calculateCost({prompt:0,completion:0,reasoning:0,cached:0,total:0})` returns `0` (or non-negative USD for non-free models).
 6. Identity getters return stable values across reads.
 7. `generate` resolves with a valid `ProviderResponse` shape.
 8. `generate` invoked with a pre-aborted `signal` rejects without making a wire call.
@@ -354,7 +354,7 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
       contextWindow,           // number | null
       reasoning, reasoningStyle,   // {mode,budget} intent + style: "none"|"think"|"include_reasoning"|"effort"|"effort_explicit"|"template"|"anthropic"
       temperature, repeatPenalty, frequencyPenalty,  // sampling + anti-degeneration floor; frequency_penalty guards the plain cloud path (#426)
-      countTokens, costFor,  // strategies; default heuristic / free
+      countTokens, calculateCost,  // strategies; default heuristic / free
       grammarStyle,          // "none" | "llamacpp" — optional local GBNF transport (§13)
       gbnfDebug,             // PLURNK_PROVIDERS_GBNF_DEBUG: validate a grammar locally + throw on invalid, but DON'T send it (§13); default false
       streaming,             // SSE transport; default true (false → one non-streamed JSON)
@@ -367,13 +367,13 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
   The `openai` standard provider sets `grammarStyle: "llamacpp"`, `supportsSlotPinning`, and `slotCount` from the same llama-server fingerprint (`/v1/models` `meta` block + `/props`). The worker→slot mapping lives inside `OpenAICompatProvider`: sticky per `workerId`, round-robin across new runs, LRU-bounded.
 
 - **`chatCompletionStream` / `chatCompletion` / `OpenAiHttpError` / `StreamResponse`** — the shared HTTP client (`chatCompletionStream` for SSE, `chatCompletion` for the non-streamed JSON the `streaming: false` path uses). One shared copy.
-- **`normalizeUsage(raw, reasoningText?, contentText?)` / `computeCost(usage, {input, output, cached})`** — usage normalization to the §2 invariant (handles all three reasoning-reporting conventions; the optional text args feed the Fireworks re-split, #425) and the single cost formula (bills `completion + reasoning` at the output rate). `OpenAICompatProvider` applies `normalizeUsage` automatically; siblings pass their per-token rates to `computeCost` in their `costFor`.
+- **`normalizeUsage(raw, reasoningText?, contentText?)` / `calculateCostUsd(usage, rates)`** — usage normalization to the §2 invariant (handles all three reasoning-reporting conventions; the optional text args feed the Fireworks re-split, #425) and the single cost formula. Rates use the Models.dev convention of USD per million tokens; billable output is `completion + reasoning`. `OpenAICompatProvider` applies `normalizeUsage` automatically; provider instances expose `calculateCost(usage)`.
 - **`parseRequiredInt` / `parseOptionalInt` / `requireEnv`** — env helpers; each takes a provider `label` for error prefixing.
 - **`effortFromBudget(budget)`** — the shared reasoning-budget → `low|medium|high` breakpoints.
 
 A **bespoke sibling** therefore reduces to a thin class whose `fromEnv` probes whatever it needs (model catalog, pricing, context window), builds the config, and returns `new OpenAICompatProvider(config)`. A **standard provider** (§5 tier 1) needs no sibling at all — it's a frozen entry in `STANDARD_PROVIDERS` describing its key var, base-URL var, reasoning style, and tokenizer; `standardProviderFromEnv(name, env, model)` (async — returns `Promise<Provider | null>`) does the rest. The endpoint's **canonical URL ships as a floored default** in `.env.defaults` (set-if-unset, overridable in the operator's env or per-alias); it is read from the base-URL var (or a `baseUrlFromEnv` deriver) with **no in-code default**, the value living in the shipped floor, never baked into the table. Only the API **key** is required operator config (a secret with no default; fail-hard when unset).
 
-The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the consumer's per-turn `generate()` `attributions` (which installed plugin packages dispatched) and `client` (the originating frontend, e.g. `plurnk.nvim/1.4.0`) as `Plurnk-Attribution` / `Plurnk-Client` headers, and the opaque `workerId` as `Plurnk-Worker-Id` (#26, wire-name completed #511), and the lineage root `primaryWorkerId` as `Plurnk-Worker-Primary` (#522 — root-vs-descendant classification and worker-tree grouping key, always stamped when supplied). The gate lives on the provider, not the call site, so these first-party signals are **structurally incapable** of reaching a third-party backend. Empty values emit no header. It also alone sets **`balanceMetaKey: "balance_pico"`** — the top-level response field the plurnk endpoint reports the running account balance (pico-USD) in. `OpenAICompatProvider` surfaces the backend's extra top-level fields as `ProviderResponse.meta` for **every** provider (passed through), and for a provider that set `balanceMetaKey` it additionally normalizes that field into a validated `meta.balancePico`. So `balancePico` appears only from plurnk; the raw pass-through `meta` is general (#23).
+The `plurnk` entry alone sets **`firstPartyMetadata: true`** — it forwards the consumer's per-turn `generate()` `attributions` (which installed plugin packages dispatched) and `client` (the originating frontend, e.g. `plurnk.nvim/1.4.0`) as `Plurnk-Attribution` / `Plurnk-Client` headers, and the opaque `workerId` as `Plurnk-Worker-Id` (#26, wire-name completed #511), and the lineage root `primaryWorkerId` as `Plurnk-Worker-Primary` (#522 — root-vs-descendant classification and worker-tree grouping key, always stamped when supplied). The gate lives on the provider, not the call site, so these first-party signals are structurally incapable of reaching a third-party backend. Empty values emit no header. Endpoint response metadata follows the same general pass-through contract as every provider.
 
 **Prompt-cache affinity (`promptCacheKey`, #518).** Standard providers send the OpenAI-standard `prompt_cache_key` set to the `workerId` on every request, **default-ON** (opt out per spec). Serverless backends prompt-cache automatically but the cache is REPLICA-LOCAL; without an affinity key a worker's turns scatter across replicas and the stable prefix never hits (verified live: `cached_tokens` 0 without the key). `workerId` -- already the slot-affinity identity -- is exactly the opaque per-conversation key the cache wants, so a worker's turns pin to one replica and its stable prefix caches. Managed + reserved from caller `sampling`. It's the OpenAI-standard field and broadly accepted -- verified live on fireworks, together, deepinfra, xai, openrouter, and llama-server (6/6, all accept it, every serverless one caches). A backend that caches by a DIFFERENT mechanism opts out (`anthropic`: cache_control breakpoints); a backend later found to strict-reject the field opts out the same way.
 
@@ -446,7 +446,7 @@ Two OPT-IN knobs surface the full signal of a paid turn for downstream IQ scorin
 
 `Pool` fronts **N interchangeable backends as one `Provider`** - capacity scaling, not model blend. It ships the MECHANISM (round-robin across workers, sticky within a worker, overflow to a healthy sibling); the blend/escalation DECISION (which SKU, when to switch) stays the **consumer's**, one level up, by choosing WHICH pool to call. `new Pool(backends: Provider[])` - the consumer resolves the backends (per-alias `instantiateProvider`) and composes them.
 
-**Interchangeable, or it throws.** Construction fails on mixed `model`: a heterogeneous "pool" is the consumer's per-turn selection, not this primitive. The surface is the honest aggregate - `contextWindow` is the **safe floor** (min; `null` if any backend's window is unknown, so the consumer never improvises a cap, #421) with its matching reserves; `constrainsOutput` is claimed only if EVERY backend does; `requiresMaxTokens` if ANY does; `servedModel` the common id (else absent); `countTokens`/`tokenize`/`costFor` delegate.
+**Interchangeable, or it throws.** Construction fails on mixed `model`: a heterogeneous "pool" is the consumer's per-turn selection, not this primitive. The surface is the honest aggregate - `contextWindow` is the **safe floor** (min; `null` if any backend's window is unknown, so the consumer never improvises a cap, #421) with its matching reserves; `constrainsOutput` is claimed only if EVERY backend does; `requiresMaxTokens` if ANY does; `servedModel` the common id (else absent); `countTokens`/`tokenize`/`calculateCost` delegate.
 
 **Affinity is the point (§11, one level up).** A worker's turns stick to one backend so its stable prompt prefix keeps hitting the same KV cache; scattering a worker across backends shreds the prefix cache (#531). `worker -> backend` is the `worker -> slot` slot-affinity pattern (#11) across a fleet: round-robin assigns a NEW worker, a returning worker re-pins, the map is LRU-bounded (`N*8`).
 

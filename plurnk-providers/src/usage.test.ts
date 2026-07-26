@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { normalizeUsage, computeCost } from "./usage.ts";
+import { normalizeUsage, calculateCostUsd } from "./usage.ts";
 
 // — normalizeUsage —
 
@@ -115,22 +115,20 @@ test("normalizeUsage: no total reported -> re-split skipped, reasoning stays 0 (
     assert.deepEqual(u, { prompt: 10, completion: 20, reasoning: 0, cached: 0, total: 30 });
 });
 
-// — computeCost —
+// — calculateCostUsd —
 
-test("computeCost: bills reasoning at the output rate", () => {
+test("calculateCostUsd: bills reasoning at the USD-per-million output rate", () => {
     // 100 input, 0 cached, 50 completion + 200 reasoning = 250 output.
     const usage = { prompt: 100, completion: 50, reasoning: 200, cached: 0, total: 350 };
-    // input 1 pico/tok, output 10 pico/tok → 100*1 + 250*10 = 2600
-    assert.equal(computeCost(usage, { input: 1, output: 10, cached: 0 }), 2600);
+    assert.equal(calculateCostUsd(usage, { input: 1, output: 10, cached: 0 }), 0.0026);
 });
 
-test("computeCost: cached prompt billed at the cache rate, remainder at input", () => {
+test("calculateCostUsd: cached prompt billed at the cache rate, remainder at input", () => {
     const usage = { prompt: 1000, completion: 0, reasoning: 0, cached: 400, total: 1000 };
-    // 600 non-cached @5 + 400 cached @1 = 3000 + 400 = 3400
-    assert.equal(computeCost(usage, { input: 5, output: 99, cached: 1 }), 3400);
+    assert.equal(calculateCostUsd(usage, { input: 5, output: 99, cached: 1 }), 0.0034);
 });
 
-test("computeCost: zero rates → 0", () => {
+test("calculateCostUsd: zero rates → 0", () => {
     const usage = { prompt: 9, completion: 9, reasoning: 9, cached: 9, total: 27 };
-    assert.equal(computeCost(usage, { input: 0, output: 0, cached: 0 }), 0);
+    assert.equal(calculateCostUsd(usage, { input: 0, output: 0, cached: 0 }), 0);
 });

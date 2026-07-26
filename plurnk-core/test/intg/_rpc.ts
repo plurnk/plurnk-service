@@ -104,7 +104,7 @@ export const runLoopToTerminal = async (
     { timeoutMs = 8000 }: { timeoutMs?: number } = {},
 ): Promise<{
     loopId: number; finalStatus: number; accepted: number; action?: string; modelWorkerId?: number;
-    hitMaxTurns?: boolean; turnIds?: number[]; usage?: { promptTokens: number; completionTokens: number; costPico: number };
+    hitMaxTurns?: boolean; turnIds?: number[]; usage?: { promptTokens: number; completionTokens: number; costUsd: number };
 }> => {
     const terminated = subscribeNotifications(ws, "loop/terminated");
     const run = await rpcCall(ws, id, "loop.run", params);
@@ -119,7 +119,7 @@ export const runLoopToTerminal = async (
     );
     const term = seen.find((t) => t.loopId === loopId) as {
         loopId: number; finalStatus: number; hitMaxTurns?: boolean; turnIds?: number[];
-        usage?: { promptTokens: number; completionTokens: number; costPico: number };
+        usage?: { promptTokens: number; completionTokens: number; costUsd: number };
     };
     return { ...term, accepted, action, modelWorkerId };
 };

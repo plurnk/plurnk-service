@@ -437,7 +437,7 @@ export default class Engine {
 
     // Per-loop usage totals (#197): SUM the loop's turns (usage is stored per
     // turn, §tokenomics). Surfaced on loop.run + loop/terminated so clients render real
-    // token/cost numbers. costPico is the stored pico-dollar unit.
+    // token/cost numbers. costUsd is the stored USD unit.
     // #345 — the client-facing budget denominator, ONE meaning on every surface: the prompt
     // budget the packet actually lives under (effective window minus the partition reserves),
     // the same number loop-usage stores per turn. providers.list advertised the raw KV and the
@@ -458,12 +458,12 @@ export default class Engine {
         return this.#packets.promptBudgetFor(provider);
     }
 
-    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costPico: number; contextTokens: number; promptBudget: number | null; meta: Record<string, unknown> }> {
-        const row = await this.#db.engine_loop_usage.get<{ prompt: number; completion: number; cost_pico: number; context: number | null; context_size: number | null; meta: string | null }>({ loop_id: loopId });
+    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costUsd: number; contextTokens: number; promptBudget: number | null; meta: Record<string, unknown> }> {
+        const row = await this.#db.engine_loop_usage.get<{ prompt: number; completion: number; cost_usd: number; context: number | null; context_size: number | null; meta: string | null }>({ loop_id: loopId });
         return {
             promptTokens: row?.prompt ?? 0,
             completionTokens: row?.completion ?? 0,
-            costPico: row?.cost_pico ?? 0,
+            costUsd: row?.cost_usd ?? 0,
             // #263 — the last turn's prompt tokens = current window occupancy (gauge numerator), NOT the
             // summed promptTokens above, which overcounts a context that grows across turns.
             contextTokens: row?.context ?? 0,
@@ -1087,7 +1087,7 @@ export default class Engine {
             const hardPacket = this.#packets.completePacket(requestPacket, { content: "", ops: [], reasoning: null }, null, provider);
             await this.#db.engine_close_turn.run({
                 id: turnId, status: 413, packet: JSON.stringify(hardPacket),
-                usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 0,
+                usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
                 usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves), even on a hard-413 turn: the gauge denominator the packet actually lives under
                 finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
             });
@@ -1302,11 +1302,11 @@ export default class Engine {
             usage_completion: usage.completion,
             usage_reasoning: usage.reasoning,
             usage_cached: usage.cached,
-            usage_cost_pico: provider.costFor(usage), // §provider-surface-costfor
+            usage_cost_usd: provider.calculateCost(usage), // §provider-surface-calculate-cost
             usage_prompt_budget: this.#packets.promptBudgetFor(provider), // #274 — the PROMPT BUDGET (window − reserves): the raw n_ctx overstated usable room by the reserve total
             finish_reason: finishReason,
             model,
-            // #252 — opaque provider→client metadata passthrough (e.g. balancePico the
+            // #252 — opaque provider→client metadata passthrough (for example, the
             // provider normalized), plus the ONE service-authored carve-out: the engine's rail
             // keys ({§rail-truth-engine-verdict}) merge over any transitional provider railsMeta.
             meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),

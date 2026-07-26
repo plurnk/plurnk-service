@@ -40,7 +40,7 @@ export { chatCompletionStream, chatCompletion, OpenAiHttpError, StreamIdleError 
 export type { StreamResponse, EncryptedReasoningItem, ProviderFetch } from "./openaiStream.ts";
 export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv, resolveReserve } from "./env.ts";
 export type { Reasoning, ReasoningMode, ReserveSpec } from "./env.ts";
-export { normalizeUsage, computeCost } from "./usage.ts";
+export { normalizeUsage, calculateCostUsd } from "./usage.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
 export { ProviderError, classifyProviderError, toProviderError, providerSource } from "./telemetry.ts";
 export type { TelemetryEvent, ProviderTelemetryKind } from "./telemetry.ts";

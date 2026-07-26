@@ -14,13 +14,13 @@ INSERT INTO workers (workspace_id, name, parent_worker_id) VALUES ($workspace_id
 INSERT INTO workers (workspace_id, name) VALUES ($workspace_id, $name) RETURNING id;
 
 -- PREP: test_runs_insert_cost
-INSERT INTO workers (workspace_id, name, cost_pico) VALUES ($workspace_id, $name, $cost_pico);
+INSERT INTO workers (workspace_id, name, cost_usd) VALUES ($workspace_id, $name, $cost_usd);
 
 -- PREP: test_runs_insert_version
 INSERT INTO workers (workspace_id, name, version) VALUES ($workspace_id, $name, $version);
 
 -- PREP: test_runs_get_by_session
-SELECT id, version, workspace_id, name, created_at, parent_worker_id, cost_pico
+SELECT id, version, workspace_id, name, created_at, parent_worker_id, cost_usd
 FROM workers WHERE workspace_id = $workspace_id AND origin != 'plurnk' LIMIT 1;
 
 -- PREP: test_runs_get_parent

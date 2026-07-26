@@ -44,7 +44,7 @@ export default class Ollama {
         const contextWindow = contextWindowFromEnv(env, "ollama") ?? probed.contextWindow;
         const family = probed.family;
 
-        // Local — no auth header; local models are free so costFor defaults to 0.
+        // Local — no auth header; local models are free so calculateCost defaults to 0.
         return new OpenAICompatProvider({
             model,
             url: `${normalizedBase}/v1/chat/completions`,

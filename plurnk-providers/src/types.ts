@@ -69,9 +69,9 @@ export interface ProviderResponse {
     readonly assistant: ProviderAssistant;
     readonly assistantRaw: unknown;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
-    // response fields, passed through verbatim, PLUS validated known keys we hold a
-    // contract for (e.g. `balancePico` — a finite pico-USD number, from the plurnk
-    // endpoint). The consumer (service) merges this into its Turn metadata and
+    // response fields passed through verbatim. Monetary values carry their own
+    // amount and currency; the provider does not reinterpret them. The consumer
+    // (service) merges this into its Turn metadata and
     // filters what reaches the client; it reads `meta`, never mines `assistantRaw`.
     // Absent when the backend reported no extra fields (#23, generalized).
     readonly meta?: Record<string, unknown>;
@@ -191,9 +191,9 @@ export interface Provider {
     // `tokenize === undefined` means the backend can't. Exact-counting
     // consumers (the tokenizer seam) prefer this over any client-side data.
     tokenize?(text: string): Promise<number[]>;
-    // Provider-owned cost calculation. Returns pico-USD (1e-12 USD).
+    // Provider-owned estimated cost calculation. Returns USD.
     // Returns 0 for siblings/models with no known rates.
-    costFor(usage: ProviderUsage): number;
+    calculateCost(usage: ProviderUsage): number;
 }
 
 // ProviderAlias moved to @plurnk/plurnk-aliases (the zero-dep parser, #27);

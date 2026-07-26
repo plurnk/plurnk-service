@@ -69,14 +69,18 @@ export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText =
     return { prompt, completion, reasoning, cached, total };
 };
 
-// Per-token rates in pico-USD (1e-12 USD).
+// Conventional provider pricing: USD per million tokens, matching Models.dev.
 export type TokenRates = { input: number; output: number; cached: number };
 
 // The one cost formula every provider uses: non-cached prompt at the input
 // rate, cached prompt at the cache rate, and billable output (completion +
 // reasoning) at the output rate.
-export const computeCost = (usage: ProviderUsage, rates: TokenRates): number => {
+export const calculateCostUsd = (usage: ProviderUsage, rates: TokenRates): number => {
     const nonCachedPrompt = Math.max(0, usage.prompt - usage.cached);
     const output = usage.completion + usage.reasoning;
-    return Math.round(nonCachedPrompt * rates.input + usage.cached * rates.cached + output * rates.output);
+    return (
+        nonCachedPrompt * rates.input
+        + usage.cached * rates.cached
+        + output * rates.output
+    ) / 1_000_000;
 };

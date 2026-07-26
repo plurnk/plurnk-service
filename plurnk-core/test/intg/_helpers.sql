@@ -42,7 +42,7 @@ SELECT status FROM loops WHERE id = $id;
 
 -- PREP: test_get_turn
 SELECT id, loop_id, sequence, status,
-       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_pico,
+       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
        finish_reason, model, packet
 FROM turns WHERE id = $id;
 
@@ -51,10 +51,10 @@ SELECT id, status_rx, state, outcome, attrs, rx
 FROM log_entries WHERE id = $id;
 
 -- PREP: test_get_session_cost
-SELECT cost_pico FROM workspaces WHERE id = $id;
+SELECT cost_usd FROM workspaces WHERE id = $id;
 
 -- PREP: test_get_run_cost
-SELECT cost_pico FROM workers WHERE id = $id;
+SELECT cost_usd FROM workers WHERE id = $id;
 
 -- PREP: test_count_turns
 SELECT COUNT(*) AS n FROM turns;

@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./ProviderRegistry.ts";
 
-const fakeProvider = { contextWindow: 1, model: "m", countTokens: () => 0, costFor: () => 0, generate: async () => { throw new Error("unused"); } };
+const fakeProvider = { contextWindow: 1, model: "m", countTokens: () => 0, calculateCost: () => 0, generate: async () => { throw new Error("unused"); } };
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
     async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), attributions: new Map<string, string | string[]>() });
 

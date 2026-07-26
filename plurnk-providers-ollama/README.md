@@ -45,7 +45,7 @@ Dynamic, resolved at `fromEnv` time via `POST /api/show`. The sibling iterates `
 ## tokenization & pricing
 
 - `countTokens`: family-dispatched. Llama-family models (llama / llama2 / llama3 / mistral / mixtral, detected via `/api/show` `details.family`) tokenize through [`llama-tokenizer-js`](https://www.npmjs.com/package/llama-tokenizer-js) — sync, pure JS, drop-in. Everything else (qwen, gemma, phi, deepseek, etc.) falls back to the chars/4 heuristic until per-family tokenizers land in pass-3. The dispatch decision is made once at `fromEnv` time and frozen on the instance.
-- `costFor`: returns 0. Local Ollama models are free to operate; pico-dollar cost rollups always sum to zero.
+- `calculateCost`: returns 0. Local Ollama models are free to operate; USD cost rollups always sum to zero.
 
 ## license
 

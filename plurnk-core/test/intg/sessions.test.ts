@@ -10,20 +10,20 @@ test("workspaces: table is STRICT", async () => {
     } finally { await db.close(); }
 });
 
-test("workspaces: insert with name only — defaults populate version, created_at, cost_pico, scheme_registry_additions", async () => {
+test("workspaces: insert with name only — defaults populate version, created_at, cost_usd, scheme_registry_additions", async () => {
     const db = await openMigrated();
     try {
         await db.test_sessions_insert_name_only.run({ name: "opus-1747400000" });
         const row = await db.test_sessions_get_by_name.get<{
             id: number; version: number; name: string; created_at: string;
-            cost_pico: number; scheme_registry_additions: string;
+            cost_usd: number; scheme_registry_additions: string;
         }>({ name: "opus-1747400000" });
         assert.equal(typeof row?.id, "number");
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
         assert.equal(row?.name, "opus-1747400000");
         assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-        assert.equal(row?.cost_pico, 0);
+        assert.equal(row?.cost_usd, 0);
         assert.equal(row?.scheme_registry_additions, "[]");
     } finally { await db.close(); }
 });
@@ -49,11 +49,11 @@ test("workspaces: empty name rejected by CHECK (length > 0)", async () => {
     } finally { await db.close(); }
 });
 
-test("workspaces: negative cost_pico rejected by CHECK", async () => {
+test("workspaces: negative cost_usd rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
-            () => db.test_sessions_insert_with_cost.run({ name: "workspace-b", cost_pico: -1 }),
+            () => db.test_sessions_insert_with_cost.run({ name: "workspace-b", cost_usd: -1 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -109,12 +109,12 @@ test("workspaces: index sessions_created_at exists", async () => {
     } finally { await db.close(); }
 });
 
-test("workspaces: explicit cost_pico value overrides default", async () => {
+test("workspaces: explicit cost_usd value overrides default", async () => {
     const db = await openMigrated();
     try {
-        await db.test_sessions_insert_with_cost.run({ name: "workspace-f", cost_pico: 12345 });
-        const row = await db.test_sessions_get_cost.get<{ cost_pico: number }>({ name: "workspace-f" });
-        assert.equal(row?.cost_pico, 12345);
+        await db.test_sessions_insert_with_cost.run({ name: "workspace-f", cost_usd: 12345 });
+        const row = await db.test_sessions_get_cost.get<{ cost_usd: number }>({ name: "workspace-f" });
+        assert.equal(row?.cost_usd, 12345);
     } finally { await db.close(); }
 });
 

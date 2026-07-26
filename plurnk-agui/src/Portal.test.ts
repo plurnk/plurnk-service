@@ -50,13 +50,13 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     seen.length = 0;
     m.fire(3, "loop/terminated", {
         loopId: 88, finalStatus: 499, hitMaxTurns: false, turnIds: [],
-        usage: { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
+        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
     });
     assert.equal(seen.length, 0, "a foreign loop terminal cannot end this run");
 
     m.fire(3, "loop/terminated", {
         loopId: 77, finalStatus: 200, hitMaxTurns: false, turnIds: [1],
-        usage: { promptTokens: 1, completionTokens: 1, costPico: 0, contextTokens: 2, promptBudget: 1000, meta: {} },
+        usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, contextTokens: 2, promptBudget: 1000, meta: {} },
     });
     assert.ok(seen.some((e) => e.type === "RUN_FINISHED"), "the bound loop terminal ends this run");
 
@@ -81,7 +81,7 @@ test("a terminal arriving before the loop acknowledgement settles only its match
 
     const termination = (loopId: number) => ({
         loopId, finalStatus: 200, hitMaxTurns: false, turnIds: [],
-        usage: { promptTokens: 0, completionTokens: 0, costPico: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
+        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, contextTokens: 0, promptBudget: 1000, meta: {} },
     });
     m.fire(3, "loop/terminated", termination(88));
     m.fire(3, "loop/terminated", termination(77));

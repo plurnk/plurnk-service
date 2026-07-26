@@ -54,9 +54,9 @@ export default class Fork {
             // #254 — a fork inherits the parent's log for context but spends no new money:
             // the copied turns are history, not fresh generations. Zero their usage so the
             // cost-rollup triggers add nothing — the workspace total stays true lifetime spend
-            // (no double-count) and the branch's cost_pico accrues only what IT generates.
+            // (no double-count) and the branch's cost_usd accrues only what IT generates.
             const nt = await db.fork_insert_turn.get<{ id: number }>({
-                ...rest, usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_pico: 0,
+                ...rest, usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
                 loop_id: loopMap.get(loop_id),
             });
             if (nt === undefined) throw new Error("fork: turn insert returned no row");

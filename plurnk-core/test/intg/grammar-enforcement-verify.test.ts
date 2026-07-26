@@ -11,7 +11,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 const fakeProvider = (content: string): Provider => ({
     model: "fake", contextWindow: 1000, constrainsOutput: true,
     generate: async () => ({ assistant: { content, reasoning: null, usage: { prompt: 1, completion: 3, reasoning: 0, cached: 0, total: 4 }, finishReason: "stop", model: "fake" }, assistantRaw: null }),
-    countTokens: () => 1, costFor: () => 0,
+    countTokens: () => 1, calculateCost: () => 0,
 }) as unknown as Provider;
 
 test("an enforcing backend passes verification", async () => {

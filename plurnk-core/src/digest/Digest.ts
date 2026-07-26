@@ -47,12 +47,12 @@ const REQUIEM_PROMPT = "This worker was a test of the Plurnk System. The system 
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
 // flags, tx, rx) arrive as strings, parsed on use.
-interface WorkspaceRow { id: number; name: string; cost_pico: number }
-interface WorkerRow { id: number; workspace_id: number; name: string; cost_pico: number }
+interface WorkspaceRow { id: number; name: string; cost_usd: number }
+interface WorkerRow { id: number; workspace_id: number; name: string; cost_usd: number }
 interface LoopRow { id: number; worker_id: number; sequence: number; status: number; prompt: string; flags: string; terminal_message: string | null; terminated_by: string | null }
 interface TurnRow {
     id: number; loop_id: number; sequence: number; status: number; packet: string;
-    usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_pico: number;
+    usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_usd: number;
     finish_reason: string | null; model: string | null;
     meta: string | null;  // #498 — provider passthrough (timings, railsAttached/railsVerdict); digest consumers need rail truth
 }
@@ -65,7 +65,7 @@ interface LogRow {
 }
 interface WorkerRollupRow {
     worker_id: number; loops: number; turns: number;
-    total_prompt: number; total_completion: number; total_cached: number; total_cost_pico: number;
+    total_prompt: number; total_completion: number; total_cached: number; total_cost_usd: number;
     last_status: number | null;
 }
 interface OpMixRow { worker_id: number; op: string; n: number }
@@ -216,7 +216,7 @@ export default class Digest {
         const content = typeof assistant.content === "string" ? assistant.content : "";
         const reasoning = typeof assistant.reasoning === "string" ? assistant.reasoning : null;
         const tokens = `prompt=${turn.usage_prompt} completion=${turn.usage_completion} cached=${turn.usage_cached}`;
-        const cost = turn.usage_cost_pico > 0 ? ` cost=$${(turn.usage_cost_pico / 1e12).toFixed(6)}` : "";
+        const cost = turn.usage_cost_usd > 0 ? ` cost=$${turn.usage_cost_usd.toFixed(6)}` : "";
         const finishReason = turn.finish_reason ?? "—";
         // #498 — render only observed constraint metadata. Absence is ordinary and
         // makes no claim about endpoint-owned model settings.
@@ -240,13 +240,13 @@ export default class Digest {
         // every worker has exactly one rollup row — digest_worker_rollups is FROM workers
         const roll = m.workerRollups.get(worker.id)!;
         const opMix = (m.opMixByWorker.get(worker.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
-        const costStr = roll.total_cost_pico > 0 ? `$${(roll.total_cost_pico / 1e12).toFixed(6)}` : "$0";
+        const costStr = roll.total_cost_usd > 0 ? `$${roll.total_cost_usd.toFixed(6)}` : "$0";
         return [
             `Loops:      ${roll.loops}`,
             `Turns:      ${roll.turns}`,
             `Last turn:  ${roll.last_status !== null ? `status=${roll.last_status}` : "(none)"}`,
             `Tokens:     prompt=${roll.total_prompt} completion=${roll.total_completion} cached=${roll.total_cached}`,
-            `Cost:       ${costStr} (DB rollup workers.cost_pico=${worker.cost_pico})`,
+            `Cost:       ${costStr} (DB rollup workers.cost_usd=${worker.cost_usd})`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
         ].join("\n");
     }
@@ -373,8 +373,8 @@ export default class Digest {
         return JSON.stringify({
             dbPath: m.dbPath,
             semantic: m.embeddings,
-            workspaces: m.workspaces.map((s) => ({ id: s.id, name: s.name, cost_pico: s.cost_pico })),
-            workers: m.workers.map((r) => ({ id: r.id, workspace_id: r.workspace_id, name: r.name, cost_pico: r.cost_pico })),
+            workspaces: m.workspaces.map((s) => ({ id: s.id, name: s.name, cost_usd: s.cost_usd })),
+            workers: m.workers.map((r) => ({ id: r.id, workspace_id: r.workspace_id, name: r.name, cost_usd: r.cost_usd })),
             loops: m.loops.map((l) => ({
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt, flags: Digest.#parseJson(l.flags, {}),
@@ -383,7 +383,7 @@ export default class Digest {
             turns: m.turns.map((t) => ({
                 id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
                 usage_prompt: t.usage_prompt, usage_completion: t.usage_completion,
-                usage_cached: t.usage_cached, usage_cost_pico: t.usage_cost_pico,
+                usage_cached: t.usage_cached, usage_cost_usd: t.usage_cost_usd,
                 finish_reason: t.finish_reason, model: t.model,
                 // #498 — the raw provider meta (timings + railsAttached/railsVerdict): rail truth for
                 // aggregate tooling, and the speculative-decode stats the #488 fingerprint needed.

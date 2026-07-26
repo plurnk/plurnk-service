@@ -68,7 +68,7 @@ export default class Mock implements Provider {
     }
 
     // Mock is free.
-    costFor(_usage: ProviderUsage): number { return 0; }
+    calculateCost(_usage: ProviderUsage): number { return 0; }
 
     async generate({ signal }: { messages: ChatMessage[]; workerId?: string; signal?: AbortSignal }): Promise<{ assistant: MockReturnedAssistant; assistantRaw: unknown }> {
         // Honor abort before consuming the queue — an aborted call makes no

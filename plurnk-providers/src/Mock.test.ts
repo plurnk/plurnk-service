@@ -31,9 +31,9 @@ test("Mock: countTokens('') is 0; non-empty is a positive integer", () => {
     assert.ok(Number.isInteger(n) && n > 0);
 });
 
-test("Mock: costFor zero usage is 0 (free)", () => {
+test("Mock: calculateCost zero usage is 0 (free)", () => {
     const m = build();
-    assert.equal(m.costFor({ prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 }), 0);
+    assert.equal(m.calculateCost({ prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 }), 0);
 });
 
 // — Transport (SPEC §10.7, §10.10) —

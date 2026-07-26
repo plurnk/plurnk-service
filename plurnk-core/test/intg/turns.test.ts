@@ -42,7 +42,7 @@ test("turns: insert with required fields — defaults populate", async () => {
         const row = await db.test_turns_get_full.get<{
             id: number; version: number; loop_id: number; sequence: number; timestamp: string;
             status: number; usage_prompt: number; usage_completion: number; usage_cached: number;
-            usage_cost_pico: number; packet: string;
+            usage_cost_usd: number; packet: string;
         }>({ loop_id: loopId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
@@ -52,7 +52,7 @@ test("turns: insert with required fields — defaults populate", async () => {
         assert.equal(row?.usage_prompt, 0);
         assert.equal(row?.usage_completion, 0);
         assert.equal(row?.usage_cached, 0);
-        assert.equal(row?.usage_cost_pico, 0);
+        assert.equal(row?.usage_cost_usd, 0);
         assert.equal(row?.packet, MIN_PACKET);
     } finally { await db.close(); }
 });
@@ -190,7 +190,7 @@ test("turns: usage_* negative values rejected", async () => {
             "test_turns_insert_with_usage_prompt",
             "test_turns_insert_with_usage_completion",
             "test_turns_insert_with_usage_cached",
-            "test_turns_insert_with_usage_cost_pico",
+            "test_turns_insert_with_usage_cost_usd",
         ] as const;
         for (const name of inserts) {
             await assert.rejects(
@@ -206,24 +206,24 @@ test("turns: usage_* large positive integers stored and read back", async () => 
     try {
         await db.test_turns_insert_all_usage.run({
             loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET,
-            usage_prompt: 50000, usage_completion: 12345, usage_cached: 200, usage_cost_pico: 9876543210,
+            usage_prompt: 50000, usage_completion: 12345, usage_cached: 200, usage_cost_usd: 9876543210,
         });
         const row = await db.test_turns_get_usage.get<{
-            usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_pico: number;
+            usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_usd: number;
         }>({ loop_id: loopId });
         assert.equal(row?.usage_prompt, 50000);
         assert.equal(row?.usage_completion, 12345);
         assert.equal(row?.usage_cached, 200);
-        assert.equal(row?.usage_cost_pico, 9876543210);
+        assert.equal(row?.usage_cost_usd, 9876543210);
     } finally { await db.close(); }
 });
 
-test("turns: aggregation — SUM(usage_cost_pico)", async () => {
+test("turns: aggregation — SUM(usage_cost_usd)", async () => {
     const { db, loopId } = await setup();
     try {
-        await db.test_turns_insert_with_usage_cost_pico.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET, val: 100 });
-        await db.test_turns_insert_with_usage_cost_pico.run({ loop_id: loopId, sequence: 2, status: 200, packet: MIN_PACKET, val: 250 });
-        await db.test_turns_insert_with_usage_cost_pico.run({ loop_id: loopId, sequence: 3, status: 200, packet: MIN_PACKET, val: 75 });
+        await db.test_turns_insert_with_usage_cost_usd.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET, val: 100 });
+        await db.test_turns_insert_with_usage_cost_usd.run({ loop_id: loopId, sequence: 2, status: 200, packet: MIN_PACKET, val: 250 });
+        await db.test_turns_insert_with_usage_cost_usd.run({ loop_id: loopId, sequence: 3, status: 200, packet: MIN_PACKET, val: 75 });
         const row = await db.test_turns_sum_cost.get<{ total: number }>({ loop_id: loopId });
         assert.equal(row?.total, 425);
     } finally { await db.close(); }

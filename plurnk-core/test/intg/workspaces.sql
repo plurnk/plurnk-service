@@ -8,11 +8,11 @@ SELECT sql FROM sqlite_master WHERE name = 'workspaces';
 INSERT INTO workspaces (name) VALUES ($name);
 
 -- PREP: test_sessions_get_by_name
-SELECT id, version, name, created_at, cost_pico, scheme_registry_additions
+SELECT id, version, name, created_at, cost_usd, scheme_registry_additions
 FROM workspaces WHERE name = $name;
 
 -- PREP: test_sessions_insert_with_cost
-INSERT INTO workspaces (name, cost_pico) VALUES ($name, $cost_pico);
+INSERT INTO workspaces (name, cost_usd) VALUES ($name, $cost_usd);
 
 -- PREP: test_sessions_insert_with_version
 INSERT INTO workspaces (name, version) VALUES ($name, $version);
@@ -24,7 +24,7 @@ INSERT INTO workspaces (name, scheme_registry_additions) VALUES ($name, $sra);
 SELECT scheme_registry_additions FROM workspaces WHERE name = $name;
 
 -- PREP: test_sessions_get_cost
-SELECT cost_pico FROM workspaces WHERE name = $name;
+SELECT cost_usd FROM workspaces WHERE name = $name;
 
 -- PREP: test_sessions_index_exists
 SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'sessions_created_at';
@@ -34,4 +34,4 @@ SELECT id, name FROM workspaces ORDER BY id;
 
 -- EXEC: test_sessions_insert_no_name
 -- Used to verify NOT NULL on name; this raw INSERT omits the column.
-INSERT INTO workspaces (cost_pico) VALUES (0);
+INSERT INTO workspaces (cost_usd) VALUES (0);

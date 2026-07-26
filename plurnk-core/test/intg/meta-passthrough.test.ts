@@ -1,6 +1,6 @@
 // #252 — the provider→client metadata passthrough. The service forwards the provider's
 // opaque `meta` blob to the client (in the loop usage payload), stored UNENFORCED: it never
-// reads a field within. The canonical-field contract (e.g. balancePico) is the provider
+// reads a field within. The metadata shape belongs to the provider
 // framework's (it normalizes) and the client's (it renders), never the service's.
 
 import test from "node:test";
@@ -24,7 +24,7 @@ class MetaProvider implements Provider {
     get contextWindow(): number | null { return this.#base.contextWindow; }
     get model(): string { return this.#base.model; }
     countTokens(text: string): number { return this.#base.countTokens(text); }
-    costFor(usage: Parameters<Mock["costFor"]>[0]): number { return this.#base.costFor(usage); }
+    calculateCost(usage: Parameters<Mock["calculateCost"]>[0]): number { return this.#base.calculateCost(usage); }
     async generate(args: Parameters<Mock["generate"]>[0]): Promise<ProviderResponse> {
         return { ...(await this.#base.generate(args)), meta: this.#meta };
     }
@@ -38,13 +38,13 @@ test("a provider's opaque meta blob rides through to the loop usage payload, une
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
-        const meta = { balancePico: 123456789, vendorWhatever: { nested: true }, future: "field we never coded for" };
+        const meta = { balance: { amount: "0.000123456789", currency: "XMR" }, vendorWhatever: { nested: true }, future: "field we never coded for" };
         await engine.runTurn({ provider: new MetaProvider(meta), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const usage = await engine.loopUsage(loopId);
         // Forwarded verbatim — including fields the service has never heard of (the honest passthrough).
         assert.deepEqual(usage.meta, meta, "the provider's whole meta blob reaches the loop payload, byte-for-byte");
-        assert.equal((usage.meta as { balancePico: number }).balancePico, 123456789, "a canonical field (balancePico) is reachable by the client");
+        assert.deepEqual((usage.meta as { balance: object }).balance, meta.balance, "provider metadata is reachable by the client");
     } finally { await db.close(); }
 });
 
