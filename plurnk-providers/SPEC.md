@@ -131,9 +131,11 @@ Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`;
 ### OpenAI-compatible request execution
 
 The Vercel AI SDK's OpenAI-compatible provider owns HTTP execution, SSE parsing,
-standard request fields, standard response fields, retries, cancellation,
-timeouts, usage, reasoning, finish reasons, and typed HTTP failures. PLURNK does
-not maintain parallel implementations of those general transport concerns.
+standard request and response fields, retries, cancellation, timeouts, standard
+reasoning channels, finish-reason extraction, usage parsing, and typed HTTP
+failures. PLURNK does not maintain parallel implementations of those general
+transport concerns. Its result mapper retains the stricter usage invariant,
+finish-reason vocabulary, and evidence fields described by this contract.
 
 `OpenAICompatConfig.fetch?: typeof globalThis.fetch` selects request execution
 for one provider instance. When omitted, the AI SDK uses `globalThis.fetch`.

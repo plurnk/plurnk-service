@@ -293,11 +293,22 @@ test("generate maps a streamed response into ProviderResponse", async () => {
     assert.notEqual(assistantRaw, undefined);
 });
 
-test("generate normalizes an out-of-set finish_reason to null", async () => {
+test("generate surfaces and normalizes an out-of-set finish_reason", async () => {
+    const warnings: Array<{ message: string; code?: string }> = [];
+    mock.method(process, "emitWarning", (message: string | Error, options?: string | { code?: string }) => {
+        warnings.push({
+            message: String(message),
+            ...(typeof options === "object" && options.code !== undefined ? { code: options.code } : {}),
+        });
+    });
     const p = new OpenAICompatProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "function_call" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, null);
+    assert.deepEqual(warnings, [{
+        message: 'unrecognized finish_reason "function_call"; treated as no-signal (finishReason=null). If it denotes a token-cap hit, core\'s length-cap detection will miss it.',
+        code: "PLURNK_FINISH_REASON_UNKNOWN",
+    }]);
 });
 
 test("generate translates a backend cap synonym to canonical length (#425)", async () => {

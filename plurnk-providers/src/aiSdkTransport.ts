@@ -3,6 +3,7 @@ import { generateText, streamText, type LanguageModelUsage } from "ai";
 import { z } from "zod/v4";
 import type { ChatMessage, FinishReason, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
+import { emitWarningOnce } from "./warnings.ts";
 
 const errorSchema = z.object({
     error: z.object({
@@ -52,13 +53,17 @@ const usageOf = (
 }, reasoningText, contentText);
 
 const wireUsageOf = (
-    value: unknown,
+    values: readonly unknown[],
     reasoningText: string,
     contentText: string,
 ): ProviderUsage | null => {
-    const usage = (value as { usage?: unknown } | null)?.usage;
-    if (usage === null || typeof usage !== "object") return null;
-    return normalizeUsage(usage as RawUsage, reasoningText, contentText);
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+        const usage = recordOf(values[index])?.usage;
+        if (usage !== null && typeof usage === "object") {
+            return normalizeUsage(usage as RawUsage, reasoningText, contentText);
+        }
+    }
+    return null;
 };
 
 const finishReasonOf = (reason: string | undefined): FinishReason => {
@@ -81,8 +86,31 @@ const finishReasonOf = (reason: string | undefined): FinishReason => {
         case "recitation":
             return "content_filter";
         default:
+            if (reason !== undefined && reason.length > 0) {
+                emitWarningOnce(
+                    `unrecognized finish_reason "${reason}"; treated as no-signal (finishReason=null). If it denotes a token-cap hit, core's length-cap detection will miss it.`,
+                    "PLURNK_FINISH_REASON_UNKNOWN",
+                );
+            }
             return null;
     }
+};
+
+const recordOf = (value: unknown): Record<string, unknown> | null =>
+    value !== null && typeof value === "object"
+        ? value as Record<string, unknown>
+        : null;
+
+const metadataOf = (values: readonly unknown[]): Record<string, unknown> => {
+    const metadata: Record<string, unknown> = {};
+    for (const value of values) {
+        const record = recordOf(value);
+        if (record === null) continue;
+        for (const [key, item] of Object.entries(record)) {
+            if (key !== "choices" && key !== "usage") metadata[key] = item;
+        }
+    }
+    return metadata;
 };
 
 export type AiSdkTransportRequest = {
@@ -106,8 +134,7 @@ export type AiSdkTransportResponse = {
     reasoning: string;
     finishReason: FinishReason;
     usage: ProviderUsage;
-    rawChunks: unknown[];
-    chunkMetadata: Record<string, unknown>;
+    metadata: Record<string, unknown>;
     reasoningEncrypted: Array<{
         id: string | null;
         subtype: string;
@@ -115,37 +142,16 @@ export type AiSdkTransportResponse = {
     }>;
     logprobs: TokenLogprob[];
     rawBody?: unknown;
-    providerMetadata?: Record<string, unknown>;
 };
 
 export const executeOpenAICompatible = async (
     request: AiSdkTransportRequest,
 ): Promise<AiSdkTransportResponse> => {
-    let parsedBody: unknown;
-    let wireBody: unknown;
-    const chunks: unknown[] = [];
-    const metadata: Record<string, unknown> = {};
-    const collectMetadata = (value: unknown): void => {
-        if (value === null || typeof value !== "object") return;
-        for (const [key, item] of Object.entries(value)) {
-            if (key !== "choices" && key !== "usage") metadata[key] = item;
-        }
-    };
     const provider = createOpenAICompatible({
         name: "plurnk",
         baseURL: baseUrl(request.url),
         headers: request.headers,
-        fetch: async (input, init) => {
-            const response = await (request.fetch ?? globalThis.fetch)(input, init);
-            if (!request.streaming) {
-                try {
-                    wireBody = await response.clone().json();
-                } catch {
-                    // The AI SDK owns response validation and the resulting error.
-                }
-            }
-            return response;
-        },
+        fetch: request.fetch,
         includeUsage: true,
         transformRequestBody: (sdkBody) => ({
             ...sdkBody,
@@ -155,20 +161,6 @@ export const executeOpenAICompatible = async (
                 ? { stream_options: sdkBody.stream_options }
                 : {}),
         }),
-        metadataExtractor: {
-            async extractMetadata({ parsedBody: body }) {
-                parsedBody = body;
-                collectMetadata(body);
-                return { plurnk: metadata as any };
-            },
-            createStreamExtractor: () => ({
-                processChunk(chunk) {
-                    chunks.push(chunk);
-                    collectMetadata(chunk);
-                },
-                buildMetadata: () => ({ plurnk: metadata as any }),
-            }),
-        },
     });
     const model = provider.languageModel(request.model, { errorStructure });
     const common = {
@@ -191,24 +183,25 @@ export const executeOpenAICompatible = async (
     } as const;
 
     if (!request.streaming) {
-        const result = await generateText(common);
-        const evidence = extractEvidence([wireBody ?? parsedBody]);
+        const result = await generateText({
+            ...common,
+            include: { responseBody: true },
+        });
+        const rawBody = result.response.body;
+        const values = [rawBody];
+        const evidence = extractEvidence(values);
         const reasoning = evidence.reasoning || result.reasoningText || "";
         return {
             model: result.response.modelId,
             content: result.text,
             reasoning,
-            finishReason: finishReasonOf(evidence.rawFinishReason ?? result.rawFinishReason),
-            usage: wireUsageOf(wireBody, reasoning, result.text)
+            finishReason: finishReasonOf(result.rawFinishReason),
+            usage: wireUsageOf(values, reasoning, result.text)
                 ?? usageOf(result.usage, reasoning, result.text),
-            rawChunks: [],
-            chunkMetadata: metadata,
+            metadata: metadataOf(values),
             reasoningEncrypted: evidence.reasoningEncrypted,
             logprobs: evidence.logprobs,
-            ...(request.captureRawBody ? { rawBody: wireBody ?? parsedBody } : {}),
-            ...(result.providerMetadata !== undefined
-                ? { providerMetadata: result.providerMetadata as Record<string, unknown> }
-                : {}),
+            ...(request.captureRawBody ? { rawBody } : {}),
         };
     }
 
@@ -225,24 +218,19 @@ export const executeOpenAICompatible = async (
     }
     if (streamError !== undefined) throw streamError;
     const evidence = extractEvidence(rawChunks);
+    const content = await result.text;
+    const reasoning = evidence.reasoning || (await result.reasoningText) || "";
     return {
         model: (await result.response).modelId,
-        content: await result.text,
-        reasoning: evidence.reasoning || (await result.reasoningText) || "",
-        finishReason: finishReasonOf(evidence.rawFinishReason ?? await result.rawFinishReason),
-        usage: usageOf(
-            await result.usage,
-            evidence.reasoning || (await result.reasoningText) || "",
-            await result.text,
-        ),
-        rawChunks,
-        chunkMetadata: metadata,
+        content,
+        reasoning,
+        finishReason: finishReasonOf(await result.rawFinishReason),
+        usage: wireUsageOf(rawChunks, reasoning, content)
+            ?? usageOf(await result.usage, reasoning, content),
+        metadata: metadataOf(rawChunks),
         reasoningEncrypted: evidence.reasoningEncrypted,
         logprobs: evidence.logprobs,
         ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
-        ...((await result.providerMetadata) !== undefined
-            ? { providerMetadata: (await result.providerMetadata) as Record<string, unknown> }
-            : {}),
     };
 };
 
@@ -250,39 +238,42 @@ const extractEvidence = (values: unknown[]): {
     reasoningEncrypted: AiSdkTransportResponse["reasoningEncrypted"];
     logprobs: TokenLogprob[];
     reasoning: string;
-    rawFinishReason?: string;
 } => {
     const encrypted = new Map<string, AiSdkTransportResponse["reasoningEncrypted"][number]>();
     const logprobs: TokenLogprob[] = [];
     let reasoning = "";
-    let rawFinishReason: string | undefined;
     let anonymous = 0;
     for (const value of values) {
-        const choices = (value as { choices?: unknown } | null)?.choices;
+        const choices = recordOf(value)?.choices;
         if (!Array.isArray(choices)) continue;
-        const choice = choices[0] as Record<string, any> | undefined;
-        if (choice === undefined) continue;
-        if (typeof choice.finish_reason === "string") rawFinishReason = choice.finish_reason;
-        const entries = choice.logprobs?.content;
+        const choice = recordOf(choices[0]);
+        if (choice === null) continue;
+        const logprobRecord = recordOf(choice.logprobs);
+        const entries = logprobRecord?.content;
         if (Array.isArray(entries)) {
-            for (const entry of entries) {
-                if (typeof entry?.token !== "string" || typeof entry?.logprob !== "number") continue;
+            for (const value of entries) {
+                const entry = recordOf(value);
+                if (typeof entry?.token !== "string" || typeof entry.logprob !== "number") continue;
                 const top = Array.isArray(entry.top_logprobs)
-                    ? entry.top_logprobs
-                        .filter((item: any) => typeof item?.token === "string" && typeof item?.logprob === "number")
-                        .map((item: any) => ({ token: item.token, logprob: item.logprob }))
+                    ? entry.top_logprobs.flatMap((value) => {
+                        const item = recordOf(value);
+                        return typeof item?.token === "string" && typeof item.logprob === "number"
+                            ? [{ token: item.token, logprob: item.logprob }]
+                            : [];
+                    })
                     : undefined;
                 logprobs.push(top === undefined
                     ? { token: entry.token, logprob: entry.logprob }
                     : { token: entry.token, logprob: entry.logprob, top });
             }
         }
-        const message = choice.delta ?? choice.message ?? {};
+        const message = recordOf(choice.delta) ?? recordOf(choice.message) ?? {};
         for (const key of ["reasoning_content", "reasoning", "thinking"]) { // lexicon-allow: backend wire fields
             if (typeof message[key] === "string") reasoning += message[key];
         }
         if (!Array.isArray(message.reasoning_details)) continue;
-        for (const detail of message.reasoning_details) {
+        for (const value of message.reasoning_details) {
+            const detail = recordOf(value);
             if (detail?.type !== "reasoning.encrypted" || typeof detail.data !== "string") continue;
             const id = typeof detail.id === "string" ? detail.id : null;
             const key = typeof detail.index === "number"
@@ -308,6 +299,5 @@ const extractEvidence = (values: unknown[]): {
         reasoningEncrypted: [...encrypted.values()],
         logprobs,
         reasoning,
-        ...(rawFinishReason !== undefined ? { rawFinishReason } : {}),
     };
 };

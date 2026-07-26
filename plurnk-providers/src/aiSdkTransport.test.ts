@@ -92,7 +92,7 @@ test("the adapter preserves PLURNK request extensions and response evidence", as
         total: 8,
     });
     assert.equal(result.logprobs[0]?.token, "answer");
-    assert.deepEqual(result.chunkMetadata.balance, { amount: 1.25, currency: "USD" });
+    assert.deepEqual(result.metadata.balance, { amount: 1.25, currency: "USD" });
     assert.deepEqual(result.rawBody, responseBody);
 });
 
@@ -135,6 +135,82 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
             { content: "aa", reasoning_content: "bbbbbb" },
             { prompt_tokens: 2, completion_tokens: 10, total_tokens: 12 },
         ));
+        assert.deepEqual(result.usage, {
+            prompt: 2,
+            completion: 2,
+            reasoning: 8,
+            cached: 0,
+            total: 12,
+        });
+    });
+
+    await t.test("streamed Gemini-style total gap is preserved", async () => {
+        const chunks = [
+            {
+                id: "response-1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "served-model",
+                choices: [{ index: 0, delta: { content: "answer" }, finish_reason: null }],
+            },
+            {
+                id: "response-1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "served-model",
+                choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+                usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 9 },
+            },
+        ];
+        const result = await executeOpenAICompatible({
+            ...request,
+            retryAttempts: 0,
+            streaming: true,
+            fetch: async () => new Response(
+                `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
+                { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
+        assert.deepEqual(result.usage, {
+            prompt: 2,
+            completion: 3,
+            reasoning: 4,
+            cached: 0,
+            total: 9,
+        });
+    });
+
+    await t.test("streamed Fireworks-style channels preserve the output split", async () => {
+        const chunks = [
+            {
+                id: "response-1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "served-model",
+                choices: [{
+                    index: 0,
+                    delta: { reasoning_content: "bbbbbb", content: "aa" },
+                    finish_reason: null,
+                }],
+            },
+            {
+                id: "response-1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "served-model",
+                choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+                usage: { prompt_tokens: 2, completion_tokens: 10, total_tokens: 12 },
+            },
+        ];
+        const result = await executeOpenAICompatible({
+            ...request,
+            retryAttempts: 0,
+            streaming: true,
+            fetch: async () => new Response(
+                `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
+                { headers: { "content-type": "text/event-stream" } },
+            ),
+        });
         assert.deepEqual(result.usage, {
             prompt: 2,
             completion: 2,

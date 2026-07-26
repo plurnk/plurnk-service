@@ -650,7 +650,7 @@ export default class OpenAICompatProvider implements Provider {
             }
         }
 
-        const builtMeta = this.#buildMeta(raw.chunkMetadata);
+        const builtMeta = this.#buildMeta(raw.metadata);
         const meta = railsMeta !== undefined ? { ...builtMeta, ...railsMeta } : builtMeta;
         const logprobs = raw.logprobs.length > 0 ? raw.logprobs : undefined;
         const meanLogprob = logprobs !== undefined

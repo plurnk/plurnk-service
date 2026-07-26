@@ -1,11 +1,11 @@
 # @plurnk/plurnk-providers
 
-Provider contract and shared transports for PLURNK model backends.
+Provider contract and adapters for PLURNK model backends.
 
 The package includes:
 
 - provider interfaces and normalized responses;
-- OpenAI-compatible streaming transport;
+- an AI SDK OpenAI-compatible adapter;
 - standard provider configuration;
 - alias resolution and provider discovery;
 - usage, cost, reasoning, grammar, and telemetry normalization.
@@ -66,10 +66,12 @@ const provider = new OpenAICompatProvider({
 ```
 
 The injected function receives the same URL, headers, body, and `AbortSignal`
-as the default `globalThis.fetch`. It owns only execution of that request;
-request shaping, response parsing, retries, usage, reasoning, raw capture, and
-telemetry remain provider behavior. Vendor binding adapters and their
-configuration belong to the consuming integration.
+as the default `globalThis.fetch`. It owns only execution of that request.
+The AI SDK owns standard request shaping, response parsing, streaming, retries,
+cancellation, and timeouts. PLURNK maps the SDK result into its stable provider
+contract and retains only product-specific extensions and evidence that the SDK
+does not expose. Vendor binding adapters and their configuration belong to the
+consuming integration.
 
 Discovery scans installed npm packages for `plurnk.kind === "provider"`.
 Duplicate provider names are errors. `PLURNK_PLUGINS_TRUSTED_ONLY` can restrict
