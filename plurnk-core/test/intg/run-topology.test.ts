@@ -6,6 +6,7 @@ import test from "node:test";
 import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 
 test("a child worker concluding wakes a parent parked at 202", async () => {
@@ -55,6 +56,44 @@ test("a child FAILING (499) also wakes the parent — any conclusion is a wake e
             await rpcCall(ws, 1, "workspace.create", { name: "child-fail" });
             const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn flaky, wait", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the parent woke on the child's 499 and concluded — a failed child is still a wake edge");
+        } finally { ws.close(); }
+    });
+});
+
+test("an empty failed child stream is observed by the child before its terminal result reaches the parent", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("<<WORK(worker://stream-child):run the empty failing stream and report its outcome:WORK\n<<SEND[202]:waiting on stream-child:SEND", 10),
+        makeMockResponse("<<EXEC[emptyfail]:go:EXEC\n<<SEND[202]:waiting for emptyfail:SEND", 10),
+        makeMockResponse("<<SEND[499]:emptyfail failed with no output:SEND", 10),
+        makeMockResponse("<<SEND[200]:the child reported the empty stream failure:SEND", 10),
+    ] });
+    await withDaemon(mock, async (_db, daemon, addr) => {
+        daemon.hotloadRuntime({
+            decl: { name: "emptyfail", glyph: "×", example: "", documentation: "" },
+            executor: {
+                runtime: "emptyfail", glyph: "×",
+                get manifest() { return { name: "emptyfail", protocol: "emptyfail:", channels: { results: { mimetype: "text/plain" } }, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+                get defaultChannel() { return "results"; },
+                get channels() { return { results: { mimetype: "text/plain" } }; },
+                effect: () => "pure",
+                probe: async () => ({ available: true, detail: "fixture" }),
+                run: async () => ({ status: 500, exitCode: 1 }),
+            } as unknown as Executor,
+            availability: { available: true, detail: "fixture" },
+        });
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "child-empty-failed-stream" });
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const { finalStatus } = await runLoopToTerminal(ws, 2, {
+                prompt: "delegate a failing stream and wait for its result",
+                flags: { auto: true },
+            });
+            assert.equal(finalStatus, 200);
+            await flush();
+            const statuses = (terminated() as Array<{ finalStatus: number }>).map(({ finalStatus: status }) => status);
+            assert.ok(statuses.includes(499), `the child concluded with its observed stream failure; got ${JSON.stringify(statuses)}`);
+            assert.equal(mock.remaining, 0, "all four causal turns ran: parent park, child exec, child terminal, parent terminal");
         } finally { ws.close(); }
     });
 });

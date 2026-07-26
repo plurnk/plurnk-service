@@ -1624,16 +1624,20 @@ export default class Engine {
                 // The cursor-terminal race (owner's dogfood find): a channel written in one final
                 // burst gets fully shown FOLDED while still active; the close then has zero new
                 // bytes and the auto-OPEN terminal delta never fired — the model was never shown
-                // the conclusion of a stream whose result it already holds folded. Emit the
-                // terminal marker ONCE: open, terse, carrying the close status; the content is a
-                // pointer to the already-delivered bytes, never a re-send (§tokenomics-fetch-fits-free).
-                if (closed && priorAttrs.terminal !== true && cursor > 0) {
+                // the conclusion of a stream whose result it already holds folded. The same
+                // observation is required when the stream produced zero bytes: completion is
+                // information independently of payload. Emit the terminal marker ONCE: open,
+                // terse, carrying the close status (§tokenomics-fetch-fits-free).
+                if (closed && priorAttrs.terminal !== true) {
+                    const pointer = cursor > 0
+                        ? `full output already delivered above; READ ${ch.runtime}://${ch.coord}${visibleFragment === null ? "" : `#${visibleFragment}`} to revisit`
+                        : "stream produced no output";
                     await this.#db.engine_insert_stream_delta.run({
                         worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                         scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
                         rx: JSON.stringify({
                             status: ch.close_status ?? 200,
-                            content: `[ stream closed (${ch.close_status ?? 200}) — full output already delivered above; READ ${ch.runtime}://${ch.coord}${visibleFragment === null ? "" : `#${visibleFragment}`} to revisit ]`,
+                            content: `[ stream closed (${ch.close_status ?? 200}) — ${pointer} ]`,
                             mimetype: "text/stream",
                         }),
                         attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),

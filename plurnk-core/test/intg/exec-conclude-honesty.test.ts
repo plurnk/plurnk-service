@@ -73,27 +73,35 @@ test("a driver resolving 200 under abort is restamped 499 reaped — the service
     } finally { await db.close(); }
 });
 
-test("a completed but unobserved stream keeps a same-turn wait alive for its next-packet OPEN", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async (args) => {
-        args.write("results", "Alice\n");
-        return { status: 200, exitCode: 0 };
-    });
-    try {
-        const started = await engine.dispatch({
-            statement: execStmt(tag, "go"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+for (const specimen of [
+    { label: "non-empty success", content: "Alice\n", status: 200 },
+    { label: "empty success", content: "", status: 200 },
+    { label: "non-empty failure", content: "driver failed\n", status: 500 },
+    { label: "empty failure", content: "", status: 500 },
+] as const) {
+    test(`a completed but unobserved ${specimen.label} keeps a same-turn wait alive for its next-packet terminal observation`, async () => {
+        const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async (args) => {
+            if (specimen.content !== "") args.write("results", specimen.content);
+            return { status: specimen.status, exitCode: specimen.status === 200 ? 0 : 1 };
         });
-        assert.equal(started.status, 200);
-        await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+        try {
+            const started = await engine.dispatch({
+                statement: execStmt(tag, "go"),
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            });
+            assert.equal(started.status, 200);
+            await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+            assert.equal(wakes[0].closeStatus, specimen.status);
 
-        const waited = await engine.dispatch({
-            statement: sendStmt(202, null, "waiting"),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
-        });
-        assert.equal(
-            waited.status,
-            102,
-            "closed is not observed: the loop continues so the terminal stream READ can land next packet",
-        );
-    } finally { await db.close(); }
-});
+            const waited = await engine.dispatch({
+                statement: sendStmt(202, null, "waiting"),
+                workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+            });
+            assert.equal(
+                waited.status,
+                102,
+                "closed is not observed: the loop continues so the terminal stream observation can land next packet",
+            );
+        } finally { await db.close(); }
+    });
+}

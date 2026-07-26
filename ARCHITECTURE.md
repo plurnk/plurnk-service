@@ -141,6 +141,14 @@ topology, streams, and sibling activity, but it cannot terminate or relabel an
 AG-UI run. Only the terminal event carrying that run's exact worker and loop
 coordinate controls it.
 
+Payload and lifecycle are also separate. A stream may succeed or fail after
+producing zero bytes; its close status is still an observation the worker must
+receive before concluding. A parked loop resumes in place when a stream or
+child settles. An active loop records that concurrent settlement as an owed
+wake and crosses the same observation boundary before it can terminate. The
+complete state and wait matrices are normative in
+[`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) under `§run-lifecycle`.
+
 ### Restart recovery
 
 Boot reconciles durable state before opening client transports. Recovery is

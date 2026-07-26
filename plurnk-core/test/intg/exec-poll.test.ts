@@ -31,3 +31,45 @@ test("a polled EXEC <T,P> wakes a hibernating (202) loop every P seconds", async
         } finally { ws.close(); }
     });
 });
+
+test("an EXEC without an explicit cadence wakes on the exponential-backoff floor while still open", async () => {
+    const previous = process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
+    process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "1";
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("<<EXEC[sh]<30>:sleep 30:EXEC\n<<SEND[202]:waiting under backoff:SEND", 10),
+        makeMockResponse("<<SEND[499]:observed the still-open stream on a backoff wake:SEND", 10),
+    ] });
+    try {
+        await withDaemon(mock, async (_db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-backoff" });
+                const started = Date.now();
+                const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+                assert.equal(finalStatus, 499);
+                assert.ok(Date.now() - started < 10_000, "the backoff wake preceded the 30-second stream conclusion");
+                assert.equal(mock.remaining, 0);
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
+        else process.env.PLURNK_SERVICE_EXEC_POLL_SEC = previous;
+    }
+});
+
+test("an explicit zero cadence stays blind while open but still wakes exactly once on closure", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("<<EXEC[sh]<10,0>:sleep 1; echo closed:EXEC\n<<SEND[202]:waiting blindly for closure:SEND", 10),
+        makeMockResponse("<<SEND[200]:observed terminal closure:SEND", 10),
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-blind" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            assert.equal(finalStatus, 200);
+            assert.equal(turnIds?.length, 2, "no pre-closure poll turn consumed the terminal response");
+            assert.equal(mock.remaining, 0, "closure produced the only continuation");
+        } finally { ws.close(); }
+    });
+});

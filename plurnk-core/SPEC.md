@@ -217,6 +217,102 @@ stateDiagram-v2
 
 The lifecycle store admits only the guarded transitions shown above: `100 → 102`, `102 → 202`, `202 → 100`, and any unresolved state (`100`, `102`, `202`) to a terminal status. Terminal state is immutable. The queue drain owns claim, the dispatcher owns model-requested park/conclusion, the daemon owns wake/cancellation/restart reconciliation, and the engine owns policy terminals. A racing transition that loses observes the durable winner; it does not overwrite it or report the requested state as fact. {§worker-lifecycle-state-machine}
 
+Streams are independently durable subscriptions owned by a worker. Payload and
+lifecycle are orthogonal: zero bytes is a valid payload for both success and
+failure, while the closed subscription and its status are the terminal fact.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Open: executor registers subscription
+    Open --> Open: append chunk
+    Open --> Closed: driver succeeds
+    Open --> Failed: driver fails
+    Open --> Cancelled: worker or stream is cancelled
+    Closed --> Observed: terminal delta enters a packet
+    Failed --> Observed: terminal delta enters a packet
+    Cancelled --> Observed: terminal delta enters a packet
+    Observed --> [*]
+```
+
+| Subscription state at `SEND[202]` | Terminal observation already in a packet | Result |
+|---|---:|---|
+| open | no | park; polling or closure may wake it |
+| closed, any status, empty or non-empty | no | continue directly to the observation turn |
+| closed, any status, empty or non-empty | yes | no stream obligation remains |
+| cancelled as part of worker cancellation | irrelevant | terminate the cancelled worker; never resurrect it |
+
+{§worker-lifecycle-subscription-matrix}
+
+Polling observes a still-open stream; it never changes ownership or manufactures
+completion. Closure is always a wake edge regardless of polling mode.
+
+| EXEC poll marker | While open | On closure |
+|---|---|---|
+| omitted | exponential-backoff observation wakes | resume once with terminal observation |
+| positive `P` | fixed-cadence observation wakes every `P` seconds | cancel cadence; resume once |
+| zero | no observation wakes | resume once |
+| turn-scoped `<0>` | reap at the next pre-turn boundary | surface the terminal outcome |
+
+{§worker-lifecycle-poll-matrix}
+
+The structured-concurrency sequence is identical whether a child performs an
+EXEC, retrieval, or pure inference. Intermediate child status is private to the
+child. Only the child's terminal loop result crosses the parent edge.
+
+```mermaid
+sequenceDiagram
+    participant P as Parent loop
+    participant C as Child loop
+    participant S as Child stream
+    P->>C: WORK or FORK
+    P->>P: SEND[202] parks on live child
+    C->>S: EXEC opens subscription
+    C->>C: SEND[202] parks on live stream
+    loop backoff, fixed cadence, or explicit arrival
+        S-->>C: optional progress observation
+        C->>C: continue or park
+    end
+    S-->>C: terminal transition
+    C->>C: terminal delta enters packet
+    C->>P: child SEND terminal becomes collect delta
+    P->>P: resume same parked loop
+    P->>P: observe child result and continue
+```
+
+| Child state at parent wait | Child result delivered to parent | Result |
+|---|---:|---|
+| queued, running, or parked on its own live obligation | no | parent parks |
+| terminal during the parent's turn | no | owed wake; parent continues to the result packet |
+| terminal before the parent's wait | no | parent continues directly to the result packet |
+| terminal | yes | child obligation is drained |
+| cancelled or failed terminal | no | same wake/delivery path as success; outcome remains non-2xx |
+
+{§worker-lifecycle-child-matrix}
+
+A stream's close status and a loop's terminal status are separate layers. A
+stream may close 4xx/5xx and wake its worker to recover. Model `SEND[4xx/5xx]`
+reports a failed action and continues; `SEND[200]` concludes successfully and
+`SEND[499]` explicitly abandons the worker. Only a concluded loop crosses the
+parent edge as the child's result.
+
+```mermaid
+flowchart TD
+    W[Worker cancellation] --> L[Terminalize unresolved loops]
+    W --> C[Cancel descendants]
+    W --> S[Enumerate durable open subscriptions]
+    S --> H[Invoke each live cancellation handle]
+    H --> T[Persist terminal channel and subscription state]
+    T --> N[Publish conclusion without resurrection]
+    C --> L
+```
+
+Restart applies the same ownership rule: accepted queued loops are reclaimable;
+in-flight provider calls and subscriptions belonged to the vanished process and
+become explicit failures. A park whose child remains live stays parked; a park
+whose obligations settled during reconciliation is requeued in place so it can
+observe their terminal results. No effect is replayed across an unknown
+boundary.
+
 - **One drain advances a worker.** At most one drain is registered for a worker at any instant: a `loop.run` or wake on a worker with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish the worker under one per-worker lock, so the teardown's re-claim cannot race a concurrent start into a double-drain. {§worker-lifecycle-single-drain}
 - **Cancellation is recursive and reaps every held stream.** `loop.cancel`, worker `KILL`, shutdown, and a worker's `SEND[499]` terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model `KILL[code]` on one live stream instead delivers exactly that signal once (bare `KILL` → the executor's SIGHUP default, `KILL[9]` → SIGKILL). {§worker-lifecycle-total-reap}
 - **A stream's kill binds to the scope it captured at spawn.** A stream captures the worker's cancellation scope as it registers and wires its kill to it, re-checking `aborted` AFTER wiring — no check-then-listen gap can drop an abort that lands mid-registration. Because the scope is replaced only once aborted, a captured-then-replaced scope is necessarily already aborted, so replacement never strands a live stream. {§worker-lifecycle-exec-epoch-bound}

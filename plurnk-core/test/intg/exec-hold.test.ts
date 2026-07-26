@@ -29,9 +29,9 @@ const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "p
     engine.hotloadRuntime(tag, {
         executor: {
             runtime: tag, glyph: "?",
-            get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, protocol: `${tag}:`, channels: { results: { mimetype: "application/json" } }, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
-            get channels() { return {}; },
+            get channels() { return { results: { mimetype: "application/json" } }; },
             effect: () => effect,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args) => {
