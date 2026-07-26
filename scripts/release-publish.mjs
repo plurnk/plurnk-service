@@ -102,6 +102,22 @@ try {
     await fs.rm(tmp, { recursive: true, force: true });
 }
 
+// The service and independently versioned client share one public AG-UI
+// composition contract. Verify the exact registry artifacts through a real,
+// deterministic model turn before the release can be announced (#630).
+console.log(`verify: packed client/service composition against ${ROOT_PKG}@${version}`);
+await new Promise((res, rej) => {
+    const ph = spawn("node", [path.resolve("..", "plurnk", "scripts", "test-composition.mjs")], {
+        stdio: "inherit",
+        env: {
+            ...process.env,
+            PLURNK_COMPOSITION_CLIENT: "@plurnk/plurnk@latest",
+            PLURNK_COMPOSITION_SERVICE: `${ROOT_PKG}@${version}`,
+        },
+    });
+    ph.on("exit", (code) => code === 0 ? res() : rej(new Error(`packed client/service composition failed (exit ${code})`)));
+});
+
 // Align managed external packages before completing the release.
 console.log("release-publish: external package phase");
 await new Promise((res, rej) => {
