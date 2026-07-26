@@ -7,6 +7,7 @@ import {
     parseOptionalInt,
     parseRequiredFloat,
     parseRequiredInt,
+    promptCacheKeyFromEnv,
     reasoningFromEnv,
 } from "./env.ts";
 import { providerSource } from "./telemetry.ts";
@@ -183,6 +184,7 @@ export const compatibleProviderFromEnv = async (
         completionReserve,
         tuningFloors: provider !== "plurnk",
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", provider),
+        promptCacheKey: promptCacheKeyFromEnv(env, provider),
         source: providerSource(provider),
         grammarStyle,
         gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined

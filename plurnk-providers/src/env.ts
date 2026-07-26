@@ -34,6 +34,15 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
     return raw;
 };
 
+export const promptCacheKeyFromEnv = (env: NodeJS.ProcessEnv, label: string): boolean => {
+    const name = "PLURNK_PROVIDERS_PROMPT_CACHE_KEY";
+    const value = env[name];
+    if (value !== "0" && value !== "1") {
+        throw new Error(`${label} provider: ${name} must be "0" or "1"`);
+    }
+    return value === "1";
+};
+
 // Old-name shed (the #399/#472 lexicon renames): a still-set retired knob fails
 // hard pointing at its successor — never silently coexists with the new floor.
 // The retired names appear ONLY as this function's ARGUMENTS at the call sites

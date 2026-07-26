@@ -5,6 +5,7 @@ import {
     envelopeFromEnv,
     parseRequiredFloat,
     parseRequiredInt,
+    promptCacheKeyFromEnv,
     reasoningFromEnv,
     resolveReserve,
     type ReserveSpec,
@@ -32,14 +33,6 @@ const reasoningStyleFromEnv = (
         throw new Error(`${name} provider: PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE has invalid value "${value}"`);
     }
     return value as ReasoningStyle;
-};
-
-const promptCacheKeyFromEnv = (env: NodeJS.ProcessEnv, name: string): boolean => {
-    const value = env.PLURNK_PROVIDERS_PROMPT_CACHE_KEY;
-    if (value !== "0" && value !== "1") {
-        throw new Error(`${name} provider: PLURNK_PROVIDERS_PROMPT_CACHE_KEY must be "0" or "1"`);
-    }
-    return value === "1";
 };
 
 export const providerFromSdkModel = ({
