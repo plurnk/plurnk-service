@@ -1,5 +1,5 @@
 {
-  "note": "Live-probed per-provider sampling-param support (#568). Refresh: node scripts/probe-capabilities.mjs. MEASURED tier — beats routed catalogs.",
+  "note": "Live-probed per-provider sampling-parameter acceptance (#568). Acceptance permits transport; it does not prove semantic effect or justify a default.",
   "profiles": {
     "openai": {
       "name": "openai",
@@ -20,7 +20,7 @@
     "together": {
       "name": "together",
       "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-      "honored": [
+      "accepted": [
         "temperature",
         "top_p",
         "top_k",
@@ -34,7 +34,7 @@
     "fireworks": {
       "name": "fireworks",
       "model": "accounts/fireworks/models/kimi-k2p6",
-      "honored": [
+      "accepted": [
         "temperature",
         "top_p",
         "top_k",
@@ -48,7 +48,7 @@
     "deepinfra": {
       "name": "deepinfra",
       "model": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-      "honored": [
+      "accepted": [
         "temperature",
         "top_p",
         "top_k",
@@ -62,7 +62,7 @@
     "xai": {
       "name": "xai",
       "model": "grok-3-mini",
-      "honored": [
+      "accepted": [
         "temperature",
         "top_p",
         "top_k",
@@ -77,7 +77,7 @@
     "gemini": {
       "name": "gemini",
       "model": "models/gemini-2.5-flash",
-      "honored": [
+      "accepted": [
         "temperature",
         "top_p"
       ],

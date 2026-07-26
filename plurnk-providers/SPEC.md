@@ -191,6 +191,22 @@ The consumer's instantiation path calls `mod.default.fromEnv(env, alias.model, o
 
 ## §4 Universal operator knobs
 
+Defaults use four evidence states:
+
+- **Measured** — a controlled behavioral experiment demonstrates the parameter's
+  effect on the relevant endpoint and model family.
+- **Documented** — the provider's primary documentation defines the parameter and
+  its semantics.
+- **Accepted** — a live request carrying the parameter succeeds. This proves wire
+  compatibility only; an endpoint may accept and ignore a field.
+- **Unknown** — neither semantics nor compatibility are established.
+
+Measured evidence outranks documented evidence when they conflict. A portable
+nonzero tuning default requires measured or documented semantics that actually
+generalize across its scope. Accepted evidence permits transport but never
+justifies a magnitude. `scripts/probe-capabilities.mjs` records acceptance and
+rejection only; it is not an effectiveness benchmark.
+
 Each provider's `fromEnv` reads these:
 
 - **`PLURNK_PROVIDERS_REASONING`** — REQUIRED, one of `off | adaptive | on`. **`PLURNK_PROVIDERS_REASONING_BUDGET`** is a positive integer required when reasoning is `on`. The provider maps this intent to the backend's supported controls. Backends may omit, combine, or expose reasoning differently when grammar-constrained output is enabled; the provider reports the channels it actually receives rather than synthesizing a separate reasoning channel. `max_tokens` remains an output limit, not a reasoning budget. The model-facing `PLAN` operation is part of the grammar and is independent of provider reasoning controls.
@@ -201,7 +217,7 @@ Read via `reasoningFromEnv` and **fail hard when unset**: the budget is required
 - **`PLURNK_PROVIDERS_RETRY_ATTEMPTS`** — REQUIRED non-negative integer (read via `parseRequiredInt`). The transient-failure retry budget: **`0`** surfaces the first failure; **`N`** retries up to `N` times on a *transient* classification only (`rate_limit` / `network_failure` — 429, 5xx, timeout, connection reset), plus **`grammar_invalid`** (a 422 output reject a fresh sample may satisfy, #548). Terminal kinds (`unauthorized`, `quota_exceeded`, `invalid_response`, `model_refused`) are never retried. Backoff is exponential from a `2000ms` base (`base * 2^(attempt-1)`), unless the server sent a `Retry-After` (which wins). The caller's `signal` aborts both the in-flight request and the backoff sleep. Lives in the shared `OpenAICompatProvider` so every provider inherits it uniformly; rides on the existing `classifyProviderError` (#18).
 - **`PLURNK_PROVIDERS_CONTEXT_WINDOW`** -- optional positive-integer override (alias-scopable) for the model's context window. Resolution (#419): this env var -> endpoint `n_ctx` probe (probing specs only) -> `@plurnk/plurnk-models` catalog -> then a PROBING provider degrades to `null`, a CLOUD provider (no probe) FAILS HARD (an uncataloged, unpinned cloud model is a config error, not a guessable window). See §11.
 - **`PLURNK_PROVIDERS_REASONING_RESERVE` / `PLURNK_PROVIDERS_COMPLETION_RESERVE`** (#507, owner-ruled) -- the generation-envelope reserves, REQUIRED (floor ships `10%` / `25%`). A percentage derives from the DETECTED window (llama-server n_ctx, the plurnk.ai router, the catalog) so every advertising endpoint gets sane defaults with ZERO operator tuning; an absolute token count wins outright (per-alias-scopable -- the measured-envelope override). These MIGRATED from core's `PLURNK_SERVICE_{CONTEXT_WINDOW,REASONING,COMPLETION}` (provider quantities wearing a service prefix; core keeps only its own packing-safety margin). Surfaced as `Provider.reasoningReserve`/`completionReserve`.
-- **`PLURNK_PROVIDERS_TEMPERATURE` / `PLURNK_PROVIDERS_REPEAT_PENALTY` / `PLURNK_PROVIDERS_FREQUENCY_PENALTY`** -- REQUIRED sampling + anti-degeneration floors (read via `parseRequiredFloat`, values from the `.env.defaults` floor). `REPEAT_PENALTY` (canonical `1.15`) is the llama.cpp/Fireworks multiplier; `FREQUENCY_PENALTY` (canonical `0.4`, #426) is the OpenAI-standard guard on the plain cloud path, which has no `repeat_penalty`. Applied to EVERY request, keyed per backend (§13).
+- **`PLURNK_PROVIDERS_TEMPERATURE` / `PLURNK_PROVIDERS_REPEAT_PENALTY` / `PLURNK_PROVIDERS_FREQUENCY_PENALTY`** -- REQUIRED sampling controls (read via `parseRequiredFloat`, values from the `.env.defaults` floor). `REPEAT_PENALTY` (canonical `1.15`) is the measured llama.cpp multiplier. `FREQUENCY_PENALTY` is the optional cloud analogue, but its portable floor is `0`: endpoint acceptance proves only that the field may ride, not that one magnitude has a portable semantic effect. Enable it per alias from provider documentation or controlled behavioral evidence. The controls are keyed per backend (§13).
 - **`PLURNK_PROVIDERS_SERVICE_TIER`** -- optional fixed request tier, alias-scopable. Fireworks accepts its published `auto | default | flex | priority` vocabulary and owns those values' routing semantics; when configured, the value is validated at construction and wins over per-call sampling on every request. Unset delegates to the provider default. Other standard providers reject the knob rather than silently ignoring a paid routing choice.
 - **`PLURNK_PROVIDERS_DRY_MULTIPLIER` / `_DRY_BASE` / `_DRY_ALLOWED_LENGTH`** -- the llama.cpp DRY loop-breaker (#567), customer-overridable per alias. The generic floor is deliberately **off** (`MULTIPLIER=0`): the turboderp/Gemma sweep proved the community-standard `0.8`/`1.75`/`2` settings worse than off for both runaway emissions and exact-identifier corruption. That same sweep measured `0.8`/`1.75`/`32` as a safe alias-specific deployment setting (zero corruption, about 6% runaways versus 19% off), so `.env.defaults` carries `BASE=1.75` and `ALLOWED_LENGTH=32` as inert override companions without pretending one model's multiplier is universal. DRY penalizes repeated sequences with a penalty escalating in run length -- the tool for a plan-restart loop a single-token `repeat_penalty` over a short window cannot see. **`PLURNK_PROVIDERS_REPEAT_LAST_N`** (optional) widens the older `repeat_penalty` window past the box's 64. These knobs are sent **only on the detected `llamacpp` path**; cloud providers parse but never emit them.
 

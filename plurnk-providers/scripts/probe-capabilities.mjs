@@ -1,16 +1,28 @@
-// Capability probe harness (#568). Asks each provider's REAL endpoint which sampling
-// params it honors — the MEASURED tier of the defaults rubric, and the only reliable
-// source for behavioral facts (routed catalogs lie: OpenRouter reports grok honoring
-// frequency_penalty; the direct xai API 400s on it). Run at release/patch-pub:
-//   node scripts/probe-capabilities.mjs        (needs the provider API keys in env)
-// Skips any provider with no key; writes the per-provider profile to
-// scripts/capability-profiles.json (a reference the spec's per-provider defaults cite).
+// Capability acceptance probe (#568). Asks each provider's REAL endpoint which sampling
+// params it accepts. Acceptance proves wire compatibility, never semantic effect; only
+// provider documentation or a controlled behavioral experiment may justify a default.
+// Run at release/patch-pub:
+//   npm run probe:caps -w @plurnk/plurnk-providers
+// Skips any provider with no key; writes the wire-compatibility artifact to
+// scripts/capability-profiles.json.
 //
 // A profile is trustworthy ONLY behind a passing BASELINE call (no extra params): an
 // invalid/inaccessible model must never masquerade as param rejection. Candidate models
 // are tried in order until one baselines (skips dedicated-only serverless models).
 
 import { writeFileSync } from "node:fs";
+
+const requiredInt = (name) => {
+    const raw = process.env[name];
+    if (raw === undefined || !/^\d+$/.test(raw)) throw new Error(`${name} must be a non-negative integer`);
+    return Number(raw);
+};
+
+const REQUEST_TIMEOUT_MS = requiredInt("PLURNK_CAPABILITY_PROBE_REQUEST_TIMEOUT");
+const MODEL_LIST_TIMEOUT_MS = requiredInt("PLURNK_CAPABILITY_PROBE_MODEL_LIST_TIMEOUT");
+const PARAM_DELAY_MS = requiredInt("PLURNK_CAPABILITY_PROBE_PARAM_DELAY");
+const MAX_TOKENS = requiredInt("PLURNK_CAPABILITY_PROBE_MAX_TOKENS");
+const MODEL_FALLBACKS = requiredInt("PLURNK_CAPABILITY_PROBE_MODEL_FALLBACKS");
 
 // The sampling params we probe, with a harmless in-range value each.
 const CANDIDATES = [
@@ -45,7 +57,7 @@ const chat = async (base, key, body) => {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
             body: JSON.stringify(body),
-            signal: AbortSignal.timeout(30_000),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         return { status: r.status, ok: r.ok, text: (await r.text()).replace(/\s+/g, " ") };
     } catch (e) { return { status: 0, ok: false, text: `fetch: ${e.message}` }; }
@@ -56,7 +68,7 @@ const chat = async (base, key, body) => {
 const resolveModels = async (base, key, prefer) => {
     let ids = [];
     try {
-        const r = await fetch(`${base}/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(20_000) });
+        const r = await fetch(`${base}/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS) });
         if (r.ok) { const j = await r.json(); ids = (Array.isArray(j) ? j : j.data ?? []).map((m) => m.id).filter(Boolean); }
     } catch { /* no listable /models — fall through to raw candidates */ }
     const out = [];
@@ -64,7 +76,7 @@ const resolveModels = async (base, key, prefer) => {
     // Fallback: if none of the preferred models baseline (dedicated-only, retired), try other
     // listed chat models so a working serverless one is still found.
     for (const id of ids) {
-        if (out.length >= prefer.length + 4) break;
+        if (out.length >= prefer.length + MODEL_FALLBACKS) break;
         if (out.includes(id) || /embed|whisper|tts|image|rerank|moderat|guard|vision|audio|speech/i.test(id)) continue;
         out.push(id);
     }
@@ -77,17 +89,17 @@ const profile = async ({ name, base, keyVar, models }) => {
     const candidates = await resolveModels(base, key, models);
     let lastFail = null;
     for (const model of candidates) {
-        const baseline = await chat(base, key, { model, messages: [{ role: "user", content: "hi" }], max_tokens: 1 });
+        const baseline = await chat(base, key, { model, messages: [{ role: "user", content: "hi" }], max_tokens: MAX_TOKENS });
         if (!baseline.ok) { lastFail = `${model} -> ${baseline.status} ${baseline.text.slice(0, 70)}`; continue; } // auth/dedicated/invalid — try the next candidate
-        const honored = [], rejected = [], anomaly = [];
+        const accepted = [], rejected = [], anomaly = [];
         for (const [p, v] of CANDIDATES) {
-            await sleep(250);
-            const res = await chat(base, key, { model, messages: [{ role: "user", content: "hi" }], max_tokens: 1, [p]: v });
-            if (res.ok) honored.push(p);
+            await sleep(PARAM_DELAY_MS);
+            const res = await chat(base, key, { model, messages: [{ role: "user", content: "hi" }], max_tokens: MAX_TOKENS, [p]: v });
+            if (res.ok) accepted.push(p);
             else if (res.status === 400 || res.status === 422) rejected.push(p);
             else anomaly.push(`${p}:${res.status}`); // 401/429/5xx — not a clean param verdict
         }
-        return { name, model, honored, rejected, ...(anomaly.length ? { anomaly } : {}) };
+        return { name, model, accepted, rejected, ...(anomaly.length ? { anomaly } : {}) };
     }
     return { name, skipped: `no model baselined${lastFail ? ` (last: ${lastFail})` : ""}` };
 };
@@ -97,9 +109,12 @@ for (const p of PROVIDERS) {
     const r = await profile(p);
     profiles[r.name] = r;
     if (r.skipped) console.log(`${r.name}: skipped (${r.skipped})`);
-    else console.log(`${r.name} [${r.model}]  honored: ${r.honored.join(", ")}  rejected: ${r.rejected.join(", ") || "-"}${r.anomaly ? "  anomaly: " + r.anomaly.join(", ") : ""}`);
+    else console.log(`${r.name} [${r.model}]  accepted: ${r.accepted.join(", ")}  rejected: ${r.rejected.join(", ") || "-"}${r.anomaly ? "  anomaly: " + r.anomaly.join(", ") : ""}`);
 }
 
 const outPath = new URL("./capability-profiles.json", import.meta.url);
-writeFileSync(outPath, JSON.stringify({ note: "Live-probed per-provider sampling-param support (#568). Refresh: node scripts/probe-capabilities.mjs. MEASURED tier — beats routed catalogs.", profiles }, null, 2) + "\n");
+writeFileSync(outPath, JSON.stringify({
+    note: "Live-probed per-provider sampling-parameter acceptance (#568). Acceptance permits transport; it does not prove semantic effect or justify a default.",
+    profiles,
+}, null, 2) + "\n");
 console.log(`\nwrote ${Object.values(profiles).filter((p) => !p.skipped).length} profiles -> scripts/capability-profiles.json`);
