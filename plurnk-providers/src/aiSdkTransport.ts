@@ -69,6 +69,7 @@ const wireUsageOf = (
 const finishReasonOf = (reason: string | undefined): FinishReason => {
     switch (reason?.toLowerCase()) {
         case "stop":
+        case "completed":
         case "end_turn":
         case "stop_sequence":
         case "eos_token":

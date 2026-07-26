@@ -327,6 +327,13 @@ test("generate translates end_turn to canonical stop (#425)", async () => {
     assert.equal(assistant.finishReason, "stop");
 });
 
+test("generate translates xAI completed to canonical stop", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "completed" }] }]);
+    const { assistant } = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(assistant.finishReason, "stop");
+});
+
 test("generate aggregates reasoning deltas under multiple field names", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
