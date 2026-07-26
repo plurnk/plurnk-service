@@ -1,7 +1,7 @@
 {
     "root": "«repo forest»",
-    "count": 55,
-    "managed": 54,
+    "count": 56,
+    "managed": 55,
     "independent": 1,
     "packages": [
         {
@@ -552,6 +552,16 @@
             "pushable": true,
             "platformDependencies": [
                 "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-providers-cloudflare",
+            "name": "@plurnk/plurnk-providers-cloudflare",
+            "release": "managed",
+            "owner": "providers",
+            "pushable": true,
+            "platformDependencies": [
+                "@plurnk/plurnk-providers"
             ]
         }
     ]

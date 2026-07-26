@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-mcp",
-    "version": "1.3.7",
+    "version": "1.3.8",
     "description": "MCP executor bridge for plurnk-service — each configured server is an EXEC tag whose live catalog exposes its tools and input schemas.",
     "keywords": [
         "plurnk",
@@ -67,6 +67,6 @@
         "@modelcontextprotocol/server": "2.0.0-beta.5"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.3.7"
+        "@plurnk/plurnk-execs": "^1.3.8"
     }
 }
