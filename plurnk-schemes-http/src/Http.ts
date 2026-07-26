@@ -35,10 +35,12 @@ import type {
     KillStatement,
     UrlPath,
     EntryData,
+    FindStatement,
 } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
+import WebFetcher from "./WebFetcher.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
@@ -88,8 +90,10 @@ export default class Http implements SchemeHandler {
     // The render foundation (lazy chromium). Injectable for tests; one warm
     // pool per Http instance, shared across this scheme's fetches.
     readonly #browser: Renderer;
+    readonly #webFetcher: WebFetcher;
     constructor(browser: Renderer = new Browser()) {
         this.#browser = browser;
+        this.#webFetcher = new WebFetcher(browser);
     }
 
     async ready(): Promise<void> {
@@ -98,7 +102,49 @@ export default class Http implements SchemeHandler {
     }
 
     async close(): Promise<void> {
-        await this.#browser.close?.();
+        await this.#webFetcher.close();
+    }
+
+    // FIND itself is the consumer's standard entry query. This hook owns only
+    // HTTP's prerequisite: an exact URL that is not already an entry must be
+    // acquired through the same guarded byte/render path used by search
+    // prefetch. Glob and regex targets only query already-known web entries.
+    async prepareFind(statement: FindStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+        const target = statement.target;
+        if (target === null || target.kind !== "url") return { shape: "passthrough", status: 200 };
+        const pathname = Http.#pathname(target);
+        const prior = await ctx.entries.read(pathname);
+        if (prior.entry !== null) return { shape: "passthrough", status: 200 };
+        const fetched = await this.#webFetcher.fetch(Http.#urlFrom(target), { signal: ctx.signal });
+        if (fetched === null) {
+            return Http.#bad(404, "http", "not_materialized", "the requested URL could not be materialized");
+        }
+        let { body, mimetype } = fetched;
+        let channels: EntryData["channels"] = {
+            [BODY]: { content: body, mimetype },
+            ...(fetched.header === undefined ? {} : { [HEADER]: { content: fetched.header, mimetype: "text/plain" } }),
+        };
+        if (mimetype === "text/html") {
+            let projected = await ctx.projection.readable(body, mimetype);
+            if ((projected === null || projected.content.length === 0) && fetched.render !== undefined) {
+                const rendered = await fetched.render();
+                if (rendered !== null) {
+                    body = rendered.body;
+                    mimetype = rendered.mimetype;
+                    projected = await ctx.projection.readable(body, mimetype);
+                }
+            }
+            if (projected === null || projected.content.length === 0) {
+                return Http.#bad(422, "http", "no_readable_projection", "the requested URL has no readable projection");
+            }
+            channels = {
+                [BODY]: { content: projected.content, mimetype: projected.mimetype },
+                html: { content: body, mimetype },
+                ...(fetched.header === undefined ? {} : { [HEADER]: { content: fetched.header, mimetype: "text/plain" } }),
+            };
+        }
+        const written = await ctx.entries.write(pathname, { channels, tags: [] });
+        return { shape: "passthrough", status: written.status };
     }
 
     // An unscoped READ fetches/revalidates. A scoped READ observes the already

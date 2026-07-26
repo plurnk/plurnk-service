@@ -20,6 +20,7 @@ import type {
     SendStatement,
     EditStatement,
     KillStatement,
+    FindStatement,
     UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
@@ -120,6 +121,10 @@ const killStmt = (target: UrlPath | null, body: string | null = null): KillState
     op: "KILL", suffix: "KILL", signal: null, target, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
+const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null): FindStatement => ({
+    op: "FIND", suffix: "FIND", signal: null, target, lineMarker: null, body,
+    position: { line: 0, column: 0 },
+});
 
 // Mock fetch: a streaming Response over the given chunks.
 const mockFetch = (status: number, statusText: string, bodyChunks: string[], headers: Record<string, string> = {}) => {
@@ -165,6 +170,29 @@ test("manifest: documentation is loaded verbatim from docs/http.md", async () =>
     const fromFile = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
     assert.equal(Http.manifest.documentation, fromFile);
     assert.match(Http.manifest.documentation ?? "", /^# http\(s\):\/\//);
+});
+
+test("prepareFind materializes an exact URL through the guarded readable path", async () => {
+    const { ctx, inspect } = makeCtx();
+    const http = new Http(fakeBrowser("<html>browser fallback</html>"));
+    const target = urlTarget("https://example.com/dist/index.json", "/dist/index.json");
+    await withFetch(
+        mockFetch(200, "OK", ['{"version":"24.18.0"}'], { "content-type": "application/json" }),
+        async () => {
+            const prepared = await http.prepareFind(findStmt(target), ctx);
+            assert.equal(prepared.status, 201);
+        },
+    );
+    assert.equal(inspect().wrote?.pathname, "/example.com/dist/index.json");
+    assert.equal(inspect().wrote?.entry.channels.body?.content, '{"version":"24.18.0"}');
+    assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
+});
+
+test("prepareFind leaves non-exact discovery to the shared entry query", async () => {
+    const { ctx, inspect } = makeCtx();
+    const prepared = await new Http(fakeBrowser("unused")).prepareFind(findStmt(null), ctx);
+    assert.equal(prepared.status, 200);
+    assert.equal(inspect().wrote, null);
 });
 
 // ── create-then-subscribe (http#3) ────────────────────────────────────────

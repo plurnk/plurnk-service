@@ -9,6 +9,7 @@ Lets the model treat any web URL as an addressable, streamable resource:
 | Op | Behavior |
 |---|---|
 | `READ(http(s)://host/path)` | Without `<scope>`, fetch/revalidate the URL and stream its readable body. With `<scope>`, read that range from the materialized response without refetching. |
+| `FIND(http(s)://host/path):matcher` | Materialize an exact URL when necessary, then query it through the standard entry FIND contract. Glob/regex scopes query already-materialized web entries. |
 | `SEND[200](http(s)://…)` | Request with a body (POST); response streams back the same way. |
 | `SEND[499](http(s)://…)` | Cancel an in-flight request (abort the fetch). |
 | `SEND[410](http(s)://…)` | Delete the cached response entry. |

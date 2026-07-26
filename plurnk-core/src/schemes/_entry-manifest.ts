@@ -200,7 +200,12 @@ export default class EntryManifest {
         const pending: Array<{ r: ManifestRow; hash: string; searchExcluded: string | undefined }> = [];
         for (const r of rows) {
             if (r.channel !== "body") continue; // derivation fires on the body channel only
-            const searchExcluded = matchSearchExclusion(r.pathname);
+            // SEARCH_EXCLUDE classifies generated project members. URI paths in
+            // other schemes are resource identities, not repository layout:
+            // https://host/dist/index.json is not a generated local artifact.
+            const searchExcluded = r.scheme === "file"
+                ? matchSearchExclusion(r.pathname)
+                : undefined;
             const dispositionIdentity = searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`;
             const hash = createHash("sha256").update(r.content).update("\0").update(r.mimetype).update("\0").update(deepCfgSig).update("\0").update(dispositionIdentity).digest("hex");
             if (hash !== r.deep_hash) pending.push({ r, hash, searchExcluded }); // unchanged since last derivation → deep rows persist

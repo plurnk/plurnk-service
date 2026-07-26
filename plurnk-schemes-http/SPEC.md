@@ -35,6 +35,14 @@ Implemented against the DB-free `SchemeCtx` (no `ctx.db`):
 
 The HTTP method is the op: an unscoped `read` → GET, `send` (SEND[200]) → POST, `edit` → PUT (whole-body; `<L>` rejected), `kill` → DELETE. A scoped READ observes the already-materialized readable response through the standard entry operation; it never refetches and discards the requested scope. Without a materialized body it returns 409 directing an unscoped READ first. `SEND[410]` drops the cached copy; `SEND[499]` cancels in-flight; other SEND codes → 501. Request headers ride the target's `{Key: value}` blocks (grammar#46).
 
+FIND uses the schemes framework's universal data-scheme behavior rather than
+an HTTP-specific query implementation. For an exact URL, `prepareFind`
+materializes a missing entry through the guarded `WebFetcher` byte/render path;
+the consumer then applies its standard catalog, matcher, span, weight,
+pagination, and status semantics. Glob and regex scopes survey
+already-materialized web entries because a pattern cannot discover the remote
+web. FIND returns metadata and match coordinates; READ returns content.
+
 Results use the `passthrough` family (read-only / network shape) — http entries are coordinate/URL-addressed, not entry-CRUD-backed.
 
 ## §3 Streaming lifecycle

@@ -1,10 +1,10 @@
 // The scheme BEHAVIOR contract — the typed counterpart to SchemeManifest
 // (which types a scheme's declaration). A handler implements a method per op it
 // supports, named for the lowercased op (READ → read, SEND → send, FIND → find,
-// …); plurnk-service dispatches `handler[statement.op.toLowerCase()](statement,
-// ctx)` and returns 501 for any op a scheme doesn't implement. Every method is
-// therefore OPTIONAL — a scheme implements only its surface (http: read + send;
-// an entry scheme: read/find/edit/copy/move/…). All share one shape:
+// …). An absent method returns 501 except FIND on a data scheme, for which the
+// consumer supplies its standard entry query after optional `prepareFind`.
+// Every method is therefore OPTIONAL — a scheme implements only its distinct
+// surface. All share one shape:
 // `(statement, ctx) => Promise<SchemeResult>`.
 //
 // `implements SchemeHandler` gives a sibling compile-time checking of its op
@@ -55,6 +55,10 @@ export interface SchemeHandler {
     close?(): Promise<void>;
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 
+    // Entry-bearing schemes receive the standard FIND implementation from the
+    // consumer. A scheme implements this hook only when the requested target
+    // must be discovered or materialized before that shared query runs.
+    prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;

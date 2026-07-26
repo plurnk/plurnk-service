@@ -518,6 +518,9 @@ The optional engine-/daemon-populated capabilities (the notifiers, `injectWorker
 Engine → scheme guarantees:
 
 - `ctx` is fresh per call. No mutation across calls.
+- FIND on a `category: "data"` scheme with no custom `find()` invokes its
+  optional `prepareFind()` and then the standard entry FIND. Preparation owns
+  discovery/materialization only; query semantics remain universal.
 - `ctx.writer` reflects the actual writer at this dispatch.
 - `manifest.writableBy` checked BEFORE invocation; engine returns 403 directly on exclusion. {§scheme-surface-writableby-403}
 - `ctx.signal` is wired to the worker's AbortController (§provider-guarantees-signal-wired).

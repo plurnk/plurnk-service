@@ -55,13 +55,20 @@ class Known {
 
 ## §2 Interface
 
-Sister scheme handlers implement op methods consumed by plurnk-service via dispatch: the engine calls `handler[statement.op.toLowerCase()](statement, ctx)` and returns **501** for any op whose method is absent. The op-dispatch surface is the exported **`SchemeHandler`** interface — every method optional, each `(statement, ctx) => Promise<SchemeResult>`, the per-op statement type from grammar:
+Sister scheme handlers implement op methods consumed by plurnk-service via
+dispatch. An absent method returns **501**, except FIND on an entry-bearing
+`category: "data"` scheme: the consumer supplies its standard stored-entry
+FIND automatically. The op-dispatch surface is the exported
+**`SchemeHandler`** interface — every method optional, each
+`(statement, ctx) => Promise<SchemeResult>`, the per-op statement type from
+grammar:
 
 ```ts
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 
 export interface SchemeHandler {
     close?(): Promise<void>;
+    prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     open?(statement: OpenStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -78,6 +85,15 @@ export interface SchemeHandler {
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 }
 ```
+
+`prepareFind?` is not a second query implementation. It is the optional
+discovery/materialization seam invoked before the consumer's standard FIND
+when a data scheme has no custom `find()`. Stored schemes omit it. Acquisition
+schemes use it to make an exact requested resource into an ordinary entry,
+then receive the same catalog, matcher, span, weight, pagination, and status
+semantics as every other entry-bearing scheme. A custom `find()` replaces the
+whole operation only where the scheme owns genuinely different candidate
+semantics.
 
 A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. The op set is exactly grammar's `PlurnkStatement` dispatch union and moves with the framework's grammar bump (0.74.57 added `work?`/`fork?`; `LOOK`/`BUFF` are grammar `ClientStatement` ops, client-facing and never dispatched to a scheme, so they're intentionally absent here). **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 

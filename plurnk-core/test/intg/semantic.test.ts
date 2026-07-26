@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-grammar";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
@@ -129,12 +130,12 @@ test("[#209-semantic-threshold] ~query <0.x> form-dispatches to a similarity thr
 });
 
 
-test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE: a matched path is excluded from every search index", async () => {
+test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE applies to project files, not arbitrary scheme paths", async () => {
     // The operator's decision table (mimetypes 0.18.1 §21) consumed in the pump: the knob IS the
     // classification — a lockfile-class entry remains directly readable but
     // contributes no graph, FTS, or vectors. No caps, no heuristics in code.
     const prev = process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE;
-    process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = "package-lock.json,*.min.*";
+    process.env.PLURNK_MIMETYPES_SEARCH_EXCLUDE = "*/dist/*";
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();
@@ -142,25 +143,32 @@ test("[#47] PLURNK_MIMETYPES_SEARCH_EXCLUDE: a matched path is excluded from eve
         const workspaceId = await insertWorkspace(db, `noembed-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        const identical = '{"name":"x","lockfileVersion":3,"packages":{"":{"deps":{"y":"1.0.0"}}}}';
-        await new Worker().edit(editStmt(url("package-lock.json"), identical), ctx);
-        await new Worker().edit(editStmt(url("fixture.json"), identical), ctx);
+        const identical = '{"name":"x","version":"24.18.0","packages":{"":{"deps":{"y":"1.0.0"}}}}';
+        await EntryCrud.writeEntry("/repo/dist/index.json", {
+            channels: { body: { content: identical, mimetype: "application/json" } },
+            tags: [],
+        }, ctx, "file");
+        await EntryCrud.writeEntry("/example.com/dist/index.json", {
+            channels: { body: { content: identical, mimetype: "application/json" } },
+            tags: [],
+        }, ctx, "https");
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await EntryManifest.maintainDerivations(ctx);
-        const lock = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/package-lock.json" });
+        const lock = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/repo/dist/index.json" });
         const notes = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/notes.md" });
-        const fixture = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/fixture.json" });
+        const fixture = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.com/dist/index.json" });
         const lockVecs = await db.test_count_embeddings.get<{ n: number }>({ entry_id: lock?.id ?? -1 });
         const noteVecs = await db.test_count_embeddings.get<{ n: number }>({ entry_id: notes?.id ?? -1 });
         assert.equal(lockVecs?.n, 0, "the lockfile matched the pattern — zero vectors");
         assert.ok((noteVecs?.n ?? 0) > 0, "the unmatched entry embeds fully");
-        const lockFts = await db.test_fts_search.all({ workspace_id: workspaceId, query: "lockfileVersion" });
-        assert.ok(!lockFts.some((row) => (row as { pathname: string }).pathname === "/package-lock.json"), "excluded content contributes no lexical result");
+        const lockFts = await db.test_fts_search.all({ workspace_id: workspaceId, query: "version" });
+        assert.ok(!lockFts.some((row) => (row as { pathname: string }).pathname === "/repo/dist/index.json"), "excluded project content contributes no lexical result");
+        assert.ok(lockFts.some((row) => (row as { pathname: string }).pathname === "/example.com/dist/index.json"), "the same resource path under HTTPS remains searchable");
         const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: lock?.id ?? -1 });
         const includedDisposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string | null; deep_hash: string }>({ entry_id: fixture?.id ?? -1 });
         assert.equal(disposition?.disposition, "excluded");
-        assert.equal(disposition?.reason, "package-lock.json");
-        assert.equal(includedDisposition?.disposition, "vector", "identical bytes at an included path remain searchable");
+        assert.equal(disposition?.reason, "*/dist/*");
+        assert.equal(includedDisposition?.disposition, "vector", "identical bytes at a non-file resource path remain searchable");
         // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
         await EntryManifest.maintainDerivations(ctx);
         const lockVecs2 = await db.test_count_embeddings.get<{ n: number }>({ entry_id: lock?.id ?? -1 });

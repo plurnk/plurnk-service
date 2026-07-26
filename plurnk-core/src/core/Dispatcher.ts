@@ -1278,11 +1278,18 @@ export default class Dispatcher {
         if (handler === undefined) return { status: 501 };
         const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
         const method = handler[methodName];
-        if (typeof method !== "function") return { status: 501 };
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         const manifest = this.#schemes.manifestFor(schemeName);
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-        return method.call(handler, statement, new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions));
+        const schemeCtx = new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions);
+        if (typeof method === "function") return method.call(handler, statement, schemeCtx);
+        if (statement.op !== "FIND" || manifest.category !== "data") return { status: 501 };
+        const prepareFind = handler.prepareFind;
+        if (typeof prepareFind === "function") {
+            const prepared = await prepareFind.call(handler, statement, schemeCtx);
+            if (prepared.status >= 300) return prepared;
+        }
+        return schemeCtx.entries.operations.find(statement);
     }
 
     // A status-202 result is a reviewable PROPOSAL (a side-effecting op — EDIT/EXEC/
