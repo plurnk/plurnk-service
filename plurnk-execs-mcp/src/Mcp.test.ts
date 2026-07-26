@@ -1,6 +1,7 @@
 import test, { before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import Mcp, { installServer, type HotloadRegistration } from "./Mcp.ts";
 import { closeAll } from "./client.ts";
@@ -111,6 +112,16 @@ test("runtimes: empty when no servers are configured", () => {
     assert.deepEqual(serverNames({}), []);
 });
 
+test("manifest: MCP is an executor-only plugin with no scheme dependency", async () => {
+    const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+        plurnk: { kind: string; schemes?: unknown };
+        peerDependencies: Record<string, string>;
+    };
+    assert.equal(pkg.plurnk.kind, "exec");
+    assert.equal("schemes" in pkg.plurnk, false);
+    assert.equal("@plurnk/plurnk-schemes" in pkg.peerDependencies, false);
+});
+
 // --- Mcp executor (real stdio server end-to-end) ---------------------------
 
 test("effect: read-only tools auto-run (read), mutating/unknown propose (host); catalog is read (#13)", async () => {
@@ -128,9 +139,9 @@ test("channels: declares a results channel (application/json)", () => {
     });
 });
 
-test("probe: connects to the live server and reports its advertised primitives", async () => {
+test("probe: connects to the live server and reports its tools", async () => {
     const avail = await new Mcp({ runtime: "echo", glyph: "🪞" }).probe();
-    assert.deepEqual(avail, { available: true, detail: "stdio: 2 tools, resources, prompts" });
+    assert.deepEqual(avail, { available: true, detail: "stdio: 2 tools" });
 });
 
 test("probe: an unconfigured server is unavailable with an actionable detail", async () => {
@@ -155,12 +166,15 @@ test("run: a no-argument tool call (no JSON body) works", async () => {
     assert.equal(JSON.parse(writes[0].chunk).content[0].text, "{}");
 });
 
-test("run: an empty body writes the live capability-aware catalog (#484)", async () => {
+test("run: an empty body writes the live tool catalog with server-provided schemas", async () => {
     const { result, writes } = await invoke("echo", "");
     assert.equal(result.status, 200);
-    const cat = JSON.parse(writes[0].chunk) as { capabilities: Record<string, boolean>; tools: { name: string }[] };
-    assert.equal(cat.capabilities.tools, true);
+    const cat = JSON.parse(writes[0].chunk) as { tools: { name: string; inputSchema: unknown }[] };
     assert.deepEqual(cat.tools.map((t) => t.name).sort(), ["boom", "echo"]);
+    assert.deepEqual(cat.tools.find((t) => t.name === "echo")?.inputSchema, {
+        type: "object",
+        properties: { msg: { type: "string" } },
+    });
 });
 
 test("run: an isError tool result closes errored with status 500", async () => {

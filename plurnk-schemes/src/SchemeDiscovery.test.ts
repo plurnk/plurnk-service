@@ -96,15 +96,15 @@ test("discover: a package's schemes each carry the package attribution", async (
 // ── array-kind: is-or-includes (#483) ─────────────────────────────────────
 test("discover: kind array including \"scheme\" is accepted (dual-faced package)", async () => {
     const cwd = await makeTree([
-        ["@plurnk/plurnk-execs-mcp", {
-            name: "@plurnk/plurnk-execs-mcp",
-            plurnk: { kind: ["exec", "scheme"], schemes: [{ name: "mcp", export: "McpScheme" }] },
+        ["multi-family", {
+            name: "multi-family",
+            plurnk: { kind: ["exec", "scheme"], schemes: [{ name: "records", export: "RecordsScheme" }] },
         }],
         ["exec-only", { name: "exec-only", plurnk: { kind: ["exec"], runtimes: [{ name: "node" }] } }],
         ["other-kind", { name: "other-kind", plurnk: { kind: "exec", name: "nope" } }],
     ]);
     const { schemes } = await SchemeDiscovery.discover({ cwd });
-    assert.deepEqual(schemes, [{ name: "mcp", packageName: "@plurnk/plurnk-execs-mcp", exportName: "McpScheme" }]);
+    assert.deepEqual(schemes, [{ name: "records", packageName: "multi-family", exportName: "RecordsScheme" }]);
 });
 
 test("discover: a malformed plurnk.schemes fails hard (never a silent skip)", async () => {

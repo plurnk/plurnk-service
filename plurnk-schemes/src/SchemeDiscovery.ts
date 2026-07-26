@@ -127,10 +127,10 @@ export default class SchemeDiscovery {
         const plurnk = record.plurnk;
         if (typeof plurnk !== "object" || plurnk === null) return [];
         const plurnkRec = plurnk as Record<string, unknown>;
-        // is-or-includes (#483): a dual-faced package (e.g. MCP — exec + scheme)
+        // is-or-includes (#483): a package owning more than one capability family
         // declares `kind: ["exec", "scheme"]`; the string form stays as the
         // single-kind sugar. A scanner accepts a package whose kind IS or
-        // INCLUDES its own — one protocol, one package, both faces.
+        // INCLUDES its own.
         const kind = plurnkRec.kind;
         const isScheme = kind === "scheme" || (Array.isArray(kind) && kind.includes("scheme"));
         if (!isScheme) return [];

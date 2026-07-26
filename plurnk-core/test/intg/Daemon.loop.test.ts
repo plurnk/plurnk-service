@@ -27,9 +27,10 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             // worker:///france/capital + the prompt frame (2 base — no manifest.json entry, the
             // catalog is FIND-served), plus 11 docs: the 3 non-excluded in-tree schemes (log/worker/prompt
             // — file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE, skill excluded too), the
-            // boot-discovered `http` + `wss` + `mcp` externals (#473), and sh/node/sqlite/git/jq —
-            // executor docs the execs family ships. 2 + 11 = 13.
-            assert.equal(entryCount, 13);
+            // boot-discovered `http` + `wss` externals (#473), and sh/node/sqlite/git/jq —
+            // executor docs the execs family ships. MCP servers are dynamic executor tags,
+            // not a generic scheme document. 2 + 10 = 12.
+            assert.equal(entryCount, 12);
         } finally { ws.close(); }
     });
 });

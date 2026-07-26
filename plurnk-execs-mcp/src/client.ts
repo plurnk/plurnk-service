@@ -3,9 +3,6 @@ import {
     SdkHttpError,
     StreamableHTTPClientTransport,
     UnauthorizedError,
-    type Prompt,
-    type Resource,
-    type ResourceTemplateType,
     type Tool,
 } from "@modelcontextprotocol/client";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
@@ -13,10 +10,8 @@ import { setAuthHeaders, type ServerConfig } from "./config.ts";
 
 const CLIENT_VERSION = "0.1.0";
 
-// The connection layer BOTH faces share — the executor (Mcp.ts: EXEC[<server>]
-// calls tools) and the scheme (McpScheme.ts: mcp://<server>/ reads server-side
-// state). One cache, one OAuth overlay, one capability snapshot per server —
-// a token installed for one face serves the other (#483/#484).
+// Executor connection state: one cache, one OAuth overlay, and one live tool
+// catalog per configured server.
 
 // MCP connections are long-lived: open one Client per server, lazily, and reuse
 // it across runs (the wasm `wabtPromise` singleton precedent). Keyed by tag
@@ -85,35 +80,19 @@ export const cacheHints = (server: string, tools: readonly { name: string; annot
     readOnlyHints.set(server, new Map(tools.map((t) => [t.name, t.annotations?.readOnlyHint === true])));
 };
 
-// The capability-aware catalog — what the server ADVERTISES, then only those
-// listings (a resources-only server never gets a listTools it would reject).
-// Served identically by both faces: the executor's `?` body and the scheme's
-// `mcp://<server>/` index (#484).
+// The model-visible catalog contains only actionable executor capabilities.
+// Every tool retains the server-provided input schema and annotations.
 export interface Catalog {
-    capabilities: { tools: boolean; resources: boolean; prompts: boolean };
-    tools?: Tool[];
-    resources?: Resource[];
-    resourceTemplates?: ResourceTemplateType[];
-    prompts?: Prompt[];
+    tools: Tool[];
 }
 
 export const catalog = async (server: string, client: Client, signal?: AbortSignal): Promise<Catalog> => {
     const caps = client.getServerCapabilities() ?? {};
+    if (caps.tools === undefined) return { tools: [] };
     const opts = signal === undefined ? undefined : { signal };
-    const [tools, resources, templates, prompts] = await Promise.all([
-        caps.tools === undefined ? null : allTools(client, opts),
-        caps.resources === undefined ? null : paginate(opts, (p, o) => client.listResources(p, o), (r) => r.resources),
-        caps.resources === undefined ? null : templatesOrNone(client, opts),
-        caps.prompts === undefined ? null : paginate(opts, (p, o) => client.listPrompts(p, o), (r) => r.prompts),
-    ]);
-    if (tools !== null) cacheHints(server, tools);
-    return {
-        capabilities: { tools: caps.tools !== undefined, resources: caps.resources !== undefined, prompts: caps.prompts !== undefined },
-        ...(tools === null ? {} : { tools }),
-        ...(resources === null ? {} : { resources }),
-        ...(templates === null ? {} : { resourceTemplates: templates }),
-        ...(prompts === null ? {} : { prompts }),
-    };
+    const tools = await allTools(client, opts);
+    cacheHints(server, tools);
+    return { tools };
 };
 
 // Every list call follows `nextCursor` to exhaustion — a multi-page server must
@@ -134,20 +113,6 @@ const paginate = async <R extends { nextCursor?: string }, T>(
     return out;
 };
 
-// The full tool list (paginated) — probe and the scheme's /tools/<name> route
-// share it with catalog().
+// The full tool list (paginated), shared by probe and the live catalog.
 export const allTools = (client: Client, opts?: { signal?: AbortSignal }): Promise<Tool[]> =>
     paginate(opts, (p, o) => client.listTools(p, o), (r) => r.tools);
-
-// resources/templates/list rides the resources capability, but real servers
-// commonly omit the handler — a JSON-RPC -32601 there is the server saying
-// "none", not a failure worth killing the whole catalog for. Anything else
-// surfaces.
-const templatesOrNone = async (client: Client, opts?: { signal?: AbortSignal }): Promise<ResourceTemplateType[] | null> => {
-    try {
-        return await paginate(opts, (p, o) => client.listResourceTemplates(p, o), (r) => r.resourceTemplates);
-    } catch (err) {
-        if ((err as { code?: unknown }).code === -32601) return null;
-        throw err;
-    }
-};

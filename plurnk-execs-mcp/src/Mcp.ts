@@ -5,9 +5,8 @@ import { serverConfig, isInjected, installAllowed, registerServer, deregisterSer
 import { connect, catalog, allTools, cacheHints, readOnlyHint, isAuthRequired, msg } from "./client.ts";
 import { runtimeDecl } from "./runtimes.ts";
 
-// Connection cache, OAuth overlay, readOnlyHint cache, and the capability-aware
-// catalog live in client.ts — shared with the mcp:// scheme face (McpScheme.ts).
-// `closeAll`/`install` are re-exported from the barrel unchanged.
+// Connection cache, OAuth overlay, readOnlyHint cache, and the live tool catalog
+// live in client.ts. `closeAll`/`install` are re-exported from the barrel.
 
 // MCP-bridge executor. Each configured server is one tag (this.runtime). The op
 // is `EXEC[<server>](<tool>):<json-args>` — the tool is the (target) slot, its
@@ -22,11 +21,9 @@ export default class Mcp extends BaseExecutor {
         return { results: { mimetype: "application/json" } };
     }
 
-    // Available iff the server is configured AND reachable, reporting its
-    // advertised primitives — boot answers "is this MCP server up?". Tools list
-    // only when the tools capability is negotiated (a resources-only server is
-    // available, not a listTools failure). A connection failure is a settled
-    // unavailable, not a throw, so one dead server doesn't fail boot.
+    // Available iff the configured server is reachable and exposes tools.
+    // A connection failure is settled unavailable so one dead server does not
+    // fail boot.
     override async probe(): Promise<RuntimeAvailability> {
         const cfg = serverConfig(this.runtime);
         if (cfg === null) {
@@ -34,16 +31,12 @@ export default class Mcp extends BaseExecutor {
         }
         try {
             const client = await connect(this.runtime, cfg);
-            const caps = client.getServerCapabilities() ?? {};
-            const parts: string[] = [];
-            if (caps.tools !== undefined) {
-                const tools = await allTools(client);
-                cacheHints(this.runtime, tools);
-                parts.push(`${tools.length} tool${tools.length === 1 ? "" : "s"}`);
+            if (client.getServerCapabilities()?.tools === undefined) {
+                return { available: false, detail: `${cfg.transport}: no tools advertised` };
             }
-            if (caps.resources !== undefined) parts.push("resources");
-            if (caps.prompts !== undefined) parts.push("prompts");
-            return { available: true, detail: `${cfg.transport}: ${parts.length > 0 ? parts.join(", ") : "no primitives advertised"}` };
+            const tools = await allTools(client);
+            cacheHints(this.runtime, tools);
+            return { available: true, detail: `${cfg.transport}: ${tools.length} tool${tools.length === 1 ? "" : "s"}` };
         } catch (err) {
             return { available: false, detail: `MCP '${this.runtime}' unreachable: ${msg(err)}` };
         }
@@ -97,9 +90,8 @@ export default class Mcp extends BaseExecutor {
 
         // The tool is the `(target)` slot; its JSON arguments are the body —
         // `EXEC[<server>](<tool>):<json-args>` (plurnk-execs#15). No tool named
-        // (`EXEC[<server>]:` / `?` / `help`) → the live capability-aware catalog
-        // (tools + resources + prompts, per what the server advertises — #484),
-        // identical to the mcp://<server>/ index.
+        // (`EXEC[<server>]:` / `?` / `help`) → the live tool catalog, including
+        // each server-provided input schema and annotations.
         if (target === null || target === "" || body === "?" || body === "help") {
             try {
                 const cat = await catalog(runtime, client, signal);

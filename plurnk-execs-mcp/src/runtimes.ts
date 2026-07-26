@@ -49,19 +49,11 @@ object (omit it for a no-argument tool):
 ## Discovering the server
 
 Run the tag with \`?\` (or \`help\`, or an empty body) to write the server's live
-capability-aware catalog — tools (with input JSON schemas), resources, resource
-templates, and prompts, per what the server advertises — to the results stream:
+tool catalog, including each server-provided input JSON schema and annotations,
+to the results stream:
 
 \`\`\`
 <<EXEC[${name}]:?:EXEC
-\`\`\`
-
-What the server HOLDS is also addressable directly:
-
-\`\`\`
-<<READ(mcp://${name}/)::READ                          the same catalog
-<<READ(mcp://${name}/resources/<encoded-uri>)::READ   read a resource
-<<READ(mcp://${name}/prompts/<prompt>?<args>)::READ   fetch a prompt
 \`\`\`
 
 ## Output & gating

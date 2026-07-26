@@ -2,12 +2,9 @@ export { default as Mcp } from "./Mcp.ts";
 export { default } from "./Mcp.ts";
 export { installServer } from "./Mcp.ts";
 export type { HotloadRegistration } from "./Mcp.ts";
-// Shared connection layer (both faces) — closeAll/install keep their contract:
+// Shared executor connection and live-catalog layer:
 export { closeAll, install, catalog } from "./client.ts";
 export type { Catalog } from "./client.ts";
-// The mcp:// scheme face — server-side state (catalog/resources/prompts), #484.
-// Registration rides the dual-kind manifest (#483); the handler is agnostic.
-export { default as McpScheme } from "./McpScheme.ts";
 export { runtimes, runtimeDecl } from "./runtimes.ts";
 // Runtime surface for the consumer's `/mcp` hotload route + boot config:
 export {
