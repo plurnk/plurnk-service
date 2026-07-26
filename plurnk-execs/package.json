@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs",
-    "version": "1.3.3",
+    "version": "1.3.4",
     "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor packages.",
     "keywords": [
         "plurnk",
@@ -49,14 +49,14 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-schemes": "1.3.3",
-        "@plurnk/plurnk-execs-common": "1.3.3",
-        "@plurnk/plurnk-execs-search": "1.3.3",
-        "@plurnk/plurnk-execs-mcp": "1.3.3",
-        "@plurnk/plurnk-execs-git": "1.3.3",
-        "@plurnk/plurnk-execs-jq": "1.3.3",
-        "@plurnk/plurnk-execs-sqlite": "1.3.3",
-        "@plurnk/plurnk-meta": "1.3.3",
-        "@plurnk/plurnk-execs-wasm": "1.3.3"
+        "@plurnk/plurnk-schemes": "1.3.4",
+        "@plurnk/plurnk-execs-common": "1.3.4",
+        "@plurnk/plurnk-execs-search": "1.3.4",
+        "@plurnk/plurnk-execs-mcp": "1.3.4",
+        "@plurnk/plurnk-execs-git": "1.3.4",
+        "@plurnk/plurnk-execs-jq": "1.3.4",
+        "@plurnk/plurnk-execs-sqlite": "1.3.4",
+        "@plurnk/plurnk-meta": "1.3.4",
+        "@plurnk/plurnk-execs-wasm": "1.3.4"
     }
 }

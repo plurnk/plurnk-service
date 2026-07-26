@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-meta",
-    "version": "1.3.3",
+    "version": "1.3.4",
     "description": "The plurnk metaproject layer, published: plugin-membership primitives (the ONE trust rule, scope-agnostic symlink-aware enumeration, deployment-root resolution), the project teaching corpus (personality, requirements, scheme docs), and the home for family tooling.",
     "license": "MIT",
     "type": "module",
