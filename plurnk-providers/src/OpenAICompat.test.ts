@@ -920,6 +920,74 @@ test("retry: a transient failure retries and a later success resolves", async ()
     assert.equal(calls.length, 3); // 429 → 503 → 200
 });
 
+test("#559: streamed-body silence retries and records the recovery in durable response metadata", async () => {
+    let calls = 0;
+    mock.method(globalThis, "fetch", async () => {
+        calls++;
+        if (calls === 1) {
+            return new Response(new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
+                },
+            }), { status: 200 });
+        }
+        return new Response(new ReadableStream({
+            start(controller) {
+                controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"recovered"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+                controller.close();
+            },
+        }), { status: 200 });
+    });
+    const p = new OpenAICompatProvider({
+        model: "m",
+        url: "http://x",
+        fetchTimeoutMs: 1000,
+        streamIdleTimeoutMs: 10,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        retryDelayMs: 1,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 1,
+        source: "provider:test",
+    });
+    const result = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(result.assistant.content, "recovered");
+    assert.equal(calls, 2);
+    const retries = result.meta?.transportRetries as Array<Record<string, unknown>>;
+    assert.equal(retries.length, 1);
+    assert.equal(retries[0].attempt, 1);
+    assert.equal(retries[0].kind, "network_failure");
+    assert.equal(typeof retries[0].elapsedMs, "number");
+    assert.match(String(retries[0].message), /no body bytes for 10ms/);
+    mock.restoreAll();
+});
+
+test("#559: a zero stream-idle timeout permits a slow inter-chunk pause", async () => {
+    mock.method(globalThis, "fetch", async () => new Response(new ReadableStream({
+        async start(controller) {
+            controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"slow "}}]}\n\n'));
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"is valid"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+            controller.close();
+        },
+    }), { status: 200 }));
+    const p = new OpenAICompatProvider({
+        model: "m",
+        url: "http://x",
+        fetchTimeoutMs: 1000,
+        streamIdleTimeoutMs: 0,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        retryDelayMs: 1,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+    });
+    const result = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(result.assistant.content, "slow is valid");
+    assert.equal(result.meta?.transportRetries, undefined);
+    mock.restoreAll();
+});
+
 test("retry: exhausting the budget surfaces the classified ProviderError", async () => {
     const { ProviderError } = await import("./telemetry.ts");
     const calls = installFetchScript([{ status: 429, retryAfter: 0 }]); // always rate-limited

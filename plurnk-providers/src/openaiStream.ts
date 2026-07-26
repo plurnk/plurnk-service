@@ -13,6 +13,9 @@ type StreamRequest = {
     // #36: assemble the verbatim wire body onto StreamResponse.rawBody. Off by
     // default so a serving turn never pays the reassembly/retention cost.
     captureRawBody?: boolean;
+    // Maximum silence between streamed response-body chunks. Undefined/zero
+    // disables this clock; the caller's signal still owns the total deadline.
+    streamIdleTimeoutMs?: number;
 };
 
 import type { RawUsage } from "./usage.ts";
@@ -122,6 +125,15 @@ export class OpenAiHttpError extends Error {
     }
 }
 
+export class StreamIdleError extends Error {
+    readonly timeoutMs: number;
+    constructor(timeoutMs: number) {
+        super(`stream received no body bytes for ${timeoutMs}ms`);
+        this.name = "StreamIdleError";
+        this.timeoutMs = timeoutMs;
+    }
+}
+
 const parseRetryAfter = (header: string | null): number | null => {
     if (header === null) return null;
     const asInt = Number.parseInt(header, 10);
@@ -170,7 +182,7 @@ export const chatCompletion = async ({ url, headers, body, signal, fetch, captur
     };
 };
 
-export const chatCompletionStream = async ({ url, headers, body, signal, fetch, captureRawBody }: StreamRequest): Promise<StreamResponse> => {
+export const chatCompletionStream = async ({ url, headers, body, signal, fetch, captureRawBody, streamIdleTimeoutMs }: StreamRequest): Promise<StreamResponse> => {
     const requestBody = { ...body, stream: true, stream_options: { include_usage: true } };
 
     const response = await fetch(url, {
@@ -206,7 +218,23 @@ export const chatCompletionStream = async ({ url, headers, body, signal, fetch, 
     let encryptedNoKey = 0;
 
     while (true) {
-        const { done, value } = await reader.read();
+        const read = reader.read();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const idle = streamIdleTimeoutMs !== undefined && streamIdleTimeoutMs > 0
+            ? new Promise<never>((_resolve, reject) => {
+                timer = setTimeout(() => reject(new StreamIdleError(streamIdleTimeoutMs)), streamIdleTimeoutMs);
+            })
+            : null;
+        let result: Awaited<ReturnType<typeof reader.read>>;
+        try {
+            result = idle === null ? await read : await Promise.race([read, idle]);
+        } catch (err) {
+            if (err instanceof StreamIdleError) void reader.cancel(err).catch(() => undefined);
+            throw err;
+        } finally {
+            if (timer !== undefined) clearTimeout(timer);
+        }
+        const { done, value } = result;
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");

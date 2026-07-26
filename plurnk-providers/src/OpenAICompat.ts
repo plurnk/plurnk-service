@@ -37,6 +37,7 @@ export type OpenAICompatConfig = {
     model: string;
     url: string;                              // fully-resolved chat-completions URL
     fetchTimeoutMs: number;
+    streamIdleTimeoutMs?: number;             // streamed body inter-chunk deadline; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails (#419), narrows to required with the interface
@@ -238,6 +239,7 @@ export default class OpenAICompatProvider implements Provider {
     #model: string;
     #url: string;
     #fetchTimeoutMs: number;
+    #streamIdleTimeoutMs: number | undefined;
     #headers: Record<string, string>;
     #fetch: ProviderFetch;
     #hasApiKey = false;
@@ -285,6 +287,7 @@ export default class OpenAICompatProvider implements Provider {
         this.#model = config.model;
         this.#url = config.url;
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
+        this.#streamIdleTimeoutMs = config.streamIdleTimeoutMs;
         this.#headers = config.headers ?? {};
         this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
         this.#contextWindow = config.contextWindow ?? null;
@@ -641,12 +644,22 @@ export default class OpenAICompatProvider implements Provider {
         // Per-request headers = static auth/routing + any first-party telemetry.
         const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn);
         const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
+        const transportRetries: Array<{ attempt: number; kind: string; elapsedMs: number; message: string }> = [];
         let raw;
         for (let attempt = 0; ; attempt++) {
+            const attemptStarted = performance.now();
             const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
             const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
             try {
-                raw = await transport({ url: this.#url, headers, body, signal: effectiveSignal, fetch: this.#fetch, captureRawBody: this.#rawBody });
+                raw = await transport({
+                    url: this.#url,
+                    headers,
+                    body,
+                    signal: effectiveSignal,
+                    fetch: this.#fetch,
+                    captureRawBody: this.#rawBody,
+                    streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
+                });
                 break;
             } catch (err) {
                 // Caller-initiated abort is cancellation — never retried or wrapped.
@@ -667,6 +680,12 @@ export default class OpenAICompatProvider implements Provider {
                     }
                     throw pe;
                 }
+                transportRetries.push({
+                    attempt: attempt + 1,
+                    kind,
+                    elapsedMs: Math.round(performance.now() - attemptStarted),
+                    message: err instanceof Error ? err.message : String(err),
+                });
                 const retryAfter = err instanceof OpenAiHttpError ? err.retryAfter : null;
                 await sleepWithAbort(retryAfter ?? this.#retryDelayMs * 2 ** attempt, signal);
             }
@@ -718,7 +737,10 @@ export default class OpenAICompatProvider implements Provider {
         }
 
         const builtMeta = this.#buildMeta(raw.chunkMetadata);
-        const meta = railsMeta !== undefined ? { ...builtMeta, ...railsMeta } : builtMeta;
+        const retryMeta = transportRetries.length > 0 ? { transportRetries } : undefined;
+        const meta = railsMeta !== undefined || retryMeta !== undefined
+            ? { ...builtMeta, ...railsMeta, ...retryMeta }
+            : builtMeta;
 
         // #36: surface per-token logprobs + their mean when the backend returned
         // them (only possible when the flag requested them). Absent otherwise —
