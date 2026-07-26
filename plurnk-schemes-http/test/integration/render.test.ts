@@ -2,7 +2,7 @@
 // and prove the thing the unit mocks can't: that Playwright runs the page's JS
 // and we serialize the FINAL, post-hydration DOM, not the as-served shim. Kept
 // out of the unit suite (src/**) so units stay fast/deterministic; run via
-// `npm run test:integration`. Needs a chromium binary (npx playwright install
+// `npm run test:intg`. Needs a chromium binary (npx playwright install
 // chromium, or the shared ms-playwright cache).
 
 import test from "node:test";
