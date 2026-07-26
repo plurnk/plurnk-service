@@ -5,6 +5,7 @@
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 
@@ -41,9 +42,22 @@ installSandbox();
 ok(existsSync(bin), "plurnk-service bin linked in the sandbox");
 
 const mods = resolve(sandbox, "node_modules");
+const installedRoot = resolve(mods, "@plurnk", "plurnk-service");
+const installedRequire = createRequire(resolve(installedRoot, "package.json"));
+
 ok(existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "embedder ships OOTB (default-on bundle member)");
-for (const provider of ["cloudflare", "google", "openrouter", "xai"]) {
-    ok(existsSync(resolve(mods, "@plurnk", `plurnk-providers-${provider}`)), `${provider} provider ships OOTB`);
+for (const [providerPackage, provider] of [
+    ["@ai-sdk/openai-compatible", "OpenAI-compatible and Cloudflare"],
+    ["@ai-sdk/google", "Google"],
+    ["@openrouter/ai-sdk-provider", "OpenRouter"],
+    ["@ai-sdk/xai", "xAI"],
+]) {
+    let installed = false;
+    try {
+        installedRequire.resolve(providerPackage);
+        installed = true;
+    } catch {}
+    ok(installed, `${provider} AI SDK adapter ships OOTB`);
 }
 ok(!existsSync(resolve(mods, "onnxruntime-node")) && !existsSync(resolve(mods, "sharp")), "native onnxruntime/sharp NOT pulled (script-free, portable)");
 
