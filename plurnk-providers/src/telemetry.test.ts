@@ -1,7 +1,15 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
+import { APICallError } from "ai";
 import { ProviderError, classifyProviderError, toProviderError, providerSource } from "./telemetry.ts";
-import { OpenAiHttpError } from "./openaiStream.ts";
+
+const apiError = (statusCode: number, responseBody = "body") => new APICallError({
+    message: `request failed (${statusCode})`,
+    url: "https://example.test/v1/chat/completions",
+    requestBodyValues: {},
+    statusCode,
+    responseBody,
+});
 
 // Schema pattern for TelemetryEvent.source (from grammar's TelemetryEvent.json).
 const SOURCE_PATTERN = /^[a-z]+(:[a-z][a-z0-9-]*)?$/;
@@ -13,7 +21,7 @@ test("providerSource produces a schema-valid colon-namespaced source", () => {
 });
 
 test("classifyProviderError maps HTTP status to kind", () => {
-    const k = (status: number) => classifyProviderError(new OpenAiHttpError(status, "body", null)).kind;
+    const k = (status: number) => classifyProviderError(apiError(status)).kind;
     assert.equal(k(401), "unauthorized");
     assert.equal(k(403), "unauthorized");
     assert.equal(k(402), "quota_exceeded");
@@ -24,13 +32,11 @@ test("classifyProviderError maps HTTP status to kind", () => {
     assert.equal(k(404), "invalid_response");
 });
 
-test("classifyProviderError: a 422 flagged grammar_invalid is transient (#548); other 422s terminal", () => {
-    const rejected = new OpenAiHttpError(422, JSON.stringify({ error: { type: "grammar_invalid", message: "non-conforming emission rejected: ..." } }), null);
+test("classifyProviderError: a 422 flagged grammar_invalid is distinct (#548); other 422s are invalid responses", () => {
+    const rejected = apiError(422, JSON.stringify({ error: { type: "grammar_invalid", message: "non-conforming emission rejected: ..." } }));
     assert.equal(classifyProviderError(rejected).kind, "grammar_invalid");
-    // a 422 carrying any other error.type is a malformed request — terminal
-    assert.equal(classifyProviderError(new OpenAiHttpError(422, JSON.stringify({ error: { type: "invalid_request_error" } }), null)).kind, "invalid_response");
-    // a non-JSON 422 body (edge/proxy HTML) is terminal, and the sniff does not throw
-    assert.equal(classifyProviderError(new OpenAiHttpError(422, "<html>Bad</html>", null)).kind, "invalid_response");
+    assert.equal(classifyProviderError(apiError(422, JSON.stringify({ error: { type: "invalid_request_error" } }))).kind, "invalid_response");
+    assert.equal(classifyProviderError(apiError(422, "<html>Bad</html>")).kind, "invalid_response");
 });
 
 test("classifyProviderError treats non-HTTP errors as network_failure", () => {
@@ -49,11 +55,12 @@ test("ProviderError.toTelemetryEvent emits the canonical envelope", () => {
 });
 
 test("toProviderError classifies and tags an HTTP error with the source + status", () => {
-    const pe = toProviderError(new OpenAiHttpError(401, "no key", null), "provider:groq");
+    const cause = apiError(401, "no key");
+    const pe = toProviderError(cause, "provider:groq");
     assert.equal(pe.kind, "unauthorized");
     assert.equal(pe.source, "provider:groq");
     assert.equal(pe.status, 401);
-    assert.equal(pe.cause instanceof OpenAiHttpError, true); // original preserved
+    assert.equal(pe.cause, cause);
 });
 
 test("toProviderError passes an existing ProviderError through unchanged", () => {

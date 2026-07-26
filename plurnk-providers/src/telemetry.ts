@@ -6,7 +6,7 @@
 // dependency on grammar (see SPEC §11). Consumers route provider events through
 // the same `source` + `kind` discriminator as parse/rail events.
 
-import { OpenAiHttpError } from "./openaiStream.ts";
+import { APICallError, RetryError } from "ai";
 
 // Required by the schema: source (producer id) + kind (discriminator). message
 // and position are optional. A transport failure isn't localizable, so it carries
@@ -29,11 +29,9 @@ export type ProviderTelemetryKind =
     | "invalid_response"
     | "unauthorized"
     | "quota_exceeded"
-    // A 422 whose error.type is "grammar_invalid" (#548): the backend served ONE
-    // generation and rejected it as non-conforming. Transient, not terminal — a
-    // fresh sample may conform — so it rides the retry budget. Distinct from
-    // grammar_unenforced below: that observes a SUCCEEDED exchange; this is a
-    // thrown transport failure the daemon retries, then fails as a leaf.
+    // A 422 whose error.type is "grammar_invalid" (#548): the backend served one
+    // generation and rejected it as non-conforming. This identifies the failure;
+    // whether to start another model exchange belongs to the engine.
     | "grammar_invalid"
     // Output did not conform to the GBNF. ALWAYS an observation, never a throw:
     // a completed exchange returns its bytes with this event on
@@ -80,17 +78,26 @@ const wireErrorType = (body: string): string | null => {
 // Map a thrown transport error to a (kind, message). Conservative; the message
 // is factual, no guidance prose (consumer SPEC §15.1 policy).
 export const classifyProviderError = (err: unknown): { kind: ProviderTelemetryKind; message: string } => {
-    if (err instanceof OpenAiHttpError) {
-        const { status, message } = err;
+    if (RetryError.isInstance(err)) return classifyProviderError(err.lastError);
+    if (APICallError.isInstance(err)) {
+        const status = err.statusCode ?? 0;
+        const message = err.message;
+        const body = err.responseBody ?? "";
         if (status === 401 || status === 403) return { kind: "unauthorized", message };
         if (status === 402) return { kind: "quota_exceeded", message };
         if (status === 429) return { kind: "rate_limit", message };
         if (status >= 500) return { kind: "network_failure", message };
-        // A 422 flagged grammar_invalid is a stochastic output reject (#548) — one
-        // generation served then rejected, so a fresh sample may conform: transient.
-        // Any other 422 is a malformed request: terminal (invalid_response).
-        if (status === 422 && wireErrorType(err.body) === "grammar_invalid") return { kind: "grammar_invalid", message };
+        // A flagged 422 identifies a grammar-rejected exchange. It is not
+        // transport replay policy; the engine decides whether to sample again.
+        if (status === 422 && wireErrorType(body) === "grammar_invalid") return { kind: "grammar_invalid", message };
         return { kind: "invalid_response", message };
+    }
+    const wire = err as { message?: unknown; type?: unknown; status?: unknown };
+    if (wire?.type === "grammar_invalid") {
+        return {
+            kind: "grammar_invalid",
+            message: typeof wire.message === "string" ? wire.message : "grammar-invalid response",
+        };
     }
     const e = err as { name?: string; message?: string };
     const message = (e?.message ?? String(err)) || "request failed";
@@ -102,7 +109,8 @@ export const classifyProviderError = (err: unknown): { kind: ProviderTelemetryKi
 // Already-classified errors pass through unchanged.
 export const toProviderError = (err: unknown, source: string): ProviderError => {
     if (err instanceof ProviderError) return err;
-    const { kind, message } = classifyProviderError(err);
-    const status = err instanceof OpenAiHttpError ? err.status : null;
+    const underlying = RetryError.isInstance(err) ? err.lastError : err;
+    const { kind, message } = classifyProviderError(underlying);
+    const status = APICallError.isInstance(underlying) ? underlying.statusCode ?? null : null;
     return new ProviderError(source, kind, message, { status, cause: err });
 };

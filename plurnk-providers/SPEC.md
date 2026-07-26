@@ -126,25 +126,34 @@ interface ProviderUsage {
 }
 ```
 
-Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`; `completion` excludes reasoning; **billable output = `completion + reasoning`**. Providers report reasoning THREE ways: inside `completion_tokens` (OpenAI, via `completion_tokens_details.reasoning_tokens`), only as the `total - prompt - completion` gap (Gemini), or folded into `completion_tokens` with NO itemization while shipping the reasoning as TEXT (Fireworks, #425). The framework's `normalizeUsage` (§11) collapses all three to this invariant -- re-splitting the Fireworks case by the emitted text lengths, sum-preserving so cost is unchanged -- so siblings on `OpenAICompatProvider` get it for free.
+Usage invariant: `total = prompt + completion + reasoning`; `cached ⊆ prompt`; `completion` excludes reasoning; **billable output = `completion + reasoning`**. Providers report reasoning THREE ways: inside `completion_tokens` (OpenAI, via `completion_tokens_details.reasoning_tokens`), only as the `total - prompt - completion` gap (Gemini), or folded into `completion_tokens` with NO itemization while shipping the reasoning as TEXT (Fireworks, #425). The AI SDK parses the wire usage; PLURNK's result mapper applies `normalizeUsage` (§11) to preserve this stricter invariant, including the sum-preserving Fireworks text split.
 
 ### OpenAI-compatible request execution
 
-`OpenAICompatConfig.fetch?: ProviderFetch`, where `ProviderFetch` is
-`typeof globalThis.fetch`, selects request execution for one provider instance.
-When omitted, the provider uses `globalThis.fetch`. The same function MUST
-execute streaming completions, buffered completions, retries, and optional
-backend tokenization. The provider supplies its complete URL, headers, body,
-and effective `AbortSignal`; an injected implementation MUST preserve those Web
-API semantics.
+The Vercel AI SDK's OpenAI-compatible provider owns HTTP execution, SSE parsing,
+standard request fields, standard response fields, retries, cancellation,
+timeouts, usage, reasoning, finish reasons, and typed HTTP failures. PLURNK does
+not maintain parallel implementations of those general transport concerns.
 
-Injection changes only how a shaped request executes. Request construction,
-response and error interpretation, retry policy, cancellation and timeout
-signals, usage and reasoning normalization, telemetry, and raw capture remain
-owned by `OpenAICompatProvider`. The function is per-instance; replacing
-`globalThis.fetch` is not part of the contract. A platform or vendor binding
-adapter belongs to its consuming integration and returns a fetch-compatible
-`Response`.
+`OpenAICompatConfig.fetch?: typeof globalThis.fetch` selects request execution
+for one provider instance. When omitted, the AI SDK uses `globalThis.fetch`.
+A platform or vendor binding adapter belongs to its consuming integration and
+returns a standards-compatible `Response`.
+
+PLURNK retains only product-specific policy at this boundary: managed grammar
+and sampler extensions, worker affinity, first-party headers, GBNF conformance
+observation, exact-tokenization probes, and conversion from AI SDK results into
+the stable `ProviderResponse` interface. Provider-specific request extensions
+ride the AI SDK provider-options mechanism; raw chunks and provider metadata are
+preserved as evidence.
+
+An upstream retry domain MAY return `X-Should-Retry: false` to declare its
+failure final. The adapter supplies this fact to the AI SDK's error structure;
+the SDK MUST NOT retry that response even when its status would ordinarily be
+retryable. This prevents nested retry domains from multiplying attempts.
+The small Zod schema at this adapter seam exists because
+`ProviderErrorStructure` requires it. It is not PLURNK's validation architecture;
+JSON Schema and the grammar remain authoritative for PLURNK-owned contracts.
 
 The `@plurnk/plurnk-providers/openai` subpath is the runtime-neutral import
 surface for this contract. Its transitive module graph MUST NOT import provider
@@ -159,7 +168,7 @@ The package root remains the Node daemon integration surface.
 - `assistant.usage` is authoritative and follows the invariant above. Fill `0`s when the wire response omits a breakdown.
 - `countTokens` is **synchronous**, returns a non-negative integer, deterministic for the same input. Without an exact tokenizer family configured it is the **chars/2 UPPER BOUND** — deliberately conservative (real agentic text measures ~2.9–3.2 chars/token on gemma/deepseek, so the former chars/4 silently UNDERcounted 20–27%; a fallback may overcount, never under) — and it is **surfaced at construction** (`process.emitWarning`, code `PLURNK_TOKENIZER_HEURISTIC`), never silent. Exact counting is the tokenizer seam's job (mimetypes family), fed by `tokenize()` where available.
 - `tokenize?` is an **optional async capability**: token ids in the model's real vocabulary, served by the backend itself (llama-server's native root `/tokenize`, surfaced when the §11 probe fingerprints a llama-server and `detectLlamaServer` isn't false). `tokenize === undefined` is the honest "backend can't" signal. Exact-counting consumers prefer it over any client-side tokenizer data — the local model's own vocab needs no bundled `tokenizer.json` at all.
-- `calculateCost` is **pure**, returns USD non-negative integer. Returns `0` for siblings with no known rates (local Ollama, generic OpenAI-compat shims).
+- `calculateCost` is **pure** and returns a finite, non-negative USD number. Returns `0` for siblings with no known rates (local Ollama, generic OpenAI-compat shims).
 - `contextWindow` resolves to `null` when a PROBING provider (openai/llama-server) can't determine the window (consumer treats null as "no budget info"); a CLOUD provider with no window source FAILS HARD instead (#419, §11).
 - `generate` rejects on signal abort — does NOT resolve with partial content.
 - `generate` transports `grammar` verbatim when the backend supports grammar-constrained sampling, and silently ignores it otherwise (§13). The provider never chooses or modifies the grammar.
@@ -213,9 +222,9 @@ Each provider's `fromEnv` reads these:
 - **`PLURNK_PROVIDERS_REASONING`** — REQUIRED, one of `off | adaptive | on`. **`PLURNK_PROVIDERS_REASONING_BUDGET`** is a positive integer required when reasoning is `on`. The provider maps this intent to the backend's supported controls. Backends may omit, combine, or expose reasoning differently when grammar-constrained output is enabled; the provider reports the channels it actually receives rather than synthesizing a separate reasoning channel. `max_tokens` remains an output limit, not a reasoning budget. The model-facing `PLAN` operation is part of the grammar and is independent of provider reasoning controls.
 
 Read via `reasoningFromEnv` and **fail hard when unset**: the budget is required only when `on` and carries no floor default. Configuration lives in the operator's env over the package's `.env.defaults` floor (which declares every var and ships its default); the framework never bakes a knob default into code.
-- **`PLURNK_PROVIDERS_FETCH_TIMEOUT`** — service-wide ms ceiling on any single outbound request (**per attempt**, not shared across retries). Each `fromEnv` reads and passes as `AbortSignal.timeout`. Per-provider override envs are NOT part of the contract.
-- **`PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT`** — REQUIRED non-negative milliseconds from the shipped floor; the maximum silence between streamed response-body chunks after the response body becomes available. The clock resets on every byte chunk, `0` disables it, and expiry is a retryable `network_failure`. The portable default is `0`: slow local inference may legitimately pause for minutes, so a nonzero deadline is a measured per-alias deployment policy, not a universal provider assumption. It does not shorten time-to-response for a large prefill; `FETCH_TIMEOUT` remains the whole-attempt ceiling. A successful retry records its attempt, elapsed time, reason, and message in `ProviderResponse.meta.transportRetries`.
-- **`PLURNK_PROVIDERS_RETRY_ATTEMPTS`** — REQUIRED non-negative integer (read via `parseRequiredInt`). The transient-failure retry budget: **`0`** surfaces the first failure; **`N`** retries up to `N` times on a *transient* classification only (`rate_limit` / `network_failure` — 429, 5xx, timeout, connection reset), plus **`grammar_invalid`** (a 422 output reject a fresh sample may satisfy, #548). Terminal kinds (`unauthorized`, `quota_exceeded`, `invalid_response`, `model_refused`) are never retried. Backoff is exponential from a `2000ms` base (`base * 2^(attempt-1)`), unless the server sent a `Retry-After` (which wins). The caller's `signal` aborts both the in-flight request and the backoff sleep. Lives in the shared `OpenAICompatProvider` so every provider inherits it uniformly; rides on the existing `classifyProviderError` (#18).
+- **`PLURNK_PROVIDERS_FETCH_TIMEOUT`** — REQUIRED non-negative milliseconds from the shipped floor; the AI SDK's total deadline for one provider execution. The caller's earlier abort still wins. Per-provider override envs are NOT part of the contract.
+- **`PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT`** — REQUIRED non-negative milliseconds from the shipped floor; the AI SDK's maximum silence between streamed response-body chunks. `0` disables the chunk deadline. The portable default is `0`: slow local inference may legitimately pause for minutes, so a nonzero deadline is a measured per-alias deployment policy, not a universal provider assumption. Once a streamed exchange has started, a chunk timeout fails that exchange without replaying its partial output.
+- **`PLURNK_PROVIDERS_RETRY_ATTEMPTS`** — REQUIRED non-negative integer (read via `parseRequiredInt`) passed to the AI SDK as `maxRetries`. **`0`** surfaces the first request failure; **`N`** permits up to `N` SDK retries for request-level failures under its standard status policy (408, 409, 429, and 5xx). `Retry-After` and SDK backoff policy remain SDK-owned. PLURNK's error structure additionally makes edge statuses 520–527 final and honors `X-Should-Retry: false` from an upstream retry domain. A 422 `grammar_invalid` and a failure after streamed bytes are completed exchanges from the transport's perspective and are not replayed here; the engine owns any decision to start another model exchange.
 - **`PLURNK_PROVIDERS_CONTEXT_WINDOW`** -- optional positive-integer override (alias-scopable) for the model's context window. Resolution (#419): this env var -> endpoint `n_ctx` probe (probing specs only) -> `@plurnk/plurnk-models` catalog -> then a PROBING provider degrades to `null`, a CLOUD provider (no probe) FAILS HARD (an uncataloged, unpinned cloud model is a config error, not a guessable window). See §11.
 - **`PLURNK_PROVIDERS_REASONING_RESERVE` / `PLURNK_PROVIDERS_COMPLETION_RESERVE`** (#507, owner-ruled) -- the generation-envelope reserves, REQUIRED (floor ships `10%` / `25%`). A percentage derives from the DETECTED window (llama-server n_ctx, the plurnk.ai router, the catalog) so every advertising endpoint gets sane defaults with ZERO operator tuning; an absolute token count wins outright (per-alias-scopable -- the measured-envelope override). These MIGRATED from core's `PLURNK_SERVICE_{CONTEXT_WINDOW,REASONING,COMPLETION}` (provider quantities wearing a service prefix; core keeps only its own packing-safety margin). Surfaced as `Provider.reasoningReserve`/`completionReserve`.
 - **`PLURNK_PROVIDERS_TEMPERATURE` / `PLURNK_PROVIDERS_REPEAT_PENALTY` / `PLURNK_PROVIDERS_FREQUENCY_PENALTY`** -- REQUIRED sampling controls (read via `parseRequiredFloat`, values from the `.env.defaults` floor). `REPEAT_PENALTY` (canonical `1.15`) is the measured llama.cpp multiplier. `FREQUENCY_PENALTY` is the optional cloud analogue, but its portable floor is `0`: endpoint acceptance proves only that the field may ride, not that one magnitude has a portable semantic effect. Enable it per alias from provider documentation or controlled behavioral evidence. The controls are keyed per backend (§13).
@@ -366,8 +375,8 @@ The framework ships the transport spine every OpenAI-compatible provider had bee
 
   The `openai` standard provider sets `grammarStyle: "llamacpp"`, `supportsSlotPinning`, and `slotCount` from the same llama-server fingerprint (`/v1/models` `meta` block + `/props`). The worker→slot mapping lives inside `OpenAICompatProvider`: sticky per `workerId`, round-robin across new runs, LRU-bounded.
 
-- **`chatCompletionStream` / `chatCompletion` / `OpenAiHttpError` / `StreamResponse`** — the shared HTTP client (`chatCompletionStream` for SSE, `chatCompletion` for the non-streamed JSON the `streaming: false` path uses). One shared copy.
-- **`normalizeUsage(raw, reasoningText?, contentText?)` / `calculateCostUsd(usage, rates)`** — usage normalization to the §2 invariant (handles all three reasoning-reporting conventions; the optional text args feed the Fireworks re-split, #425) and the single cost formula. Rates use the Models.dev convention of USD per million tokens; billable output is `completion + reasoning`. `OpenAICompatProvider` applies `normalizeUsage` automatically; provider instances expose `calculateCost(usage)`.
+- **`executeOpenAICompatible`** — the narrow adapter from PLURNK's stable provider contract to the AI SDK's OpenAI-compatible provider. It preserves PLURNK extensions and evidence while delegating generic transport behavior to the SDK.
+- **`normalizeUsage(raw, reasoningText?, contentText?)` / `calculateCostUsd(usage, rates)`** — result mapping to the §2 invariant (handles all three reasoning-reporting conventions; the optional text args feed the Fireworks re-split, #425) and the single cost formula. Rates use the Models.dev convention of USD per million tokens; billable output is `completion + reasoning`. The AI SDK adapter applies `normalizeUsage` after parsing the wire usage; provider instances expose `calculateCost(usage)`.
 - **`parseRequiredInt` / `parseOptionalInt` / `requireEnv`** — env helpers; each takes a provider `label` for error prefixing.
 - **`effortFromBudget(budget)`** — the shared reasoning-budget → `low|medium|high` breakpoints.
 
@@ -390,7 +399,7 @@ Transport failures surface as a `ProviderError` (extends `Error`, so existing ca
 ```
 
 - `source` is `provider:<vendor>` (schema pattern `^[a-z]+(:[a-z][a-z0-9-]*)?$`); standard providers set it from their name, siblings via the `source` config field (default `"provider"`).
-- `kind` ∈ `rate_limit | network_failure | model_refused | invalid_response | unauthorized | quota_exceeded | grammar_invalid | grammar_unenforced`. HTTP status maps: 401/403→`unauthorized`, 402→`quota_exceeded`, 429→`rate_limit`, ≥500→`network_failure`, a 422 whose `error.type` is `grammar_invalid`→`grammar_invalid` (transient: a stochastic output reject a fresh sample may satisfy, #548), other 4xx→`invalid_response`; timeouts/fetch errors→`network_failure`. (`model_refused` is response-level — minted consumer-side from a `content_filter` finish reason, not from a thrown error.) **`grammar_unenforced`** is response-level too, and ALWAYS an observation, never a throw (#24, §2 Promises): whether the grammar was transported or withheld (GBNF-filter mode), a completed exchange returns its bytes with a **non-fatal `TelemetryEvent`** on `ProviderResponse.telemetry` carrying the divergence `position`, so the consumer can drive discard/retry/self-correction. `ProviderError` stays reserved for exchanges that did NOT complete.
+- `kind` ∈ `rate_limit | network_failure | model_refused | invalid_response | unauthorized | quota_exceeded | grammar_invalid | grammar_unenforced`. HTTP status maps: 401/403→`unauthorized`, 402→`quota_exceeded`, 429→`rate_limit`, ≥500→`network_failure`, a 422 whose `error.type` is `grammar_invalid`→`grammar_invalid`, other 4xx→`invalid_response`; timeouts/fetch errors→`network_failure`. Classification describes the failed exchange and does not itself prescribe replay. (`model_refused` is response-level — minted consumer-side from a `content_filter` finish reason, not from a thrown error.) **`grammar_unenforced`** is response-level too, and ALWAYS an observation, never a throw (#24, §2 Promises): whether the grammar was transported or withheld (GBNF-filter mode), a completed exchange returns its bytes with a **non-fatal `TelemetryEvent`** on `ProviderResponse.telemetry` carrying the divergence `position`, so the consumer can drive discard/retry/self-correction. `ProviderError` stays reserved for exchanges that did NOT complete.
 - `message` is terse and factual (no guidance prose); `position` is `null` (provider failures aren't localizable into prior content).
 - **Caller-initiated abort is NOT telemetry** — an aborted `signal` rethrows the original abort, never a `ProviderError`.
 

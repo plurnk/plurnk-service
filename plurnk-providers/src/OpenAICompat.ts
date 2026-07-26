@@ -10,11 +10,12 @@
 
 import type { ChatMessage, FinishReason, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { Reasoning, ReserveSpec } from "./env.ts";
-import { chatCompletionStream, chatCompletion, OpenAiHttpError, isEdgeStatus, type ProviderFetch, type StreamResponse } from "./openaiStream.ts";
-import { normalizeUsage } from "./usage.ts";
-import { toProviderError, classifyProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
+import { executeOpenAICompatible } from "./aiSdkTransport.ts";
+import { toProviderError, ProviderError, type TelemetryEvent } from "./telemetry.ts";
 import { validateGbnf, type Verdict } from "@plurnk/gbnf";
 import { emitWarningOnce } from "./warnings.ts";
+
+export type ProviderFetch = typeof globalThis.fetch;
 
 // How the reasoning intent (PLURNK_PROVIDERS_REASONING: off | adaptive | on, plus
 // REASONING_BUDGET iff on — #32/#33) translates to each backend's wire mechanism
@@ -87,8 +88,7 @@ export type OpenAICompatConfig = {
     // DEFAULT for EVERY request, spread UNDER caller sampling (#30/endpoint#7).
     // `repeatPenalty` is the FLOOR the provider manages wherever a grammar rides
     // (greedy-under-mask loops without it, #9) — the VALUE is operator config;
-    // WHERE it applies stays mechanism. `retryDelayMs` is the transient-retry
-    // backoff base (attempt N waits retryDelayMs * 2^(N-1); Retry-After wins).
+    // WHERE it applies stays mechanism.
     temperature: number;
     repeatPenalty: number;
     // #426: anti-degeneration guard on the CLOUD path (grammarStyle "none"), where the
@@ -106,7 +106,6 @@ export type OpenAICompatConfig = {
     dryBase?: number;
     dryAllowedLength?: number;
     repeatLastN?: number;
-    retryDelayMs: number;
     // Transient-failure retry budget — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_RETRY_ATTEMPTS, a non-negative int): 0 = surface the
     // first failure; N = up to N retries on a transient error (§4, #18).
@@ -134,13 +133,6 @@ export type OpenAICompatConfig = {
     tuningFloors?: boolean;
 };
 
-// Transient classifications worth retrying: rate_limit (429) and network_failure
-// (5xx, timeout, connection reset) are transport; grammar_invalid (a 422 output
-// reject a fresh sample may satisfy, #548) rides the same bounded budget.
-// unauthorized, quota_exceeded, invalid_response, model_refused are terminal —
-// retrying just burns time and budget.
-const RETRYABLE: ReadonlySet<string> = new Set(["rate_limit", "network_failure", "grammar_invalid"]);
-
 // #539: drop trailing occurrences of a server-rendered EOG marker. llama-server
 // under --special renders EOS as literal text, so a raw-EOS-ended turn carries a
 // trailing <eos> the grammar never sanctioned. Trailing-only + exact-match, so it
@@ -151,42 +143,6 @@ const stripTrailingSpecial = (content: string, marker: string): string => {
     let out = content;
     while (out.endsWith(marker)) out = out.slice(0, -marker.length);
     return out;
-};
-
-// Sleep that rejects the moment `signal` aborts (caller cancellation must not
-// wait out a backoff). Resolves normally on timeout.
-const sleepWithAbort = (ms: number, signal: AbortSignal | undefined): Promise<void> =>
-    new Promise((resolve, reject) => {
-        if (signal?.aborted) { reject(signal.reason); return; }
-        const timer = setTimeout(resolve, ms);
-        signal?.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
-    });
-
-// SPEC §2 closed set. The four canonical values pass through; known per-backend
-// synonyms translate INTO them (anthropic max_tokens/end_turn, gemini MAX_TOKENS/
-// SAFETY/RECITATION) so a token-cap hit canonicalizes to "length" whatever the
-// backend names it -- core's `finishReason === "length"` truncation check (#425)
-// is then an invariant by construction, not a convention each backend must
-// independently honor. A non-empty value outside both the set and the table
-// collapses to null AND warns once, so a new backend's unmapped cap string
-// surfaces instead of silently becoming "no signal" (which would make core miss
-// the truncation entirely). Case-folded: gemini shouts its reasons.
-const FINISH_SYNONYMS = new Map<string, Exclude<FinishReason, null>>([
-    ["stop", "stop"], ["length", "length"], ["tool_calls", "tool_calls"], ["content_filter", "content_filter"],
-    ["max_tokens", "length"], ["model_length", "length"], ["max_completion_tokens", "length"],
-    ["end_turn", "stop"], ["stop_sequence", "stop"], ["eos_token", "stop"],
-    ["tool_use", "tool_calls"],
-    ["safety", "content_filter"], ["recitation", "content_filter"],
-]);
-const normalizeFinishReason = (raw: string | null): FinishReason => {
-    if (raw === null || raw.length === 0) return null;
-    const hit = FINISH_SYNONYMS.get(raw.toLowerCase());
-    if (hit !== undefined) return hit;
-    emitWarningOnce(
-        `unrecognized finish_reason "${raw}"; treated as no-signal (finishReason=null). If it denotes a token-cap hit, core's length-cap detection will miss it -- add it to FINISH_SYNONYMS.`,
-        "PLURNK_FINISH_REASON_UNKNOWN",
-    );
-    return null;
 };
 
 // Shared budget→effort breakpoints (xai and google had identical copies).
@@ -253,7 +209,6 @@ export default class OpenAICompatProvider implements Provider {
     #dryBase: number | undefined;
     #dryAllowedLength: number | undefined;
     #repeatLastN: number | undefined;
-    #retryDelayMs: number;
     #reasoningStyle: ReasoningStyle;
     #countTokens: (text: string) => number;
     #calculateCost: (usage: ProviderUsage) => number;
@@ -293,8 +248,8 @@ export default class OpenAICompatProvider implements Provider {
         // Loud guard: an out-of-date consumer (stale plugin dist) omitting the
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
-        if (typeof config.temperature !== "number" || typeof config.repeatPenalty !== "number" || typeof config.retryDelayMs !== "number") {
-            throw new Error(`${config.source ?? "provider"}: OpenAICompatConfig requires temperature + repeatPenalty + retryDelayMs (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY / _RETRY_DELAY) — rebuild against providers >= 0.33.0`);
+        if (typeof config.temperature !== "number" || typeof config.repeatPenalty !== "number") {
+            throw new Error(`${config.source ?? "provider"}: OpenAICompatConfig requires temperature + repeatPenalty (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY) — rebuild against providers >= 0.33.0`);
         }
         this.#temperature = config.temperature;
         this.#repeatPenalty = config.repeatPenalty;
@@ -303,7 +258,6 @@ export default class OpenAICompatProvider implements Provider {
         this.#dryBase = config.dryBase;
         this.#dryAllowedLength = config.dryAllowedLength;
         this.#repeatLastN = config.repeatLastN;
-        this.#retryDelayMs = config.retryDelayMs;
         this.#retryAttempts = config.retryAttempts;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
         this.#countTokens = config.countTokens ?? heuristicTokens;
@@ -623,61 +577,32 @@ export default class OpenAICompatProvider implements Provider {
             ...(this.#promptCacheKey ? { prompt_cache_key: workerId } : {}),
         };
 
-        // Transient-failure retry (#18). Each attempt gets a FRESH fetch timeout
-        // (the budget is per-request, not shared across retries); the caller's
-        // signal spans them all. Retry only the transient classifications, prefer
-        // a server Retry-After over the backoff, and let the caller's abort cut
-        // through both the in-flight request and the backoff sleep.
-        const transport = this.#streaming ? chatCompletionStream : chatCompletion;
-
         // Per-request headers = static auth/routing + any first-party telemetry.
         const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn);
         const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
-        const transportRetries: Array<{ attempt: number; kind: string; elapsedMs: number; message: string }> = [];
         let raw;
-        for (let attempt = 0; ; attempt++) {
-            const attemptStarted = performance.now();
-            const timeoutSignal = AbortSignal.timeout(this.#fetchTimeoutMs);
-            const effectiveSignal = signal !== undefined ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-            try {
-                raw = await transport({
-                    url: this.#url,
-                    headers,
-                    body,
-                    signal: effectiveSignal,
-                    fetch: this.#fetch,
-                    captureRawBody: this.#rawBody,
-                    streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
-                });
-                break;
-            } catch (err) {
-                // Caller-initiated abort is cancellation — never retried or wrapped.
-                if (signal?.aborted) throw err;
-                const { kind } = classifyProviderError(err);
-                // #543: Cloudflare/CDN edge codes (520-527) classify as network_failure
-                // but fail-fast - a retry just re-incurs the same origin/edge timeout.
-                const edgeTimeout = err instanceof OpenAiHttpError && isEdgeStatus(err.status);
-                // Terminal kind, edge failure, or budget spent -> surface the failure.
-                if (!RETRYABLE.has(kind) || edgeTimeout || attempt >= this.#retryAttempts) {
-                    const pe = toProviderError(err, this.#source);
-                    // #537 case 2: a 401/403 with a key PRESENT is a rejected key, not a
-                    // transport failure — surface the distinct, actionable hint (kind stays
-                    // "unauthorized", so core's routing is unchanged) rather than the raw
-                    // upstream JSON. Distinct from the unset-key throw at construction.
-                    if ((pe.status === 401 || pe.status === 403) && this.#hasApiKey && this.#apiKeyRejectedMessage !== undefined) {
-                        throw new ProviderError(this.#source, "unauthorized", this.#apiKeyRejectedMessage, { status: pe.status, cause: err });
-                    }
-                    throw pe;
-                }
-                transportRetries.push({
-                    attempt: attempt + 1,
-                    kind,
-                    elapsedMs: Math.round(performance.now() - attemptStarted),
-                    message: err instanceof Error ? err.message : String(err),
-                });
-                const retryAfter = err instanceof OpenAiHttpError ? err.retryAfter : null;
-                await sleepWithAbort(retryAfter ?? this.#retryDelayMs * 2 ** attempt, signal);
+        try {
+            raw = await executeOpenAICompatible({
+                url: this.#url,
+                model: this.#model,
+                headers,
+                body,
+                messages,
+                signal,
+                fetch: this.#fetch,
+                fetchTimeoutMs: this.#fetchTimeoutMs,
+                streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
+                retryAttempts: this.#retryAttempts,
+                streaming: this.#streaming,
+                captureRawBody: this.#rawBody,
+            });
+        } catch (err) {
+            if (signal?.aborted) throw err;
+            const pe = toProviderError(err, this.#source);
+            if ((pe.status === 401 || pe.status === 403) && this.#hasApiKey && this.#apiKeyRejectedMessage !== undefined) {
+                throw new ProviderError(this.#source, "unauthorized", this.#apiKeyRejectedMessage, { status: pe.status, cause: err });
             }
+            throw pe;
         }
 
         // #539: llama-server --special renders EOG tokens as text, so a turn ending
@@ -696,7 +621,7 @@ export default class OpenAICompatProvider implements Provider {
         // Discard/retry/escalate/self-correct is the consumer's policy.
         let telemetry: TelemetryEvent[] | undefined;
         let railsMeta: Record<string, unknown> | undefined;
-        const usage = normalizeUsage(raw.usage, raw.reasoning_content, raw.content);
+        const usage = raw.usage;
         const observedGrammar = sendGrammar ?? (wantGrammar && this.#gbnfDebug ? grammar : undefined);
         if (observedGrammar !== undefined) {
             const verdict = this.#grammarVerdict(observedGrammar, raw.content);
@@ -714,7 +639,7 @@ export default class OpenAICompatProvider implements Provider {
             // invisible, billed (12,288 billed vs 1,033 chars visible, live).
             // countTokens OVERCOUNTS text (chars/2 upper bound), so billed
             // exceeding visible-plus-slack is real vanishing, not estimator noise.
-            const visible = this.#countTokens(raw.content) + this.#countTokens(raw.reasoning_content);
+            const visible = this.#countTokens(raw.content) + this.#countTokens(raw.reasoning);
             if (sendGrammar !== undefined && usage.completion > visible + 64) {
                 (telemetry ??= []).push({
                     source: this.#source,
@@ -726,29 +651,22 @@ export default class OpenAICompatProvider implements Provider {
         }
 
         const builtMeta = this.#buildMeta(raw.chunkMetadata);
-        const retryMeta = transportRetries.length > 0 ? { transportRetries } : undefined;
-        const meta = railsMeta !== undefined || retryMeta !== undefined
-            ? { ...builtMeta, ...railsMeta, ...retryMeta }
-            : builtMeta;
-
-        // #36: surface per-token logprobs + their mean when the backend returned
-        // them (only possible when the flag requested them). Absent otherwise —
-        // never synthesized.
-        const logprobs = raw.logprobs !== null && raw.logprobs.length > 0 ? raw.logprobs : undefined;
+        const meta = railsMeta !== undefined ? { ...builtMeta, ...railsMeta } : builtMeta;
+        const logprobs = raw.logprobs.length > 0 ? raw.logprobs : undefined;
         const meanLogprob = logprobs !== undefined
-            ? logprobs.reduce((sum, t) => sum + t.logprob, 0) / logprobs.length
+            ? logprobs.reduce((sum, token) => sum + token.logprob, 0) / logprobs.length
             : undefined;
 
         return {
             assistant: {
                 content: raw.content,
-                reasoning: raw.reasoning_content.length > 0 ? raw.reasoning_content : null,
-                // #482: sealed relay blobs ride only when present — same absence
-                // discipline as logprobs (never synthesized, never empty-array).
-                ...(raw.reasoning_encrypted.length > 0 ? { reasoningEncrypted: raw.reasoning_encrypted } : {}),
+                reasoning: raw.reasoning.length > 0 ? raw.reasoning : null,
+                ...(raw.reasoningEncrypted.length > 0
+                    ? { reasoningEncrypted: raw.reasoningEncrypted }
+                    : {}),
                 usage,
-                finishReason: normalizeFinishReason(raw.finish_reason),
-                model: raw.model ?? this.#model,
+                finishReason: raw.finishReason,
+                model: raw.model,
                 ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
             },
             assistantRaw: raw,

@@ -36,8 +36,7 @@ export type { OpenAICompatConfig, ReasoningStyle, GrammarStyle } from "./OpenAIC
 // worker-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";
-export { chatCompletionStream, chatCompletion, OpenAiHttpError, StreamIdleError } from "./openaiStream.ts";
-export type { StreamResponse, EncryptedReasoningItem, ProviderFetch } from "./openaiStream.ts";
+export type { ProviderFetch } from "./OpenAICompat.ts";
 export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, envelopeFromEnv, resolveReserve } from "./env.ts";
 export type { Reasoning, ReasoningMode, ReserveSpec } from "./env.ts";
 export { normalizeUsage, calculateCostUsd } from "./usage.ts";

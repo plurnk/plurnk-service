@@ -63,7 +63,9 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 - **Loop control / Engine rails** — `PLURNK_SERVICE_MAX_TURNS` (−1 = uncapped), `_MAX_COMMANDS`, `_MAX_STRIKES`, `_MIN_CYCLES`, `_MAX_CYCLE_PERIOD`, `_RPC_TIMEOUT`, `_LOOP_TIMEOUT`, `_PROPOSAL_TIMEOUT_MS`, `_EXEC_WAIT_MS`, `_EXEC_KILL_GRACE_MS`, `_SESSION_RUNS_MAX_ACTIVE`. Guardrails; the shipped values are sane.
 - **Git** — `PLURNK_SERVICE_GIT_ALLOWED` (0 = hard sandbox lockout), `_GIT_AUTO`.
 - **Packet / reference docs** — `PLURNK_SERVICE_FILES_ITEMS` (turn-1 file catalog cap), `_PROMPT_PREVIEW_CHARS`, `_DOCS_EXCLUDE`, `_PACKET_INJECT` (operator markdown section), `_POLICY`/`_PROJECT`/`_REQUIREMENTS` (policy + footer overrides; unset = the seeded/packaged defaults), `_MD_<alias>` (inject a markdown doc as a turn-0 entry).
-- **Providers** — `PLURNK_PROVIDERS_THINKING`/`_THINKING_CAPACITY`, `_TEMPERATURE`, `_REPEAT_PENALTY`, `_FETCH_TIMEOUT`, `_RETRY_ATTEMPTS`/`_RETRY_DELAY`, `_PROBE_ATTEMPTS`/`_PROBE_DELAY`, `_GBNF` (grammar variant), `_LLAMA_SERVER_<alias>`, `_CONTEXT_SIZE`, `_GBNF_DEBUG`. Alias-scopable: any knob takes a `_<alias>` suffix that wins over the bare fallback.
+- **Providers** — the portable provider knobs and defaults are defined by
+  `@plurnk/plurnk-providers/.env.defaults`; any provider knob may take an alias
+  suffix that wins over the bare fallback.
 - **The window partition** — `PLURNK_SERVICE_CONTEXT_WINDOW`/`_REASONING`/`_ASSISTANT`/`_SAFETY` (see Couplings).
 - **Plugins** — bare `PLURNK_PLUGINS_TRUSTED_ONLY` (0/unset = load all installed; a value = `@plurnk/*` plus an allowlist).
 - **Semantic search** — `PLURNK_SERVICE_SEMANTIC_TOP_K` (markerless result count), `_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_MIMETYPES_EMBED_WORKERS` (the embedder's pool — mimetypes-owned).

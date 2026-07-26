@@ -2,11 +2,22 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { STANDARD_PROVIDERS, isStandardProvider, standardProviderFromEnv } from "./standardProviders.ts";
 
+const EMPTY_SSE = [
+    `data: ${JSON.stringify({
+        id: "test-completion",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "m",
+        choices: [{ index: 0, delta: { content: "" }, finish_reason: "stop" }],
+    })}`,
+    "data: [DONE]",
+].join("\n\n");
+
 // Base URLs are REQUIRED (no in-code default) — the fixture supplies the vendor
 // defaults for the providers exercised outside the coverage loop. `openai` is
 // deliberately omitted so its missing-base fail-hard test still fires.
 const baseEnv = Object.freeze({
-    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT: "0", PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0.4", PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%", PLURNK_PROVIDERS_RETRY_DELAY: "1", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000", PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT: "0", PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0.4", PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     GROQ_BASE_URL: "https://api.groq.com/openai/v1",
     DEEPINFRA_BASE_URL: "https://api.deepinfra.com/v1/openai",
     FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
@@ -31,7 +42,7 @@ const mockEndpoint = ({ nctx, metaNctx, modelId = "m" }: { nctx?: number; metaNc
         }
         // Honor the request's transport: SSE when stream:true, one JSON otherwise.
         const streamed = init?.body !== undefined && JSON.parse(String(init.body)).stream === true;
-        if (streamed) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+        if (streamed) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 });
         return new Response(JSON.stringify({ model: modelId, choices: [{ message: { content: "" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
     return calls;
@@ -107,7 +118,7 @@ test("#37: servedModel absent when the probe reads no row (consumer falls back t
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
         const streamed = init?.body !== undefined && JSON.parse(String(init.body)).stream === true;
-        if (streamed) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+        if (streamed) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 });
         return new Response(JSON.stringify({ choices: [{ message: { content: "" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
@@ -148,7 +159,7 @@ test("derivable context emits NO context-unknown warning", async () => {
 test("openai: probe failure degrades to null, never throws", async () => {
     mock.method(globalThis, "fetch", async (url: string) => {
         if (String(url).endsWith("/models")) return new Response("nope", { status: 503 });
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } });
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
@@ -158,7 +169,7 @@ test("openai: probe failure degrades to null, never throws", async () => {
 test("openai: a probe network error (fetch rejects) degrades to null context and no grammar, never throws", async () => {
     mock.method(globalThis, "fetch", async (url: string) => {
         if (String(url).endsWith("/models")) throw new TypeError("network down"); // fetch itself rejects
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } });
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
@@ -171,7 +182,7 @@ test("openai: a slot-probe network error (fetch rejects on /props) degrades slot
         const u = String(url);
         if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 4096 } }] }), { status: 200 }); // llama fingerprint → slot probe runs
         if (u.endsWith("/props")) throw new TypeError("network down"); // the /props slot probe rejects
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } });
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
@@ -220,7 +231,7 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
         }
         if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         bodies.push(String(init?.body));
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } });
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
@@ -234,7 +245,7 @@ test("openai: llama-server fingerprint (meta block) enables grammar transport", 
 // — #34: detection must not silently decide capability —
 
 const llamaModels = () => new Response(JSON.stringify({ data: [{ id: "m", meta: { n_vocab: 262144, n_ctx: 49152 } }] }), { status: 200 });
-const sse = () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+const sse = () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 });
 
 test("openai: a transient /models failure is RETRIED — capability survives one hiccup (#34)", async () => {
     let modelCalls = 0;
@@ -342,7 +353,7 @@ test("openai: top-level n_ctx without meta (vLLM) does NOT enable grammar", asyn
             return new Response(JSON.stringify({ data: [{ id: "m", n_ctx: 8192 }] }), { status: 200 });
         }
         bodies.push(String(init?.body));
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } });
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
@@ -358,7 +369,7 @@ test("openai: llama-server upgrades 'think'→'template'; enable_thinking mirror
             if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 49152 } }] }), { status: 200 });
             if (String(url).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
             bodies.push(String(init?.body));
-            const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+            const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } });
             return new Response(body, { status: 200 });
         });
         return { bodies, env: { ...baseEnv, PLURNK_PROVIDERS_REASONING: reasoning, OPENAI_BASE_URL: "http://local" } };
@@ -383,7 +394,7 @@ test("openai: non-llama-server endpoint keeps the 'think' style (no template kwa
             return new Response(JSON.stringify({ data: [{ id: "m" }] }), { status: 200 }); // no meta → not llama-server
         }
         bodies.push(String(init?.body));
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } });
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://x" }, "m");
@@ -398,7 +409,7 @@ test("openai: probed total_slots drives internal run→slot affinity; never surf
         if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "m", meta: { n_ctx: 16384 } }] }), { status: 200 });
         if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 2 }), { status: 200 });
         bodies.push(String(init?.body));
-        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } });
+        const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } });
         return new Response(body, { status: 200 });
     });
     const p = await standardProviderFromEnv("openai", { ...baseEnv, OPENAI_BASE_URL: "http://local" }, "m");
@@ -492,7 +503,7 @@ test("deepinfra: resolves auth via the DEEPINFRA_TOKEN alias (not only DEEPINFRA
     const seen = plurnkMock();
     const p = await standardProviderFromEnv("deepinfra", { ...baseEnv, DEEPINFRA_TOKEN: "di-tok", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "m");
     await p!.generate({ workerId: "r", messages: [] });
-    assert.equal(chatHeaders(seen).Authorization, "Bearer di-tok");
+    assert.equal(chatHeaders(seen).get("Authorization"), "Bearer di-tok");
     mock.restoreAll();
 });
 
@@ -635,7 +646,7 @@ test("standard provider: a local (non-cataloged) model misses the fallback — p
 test("anthropic: standard entry sends bearer auth + the thinking param to the compat endpoint", async () => {
     let body = "";
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
-        if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 }); }
+        if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 }); }
         return new Response("{}", { status: 200 });
     });
     const env = { ...baseEnv, ANTHROPIC_API_KEY: "sk-ant-xyz", PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "3000" };
@@ -685,7 +696,7 @@ test("standard provider: operator absolute REASONING_RESERVE overrides all deriv
 test("anthropic: frequency_penalty is NOT sent (Claude native API has no such param, DOC #568)", async () => {
     let body = "";
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
-        if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 }); }
+        if (String(url).endsWith("/chat/completions")) { body = String(init?.body); return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 }); }
         return new Response("{}", { status: 200 });
     });
     const env = { ...baseEnv, ANTHROPIC_API_KEY: "k", PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0.4" };
@@ -711,8 +722,8 @@ test("bedrock: requires BEDROCK_BASE_URL (region-templated) and AWS_BEARER_TOKEN
 test("bedrock: an explicit base is used verbatim and sends the Bedrock API key as bearer", async () => {
     const calls: { url: string; auth: string }[] = [];
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
-        calls.push({ url: String(url), auth: String((init?.headers as Record<string, string>)?.Authorization ?? "") });
-        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+        calls.push({ url: String(url), auth: new Headers(init?.headers).get("Authorization") ?? "" });
+        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 });
     });
     const env = { ...baseEnv, BEDROCK_BASE_URL: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1", AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" };
     const p = await standardProviderFromEnv("bedrock", env, "us.anthropic.claude-sonnet-4-6");
@@ -727,19 +738,19 @@ test("bedrock: an explicit base is used verbatim and sends the Bedrock API key a
 // Mock that serves the /models probe + captures the chat-completions request
 // headers; `chatStatus` lets a test force a rejection.
 const plurnkMock = (chatStatus = 200) => {
-    const seen: { url: string; headers: Record<string, string>; body: string }[] = [];
+    const seen: { url: string; headers: Headers; body: string }[] = [];
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         const u = String(url);
-        const headers = (init?.headers ?? {}) as Record<string, string>;
+        const headers = new Headers(init?.headers);
         seen.push({ url: u, headers, body: String(init?.body ?? "") });
         if (u.endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "plurnk", meta: { n_ctx: 49152 } }] }), { status: 200 });
         if (u.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
         if (chatStatus !== 200) return new Response("denied", { status: chatStatus });
-        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 });
     });
     return seen;
 };
-const chatHeaders = (seen: { url: string; headers: Record<string, string> }[]) =>
+const chatHeaders = (seen: { url: string; headers: Headers }[]) =>
     seen.find((s) => s.url.endsWith("/chat/completions"))!.headers;
 
 test("plurnk: unset PLURNK_API_KEY throws the friendly #537 guidance pre-call, not a raw upstream 401", async () => {
@@ -755,8 +766,8 @@ test("plurnk: PLURNK_API_KEY sends the bearer; no separate account header (the k
     const p = await standardProviderFromEnv("plurnk", env, "plurnk");
     await p!.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
     const h = chatHeaders(seen);
-    assert.equal(h.Authorization, "Bearer pk-live-123");
-    assert.equal("Plurnk-Account" in h, false); // retired — the key carries account identity
+    assert.equal(h.get("Authorization"), "Bearer pk-live-123");
+    assert.equal(h.has("Plurnk-Account"), false); // retired — the key carries account identity
     mock.restoreAll();
 });
 
@@ -765,9 +776,9 @@ test("plurnk: forwards attributions + client as Plurnk-* telemetry headers (firs
     const p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     await p!.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0" });
     const h = chatHeaders(seen);
-    assert.equal(h["Plurnk-Attribution"], '["@acme/x@1.0.0"]');
-    assert.equal(h["Plurnk-Client"], "plurnk-tui/0.9.0");
-    assert.equal(h["Plurnk-Worker-Id"], "r"); // worker identity rides the same gate (#26/#511)
+    assert.equal(h.get("Plurnk-Attribution"), '["@acme/x@1.0.0"]');
+    assert.equal(h.get("Plurnk-Client"), "plurnk-tui/0.9.0");
+    assert.equal(h.get("Plurnk-Worker-Id"), "r"); // worker identity rides the same gate (#26/#511)
     mock.restoreAll();
 });
 
@@ -775,34 +786,34 @@ test("plurnk: forwards strikes as Plurnk-Strikes — and 0 is a real value, dist
     let seen = plurnkMock();
     let p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     await p!.generate({ workerId: "r", messages: [], strikes: 3 });
-    assert.equal(chatHeaders(seen)["Plurnk-Strikes"], "3");
+    assert.equal(chatHeaders(seen).get("Plurnk-Strikes"), "3");
     mock.restoreAll();
     seen = plurnkMock();
     p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     await p!.generate({ workerId: "r", messages: [], strikes: 0 }); // clean streak reported explicitly
-    assert.equal(chatHeaders(seen)["Plurnk-Strikes"], "0");
+    assert.equal(chatHeaders(seen).get("Plurnk-Strikes"), "0");
     mock.restoreAll();
     seen = plurnkMock();
     p = await standardProviderFromEnv("plurnk", { ...baseEnv, PLURNK_API_KEY: "pk-test" }, "plurnk");
     await p!.generate({ workerId: "r", messages: [] }); // not reported → no header
-    assert.equal("Plurnk-Strikes" in chatHeaders(seen), false);
+    assert.equal(chatHeaders(seen).has("Plurnk-Strikes"), false);
 });
 
 test("fireworks: does NOT forward attributions/client — first-party telemetry can't leak to a third party", async () => {
-    let seenHeaders: Record<string, string> = {};
+    let seenHeaders = new Headers();
     mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
         if (String(url).endsWith("/chat/completions")) {
-            seenHeaders = (init?.headers ?? {}) as Record<string, string>;
-            return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+            seenHeaders = new Headers(init?.headers);
+            return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 });
         }
         return new Response("{}", { status: 200 });
     });
     const p = await standardProviderFromEnv("fireworks", { ...baseEnv, FIREWORKS_API_KEY: "fw" }, "deepseek-v4-flash");
     await p!.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.0.0"], client: "plurnk-tui/0.9.0", strikes: 2 });
-    assert.equal("Plurnk-Attribution" in seenHeaders, false);
-    assert.equal("Plurnk-Client" in seenHeaders, false);
-    assert.equal("Plurnk-Strikes" in seenHeaders, false); // strikes gated identically
-    assert.equal("Plurnk-Worker-Id" in seenHeaders, false); // worker identity gated identically (#26/#511)
+    assert.equal(seenHeaders.has("Plurnk-Attribution"), false);
+    assert.equal(seenHeaders.has("Plurnk-Client"), false);
+    assert.equal(seenHeaders.has("Plurnk-Strikes"), false); // strikes gated identically
+    assert.equal(seenHeaders.has("Plurnk-Worker-Id"), false); // worker identity gated identically (#26/#511)
     mock.restoreAll();
 });
 
@@ -924,7 +935,7 @@ test("#518 prompt_cache_key: default-ON for a standard provider (workerId), OFF 
     const bodies: string[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
         bodies.push(String(init?.body ?? ""));
-        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("data: [DONE]")); c.close(); } }), { status: 200 });
+        return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(EMPTY_SSE)); c.close(); } }), { status: 200 });
     });
     const env = { ...baseEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192", TOGETHER_BASE_URL: "https://api.together.xyz/v1", ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1" };
 

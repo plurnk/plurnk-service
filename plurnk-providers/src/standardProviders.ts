@@ -604,7 +604,6 @@ export const standardProviderFromEnv = async (name: string, env: NodeJS.ProcessE
         reasoningReserve,
         completionReserve,
         tuningFloors: spec.suppressTuningFloors !== true,
-        retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", name),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         reasoningStyle,
         calculateCost,

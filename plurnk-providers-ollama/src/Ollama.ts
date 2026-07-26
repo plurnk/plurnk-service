@@ -56,7 +56,6 @@ export default class Ollama {
             frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", "ollama", 0),
             // #507: envelope reserves (window-fraction floor, absolute overrides).
             ...envelopeFromEnv(env, "ollama"),
-            retryDelayMs: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_DELAY, "PLURNK_PROVIDERS_RETRY_DELAY", "ollama"),
             reasoning: reasoningFromEnv(env, "ollama"),
             retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", "ollama"),
             // Opt-in data capture (#36), off by default, per-alias-scopable.
