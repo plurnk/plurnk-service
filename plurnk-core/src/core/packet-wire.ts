@@ -343,9 +343,10 @@ export default class PacketWire {
     //
     // Per-entry render: one meta JSON line plus a body block that the model
     // can read to know what it did. Two body cases:
-    //   1. READ@200 with content → render rx.content under the target fence.
-    //      The model asked for content; show it the content. (Matcher is in
-    //      meta.matcher, count is in meta.matches.)
+    //   1. READ/FIND with content → render rx.content under the target fence.
+    //      Status and content are orthogonal: a failed stream READ still carries
+    //      the diagnostics that explain the failure. (Matcher is in meta.matcher,
+    //      count is in meta.matches.)
     //   2. Every other op → re-emit tx as a heredoc in the model's native
     //      syntax. The model wrote this; mirror it back so the log is a true
     //      record of its actions instead of a row of opaque status codes.
@@ -470,12 +471,13 @@ export default class PacketWire {
                 // fence is redundant noise. (The always-foisted empty known:///** / unknown:///**
                 // workspace rows are the common case.)
                 body = "";
-            } else if ((op === "READ" || op === "FIND") && e.status === 200 &&
+            } else if ((op === "READ" || op === "FIND") &&
                 rx !== null && typeof rx === "object" && typeof rx.content === "string" && rx.content.length > 0) {
-                // READ@200 / FIND@200: the content READ pulled, or the catalog rows / matched
-                // entries FIND returned (§render-rule-find-renders-result) — the turn-0 foisted
-                // FIND(scheme:///**) reaches the packet here, as does the exec-stream injector's
-                // foisted READ of the channel. #renderContentBody applies the line-number convention
+                // Content-bearing READ/FIND results render independently of status. In particular,
+                // a terminal stream failure carries both its Problem Details and captured output;
+                // suppressing the output leaves the model with an exit code but no diagnostic.
+                // The turn-0 foisted FIND(scheme:///**) and ordinary successful retrievals use the
+                // same branch. #renderContentBody applies the line-number convention
                 // (§render-rule-line-navigable-prefix / §render-rule-tree-navigable-verbatim).
                 const mimetype = typeof rx.mimetype === "string" ? rx.mimetype : "text/plain";
                 // startLine === null is the matcher-result signal (already source-numbered → verbatim);

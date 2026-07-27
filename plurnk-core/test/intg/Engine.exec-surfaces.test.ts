@@ -54,7 +54,7 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
 
 test("a failed EXEC reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("<<EXEC[sh]:exit 3:EXEC\n<<SEND[202]:waiting:SEND", 10),
+        makeMockResponse("<<EXEC[sh]:printf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3:EXEC\n<<SEND[202]:waiting:SEND", 10),
         makeMockResponse("<<SEND[200]:failure observed:SEND", 10),
     ] });
 
@@ -100,12 +100,19 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
                 new RegExp(`^log:///\\d+/\\d+/${terminal.sequence}/READ$`),
                 "the Problem instance names the committed ambient READ row",
             );
+            assert.equal(
+                (result as { content?: string }).content,
+                terminal.fragment === "stderr" ? "compile diagnostic\n" : "partial output\n",
+                "the failed terminal result preserves its channel's diagnostic output",
+            );
 
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow?.packet ?? "{}");
             const rendered = packetSection(packet, "log");
             assert.match(rendered, /'sh' exited with code 3\./, "the model-facing packet states the executor's diagnostic");
             assert.match(rendered, /\"status\":500/, "the model-facing row remains a failure");
+            assert.match(rendered, /compile diagnostic/, "stderr remains visible on the failed terminal READ");
+            assert.match(rendered, /partial output/, "stdout remains visible on the failed terminal READ");
         } finally { ws.close(); }
     });
 });

@@ -108,6 +108,34 @@ test("log render: READ@200 with text/markdown rx body → line-numbered heredoc"
     assert.match(out, /<<:::notes\.md\n1:hello\n2:world\n:::notes\.md/);
 });
 
+test("a failed content-bearing READ renders both its Problem and diagnostic body", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/1",
+        origin: "plurnk",
+        op: "READ",
+        status: 500,
+        target: { scheme: "sh", pathname: "/1/1/2", fragment: "stderr" },
+        rx: {
+            status: 500,
+            problem: {
+                type: "https://problems.plurnk.dev/executor/subprocess/nonzero-exit",
+                title: "Nonzero exit",
+                status: 500,
+                detail: "'sh' exited with code 1.",
+            },
+            content: "main.go:17: undefined: os",
+            mimetype: "text/stream",
+            startLine: 1,
+        },
+        folded: false,
+    }], tok);
+
+    assert.match(out, /"error":"'sh' exited with code 1\."/);
+    assert.match(out, /"status":500/);
+    assert.match(out, /"display":"open"/);
+    assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
+});
+
 test("log render: READ@200 matcher result (startLine null) renders VERBATIM — no double line-numbering", () => {
     // A matcher result is already source-numbered with non-contiguous lines (`143:…`,
     // `617:…`) and carries startLine=null. The render must NOT re-number it — that would
