@@ -337,7 +337,7 @@ Three entry points:
 - `provider.countTokens(text)` — synchronous, called at write-time (§tokenomics) and render-time. Non-negative integer. {§provider-surface-counttokens}
 - `provider.calculateCost(usage)` — once per completed turn; estimated USD. Engine writes to `turns.usage_cost_usd`; triggers cascade to `workers.cost_usd` / `workspaces.cost_usd`. {§provider-surface-calculate-cost}
 
-Plus immutable identity: `provider.contextWindow` (token total, or `null` → "no budget info"), read by the budget {§provider-surface-identity}; and `provider.model` — the instance identity the deferred model-switch recompute compares (§tokenomics), exposed but not yet consumed here.
+Plus immutable identity: `provider.contextWindow` (physical token total, or `null` when unknown), used only to derive natural prompt capacity {§provider-surface-identity}; and `provider.model` — the instance identity the deferred model-switch recompute compares (§tokenomics), exposed but not yet consumed here.
 
 **Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag. The service stores it unenforced per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob to the client on the loop usage payload (`loop.run` result / `loop/terminated`, §methods). The service never reads a field within it. Providers own their metadata shapes; monetary values carry an explicit amount and currency rather than an implied unit. Absent → `{}`. The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` (§attribution). {§meta-passthrough}
 
