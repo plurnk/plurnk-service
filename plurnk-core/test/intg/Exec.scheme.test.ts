@@ -92,11 +92,11 @@ test("EXEC[sh](worker:///script) empty body → resolves the scheme content as t
     });
 });
 
-test("EXEC: proposes 202 with {runtime, cwd, command, pathname}", async () => {
+test("bare EXEC defaults to sh and proposes with {runtime, cwd, command, pathname}", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: execStmt("sh", null, "echo hello"),
+            statement: execStmt(null, null, "echo hello"),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),

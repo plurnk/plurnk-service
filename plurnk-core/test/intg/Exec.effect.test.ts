@@ -139,19 +139,16 @@ test("effect is command-aware (#289): the EXEC command body is passed to effect(
     } finally { await db.close(); }
 });
 
-test("fall-through-INELIGIBLE dispatch → 501 — the refusal lane survives ", async () => {
-    // #350 changed the unknown-tag contract: with sh available, an unregistered tag falls
-    // through to the shell (§exec-runtime-fallthrough, cited in execs-batteries). The 501
-    // remains for the ineligible case: sh itself workspace-disabled — a client that turned the
-    // shell off gets the refusal for EVERY shell-shaped path, never a side door.
+test("bare EXEC resolves to sh and respects the workspace's sh policy gate", async () => {
     const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         await db.test_set_session_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_SH: "0" } }) });
         const result = await engine.dispatch({
-            statement: execStmt("nonesuch", null, "echo hi"),
+            statement: execStmt("", null, "echo hi"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 501, "sh disabled → the fall-through is ineligible → 501, not a proposal, not a spawn");
+        assert.equal(result.status, 501, "sh disabled → bare EXEC is refused, not proposed or spawned");
+        assert.match(String(result.error), /`sh` is disabled/);
         await exec.idle();
     } finally { await db.close(); }
 });

@@ -27,7 +27,7 @@ export interface RegistryEntry {
     readonly executor: Executor;
     readonly glyph: string;
     // One-line self-documenting usage example for the tag (plurnk-execs#7),
-    // surfaced in the ## Plurnk Service Tools sheet. "" when the package omits it.
+    // surfaced in the ## Registered Executable Tools sheet. "" when the package omits it.
     readonly example: string;
     // Fuller reference doc for the tag (plurnk-execs ExecInfo.documentation), materialized
     // at plurnk:///docs/<tag>.md and linked from the tools sheet. "" when the package omits it. #note12

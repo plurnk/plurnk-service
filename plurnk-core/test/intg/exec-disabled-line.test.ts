@@ -32,8 +32,10 @@ test("act mode: no disabled line — the runtimes advertise normally", async () 
             const turn = await db.test_first_turn_for_loop.get<{ packet: string }>({ loop_id: loopId });
             assert.doesNotMatch(turn!.packet, /EXEC operations are disabled/, "act mode never carries the negative line");
             // #441 — the capability sheet's op examples ride a `plurnk` fence, matching the Schemes catalog.
-            const tools = packetSection(JSON.parse(turn!.packet) as Parameters<typeof packetSection>[0], "tools");
+            const packet = JSON.parse(turn!.packet) as { sections?: Array<{ name?: string; header?: string }> };
+            const tools = packetSection(packet as Parameters<typeof packetSection>[0], "tools");
             assert.match(tools, /^```plurnk\n<</, "act mode: executor examples advertise inside a plurnk fence, not bullets (#441)");
+            assert.equal(packet.sections?.find((section) => section.name === "tools")?.header, "Registered Executable Tools");
         } finally { ws.close(); }
     });
 });

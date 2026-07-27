@@ -50,6 +50,12 @@ test("SEND[300] is a PROPOSAL — stop the world; the accept body IS the answer,
         assert.deepEqual(parsed.choices, ["production", "staging", "local"], "attrs carry the choice set — the client's chooser reads the loop/proposal it already renders");
         const sendRow = await db.test_send_rows_for_run.all<{ rx: string; status_rx: number }>({ worker_id: workerId });
         assert.match(sendRow.find((x) => x.status_rx === 200)?.rx ?? "", /staging/, "the ANSWER rides the ask's own rx — the model reads it next packet");
+        const stored = await db.test_get_packet.get<{ packet: string }>({ id: r.turnId });
+        const packet = JSON.parse(stored?.packet ?? "{}") as { sections?: Array<{ name?: string; header?: string; content?: string }> };
+        const optional = packet.sections?.find((section) => section.name === "optional-operations");
+        assert.equal(optional?.header, "Enabled Optional Operations");
+        assert.match(optional?.content ?? "", /<<SEND\[300\]/, "the enabled question example is separate from executable selectors");
+        assert.doesNotMatch(packet.sections?.find((section) => section.name === "tools")?.content ?? "", /<<SEND\[300\]/);
     } finally { await db.close(); }
 }); });
 

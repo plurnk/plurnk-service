@@ -199,14 +199,10 @@ test("execs batteries: EXEC[git] init→status — in-process, self-contained, h
     assert.equal(status.mimetype, "application/json", "git results channel carries JSON");
 });
 
-test("an unregistered tag falls through to the shell — EXEC[echo]:hello runs as `sh: echo hello` (#350)", async () => {
-    // The execs architect's resolution to the go-501 saga: per-tool runtimes never earn tags
-    // (owner, execs#21); the dispatch automates the principle. The output lands under sh://
-    // (it ran on sh, not a phantom echo://), and the registry stays exactly as-is.
+test("an unregistered executable tag fails without shell reinterpretation", async () => {
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
-        const exec = schemes.get("exec") as Exec;
         const engine = new Engine({ db, schemes });
         const registry = await testExecutors();
         engine.setExecutors(registry);
@@ -215,23 +211,14 @@ test("an unregistered tag falls through to the shell — EXEC[echo]:hello runs a
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "ft");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const idDeferred = deferred<number>();
-        const dispatchPromise = engine.dispatch({
+        const result = await engine.dispatch({
             statement: execStmt("echo", null, "hello fallthrough"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
-            onDispatch: (id) => idDeferred.resolve(id),
         });
-        const logEntryId = await idDeferred.promise;
-        const proposal = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
-        if ((JSON.parse(proposal?.attrs ?? "{}") as { inline?: boolean }).inline !== true) engine.resolveProposal(logEntryId, { decision: "accept" });
-        const result = await dispatchPromise;
-        await exec.idle();
-        assert.equal(result.status, 200, "no 501 — the tag fell through to the shell");
-        const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
-        const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
-        assert.ok(entryRow, "the output entry lands under sh:// — it ran on sh, never a phantom echo://");
-        const out = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow!.id, name: "stdout" });
-        assert.match(out?.content ?? "", /hello fallthrough/, "the tag became the command word: `echo hello fallthrough`");
+        assert.equal(result.status, 501);
+        assert.match(String(result.error), /not a registered executable tool/);
+        assert.match(String(result.error), /bare EXEC or EXEC\[sh\]/);
+        const entryRow = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname: "/1/1/1" });
+        assert.equal(entryRow, undefined, "an unknown tag never spawns or creates a shell stream");
     } finally { await db.close(); }
 });

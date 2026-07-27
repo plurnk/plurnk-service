@@ -299,7 +299,10 @@ export default class PacketBuilder {
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         const defaults: PacketSection[] = [
             { name: "definition", slot: "system", header: null, content: system_definition, tokens: 0 },
-            { name: "tools", slot: "system", header: null, content: tools, tokens: 0 }, // titleless — the fenced op catalog flows on from plurnk.md (definition) directly above
+            { name: "tools", slot: "system", header: "Registered Executable Tools", content: tools.executors, tokens: 0 },
+            ...(tools.optionalOperations.length > 0
+                ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: tools.optionalOperations, tokens: 0 }]
+                : []),
             { name: "schemes", slot: "system", header: "Schemes", content: this.#schemes.teach(), tokens: 0 },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject, tokens: 0 }] : []),
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
@@ -469,11 +472,9 @@ export default class PacketBuilder {
         return (tag: string) => Policy.isEnabled(tag, execs);
     }
 
-    // The ## Plurnk Service Tools capability sheet (SPEC §tools). A hook: each enabled
-    // capability contributes one line, rendered above Requirements so the model sees what
-    // it can do before the rules. Each available executor tag contributes its self-documenting
-    // example (plurnk-execs#7), retiring the blind EXEC.
-    // The capability sheet — the live tool surface (wired executor tags). §tools-capability-sheet
+    // The ## Registered Executable Tools capability sheet (SPEC §tools). Each available executor
+    // tag contributes its self-documenting example (plurnk-execs#7); the closed heading distinguishes
+    // registered selectors from the open-ended general examples above it. §tools-capability-sheet
     // Mirror of Dispatcher.#loadLoopFlags — the packet reads the SAME persisted flags the gate does.
     async #loadLoopFlags(loopId: number): Promise<LoopFlags> {
         const row = await this.#db.engine_get_loop_flags.get<{ flags: string }>({ loop_id: loopId });
@@ -482,15 +483,20 @@ export default class PacketBuilder {
         catch { return DEFAULT_LOOP_FLAGS; }
     }
 
-    #collectTools(workspaceEnabled: (tag: string) => boolean, questionsOn = false, activeSchemes?: Set<string>): string {
-        // §PACKET Tools (#441) — the capability sheet's OP examples ride a `plurnk` fence, matching the
-        // Schemes catalog (one packet, one shape for op-example sheets). Prose notices (EXEC-disabled)
-        // stay prose beside the fence — a prose line isn't an op for the op-fence gate to validate.
-        const ops: string[] = [];
+    #collectTools(
+        workspaceEnabled: (tag: string) => boolean,
+        questionsOn = false,
+        activeSchemes?: Set<string>,
+    ): { executors: string; optionalOperations: string } {
+        // §PACKET Tools (#441) — registered executor examples form a closed, explicitly titled
+        // catalogue. Optional non-EXEC operations are separate so the heading remains truthful.
+        const executorOps: string[] = [];
         const notices: string[] = [];
         // §send-300-choices — the one-liner rides ONLY where questions are enabled (allowed +
         // client-requested); the fuller questions.md doc injects through docEntries the same way.
-        if (questionsOn) ops.push("<<SEND[300]:Deploy where?;staging;production:SEND");
+        const optionalOperations = questionsOn
+            ? "```plurnk\n<<SEND[300]:Deploy where?;staging;production:SEND\n```"
+            : "";
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
@@ -508,13 +514,13 @@ export default class PacketBuilder {
                     const entry = executors.entry(tag);
                     // #240 — the example IS the oneliner (a bare op, fenced below); the fuller doc
                     // materializes at plurnk://docs/<tag>.md. No example → no line.
-                    if (entry?.example) ops.push(entry.example);
+                    if (entry?.example) executorOps.push(entry.example);
                 }
             }
         }
         const parts: string[] = [...notices];
-        if (ops.length > 0) parts.push(`\`\`\`plurnk\n${ops.join("\n")}\n\`\`\``);
-        return parts.join("\n\n");
+        if (executorOps.length > 0) parts.push(`\`\`\`plurnk\n${executorOps.join("\n")}\n\`\`\``);
+        return { executors: parts.join("\n\n"), optionalOperations };
     }
 
     // #note12 — the plugin-provided reference docs (schemes' + execs' `documentation`),

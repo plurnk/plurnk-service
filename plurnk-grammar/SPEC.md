@@ -121,7 +121,7 @@ All other restrictions are runtime concerns, not grammar concerns.
 | OPEN   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | FOLD   | tag filter (CSV)  | required | optional pattern matcher | result-set pagination |
 | SEND   | submit code (single integer; see §9) | optional (recipient) | message payload (JSON by convention for structured responses) | `<timeout, poll>` — the wait park on a terminal `[202]` (see §7, §9) |
-| EXEC   | executor (single string; `sh` default, `node`, `python`, …) | optional (cwd) | command or code snippet | `<timeout, poll>` — spawn lifetime cap + poll cadence |
+| EXEC   | registered executable tool (single string; `sh` default) | optional (cwd) | command or code snippet | `<timeout, poll>` — spawn lifetime cap + poll cadence |
 | WORK   | none (parses as null) | required `worker://` target naming the fresh worker | task prompt for the worker's first loop | none (parses as null) |
 | FORK   | none (parses as null) | required `worker://` target naming the branch | optional hint for the context-inheriting branch | none (parses as null) |
 | KILL   | unix signal (single integer; taught in canon, e.g. `KILL[9]`) | required | opaque annotation (logged, no runtime meaning) | not applicable |

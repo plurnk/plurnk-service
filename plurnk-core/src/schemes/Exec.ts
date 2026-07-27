@@ -223,35 +223,26 @@ export default class Exec extends CoreSchemeAdapterBase {
         }
 
         const requested = typeof statement.signal === "string" ? statement.signal : "";
-        let runtime = requested === "" ? "sh" : requested; // empty signal = default shell
+        const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
         if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
-        // §exec-runtime-fallthrough (#350, the execs architect's resolution to the go-501 saga):
-        // an UNREGISTERED tag falls through to the shell with the tag as the command word —
-        // EXEC[go]:test ./... runs as sh: `go test ./...`. Per-tool runtimes (go/cargo/make/npm)
-        // never earn tags (owner, execs#21); this automates the principle. The output entry lands
-        // under sh:// (it ran on sh), telemetry records what models reach FOR (the promotion
-        // signal is data, not guesswork), and a typo'd tag becomes the shell's own clear 127.
-        // No new surface: anything expressible as EXEC[foo]:bar was expressible as EXEC[sh]:foo bar.
-        let fellThroughFrom: string | null = null;
-        if (requested !== "" && core.executors.entry(runtime) === undefined && core.executors.entry("sh") !== undefined) {
-            fellThroughFrom = runtime;
-            command = command.length > 0 ? `${runtime} ${command}` : runtime;
-            runtime = "sh";
+        const workspaceExecs = (await WorkspaceSettings.read(core.db, core.workspaceId)).execs;
+        // §exec-registry-resolves — a non-empty tag selects exactly one registered executable
+        // tool. Unknown tags are not reinterpreted as shell command words: that would make the
+        // executed command differ from the authored body. Bare EXEC remains the default-shell form.
+        const resolved = core.executors.entry(runtime);
+        if (resolved === undefined) {
+            const available = core.executors.availableRuntimes()
+                .filter((tag) => workspaceExecs === null || Policy.isEnabled(tag, workspaceExecs));
+            return {
+                status: 501,
+                error: `\`${runtime}\` is not a registered executable tool. Use a registered tag, or run complete shell commands with bare EXEC or EXEC[sh]. available to this workspace: ${available.join(", ") || "(none)"}`,
+            };
         }
         // #328 — per-workspace client policy narrows the boot-registered set (subtractive). A tag the
         // workspace's client layer disables is ABSENT for this workspace — refused like an unavailable
-        // runtime. Checked on the EFFECTIVE runtime: a fall-through rides sh's gate, so a workspace
-        // that disabled sh gets the refusal, never a side door.
-        const workspaceExecs = (await WorkspaceSettings.read(core.db, core.workspaceId)).execs;
+        // runtime. Bare EXEC resolves to sh before this gate, so disabling sh also disables the default.
         if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
             return { status: 501, error: `\`${runtime}\` is disabled for this workspace by client policy (PLURNK_EXECS_*)` };
-        }
-        const resolved = core.executors.entry(runtime); // registry resolves the runtime tag; unknown/unavailable → 501 — §exec-registry-resolves
-        if (resolved === undefined) {
-            return { status: 501, error: `\`${runtime}\` is not a configured runtime. available: ${core.executors.availableRuntimes().join(", ")}` };
-        }
-        if (fellThroughFrom !== null) {
-            core.pushTelemetry?.({ source: "exec:dispatch", kind: "exec_runtime_fallthrough", message: `EXEC[${fellThroughFrom}] fell through to sh`, requested: fellThroughFrom, level: "info" } as never);
         }
         if (!resolved.available) {
             const why = resolved.detail === undefined ? "" : `: ${resolved.detail}`;
