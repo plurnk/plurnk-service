@@ -55,10 +55,10 @@ export default abstract class BaseExecutor implements SchemeHandler {
     abstract get channels(): Readonly<Record<string, ChannelDecl>>;
 
     // Execute the command. Write output to the declared channels via
-    // `args.write`, drive their lifecycle via `args.setState`, emit telemetry
-    // on failure via `args.emit`, and honor `args.signal`. Resolve with the
-    // terminal status; never throw for an expected runtime failure — surface
-    // it through `emit` + an errored channel state and a non-200 `status`.
+    // `args.write`, drive their lifecycle via `args.setState`, emit transient
+    // observations via `args.emit`, and honor `args.signal`. Resolve with the
+    // universal operation result; every expected runtime failure carries an
+    // RFC 9457 Problem and never relies on a Notice for failure truth.
     abstract run(args: ExecArgs): Promise<ExecResult>;
 
     // Whether this runtime's execution environment is usable in the current

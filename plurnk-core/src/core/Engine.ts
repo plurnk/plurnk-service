@@ -1,10 +1,10 @@
 import { PlurnkParser, PlurnkParseError } from "@plurnk/plurnk-grammar";
 import Owner from "./Owner.ts";
-import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, Notice } from "@plurnk/plurnk-grammar";
 
 // Internal-only — collected from PlurnkParser output, then translated to
-// TelemetryEvent envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
-// before being pushed to the loop's telemetry buffer.
+// Notice envelopes (per @plurnk/plurnk-grammar 0.17.0 protocol)
+// before being pushed to the loop's notices buffer.
 type ParseErrorInfo = { message: string; line: number; column: number; source: string };
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
@@ -19,7 +19,7 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, TelemetryEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { editedSpan } from "../content/index.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
@@ -38,7 +38,7 @@ import Results, { OperationFailureError, type SchemeResult } from "./results.ts"
 
 // The engine's collaborators — each owns one machine; Engine owns the loop/turn
 // lifecycle and wires them together as the public facade.
-import TelemetryChannel from "./TelemetryChannel.ts";
+import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage, type PacketAssistant } from "./PacketBuilder.ts";
@@ -133,11 +133,12 @@ type TurnCallMetadata = {
 
 // Default turn.status when ops were emitted but no SEND. Model is implicitly
 // continuing; loop.status stays 102 either way (only SEND broadcast advances
-// loop terminal). No strike, no telemetry.
+// loop terminal). No strike, no notices.
 const TURN_STATUS_IMPLICIT_CONTINUE = 102;
 
 // Status assigned to a turn that emitted NO ops at all. Strike-worthy; the
-// action routes through telemetry.errors[] (§telemetry, §telemetry-no-error-scheme — never an error:// scheme).
+// action routes through the durable log and packet Errors index
+// (§operation-results, §operation-result-no-error-scheme).
 const TURN_STATUS_NO_OPS = 422;
 
 const DEFAULT_MIN_CYCLES = 3;
@@ -195,7 +196,7 @@ export default class Engine {
     // The collaborators. Engine constructs them (they share its deps via
     // thunks where the value is late-injected — executors, loop signals)
     // and fronts their public surface.
-    #telemetry: TelemetryChannel;
+    #notices: NoticeChannel;
     #problems: ProblemLog;
     #strikes: StrikeRail;
     // §grinder-hard-413-recovery — loops granted their ONE over-ceiling recovery turn. Cleared on a
@@ -242,13 +243,13 @@ export default class Engine {
         }
 
         const state = { dirty: false, materialize, ctx, promise: Promise.resolve() };
-        // Register before publishing the first synchronous telemetry event. A
+        // Register before publishing the first synchronous Notice. A
         // listener may request another warm from that callback; it must join
         // this state rather than opening a second pump in the re-entrant gap.
         this.#workspaceWarms.set(workspaceId, state);
         const publish = (current: PlurnkSchemeContext, status: WorkspaceDerivationStatus): void => {
             this.#workspaceWarmStatus.set(workspaceId, status);
-            current.pushTelemetry?.({
+            current.pushNotice?.({
                 source: "engine:derivation", kind: "embed_progress", ...status,
             });
         };
@@ -267,21 +268,21 @@ export default class Engine {
                     if (shouldMaterialize) await GitMembership.indexGitMembership(current);
                     await EntryManifest.maintainDerivations({
                         ...current,
-                        pushTelemetry: (event) => {
-                            if (event.kind === "embed_progress"
-                                && typeof event.completed === "number"
-                                && typeof event.total === "number"
-                                && typeof event.percent === "number") {
+                        pushNotice: (notice) => {
+                            if (notice.kind === "embed_progress"
+                                && typeof notice.completed === "number"
+                                && typeof notice.total === "number"
+                                && typeof notice.percent === "number") {
                                 this.#workspaceWarmStatus.set(workspaceId, {
                                     phase: "indexing",
-                                    completed: event.completed,
-                                    total: event.total,
-                                    percent: event.percent,
-                                    message: event.message ?? "Indexing repository semantics",
-                                    level: event.level === "error" ? "error" : "info",
+                                    completed: notice.completed,
+                                    total: notice.total,
+                                    percent: notice.percent,
+                                    message: notice.message ?? "Indexing repository semantics",
+                                    level: notice.level === "error" ? "error" : "info",
                                 });
                             }
-                            current.pushTelemetry?.(event);
+                            current.pushNotice?.(notice);
                         },
                     });
                 } catch (error) {
@@ -330,7 +331,7 @@ export default class Engine {
         process.stderr.write(`plurnk-engine: rail verdict unavailable — the configured grammar did not parse in @plurnk/gbnf (${message})\n`);
     }
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, telemetryEventNotify, tokenize }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, noticeNotify, tokenize }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -339,7 +340,7 @@ export default class Engine {
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
-        telemetryEventNotify?: TelemetryEventNotify;
+        noticeNotify?: NoticeNotify;
         tokenize?: (text: string) => number;
     }) {
         this.#db = db;
@@ -361,7 +362,7 @@ export default class Engine {
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopAborts.get(loopId)?.signal;
-        this.#telemetry = new TelemetryChannel({ notify: telemetryEventNotify });
+        this.#notices = new NoticeChannel({ notify: noticeNotify });
         this.#problems = new ProblemLog(db);
         schemes.bindCore({
             db,
@@ -371,7 +372,7 @@ export default class Engine {
             streamEventNotify,
             wakeWorkerNotify,
             injectWorker,
-            pushTelemetry: (workspaceId, loopId, event) => this.#telemetry.push(workspaceId, loopId, event),
+            pushNotice: (workspaceId, loopId, notice) => this.#notices.push(workspaceId, loopId, notice),
             defaultChannelFor: (scheme) => schemes.defaultChannelFor(scheme),
             liveSubscriptions: this.#liveSubscriptions,
         });
@@ -383,7 +384,7 @@ export default class Engine {
             executors,
         });
         this.#proposals = new ProposalLifecycle({
-            db, schemes, telemetry: this.#telemetry,
+            db, schemes, notices: this.#notices,
             streamEventNotify, wakeWorkerNotify,
             tokenize: this.#tokenize, mimetypes: this.#mimetypes, executors, loopSignal,
             liveSubscriptions: this.#liveSubscriptions,
@@ -391,7 +392,7 @@ export default class Engine {
         this.#dispatcher = new Dispatcher({ searchGate: this.searchGate,
             db, schemes, mimetypes: this.#mimetypes,
             tokenize: this.#tokenize,
-            telemetry: this.#telemetry, proposals: this.#proposals,
+            notices: this.#notices, proposals: this.#proposals,
             executors, loopSignal,
             streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants,
             parkDeadlines: this.parkDeadlines,
@@ -438,7 +439,7 @@ export default class Engine {
         // (1) the alias fallback is only trusted when NO per-alias GBNF opt-ins exist: an
         //     unregistered provider in a process that configured suffixed rails could fall back
         //     to a DIFFERENT active alias, miss the suffix, and run unconstrained — the silent
-        //     severance class run78 demonstrated (free decode, fabricated logs, CLEAN telemetry).
+        //     severance class run78 demonstrated (free decode, fabricated logs, CLEAN notices).
         const registered = ProviderInstantiate.aliasOf(provider);
         const fallback = registered === undefined ? resolveActiveAlias(process.env)?.alias : undefined;
         if (registered === undefined && fallback === undefined && Object.keys(process.env).some((k) => k.startsWith("PLURNK_PROVIDERS_GBNF_"))) {
@@ -497,7 +498,7 @@ export default class Engine {
     }
 
     // A @plurnk/gbnf divergence position (providers#24) is a CODE-POINT offset into the
-    // model's content; the snippet/telemetry surface speaks 1-based line + 0-based column.
+    // model's content; the snippet/notices surface speaks 1-based line + 0-based column.
     // Convert over code points (not UTF-16 units) so an astral char doesn't skew the line,
     // clamping out-of-range offsets to the content's end.
     #offsetToLineColumn(content: string, offset: number): { line: number; column: number } {
@@ -584,7 +585,7 @@ export default class Engine {
             this.#strikes.delete(loopId);
             this.searchGate.cleanup(loopId);
             this.#hardOverflowRecovery.delete(loopId);
-            this.#telemetry.delete(loopId);
+            this.#notices.delete(loopId);
         };
 
         while (true) {
@@ -739,7 +740,7 @@ export default class Engine {
         // Position in the surrounding loop. Used to build per-turn LLM
         // context: turn 1 carries the initial user prompt verbatim; turn
         // N>1 substitutes a continuation marker (rummy's pattern). Both
-        // are augmented with the durable state (index/log/telemetry).
+        // are augmented with the durable state (index/log/notices).
         turnNumber?: number;
         maxTurns?: number;
     }): Promise<{ turnId: number; status: number; statuses: number[]; fingerprint: string; budgetStruck: boolean; budgetHardStop: boolean; steerStruck: boolean }> {
@@ -748,7 +749,7 @@ export default class Engine {
         // Turn rows are created at runTurn OPEN (status=102, placeholder
         // packet) so things can be written into the turn before the model
         // is called: the user prompt on turn 1; later, system signals or
-        // injected telemetry events on any turn. The turn is CLOSED at
+        // injected Notices on any turn. The turn is CLOSED at
         // the end with the final packet + status + usage stats.
         //
         // sequence is "ordinal of stuff in this turn." Pre-model
@@ -899,7 +900,7 @@ export default class Engine {
             tokenize: this.#tokenize,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushTelemetry: (event) => this.#telemetry.push(workspaceId, loopId, event),
+            pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
         };
         // SPEC §membership D4/D5 — git-ls-files workspace membership, resolved at
         // prompt-composition (EMI is eager + exhaustive — git is the only bound). When the
@@ -1051,14 +1052,14 @@ export default class Engine {
         nextActionIndex += await this.#materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
         nextActionIndex += await this.#materializeStreamDeltas({ workerId, loopId, turnId, fromSequence: nextActionIndex });
 
-        // SPEC §telemetry — git working-tree state for the telemetry section, read once
+        // Git working-tree state is read once for the packet and threaded
         // (a service-side `git status` shell-out) and threaded into the budget
         // rebuild too so it isn't re-shelled on overflow.
         const gitStatus = await GitState.status(this.#db, workspaceId, this.#loopAborts.get(loopId)?.signal);
         // Notices are non-terminal observations, never operation-failure truth.
         // Drain once and thread the same set through every grinder rebuild.
-        const notices = this.#telemetry.drain(loopId)
-            .filter((event) => (event as { level?: string }).level !== "info") as TelemetryEvent[];
+        const notices = this.#notices.drain(loopId)
+            .filter((event) => (event as { level?: string }).level !== "info") as Notice[];
 
         // Build the spec'd packet (Packet.json) request half. The log build
         // queries log_entries scoped to the worker — the prompt entry just
@@ -1152,11 +1153,11 @@ export default class Engine {
         try {
             // §turn-lifecycle (#301) — the provider call is the long, opaque window (submit → first
             // committed op is provider latency + a full first-turn generation, ~70s local): a static
-            // screen there is indistinguishable from a hang. Bracket generate() with two telemetry beats
+            // screen there is indistinguishable from a hang. Bracket generate() with two notices beats
             // so a client can show "awaiting model" the instant the turn starts and flip to "parsing" when
-            // ops are about to land. Base telemetry/event channel (the embed_progress precedent, §tokenomics
+            // ops are about to land. Base notice/event channel (the embed_progress precedent, §tokenomics
             // clients already render it unconditionally); the abort guard keeps a cancelled loop silent.
-            if (!signal?.aborted) this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
+            if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
             // generate rides the LOOP signal (already chained from the caller's), so a loop-level
             // abort — the §operator-config-loop-timeout wall — cancels a stuck provider call, not
             // just the schemes. Bare runTurn (no runLoop) has no loop entry → the caller's signal.
@@ -1167,8 +1168,8 @@ export default class Engine {
             // coordinate, not the DB id) resolves the same way the prompt-slot path does (§log coords).
             const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
             railGrammar = await this.#grammarConstraint(provider);
-            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), primaryWorkerId: String(await this.resolveWorkerPrimary(workerId)), signal: providerSignal, grammar: railGrammar, maxTokens: this.#packets.maxTokensFor(provider) ?? undefined, strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-telemetry
-            if (!signal?.aborted) this.#telemetry.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
+            response = await provider.generate({ messages: modelMessages, workerId: String(workerId), primaryWorkerId: String(await this.resolveWorkerPrimary(workerId)), signal: providerSignal, grammar: railGrammar, maxTokens: this.#packets.maxTokensFor(provider) ?? undefined, strikes: this.#strikes.streak(loopId), attributions: attributions.length > 0 ? attributions : undefined, client: client ?? undefined, workspaceId: String(workspaceId), loop: loopSeq, turn: seq }); // strikes: first-party routing signal, 0 sent explicitly (#313) // §provider-surface-generate §provider-guarantees-single-call §provider-guarantees-signal-wired §attribution-plurnk-namespace-reserved §client-metadata
+            if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
             // §turn-never-blank — a ProviderError is an INFRASTRUCTURE failure (auth, network
             // beyond retries, rate limit): no completed exchange exists. Persist its exact
@@ -1241,7 +1242,10 @@ export default class Engine {
         // parsed ops) → packet.assistant per Packet.json assistant section;
         // call-metadata (usage, finishReason, model) → Turn columns per
         // Turn.json. Mixing the two on packet.assistant was the wrong layer.
-        const { packetAssistant, callMetadata, parseErrors } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
+        const { packetAssistant, callMetadata, parseErrors, parseNotices } = this.#splitResponse(response); // raw assistant content is opaque — split, never interpreted — §provider-guarantees-assistantraw-opaque
+        for (const notice of parseNotices) {
+            this.#notices.push(workspaceId, loopId, notice);
+        }
 
         // Surface parse errors to the model's NEXT packet so it can self-
         // correct. Without this, malformed emissions (e.g. a READ matcher
@@ -1249,32 +1253,32 @@ export default class Engine {
         // drop, the model sees zero ops dispatched, strike-rail fires,
         // model has no feedback on WHY its emission didn't take effect.
         //
-        // Envelope per @plurnk/plurnk-grammar 0.17.0 TelemetryEvent:
+        // Envelope per @plurnk/plurnk-grammar 0.17.0 Notice:
         //   { source, kind, message, position: { type: "content-offset", line, column } }
         // Plus a `snippet` field (additionalProperties) carrying ±N lines
         // of the assistant's own content around the error line. Without
         // the snippet, the model sees "invalid xpath at 1:0" but can't
         // connect that to what IT wrote — and tends to regenerate the
         // same broken emission. See edit-todo demo for the canonical case.
-        // Parse errors are LOG ITEMS now (§telemetry — one budget surface): each failed-to-parse
+        // Parse errors are LOG ITEMS now (§operation-results — one budget surface): each failed-to-parse
         // emission records an actionless `error` row below, after the turn's dispatched ops are
         // sequenced (see the parse-error log write past the dispatch loop). The errors section
         // derives a pointer to it from log≥400, uniform with action_failure.
         // providers#24 / #275: non-fatal provider notices on a SUCCESSFUL turn. In GBNF-filter
         // mode the provider no longer THROWS grammar_unenforced — it returns the model's bytes
-        // (here, packetAssistant.content) and attaches the conflict as a telemetry event carrying
-        // the divergence code-point position. Forward each event with a content-offset `line:col`;
+        // (here, packetAssistant.content) and attaches a Notice carrying the
+        // divergence code-point position. Forward each Notice with a content-offset `line:col`;
         // the model resolves it against its own emission — READ the folded `model` mirror row at the
         // cited lines (§model-entry) — not an embedded snippet that would duplicate the emission.
-        for (const event of response.notices ?? []) {
-            const located = typeof event.position === "number"
-                ? this.#offsetToLineColumn(packetAssistant.content, event.position)
+        for (const notice of response.notices ?? []) {
+            const located = typeof notice.position === "number"
+                ? this.#offsetToLineColumn(packetAssistant.content, notice.position)
                 : null;
-            this.#telemetry.push(workspaceId, loopId, {
-                source: event.source,
-                kind: event.kind,
-                message: event.message ?? "",
-                level: event.level,
+            this.#notices.push(workspaceId, loopId, {
+                source: notice.source,
+                kind: notice.kind,
+                message: notice.message ?? "",
+                level: notice.level,
                 ...(located !== null
                     ? { position: { type: "content-offset", line: located.line, column: located.column } }
                     : {}),
@@ -1292,7 +1296,7 @@ export default class Engine {
             const providerGraded = (response.notices ?? []).some((e) => e.kind === "grammar_unenforced");
             if (verdict !== null && verdict.status !== "accept" && !providerGraded) {
                 const located = this.#offsetToLineColumn(packetAssistant.content, verdict.pos);
-                this.#telemetry.push(workspaceId, loopId, {
+                this.#notices.push(workspaceId, loopId, {
                     source: "engine:rails",
                     kind: "grammar_unenforced",
                     message: verdict.status === "reject"
@@ -1320,7 +1324,7 @@ export default class Engine {
         // count, and a non-resolver spins out to the engine's 500.
         let steerStruck = false;
         // Engine errors raised this turn, minted as op='error' log rows after dispatch (they share the
-        // post-dispatch sequence counter). §telemetry-uniform-error-channel
+        // post-dispatch sequence counter). §operation-result-uniform-error-channel
         const pendingEngineErrors: EngineProblemKind[] = [];
 
         // Terminal adjudication moved to the DISPATCHER (§send-premature-terminate, the unified
@@ -1404,7 +1408,7 @@ export default class Engine {
         // A degenerate op-loop is a sampler failure guarded at generation, not by dropping
         // already-generated work post-hoc. The ceiling is an OPT-IN operator/client bound:
         // when set, overflow ops drop without per-op log entries (no forensics flood) and the
-        // model gets one telemetry signal next packet.
+        // model gets one notices signal next packet.
         // #232 — a workspace's maxCommands is a tighten-only ceiling: min() the env ceiling.
         const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);
         // PLAN (reasoning) and a terminal SEND (signal ≥ 200, the conclusion) are not
@@ -1470,7 +1474,7 @@ export default class Engine {
             }
             rowSeq += (result.rowsWritten as number | undefined) ?? 1;
         }
-        // §telemetry-uniform-error-channel — every engine + parse failure mints as an op='error'
+        // §operation-result-uniform-error-channel — every engine + parse failure mints as an op='error'
         // log row at the turn's next free sequence (after every dispatched row, incl. a multi-file
         // READ's fan-out). One channel: the errors section derives a LogCoordinate pointer from log≥400.
         let errSeq = rowSeq;
@@ -1570,7 +1574,7 @@ export default class Engine {
         // Zero ops is NOT an error to report — the model knows it emitted
         // nothing. Strike accounting (engine-internal) treats it as a
         // struck turn; the model just sees an empty packet next turn.
-        // Per SPEC §telemetry gamification policy.
+        // Per SPEC §operation-results gamification policy.
 
         return { turnId, status: turnStatus, statuses, fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops), budgetStruck: enforced.struck, budgetHardStop: false, steerStruck };
     }
@@ -1586,7 +1590,12 @@ export default class Engine {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    #splitResponse(response: ProviderResponse): { packetAssistant: PacketAssistant; callMetadata: TurnCallMetadata; parseErrors: ParseErrorInfo[] } {
+    #splitResponse(response: ProviderResponse): {
+        packetAssistant: PacketAssistant;
+        callMetadata: TurnCallMetadata;
+        parseErrors: ParseErrorInfo[];
+        parseNotices: Notice[];
+    } {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
@@ -1596,10 +1605,11 @@ export default class Engine {
         // #free-text-capture synthesis of SEND[103] log ops was retired as tech debt
         // (grammar 0.70 forbids free text between ops, so a prose-only turn strikes 422).
         // Full PlurnkParseError context (line/column/source) is preserved
-        // here so runTurn can build TelemetryEvent envelopes per the
+        // here so runTurn can build Notice envelopes per the
         // grammar 0.17.0 protocol — model needs position info to locate
         // its own offending content on the next turn.
         const parseErrors: ParseErrorInfo[] = [];
+        const parseNotices: Notice[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
         } else {
@@ -1612,7 +1622,22 @@ export default class Engine {
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
                     if (err instanceof PlurnkParseError) {
-                        parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source });
+                        if (err.severity === "warning") {
+                            parseNotices.push({
+                                source: "grammar",
+                                kind: "parse_advisory",
+                                level: "warn",
+                                message: err.message,
+                                position: {
+                                    type: "content-offset",
+                                    line: err.line,
+                                    column: err.column,
+                                },
+                                parserSource: err.source,
+                            });
+                        } else {
+                            parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source });
+                        }
                     } else {
                         const msg = (err as { message?: string } | undefined)?.message ?? "parse error";
                         parseErrors.push({ message: msg, line: 0, column: 0, source: "parser" });
@@ -1635,6 +1660,7 @@ export default class Engine {
             packetAssistant: { content: assistant.content, ops, reasoning },
             callMetadata: { usage: assistant.usage, finishReason: assistant.finishReason, model: assistant.model },
             parseErrors,
+            parseNotices,
         };
     }
 
@@ -1900,7 +1926,7 @@ export default class Engine {
             tokenize: this.#tokenize,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
-            pushTelemetry: (event) => this.#telemetry.notify(workspaceId, 0, event),
+            pushNotice: (notice) => this.#notices.notify(workspaceId, 0, notice),
         };
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan
     }
@@ -1939,7 +1965,7 @@ export default class Engine {
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
             tokenize: this.#tokenize,
-            pushTelemetry: (event) => this.#telemetry.push(workspaceRow.workspace_id, loopId, event),
+            pushNotice: (notice) => this.#notices.push(workspaceRow.workspace_id, loopId, notice),
         };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },

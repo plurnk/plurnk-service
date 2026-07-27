@@ -23,7 +23,7 @@ export interface MatchResult {
     status: number;
     body?: string;          // N:\t<source-line> lines (status 200) or raw fallback content (status 203)
     matches?: number;       // hit count (status 200 or 204); omitted on 203
-    error?: string;         // status >= 400 paths (framework dialect errors; not a scheme TelemetryEvent)
+    error?: string;         // status >= 400 paths (framework dialect errors; not a scheme Notice)
     mimetype?: string;      // overrides default text/markdown on the 203 fallback path
     reason?: string;        // 203 fallback: framework's parse-failure reason for the model
 }

@@ -1,0 +1,66 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/Notice.json",
+    "title": "Notice",
+    "description": "A transient, nonterminal observation for clients and the next model packet. A Notice is never operation-failure truth and cannot determine durable history, lifecycle, scheduling, or recovery. Producers use the open `source` + `kind` discriminator; clients render the producer-owned `level` without inferring semantics from kind names.",
+    "type": "object",
+    "required": ["source", "kind", "level"],
+    "additionalProperties": true,
+    "properties": {
+        "source": {
+            "type": "string",
+            "pattern": "^[a-z]+(:[a-z][a-z0-9-]*)?$",
+            "description": "Producer identifier. Top-level for self-contained subsystems; colon-namespaced for parameterized producers such as `provider:openai` or `exec:search`."
+        },
+        "kind": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Open discriminator within a source. Examples include `grammar_unenforced`, `embed_progress`, `search_progress`, and `turn_awaiting_model`."
+        },
+        "level": {
+            "enum": ["error", "warn", "info"],
+            "description": "Display severity set by the producer. It does not make the Notice a durable operation result."
+        },
+        "message": {
+            "type": ["string", "null"],
+            "description": "Optional terse, factual display message."
+        },
+        "position": {
+            "oneOf": [
+                { "$ref": "#/$defs/ContentOffset" },
+                { "$ref": "#/$defs/LogCoordinate" },
+                { "type": "null" }
+            ],
+            "description": "Optional typed position for an observation. ContentOffset points into model output; LogCoordinate points at a durable log row without replacing it."
+        }
+    },
+    "$defs": {
+        "ContentOffset": {
+            "type": "object",
+            "required": ["type", "line", "column"],
+            "additionalProperties": false,
+            "properties": {
+                "type": { "const": "content-offset" },
+                "line": { "type": "integer", "minimum": 0 },
+                "column": { "type": "integer", "minimum": 0 }
+            }
+        },
+        "LogCoordinate": {
+            "type": "object",
+            "required": ["type", "coordinate"],
+            "additionalProperties": false,
+            "properties": {
+                "type": { "const": "log-coordinate" },
+                "coordinate": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Log row identity, typically `log:///<loop>/<turn>/<sequence>`."
+                },
+                "op": {
+                    "type": "string",
+                    "description": "Optional op token (FIND/READ/EDIT/...) at the coordinate, for human-readable rendering."
+                }
+            }
+        }
+    }
+}

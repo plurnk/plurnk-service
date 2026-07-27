@@ -10,6 +10,7 @@
 import type { Db } from "./Db.ts";
 import type { LoopFlags } from "./types.ts";
 import { Results, type SchemeResult } from "@plurnk/plurnk-schemes";
+import type { Notice } from "@plurnk/plurnk-grammar";
 import { renderAddress } from "./plurnk-uri.ts";
 
 export type ChannelState = "static" | "active" | "closed" | "errored"; // render metadata, never a read gate — §channel-state-state-is-metadata
@@ -88,18 +89,12 @@ export type InjectWorkerNotify = (args: {
 export type CancelWorkerNotify = (workerId: number, reason: string) => Promise<void>;
 export type CancelDescendantsNotify = (workerId: number, reason: string) => Promise<void>;
 
-// Telemetry event fan-out. TelemetryChannel.push fires this for every
-// TelemetryEvent (parse_error, strike, cycle, sudden_death, no_ops,
-// max_commands_exceeded, action_failure) it pushes to a loop's buffer.
-// Daemon broadcasts as `telemetry/event` scoped to the loop's workspace.
-// Same envelope on both ends: the model sees it on the next packet's
-// telemetry.errors[]; the client sees it live. SPEC §telemetry.
-export interface TelemetryEventPayload {
+export interface NoticePayload {
     loopId: number;
-    event: object;                 // TelemetryEvent per @plurnk/plurnk-grammar
+    notice: Notice;
 }
 
-export type TelemetryEventNotify = (workspaceId: number, payload: TelemetryEventPayload) => void;
+export type NoticeNotify = (workspaceId: number, payload: NoticePayload) => void;
 
 interface ChannelMetaRow {
     workspace_id: number;

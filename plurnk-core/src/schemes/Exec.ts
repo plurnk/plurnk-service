@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-grammar";
-import type { ExecStatement, FindStatement, ReadStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
+import type { ExecStatement, FindStatement, ReadStatement, Notice } from "@plurnk/plurnk-grammar";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import { WebFetcher, type WebFetchResult } from "@plurnk/plurnk-schemes-http";
@@ -430,8 +430,8 @@ export default class Exec extends CoreSchemeAdapterBase {
 
     // Bridge the executor's sink-style contract (write/setState/emit)
     // onto plurnk-service's storage primitives (appendToChannel,
-    // setChannelState, ctx.pushTelemetry). Per plurnk-service#174 Q3,
-    // executor TelemetryEvents flow through the same engine path as
+    // setChannelState, ctx.pushNotice). Per plurnk-service#174 Q3,
+    // executor Notices flow through the same engine path as
     // grammar parse_errors — emit → buffer → next packet + live notify.
     //
     // write() and setState() callbacks must run in emission order:
@@ -584,10 +584,10 @@ export default class Exec extends CoreSchemeAdapterBase {
                         entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
                     })),
                     emit: (event) => {
-                        // The executor plugin's TelemetryEvent predates grammar's required `level`;
+                        // The executor plugin's Notice predates grammar's required `level`;
                         // inject a default (forwarding the producer's own severity when it supplies one). #276
-                        const level = (event as { level?: TelemetryEvent["level"] }).level ?? "info";
-                        ctx.pushTelemetry?.({ ...event, level } as TelemetryEvent);
+                        const level = (event as { level?: Notice["level"] }).level ?? "info";
+                        ctx.pushNotice?.({ ...event, level } as Notice);
                     },
                 });
                 // Drain the queue so the subscription doesn't close before

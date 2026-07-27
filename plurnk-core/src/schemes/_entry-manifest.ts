@@ -222,7 +222,7 @@ export default class EntryManifest {
             completed++;
             if (step > 0 && (completed === total || completed % step === 0)) {
                 const percent = Math.floor((completed / total) * 100);
-                ctx.pushTelemetry?.({ source: "engine:derivation", kind: "embed_progress", message: `Indexing repository semantics: ${percent}% (${completed}/${total})`, completed, total, percent, level: "info" });
+                ctx.pushNotice?.({ source: "engine:derivation", kind: "embed_progress", message: `Indexing repository semantics: ${percent}% (${completed}/${total})`, completed, total, percent, level: "info" });
             }
         };
 
@@ -263,7 +263,7 @@ export default class EntryManifest {
                             if (now - lastHeartbeatAt < 5_000) return;
                             lastHeartbeatAt = now;
                             const percent = Math.floor((completed / total) * 100);
-                            ctx.pushTelemetry?.({
+                            ctx.pushNotice?.({
                                 source: "engine:derivation",
                                 kind: "embed_progress",
                                 message: `Indexing repository semantics: ${percent}% (${completed}/${total})`,

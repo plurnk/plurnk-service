@@ -601,8 +601,8 @@ describe("Mimetypes — query", () => {
     });
 });
 
-describe("Mimetypes — degradation telemetry (plurnk-service#276)", () => {
-    it("embeddingMissing surfaces a warn-level event on an ok:true result", async () => {
+describe("Mimetypes — degradation notices (plurnk-service#276)", () => {
+    it("embeddingMissing surfaces a warn-level Notice on an ok:true result", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async (pkg: string) => {
@@ -613,19 +613,19 @@ describe("Mimetypes — degradation telemetry (plurnk-service#276)", () => {
         const r = await m.process({ path: "foo.txt", content: "hello" }, { channels: ["embedding"] });
         assert.equal(r.ok, true);
         assert.equal(r.embeddingMissing, "@plurnk/plurnk-mimetypes-embeddings");
-        const ev = (r.telemetry ?? []).find((e) => e.kind === "embedding_degraded");
-        assert.ok(ev, "expected an embedding_degraded event");
+        const ev = (r.notices ?? []).find((e) => e.kind === "embedding_degraded");
+        assert.ok(ev, "expected an embedding_degraded Notice");
         assert.equal(ev?.level, "warn");
-        assert.equal(ev?.source, "mimetype:text_plain");
+        assert.equal(ev?.source, "mimetype:text-plain");
         assert.equal(ev?.plurnkPackage, "@plurnk/plurnk-mimetypes-embeddings");
     });
 
-    it("a fully-satisfied result carries no telemetry field", async () => {
+    it("a fully-satisfied result carries no notices field", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),
             loader: async () => ({ default: FakePlainHandler }),
         });
         const r = await m.process({ path: "foo.txt", content: "hello" });
-        assert.equal(r.telemetry, undefined);
+        assert.equal(r.notices, undefined);
     });
 });

@@ -1,5 +1,5 @@
 import type { HandlerLoader } from "./Mimetypes.ts";
-import type { TelemetryEvent } from "./TelemetryEvent.ts";
+import type { Notice } from "./Notice.ts";
 
 // Opt-in tokenizer artifact package (SPEC §19, #44): resolved lazily via the
 // same loader handler packages use — the framework ships no vocab data. Kept
@@ -28,8 +28,8 @@ export interface TokenizerResolution {
     // "heuristic:chars2" for the degraded upper bound.
     readonly tokenizerId: string;
     readonly exact: boolean;
-    // Present iff degraded — the host forwards into packet telemetry (SPEC §11.5).
-    readonly telemetry?: readonly TelemetryEvent[];
+    // Present iff degraded — the host forwards into packet notices (SPEC §11.5).
+    readonly notices?: readonly Notice[];
 }
 
 // chars/2 upper bound (providers#44 measurement: real agentic text runs
@@ -44,7 +44,7 @@ function degraded(modelRef: string, reason: string, extra: Record<string, unknow
         countTokens: (text) => Promise.resolve(charsUpperBound(text)),
         tokenizerId: "heuristic:chars2",
         exact: false,
-        telemetry: [{
+        notices: [{
             source: "tokenizer",
             kind: "tokenizer_unavailable",
             level: "warn",

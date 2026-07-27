@@ -63,7 +63,7 @@ page bodies live in materialized HTTP entries, never the packet. Every emitted
 row names an ordinary readable resource.
 
 Failures return RFC 9457 Problems in the terminal operation result. Bounded
-aggregate acquisition progress remains a transient telemetry notice.
+aggregate acquisition progress remains a transient Notice.
 
 ## Tests
 

@@ -52,7 +52,7 @@ interface LogEntryView {
     attrs?: unknown;
 }
 interface FailurePointer { status?: unknown; coordinate?: unknown }
-interface NoticeEvent {
+interface NoticeView {
     kind?: unknown;
     message?: unknown;
     position?: { type?: unknown; line?: unknown; column?: unknown } | null;
@@ -109,19 +109,22 @@ export default class PacketWire {
     }
 
     // Non-terminal model-facing observations are deliberately separate from
-    // operation failures. Content offsets point into the prior model emission;
-    // a factual message is retained when no position exists.
+    // operation failures. Producer messages are normalized and bounded by the
+    // existing arrival-preview contract; typed positions remain legible.
     static renderNotices(notices: unknown): string {
-        const events = Array.isArray(notices) ? notices as NoticeEvent[] : [];
-        return events.map((event) => {
-            const kind = typeof event.kind === "string" ? event.kind : "notice";
-            const position = event.position;
-            if (position?.type === "content-offset") {
-                return `* ${kind} ${String(position.line)}:${String(position.column)}`;
-            }
-            return typeof event.message === "string" && event.message.length > 0
-                ? `* ${kind}: ${event.message}`
-                : `* ${kind}`;
+        const observations = Array.isArray(notices) ? notices as NoticeView[] : [];
+        return observations.map((notice) => {
+            const kind = typeof notice.kind === "string" ? notice.kind : "notice";
+            const rawMessage = typeof notice.message === "string"
+                ? notice.message.replace(/\s+/g, " ").trim()
+                : "";
+            const message = rawMessage.length > 0
+                ? PacketWire.#arrivalPreview(rawMessage).text
+                : "";
+            const position = notice.position?.type === "content-offset"
+                ? ` @ ${String(notice.position.line)}:${String(notice.position.column)}`
+                : "";
+            return `* ${kind}${message.length > 0 ? `: ${message}` : ""}${position}`;
         }).join("\n");
     }
 
@@ -333,8 +336,8 @@ export default class PacketWire {
     // `source`; currently the engine emits target only (source plumbing
     // pending the COPY/MOVE-specific log shape pass).
     //
-    // On error, status >= 400 signals the failure; the message lives in
-    // the next packet's user.telemetry.errors[] per SPEC §telemetry. (Forward:
+    // On error, status >= 400 signals the failure; Problem Details live on
+    // this durable row and the next packet's Errors section points here. (Forward:
     // meta will gain tokensBefore/After + linesBefore/After to convey
     // change scope without carrying the body content.)
     //
@@ -564,7 +567,7 @@ export default class PacketWire {
                     if (arrival.cut) body += `\n… arrival preview — the full deliverable is ${e.rx.split("\n").length} lines: READ worker://${(e.target && typeof e.target === "object" && "pathname" in e.target ? String((e.target as { pathname?: string }).pathname ?? "") : "").replace(/^\//, "")}`;
                 }
             } else if (op === "error") {
-                // §telemetry — a parse-error row is a LOG ITEM; its body is the parser message, which
+                // §operation-results — a parse-error row is a LOG ITEM; its body is the parser message, which
                 // carries the content-offset `line:col`. The model resolves that line against its own
                 // emission — READ the folded `model` mirror row (§model-entry) — so no snippet is embedded.
                 // Foldable like any body; the errors section keeps only a pointer (status + coordinate).

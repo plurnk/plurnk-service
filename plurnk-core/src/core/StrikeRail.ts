@@ -71,7 +71,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
 // Rails #38 (strikes) + #39 (cycle detection): the per-loop failure-streak
 // accounting that decides abandonment. Strike accounting is engine-internal
 // bookkeeping. Per rummy precedent (plugins/error/error.js#verdict) and SPEC
-// §telemetry policy: model sees errors that happened (parse_error,
+// §operation-results policy: model sees errors that happened (parse_error,
 // action_failure), never the engine's accounting about them (strike counts,
 // cycle detection, sudden-death threshold). Surfacing internal state to the
 // model creates a gamification surface — model optimizes for engine metrics
@@ -145,7 +145,7 @@ export default class StrikeRail {
         // turnErrors so the strike system handles abandonment
         // naturally — same internal-only role rummy gave it
         // (plugins/error/error.js#verdict). Intentionally NOT a
-        // model-facing telemetry kind: model sees the strike pile-up
+        // model-facing notices kind: model sees the strike pile-up
         // (which IS the actionable signal); cycle is the engine's
         // reason for treating the turn as a failure, not its own alert.
         const state = this.#state.get(loopId) ?? { streak: 0, turnErrors: 0, history: [] };

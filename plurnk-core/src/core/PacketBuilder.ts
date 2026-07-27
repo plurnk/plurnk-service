@@ -1,4 +1,4 @@
-import type { PlurnkStatement, TelemetryEvent } from "@plurnk/plurnk-grammar";
+import type { PlurnkStatement, Notice } from "@plurnk/plurnk-grammar";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -200,7 +200,7 @@ export default class PacketBuilder {
         // Model-facing observations queued by the engine before this packet
         // build. Operation failures never ride this path; they derive from the
         // durable log below.
-        notices?: readonly TelemetryEvent[];
+        notices?: readonly Notice[];
     }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
@@ -557,7 +557,7 @@ export default class PacketBuilder {
         // re-derived errors section surfaces it THIS turn — the warning lands at strike 1, not a
         // turn late. The row is grinder-exempt, so it stacks into a visible recurrence trail. It
         // sits at the turn's reserved running sequence (mintSequence) so it never collides with the
-        // post-generate dispatch rows. §telemetry-uniform-error-channel, §grinder-overflow-error-row
+        // post-generate dispatch rows. §operation-result-uniform-error-channel, §grinder-overflow-error-row
         await this.#problems.record({
             workerId,
             loopId,
@@ -605,7 +605,7 @@ export default class PacketBuilder {
         status: number;
         coordinate: string;
     }>> {
-        const rows = await this.#db.engine_render_telemetry_errors.all<{
+        const rows = await this.#db.engine_render_errors.all<{
             op: string; sequence: number; status_rx: number;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });

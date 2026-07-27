@@ -128,10 +128,10 @@ Channels materialize per call — unrequested ones are never computed and their 
 - `detect`, `discover`, `emptyRegistry` — detection + the scope-agnostic, trust-gated scan.
 - `collectReferences` + `format`/`buildTree`/`renderTree`/`maxDepth`/`pruneToMaxDepth` — refs engine + outline primitives.
 - `parseBodyMatcher`, `queryRegex`/`queryGlob`/`queryJsonpathObject`/`queryXpathString`, `projectJsonToXml`, `buildJsonOutline` — query primitives.
-- `UnsupportedDialectError`/`InvalidExpressionError`/`QueryParseFailureError`/`GrammarNotInstalledError` — error classes with `toTelemetryEvent()`.
+- `UnsupportedDialectError`/`InvalidExpressionError`/`QueryParseFailureError`/`GrammarNotInstalledError` — typed failures for consumer-owned operation-result mapping.
 - `runCompile`/`rewriteImports`/`injectBaseImports` — ANTLR build utilities.
 - Subpath `@plurnk/plurnk-mimetypes/conformance` — `assertHandlerConformance` + conformance types (kept off the main entry so `node:assert` stays out of the runtime bundle).
-- Contract types: `MimeSymbol`, `SymbolKind`, `MimeRef`, `RefKind`, `Channel`, `HandlerMetadata`, `HandlerContent`, `ProcessInput`/`ProcessOptions`/`ProcessResult`, `RefsQuery`/`RefsQueryCapture`/`RefsCaptureNode`/`QueryConstructor`, `Discovery`/`DiscoverOptions`/`HandlerInfo`/`Registry`, `QueryDialect`/`QueryMatch`, `TreeSitterTree`/`TreeSitterNode`/`TreeSitterParser`/`DeepTreeNode`, `TelemetryEvent`.
+- Contract types: `MimeSymbol`, `SymbolKind`, `MimeRef`, `RefKind`, `Channel`, `HandlerMetadata`, `HandlerContent`, `ProcessInput`/`ProcessOptions`/`ProcessResult`, `RefsQuery`/`RefsQueryCapture`/`RefsCaptureNode`/`QueryConstructor`, `Discovery`/`DiscoverOptions`/`HandlerInfo`/`Registry`, `QueryDialect`/`QueryMatch`, `TreeSitterTree`/`TreeSitterNode`/`TreeSitterParser`/`DeepTreeNode`, `Notice`.
 
 ## CLI
 

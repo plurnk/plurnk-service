@@ -11,5 +11,12 @@ export interface ProviderNotice {
     readonly position: number | null;
 }
 
-export const providerSource = (vendor: string): string =>
-    vendor.startsWith("provider:") ? vendor : `provider:${vendor}`;
+export const providerSource = (vendor: string): string => {
+    const raw = vendor.startsWith("provider:") ? vendor.slice("provider:".length) : vendor;
+    const normalized = raw
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    if (normalized.length === 0) throw new TypeError("provider source must name a provider");
+    return `provider:${/^[a-z]/.test(normalized) ? normalized : `p-${normalized}`}`;
+};

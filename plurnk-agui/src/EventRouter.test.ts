@@ -1,6 +1,6 @@
 // The render router, routing daemon events → AG-UI. Confirms the composition: a model
 // SEND becomes assistant speech, a terminated becomes RUN_FINISHED + budget STATE,
-// telemetry rides its custom, and loop/proposal is deliberately left to ProposalHitl.
+// notices ride their custom, and loop/proposal is deliberately left to ProposalHitl.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -24,10 +24,14 @@ test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISH
     assert.equal(term[term.length - 1].type, "RUN_FINISHED", "200 terminates the worker");
 });
 
-test("telemetry → plurnk.telemetry custom; loop/proposal deferred to ProposalHitl", () => {
+test("notice → plurnk.notice custom; loop/proposal deferred to ProposalHitl", () => {
     const r = router();
-    const tel = r.route("telemetry/event", { loopId: 1, event: { source: "grammar", kind: "parse_error" } });
-    assert.deepEqual(tel, [{ type: "CUSTOM", name: "plurnk.telemetry", value: { source: "grammar", kind: "parse_error" } }]);
+    const notice = r.route("notice/event", { loopId: 1, notice: { source: "engine:turn", kind: "turn_awaiting_model", level: "info" } });
+    assert.deepEqual(notice, [{
+        type: "CUSTOM",
+        name: "plurnk.notice",
+        value: { source: "engine:turn", kind: "turn_awaiting_model", level: "info" },
+    }]);
     assert.deepEqual(r.route("loop/proposal", { logEntryId: 42 }), [], "the router yields proposals to ProposalHitl");
 });
 

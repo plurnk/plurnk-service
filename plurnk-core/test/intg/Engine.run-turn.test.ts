@@ -54,7 +54,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
     },
 });
 
-// The deterministic HARD-failure (403 writableBy) generator for the strike/telemetry tests:
+// The deterministic HARD-failure (403 writableBy) generator for the strike/notice tests:
 // a scheme the model can't write. Log no longer serves this role — §model-entry-log-curation
 // admits the model through its gate for the KILL curation lever (other ops 501, a SOFT failure).
 class Sealed {
@@ -253,9 +253,9 @@ test("Engine.runTurn: zero-ops turn completes at status 422; failure is recorded
 });
 
 test("Engine.runTurn: empty-ops turn does not leak strike bookkeeping as a notice", async () => {
-    // Per SPEC §telemetry gamification policy: zero ops is the model's emission
+    // Per SPEC §operation-results gamification policy: zero ops is the model's emission
     // choice, not an error to report. Engine still treats it as a struck
-    // turn internally (strike accounting), but no model-facing telemetry.
+    // turn internally (strike accounting), but no model-facing notice.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -279,7 +279,7 @@ test("Engine.runTurn: empty-ops turn does not leak strike bookkeeping as a notic
 // engine dispatches every one (each is a real DB write + handler call).
 // Cap dispatches at the configured limit; overflow ops are silently dropped
 // (no per-op log rows, to keep forensics from drowning in identical refusals)
-// and a single max_commands_exceeded telemetry entry tells the model next turn.
+// and a single max_commands_exceeded failure tells the model next turn.
 test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow drops + a durable failure pointer", async () => {
     const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "3";
@@ -297,7 +297,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched ops; overflow 
                         editStmt("/d", "4"),
                         editStmt("/e", "5"),
                     ]),
-                    // Turn 2 clean — gives us a packet whose telemetry drained turn 1's signal.
+                    // Turn 2 clean — gives us a packet carrying turn 1's failure pointer.
                     response([editStmt("/z", "z"), sendStmt(200, "ok")]),
                 ],
             });
@@ -384,7 +384,7 @@ test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", 
 });
 
 test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model", async () => {
-    // Per SPEC §telemetry gamification policy: telling the model "you're near
+    // Per SPEC §operation-results gamification policy: telling the model "you're near
     // my abandonment threshold" is engine bookkeeping, not an error. The
     // loop still abandons at maxTurns; the model just doesn't see warnings.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -404,7 +404,7 @@ test("Engine.runLoop: sudden_death is engine-internal — NOT surfaced to model"
             const packet = JSON.parse(row?.packet ?? "{}");
             return packetSection(packet, "notices").includes("sudden_death");
         }));
-        // Zero turns should carry sudden_death telemetry under gamification policy.
+        // Zero turns should carry sudden_death notices under gamification policy.
         assert.deepEqual(turnHadSuddenDeath, [false, false, false, false, false]);
     } finally { await db.close(); }
 });
@@ -521,8 +521,8 @@ test("Engine.runLoop: no_ops turn counts as a hard strike", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: strike is engine-internal — model sees action_failure but NOT strike telemetry", async () => {
-    // Per SPEC §telemetry gamification policy: model sees the failed action
+test("Engine.runLoop: strike is engine-internal — model sees action_failure but NOT a strike notice", async () => {
+    // Per SPEC §operation-results gamification policy: model sees the failed action
     // (action_failure surfaces the 403), never the engine's strike
     // counter. Telling the model "strike 1 of 5" would let it optimize
     // for the meter instead of the task.
@@ -629,7 +629,7 @@ test("Engine.runLoop: period-2 alternating cycle detected after 6 turns", async 
     } finally { await db.close(); }
 });
 
-test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model-facing telemetry", async () => {
+test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model-facing notice", async () => {
     // Per rummy precedent (plugins/error/error.js) AND gamification
     // policy: cycle, strike, sudden_death are all engine bookkeeping.
     // Model sees errors that happened (parse_error, action_failure),
@@ -652,7 +652,7 @@ test("Engine.runLoop: cycle detection is internal — bumps turnErrors, NO model
     } finally { await db.close(); }
 });
 
-// Sudden-death telemetry was removed under gamification policy. This test
+// Sudden-death notices were removed under gamification policy. This test
 // remains as a regression guard: loops that terminate cleanly never carry
 // sudden_death anywhere.
 test("Engine.runLoop: sudden_death never surfaces to model", async () => {

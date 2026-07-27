@@ -52,7 +52,10 @@ private isIdentChar(c: number): boolean {
 private consumeRestOfCloseTagAfterColon(): void {
     const remaining = this.openTag.length - 1;
     for (let i = 0; i < remaining; i++) {
-        this.inputStream.consume();
+        // Consume through the simulator so its line/column state advances with
+        // the character stream. Direct CharStream consumption corrupts every
+        // later token position by the number of skipped closer characters.
+        this.interpreter.consume(this.inputStream);
     }
 }
 

@@ -17,7 +17,9 @@ const SOURCE_PATTERN = /^[a-z]+(:[a-z][a-z0-9-]*)?$/;
 test("providerSource produces a schema-valid colon-namespaced source", () => {
     assert.equal(providerSource("openai"), "provider:openai");
     assert.match(providerSource("openrouter"), SOURCE_PATTERN);
-    assert.match(providerSource("xai"), SOURCE_PATTERN); // contains no underscore — fine
+    assert.equal(providerSource("@scope/custom_provider"), "provider:scope-custom-provider");
+    assert.equal(providerSource("2fast"), "provider:p-2fast");
+    assert.throws(() => providerSource(""), /must name a provider/);
 });
 
 test("classifyProviderError maps HTTP status to kind", () => {

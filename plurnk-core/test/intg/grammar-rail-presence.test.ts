@@ -1,6 +1,6 @@
 // #488 — the GBNF rail is VERIFIABLE, never silently off. run78's failure class: the rail
 // severed upstream of the provider, the model free-decoded and fabricated a log, the loop
-// concluded 200 with CLEAN telemetry — green proved nothing. These tests pin the chain
+// concluded 200 with no failure — green proved nothing. These tests pin the chain
 // POSITIVELY (the resolved grammar text reaches generate through a real turn) and pin the
 // silent hole closed (an unregistered provider may not guess an alias while per-alias rails
 // are configured).

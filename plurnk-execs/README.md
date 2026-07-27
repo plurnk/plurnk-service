@@ -75,7 +75,7 @@ Declare the two and a third-party tag gets the same self-documenting surface the
 - `Results` and the `ProblemDetails` / `SchemeResult` types — the universal
   operation-result constructor and contract shared with schemes.
 - Contract types: `ExecArgs`, `ExecResult`, `ChannelDecl`, `ChannelState`, `ExecutorMetadata`, `RuntimeAvailability`, `Effect`, `ExecInfo`, `ExecRegistry`, `Discovery`, `DiscoverOptions`.
-- `TelemetryEvent`, `ContentOffset`, `LogCoordinate` — the `emit` sink's payload (mirror of grammar's telemetry envelope).
+- `Notice`, `ContentOffset`, `LogCoordinate` — the `emit` sink's transient, nonterminal payload (a local mirror of grammar's Notice envelope).
 - `SpawnArgs` — the `SubprocessExecutor.spawnArgs()` return shape for
   runtime-specific subclasses.
 

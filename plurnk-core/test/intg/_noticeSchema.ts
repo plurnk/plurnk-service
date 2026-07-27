@@ -1,4 +1,4 @@
-// Focused validator for the TelemetryEvent envelope published at
+// Focused validator for the Notice envelope published at
 // @plurnk/plurnk-grammar's exported schema (resolved through the export map, so the
 // Hand-rolled rather than importing a full JSON Schema engine because
 // the envelope is small + bounded; pulling in ajv for this would be
@@ -9,7 +9,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-const SCHEMA_PATH = fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/schema/TelemetryEvent.json"));
+const SCHEMA_PATH = fileURLToPath(import.meta.resolve("@plurnk/plurnk-grammar/schema/Notice.json"));
 
 interface Schema {
     required?: string[];
@@ -27,6 +27,7 @@ const loadSchema = async (): Promise<Schema> => {
 };
 
 const SOURCE_PATTERN = /^[a-z]+(:[a-z][a-z0-9-]*)?$/;
+const LEVELS = new Set(["error", "warn", "info"]);
 
 const validateContentOffset = (pos: unknown, errs: string[]): void => {
     if (typeof pos !== "object" || pos === null) { errs.push("position: not an object"); return; }
@@ -59,19 +60,22 @@ const validatePosition = (pos: unknown, errs: string[]): void => {
     else errs.push(`position.type: expected "content-offset" | "log-coordinate" | null, got ${JSON.stringify(type)}`);
 };
 
-// Validate an event against the TelemetryEvent schema. Returns [] when
-// the event conforms; returns an array of human-readable error strings
+// Validate an notice against the Notice schema. Returns [] when
+// the notice conforms; returns an array of human-readable error strings
 // otherwise. Caller decides whether to assert or accumulate.
-export const validateTelemetryEvent = async (event: unknown): Promise<string[]> => {
+export const validateNotice = async (notice: unknown): Promise<string[]> => {
     await loadSchema();
     const errs: string[] = [];
-    if (typeof event !== "object" || event === null) { errs.push("event: not an object"); return errs; }
-    const e = event as Record<string, unknown>;
+    if (typeof notice !== "object" || notice === null) { errs.push("notice: not an object"); return errs; }
+    const e = notice as Record<string, unknown>;
 
     if (typeof e.source !== "string") errs.push(`source: required string, got ${JSON.stringify(e.source)}`);
     else if (!SOURCE_PATTERN.test(e.source)) errs.push(`source: '${e.source}' violates pattern ^[a-z]+(:[a-z][a-z0-9-]*)?$`);
 
     if (typeof e.kind !== "string" || e.kind.length === 0) errs.push(`kind: required non-empty string, got ${JSON.stringify(e.kind)}`);
+    if (typeof e.level !== "string" || !LEVELS.has(e.level)) {
+        errs.push(`level: required error | warn | info, got ${JSON.stringify(e.level)}`);
+    }
 
     if (e.message !== undefined && e.message !== null && typeof e.message !== "string") {
         errs.push(`message: expected string | null when present, got ${typeof e.message}`);
@@ -86,8 +90,8 @@ export const validateTelemetryEvent = async (event: unknown): Promise<string[]> 
 // errors prefixed by context. additionalProperties: true at the top
 // level means kind-specific fields are permitted; we only validate
 // envelope conformance.
-export const assertValidTelemetryEvent = async (event: unknown, context: string): Promise<void> => {
-    const errs = await validateTelemetryEvent(event);
+export const assertValidNotice = async (notice: unknown, context: string): Promise<void> => {
+    const errs = await validateNotice(notice);
     if (errs.length === 0) return;
-    throw new Error(`TelemetryEvent envelope invalid [${context}]:\n  - ${errs.join("\n  - ")}\n  event: ${JSON.stringify(event)}`);
+    throw new Error(`Notice envelope invalid [${context}]:\n  - ${errs.join("\n  - ")}\n  notice: ${JSON.stringify(notice)}`);
 };

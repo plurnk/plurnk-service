@@ -168,7 +168,7 @@ function runtime() {
 
 // text → 4×dimension bytes. Local: WASM on the calling thread. Remote: one
 // endpoint request (failures throw with the endpoint named; the host's
-// degrade-to-FTS + telemetry handling is service-side, per #46).
+// degrade-to-FTS + Notice handling is service-side, per #46).
 export async function embed(text) {
     if (REMOTE) return (await remoteEmbedMany([text]))[0];
     return embedText(await runtime(), text);

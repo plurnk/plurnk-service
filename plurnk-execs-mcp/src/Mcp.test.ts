@@ -7,7 +7,7 @@ import Mcp, { installServer, type HotloadRegistration } from "./Mcp.ts";
 import { closeAll } from "./client.ts";
 import { runtimes, runtimeDecl } from "./runtimes.ts";
 import { installAllowed, serverConfig, serverNames, registerServer, deregisterServer, isInjected, parseTarget } from "./config.ts";
-import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
+import type { ExecArgs, ExecResult, Notice } from "@plurnk/plurnk-execs";
 
 const FIXTURE = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 
@@ -15,13 +15,13 @@ interface Capture {
     result: ExecResult;
     writes: { channel: string; chunk: string; mimetype?: string }[];
     states: { channel: string; state: string }[];
-    events: TelemetryEvent[];
+    events: Notice[];
 }
 
 const invoke = async (runtime: string, command: string, opts: { signal?: AbortSignal; target?: string | null } = {}): Promise<Capture> => {
     const writes: Capture["writes"] = [];
     const states: Capture["states"] = [];
-    const events: TelemetryEvent[] = [];
+    const events: Notice[] = [];
     const args: ExecArgs = {
         runtime, command, cwd: null, target: opts.target ?? null,
         signal: opts.signal ?? new AbortController().signal,
@@ -209,13 +209,13 @@ test("run: an unconfigured server → mcp_not_configured, status 500", async () 
     assert.equal(events.length, 0);
 });
 
-test("run: a caller-aborted signal settles 499 with no telemetry", async () => {
+test("run: a caller-aborted signal settles 499 with no notices", async () => {
     const controller = new AbortController();
     controller.abort();
     const { result, events } = await invoke("echo", '{"msg":"x"}', { target: "echo", signal: controller.signal });
     assert.equal(result.status, 499);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/cancelled");
-    assert.equal(events.length, 0, "caller cancellation is normal flow, not telemetry");
+    assert.equal(events.length, 0, "caller cancellation is normal flow, not a Notice");
 });
 
 test("run: an HTTP server that requires auth surfaces mcp_auth_required (401), not a hard failure (oauth-via-proposal)", async () => {

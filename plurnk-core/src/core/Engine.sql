@@ -140,7 +140,7 @@ WHERE l.id = $loop_id AND t.id = $turn_id;
 -- PREP: engine_open_turn
 -- Turn-as-container model: insert a turn row at runTurn open with a
 -- placeholder packet and status=102 (in-progress). Pre-model writes
--- (the user prompt; later, system signals/telemetry events) land into
+-- (the user prompt; later, system signals/notices) land into
 -- this row before the provider is called. The turn is then "closed"
 -- via engine_close_turn with the final packet + status + usage stats
 -- after dispatch completes.
@@ -322,14 +322,14 @@ JOIN entries e ON e.id = s.entry_id
 WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
 ORDER BY e.pathname;
 
--- PREP: engine_render_telemetry_errors
--- SPEC §telemetry: 4xx/5xx log rows are mirrored into the packet's telemetry as
+-- PREP: engine_render_errors
+-- SPEC §operation-results: 4xx/5xx log rows are indexed in the packet's errors as
 -- LogCoordinate pointers, forcing the model to confront failures instead of letting
 -- them rot in log:///. Window = the current turn AND the immediately-prior one
 -- (>= current_turn_seq - 1): prior-turn for action failures the model just caused,
 -- current-turn so a same-turn engine error (the grinder's budget-overflow row, minted
 -- pre-generate then re-derived) surfaces THIS turn rather than a turn late.
--- §telemetry-uniform-error-channel
+-- §operation-result-uniform-error-channel
 SELECT
     le.op, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
@@ -403,7 +403,7 @@ JOIN loops l ON l.id = le.loop_id
 --   ~130-char meta-lines apiece — became 95% of its packet, a self-growing curation trap). SCOPED
 --   to le.scheme='log': a KILL of a worker:// note / sh:// stream is a world mutation, NOT log
 --   housekeeping, and stays visible. A FAILED op of any kind still renders — errors are signals
---   (§telemetry-uniform-error-channel).
+--   (§operation-result-uniform-error-channel).
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (le.op IN ('OPEN', 'FOLD') AND le.status_rx < 400)

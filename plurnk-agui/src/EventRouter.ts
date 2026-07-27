@@ -1,7 +1,7 @@
 // The module's per-worker render core (plurnk-agui#2). Routes a daemon event
 // (method, params) from the seam's event source → AG-UI events, composing the proven
 // projections: log/entry → core vocab, loop/terminated → RUN_FINISHED + budget STATE,
-// telemetry/stream → CUSTOM. Per-run state (turn tracking, model-run binding) lives in
+// notices/stream → CUSTOM. Per-run state (turn tracking, model-run binding) lives in
 // the Translator. Proposals are ProposalHitl's domain (the terminate-resume tool-call),
 // so this router deliberately leaves loop/proposal to it — one owner per concern.
 
@@ -22,7 +22,7 @@ export default class EventRouter {
         switch (method) {
             case "log/entry": return this.#t.logEntry(params as LogEntryNotification);
             case "loop/terminated": return this.#t.terminated(params as TerminatedNotification);
-            case "telemetry/event": return this.#t.telemetry((params as { event?: unknown }).event ?? params);
+            case "notice/event": return this.#t.notice((params as { notice?: unknown }).notice ?? params);
             case "stream/event":
             case "stream/concluded": return [
                 // Family channel (rich, full payload) AND the standard ACTIVITY channel (§475):

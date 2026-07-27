@@ -9,6 +9,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
@@ -33,6 +36,8 @@ const mockResponse = (dsl: string) => {
 };
 
 test("#598: an async wake resumes with the loop's durable provider, never the boot default", async () => {
+    const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-provider-"));
+    const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
         responses: [mockResponse("<<SEND[500]:boot provider must never run this loop:SEND")],
@@ -40,7 +45,7 @@ test("#598: an async wake resumes with the loop's durable provider, never the bo
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(execDsl("sleep 1; echo selected")),
+            mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
             mockResponse("<<SEND[200]:resumed on selected provider:SEND"),
         ],
     });
@@ -80,6 +85,7 @@ test("#598: an async wake resumes with the loop's durable provider, never the bo
                 assert.match(conflict.error?.message ?? "", /provider selection is frozen/,
                     "a conflicting provider request against the parked loop fails loudly");
 
+                await writeFile(releasePath, "");
                 await waitFor(
                     () => terminated() as Array<{ loopId: number; result: { status: number } }>,
                     (events) => events.some((event) => event.loopId === loopId && event.result.status === 200),
@@ -92,6 +98,7 @@ test("#598: an async wake resumes with the loop's durable provider, never the bo
     } finally {
         if (prior === undefined) delete process.env.PLURNK_MODEL_wakeb;
         else process.env.PLURNK_MODEL_wakeb = prior;
+        await rm(releaseDir, { recursive: true });
     }
 });
 
@@ -134,6 +141,11 @@ test("#598: a parked loop retains its provider across daemon restart", async () 
         );
         await first.stop();
         first = undefined;
+        assert.equal(
+            (await db.test_get_loop_status.get<{ status: number }>({ id: started.loopId }))?.status,
+            202,
+            "graceful daemon shutdown preserves parked work for recovery instead of cancelling it",
+        );
 
         second = new Daemon({ db, provider: boot });
         const terminated: Array<{ loopId: number; result: { status: number } }> = [];

@@ -64,9 +64,9 @@ export type { RefsCaptureNode, RefsQuery, RefsQueryCapture } from "./treesitter/
 export type {
     ContentOffset,
     LogCoordinate,
-    TelemetryEvent,
-    TelemetrySeverity,
-} from "./TelemetryEvent.ts";
+    Notice,
+    NoticeLevel,
+} from "./Notice.ts";
 
 // Per-mimetype classification authority (SPEC §20, #43) — the pure taxonomy
 // heuristic; Mimetypes.classify() is the registry-aware form.

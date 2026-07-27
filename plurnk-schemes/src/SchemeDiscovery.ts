@@ -23,7 +23,7 @@ import Meta from "@plurnk/plurnk-meta";
 //
 // The PLURNK_PLUGINS_TRUSTED_ONLY gate (plurnk-service#229) filters the scan:
 // when on, an untrusted third-party package is discovered but withheld from
-// `schemes` and returned in `skipped` for the consumer's telemetry note.
+// `schemes` and returned in `skipped` for the consumer's Notice.
 
 export interface SchemeInfo {
     readonly name: string;        // declared scheme name — the URI prefix

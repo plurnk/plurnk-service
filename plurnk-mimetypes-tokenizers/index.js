@@ -8,7 +8,7 @@
 // Duck contract consumed by the framework's Tokenizers seam:
 //   resolve(modelRef) → Promise<{ countTokens(text), tokenizerId } | null>
 // null = no bundled vocab matches the ref (a data gap; the seam degrades to its
-// chars/2 upper bound with telemetry). tokenizerId is the VOCAB identity — the
+// chars/2 upper bound with a Notice). tokenizerId is the VOCAB identity — the
 // tokenizer.json sha256 prefix from the manifest — never a model id, so model
 // refs sharing a vocabulary share the id and a vocab-preserving model swap
 // never invalidates counts derived against it.

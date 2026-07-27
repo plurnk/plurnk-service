@@ -98,8 +98,8 @@ test("a completed representative releases its duplicates while an unrelated repr
             workspaceId,
             workerId,
             mimetypes,
-            pushTelemetry: (event) => {
-                if (event.kind === "embed_progress" && event.completed === 2) twoCompleted();
+            pushNotice: (notice) => {
+                if (notice.kind === "embed_progress" && notice.completed === 2) twoCompleted();
             },
         }));
         await Promise.race([

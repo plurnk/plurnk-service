@@ -49,5 +49,5 @@ test("SchemeCtxImpl exposes only the public plugin context", () => {
     assert.equal("mimetypes" in ctx, false);
     assert.equal("executors" in ctx, false);
     assert.equal("injectWorker" in ctx, false);
-    assert.equal("pushTelemetry" in ctx, false);
+    assert.equal("pushNotice" in ctx, false);
 });

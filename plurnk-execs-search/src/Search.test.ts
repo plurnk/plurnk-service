@@ -2,7 +2,7 @@ import test, { beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import Search from "./Search.ts";
-import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
+import type { ExecArgs, ExecResult, Notice } from "@plurnk/plurnk-execs";
 
 const origFetch = globalThis.fetch;
 const origUrl = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
@@ -33,7 +33,7 @@ interface Capture {
     result: ExecResult;
     writes: { channel: string; chunk: string }[];
     states: { channel: string; state: string }[];
-    events: TelemetryEvent[];
+    events: Notice[];
 }
 
 const invoke = async (
@@ -43,7 +43,7 @@ const invoke = async (
 ): Promise<Capture> => {
     const writes: Capture["writes"] = [];
     const states: Capture["states"] = [];
-    const events: TelemetryEvent[] = [];
+    const events: Notice[] = [];
     const args: ExecArgs = {
         runtime, command, cwd: null, target: null,
         signal: opts.signal ?? new AbortController().signal,
@@ -248,7 +248,7 @@ test("search acquisition emits bounded aggregate progress with no candidate URLs
     assert.equal(progress.at(-1)?.materialized, 24);
     assert.equal(progress.at(-1)?.rejected, 1);
     assert.equal(progress.at(-1)?.percent, 100);
-    assert.ok(progress.every((event) => !JSON.stringify(event).includes("example3.test")), "telemetry never becomes a candidate URL ledger");
+    assert.ok(progress.every((notice) => !JSON.stringify(notice).includes("example3.test")), "notices never become a candidate URL ledger");
 });
 
 test("#596: every rejecting entry() leaves an empty model-facing digest", async () => {
@@ -437,7 +437,7 @@ test("external bang (!!) refused with status 400, no fetch", async () => {
     assert.equal(called, false);
 });
 
-test("caller-aborted signal → status 499, no telemetry", async () => {
+test("caller-aborted signal → status 499, no notices", async () => {
     const controller = new AbortController();
     setFetch(async () => { throw Object.assign(new Error("aborted"), { name: "AbortError" }); });
     controller.abort();

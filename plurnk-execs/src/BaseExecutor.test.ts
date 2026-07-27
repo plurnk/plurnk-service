@@ -2,7 +2,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import BaseExecutor from "./BaseExecutor.ts";
 import type { ChannelDecl, ExecArgs, ExecResult } from "./types.ts";
-import type { TelemetryEvent } from "./TelemetryEvent.ts";
+import type { Notice } from "./Notice.ts";
 
 // Minimal concrete executor exercising the contract: declares a single
 // `results` channel, echoes the command into it, and reports the matched tag.
@@ -21,7 +21,7 @@ class EchoExecutor extends BaseExecutor {
 const harness = () => {
     const writes: { channel: string; chunk: string; mimetype?: string }[] = [];
     const states: { channel: string; state: string }[] = [];
-    const events: TelemetryEvent[] = [];
+    const events: Notice[] = [];
     const args = (overrides: Partial<ExecArgs> = {}): ExecArgs => ({
         runtime: "search",
         command: "pie recipes",

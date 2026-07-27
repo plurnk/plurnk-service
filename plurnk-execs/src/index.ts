@@ -44,5 +44,5 @@ export type {
     SpawnArgs,
 } from "./types.ts";
 
-// Telemetry envelope (local mirror of grammar's TelemetryEvent schema)
-export type { TelemetryEvent, ContentOffset, LogCoordinate } from "./TelemetryEvent.ts";
+// Transient notice envelope (local mirror of grammar's Notice schema)
+export type { Notice, NoticeLevel, ContentOffset, LogCoordinate } from "./Notice.ts";

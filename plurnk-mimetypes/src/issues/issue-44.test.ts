@@ -74,7 +74,7 @@ describe("Issue #44 — T1: bundled match resolves exact", () => {
         const r = await m.tokenizer("gemma-4-26b");
         assert.equal(r.exact, true);
         assert.equal(r.tokenizerId, "abc123def4567890");
-        assert.equal(r.telemetry, undefined);
+        assert.equal(r.notices, undefined);
         assert.equal(await r.countTokens("one two three"), 3, "delegates to the artifact's tokenizer");
     });
 });
@@ -87,8 +87,8 @@ describe("Issue #44 — T2: missing package degrades honestly", () => {
         assert.equal(r.tokenizerId, "heuristic:chars2");
         assert.equal(await r.countTokens("abc"), 2, "ceil(3/2)");
         assert.equal(await r.countTokens(""), 0);
-        assert.equal(r.telemetry?.length, 1);
-        const ev = r.telemetry![0];
+        assert.equal(r.notices?.length, 1);
+        const ev = r.notices![0];
         assert.equal(ev.kind, "tokenizer_unavailable");
         assert.equal(ev.level, "warn");
         assert.equal(ev.source, "tokenizer");
@@ -103,9 +103,9 @@ describe("Issue #44 — T3: no bundled match degrades honestly", () => {
         const r = await m.tokenizer("claude-fable-5");
         assert.equal(r.exact, false);
         assert.equal(r.tokenizerId, "heuristic:chars2");
-        assert.equal(r.telemetry?.[0].kind, "tokenizer_unavailable");
-        assert.equal(r.telemetry?.[0].model, "claude-fable-5");
-        assert.equal(r.telemetry?.[0].plurnkPackage, undefined);
+        assert.equal(r.notices?.[0].kind, "tokenizer_unavailable");
+        assert.equal(r.notices?.[0].model, "claude-fable-5");
+        assert.equal(r.notices?.[0].plurnkPackage, undefined);
     });
 });
 

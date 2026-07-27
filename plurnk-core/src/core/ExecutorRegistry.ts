@@ -86,7 +86,7 @@ export default class ExecutorRegistry {
         }
 
         // #259 — git lockout. PLURNK_SERVICE_GIT_ALLOWED=0 must drop the git/gh executors ENTIRELY (not
-        // just membership + telemetry): a denied host neither dispatches EXEC[git]/[gh] nor teaches
+        // just membership + notices): a denied host neither dispatches EXEC[git]/[gh] nor teaches
         // them (the tools sheet reads the registered set). "No git" then training on git is a break.
         const gitDenied = process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1";
         const infos = [...discovered.values()].filter((info) => !(gitDenied && info.packageName === "@plurnk/plurnk-execs-git"));

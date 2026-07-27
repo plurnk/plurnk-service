@@ -1,6 +1,6 @@
 // [§git-portable-default] / [§git-native-flag] (#461) — core's git reads are in-process by
 // default (GitIso / isomorphic-git): membership (tracked ∪ untracked-not-ignored, gitlinks
-// filtered) and status telemetry, hermetic by construction. Fixtures are seeded with NATIVE
+// filtered) and status metadata, hermetic by construction. Fixtures are seeded with NATIVE
 // git and read through the iso backend, so every assertion is a native-write/iso-read
 // cross-validation; the differential test compares the two backends' output on the SAME repo.
 
@@ -87,7 +87,7 @@ test("GitState.status via iso: branch + staged/unstaged/untracked counts match t
         const workspaceId = await insertWorkspace(db, `iso-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
         const status = await GitState.status(db, workspaceId, undefined);
-        assert.ok(status !== null, "a git worktree yields telemetry");
+        assert.ok(status !== null, "a git worktree yields status metadata");
         assert.equal(status.branch, git(root, "symbolic-ref", "--short", "HEAD").trim(), "branch matches native");
         assert.equal(status.staged, 1, "staged.txt is the one staged change");
         assert.equal(status.unstaged, 1, "a.txt's edit is the one unstaged change");

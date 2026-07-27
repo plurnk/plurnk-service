@@ -14,13 +14,13 @@ export interface GitStatus {
     untracked: number;
 }
 
-// SPEC §telemetry — git working-tree state for the telemetry section: the model's
+// Git working-tree state for the packet: the model's
 // ambient "where am I, what have I touched" without running a command. In-process
 // by default (GitIso / isomorphic-git, #461 — portable, sandbox-safe, hermetic by
 // construction); PLURNK_SERVICE_GIT_NATIVE=1 shells out to system git instead (the
 // same surface git membership routes). Gated by `PLURNK_SERVICE_GIT_ALLOWED` (the
 // hard service ceiling) + a git worktree. Returns null when git is disabled,
-// headless, or non-git — the telemetry block is then omitted entirely. This is the
+// headless, or non-git — the status block is then omitted entirely. This is the
 // *state* read; the model's arbitrary git *operations* go through EXEC[git].
 export default class GitState {
     static #execFileP = promisify(execFile);
@@ -32,7 +32,7 @@ export default class GitState {
     }
 
     static async status(db: Db, workspaceId: number, signal: AbortSignal | undefined): Promise<GitStatus | null> {
-        // #232 — git:false denies git telemetry for the workspace (env AND workspace ceiling).
+        // #232 — git:false denies git status for the workspace (env AND workspace ceiling).
         if (!GitState.enabled() || (await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
         const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;
@@ -45,7 +45,7 @@ export default class GitState {
         try {
             ({ stdout } = await GitState.#execFileP("git", ["status", "--porcelain", "--branch"], { cwd: root, signal, maxBuffer: 16 * 1024 * 1024, env: hermeticGitEnv() }));
         } catch {
-            return null;  // not a git worktree, or git absent — fail closed, no telemetry
+            return null;  // not a git worktree, or git absent — fail closed, no status
         }
         return GitState.#parse(stdout);
     }

@@ -308,7 +308,7 @@ test("largest never advertises a FOLD the law refuses or the state already pulle
     assert.ok(byTurn.every((t) => t.tokens > 0));
 });
 
-test("notice render: a content-offset observation → a single meta line carrying line:col, no snippet fence", () => {
+test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
     const notices = [{
         source: "provider:test",
         kind: "grammar_unenforced",
@@ -317,9 +317,7 @@ test("notice render: a content-offset observation → a single meta line carryin
         position: { type: "content-offset", line: 1, column: 0 },
     }];
     const out = PacketWire.renderNotices(notices);
-    // A content-offset notice renders one terse `<kind> <line>:<col>` line — no JSON dump, no snippet
-    // fence. The model resolves the line against its own emission (the born-OPEN model row, §model-entry).
-    assert.match(out, /^\* grammar_unenforced 1:0$/m);
+    assert.match(out, /^\* grammar_unenforced: output diverged from the grammar @ 1:0$/m);
     assert.doesNotMatch(out, /\{"/, "no JSON dump");
     assert.doesNotMatch(out, /error:\/\//, "no snippet fence");
 });

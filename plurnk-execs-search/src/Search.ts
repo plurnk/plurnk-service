@@ -164,7 +164,7 @@ export default class Search extends BaseExecutor {
                 ...(config.authorization ? { headers: { Authorization: config.authorization } } : {}),
             });
         } catch (err) {
-            // Caller cancellation is normal flow, not telemetry-worthy.
+            // Caller cancellation is normal flow, not Notice-worthy.
             if (signal.aborted) {
                 setState("results", "errored");
                 return Results.failure("executor:search", "cancelled", 499, "Search execution was cancelled.", {}, { runtime });

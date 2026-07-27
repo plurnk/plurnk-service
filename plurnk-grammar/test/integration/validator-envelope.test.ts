@@ -173,102 +173,91 @@ test("Validator: ProviderDeclaration rejects zero contextSize", () => {
 });
 
 // -------------------------------------------------------------------------
-// TelemetryEvent
+// Notice
 // -------------------------------------------------------------------------
 
-test("Validator: TelemetryEvent accepts grammar parse_error with content-offset position", () => {
+test("Validator: Notice accepts grammar enforcement observation with content-offset position", () => {
     const ev = {
-        source: "grammar",
-        kind: "parse_error:lexer",
-        level: "error",
-        message: "unexpected `<<` in target",
+        source: "provider:local",
+        kind: "grammar_unenforced",
+        level: "warn",
+        message: "transported grammar diverged from the returned content",
         position: { type: "content-offset", line: 3, column: 12 },
     };
-    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+    const { valid, errors } = Validator.validateNotice(ev);
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: TelemetryEvent accepts engine:rail strike with kind-specific fields", () => {
+test("Validator: Notice accepts derivation progress with kind-specific fields", () => {
     const ev = {
-        source: "engine:rail",
-        kind: "strike",
-        level: "warn",
-        streak: 2,
-        maxStrikes: 3,
-        reason: "no_ops",
+        source: "engine:derivation",
+        kind: "embed_progress",
+        level: "info",
+        completed: 2,
+        total: 3,
+        percent: 66,
     };
-    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+    const { valid, errors } = Validator.validateNotice(ev);
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: TelemetryEvent accepts scheme:wiki dispatch_failure with log-coordinate", () => {
+test("Validator: Notice accepts search progress with a log-coordinate", () => {
     const ev = {
-        source: "scheme:wiki",
-        kind: "dispatch_failure",
-        level: "error",
-        message: "no such entry",
-        position: { type: "log-coordinate", coordinate: "log://1/2/3", op: "READ" },
+        source: "exec:search",
+        kind: "search_progress",
+        level: "info",
+        message: "acquiring search results: 50%",
+        position: { type: "log-coordinate", coordinate: "log:///1/2/3", op: "EXEC" },
     };
-    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+    const { valid, errors } = Validator.validateNotice(ev);
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: TelemetryEvent accepts engine:rail sudden_death with no message", () => {
-    const ev = { source: "engine:rail", kind: "sudden_death", level: "error" };
-    const { valid, errors } = Validator.validateTelemetryEvent(ev);
+test("Validator: Notice accepts a turn-lifecycle heartbeat with no message", () => {
+    const ev = { source: "engine:turn", kind: "turn_awaiting_model", level: "info" };
+    const { valid, errors } = Validator.validateNotice(ev);
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: TelemetryEvent rejects missing source", () => {
+test("Validator: Notice rejects missing source", () => {
     const ev: any = { kind: "parse_error", level: "error" };
-    const { valid } = Validator.validateTelemetryEvent(ev);
+    const { valid } = Validator.validateNotice(ev);
     assert.equal(valid, false);
 });
 
-test("Validator: TelemetryEvent rejects missing kind", () => {
+test("Validator: Notice rejects missing kind", () => {
     const ev: any = { source: "grammar", level: "error" };
-    const { valid } = Validator.validateTelemetryEvent(ev);
+    const { valid } = Validator.validateNotice(ev);
     assert.equal(valid, false);
 });
 
-test("Validator: TelemetryEvent rejects missing level", () => {
+test("Validator: Notice rejects missing level", () => {
     const ev: any = { source: "grammar", kind: "parse_error" };
-    const { valid } = Validator.validateTelemetryEvent(ev);
+    const { valid } = Validator.validateNotice(ev);
     assert.equal(valid, false);
 });
 
-test("Validator: TelemetryEvent rejects level outside the error|warn|info enum", () => {
+test("Validator: Notice rejects level outside the error|warn|info enum", () => {
     const ev = { source: "grammar", kind: "parse_error", level: "debug" };
-    const { valid } = Validator.validateTelemetryEvent(ev);
+    const { valid } = Validator.validateNotice(ev);
     assert.equal(valid, false);
 });
 
-test("Validator: TelemetryEvent rejects malformed source pattern", () => {
+test("Validator: Notice rejects malformed source pattern", () => {
     const ev = { source: "Grammar:Bad", kind: "x", level: "error" };
-    const { valid } = Validator.validateTelemetryEvent(ev);
+    const { valid } = Validator.validateNotice(ev);
     assert.equal(valid, false);
 });
 
-test("Validator: TelemetryEvent rejects unknown position type", () => {
+test("Validator: Notice rejects unknown position type", () => {
     const ev = {
         source: "grammar",
         kind: "parse_error",
         level: "error",
         position: { type: "byte-offset", offset: 42 },
     };
-    const { valid } = Validator.validateTelemetryEvent(ev);
+    const { valid } = Validator.validateNotice(ev);
     assert.equal(valid, false);
-});
-
-test("Validator: PlurnkParseError.toTelemetryEvent() validates", async () => {
-    const { default: PlurnkParseError } = await import("../../src/PlurnkParseError.ts");
-    const err = new PlurnkParseError(5, 12, "lexer", "stray token");
-    const ev = err.toTelemetryEvent();
-    const { valid, errors } = Validator.validateTelemetryEvent(ev);
-    assert.equal(valid, true, JSON.stringify(errors));
-    assert.equal(ev.source, "grammar");
-    assert.equal(ev.kind, "parse_error:lexer");
-    assert.deepEqual(ev.position, { type: "content-offset", line: 5, column: 12 });
 });
 
 // RFC 9457 operation failures

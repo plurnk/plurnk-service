@@ -5,16 +5,16 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import Jq from "./Jq.ts";
-import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
+import type { ExecArgs, ExecResult, Notice } from "@plurnk/plurnk-execs";
 
 const HAS_JQ = spawnSync("jq", ["--version"]).status === 0;
 
-interface Capture { result: ExecResult; out: string | undefined; states: string[]; events: TelemetryEvent[]; }
+interface Capture { result: ExecResult; out: string | undefined; states: string[]; events: Notice[]; }
 
 const run = async (command: string, target: string | null = null, env?: NodeJS.ProcessEnv, cwd: string | null = null): Promise<Capture> => {
     let out: string | undefined;
     const states: string[] = [];
-    const events: TelemetryEvent[] = [];
+    const events: Notice[] = [];
     const args: ExecArgs = {
         runtime: "jq", command, cwd, target, env,
         signal: new AbortController().signal,

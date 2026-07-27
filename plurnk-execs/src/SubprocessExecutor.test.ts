@@ -5,14 +5,14 @@ import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
 import type { ExecArgs, ExecResult } from "./types.ts";
-import type { TelemetryEvent } from "./TelemetryEvent.ts";
+import type { Notice } from "./Notice.ts";
 
 // Drive a real subprocess and collect the sink activity. Resolves once run()
 // settles.
 const exec = async (runtime: string, command: string, opts: { signal?: AbortSignal; env?: NodeJS.ProcessEnv; cwd?: string; target?: string } = {}) => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const states: { channel: string; state: string }[] = [];
-    const events: TelemetryEvent[] = [];
+    const events: Notice[] = [];
     const args: ExecArgs = {
         runtime, command, cwd: opts.cwd ?? null, target: opts.target ?? null, env: opts.env,
         signal: opts.signal ?? new AbortController().signal,
@@ -153,7 +153,7 @@ test("sh: stdout streamed, channels closed, exit 0", async () => {
     assert.equal(events.length, 0);
 });
 
-test("sh: nonzero exit → durable Problem result, errored channels, no telemetry", async () => {
+test("sh: nonzero exit → durable Problem result, errored channels, no notices", async () => {
     const { result, states, events } = await exec("sh", "echo oops 1>&2; exit 3");
     assert.equal(result.status, 500);
     assert.equal(result.exitCode, 3);
@@ -171,7 +171,7 @@ test("sh: stderr captured into the stderr channel", async () => {
     assert.equal(out.stderr, "to-err\n");
 });
 
-test("spawn failure returns a durable Problem instead of transient telemetry", async () => {
+test("spawn failure returns a durable Problem instead of transient notices", async () => {
     const { result, states, events } = await exec("definitely-not-a-real-binary-xyz", "noop");
     assert.equal(result.status, 500);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/subprocess/spawn-failed");

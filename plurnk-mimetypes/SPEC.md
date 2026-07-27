@@ -247,7 +247,7 @@ interface ProcessResult {
     extent: number;            // §12.5
     grammarMissing?: string;   // §13.4
     searchExcluded?: string;          // §21 — matched SEARCH_EXCLUDE pattern
-    telemetry?: readonly TelemetryEvent[]; // warn events for hidden degradations — §11.5
+    notices?: readonly Notice[];   // non-fatal degradation observations — §11.5
     // channels — present iff requested (§5)
     symbols?: MimeSymbol[];    // structured definitions; render via format() if needed
     deepJson?: unknown;
@@ -428,13 +428,25 @@ This is the symmetric design promised in issue #10: jsonpath dispatches against 
 | Content can't be parsed for the dialect | `QueryParseFailureError` → consumer maps to 422 |
 | Zero matches | returns `[]` → consumer maps to 204 |
 
-### 11.5 TelemetryEvent envelope
+### 11.5 Notices and failures
 
-All four error classes — `UnsupportedDialectError`, `InvalidExpressionError`, `QueryParseFailureError`, `GrammarNotInstalledError` — expose `toTelemetryEvent(): TelemetryEvent` per plurnk-mimetypes#5 / plurnk-grammar. Consumers route on `source` + `kind` instead of `instanceof` checks; `source` is `mimetype:<normalized-type>` (slashes/special chars → `_`); `kind` is one of `unsupported_dialect`, `invalid_expression`, `query_parse_failure`, `grammar_not_installed`. The envelope is open-schema — error-specific fields (`dialect`, `expression`, `reason`, `mimetype`, `plurnkPackage`) surface as additional properties so consumers don't need to re-parse the message.
+`Notice` is reserved for a successful operation's non-fatal degradation. When
+the default (non-strict) path degrades, `process()` attaches one warning Notice
+per degradation to `ProcessResult.notices[]`: `grammar_degraded` when
+`grammarMissing` is set and `embedding_degraded` when `embeddingMissing` is
+set. Each names the relevant `plurnkPackage`; the array is absent on the happy
+path.
 
-**`level` is required** (plurnk-grammar #43, enum `error | warn | info`). Severity is meaning, and the producer is the only party that knows it — so it's set at the emit site, never inferred client-side from `kind` strings (plurnk-service#276). All four error envelopes are `level: "error"`.
+Hard failures are not Notices. `UnsupportedDialectError`,
+`InvalidExpressionError`, `QueryParseFailureError`, and strict
+`GrammarNotInstalledError` remain typed exceptions. The consumer maps each at
+its operation boundary to the universal durable result and RFC 9457 Problem
+Details. This keeps one authority for failure status, detail, and recovery.
 
-**Degradation telemetry (`ProcessResult.telemetry`).** A degraded result reports `ok: true`, so its severity is invisible in the status — the producer surfaces it as a `warn` event instead. When the default (non-strict) path degrades, `process()` attaches one `TelemetryEvent` per degradation to `ProcessResult.telemetry[]`: `kind: "grammar_degraded"` when `grammarMissing` is set, `kind: "embedding_degraded"` when `embeddingMissing` is set, each `level: "warn"` and carrying `plurnkPackage`. The host forwards these into `packet.user.telemetry.events[]`. The array is absent on the happy path. Hard failures (`ok: false`) carry no entry — the status *is* the severity.
+Notice sources use `mimetype:<normalized-type>`, with invalid runs normalized to
+`-`. `level` is required and producer-owned; these degradation Notices use
+`warn`. Consumers may present or forward them, but cannot use them as durable
+failure truth.
 
 ## 12. Channel architecture
 
@@ -667,7 +679,7 @@ interface TokenizerResolution {
     countTokens(text: string): Promise<number>;
     tokenizerId: string;   // vocab identity, NOT model id
     exact: boolean;
-    telemetry?: readonly TelemetryEvent[];  // present iff degraded
+    notices?: readonly Notice[];  // present iff degraded
 }
 ```
 

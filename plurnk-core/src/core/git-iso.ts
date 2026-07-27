@@ -2,7 +2,7 @@
 // default behind every core git read. No subprocess, and hermetic BY CONSTRUCTION: isomorphic-git
 // takes an explicit `dir` and never reads GIT_* env, ~/.gitconfig, or the system config, so the
 // escape class hermeticGitEnv scrubs on the native path (#401/#428) cannot exist here. A sandboxed
-// or git-less host gets identical membership + telemetry. `PLURNK_SERVICE_GIT_NATIVE=1` routes the
+// or git-less host gets identical membership + working-tree status. `PLURNK_SERVICE_GIT_NATIVE=1` routes the
 // callers (GitMembership, GitState) to system git instead — the membership pass measures ~8x native
 // (~130ms at 20k files); the status read is pure-JS workdir hashing (statusMatrix, ~55x), the
 // flag's main case on a large repo.

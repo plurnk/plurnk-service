@@ -19,7 +19,7 @@ import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 export type NotifyTarget = "all" | { workspaceId: number };
 // One drained loop's terminal shape — the drain's return currency.
 export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: { promptTokens: number; completionTokens: number; costUsd: number } }
-import type { PlurnkStatement } from "@plurnk/plurnk-grammar";
+import type { Notice, PlurnkStatement } from "@plurnk/plurnk-grammar";
 import LogEntry from "./logEntry.ts";
 import type { LogEntryWire } from "./logEntry.ts";
 import Envelope from "./envelope.ts";
@@ -183,7 +183,7 @@ export default class Daemon {
             // tear down its held streams before the operation completes.
             cancelWorker: async (workerId, reason) => this.#cancelWorkerTree(workerId, reason),
             cancelDescendants: async (workerId, reason) => this.#cancelTree(workerId, reason, false),
-            telemetryEventNotify: (workspaceId, payload) => this.notifyTelemetryEvent(workspaceId, payload),
+            noticeNotify: (workspaceId, payload) => this.notifyNotice(workspaceId, payload),
         });
         // Wire proposal-pending events to the loop/proposal WS notification.
         // Sessionid scopes the broadcast to clients on the same workspace.
@@ -746,14 +746,10 @@ export default class Daemon {
     }
 
     /**
-     * Emit a telemetry/event notification scoped to the workspace containing
-     * the loop. TelemetryChannel.push invokes this for every TelemetryEvent
-     * (parse_error, strike, cycle, sudden_death, no_ops, max_commands_exceeded,
-     * action_failure) the moment it lands in the loop's telemetry buffer.
-     * SPEC §telemetry.
+     * Emit a transient notice scoped to the workspace containing the loop.
      */
-    notifyTelemetryEvent(workspaceId: number, payload: { loopId: number; event: object }): void {
-        this.#broadcast({ workspaceId }, "telemetry/event", payload);
+    notifyNotice(workspaceId: number, payload: { loopId: number; notice: Notice }): void {
+        this.#broadcast({ workspaceId }, "notice/event", payload);
     }
 
     /**
@@ -987,11 +983,13 @@ export default class Daemon {
                         // claimable and the drain re-runs it on the next claim below.
                         if (this.#owedWakes.delete(workerId)) {
                             await this.#lifecycle.wake(loopRow.id);
+                            currentLoopId = null;
                             continue;
                         }
                         // The loop is blocked at 202 on a live obligation (§wait-obligation-matrix);
                         // that obligation's conclusion is its wake edge (the owed-wake above covers the
                         // conclude-before-block race). An idle wait never reaches here — it concluded at dispatch.
+                        currentLoopId = null;
                         continue;
                     }
                     this.#owedWakes.delete(workerId); // the loop concluded (non-202) — no park to honor a held wake at
@@ -1022,6 +1020,7 @@ export default class Daemon {
                     // wake conclusion or a loop.run-while-active) is promoted to
                     // a fresh queued loop so it's never silently dropped.
                     await this.#reconcileOrphanedWake(workerId, loopRow.id);
+                    currentLoopId = null;
                 }
             } catch (err) {
                 if (controller.signal.aborted) {
@@ -1073,10 +1072,10 @@ export default class Daemon {
                     // alone reaches no one (firstLoopPromise/drainPromise are .catch()'d). Broadcast 500
                     // (failed) — distinct from an abort's 499 — for every error, not just the pre-first one.
                     // #506 — the WHY must reach every forensic channel, not one. The old handler
-                    // fed only the loop row + broadcast; run54 died with the daemon log silent, zero
-                    // error telemetry, and a bare 500 — the cause (a stack) reachable nowhere. The
-                    // daemon-log line + the error telemetry event fire even when currentLoopId is null
-                    // or the row-write itself is what failed, so a death is never traceless again.
+                    // fed only the loop row + broadcast; run54 died with the daemon log silent and
+                    // a bare 500 — the cause (a stack) reachable nowhere. The daemon-log line still
+                    // fires when currentLoopId is null or the row-write itself failed; otherwise the
+                    // durable loop result and loop/terminated notification preserve the exact Problem.
                     console.error(`drain error (workspace ${workspaceId}, worker ${workerId}, loop ${currentLoopId ?? "?"}):`, err);
                     if (currentLoopId !== null) {
                         const failure = err instanceof OperationFailureError

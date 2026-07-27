@@ -6,19 +6,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import git from "isomorphic-git";
 import Git from "./Git.ts";
-import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
+import type { ExecArgs, ExecResult, Notice } from "@plurnk/plurnk-execs";
 
 interface Capture {
     result: ExecResult;
     out: string | undefined;
     states: string[];
-    events: TelemetryEvent[];
+    events: Notice[];
 }
 
 const run = async (command: string, cwd: string | null = null, target: string | null = null): Promise<Capture> => {
     let out: string | undefined;
     const states: string[] = [];
-    const events: TelemetryEvent[] = [];
+    const events: Notice[] = [];
     const args: ExecArgs = {
         runtime: "git", command, cwd, target,
         signal: new AbortController().signal,

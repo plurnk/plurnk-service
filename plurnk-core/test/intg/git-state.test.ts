@@ -1,4 +1,4 @@
-// SPEC §telemetry — git working-tree state in the telemetry section. GitState shells
+// SPEC §client-metadata — git working-tree state in the client metadata section. GitState shells
 // `git status` (service-side, the same surface membership uses), gated by
 // PLURNK_SERVICE_GIT_ALLOWED (the hard service ceiling) + a git worktree.
 
@@ -15,7 +15,7 @@ import { openMigrated, insertWorkspace, rootWorkspace } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
-test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWED (git telemetry)", async () => {
+test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWED", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-gitstate-"));
     const db = await openMigrated();
     const orig = process.env.PLURNK_SERVICE_GIT_ALLOWED;
@@ -42,7 +42,7 @@ test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWE
 
         // The hard ceiling flatly disables it.
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
-        assert.equal(await GitState.status(db, workspaceId, undefined), null, "PLURNK_SERVICE_GIT_ALLOWED=0 disables git telemetry");
+        assert.equal(await GitState.status(db, workspaceId, undefined), null, "PLURNK_SERVICE_GIT_ALLOWED=0 disables git status metadata");
     } finally {
         if (orig === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED;
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = orig;

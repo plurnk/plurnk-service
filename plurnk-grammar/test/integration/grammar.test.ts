@@ -194,10 +194,23 @@ test("value-add: a turn that derails mid-op does NOT get a misleading SEND imper
 });
 
 test("value-add: near-miss op swallowed as prose surfaces a warning, not an error", () => {
-    const r = PlurnkParser.parse("<<PLAN:t:PLAN <<CLOSE(log://x)::CLOSE <<SEND[200]:d:SEND");
+    const emission = "<<PLAN:t:PLAN <<CLOSE(log://x)::CLOSE <<SEND[200]:d:SEND";
+    const r = PlurnkParser.parse(emission);
     const warn = r.items.find((i) => i.kind === "error" && i.error.severity === "warning");
     assert.ok(warn && warn.kind === "error", "expected a warning advisory");
     assert.match(warn.error.message, /`<<CLOSE`.*did you mean `<<FOLD`/);
+    assert.deepEqual(
+        { line: warn.error.line, column: warn.error.column },
+        { line: 1, column: emission.indexOf("<<CLOSE") },
+        "the advisory points at the actual near-miss after the preceding close tag",
+    );
+    const send = r.items.find((i) => i.kind === "statement" && i.statement.op === "SEND");
+    assert.ok(send && send.kind === "statement");
+    assert.deepEqual(
+        send.statement.position,
+        { line: 1, column: emission.indexOf("<<SEND") },
+        "manual close-tag consumption cannot corrupt following token positions",
+    );
     // It is a warning, not an error, and the turn still parsed.
     assert.equal(r.items.filter((i) => i.kind === "error" && i.error.severity === "error").length, 0);
     assert.equal(r.items.filter((i) => i.kind === "statement").length, 2);
@@ -211,13 +224,6 @@ test("value-add: near-miss is immune to bodies — embedded `<<CLOSE` in an EDIT
 test("value-add: a bare `<<DELETE` mention without heredoc close is NOT flagged (op-shape gate)", () => {
     const r = PlurnkParser.parse("<<PLAN:weighing <<DELETE vs KILL:PLAN <<KILL(x)::KILL <<SEND[200]:d:SEND");
     assert.equal(r.items.filter((i) => i.kind === "error").length, 0);
-});
-
-test("value-add: warning carries severity through to the TelemetryEvent level", () => {
-    const r = PlurnkParser.parse("<<PLAN:t:PLAN <<DELETE(x)::DELETE <<SEND[200]:d:SEND");
-    const warn = r.items.find((i) => i.kind === "error" && i.error.severity === "warning");
-    assert.ok(warn && warn.kind === "error");
-    assert.equal(warn.error.toTelemetryEvent().level, "warn");
 });
 
 // {§send-mid-reservation}

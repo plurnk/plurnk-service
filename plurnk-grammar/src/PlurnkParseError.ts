@@ -1,5 +1,3 @@
-import type { TelemetryEvent } from "./types.generated.ts";
-
 export type ErrorSource = "lexer" | "parser" | "visitor";
 export type Severity = "error" | "warning";
 
@@ -25,20 +23,6 @@ export default class PlurnkParseError extends Error {
             source: this.source,
             severity: this.severity,
             message: this.message,
-        };
-    }
-
-    toTelemetryEvent(): TelemetryEvent {
-        return {
-            source: "grammar",
-            kind: `parse_error:${this.source}`,
-            level: this.severity === "warning" ? "warn" : "error",
-            message: this.message,
-            position: {
-                type: "content-offset",
-                line: this.line,
-                column: this.column,
-            },
         };
     }
 }

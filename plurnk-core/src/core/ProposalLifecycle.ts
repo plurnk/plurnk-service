@@ -2,7 +2,7 @@ import type { PlurnkStatement, ParsedPath } from "@plurnk/plurnk-grammar";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type TelemetryChannel from "./TelemetryChannel.ts";
+import type NoticeChannel from "./NoticeChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
@@ -87,7 +87,7 @@ const readProposalTimeoutMs = (): number | null => {
 export default class ProposalLifecycle {
     #db: Db;
     #schemes: SchemeRegistry;
-    #telemetry: TelemetryChannel;
+    #notices: NoticeChannel;
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     #tokenize: (text: string) => number;
@@ -109,10 +109,10 @@ export default class ProposalLifecycle {
     // chains come later if a real consumer needs them.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, telemetry, streamEventNotify, wakeWorkerNotify, tokenize, mimetypes, executors, loopSignal, liveSubscriptions }: {
+    constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, tokenize, mimetypes, executors, loopSignal, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
-        telemetry: TelemetryChannel;
+        notices: NoticeChannel;
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         tokenize: (text: string) => number;
@@ -123,7 +123,7 @@ export default class ProposalLifecycle {
     }) {
         this.#db = db;
         this.#schemes = schemes;
-        this.#telemetry = telemetry;
+        this.#notices = notices;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#tokenize = tokenize;
@@ -231,7 +231,7 @@ export default class ProposalLifecycle {
                 wakeWorkerNotify: this.#wakeWorkerNotify,
                 tokenize: this.#tokenize,
                 mimetypes: this.#mimetypes,
-                pushTelemetry: (event) => this.#telemetry.push(workspaceId, loopId, event),
+                pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
                 executors: this.#executors(),
             };
             const request = {

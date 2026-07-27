@@ -58,7 +58,7 @@ export type {
     SendBody,
     SendStatement,
     OpenStatement,
-    TelemetryEvent,
+    Notice,
     UrlPath,
     WorkStatement,
 } from "./types.ts";

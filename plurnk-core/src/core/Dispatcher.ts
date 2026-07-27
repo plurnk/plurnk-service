@@ -5,7 +5,7 @@ import type { Db } from "./Db.ts";
 import Owner from "./Owner.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type TelemetryChannel from "./TelemetryChannel.ts";
+import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
@@ -96,7 +96,7 @@ export default class Dispatcher {
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
     #tokenize: (text: string) => number;
-    #telemetry: TelemetryChannel;
+    #notices: NoticeChannel;
     #proposals: ProposalLifecycle;
     // Boot-discovered runtime executors, late-injected on Engine — thunked.
     #executors: () => ExecutorRegistry | undefined;
@@ -118,12 +118,12 @@ export default class Dispatcher {
     #lifecycle: LoopLifecycle;
     #preparedEdits = new WeakMap<EditStatement, PreparedEdit>();
 
-    constructor({ db, schemes, mimetypes, tokenize, telemetry, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
+    constructor({ db, schemes, mimetypes, tokenize, notices, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
         tokenize: (text: string) => number;
-        telemetry: TelemetryChannel;
+        notices: NoticeChannel;
         proposals: ProposalLifecycle;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
@@ -141,7 +141,7 @@ export default class Dispatcher {
         this.#schemes = schemes;
         this.#mimetypes = mimetypes;
         this.#tokenize = tokenize;
-        this.#telemetry = telemetry;
+        this.#notices = notices;
         this.#proposals = proposals;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
@@ -495,7 +495,7 @@ export default class Dispatcher {
             injectWorker: this.#injectWorker,
             mimetypes: this.#mimetypes,
             tokenize: this.#tokenize,
-            pushTelemetry: (event) => this.#telemetry.push(workspaceId, loopId, event),
+            pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
             executors: this.#executors(),
         };
     }

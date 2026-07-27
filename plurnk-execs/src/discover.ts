@@ -68,7 +68,7 @@ export default class Discover {
             // tag is read or — critically — any dynamic runtimes hook is
             // imported: an untrusted third-party package is discovered but not
             // registered, and its code is never executed. Recorded for the
-            // consumer's telemetry note, never crashed on.
+            // consumer's notices note, never crashed on.
             if (!Meta.isTrusted(manifest.packageName)) {
                 skipped.add(manifest.packageName);
                 continue;

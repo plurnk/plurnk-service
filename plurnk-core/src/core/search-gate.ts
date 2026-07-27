@@ -1,5 +1,5 @@
 // §search-gate (#406, owner ruling) — the search cost gates, rail-family shape: in-memory
-// per-loop accounting cleaned at the same seam as strikes/telemetry, restart-drop accepted
+// per-loop accounting cleaned at the same seam as strikes/notices, restart-drop accepted
 // (a post-restart duplicate just re-fetches; the TTL makes that cheap).
 //
 //   Dedup — an IDENTICAL (runtime, command) already run in this loop STRIKES and SERVES: the

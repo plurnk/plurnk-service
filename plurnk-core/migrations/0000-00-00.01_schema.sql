@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- NULL = the owning run itself (self), rendered without a worker= label.
     source          TEXT,
 
-    -- 'error' is an ACTIONLESS row (§telemetry — errors are log items): a parse failure that
+    -- 'error' is an ACTIONLESS row (§operation-results — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
     -- 'model' is an ACTIONLESS row too (§model-entry): the model's own verbatim emission, mirrored

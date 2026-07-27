@@ -7,7 +7,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
-import type { TelemetryEvent } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-grammar";
 import type { PacketSection } from "./packet-wire.ts";
 import type { SchemeResultBase } from "./results.ts";
 
@@ -70,12 +70,9 @@ export interface PlurnkSchemeContext {
     // default → the bare entry path, non-default → path#channel. Engine wires the registry;
     // absent → "body" (correct for body-default entries, e.g. test ctxs without exec).
     readonly defaultChannelFor?: (scheme: string | null) => string;
-    // Push a TelemetryEvent into the loop's telemetry buffer. Closes over
-    // workspaceId + loopId so the scheme just provides the event payload.
-    // Wired by Engine to #pushTelemetry → fans out to the next packet's
-    // user.telemetry.errors[] AND the live `telemetry/event` client
-    // notification. SPEC §telemetry.
-    readonly pushTelemetry?: (event: TelemetryEvent) => void;
+    // Push a transient Notice. The engine drains it into the next packet's
+    // Notices section and broadcasts it through `notice/event`.
+    readonly pushNotice?: (notice: Notice) => void;
 }
 
 // Optional packet hook (§packet-assembly). A scheme implements this to rewrite

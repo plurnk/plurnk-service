@@ -6,7 +6,7 @@
 // The framework surface is `BaseExecutor.run()` + `discover()`.
 
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
-import type { TelemetryEvent } from "./TelemetryEvent.ts";
+import type { Notice } from "./Notice.ts";
 
 // Channel lifecycle state. Mirrors plurnk-service's per-channel state machine:
 // `active` while producing, then a terminal `closed` (clean) or `errored`.
@@ -33,7 +33,7 @@ export interface ExecutorMetadata {
 // never the db, subscription registry, AbortController bridging, or
 // wake-on-completion machinery, all of which stay in the consuming scheme
 // (service#174). The executor writes output, drives channel state, emits
-// telemetry, and honors `signal`.
+// notices, and honors `signal`.
 export interface ExecArgs {
     // The matched runtime tag. Multi-tag executors branch on it (e.g. the
     // search sibling maps `news`/`images` → SearXNG `categories=`).
@@ -75,9 +75,10 @@ export interface ExecArgs {
     write: (channel: string, chunk: string, mimetype?: string) => void;
     // Transition a declared channel's lifecycle state.
     setState: (channel: string, state: ChannelState) => void;
-    // Emit a telemetry/error event. The scheme routes it to the engine's
-    // telemetry buffer (service#174 Q3).
-    emit: (event: TelemetryEvent) => void;
+    // Emit a transient, nonterminal observation. The scheme routes it to the
+    // engine's Notice channel; operation failures belong in the returned
+    // ExecResult as RFC 9457 Problem Details.
+    emit: (notice: Notice) => void;
     // Request materialization/prefetch of a substrate entry (Web Search Epic,
     // execs#18 / service#340): the executor supplies the address (`path`) and
     // tags; the CONSUMER creates the entry and announces it (folded row) — the
@@ -181,7 +182,7 @@ export interface Discovery {
     // Installed exec packages skipped by the PLURNK_PLUGINS_TRUSTED_ONLY trust
     // gate (untrusted third-party): discovered but NOT registered. discover()
     // never crashes on an untrusted package — it returns them here so the
-    // consumer can emit a telemetry note (discover() has no sink of its own).
+    // consumer can emit a notices note (discover() has no sink of its own).
     skipped: string[];
     // Registered tags removed by the runtime policy (PLURNK_EXECS_<tag>=0 /
     // PLURNK_EXECS_ONLY — the daemon boot layer; SPEC §3.3): materialized but

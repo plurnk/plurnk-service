@@ -46,7 +46,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
 | `log/entry` origin≠model | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | `loop/proposal` | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
 | `loop/terminated` | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
-| `telemetry/event` | `CUSTOM plurnk.telemetry` |
+| `notice/event` | `CUSTOM plurnk.notice` |
 | `stream/event` + `stream/concluded` | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 | `loop/quiesced` | `CUSTOM plurnk.quiesced` |
 
@@ -70,7 +70,7 @@ One daemon notification in, zero-or-more AG-UI events out (`Translator`, pure):
   `subtype` is DROPPED (uncorrelatable → agui never coins an id or coerces a subtype).
 - **The custom namespace** {§agui-custom-namespace} — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
-  `plurnk.telemetry`, `plurnk.stream`, `plurnk.quiesced`, `plurnk.terminated` — the full loop
+  `plurnk.notice`, `plurnk.stream`, `plurnk.quiesced`, `plurnk.terminated` — the full loop
   outcome the budget `STATE_DELTA` can't hold). Generic frontends skip unknown customs; plurnk-aware frontends render
   them richly. Nothing plurnk-specific ever masquerades as a core event.
 - **Numbers pass through verbatim** {§agui-numbers-passthrough} — the budget `STATE_DELTA`

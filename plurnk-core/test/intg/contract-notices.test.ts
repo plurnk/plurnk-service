@@ -1,5 +1,5 @@
-// SPEC contract coverage for the user-packet telemetry + prompt-foist
-// surface (§packet / §telemetry). One test per contract tag. Every assertion is
+// SPEC contract coverage for the user-packet notices + prompt-foist
+// surface (§packet / §operation-results). One test per contract tag. Every assertion is
 // against real DB artifacts and the real wire render — no stand-ins.
 //
 // Parse errors are driven END-TO-END: the Mock response supplies `content`
@@ -42,7 +42,7 @@ const contentResponse = (content: string): MockResponse => ({
 });
 
 // A no-op draining turn — its only job is to RUN so the model's NEXT packet drains the
-// telemetry buffer on read. These tests assert the drain, never a dispatch; the former
+// notices buffer on read. These tests assert the drain, never a dispatch; the former
 // bare-statement op builders (no PLAN lead) silently parsed to [] anyway — same effect,
 // now explicit (and parseDsl no longer hides that parse error — see _rpc.ts).
 const drainTurn = opsResponse([]);
@@ -53,8 +53,8 @@ const drainTurn = opsResponse([]);
 const BROKEN_STMT = "<<SEND[x]:y:SEND";
 
 // An engine NOTICE provider (providers#24 filter mode): returns the model's bytes + a non-fatal
-// `grammar_unenforced` TelemetryEvent at a code-point divergence. A NOTICE is telemetry (ephemeral,
-// drain-on-read, broadcast) — distinct from a model ERROR, which is now a log item (§telemetry).
+// `grammar_unenforced` Notice at a code-point divergence. A Notice is ephemeral,
+// drain-on-read, and broadcast — distinct from a durable failure log item.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
 const NOTICE_CONTENT = "<<PLAN:reasoning:PLAN\n<<SEND[103]:noted:SEND"; // 'N' of SEND on line 2 = code point 26
 const NOTICE_POS = 26; // → content-offset line 2, column 4
@@ -99,7 +99,11 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
 
         const p2 = await getPacket(db, t2.turnId);
         const notice = packetSection(p2, "notices");
-        assert.equal(notice, "* grammar_unenforced 2:4", "the notice surfaced on the next packet as a terse content-offset");
+        assert.equal(
+            notice,
+            "* grammar_unenforced: grammar not enforced at code point 26 @ 2:4",
+            "the notice surfaced on the next packet with its bounded message and content-offset",
+        );
 
         // The wire: a meta line carrying the position, no snippet / error:// fence. The Errors
         // section is framework status (uri+status pointers) in the user slot's status clump
@@ -108,7 +112,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
-        assert.match(wire, /^\* grammar_unenforced 2:4$/m, "the notice renders as a terse kind + content-offset line:col");
+        assert.match(wire, /^\* grammar_unenforced: grammar not enforced at code point 26 @ 2:4$/m);
 
         // The mirror is ALWAYS folded — even on the NOTICE turn (the auto-OPEN trigger is retired);
         // the model READs the folded row at line 2 when it cares.
@@ -142,11 +146,11 @@ test("a thrown ProviderError is persisted as one exact operation failure — no 
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // Providers 0.32 retired the constrained-path throw: a completed exchange ALWAYS
-        // returns (bytes + a conformance OBSERVATION on response.telemetry — the #275 test
+        // returns (bytes + a conformance OBSERVATION on response.notices — the #275 test
         // below pins that path). A ProviderError reaching the engine therefore means NO
         // completed exchange exists (auth, network, rate limit) — the engine must NOT
         // fabricate an empty turn (the retired fallback laundered provider adjudications
-        // into model-behavior 422s): telemetry the cause and propagate, so the drain
+        // into model-behavior 422s): notices the cause and propagate, so the drain
         // writes the loop terminal 500 with the message.
         const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
         const realGenerate = provider.generate.bind(provider);
@@ -189,11 +193,11 @@ test("a thrown ProviderError is persisted as one exact operation failure — no 
     } finally { await db.close(); }
 });
 
-test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the bytes persist and a telemetry event with the divergence position drains onto the next packet", async () => {
+test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the bytes persist and a Notice with the divergence position drains onto the next packet", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // GBNF-filter mode (providers 0.19.0): generate() returns the model's UNCONSTRAINED bytes
-        // and attaches a non-fatal grammar_unenforced TelemetryEvent carrying the code-point
+        // and attaches a non-fatal grammar_unenforced Notice carrying the code-point
         // divergence position — it does NOT throw. The engine must persist the bytes (no empty
         // turn, the old cascade root cause) AND drain the event with a content-offset line:col the
         // model resolves against its own (born-OPEN) emission.
@@ -224,22 +228,22 @@ test("#275 / providers#24 — filter-mode grammar_unenforced does NOT throw: the
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            "* grammar_unenforced 2:4",
-            "grammar_unenforced drains exactly once as a terse content-offset",
+            "* grammar_unenforced: grammar not enforced: output rejected by the transported grammar at code point 26 @ 2:4",
+            "grammar_unenforced drains exactly once with its explanation and content-offset",
         );
     } finally { await db.close(); }
 });
 
-test("provider error: a terminal kind is durable product truth, never a telemetry notice", async () => {
+test("provider error: a terminal kind is durable product truth, never a notices notice", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        const broadcasts: Array<{ payload: { loopId: number; event: Record<string, unknown> } }> = [];
+        const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(),
-            telemetryEventNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; event: Record<string, unknown> } }); },
+            noticeNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } }); },
         });
         const provider = new Mock({ contextWindow: 100000, responses: [] });
         provider.generate = async () => { throw new ProviderError("plurnk", "network_failure", "connection refused"); };
@@ -257,7 +261,7 @@ test("provider error: a terminal kind is durable product truth, never a telemetr
             "a terminal provider error propagates (ends the loop), not recovered as a no-op",
         );
         assert.equal(
-            broadcasts.filter((b) => b.payload.event.kind === "network_failure").length,
+            broadcasts.filter((b) => b.payload.notice.kind === "network_failure").length,
             0,
             "a terminal failure is not duplicated onto the notice channel",
         );
@@ -274,10 +278,10 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        const broadcasts: Array<{ payload: { loopId: number; event: Record<string, unknown> } }> = [];
+        const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(),
-            telemetryEventNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; event: Record<string, unknown> } }); },
+            noticeNotify: (_sid, payload) => { broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } }); },
         });
         const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -285,12 +289,53 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
         // The two beats bracket the provider call, in order — so a client flips "thinking… → working…"
         // across the one long opaque window (submit → first committed op) instead of a static screen
         // that reads as a hang. Live-broadcast, info-level, scoped to the loop.
-        const lifecycle = broadcasts.filter((b) => b.payload.event.source === "engine:turn");
-        assert.deepEqual(lifecycle.map((b) => b.payload.event.kind), ["turn_awaiting_model", "turn_generated"], "two engine:turn beats, in generate()-bracket order");
+        const lifecycle = broadcasts.filter((b) => b.payload.notice.source === "engine:turn");
+        assert.deepEqual(lifecycle.map((b) => b.payload.notice.kind), ["turn_awaiting_model", "turn_generated"], "two engine:turn beats, in generate()-bracket order");
         for (const b of lifecycle) {
-            assert.equal(b.payload.event.level, "info", "lifecycle beats are info-level progress notices, never errors");
+            assert.equal(b.payload.notice.level, "info", "lifecycle beats are info-level progress notices, never errors");
             assert.equal(b.payload.loopId, loopId, "scoped to the loop");
         }
+    } finally { await db.close(); }
+});
+
+test("a parser warning remains an advisory — valid statements complete and no durable failure is minted", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "finish despite a recoverable grammar near-miss");
+        const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
+        const engine = new Engine({
+            db,
+            schemes: new SchemeRegistry(),
+            noticeNotify: (_sid, payload) => {
+                broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
+            },
+        });
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                contentResponse("<<PLAN:t:PLAN <<CLOSE(log://x)::CLOSE <<SEND[200]:done:SEND"),
+            ],
+        });
+
+        const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+
+        assert.equal(turn.status, 200, "the valid terminal SEND still determines the turn result");
+        const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
+        assert.equal(advisories.length, 1, "the recoverable parser diagnosis is emitted once");
+        assert.equal(advisories[0]!.payload.notice.level, "warn");
+        assert.match(String(advisories[0]!.payload.notice.message), /`<<CLOSE`.*did you mean `<<FOLD`/);
+        assert.deepEqual(
+            advisories[0]!.payload.notice.position,
+            { type: "content-offset", line: 1, column: 14 },
+            "the Notice retains the parser's typed source position",
+        );
+        assert.deepEqual(
+            await db.test_error_rows_for_run.all({ worker_id: workerId }),
+            [],
+            "an advisory cannot become durable failure truth",
+        );
     } finally { await db.close(); }
 });
 
@@ -307,11 +352,11 @@ test("an actionless parse failure is a LOG ITEM (op='error', status 400) — que
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The failure is a DURABLE log row — op='error', status_rx 400, actionless (no target).
-        // It folds/kills/recalls like any log entry (§telemetry — errors are log items), so the
+        // It folds/kills/recalls like any log entry (§operation-results), so the
         // grinder's prior-turn rollback can reclaim it: one budget surface, the log.
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string | null }>({ loop_id: loopId });
         const errRow = rows.find((r) => r.op === "error" && r.status_rx === 400);
-        assert.ok(errRow !== undefined, "parse failure recorded as a log:///…/error item (status 400), not ephemeral telemetry");
+        assert.ok(errRow !== undefined, "parse failure recorded as a log:///…/error item (status 400), not ephemeral notices");
         assert.equal(errRow!.scheme, null, "an error row is actionless — no target scheme");
 
         // No `error://` SCHEME namespace — errors live in the LOG (log:///), not a bespoke scheme.
@@ -367,34 +412,36 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "trace the broken xpath");
 
-        // Capture the live fan-out: every TelemetryEvent the engine pushes
+        // Capture the live fan-out: every Notice the engine pushes
         // to the loop's buffer also fires this callback the moment it lands.
-        const broadcasts: Array<{ workspaceId: number; payload: { loopId: number; event: Record<string, unknown> } }> = [];
+        const broadcasts: Array<{ workspaceId: number; payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db,
             schemes: new SchemeRegistry(),
-            telemetryEventNotify: (sid, payload) => { broadcasts.push({ workspaceId: sid, payload: payload as { loopId: number; event: Record<string, unknown> } }); },
+            noticeNotify: (sid, payload) => { broadcasts.push({ workspaceId: sid, payload: payload as { loopId: number; notice: Record<string, unknown> } }); },
         });
 
         const provider = noticeProvider(1);                   // turn 1: grammar_unenforced NOTICE pushed + broadcast live
-        // NOTE: errors are log items (no telemetry/event); the broadcast surface is for engine NOTICES.
+        // NOTE: errors are log items (no notice/event); the broadcast surface is for engine NOTICES.
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        // Client side: the event broadcast live, scoped to the loop's workspace,
+        // Client side: the notice broadcast live, scoped to the loop's workspace,
         // BEFORE turn 2 ever builds a packet.
-        const liveParse = broadcasts.filter((b) => b.payload.event.kind === "grammar_unenforced");
+        const liveParse = broadcasts.filter((b) => b.payload.notice.kind === "grammar_unenforced");
         assert.equal(liveParse.length, 1, "the notice broadcast live exactly once");
         assert.equal(liveParse[0].workspaceId, workspaceId, "scoped to the loop's workspace");
         assert.equal(liveParse[0].payload.loopId, loopId);
-        const liveEvent = liveParse[0].payload.event;
-        assert.equal(liveEvent.source, "provider:mock");
-        assert.equal(liveEvent.kind, "grammar_unenforced");
-        assert.deepEqual(liveEvent.position, { type: "content-offset", line: 2, column: 4 });
+        const liveNotice = liveParse[0].payload.notice;
+        assert.equal(liveNotice.source, "provider:mock");
+        assert.equal(liveNotice.kind, "grammar_unenforced");
+        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 2, column: 4 });
 
-        // Model side: the notice drains once as the terse projection. The packet
-        // does not duplicate transport-oriented source, level, or message fields.
+        // Model side: the notice drains once as a bounded projection.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
-        assert.equal(packetSection(p2, "notices"), "* grammar_unenforced 2:4");
+        assert.equal(
+            packetSection(p2, "notices"),
+            "* grammar_unenforced: grammar not enforced at code point 26 @ 2:4",
+        );
     } finally { await db.close(); }
 });

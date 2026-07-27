@@ -2,7 +2,7 @@ import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { InjectWorkerNotify, StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
-import type { TelemetryEvent } from "@plurnk/plurnk-grammar";
+import type { Notice } from "@plurnk/plurnk-grammar";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type { SchemeCtx } from "@plurnk/plurnk-schemes";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -15,7 +15,7 @@ export interface CoreSchemeServices {
     readonly streamEventNotify: StreamEventNotify | undefined;
     readonly wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly injectWorker: InjectWorkerNotify | undefined;
-    readonly pushTelemetry: (workspaceId: number, loopId: number, event: TelemetryEvent) => void;
+    readonly pushNotice: (workspaceId: number, loopId: number, notice: Notice) => void;
     readonly defaultChannelFor: (scheme: string | null) => string;
     readonly liveSubscriptions: LiveSubscriptions;
 }
@@ -56,7 +56,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             executors: services.executors(),
             tokenize: services.tokenize,
             defaultChannelFor: services.defaultChannelFor,
-            pushTelemetry: (event) => services.pushTelemetry(ctx.workspaceId, ctx.loopId, event),
+            pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.loopId, notice),
         };
     }
 

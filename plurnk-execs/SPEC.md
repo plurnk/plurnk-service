@@ -38,7 +38,7 @@ interface ExecArgs {
     signal: AbortSignal;        // cancellation — executors must honor it
     write: (channel: string, chunk: string, mimetype?: string) => void;  // write a chunk; optional mimetype stamps the channel's real per-call output type
     setState: (channel: string, state: ChannelState) => void;            // drive a declared channel's lifecycle
-    emit: (event: TelemetryEvent) => void;                               // emit nonterminal notices (§2.4)
+    emit: (notice: Notice) => void;                              // emit nonterminal notices (§2.4)
     entry?: (path: string, content: string | null, opts: { tags: string[]; mimetype?: string }) => Promise<void>;  // request materialization/prefetch — content null ⇒ consumer-sourced (§2.6)
 }
 
@@ -93,15 +93,16 @@ abstract class BaseExecutor {
 
 For `exec`, per-runtime `effect()` supersedes the static `Exec.manifest.flags.proposes`. Auto-run (`read`/`pure`) runtimes may run **inline** — synchronous return rather than entry-then-read-next-turn — while still landing the result as a re-readable entry.
 
-### §2.4 Telemetry
+### §2.4 Notices
 
 `emit` is for nonterminal, transient notices such as bounded progress. It is not
 a failure channel and cannot affect the durable result, stream lifecycle,
 scheduler, recovery, or model-visible truth. Terminal failures live only in
-`ExecResult.problem`; duplicating them into telemetry creates two authorities
+`ExecResult.problem`; duplicating them into notices creates two authorities
 that can disagree.
 
-The telemetry envelope remains mirrored locally for executor notices.
+The `Notice` envelope remains mirrored locally so executor plugins need not
+depend on the grammar package.
 
 ### §2.5 Deadlines & polling — the executor stays oblivious
 
@@ -128,7 +129,7 @@ MCP is the proof, not the exception: `plurnk-execs-mcp` is a plain producer — 
 
 **The search prefetch seam resolves here (service#596).** The consumer implements `entry()` as auto-prefetch: acquire, MIME-project, and materialize the `https://` entry. A guarded browser render is a fallback only when the HTTP response has no useful model-facing projection. Resolve/reject becomes the candidate's admission verdict: failed materializations are omitted while survivors retain SearXNG rank. Plurnk does not otherwise rerank or judge the results. There is no executor pre-validation (that would fetch — forbidden) or double fetch. A URL prefetch carries no page body for the executor to supply, so `content` is **consumer-sourced** — the executor contributes the candidate `url` as `path` and learns only the materialization verdict, never the body.
 
-Search acquisition emits aggregate `search_progress` telemetry through `emit`: a start, at most approximately ten intermediate milestones, and a terminal `complete`, carrying `completed`, `total`, `materialized`, `rejected`, and `percent`. It never emits candidate URLs or one event per result. This is compact live client state, not the ranked digest and not a substitute for its durable per-result verdicts.
+Search acquisition emits aggregate `search_progress` notices through `emit`: a start, at most approximately ten intermediate milestones, and a terminal `complete`, carrying `completed`, `total`, `materialized`, `rejected`, and `percent`. It never emits candidate URLs or one event per result. This is compact live client state, not the ranked digest and not a substitute for its durable per-result verdicts.
 
 ## §3 Discovery
 
@@ -175,7 +176,7 @@ Two guarantees frame the hook:
 
 `runtimes[]` and `runtimesModule` are mutually exclusive; if both are present the **static array wins** and the hook is never loaded.
 
-**Trust gate.** `discover()` honors the host's **`PLURNK_PLUGINS_TRUSTED_ONLY`** env var (plurnk-service#229) — the one posture decided once and enforced across every scope-agnostic discovery surface (schemes/mimetypes/providers/execs). Unset/`""`/`0` → off: every installed package registers (no regression). Any value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`1` = on with zero third-party). An untrusted package is **discovered but not registered** — never a crash — and returned in **`Discovery.skipped`** (package names) so the consumer can emit a telemetry note (`discover()` has no sink of its own). The trust predicate is the single shared implementation in **`@plurnk/plurnk-meta`** (`Meta.isTrusted`), consumed identically by the daemon and every family-head scanner — trust is defined once for the whole family, never duplicated.
+**Trust gate.** `discover()` honors the host's **`PLURNK_PLUGINS_TRUSTED_ONLY`** env var (plurnk-service#229) — the one posture decided once and enforced across every scope-agnostic discovery surface (schemes/mimetypes/providers/execs). Unset/`""`/`0` → off: every installed package registers (no regression). Any value → on: `@plurnk/*` is always trusted, plus a comma-separated allowlist of additionally-trusted package names (`1` = on with zero third-party). An untrusted package is **discovered but not registered** — never a crash — and returned in **`Discovery.skipped`** (package names) so the consumer can emit a notice (`discover()` has no sink of its own). The trust predicate is the single shared implementation in **`@plurnk/plurnk-meta`** (`Meta.isTrusted`), consumed identically by the daemon and every family-head scanner — trust is defined once for the whole family, never duplicated.
 
 Each runtime package's **default export** is its `BaseExecutor` subclass (also a named export — `export { default as Sh }` / `export { default }`); the consumer instantiates it per matched tag with the tag + glyph from the registry.
 

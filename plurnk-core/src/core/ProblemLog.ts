@@ -19,7 +19,7 @@ export interface MintedProblem {
     readonly result: SchemeResult & { readonly problem: ProblemDetails };
 }
 
-// Owns durable actionless failures. Telemetry may observe the resulting row,
+// Owns durable actionless failures. Instrumentation may observe the resulting row,
 // but it never creates, transforms, or substitutes for product failure truth.
 export default class ProblemLog {
     #db: Db;

@@ -48,7 +48,7 @@ export async function discover(options: DiscoverOptions = {}): Promise<Discovery
         for (const info of infos) {
             // Plugin trust gate (#29): an untrusted package is
             // discovered-but-not-registered. Skip silently — surfacing the
-            // skip (telemetry) is the host's concern; discover() must never
+            // skip (notices) is the host's concern; discover() must never
             // crash on an untrusted package.
             if (!isTrusted(info.packageName)) continue;
             handlers.set(info.mimetype, info);

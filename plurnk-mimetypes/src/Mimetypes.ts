@@ -9,7 +9,7 @@ import Embeddings, { type EmbedBatchOptions, type EmbedderInfo } from "./Embeddi
 import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { matchSearchExclusion } from "./searchExcluded.ts";
-import { mimetypeSource, type TelemetryEvent } from "./TelemetryEvent.ts";
+import { mimetypeSource, type Notice } from "./Notice.ts";
 import type {
     DetectInput,
     DiscoverOptions,
@@ -119,11 +119,11 @@ export interface ProcessResult {
     // BLOB; vectors from different models are incomparable — the staleness
     // detector.
     embeddingModel?: string;
-    // Degradation telemetry (SPEC §11.5, plurnk-service#276): warn events for
+    // Degradation notices (SPEC §11.5, plurnk-service#276): warn events for
     // conditions hidden by ok:true — grammarMissing/embeddingMissing surface
-    // here for the host to forward into packet.user.telemetry.events[]. Absent
+    // here for the host to forward through its Notice channel. Absent
     // on the happy path; hard failures (ok:false) need no entry.
-    telemetry?: readonly TelemetryEvent[];
+    notices?: readonly Notice[];
 }
 
 // Top-level orchestrator. plurnk-service constructs one at boot. process() is
@@ -329,7 +329,7 @@ export default class Mimetypes {
             ? await this.#embeddings.embedFor(content, handler, options.strict === true)
             : {};
 
-        return attachTelemetry({
+        return attachNotices({
             mimetype,
             ok: true,
             totalLines,
@@ -440,7 +440,7 @@ export default class Mimetypes {
         const embeddingPart = channels.has("embedding")
             ? await this.#embeddings.embedFor(content, null, false)
             : {};
-        return attachTelemetry({
+        return attachNotices({
             mimetype,
             ok: true,
             totalLines,
@@ -480,14 +480,14 @@ function errorResult(mimetype: string | null): ProcessResult {
 }
 
 // Project a degraded result's grammarMissing/embeddingMissing into `warn`
-// telemetry (SPEC §11.5, plurnk-service#276) — a degraded result reports
+// notices (SPEC §11.5, plurnk-service#276) — a degraded result reports
 // ok:true, so its severity is invisible unless the producer puts it on the
 // wire. Derived from the result's own fields so it can't drift. Only reached
 // for ok:true results that carry a mimetype.
-function attachTelemetry(result: ProcessResult): ProcessResult {
-    const events: TelemetryEvent[] = [];
+function attachNotices(result: ProcessResult): ProcessResult {
+    const notices: Notice[] = [];
     if (typeof result.grammarMissing === "string") {
-        events.push({
+        notices.push({
             source: mimetypeSource(result.mimetype!),
             kind: "grammar_degraded",
             level: "warn",
@@ -499,7 +499,7 @@ function attachTelemetry(result: ProcessResult): ProcessResult {
         });
     }
     if (typeof result.embeddingMissing === "string") {
-        events.push({
+        notices.push({
             source: mimetypeSource(result.mimetype!),
             kind: "embedding_degraded",
             level: "warn",
@@ -510,7 +510,7 @@ function attachTelemetry(result: ProcessResult): ProcessResult {
             plurnkPackage: result.embeddingMissing,
         });
     }
-    return events.length === 0 ? result : { ...result, telemetry: events };
+    return notices.length === 0 ? result : { ...result, notices };
 }
 
 // Editor-convention line count (SPEC §7): `abc\ndef`→2, `abc\ndef\n`→2

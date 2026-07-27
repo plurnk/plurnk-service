@@ -6,7 +6,7 @@ import ProposalLifecycle from "./ProposalLifecycle.ts";
 import SchemeRegistry from "./SchemeRegistry.ts";
 import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type TelemetryChannel from "./TelemetryChannel.ts";
+import type NoticeChannel from "./NoticeChannel.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 
 test("workerApply invokes a discovered scheme through the public proposal context", async () => {
@@ -27,7 +27,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
     const lifecycle = new ProposalLifecycle({
         db: {} as Db,
         schemes,
-        telemetry: { push() {} } as unknown as TelemetryChannel,
+        notices: { push() {} } as unknown as NoticeChannel,
         tokenize: (text) => text.length,
         executors: () => undefined as ExecutorRegistry | undefined,
         loopSignal: () => undefined,
@@ -98,7 +98,7 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
     const lifecycle = new ProposalLifecycle({
         db,
         schemes: new SchemeRegistry(),
-        telemetry: { push() {} } as unknown as TelemetryChannel,
+        notices: { push() {} } as unknown as NoticeChannel,
         tokenize: (text) => text.length,
         executors: () => undefined,
         loopSignal: () => undefined,

@@ -176,8 +176,8 @@ export default class Translator {
         return [{ type: EventType.MESSAGES_SNAPSHOT, messages } as AguiEvent];
     }
 
-    telemetry(event: unknown): AguiEvent[] {
-        return [{ type: EventType.CUSTOM, name: "plurnk.telemetry", value: event }];
+    notice(notice: unknown): AguiEvent[] {
+        return [{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }];
     }
 
     // Core carries an array of OpenAI/AG-UI reasoning items because a turn can

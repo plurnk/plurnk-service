@@ -101,7 +101,7 @@ export default class ClientInput {
             out.questions = r.questions;
         }
         // #249 — workspace-stable frontend id (e.g. "plurnk.nvim/1.4.0"), forwarded to the plurnk
-        // provider as Plurnk-Client telemetry; ignored by every other provider. Self-identified.
+        // provider as Plurnk-Client metadata; ignored by every other provider. Self-identified.
         if (r.client !== undefined) {
             if (typeof r.client !== "string" || r.client.length === 0) {
                 throw new Error("workspace.create: settings.client must be a non-empty string (the frontend id, e.g. 'plurnk.nvim/1.4.0')");

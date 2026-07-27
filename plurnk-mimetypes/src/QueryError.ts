@@ -1,4 +1,3 @@
-import { mimetypeSource, type TelemetryEvent } from "./TelemetryEvent.ts";
 import type { QueryDialect } from "./types.ts";
 
 // Thrown when a handler doesn't support a dialect for its mimetype. Consumer
@@ -14,23 +13,6 @@ export class UnsupportedDialectError extends Error {
         this.mimetype = args.mimetype;
         this.dialect = args.dialect;
         this.reason = args.reason;
-    }
-
-    // TelemetryEvent envelope per plurnk-grammar 0.17.0 / plurnk-mimetypes#5.
-    // kind=`unsupported_dialect`; carries dialect + reason as additional
-    // properties (open-schema allowed) so the consumer can render specific
-    // guidance without re-parsing the message.
-    toTelemetryEvent(): TelemetryEvent {
-        return {
-            source: mimetypeSource(this.mimetype),
-            kind: "unsupported_dialect",
-            level: "error",
-            message: this.message,
-            position: null,
-            dialect: this.dialect,
-            mimetype: this.mimetype,
-            reason: this.reason,
-        };
     }
 }
 
@@ -54,21 +36,6 @@ export class InvalidExpressionError extends Error {
         this.expression = args.expression;
         this.mimetype = args.mimetype;
     }
-
-    // TelemetryEvent envelope. kind=`invalid_expression`. source is bound to
-    // the mimetype when known; otherwise the bare `mimetype` token signals
-    // a framework-utility origin without a specific handler context.
-    toTelemetryEvent(): TelemetryEvent {
-        return {
-            source: this.mimetype ? mimetypeSource(this.mimetype) : "mimetype",
-            kind: "invalid_expression",
-            level: "error",
-            message: this.message,
-            position: null,
-            dialect: this.dialect,
-            expression: this.expression,
-        };
-    }
 }
 
 // Thrown when the content can't be parsed for the requested dialect (e.g.
@@ -81,17 +48,5 @@ export class QueryParseFailureError extends Error {
         super(`Failed to parse content for query against ${args.mimetype}`, { cause: args.cause });
         this.name = "QueryParseFailureError";
         this.mimetype = args.mimetype;
-    }
-
-    // TelemetryEvent envelope. kind=`query_parse_failure`.
-    toTelemetryEvent(): TelemetryEvent {
-        return {
-            source: mimetypeSource(this.mimetype),
-            kind: "query_parse_failure",
-            level: "error",
-            message: this.message,
-            position: null,
-            mimetype: this.mimetype,
-        };
     }
 }

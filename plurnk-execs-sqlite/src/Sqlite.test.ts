@@ -4,19 +4,19 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Sqlite from "./Sqlite.ts";
-import type { ExecArgs, ExecResult, TelemetryEvent } from "@plurnk/plurnk-execs";
+import type { ExecArgs, ExecResult, Notice } from "@plurnk/plurnk-execs";
 
 interface Capture {
     result: ExecResult;
     out: string | undefined;
     states: string[];
-    events: TelemetryEvent[];
+    events: Notice[];
 }
 
 const run = async (command: string, target: string | null = null, cwd: string | null = null): Promise<Capture> => {
     let out: string | undefined;
     const states: string[] = [];
-    const events: TelemetryEvent[] = [];
+    const events: Notice[] = [];
     const args: ExecArgs = {
         runtime: "sqlite", command, cwd, target,
         signal: new AbortController().signal,

@@ -8,7 +8,7 @@ Bundled LLM tokenizer vocabularies for [@plurnk/plurnk-mimetypes](https://github
 npm i @plurnk/plurnk-mimetypes-tokenizers
 ```
 
-Opt-in artifact package: the framework resolves it lazily by name; absent, the seam degrades to a chars/2 upper bound with a `tokenizer_unavailable` telemetry event — never a silent estimate.
+Opt-in artifact package: the framework resolves it lazily by name; absent, the seam degrades to a chars/2 upper bound with a `tokenizer_unavailable` Notice — never a silent estimate.
 
 ## surface
 
