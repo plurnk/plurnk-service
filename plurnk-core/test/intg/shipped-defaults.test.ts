@@ -70,7 +70,7 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
         // The distinctive personality line appears in the system-policy section and NOWHERE else.
-        const marker = "You decompose non-trivial prompts";
+        const marker = "You align with the user before consequential";
         const carriers = packet.sections.filter((s) => s.content.includes(marker)).map((s) => s.name);
         assert.deepEqual(carriers, ["system-policy"], `the policy rides exactly one section; got ${carriers.join(", ")}`);
         assert.ok(packetSection(packet, "system-policy").includes(marker), "the section carries the personality");
