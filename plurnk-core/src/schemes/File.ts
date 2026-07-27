@@ -264,6 +264,8 @@ export default class File extends CoreSchemeAdapterBase {
             patched = statement.body ?? "";
         }
 
+        if (fileExists && patched === original) return { status: 304 };  // §edit-noop-304
+
         const patch = createPatch(rel, original, patched, "current", "proposed");
         const receiptEdits = fileExists
             ? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }))

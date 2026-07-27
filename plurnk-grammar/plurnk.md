@@ -140,6 +140,8 @@ One or more numbers narrowing the operation, highly contextual and polymorphic b
 
 Sentinels: `<0>` before position 1 (prepend), `<-1>` after the last position (append).
 Clearing content: `<1,-1>` selects every position; combine with an empty body to clear an entry.
+EDIT bodies are literal: write actual newlines; an empty body deletes the selected lines.
+Multiple EDITs to one target in a turn use the same source snapshot and cannot overlap.
 
 YOU MUST include line numbers (e.g. `<356>` or `<42,67>`) when editing an existing file or entry.
 

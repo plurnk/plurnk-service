@@ -107,6 +107,22 @@ test("LineMarkerOps.applyLineMarkerEdit: multi-line body", () => {
     assert.equal(r.result, "alpha\nX\nY\ngamma\ndelta\n");
 });
 
+test("LineMarkerOps.applyLineMarkerEdit: backslash escapes remain literal", () => {
+    const r = LineMarkerOps.applyLineMarkerEdit(TEXT, { marks: [2] }, String.raw`X\nY`);
+    assert.equal(r.status, 200);
+    assert.equal(r.result, String.raw`alpha
+X\nY
+gamma
+delta
+`);
+});
+
+test("LineMarkerOps.applyLineMarkerEdit: whitespace body replaces rather than deletes", () => {
+    const r = LineMarkerOps.applyLineMarkerEdit(TEXT, { marks: [2] }, " ");
+    assert.equal(r.status, 200);
+    assert.equal(r.result, "alpha\n \ngamma\ndelta\n");
+});
+
 test("LineMarkerOps.applyLineMarkerEdit: prepend to empty content", () => {
     const r = LineMarkerOps.applyLineMarkerEdit("", { marks: [0] }, "first line");
     assert.equal(r.status, 200);

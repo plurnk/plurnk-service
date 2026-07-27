@@ -131,6 +131,52 @@ test("file.edit: writes file on accept via applyResolution", async () => {
     });
 });
 
+test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const target = "unchanged.txt";
+        const original = "same\n";
+        await writeFile(join(root, target), original, "utf8");
+        const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({
+            workspace_id: ctx.workspaceId,
+            owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId),
+            scheme: "file",
+            pathname: target,
+        });
+        await ctx.db.ops_upsert_channel.run({
+            entry_id: seeded?.id,
+            name: "body",
+            content: original,
+            mimetype: "text/plain",
+            tokens: 0,
+        });
+        const seededStat = await stat(join(root, target));
+        await ctx.db.crud_set_synced_sig.run({
+            entry_id: seeded?.id,
+            synced_sig: `${seededStat.mtimeMs}:${seededStat.size}`,
+        });
+
+        const idDeferred = deferred<number>();
+        const result = await ctx.engine.dispatch({
+            statement: fileEditStmt(target, original, fullReplace),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        assert.equal(result.status, 304);
+        assert.equal(await readFile(join(root, target), "utf8"), original);
+
+        const row = await ctx.db.test_get_log_entry_by_id.get<{ state: string; status_rx: number }>({
+            id: await idDeferred.promise,
+        });
+        assert.equal(row?.state, "resolved");
+        assert.equal(row?.status_rx, 304);
+    });
+});
+
 test("file.edit: rejection leaves file untouched; the rx carries the outcome as its terse error token", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
