@@ -433,7 +433,7 @@ operation, not to EDIT semantics.
 SEND submit codes align with HTTP semantics so that model training
 transfers directly:
 
-- `1xx` Informational — continuation; `102 Processing` is the canonical loop-continuation code.
+- `1xx` Informational — continuation; `102 Processing` is the canonical loop-continuation code. Its body states what the model will do next with the submitted operations' results.
 - `2xx` Success — `200 OK` is the canonical final-answer code; `202 Accepted` is the obligation-checked wait.
 - `3xx` Redirection — `300 Multiple Choices`: a stop-the-world multiple-choice question posed to the user, awaiting their selection (emittable; not base-canon-taught — daemon-activated where an interactive user exists).
 - `4xx` Client Error — model-side failure (malformed plurnk, missing path, contract violation); `499` is the model's give-up.

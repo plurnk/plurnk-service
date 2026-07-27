@@ -1035,7 +1035,7 @@ export default class Engine {
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
             // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
             if (runFirstLoop) {
-                const emission = ["<<PLAN:Initialize:PLAN", ...turnZeroMoves, "<<SEND[102]:Initialized:SEND"].join("\n");
+                const emission = ["<<PLAN:Initialize:PLAN", ...turnZeroMoves, "<<SEND[102]:Next, address the prompt from the initialized context.:SEND"].join("\n");
                 await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
         }

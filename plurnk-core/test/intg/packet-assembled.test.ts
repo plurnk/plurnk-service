@@ -40,6 +40,11 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         // its own echoed query. The invisible-catalog bug rendered only `<<FIND(...)::FIND`.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders the entry into the packet's log");
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
+        assert.match(
+            log,
+            /<<SEND\[102\]:Next, address the prompt from the initialized context\.:SEND/,
+            "the turn-0 exemplar teaches SEND[102] as an explicit next action",
+        );
 
     } finally {
         await db.close();

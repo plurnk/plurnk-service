@@ -125,7 +125,7 @@ Nesting: outer body may contain inner `<<OP:…:OP` statements; outer must use a
 	<<EXEC(./):node --test:EXEC
 
 17. Continue the loop
-	<<SEND[102]:decomposed prompt; plan initialized:SEND
+	<<SEND[102]:Next, apply the initialized plan to the prompt.:SEND
 
 18. Deliver the final answer
 	<<SEND[200]:Paris:SEND

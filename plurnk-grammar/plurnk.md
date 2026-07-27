@@ -214,7 +214,7 @@ To KILL another worker: `<<KILL(worker://recheck)::KILL`
 - Open every turn with a concise PLAN.
 - Close every turn with a SEND.
 - Retrieval results land in the NEXT packet's Log, never in the current turn.
-- Close with SEND[102] after performing ops.
+- Close with SEND[102] after performing ops. Its body states what you will do next with their results.
 - Close with SEND[202] to wait on workers.
 - Close with SEND[200] only in a turn that performs no retrieval and has no surviving streams or workers.
 - Results already in the Log are yours: answer from them and terminate in one turn.
@@ -249,7 +249,7 @@ stateDiagram-v2
 
 YOU MUST submit the OPs by SENDing a brief response or valid markdown with the proper submit code:
 
-- 102: submit a continuing turn with submit code 102: `<<SEND[102]:Performing retrieval operations.:SEND`
+- 102: submit a continuing turn with submit code 102: `<<SEND[102]:Next, apply the retrieved evidence to the requested change.:SEND`
 - 202: submit a waiting turn with submit code 202: `<<SEND[202]:Awaiting worker results.:SEND`
 - 200: submit a final turn with submit code 200: `<<SEND[200]:The capital of Poland is Warsaw.:SEND`
 - 499: submit a failed loop with submit code 499: `<<SEND[499]:Aborted: Unrecoverable error:SEND`
