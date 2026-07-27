@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     version                   INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     name                      TEXT    NOT NULL UNIQUE CHECK (length(name) > 0),
     created_at                TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    cost_usd                  REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
+    cost_pico                 INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     scheme_registry_additions TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(scheme_registry_additions)),
     project_root              TEXT,
     -- #231 client-chosen workspace-open context: { manifestItems?, mdDocs? }, read at turn-0
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS workers (
     created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- runs fork via parent_worker_id; workspaces carry no parent — §machine-processes-no-fork-workspace
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
-    cost_usd      REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
+    cost_pico     INTEGER NOT NULL DEFAULT 0 CHECK (cost_pico >= 0),
     origin        TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
     FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_worker_id) REFERENCES workers(id)     ON DELETE CASCADE
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS turns (
     usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
     usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
     usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
-    usage_cost_usd  REAL    NOT NULL DEFAULT 0 CHECK (usage_cost_usd >= 0),
+    usage_cost_pico  INTEGER NOT NULL DEFAULT 0 CHECK (usage_cost_pico >= 0),
     -- #274 — the context window of the model that RAN this turn (provider.contextSize), so the
     -- gauge denominator matches the loop's actual model under any /model switch. NULL = the
     -- provider can't report a window (the client omits the gauge).
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS turns (
     packet           TEXT    NOT NULL           CHECK (json_valid(packet)),
     finish_reason    TEXT,
     model            TEXT    NOT NULL DEFAULT 'unknown' CHECK (length(model) >= 1),
-    -- #252 — opaque provider→client metadata passthrough. Stored
+    -- #252 — opaque provider→client metadata passthrough (e.g. balancePico). Stored
     -- UNENFORCED (json_valid only, no schema): the canonical-field contract lives between
     -- the provider framework (normalizes) and the client (renders) — the service authors
     -- only the engine-stamped rail keys ({§rail-truth-engine-verdict}, #534).
@@ -434,14 +434,14 @@ CREATE TABLE IF NOT EXISTS providers (
 CREATE INDEX IF NOT EXISTS providers_created_at ON providers (created_at);
 
 -- cost_rollups
--- Triggers maintaining denormalized cost_usd totals on runs and workspaces
+-- Triggers maintaining denormalized cost_pico totals on runs and workspaces
 -- as turns insert/update. Pure denormalization (textbook trigger use);
 -- no branching state-machine logic lives here.
 CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_worker
 AFTER INSERT ON turns
 BEGIN
     UPDATE workers
-       SET cost_usd = cost_usd + NEW.usage_cost_usd
+       SET cost_pico = cost_pico + NEW.usage_cost_pico
      WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
 
@@ -449,7 +449,7 @@ CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_workspace
 AFTER INSERT ON turns
 BEGIN
     UPDATE workspaces
-       SET cost_usd = cost_usd + NEW.usage_cost_usd
+       SET cost_pico = cost_pico + NEW.usage_cost_pico
      WHERE id = (
          SELECT r.workspace_id
            FROM workers r
@@ -459,20 +459,20 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_worker
-AFTER UPDATE OF usage_cost_usd ON turns
-WHEN NEW.usage_cost_usd != OLD.usage_cost_usd
+AFTER UPDATE OF usage_cost_pico ON turns
+WHEN NEW.usage_cost_pico != OLD.usage_cost_pico
 BEGIN
     UPDATE workers
-       SET cost_usd = cost_usd + NEW.usage_cost_usd - OLD.usage_cost_usd
+       SET cost_pico = cost_pico + NEW.usage_cost_pico - OLD.usage_cost_pico
      WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
 
 CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_workspace
-AFTER UPDATE OF usage_cost_usd ON turns
-WHEN NEW.usage_cost_usd != OLD.usage_cost_usd
+AFTER UPDATE OF usage_cost_pico ON turns
+WHEN NEW.usage_cost_pico != OLD.usage_cost_pico
 BEGIN
     UPDATE workspaces
-       SET cost_usd = cost_usd + NEW.usage_cost_usd - OLD.usage_cost_usd
+       SET cost_pico = cost_pico + NEW.usage_cost_pico - OLD.usage_cost_pico
      WHERE id = (
          SELECT r.workspace_id
            FROM workers r
