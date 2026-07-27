@@ -6,7 +6,7 @@
 // The pure helpers (parseAliasesFromEnv, resolveActiveAlias) live in
 // @plurnk/plurnk-providers as framework-grade env parsing.
 
-import { instantiateProvider as instantiateFrameworkProvider, resolveActiveAlias, scopeEnvToAlias } from "@plurnk/plurnk-providers";
+import { instantiateProvider as instantiateFrameworkProvider, PROVIDERS_KNOBS, resolveActiveAlias, scopeEnvToAlias } from "@plurnk/plurnk-providers";
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
@@ -16,6 +16,7 @@ export default class ProviderInstantiate {
     // owner's boot log: one heuristic warning per loop.run). Cache keyed on the wire identity;
     // env is process-stable for these fields.
     static #instances = new Map<string, Promise<Provider>>();
+    static #registeredInstances = new Map<string, Provider>();
     // #352 — provider handle → the alias name that produced it, so the service scopes its OWN
     // per-alias partition knobs (PLURNK_SERVICE_*_<alias>) by the provider it's building a packet
     // for. Service-owned metadata about handles WE created; never a provider-contract field.
@@ -40,15 +41,14 @@ export default class ProviderInstantiate {
     // lookup behavior when a persisted loop resumes.
     static registerInstance(provider: Provider, spec: ProviderAlias): void {
         ProviderInstantiate.#aliasByProvider.set(provider, spec.alias);
-        ProviderInstantiate.#instances.set(
-            `${spec.provider}|${spec.model}|${spec.baseUrl ?? ""}`,
-            Promise.resolve(provider),
-        );
+        ProviderInstantiate.#registeredInstances.set(ProviderInstantiate.#identityKey(spec), provider);
     }
 
     static async instantiateProvider(alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> {
         if (env === process.env) {
-            const key = `${alias.provider}|${alias.model}|${alias.baseUrl ?? ""}`;
+            const registered = ProviderInstantiate.#registeredInstances.get(ProviderInstantiate.#identityKey(alias));
+            if (registered !== undefined) return registered;
+            const key = ProviderInstantiate.#cacheKey(alias, env);
             let cached = ProviderInstantiate.#instances.get(key);
             if (cached === undefined) {
                 cached = ProviderInstantiate.#instantiate(alias, env);
@@ -58,6 +58,16 @@ export default class ProviderInstantiate {
             return cached;
         }
         return ProviderInstantiate.#instantiate(alias, env); // custom env (tests) — never cached
+    }
+
+    static #identityKey(alias: ProviderAlias): string {
+        return `${alias.alias}|${alias.provider}|${alias.model}|${alias.baseUrl ?? ""}`;
+    }
+
+    static #cacheKey(alias: ProviderAlias, env: NodeJS.ProcessEnv): string {
+        const scoped = scopeEnvToAlias(env, alias.alias);
+        const tuning = PROVIDERS_KNOBS.map((name) => [name, scoped[name] ?? ""]);
+        return `${ProviderInstantiate.#identityKey(alias)}|${JSON.stringify(tuning)}`;
     }
 
     static async #instantiate(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
@@ -71,19 +81,7 @@ export default class ProviderInstantiate {
         // bare BEFORE construction, so a per-alias TEMPERATURE/reserve pin binds. Without this
         // the whole per-alias provider surface was silently dropped at construction.
         env = scopeEnvToAlias(env, alias.alias);
-        // #528 — the CONTEXT_WINDOW pin is CORE's log-budget cap, never the provider's window:
-        // strip it so the provider reports its NATURAL window (probe/served) and percent reserves
-        // resolve off nature. PacketBuilder mins the cap into the prompt budget alone.
-        const cap = env.PLURNK_PROVIDERS_CONTEXT_WINDOW;
-        delete env.PLURNK_PROVIDERS_CONTEXT_WINDOW; // env is scopeEnvToAlias's copy — the caller's is untouched
-        const provider = await ProviderInstantiate.#constructWith(alias, env);
-        // #419 — a pinned UNPOLLABLE window: no natural exists, so the pin DECLARES the window
-        // (reserves resolve off the declaration — there is no separate nature to protect).
-        // Reconstruct once, probe skipped: the pin is the window, deterministically.
-        if (provider.contextWindow === null && cap !== undefined) {
-            return ProviderInstantiate.#constructWith(alias, { ...env, PLURNK_PROVIDERS_CONTEXT_WINDOW: cap, PLURNK_PROVIDERS_PROBE_NCTX: "0" });
-        }
-        return provider;
+        return ProviderInstantiate.#constructWith(alias, env);
     }
 
     static async #constructWith(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
@@ -95,9 +93,6 @@ export default class ProviderInstantiate {
             undefined,
             alias.baseUrl,
             // #construct already materialized the alias-scoped environment.
-            // Passing the alias here would scope it a second time and restore
-            // the CONTEXT_WINDOW pin that core deliberately removed as a
-            // prompt-only cap.
             undefined,
         );
     }

@@ -39,6 +39,22 @@ test("catalog provider resolves model physics and Models.dev USD rates", () => {
     }) ?? 0) > 0);
 });
 
+test("an operator context window caps catalog physics and percentage reserves derive from the cap", () => {
+    const provider = catalogProviderFromEnv("openai", {
+        ...env,
+        PLURNK_PROVIDERS_CONTEXT_WINDOW: "128000",
+    }, "gpt-4.1-mini");
+    assert.equal(provider?.contextWindow, 128_000);
+    assert.equal(provider?.reasoningReserve, 16_000);
+    assert.equal(provider?.completionReserve, 32_000);
+
+    const oversized = catalogProviderFromEnv("openai", {
+        ...env,
+        PLURNK_PROVIDERS_CONTEXT_WINDOW: "2000000",
+    }, "gpt-4.1-mini");
+    assert.equal(oversized?.contextWindow, 1_047_576, "an operator ceiling cannot enlarge model physics");
+});
+
 test("official AI SDK provider owns the native request while PLURNK owns call settings", async () => {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {

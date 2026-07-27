@@ -3,8 +3,8 @@
 // (plurnk.md ~1313t + persona/requirements), so a couple of file READs push
 // the assembled packet past the wall. With no curation the log accumulates and
 // `peak` blows the ceiling; staying under means the model HID earlier reads as
-// it worked. The communicated ceiling is shrunk, not the real window, so this
-// isolates "does the readout MOTIVATE curation" with no real-413 confound.
+// it worked. The test deliberately caps the effective window around a measured
+// packet floor, so the scenario exercises the real partition and curation rail.
 // Run + digest (bin/digest.ts) to analyze the failure together.
 //
 // Driven through the REAL prod loop (loop.run via the daemon). The ceiling is a
@@ -40,19 +40,20 @@ import { seedDemoFixture } from "./_fixture.ts";
 // runaway (it folded as it went) — not that peak landed under the communicated 3900.
 const GRIND_FACTOR = 1.6;
 const NO_CURATION_FACTOR = 1.45;
+const REASONING_RESERVE = 1;
+const COMPLETION_RESERVE = 8192;
+const RESERVED_TOKENS = REASONING_RESERVE + COMPLETION_RESERVE;
 
 test("demo: budget grind — under a pinned ceiling, the model must curate to keep assembled context under budget", async () => {
     const fixture = await seedDemoFixture("budget");
     const userPromptText = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
-    // RESERVES bind at the provider's FIRST construction (cached for the process) — pin the
-    // absolutes BEFORE the floor probe boots it, so both probe and story run the same known
-    // envelope. The CAP binds LIVE per turn (#528), so each phase pins its own.
-    const restoreReserves = pinAliasPartition({ REASONING: "1", COMPLETION: "8192", SAFETY: "0" });
-    const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText });
+    // Pin the absolute envelope before both phases. Each effective window is part of the
+    // provider configuration, so the floor probe and story construct their own capped handle.
+    const restoreReserves = pinAliasPartition({ REASONING: String(REASONING_RESERVE), COMPLETION: String(COMPLETION_RESERVE), SAFETY: "0" });
+    const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText, reservedTokens: RESERVED_TOKENS });
     const CEILING = Math.round(floor * GRIND_FACTOR);
     const NO_CURATION = Math.round(floor * NO_CURATION_FACTOR);
-    // #528 — promptBudget = min(cap, natural) − reserves − safety = CEILING exactly.
-    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(CEILING + 1 + 8192) });
+    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(CEILING + RESERVED_TOKENS) });
     try {
         const s = await liveWorkspace({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {

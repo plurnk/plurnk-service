@@ -80,6 +80,15 @@ export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): num
     return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
 };
 
+// An operator window is a hard ceiling, not a replacement for smaller model
+// physics. When no natural window is knowable, the explicit value declares it.
+export const effectiveContextWindow = (operatorCap: number | null, naturalWindow: number | null): number | null =>
+    operatorCap === null
+        ? naturalWindow
+        : naturalWindow === null
+            ? operatorCap
+            : Math.min(operatorCap, naturalWindow);
+
 export type ProviderTokenRates = { input: number; cached: number; output: number };
 
 export const tokenRatesFromEnv = (env: NodeJS.ProcessEnv, label: string): ProviderTokenRates | null => {

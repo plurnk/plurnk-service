@@ -31,7 +31,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection 
 import { urlPath, editStmt, readStmt, sendStmt } from "./_dsl.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
-const WINDOW = 100_000; // the model's window — wide enough to hold a fat read OPEN, so WIDE isn't capped below it (the partition gates on min(CONTEXT_WINDOW, window))
+const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat read OPEN
 const WIDE = 1_000_000; // absolute wall capped to the window → never overflows
 const TINY = 2;         // absolute wall far below any packet → un-foldable overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever

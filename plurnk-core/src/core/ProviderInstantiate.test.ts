@@ -38,7 +38,7 @@ test("[#525] an alias-scoped provider knob binds at construction — the per-ali
     assert.equal(provider.contextWindow, 8000, "the alias-scoped pin binds — min(cap, served) has a cap to bind with");
 });
 
-test("[#528] a pollable provider keeps its natural window when an alias prompt cap is set", async () => {
+test("a pollable provider exposes the lower operator-capped window and derives its generation envelope from it", async () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | Request) => {
         if (String(input).endsWith("/models")) {
@@ -59,14 +59,44 @@ test("[#528] a pollable provider keeps its natural window when an alias prompt c
             { alias: "tight", provider: "openai", model: "local", baseUrl: "http://local.test/v1" },
             {
                 ...process.env,
-                PLURNK_PROVIDERS_CONTEXT_WINDOW_TIGHT: "1",
+                PLURNK_PROVIDERS_CONTEXT_WINDOW_TIGHT: "32000",
+                PLURNK_PROVIDERS_REASONING_RESERVE_TIGHT: "10%",
+                PLURNK_PROVIDERS_COMPLETION_RESERVE_TIGHT: "25%",
                 PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500",
                 PLURNK_PROVIDERS_PROBE_ATTEMPTS: "1",
                 PLURNK_PROVIDERS_PROBE_DELAY: "0",
             },
         );
-        assert.equal(provider.contextWindow, 49_152);
+        assert.equal(provider.contextWindow, 32_000);
+        assert.equal(provider.reasoningReserve, 3_200);
+        assert.equal(provider.completionReserve, 8_000);
     } finally {
+        globalThis.fetch = realFetch;
+    }
+});
+
+test("the process cache separates aliases and provider tuning for the same wire model", async () => {
+    const realFetch = globalThis.fetch;
+    const key = "PLURNK_PROVIDERS_CONTEXT_WINDOW_cachecap";
+    const previous = process.env[key];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+        if (String(input).endsWith("/models")) {
+            return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 49_152 } }] }), { status: 200 });
+        }
+        if (String(input).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        throw new Error(`unexpected request: ${String(input)}`);
+    }) as typeof fetch;
+    const spec = { alias: "cachecap", provider: "openai", model: "local", baseUrl: "http://cache.test/v1" };
+    try {
+        process.env[key] = "32000";
+        const first = await ProviderInstantiate.instantiateProvider(spec);
+        process.env[key] = "16000";
+        const second = await ProviderInstantiate.instantiateProvider(spec);
+        assert.equal(first.contextWindow, 32_000);
+        assert.equal(second.contextWindow, 16_000);
+        assert.notEqual(first, second);
+    } finally {
+        if (previous === undefined) delete process.env[key]; else process.env[key] = previous;
         globalThis.fetch = realFetch;
     }
 });

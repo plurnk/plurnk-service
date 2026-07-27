@@ -174,10 +174,10 @@ export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise
 // so it holds when the demo model pivots (turboderp ↔ gbuild). Returns a restore fn.
 export const pinAliasPartition = (part: { CONTEXT_WINDOW?: string; REASONING?: string; COMPLETION?: string; SAFETY?: string }): (() => void) => {
     const alias = resolveActiveAlias(process.env)?.alias ?? "";
-    // #528 dialect — CONTEXT_WINDOW is CORE's log-budget cap (min(cap, natural), the prompt alone);
-    // the reserves are provider-tier ABSOLUTES (positive — a zero reserve is unspellable by design,
-    // pin "1" for a nil slice); SAFETY stays core's. Pin only what a story needs:
-    // promptBudget = min(cap, natural) − reasoning − completion − safety.
+    // CONTEXT_WINDOW is the provider's effective total-window cap; the reserves are provider-tier
+    // ABSOLUTES (positive — a zero reserve is unspellable by design, pin "1" for a nil slice);
+    // SAFETY stays core's. Pin only what a story needs:
+    // promptBudget = effective window − reasoning − completion − safety.
     const entries: Array<readonly [string, string]> = ([
         [`PLURNK_PROVIDERS_CONTEXT_WINDOW_${alias}`, part.CONTEXT_WINDOW],
         [`PLURNK_PROVIDERS_REASONING_RESERVE_${alias}`, part.REASONING],

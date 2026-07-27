@@ -1,6 +1,7 @@
 import { lookupProvider, resolveModel, type ModelInfo } from "@plurnk/plurnk-models";
 import {
     contextWindowFromEnv,
+    effectiveContextWindow,
     dataCaptureFromEnv,
     envelopeFromEnv,
     parseRequiredFloat,
@@ -139,7 +140,7 @@ export const catalogProviderFromEnv = (
     );
 
     const info = resolved?.info;
-    const contextWindow = contextOverride ?? info?.contextWindow ?? null;
+    const contextWindow = effectiveContextWindow(contextOverride, info?.contextWindow ?? null);
     if (contextWindow === null) {
         throw new Error(
             `${name} provider: context window unresolved for "${wireModel}" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot`,

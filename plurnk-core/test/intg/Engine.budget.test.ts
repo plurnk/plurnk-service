@@ -66,7 +66,7 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { tokens: number; sections: Array<{ tokens: number }> };
         const budget = packetSection(packet, "budget");
-        // partition: min(CONTEXT_WINDOW 78848, window 4000) − test reserves (256+1024+64) = 2656
+        // partition: provider window 4000 − test reserves (256+1024+64) = 2656
         assert.match(budget, /Token Ceiling 2656 · Token Usage \d+ \(\d+%\) · Tokens Free \d+/, "headline carries the partition-derived ceiling, usage, percent, and free");
         const free = Number(/Tokens Free (\d+)/.exec(budget)?.[1]);
         const total = packet.sections.reduce((n, s) => n + s.tokens, 0); // summed per-section render-weights (the assembled request size, inter-section joins aside)
@@ -77,33 +77,33 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
     } finally { await db.close(); }
 });
 
-test("an intermediate operator cap tightens the PROMPT alone — reserves stay natural, maxTokens untouched (#528)", async () => {
-    // The conflation this pins against: folding the cap into the window shrank the reserves, so
-    // capping the log also throttled reasoning + response length. Natural window 49152, absolute
-    // reserves via the bare env knobs (Mock resolves them against ITS window); a 32000 cap must
-    // cut promptBudget by exactly the window delta and leave the generation envelope untouched.
+test("core consumes the provider's effective window without reinterpreting provider configuration", async () => {
+    // Provider construction owns the operator cap and reserve derivation. A hand-built Provider
+    // already exposes its effective envelope; ambient provider knobs cannot make core silently
+    // repartition that handle a second time.
     const db = await openMigrated();
-    const prev = { cap: process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW, rr: process.env.PLURNK_PROVIDERS_REASONING_RESERVE, cr: process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE };
+    const prev = {
+        cap: process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW,
+        rr: process.env.PLURNK_PROVIDERS_REASONING_RESERVE,
+        cr: process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE,
+        safety: process.env.PLURNK_SERVICE_SAFETY,
+    };
     try {
         process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "4915";
         process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "12288";
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const mkProvider = (): Mock => new Mock({ contextWindow: 49152, responses: [] });
-
-        delete process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW;
-        const natural = engine.promptBudgetFor(mkProvider());
-        assert.ok(natural !== null && natural > 0, "the natural partition resolves");
-
         process.env.PLURNK_PROVIDERS_CONTEXT_WINDOW = "32000";
-        const provider = mkProvider();
-        const capped = engine.promptBudgetFor(provider);
-        assert.equal(capped, natural! - (49152 - 32000), "the cap cuts the prompt budget by exactly the window delta — reserves untouched");
+        process.env.PLURNK_SERVICE_SAFETY = "1024";
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const provider = new Mock({ contextWindow: 49152, responses: [] });
+        const budget = engine.promptBudgetFor(provider);
+        assert.equal(budget, 49152 - 4915 - 12288 - 1024);
         assert.equal(provider.reasoningReserve, 4915, "the reasoning reserve stays task-natural under the cap");
-        assert.equal(provider.completionReserve, 12288, "the completion reserve — the response ceiling — stays task-natural under the cap");
+        assert.equal(provider.completionReserve, 12288, "the completion reserve remains provider-owned");
     } finally {
         for (const [k, v] of [["PLURNK_PROVIDERS_CONTEXT_WINDOW", prev.cap], ["PLURNK_PROVIDERS_REASONING_RESERVE", prev.rr], ["PLURNK_PROVIDERS_COMPLETION_RESERVE", prev.cr]] as const) {
             if (v === undefined) delete process.env[k]; else process.env[k] = v;
         }
+        if (prev.safety === undefined) delete process.env.PLURNK_SERVICE_SAFETY; else process.env.PLURNK_SERVICE_SAFETY = prev.safety;
         await db.close();
     }
 });

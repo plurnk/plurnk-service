@@ -1,5 +1,5 @@
-// Measure a workspace's true turn-1 packet floor: the log-budget cap pinned to 1 forces the
-// first turn over budget (#528 — the cap tightens the prompt alone), and turn 1's STORED packet
+// Measure a workspace's true turn-1 packet floor: an effective window with one prompt token
+// beyond its declared reserves forces the first turn over budget, and turn 1's STORED packet
 // record carries the real assembled total whatever the loop then does — the recovery turn may
 // conclude (§grinder-hard-413-recovery's conclude-law) or terminate 413; the measurement is the
 // turn-1 record, not the terminal. Costs one bounded recovery generate. Zero model cost, zero GPU.
@@ -9,10 +9,10 @@
 
 import { liveWorkspace, liveLoop, pinAliasPartition } from "../_live-harness.ts";
 
-export const measureFloor = async (opts: { label: string; projectRoot: string; prompt: string }): Promise<number> => {
-    // Cap 1 → a pre-generate hard-413 whose stored record renders the real floor.
+export const measureFloor = async (opts: { label: string; projectRoot: string; prompt: string; reservedTokens: number }): Promise<number> => {
+    // One prompt token → a pre-generate hard-413 whose stored record renders the real floor.
     // MUST ride the active alias's suffix (bare is overridden by the model's own .env knobs).
-    const restore = pinAliasPartition({ CONTEXT_WINDOW: "1", SAFETY: "0" });
+    const restore = pinAliasPartition({ CONTEXT_WINDOW: String(opts.reservedTokens + 1), SAFETY: "0" });
     try {
         const s = await liveWorkspace({ name: `floor-probe-${opts.label}-${crypto.randomUUID()}`, projectRoot: opts.projectRoot });
         try {

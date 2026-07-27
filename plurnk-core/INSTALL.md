@@ -37,14 +37,25 @@ A bare flag is a signal: more than one component depends on it. A prefixed one i
 
 These are relationships *between* flags. Set them as a unit.
 
-- **The window partition is exact.** `promptBudget = min(PLURNK_SERVICE_CONTEXT_WINDOW, real window) − REASONING − COMPLETION − SAFETY`; `REASONING + COMPLETION` is the per-call `max_tokens`. Shipped invariant: any window ≥ 77Ki partitions to **exactly 65536** prompt tokens (`78848 − 4096 − 8192 − 1024`). Reserves exceeding the window fail the boot. *(Pinned: `Engine.budget` / `shipped-defaults`.)*
-- **Reasoning capacity is one number in three places.** `PLURNK_SERVICE_REASONING` (the partition's reserve) **must equal** `PLURNK_PROVIDERS_THINKING_CAPACITY` (the provider's thinking cap) **must equal** the serving box's `--reasoning-budget` launch flag. llama-server ignores per-request numeric budgets, so only the launch flag clamps it; a mismatch makes the reserve fiction. The daemon warns at boot when thinking is on. *(Pinned: `shipped-defaults` asserts the first equality.)*
+- **The window partition is exact.** Providers expose
+  `effectiveWindow = min(PLURNK_PROVIDERS_CONTEXT_WINDOW, detected/catalog window)`;
+  `promptBudget = effectiveWindow − reasoningReserve − completionReserve − safety`.
+  `reasoningReserve + completionReserve` is the per-call generation envelope.
+  Percentage reserves derive from the effective window, while contradictory
+  absolute reserves fail hard.
+- **Reasoning capacity stays coupled on llama-server.**
+  `PLURNK_PROVIDERS_REASONING_BUDGET_<alias>` and
+  `PLURNK_PROVIDERS_REASONING_RESERVE_<alias>` must agree with the serving
+  box's `--reasoning-budget`. llama-server ignores per-request reasoning
+  budgets, so the daemon warns when it cannot verify this coupling.
 - **Local GBNF is optional.** The PLURNK language is always parsed normally.
   Local llama-server users may set `PLURNK_PROVIDERS_GBNF_<alias>`; transport
   and enforcement are verified at boot. Cloud and endpoint-managed aliases
   leave it unset. Pin `PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1` only when a
   llama-server cannot be fingerprinted reliably.
-- **A think-trained model must think somewhere.** `PLURNK_PROVIDERS_THINKING=off` reroutes a reasoning model's thought into the grammar's legal free zone as prose. Keep it `on` with a capacity; providers auto-clamp thinking on in-band grammar backends, so one setting is right everywhere.
+- **A reasoning model must reason somewhere.**
+  `PLURNK_PROVIDERS_REASONING_<alias>` selects `off`, `adaptive`, or `on`.
+  An explicit `on` also requires a positive provider reasoning budget.
 
 ## Profiles (examples, not a decision tree — adapt to the real box)
 
@@ -66,7 +77,9 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 - **Providers** — the portable provider knobs and defaults are defined by
   `@plurnk/plurnk-providers/.env.defaults`; any provider knob may take an alias
   suffix that wins over the bare fallback.
-- **The window partition** — `PLURNK_SERVICE_CONTEXT_WINDOW`/`_REASONING`/`_ASSISTANT`/`_SAFETY` (see Couplings).
+- **The window partition** —
+  `PLURNK_PROVIDERS_CONTEXT_WINDOW`/`_REASONING_RESERVE`/`_COMPLETION_RESERVE`
+  plus `PLURNK_SERVICE_SAFETY` (see Couplings).
 - **Plugins** — bare `PLURNK_PLUGINS_TRUSTED_ONLY` (0/unset = load all installed; a value = `@plurnk/*` plus an allowlist).
 - **Semantic search** — `PLURNK_SERVICE_SEMANTIC_TOP_K` (markerless result count), `_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_MIMETYPES_EMBED_WORKERS` (the embedder's pool — mimetypes-owned).
 - **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`/`_SALVAGE_MIN_BODY_CHARS`/`_IDLE_TIMEOUT` (required on the HTML render path), optional Playwright/Chromium knobs.

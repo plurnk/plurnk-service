@@ -1,6 +1,7 @@
 import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import {
     contextWindowFromEnv,
+    effectiveContextWindow,
     dataCaptureFromEnv,
     envelopeFromEnv,
     parseOptionalFloat,
@@ -125,7 +126,7 @@ export const compatibleProviderFromEnv = async (
         attempts,
         parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_DELAY, "PLURNK_PROVIDERS_PROBE_DELAY", provider),
     );
-    let contextWindow = contextWindowFromEnv(env, provider) ?? probe.nCtx;
+    const contextWindow = effectiveContextWindow(contextWindowFromEnv(env, provider), probe.nCtx);
     const pinRaw = env.PLURNK_PROVIDERS_LLAMA_SERVER;
     if (pinRaw !== undefined && pinRaw !== "" && pinRaw !== "0" && pinRaw !== "1") {
         throw new Error(`${provider} provider: PLURNK_PROVIDERS_LLAMA_SERVER must be "1", "0", or unset`);

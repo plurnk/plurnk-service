@@ -142,8 +142,9 @@ export interface Provider {
     // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
     // strikes-style zero exception). Headers only, never the packet.
     generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
-    // The model's context window in tokens. The provider RESOLVES it (operator pin
-    // -> live probe -> @plurnk/plurnk-models catalog). A CLOUD provider (no probe)
+    // The model's effective context window in tokens. The provider RESOLVES it as
+    // min(operator cap, live probe/catalog fact), or the explicit declaration when
+    // no natural window is knowable. A CLOUD provider (no probe)
     // FAILS AT CONSTRUCTION when it can't (#419/#417: never budget against a wrong
     // number). A PROBING provider (openai/llama-server) instead DEGRADES to null on a
     // probe miss - a blip must not crash it (#34) - and surfaces it once

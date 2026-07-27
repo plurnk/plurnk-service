@@ -143,18 +143,6 @@ export default class PacketBuilder {
         return { reasoning: provider.reasoningReserve ?? null, completion: provider.completionReserve ?? null, safety: this.#safetyFor(alias) };
     }
 
-    // #528 — the operator's CONTEXT_WINDOW pin is the LOG-budget cap, core-composed: the provider
-    // reports its natural window (construction strips the pin), and the cap tightens only the
-    // prompt — never the reserves, which stay task-natural. Alias-scoped else bare; garbage fails hard.
-    #capFor(provider: Provider): number | null {
-        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
-        const raw = scopeEnvToAlias(process.env, alias).PLURNK_PROVIDERS_CONTEXT_WINDOW;
-        if (raw === undefined || raw.length === 0) return null;
-        const cap = Number.parseInt(raw, 10);
-        if (!Number.isInteger(cap) || cap <= 0) throw new Error(`PLURNK_PROVIDERS_CONTEXT_WINDOW must be a positive integer, got '${raw}'`);
-        return cap;
-    }
-
     // The generation envelope — REASONING + COMPLETION, one undifferentiated pool, passed on
     // every generate({maxTokens}): no decode is unbounded (§tokenomics-window-partition). Per
     // alias (#352): gemma's measured envelope; a cloud alias's generous default the backend clamps.
@@ -165,8 +153,8 @@ export default class PacketBuilder {
     }
 
     // §tokenomics-window-partition — the prompt ceiling
-    // is DERIVED, never set: effectiveWindow = min(CONTEXT_WINDOW, provider window; CONTEXT_WINDOW alone when the
-    // provider reports none) minus the reserves, divided by the loop's observed real/measured
+    // is DERIVED, never set: the provider's effective context window (the lower
+    // of its natural window and any operator cap) minus the reserves, divided by the loop's observed real/measured
     // token ratio (usage.prompt is ground truth; a heuristic ruler shipped a 65k-real packet into
     // a 49k window, #311). A fractional ceiling also budgeted the prompt against the window and
     // FORGOT the response lives there too. Reserves exceeding the window is a configuration
@@ -176,7 +164,7 @@ export default class PacketBuilder {
     // space (usage.prompt, the numerator, is real; the calibration ratio maps measured→real and
     // has no business here). The raw n_ctx overstates usable room by the reserve total.
     promptBudgetFor(provider: Provider): number | null {
-        return this.ceilingFor(provider); // ONE derivation (#528) — the gauge denominator IS the grinder ceiling
+        return this.ceilingFor(provider); // ONE derivation — the gauge denominator IS the grinder ceiling
     }
 
     // §tokenomics-agnostic-ruler — the ceiling is the real window partition (window − reserves),
@@ -195,13 +183,7 @@ export default class PacketBuilder {
             // exceeding the window the provider detected (percent reserves derive and cannot contradict).
             throw new Error(`window partition contradiction for alias '${alias}': window ${provider.contextWindow} <= reserves ${reasoning}+${completion}+${safety}. Pinned PLURNK_PROVIDERS_{REASONING,COMPLETION}_RESERVE absolutes exceed the detected window — repin them under it, or use percent reserves, which derive from the window.`);
         }
-        // #528 — the operator's cap tightens the PROMPT alone (reserves above are off the natural
-        // window). A cap tighter than the reserves is deliberate tightening, not a contradiction —
-        // the budget floors at 1 (0 and 1 force the same every-packet-413; the usage record needs
-        // a positive denominator). ONE derivation: the grinder ceiling IS the gauge denominator.
-        const cap = this.#capFor(provider);
-        if (cap === null) return naturalBudget;
-        return Math.max(1, Math.min(cap, provider.contextWindow) - reasoning - completion - safety);
+        return naturalBudget;
     }
 
     // Assemble the request half of the spec'd packet (Packet.json system
