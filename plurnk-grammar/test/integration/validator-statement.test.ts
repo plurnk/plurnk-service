@@ -132,8 +132,8 @@ test("PlurnkStatement: SEND rejects string signal", () => {
     assert.equal(valid, false);
 });
 
-test("PlurnkStatement: SEND accepts a lineMarker (the <T> park, #54)", () => {
-    const stmt = { ...baseFields("SEND"), signal: 102, lineMarker: { marks: [30] } };
+test("PlurnkStatement: SEND accepts a terminal wait scope", () => {
+    const stmt = { ...baseFields("SEND"), signal: 202, lineMarker: { marks: [30] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
     assert.equal(valid, true, JSON.stringify(errors));
 });

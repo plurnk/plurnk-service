@@ -187,7 +187,7 @@ The worker:// scheme makes §machine-processes addressable: a `worker://` target
 
 - **Spawn** — `WORK(worker://<name>):task` creates a new worker sister (empty log) and starts it with `task` on its first loop. WORK/FORK are the worker-creation verbs (grammar 0.74.55): EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. A name is **frozen per worker** but **reclaimable across time** (§machine-processes-worker-origin): a name held only by a *terminated* sister is free to reuse — a fresh spawn takes a new row and `worker_resolve_by_name` resolves the newest, the corpse keeping its name in permanent history. A name a *live* sister still holds is a conflict — **409 `worker '<name>' is already running`**, legible at the spawn gate, never a raw store-level uniqueness error. {§worker-scheme-spawn}
 - **irc** — `SEND(worker://<name>):msg` delivers `msg` to an existing sister, the **voice door** (§actor-boundary-two-doors): an active sister folds it into its next turn, an idle one wakes (§actor-boundary-passive-wake); a name with no worker in the workspace is 404. {§worker-scheme-irc}
-- **Fork** — `FORK(worker://<name>):task` branches the current worker into a **named** sister: its log is deep-copied (§machine-processes-fork-copies-the-log), which continues with `task`; the world is shared, never copied (§machine-processes-fork-shares-the-world). A fork ALSO inherits the worker-scope **scratch** — its private workspace deep-copied with the owner remapped (source → branch) — so the branch opens with the parent's notes and diverges on its own edits: *fork = everything-in-common-but-name*. WORK and FORK are distinct verbs — WORK spawns a fresh worker, FORK branches the log — and each names the new worker explicitly, so the model addresses it (`KILL`/`SEND`/`READ`) by that name. The legacy auto-name `<parent>-fork-<N>` remains only the internal fallback when Fork is invoked without a name. Inherited loops are copied as **terminal history** (a non-terminal status is clamped): a fork's own work is a fresh loop, so an inherited mid-flight loop never makes the branch look forever-live to the §send-premature-terminate gate. {§worker-scheme-fork} {§worker-scheme-fork-scratch}
+- **Fork** — `FORK(worker://<name>):task` branches the current worker into a **named** sister: its log is deep-copied (§machine-processes-fork-copies-the-log), which continues with `task`; the world is shared, never copied (§machine-processes-fork-shares-the-world). A fork ALSO inherits the worker-scope **scratch** — its private workspace deep-copied with the owner remapped (source → branch) — so the branch opens with the parent's notes and diverges on its own edits: *fork = everything-in-common-but-name*. WORK and FORK are distinct verbs — WORK spawns a fresh worker, FORK branches the log — and each names the new worker explicitly, so the model addresses it (`KILL`/`SEND`/`READ`) by that name. The lower-level seam generates `<parent>-fork-<N>` only when its caller omits a name. Inherited loops are copied as **terminal history** (a non-terminal status is clamped): a fork's own work is a fresh loop, so an inherited mid-flight loop never makes the branch look forever-live to the §send-premature-terminate gate. {§worker-scheme-fork} {§worker-scheme-fork-scratch}
 - **Delegation inherits authority.** The live loop a spawn, fork, or irc-raised fresh loop starts with carries the **delegating loop's flags** — an auto parent delegates auto workers. Flags are a property of the delegation, not of the client connection: a child loop that fell back to defaults would propose every side-effecting op into a resolver-less void (nobody attends a headless worker's review queue; each attempt burns the full proposal timeout — the four-sweep fan-out wedge, where three workers stalled 300s-per-EXEC while the parent slept and the harness watched only the parent). An irc that *resumes* a parked loop leaves that loop's own flags untouched — inheritance applies only where a fresh loop is born. {§worker-delegation-inherits-flags}
 - **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's OWN live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn) — it never reports the re-queue outward. Treating 100 as an externally-imposed terminal once broadcast a QUEUED loop as a terminal result while the DB healed to 200 behind it — a client-facing lie the delegation topology hit on ~30% of runs. {§worker-lifecycle-wake-requeue-not-terminal}
 
@@ -947,7 +947,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 - **Schema-alignment test**: loads `@plurnk/plurnk-grammar/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Grammar drift fails CI.
 - DDL = storage truth; JSON Schemas = wire truth. Tested-aligned, allowed to differ where ergonomics demand.
 - **Schema-version stamp.** {§db-schema-version-stamp} Every plurnk DB carries SqlRite's `PRAGMA user_version` (current: `5`). Versioned `MIGRATE` blocks are the sole schema-evolution history; the latest migration version is therefore also the cross-repo drift stamp. Any change to the schema's *shape* — tables, columns, identity keys — adds the next migration in the same commit. External consumers (bench's digest) read the stamp with zero table dependency and fail hard on mismatch — "schema v5 required, found v4" — instead of rotting silently against a moved schema (the pre-rename specimen class: "no such table"). `INIT` is reserved for genuinely repeatable database posture or seeds, never schema creation or a manual `user_version` assignment.
-- **Identity components are never NULL.** {§entry-identity-no-null} The entries identity tuple — (workspace, owner, scheme, pathname) — admits no NULL component, because NULLs are distinct under SQL UNIQUE and a nullable component voids the identity index entirely: the #526 disease, re-run on the scheme axis as run59/#545 (the per-turn membership upsert never conflicted — one phantom row per member per turn, 74k rows over 530 identities, null-keyed lookups landing on arbitrary rows, the sig-gate misfiring, EDIT anchors resolving against stale bytes). File members persist under the reserved **`file`** scheme (`storedScheme: "file"`; they still render as bare paths); `entries.scheme` is `NOT NULL`; a manifest declaring `storedScheme: null` is refused at dispatch.
+- **Identity components are never NULL.** {§entry-identity-no-null} The entries identity tuple — (workspace, owner, scheme, pathname) — admits no NULL component, because NULLs are distinct under SQL UNIQUE and a nullable component voids the identity index entirely: the #526 disease, re-run on the scheme axis as run59/#545 (the per-turn membership upsert never conflicted — one phantom row per member per turn, 74k rows over 530 identities, null-keyed lookups landing on arbitrary rows, the sig-gate misfiring, EDIT anchors resolving against stale bytes). File members persist under the reserved **`file`** scheme (`storedScheme: "file"`; they still render as bare paths); `entries.scheme` is `NOT NULL`; a manifest declaring `storedScheme: null` is refused at registration.
 
 ### §sql-ts-boundary SQL/TS responsibility boundary
 
@@ -973,29 +973,30 @@ When SQL becomes onerous for a specific case, retreat for that case and document
 
 ## §plugin-discovery Plugin Discovery
 
-{§plugin-built-against} Plugin compatibility comes from its family-head dependency range; `plurnk.builtAgainst` records exact provenance. The loader rejects an incompatible range before import. Missing metadata warns and loads as a legacy artifact.
+Plugin discovery is owned by each capability framework, not by a universal core
+loader. Providers, schemes, mimetypes, and executors interpret their own
+`package.json#plurnk` declarations, validate family-specific fields, apply the
+shared installed-package trust rule, and reject name collisions. Core consumes
+their typed discovery results and owns only cross-family registration and
+orchestration.
 
-Scoped-package scan with manifest field:
+The installed dependency graph is the compatibility contract. A plugin peers on
+the compatible major of its family head; ordinary npm resolution rejects an
+unsatisfied graph. `plurnk.builtAgainst` records exact release provenance for
+independently published packages, but does not create a second runtime semver
+implementation. Missing or malformed required family declarations fail in the
+family scanner; core never warns and loads an unverified substitute.
 
-1. Each package declares its kind:
-   ```json
-   { "name": "@acme/ai-provider",
-     "plurnk": { "kind": "provider", "name": "acme" } }
-   ```
-2. Boot scans installed scoped and unscoped packages, filters by `plurnk` field, and dynamic-imports matches.
-3. Load order: deterministic alphabetical.
-4. Collision on `(kind, name)` is fail-hard.
-5. Operator flow: `npm i @plurnk/plurnk-<kind>-<name> && plurnk start`. Zero config.
-
-Env vars configure installed plugins; never declare existence. Filesystem is the source of truth.
-
-`plurnkContractVersion` on each manifest declares SPEC target version; engine refuses incompatible plugins. (Wired post-v1.0.)
+Load order is deterministic. Installing a package makes its declared
+capabilities discoverable; environment variables configure installed
+capabilities but never manufacture package existence.
 
 ---
 
 ## §bundled-set Bundled Set
 
-Plugin discovery (§plugin-discovery) registers whatever's in `node_modules/@plurnk/*`.
+Family discovery (§plugin-discovery) scans installed scoped and unscoped
+packages carrying the applicable `plurnk.kind` declaration.
 
 **Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
 operator declarations, local adapters, and finally installed AI SDK provider
@@ -1003,19 +1004,17 @@ plugins. `Mock` is its integration fixture. Core contains no vendor protocol.
 
 **Mimetypes in-tree:** none. Framework + handlers are all siblings.
 
-**Schemes in-tree (`src/schemes/`)** — transitional; each extracts to a sibling under [plurnk-schemes](https://github.com/plurnk/plurnk-schemes) as the framework matures:
+**Core schemes:** `file`, `log`, `prompt`, `skill`, and `worker` expose daemon
+state or filesystem orchestration owned by core. `exec` is internal dispatch
+machinery; each installed executor runtime receives its own addressable output
+scheme. External schemes are discovered through
+`@plurnk/plurnk-schemes` and registered through the same manifest-bound
+dispatcher contract.
 
-| In-tree | Future sibling | Notes |
-|---|---|---|
-| `Known.ts` | `@plurnk/plurnk-schemes-known` | Primary narrative entries; workspace-scoped. |
-| `Unknown.ts` | `@plurnk/plurnk-schemes-unknown` | Open questions / decomposition. |
-| `Skill.ts` | `@plurnk/plurnk-schemes-skill` | Skill docs; same shape as known. |
-| `Plurnk.ts` | may stay in-tree | `plurnk:///prompt/<loop_id>` carries each loop's prompt. Model-origin writes to `plurnk:///prompt/*` rejected in-handler. |
-| `Log.ts` | may stay in-tree | Read-only coordinate-addressed (`log:///<L>/<T>/<S>`). Renders as a `jsonplurnk` object in the `log` section; status ≥ 400 mirrors to the `errors` section (§operation-results). |
-| `File.ts` | `@plurnk/plurnk-schemes-file` | Filesystem-backed. **Model is never trained on `file:///` and never sees it.** Bare paths are model-facing; `file:///` accepted as input, renders bare. |
-| `Exec.ts` | stays in-tree | Dispatches EXEC op to runtime executors registered via [plurnk-execs](https://github.com/plurnk/plurnk-execs). |
-
-**Executors in-tree:** none. Framework + every runtime are siblings. `Exec.ts` dispatches by the EXEC op's `runtime` slot (`sh` default, `node`, `python`) to the matching sibling. Today's registry is hardcoded; plugin discovery migration tracked in [plurnk-execs#1](https://github.com/plurnk/plurnk-execs/issues/1).
+**Executors in-tree:** none. The framework and runtime implementations are
+packages. The executor registry discovers installed runtimes, probes
+availability, and routes `EXEC[<runtime>]`; core contributes orchestration and
+the output-scheme adapter, not runtime implementations.
 
 ---
 

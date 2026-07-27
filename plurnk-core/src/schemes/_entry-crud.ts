@@ -38,8 +38,7 @@ export interface DeleteEntryResult extends SchemeResultBase {
 export default class EntryCrud {
     // {§entry-identity-no-null} — the identity scheme a manifest persists under. Explicit
     // null is ILLEGAL: a NULL identity component voids the entries UNIQUE index (run59/#545).
-    static identityScheme(manifest: { name: string; storedScheme?: string | null }): string {
-        if (manifest.storedScheme === null) throw new Error(manifest.name + ": storedScheme null is illegal — a NULL identity component voids the entries identity index ({§entry-identity-no-null})");
+    static identityScheme(manifest: { name: string; storedScheme?: string }): string {
         return manifest.storedScheme ?? manifest.name;
     }
 

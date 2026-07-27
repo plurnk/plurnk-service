@@ -14,7 +14,18 @@ const fakeRegistration = (tag: string) => ({
     decl: { name: tag, glyph: "🔌", example: `<<EXEC[${tag}]:?:EXEC`, documentation: "" },
     executor: {
         runtime: tag, glyph: "🔌",
-        get manifest() { return { name: tag } as unknown as never; },
+        get manifest() {
+            return {
+                name: tag,
+                channels: { results: "application/json" },
+                defaultChannel: "results",
+                category: "data",
+                scope: "workspace",
+                writableBy: ["plugin"],
+                volatile: true,
+                modelVisible: true,
+            } as never;
+        },
         get defaultChannel() { return "results"; },
         get channels() { return { results: { mimetype: "application/json" } }; },
         run: async () => ({ status: 200 }),
@@ -332,7 +343,7 @@ test("workspace/created notification broadcasts to other connected clients", asy
 });
 test("the client-interface seam — subscribeToEvents delivers workspace-scoped engine events in-process (#355)", async () => {
     // The emit half of #broadcast, exposed as an in-process source: a transport module (plurnk-agui)
-    // subscribes here and fans out to its OWN clients, instead of being welded to the WS connections.
+    // subscribes here and owns its client fan-out; core has no transport connections.
     await withDaemon(null, async (_db, daemon, addr) => {
         const received: Array<{ workspaceId: number | null; method: string; params: unknown }> = [];
         const unsubscribe = daemon.subscribeToEvents((workspaceId, method, params) => { received.push({ workspaceId, method, params }); });
@@ -341,7 +352,7 @@ test("the client-interface seam — subscribeToEvents delivers workspace-scoped 
             const s = ((await rpcCall(ws, 1, "workspace.create", { name: "seam" })).result as { id: number }).id;
             const isCreated = (e: { method: string; params: unknown }): boolean => e.method === "workspace/created" && (e.params as { id?: number }).id === s;
             await waitFor(() => received, (r) => r.some(isCreated), { timeoutMs: 4000 });
-            assert.ok(received.some(isCreated), "the in-process subscriber received the engine event — the emit source is decoupled from the WS fan-out");
+            assert.ok(received.some(isCreated), "the in-process subscriber received the engine event without core owning transport fan-out");
             unsubscribe();
             const countAfter = received.length;
             await rpcCall(ws, 2, "workspace.create", { name: "seam-2" });
@@ -662,7 +673,7 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
                 decl: { name: "streamtag", glyph: "🔌", example: "", documentation: "" },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",
-                    get manifest() { return { name: "streamtag", protocol: "streamtag:", channels: { stdout: { mimetype: "text/plain" } }, defaultChannel: "stdout", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+                    get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
                     get defaultChannel() { return "stdout"; },
                     get channels() { return { stdout: { mimetype: "text/plain" } }; },
                     effect: () => "read",

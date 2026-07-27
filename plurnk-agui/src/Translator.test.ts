@@ -78,9 +78,9 @@ test("a NULL-id item stays dark — agui never coins an id to fake correlation (
 test("an unknown reasoning carrier is ignored", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
-    const legacy = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN",
+    const unknown = tr.logEntry(entry({ op: "model", tx: "<<PLAN:x:PLAN",
         attrs: JSON.stringify({ reasoningEncrypted: [{ data: "SEALED", format: "openai-responses-v1" }] }) }));
-    assert.deepEqual(legacy.map((e) => e.type), ["CUSTOM"]);
+    assert.deepEqual(unknown.map((e) => e.type), ["CUSTOM"]);
 });
 
 test("turn boundaries are STEPs; termination closes the step and flags the outcome", () => {

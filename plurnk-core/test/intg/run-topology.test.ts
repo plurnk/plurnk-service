@@ -16,7 +16,7 @@ test("a child worker concluding wakes a parent parked at 202", async () => {
     // and grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake topology, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a child worker, then hibernate awaiting it.
-        makeMockResponse("<<WORK(worker://worker):compute the thing and finish:WORK\n<<SEND[102]<-1>:spawned worker; waiting on it:SEND", 10),
+        makeMockResponse("<<WORK(worker://worker):compute the thing and finish:WORK\n<<SEND[202]<-1>:spawned worker; waiting on it:SEND", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
         makeMockResponse("<<SEND[200]:worker done:SEND", 10),
         // Parent turn 2 (only reached if the child's conclusion woke it): conclude.
@@ -46,7 +46,7 @@ test("a child FAILING (499) also wakes the parent — any conclusion is a wake e
     // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
     // budget-edge class as the grammar 0.76.4 bumps above). Headroom for the wake, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<<WORK(worker://flaky):try the risky thing:WORK\n<<SEND[102]<-1>:waiting on flaky:SEND", 10),
+        makeMockResponse("<<WORK(worker://flaky):try the risky thing:WORK\n<<SEND[202]<-1>:waiting on flaky:SEND", 10),
         makeMockResponse("<<SEND[499]:flaky gave up:SEND", 10),
         makeMockResponse("<<SEND[200]:flaky is done (failed); concluding:SEND", 10),
     ] });
@@ -72,7 +72,7 @@ test("an empty failed child stream is observed by the child before its terminal 
             decl: { name: "emptyfail", glyph: "×", example: "", documentation: "" },
             executor: {
                 runtime: "emptyfail", glyph: "×",
-                get manifest() { return { name: "emptyfail", protocol: "emptyfail:", channels: { results: { mimetype: "text/plain" } }, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+                get manifest() { return { name: "emptyfail", channels: { results: "text/plain" }, defaultChannel: "results", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
                 get defaultChannel() { return "results"; },
                 get channels() { return { results: { mimetype: "text/plain" } }; },
                 effect: () => "pure",
@@ -126,8 +126,8 @@ test("wake propagates UP a grandchild chain (parent→child→grandchild)", asyn
     // 16384: a 2-deep chain piles grandchild→child→parent results into the parent's final resume, cresting at the
     // 8192 edge; grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the wake recursion, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<<WORK(worker://child):do subwork:WORK\n<<SEND[102]<-1>:awaiting child:SEND", 10),       // parent t1
-        makeMockResponse("<<WORK(worker://grandchild):do leaf work:WORK\n<<SEND[102]<-1>:awaiting grandchild:SEND", 10), // child t1
+        makeMockResponse("<<WORK(worker://child):do subwork:WORK\n<<SEND[202]<-1>:awaiting child:SEND", 10),       // parent t1
+        makeMockResponse("<<WORK(worker://grandchild):do leaf work:WORK\n<<SEND[202]<-1>:awaiting grandchild:SEND", 10), // child t1
         makeMockResponse("<<SEND[200]:leaf done:SEND", 10),                                                   // grandchild
         makeMockResponse("<<SEND[200]:child done:SEND", 10),                                                  // child t2 (woken)
         makeMockResponse("<<SEND[200]:all done:SEND", 10),                                                    // parent t2 (woken)
@@ -146,9 +146,9 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     // 16384: the static packet (tools sheet + docs) grew with execs-search 0.3.0's ten category
     // tags — the same teaching-growth budget-edge the delegation test hit at the FORK/WORK adopt.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<<WORK(worker://w1):first job:WORK\n<<SEND[102]<-1>:awaiting w1:SEND", 10), // parent t1
+        makeMockResponse("<<WORK(worker://w1):first job:WORK\n<<SEND[202]<-1>:awaiting w1:SEND", 10), // parent t1
         makeMockResponse("<<SEND[200]:w1 done:SEND", 10),                                       // w1
-        makeMockResponse("<<WORK(worker://w2):second job:WORK\n<<SEND[102]<-1>:awaiting w2:SEND", 10),// parent t2 (woken by w1)
+        makeMockResponse("<<WORK(worker://w2):second job:WORK\n<<SEND[202]<-1>:awaiting w2:SEND", 10),// parent t2 (woken by w1)
         makeMockResponse("<<SEND[200]:w2 done:SEND", 10),                                       // w2
         makeMockResponse("<<SEND[200]:both done:SEND", 10),                                     // parent t3 (woken by w2)
     ] });
@@ -233,13 +233,13 @@ test("spawn and fork carry the delegating loop's flags — an auto parent's chil
     // larger delegation teaching tipped it consistently over — the headroom is the fix, not a race.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
-        makeMockResponse("<<WORK(worker://worker):edit something and finish:WORK\n<<FORK(worker://mirror):edit something and finish:FORK\n<<SEND[102]<-1>:delegated; waiting:SEND", 10),
+        makeMockResponse("<<WORK(worker://worker):edit something and finish:WORK\n<<FORK(worker://mirror):edit something and finish:FORK\n<<SEND[202]<-1>:delegated; waiting:SEND", 10),
         // Worker turn 1: a SIDE-EFFECTING op (proposes unless auto), then conclude.
         makeMockResponse("<<EDIT(worker:///from-worker):payload:EDIT\n<<SEND[200]:worker done:SEND", 10),
         // Fork turn 1: same shape.
         makeMockResponse("<<EDIT(worker:///from-fork):payload:EDIT\n<<SEND[200]:fork done:SEND", 10),
         // Parent resumes twice (one wake per child conclusion).
-        makeMockResponse("<<SEND[102]<-1>:one down:SEND", 10),
+        makeMockResponse("<<SEND[202]<-1>:one down:SEND", 10),
         makeMockResponse("<<SEND[200]:all done:SEND", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

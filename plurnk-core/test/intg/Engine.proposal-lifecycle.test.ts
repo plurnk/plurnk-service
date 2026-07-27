@@ -241,7 +241,7 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
         // A bare statement without a PLAN lead is a parse error (grammar 0.70 PLAN-first),
         // and parseDsl drops kind:"error" items — so build from a PLAN-led turn and pluck
         // the broadcast SEND[202] (target:null) the model would actually emit.
-        const sendParked = parseDsl("<<PLAN::PLAN\n<<SEND[102]<-1>:awaiting your reply:SEND").find((s) => s.op === "SEND");
+        const sendParked = parseDsl("<<PLAN::PLAN\n<<SEND[202]<-1>:awaiting your reply:SEND").find((s) => s.op === "SEND");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({
@@ -253,7 +253,7 @@ test("#255 — a broadcast SEND[202] (parked terminal) is NOT dispatched as a pr
         const parkId = await parkDeferred.promise;
 
         // Dispatch handled the already-drained join inline — it never paused.
-        assert.equal(parkResult.status, 200, "the broadcast join ([102]<-1> on nothing) completes inline");
+        assert.equal(parkResult.status, 200, "the broadcast join ([202]<-1> on nothing) completes inline");
         // ...the entry is a resolved row, not a proposed one...
         const parkRow = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number }>({ id: parkId });
         assert.equal(parkRow?.state, "resolved", "the wait SEND is a resolved row, not a proposed entry");
@@ -364,7 +364,7 @@ test("proposal: timeout fires after PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS", async (
 test("the SHIPPED default is INDEFINITE — a stopped world waits for its human (owner ruling)", async (t) => {
     // The AG-UI migration's first surfaced decision: absence is not an answer. With the knob
     // unset, a pending proposal outlives any would-be window and resolves only when the human
-    // does — the [102]<-1> doctrine's sibling. The operator-bounded lane above keeps its test.
+    // does — the [202]<-1> doctrine's sibling. The operator-bounded lane above keeps its test.
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;

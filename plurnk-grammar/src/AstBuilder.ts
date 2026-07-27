@@ -248,8 +248,8 @@ export default class AstBuilder {
             op: "SEND",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_SEND().getText(), "SEND"),
             ...slots,
-            // The `<T>` park on a terminal [102] (#54): wait up to T seconds, -1 = indefinite.
-            // Only the terminal rule carries a marker (midSend has none -> null).
+            // Preserve a terminal wait scope; the dispatcher owns which disposition
+            // accepts it. Only the terminal rule carries a marker (midSend → null).
             lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#findFirst(ctx, LineMarkerContext)),
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,

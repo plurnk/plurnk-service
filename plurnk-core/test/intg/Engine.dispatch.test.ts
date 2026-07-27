@@ -418,7 +418,7 @@ test("Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: system EDIT log:/// is allowed by writableBy", async () => {
+test("Engine.dispatch: plurnk EDIT log:/// is allowed by writableBy", async () => {
     const { db, engine, env } = await setup();
     try {
         // Log has no edit() handler — so this returns 501 (not 403) when allowed.
@@ -428,6 +428,42 @@ test("Engine.dispatch: system EDIT log:/// is allowed by writableBy", async () =
             sequence: 1, origin: "plurnk",
         });
         assert.notEqual(result.status, 403);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: an instance manifest enforces writableBy like a static manifest", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
+    const schemes = new SchemeRegistry();
+    let invoked = false;
+    class Dynamic {
+        get manifest() {
+            return {
+                name: "dynamic",
+                channels: {},
+                defaultChannel: "",
+                category: "data" as const,
+                scope: "workspace" as const,
+                writableBy: ["plugin" as const],
+                volatile: false,
+                modelVisible: true,
+            };
+        }
+        async editBatch() {
+            invoked = true;
+            return { status: 200 };
+        }
+    }
+    schemes.register("dynamic", new Dynamic());
+    const engine = new Engine({ db, schemes });
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({ target: urlPath("dynamic", "/x"), body: "y" }),
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 403);
+        assert.equal(invoked, false, "the handler is not invoked after its manifest denies the writer");
     } finally { await db.close(); }
 });
 

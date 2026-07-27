@@ -376,8 +376,8 @@ test("PlurnkParser.parse: a mid-turn termination is ILLEGAL — a disposition-co
     // parse error, and a turn ENDING on it terminates cleanly.
     assert.equal(invalid("<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND"), true);
     assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[202]:awaiting worker:SEND"), true);
-    // ANTLR tolerates a park on [102] (owner ruling: "102<T> passes" - the engine folds it);
-    // the GBNF rail is where [102]<T> is unsampleable.
+    // ANTLR accepts the terminal SEND scope shape; the dispatcher rejects this
+    // semantic combination and the GBNF never samples it.
     assert.equal(valid("<<PLAN:p:PLAN\n<<SEND[102]<60>:holding:SEND"), true);
 });
 

@@ -107,7 +107,7 @@ export default class Dispatcher {
     #injectWorker: InjectWorkerNotify | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
     #cancelDescendants: CancelDescendantsNotify | undefined;
-    // §send-premature-terminate/[102]<T> — the engine-owned park-deadline registry (loopId → seconds;
+    // §send-premature-terminate/SEND[202]<T> — the engine-owned park-deadline registry (loopId → seconds;
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
     readonly #searchGate: import("./search-gate.ts").default | undefined;
@@ -521,7 +521,6 @@ export default class Dispatcher {
     // - SEND broadcast (path=null) has no target scheme; not gated.
     // - COPY: dst scheme writableBy applies.
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
-    // - Schemes without a manifest are not gated (legacy / future allowance).
     #checkWritable(statement: PlurnkStatement, origin: WriterTier): DispatchResult | null {
         if (!MUTATING_OPS.has(statement.op)) return null;
         if (statement.op === "SEND" && statement.target === null) return null;
@@ -588,8 +587,8 @@ export default class Dispatcher {
         if (schemeName === null) return null;
         const handler = this.#schemes.get(schemeName);
         if (handler === undefined) return null;
-        const manifest = (handler.constructor as { manifest?: SchemeManifest }).manifest;
-        if (manifest === undefined) return null;
+        const manifest = this.#schemes.manifestFor(schemeName);
+        if (manifest === undefined) throw new Error(`registered scheme '${schemeName}' has no manifest`);
         if (manifest.writableBy.includes(origin)) return null;
         return Dispatcher.#failure("writer-forbidden", 403, `Writer '${origin}' is not in writableBy for scheme '${schemeName}'.`); // §scheme-surface-writableby-403
     }
@@ -722,7 +721,7 @@ export default class Dispatcher {
         const dstPath = statement.body;
         if (srcPath === null) return Dispatcher.#failure("move-source-required", 400, "MOVE requires a source path.");
         // MOVE is relocation only — deletion is KILL's job (§move, §move-dev-null-not-special). The /dev/null
-        // and null-body delete-by-MOVE back-compat is retired: no silent debt.
+        // and null-body delete-by-MOVE has no alternate meaning.
         if (dstPath === null) return Dispatcher.#failure("move-destination-required", 400, "MOVE requires a destination; use KILL to delete."); // §move-null-body-400
 
         const srcSchemeName = schemeNameOf(srcPath);
@@ -1198,12 +1197,13 @@ export default class Dispatcher {
         if (status === null) return Dispatcher.#failure("send-status-required", 400, "SEND requires a numeric status.");
         const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
 
-        // [102]<T> — waiting is a mode of CONTINUING (grammar 0.75.0, the terminal redesign): park
-        // up to T seconds, woken early by any arrival (stream/child conclusion, irc, inject), woken
-        // at T regardless — a park ALWAYS has a next turn, so nothing can be orphaned. <-1> parks
-        // indefinitely (the butler/worker pattern — owner-ruled ungated; the instrumentation renders
-        // it legibly). Internally the parked state remains loops.status=202: the model-facing SIGNAL
-        // retired, the engine's park state did not.
+        // The park rides SEND[202] only (§park-202-only). A scoped SEND[102] is neither
+        // a wait nor a meaningful continuation, so reject it instead of preserving the
+        // retired dual spelling.
+        if (status === 102 && statement.lineMarker !== null) {
+            return Dispatcher.#failure("send-scope-invalid", 400, "SEND[102] does not accept <scope>; use SEND[202]<timeout,poll> to wait.");
+        }
+
         // §join-blocking-collect (#354) — a READ(worker://running-child) this turn armed a join. A BARE
         // continue becomes an indefinite PARK: the blocking collect, on the same park machinery <-1>
         // uses. The armed READ said "I want this result"; parking IS the collect (the model never had
@@ -1218,13 +1218,12 @@ export default class Dispatcher {
             return { status: 102, attrs: { parked: -1, join: true } };
         }
 
-        // §wait-obligation-matrix — SEND[202] and the legacy SEND[102]<T> are one
-        // obligation-checked join. A live
+        // §wait-obligation-matrix — SEND[202] is the obligation-checked join. A live
         // obligation (a spawned child or open stream, J) BLOCKS the loop until it concludes and
         // reawakens it (§worker-lifecycle-child-wake); a wait on nothing (∅) is already satisfied and
         // resolves like 200, so <-1>+∅ self-resolves rather than hang the agent; a pending own
         // retrieval (R) just lands next turn, so the wait continues.
-        if (status === 202 || (status === 102 && statement.lineMarker !== null)) {
+        if (status === 202) {
             const marks = statement.lineMarker?.marks[0];
             const seconds = typeof marks === "number" ? marks : -1; // bare 202 / absent T = indefinite, bounded by the join
             if (await this.#hasLiveWork(workerId)) {

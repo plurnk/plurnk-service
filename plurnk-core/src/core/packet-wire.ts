@@ -268,9 +268,8 @@ export default class PacketWire {
         return PacketWire.#wrapHeredocBody(fence, rendered);
     }
 
-    // Tolerant JSON parser for log entries' rx/tx fields. The engine
-    // pre-parses application/json mimetypes, but render may also receive
-    // strings (legacy paths, manual tests). Returns null on parse failure.
+    // Tolerant JSON parser for log entries' persisted rx/tx strings. The engine
+    // pre-parses application/json mimetypes; malformed stored text is not JSON.
     static #safeParse(s: string): unknown {
         try { return JSON.parse(s); } catch { return null; }
     }

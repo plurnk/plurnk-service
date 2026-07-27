@@ -274,7 +274,7 @@ test("value-add: two disposition SENDs get the termination rule (the second cann
 });
 
 // {§waitpid-dispositions} {§park-202-only}
-test("202 is BACK (waitpid contract): the wait disposition — terminal, mid-reserved, ANTLR-tolerant on a [102] park", () => {
+test("202 is the wait disposition; ANTLR remains shape-tolerant while runtime owns disposition semantics", () => {
     // Terminal position: a turn ends on SEND[202] cleanly (the obligation-check is the engine's).
     const ok = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[202]:awaiting worker:SEND");
     assert.equal(ok.items.filter((i) => i.kind === "error").length, 0);
@@ -282,7 +282,8 @@ test("202 is BACK (waitpid contract): the wait disposition — terminal, mid-res
     // Mid position: a disposition again — the mid-termination rule fires.
     const errs = errMsgs("<<PLAN:p:PLAN\n<<SEND[202]:fyi:SEND\n<<SEND[102]:cont:SEND");
     assert.ok(errs.some((e) => /a disposition SEND ends the turn/.test(e!.message)));
-    // A park on [102] parses ANTLR-side (owner ruling: "102<T> passes"; GBNF is where it's unsampleable).
+    // ANTLR admits the terminal SEND scope shape. The dispatcher rejects this
+    // semantic combination and the generation rail never emits it.
     const tol = PlurnkParser.parse("<<PLAN:p:PLAN\n<<SEND[102]<60>:holding:SEND");
     assert.equal(tol.items.filter((i) => i.kind === "error").length, 0);
 });
@@ -1461,13 +1462,14 @@ test("slot order: duplicate line markers rejected", () => {
     assert.ok(errors.length >= 1);
 });
 
-test("SEND: terminal <T> park accepted (#54); EXEC: <L> slot accepted (timeout,poll)", () => {
-    // The `<T>` park rides the L slot on a terminal SEND: <<SEND[102]<30> parks up to 30s.
+test("SEND: terminal scope parses independently of runtime semantics; EXEC accepts timeout/poll scope", () => {
+    // The forgiving parser retains the scope. Runtime disposition validation
+    // rejects a scoped 102; generation emits scopes only on 202.
     const r1 = PlurnkParser.parseStatements("<<SEND[102]<30>:polling:SEND");
     assert.equal(r1.items.filter((i) => i.kind === "error").length, 0, `SEND[102]<T> should parse: ${JSON.stringify(r1.items)}`);
     const park = r1.items.find((i) => i.kind === "statement");
-    assert.ok(park?.kind === "statement" && park.statement.op === "SEND" && park.statement.lineMarker !== null, "SEND park lineMarker should be populated");
-    // <-1> = indefinite standby (the L vocabulary's existing sentinel).
+    assert.ok(park?.kind === "statement" && park.statement.op === "SEND" && park.statement.lineMarker !== null, "SEND lineMarker should be populated");
+    // The signed sentinel is still parsed structurally.
     const r3 = PlurnkParser.parseStatements("<<SEND[102]<-1>:standing by:SEND");
     assert.equal(r3.items.filter((i) => i.kind === "error").length, 0);
     // A MID (non-disposition) SEND takes no marker — parking is a terminal act.

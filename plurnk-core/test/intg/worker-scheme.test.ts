@@ -491,7 +491,7 @@ test("READ(worker://running-child) arms a join — the turn's bare SEND[102] PAR
         const send = await engine.dispatch({ statement: sendStmt(102, null, null), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 2, origin: "model" });
         assert.equal((send.attrs as { join?: boolean } | undefined)?.join, true, "the bare continue was converted to a join-park");
         const parked = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
-        assert.equal(parked?.status, 202, "the parent PARKED (202) awaiting the worker — the model never had to know SEND[102]<-1>");
+        assert.equal(parked?.status, 202, "the parent PARKED (202) awaiting the worker — the model never had to know SEND[202]<-1>");
     } finally { await db.close(); }
 });
 

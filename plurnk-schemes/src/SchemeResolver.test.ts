@@ -35,12 +35,18 @@ test("SchemeResolver.forLoop: schemes without manifest.flags are always active",
     assert.deepEqual([...active].sort(), ["a", "b"]);
 });
 
-test("SchemeResolver.forLoop: handler without static manifest is always active", () => {
+test("SchemeResolver.forLoop: an instance manifest supports dynamically derived schemes", () => {
+    const manifest = baseManifest("dynamic");
     const m = handlers([
-        ["bare", makeScheme("bare")],
+        ["dynamic", { manifest }],
     ]);
     const active = SchemeResolver.forLoop(m, DEFAULT_LOOP_FLAGS);
-    assert.deepEqual([...active], ["bare"]);
+    assert.deepEqual([...active], ["dynamic"]);
+});
+
+test("SchemeResolver.forLoop: a handler without any manifest is rejected", () => {
+    const m = handlers([["bare", {}]]);
+    assert.throws(() => SchemeResolver.forLoop(m, DEFAULT_LOOP_FLAGS), /must declare a static or instance manifest/);
 });
 
 test("SchemeResolver.forLoop: excludedInAsk filters in ask mode only", () => {

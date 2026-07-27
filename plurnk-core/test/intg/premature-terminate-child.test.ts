@@ -112,25 +112,26 @@ test("READ + SEND[200] same turn is refused 409 — the pending set includes thi
     } finally { await db.close(); }
 });
 
-test("a legacy [102]<-1> join on an idle run completes immediately", async () => {
+test("SEND[102] rejects a wait scope instead of preserving the retired dual spelling", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // The legacy indefinite-park syntax routes through the obligation-checked join.
-        // An empty task group is already drained and completes without parking.
         const wait = { op: "SEND" as const, suffix: "", signal: 102, target: null, lineMarker: { marks: [-1] }, body: "standing by", position: { line: 1, column: 1 } };
-        await engine.runTurn({
+        const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
-        assert.equal(loopStatus, 200, "the already-drained join completes terminally");
-        const row = await db.test_send_rows_for_run.all<{ status_rx: number }>({ worker_id: workerId });
-        assert.ok(row.some((r) => r.status_rx === 200), "the SEND records successful completion");
+        assert.equal(result.status, 102, "the failed disposition leaves the loop available to observe and repair");
+        assert.equal(loopStatus, 102, "the invalid wait never parks or concludes the loop");
+        const row = await db.test_send_rows_for_run.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
+        const rejected = row.find((r) => r.status_rx === 400);
+        assert.ok(rejected, "the SEND records the contract failure");
+        assert.match(rejected.rx, /SEND\[202\].*wait/, "the failure points to the one wait spelling");
     } finally { await db.close(); }
 });
 

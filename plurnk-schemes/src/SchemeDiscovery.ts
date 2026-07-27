@@ -88,8 +88,7 @@ export default class SchemeDiscovery {
 
     // Host plugin-trust gate, read from PLURNK_PLUGINS_TRUSTED_ONLY — the SAME
     // env var plurnk-service decides once and every scope-agnostic discovery
-    // surface enforces (plurnk-service#229). The ~5-line policy is duplicated,
-    // not shared (can't import across the package boundary), matching execs:
+    // surface enforces through the shared Meta contract (plurnk-service#229):
     //   unset / "" / "0" → OFF: every installed package trusted (no regression).
     //   any value        → ON:  `@plurnk/*` always trusted, plus a comma-separated
     //                           allowlist of additionally-trusted package names.

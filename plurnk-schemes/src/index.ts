@@ -16,6 +16,7 @@ export { DEFAULT_LOOP_FLAGS } from "./types.ts";
 
 // ── Behavior classes ─────────────────────────────────────────────────────
 export { default as SchemeResolver } from "./SchemeResolver.ts";
+export { default as Manifest } from "./Manifest.ts";
 export { default as MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
 export { default as Slicer } from "./Slicer.ts";
 export type {

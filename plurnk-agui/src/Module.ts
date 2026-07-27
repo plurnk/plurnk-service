@@ -2,7 +2,7 @@
 // activates: registerModule(aguiModule(opts)) hands this the CoreSeam handle; it opens
 // the AG-UI+ HTTP/SSE listener and owns the client interface from there.
 //
-// This is the SINGLE-INTERFACE surface (AG-UI+), not the legacy bridge dialect:
+// This is the single external client interface:
 //   POST /  — the only endpoint. A worker streams SSE. HITL is terminate-resume: a
 //   stopped-world emits a request_approval/request_user_input TOOL_CALL and finishes
 //   with an AG-UI interrupt outcome (the loop stays paused in-engine); the next run's
@@ -426,7 +426,7 @@ export default class Module {
                 case "op.parse": {
                     // Raw DSL parsed at the module's edge (the grammar is a family-internal
                     // runtime dep, operator-approved) → each statement dispatched; parse
-                    // failures return as 400 results, mirroring the legacy op.parse.
+                    // failures return as per-statement 400 results.
                     if (typeof p.text !== "string" || p.text.length === 0) return { ok: false, error: "op.parse requires text" };
                     const parsed = PlurnkParser.parseClient(p.text);
                     const results: Array<Record<string, unknown> | null> = [];

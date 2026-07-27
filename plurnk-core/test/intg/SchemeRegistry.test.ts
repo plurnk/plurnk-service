@@ -3,6 +3,20 @@ import Prompt from "../../src/schemes/Prompt.ts";
 import assert from "node:assert/strict";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
+import type { SchemeManifest } from "../../src/core/scheme-types.ts";
+
+const manifest = (name: string): SchemeManifest => ({
+    name,
+    channels: { body: "text/plain" },
+    defaultChannel: "body",
+    category: "data",
+    scope: "workspace",
+    writableBy: ["model"],
+    volatile: false,
+    modelVisible: true,
+});
+
+const handler = (name: string): object => ({ manifest: manifest(name) });
 
 test("SchemeRegistry: constructor registers all eight bundled schemes", () => {
     const r = new SchemeRegistry();
@@ -32,7 +46,7 @@ test("SchemeRegistry: has(name) reflects registration state", () => {
 
 test("SchemeRegistry: register(name, handler) accepts new scheme", () => {
     const r = new SchemeRegistry();
-    class FakeHttp {}
+    class FakeHttp { static manifest = manifest("https"); }
     r.register("https", new FakeHttp());
     assert.equal(r.has("https"), true);
     assert.ok(r.get("https") instanceof FakeHttp);
@@ -48,8 +62,8 @@ test("SchemeRegistry: register(name) on already-registered name fails hard", () 
 
 test("SchemeRegistry: list() is sorted and exhaustive", () => {
     const r = new SchemeRegistry();
-    class FakeWs {}
-    class FakeHttps {}
+    class FakeWs { static manifest = manifest("wss"); }
+    class FakeHttps { static manifest = manifest("https"); }
     r.register("wss", new FakeWs());
     r.register("https", new FakeHttps());
     assert.deepEqual(r.list().toSorted(), ["exec", "file", "https", "log", "prompt", "skill", "worker", "wss"], "the #527 roster + the two registered externals");
@@ -58,15 +72,13 @@ test("SchemeRegistry: list() is sorted and exhaustive", () => {
 test("SchemeRegistry: two independent registries don't share state", () => {
     const r1 = new SchemeRegistry();
     const r2 = new SchemeRegistry();
-    class Local {}
+    class Local { static manifest = manifest("local"); }
     r1.register("local", new Local());
     assert.equal(r1.has("local"), true);
     assert.equal(r2.has("local"), false);
 });
 
 import { DEFAULT_LOOP_FLAGS } from "../../src/core/scheme-types.ts";
-import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-
 test("SchemeRegistry.resolveForLoop: default flags include all bundled schemes", () => {
     const r = new SchemeRegistry();
     const active = r.resolveForLoop(DEFAULT_LOOP_FLAGS);
@@ -87,10 +99,9 @@ test("SchemeRegistry.resolveForLoop: noProposals is not a gate — exec stays ac
     assert.equal(active.has("worker"), true);
 });
 
-test("SchemeRegistry.resolveForLoop: handler without manifest is always active", () => {
+test("SchemeRegistry.resolveForLoop: a manifest without flags is always active", () => {
     const r = new SchemeRegistry();
-    class Bare {}
-    r.register("bare", new Bare());
+    r.register("bare", handler("bare"));
     const active = r.resolveForLoop({ ...DEFAULT_LOOP_FLAGS, mode: "ask", noWeb: true, noInteraction: true, noProposals: true });
     assert.equal(active.has("bare"), true);
 });

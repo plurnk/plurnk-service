@@ -1,11 +1,8 @@
 // Active-scheme resolution under a given loop's flags. Schemes opt into
 // flag affinity via `manifest.flags`; absence = always active.
 
-import type { LoopFlags, SchemeManifest } from "./types.ts";
-
-interface SchemeWithManifest {
-    constructor: { manifest?: SchemeManifest };
-}
+import Manifest from "./Manifest.ts";
+import type { LoopFlags } from "./types.ts";
 
 export default class SchemeResolver {
     // Given a map of scheme name → handler instance and the active loop's flags,
@@ -16,7 +13,7 @@ export default class SchemeResolver {
     static forLoop(handlers: ReadonlyMap<string, object>, flags: LoopFlags): Set<string> {
         const active = new Set<string>();
         for (const [name, handler] of handlers.entries()) {
-            const affinity = (handler as SchemeWithManifest).constructor.manifest?.flags;
+            const affinity = Manifest.of(handler, name).flags;
             if (affinity === undefined) {
                 active.add(name);
                 continue;

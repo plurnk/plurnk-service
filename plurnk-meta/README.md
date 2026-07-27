@@ -2,7 +2,7 @@
 
 The plurnk metaproject layer, published — what the family shares that no single member owns.
 
-**Membership primitives** (`import Meta from "@plurnk/plurnk-meta"`): the ONE implementation of trust, enumeration, and root resolution consumed by the daemon's plugin loader and env-defaults floor and by all four family-head scanners (schemes, mimetypes, providers, execs).
+**Membership primitives** (`import Meta from "@plurnk/plurnk-meta"`): the shared implementation of trust, enumeration, and root resolution consumed by the env-defaults floor and the four family-owned scanners (schemes, mimetypes, providers, execs).
 
 - `Meta.isTrusted(packageName, env?)` — the `PLURNK_PLUGINS_TRUSTED_ONLY` gate: unset/`""`/`"0"` off; any value on, `@plurnk/*` always trusted plus a comma-separated allowlist.
 - `Meta.packageDirs(nodeModulesDir)` — scope-agnostic, symlink-aware enumeration across Node's ancestor resolution chain as `{ dir, name }` candidates; the nearest package name wins. Ordering and filtering are the caller's policy.

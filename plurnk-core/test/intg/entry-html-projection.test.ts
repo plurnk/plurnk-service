@@ -50,9 +50,9 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
     engine.hotloadRuntime("fetchstub", {
         executor: {
             runtime: "fetchstub", glyph: "?",
-            get manifest() { return { name: "fetchstub", protocol: "fetchstub:", channels: {}, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: "fetchstub", channels: { results: "text/html" }, defaultChannel: "results", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
-            get channels() { return {}; },
+            get channels() { return { results: { mimetype: "text/html" } }; },
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args: { entry?: (p: string, c: string, o: object) => Promise<void>; write: (c: string, x: string, m: string) => void; setState: (c: string, s: string) => void }) => {

@@ -17,7 +17,18 @@ import { openMigrated } from "./_helpers.ts";
 const fakeEntry = (tag: string): RegistryEntry => ({
     executor: {
         runtime: tag, glyph: "🔌",
-        get manifest() { return { name: tag } as unknown as never; },
+        get manifest() {
+            return {
+                name: tag,
+                channels: { results: "application/json" },
+                defaultChannel: "results",
+                category: "data",
+                scope: "workspace",
+                writableBy: ["plugin"],
+                volatile: true,
+                modelVisible: true,
+            } as never;
+        },
         get defaultChannel() { return "results"; },
         get channels() { return { results: { mimetype: "application/json" } }; },
         run: async () => ({ status: 200 }),

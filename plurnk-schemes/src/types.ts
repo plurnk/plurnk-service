@@ -20,7 +20,9 @@ export interface SchemeFlagAffinity {
 export interface SchemeManifest {
     readonly name: string;                       // addressing/routing identity (the URI prefix)
     readonly channels: Record<string, string>;  // channel name → mimetype; empty = dynamic per-call
-    readonly defaultChannel: string;             // empty when channels is empty
+    // The channel selected for an unqualified read. Dynamic-channel schemes may
+    // name it without declaring a fixed mimetype; empty means no default.
+    readonly defaultChannel: string;
     // data: entry-bearing content. logging: log:// rows. control: addresses
     // sister processes/runs and owns no entries (worker://: spawn/fork/irc).
     readonly category: "data" | "logging" | "control";
@@ -48,11 +50,9 @@ export interface SchemeManifest {
     readonly example?: string;
     readonly documentation?: string;
     readonly glyph?: string;
-    // Value persisted to `entries.scheme`, which may legitimately differ from the
-    // addressing `name`. Resolution: `storedScheme === undefined ? name :
-    // storedScheme`; explicit `null` persists BARE (File: bare paths, scheme
-    // NULL, routing name "file"). Full contract: SPEC §manifest (storedScheme).
-    readonly storedScheme?: string | null;
+    // Value persisted to `entries.scheme`, which may differ from the addressing
+    // `name`. Absent defaults to `name`; identity components are never null.
+    readonly storedScheme?: string;
 }
 
 export interface LoopFlags {

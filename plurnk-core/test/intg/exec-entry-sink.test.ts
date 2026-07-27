@@ -48,9 +48,9 @@ const wire = async (opts?: { fetchWeb?: WebFetch; nullContent?: boolean; tag?: s
         executor: {
             runtime: tag,
             glyph: "?",
-            get manifest() { return { name: tag, protocol: `${tag}:`, channels: {}, defaultChannel: "results", category: "action", scope: "worker", writableBy: ["model"], volatile: true, modelVisible: true } as never; },
+            get manifest() { return { name: tag, channels: { results: "text/plain" }, defaultChannel: "results", category: "data", scope: "workspace", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
             get defaultChannel() { return "results"; },
-            get channels() { return {}; },
+            get channels() { return { results: { mimetype: "text/plain" } }; },
             effect: () => "pure" as const,
             probe: async () => ({ available: true as const, detail: undefined }),
             run: async (args) => {

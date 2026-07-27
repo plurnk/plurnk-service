@@ -184,7 +184,7 @@ export default class Engine {
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
-    // §send-premature-terminate/[102]<T> — park deadlines by loopId, written at dispatch (the
+    // §send-premature-terminate/SEND[202]<T> — park deadlines by loopId, written at dispatch (the
     // marker's seconds; -1 = indefinite), consumed by the daemon's drain park-exit to schedule
     // the deadline wake. In-memory: a daemon restart drops pending deadlines (documented).
     readonly parkDeadlines: Map<number, number> = new Map();
@@ -1397,7 +1397,7 @@ export default class Engine {
             model,
             // #252 — opaque provider→client metadata passthrough (for example, the
             // provider normalized), plus the ONE service-authored carve-out: the engine's rail
-            // keys ({§rail-truth-engine-verdict}) merge over any transitional provider railsMeta.
+            // keys ({§rail-truth-engine-verdict}) merge over provider observations.
             meta: JSON.stringify({ ...(response.meta ?? {}), ...(railKeys ?? {}) }),
         });
 
@@ -1601,7 +1601,7 @@ export default class Engine {
         const ops: PlurnkStatement[] = [];
         // PLAN is an ordinary op — emitted by the model, dispatched, and passed to the
         // client as a log entry. No special hoisting into the reasoning field (that
-        // legacy paradigm is abandoned). Interstitial free text is DROPPED — the prior
+        // only structured operations are executable). Interstitial free text is DROPPED — the prior
         // #free-text-capture synthesis of SEND[103] log ops was retired as tech debt
         // (grammar 0.70 forbids free text between ops, so a prose-only turn strikes 422).
         // Full PlurnkParseError context (line/column/source) is preserved

@@ -5,9 +5,9 @@ import type { ProviderAlias } from "@plurnk/plurnk-providers";
 // construction) so the precedence + parse contract is hermetically testable; the Daemon wraps it
 // with ProviderInstantiate + the #provider fallback.
 //
-// Precedence: `model` (client-resolved `<provider>/<model>`, #90) wins over a named `alias`,
-// matching how the legacy WS loop.run treated the pair. A malformed model spec or an undeclared
-// alias throws legibly — the daemon must never silently run the wrong model.
+// Precedence: `model` (client-resolved `<provider>/<model>`, #90) wins over a named `alias`.
+// A malformed model spec or an undeclared alias throws legibly — the daemon must never silently
+// run the wrong model.
 export const resolveLoopAlias = (
     alias: string | undefined,
     model: string | undefined,

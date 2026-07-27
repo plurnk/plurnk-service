@@ -6,7 +6,7 @@ import File from "../schemes/File.ts";
 import Worker from "../schemes/Worker.ts";
 import ResolveForLoop from "./resolveForLoop.ts";
 import type { LoopFlags } from "./types.ts";
-import { SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
+import { Manifest, SchemeDiscovery, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type { PacketSection } from "./packet-wire.ts";
 import type { PacketSectionTransformer, SchemeManifest } from "./scheme-types.ts";
 import PluginAttribution from "./plugin-attribution.ts";
@@ -65,6 +65,7 @@ export default class SchemeRegistry {
 
     register(name: string, handler: object): void {
         if (this.#handlers.has(name)) throw new Error(`scheme '${name}' is already registered`);
+        Manifest.of(handler, name);
         const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
         if (this.#coreServices !== undefined && typeof bindCore === "function") bindCore.call(handler, this.#coreServices);
         this.#handlers.set(name, handler);
@@ -111,8 +112,8 @@ export default class SchemeRegistry {
     has(name: string): boolean { return this.#handlers.has(name); }
 
     manifestFor(name: string): SchemeManifest | undefined {
-        const handler = this.#handlers.get(name) as { manifest?: SchemeManifest; constructor?: { manifest?: SchemeManifest } } | undefined;
-        return handler?.manifest ?? handler?.constructor?.manifest;
+        const handler = this.#handlers.get(name);
+        return handler === undefined ? undefined : Manifest.of(handler, name);
     }
 
     list(): string[] { return [...this.#handlers.keys()].toSorted(); }
@@ -142,8 +143,7 @@ export default class SchemeRegistry {
     // address targets. Drives the manifest's address-keyed channels (note 4); null → file (body).
     defaultChannelFor(scheme: string | null): string {
         if (scheme === null) return "body";
-        const manifest = (this.#handlers.get(scheme)?.constructor as { manifest?: { defaultChannel?: string } })?.manifest;
-        return manifest?.defaultChannel ?? "body";
+        return this.manifestFor(scheme)?.defaultChannel ?? "body";
     }
 
     // The scheme directory — the `schemes` packet section (below tools). grammar
@@ -161,7 +161,7 @@ export default class SchemeRegistry {
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases route, but exec is taught once
             if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the oneliner + the doc
-            const manifest = (handler.constructor as { manifest?: { example?: string; documentation?: string } }).manifest;
+            const manifest = this.manifestFor(name);
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
             lines.push(example); // bare op — the Schemes catalog is fenced, not bulleted (#436); doc links removed (#270)
@@ -178,7 +178,7 @@ export default class SchemeRegistry {
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // §exec — runtime aliases share exec's doc, not their own
             if (excluded.has(name)) continue; // #240 — PLURNK_SERVICE_DOCS_EXCLUDE drops the doc
-            const inline = (handler.constructor as { manifest?: { documentation?: string } }).manifest?.documentation;
+            const inline = this.manifestFor(name)?.documentation;
             const content = SCHEME_DOCS.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
             if (content !== undefined && content.length > 0) out.push({ name, content });
         }

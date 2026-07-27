@@ -4,7 +4,7 @@
 // naive-install e2e runs pre-publish against the exact artifacts that will ship.
 // `npm run build:local:install` / `build:local:uninstall`; also the engine for test:installation.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -56,10 +56,6 @@ export function installSandbox() {
 export function uninstallSandbox() {
     rmSync(sandbox, { recursive: true, force: true });
     rmSync(tarballDir, { recursive: true, force: true });
-    // legacy in-repo tarballs from the pre-monorepo pack flow
-    for (const f of readdirSync(root)) {
-        if (f.startsWith("plurnk-plurnk-service-") && f.endsWith(".tgz")) rmSync(resolve(root, f));
-    }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

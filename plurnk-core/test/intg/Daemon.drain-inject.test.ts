@@ -274,7 +274,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]<-1>:backgrounded:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]<-1>:backgrounded:SEND"),
             sendOnly("<<SEND[200]:done:SEND"),
         ],
     });
@@ -314,7 +314,7 @@ test("a cancelled run is not revived by its straggler stream's conclusion", asyn
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]<-1>:backgrounded:SEND"),
+            sendOnly("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]<-1>:backgrounded:SEND"),
             sendOnly("<<SEND[200]:should never run:SEND"),
         ],
     });

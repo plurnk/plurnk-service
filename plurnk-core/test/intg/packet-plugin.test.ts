@@ -20,6 +20,16 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
         const schemes = new SchemeRegistry();
         // A third-party plugin: prepend its own section, drop the kernel's budget.
         schemes.register("demo", {
+            manifest: {
+                name: "demo",
+                channels: {},
+                defaultChannel: "",
+                category: "control",
+                scope: "workspace",
+                writableBy: ["plugin"],
+                volatile: false,
+                modelVisible: false,
+            },
             transformSections(sections: PacketSection[]): PacketSection[] {
                 return [
                     { name: "demo", slot: "user", header: "Demo Plugin", content: "hello from the plugin", tokens: 0 },

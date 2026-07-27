@@ -94,8 +94,8 @@ export default class Daemon {
     #discoveryCwd: string;
     #started = false; // start() runs once — boots discovery + plugin modules (#364: no listener, ever)
     // The emit half of the broadcast, exposed as an in-process event source (#355). A transport
-    // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never fans out
-    // for it. The WS fan-out below is legacy scaffolding that retires at the AG-UI+ cutover.
+    // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
+    // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
 
     // Run-level drain registry. At most one drain per worker. The stored object
@@ -953,12 +953,12 @@ export default class Daemon {
                         signal: controller.signal,
                     });
                     if (result.result.status === 202) {
-                        // The loop SLEPT (parked via [102]<T>/<-1>) — suspended, not terminated. Leave it at 202
+                        // The loop slept via SEND[202] — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // (#handleWakeWorker) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect (§exec-poll). §worker-lifecycle-wake-liveness.
                         void this.#schedulePollWake(workspaceId, workerId, systemPrompt).catch((err: unknown) => console.error("poll-wake scheduling failed:", err instanceof Error ? err.message : String(err)));
-                        // §send-premature-terminate/[102]<T> — the park DEADLINE (grammar 0.75.0): the
+                        // §send-premature-terminate/SEND[202]<T> — the park deadline:
                         // dispatcher recorded the marker's seconds; a bounded park is woken at T
                         // regardless of arrivals, so a park always has a next turn. -1 (indefinite:
                         // the butler, a [300] ask) schedules nothing — irc/inject/conclusions wake it.
@@ -1323,7 +1323,7 @@ export default class Daemon {
         try {
             const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
 
-            // A slept (202) loop means the worker PARKED ([102]<T>/<-1>) → RESUME it IN PLACE: re-queue
+            // A slept (202) loop means the worker parked via SEND[202] → resume it in place: re-queue
             // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
             // FIRST: the slept status is the worker's true disposition regardless of a draining
             // sibling mid-teardown (the #ensureDrain lock serializes the re-claim). No fresh loop,
